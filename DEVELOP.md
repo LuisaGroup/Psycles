@@ -17,7 +17,7 @@ does not mean “Cycles compatible”: compatibility requires an official Blende
 | Full-scene transport | At 640×480/64 spp, Lone Monk Combined RMSE is `0.26116`, Normal is `0.03696`, and DiffCol is `0.01175`; Combined mean energy is 95.75% of Cycles |
 | Cold/hot fallback JIT | Frozen-runtime full-scene JIT is `327.574 s` cold and `0.682609 s` hot (479.9×); the 1.20 MB main object loads in 1.87 ms |
 | Persistent fallback cache | Native object plus exact metadata implemented, 8/8 isolated assertions pass, and the full-scene cross-process run is bitwise equal across 13 passes |
-| Upstream integration | LuisaCompute draft PR [#253](https://github.com/LuisaGroup/LuisaCompute/pull/253); Psycles pins commit `4731cad8` as its submodule |
+| Upstream integration | LuisaCompute draft PR [#253](https://github.com/LuisaGroup/LuisaCompute/pull/253); Psycles pins commit `6b6a63d` as its submodule |
 
 The latest glossy-normal probe reduced Normal RMSE from `0.399218` to
 `0.00192210` (about 99.5%) and measures Combined relative RMSE `0.5273%`.
