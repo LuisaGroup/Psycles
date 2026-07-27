@@ -5,10 +5,12 @@
 #endif
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include <psycles/compiler/surface_program.h>
 #include <psycles/luisa/surface.h>
@@ -538,16 +540,64 @@ private:
             y_rotated.z);
     }
 
+    [[nodiscard]] std::vector<bool> value_dependency_mask(
+        compiler::ValueExpressionId root) const {
+        const auto instruction_count =
+            _program->value_instructions().size();
+        std::vector<bool> active(instruction_count, false);
+        std::vector<compiler::ValueExpressionId> pending;
+        pending.emplace_back(root);
+        while (!pending.empty()) {
+            const auto id = pending.back();
+            pending.pop_back();
+            if (!id.valid() ||
+                id.value >= instruction_count ||
+                active[id.value]) {
+                continue;
+            }
+            active[id.value] = true;
+            const auto &instruction =
+                _program->value_instructions()[id.value];
+            const std::array dependencies{
+                instruction.a,
+                instruction.b,
+                instruction.c,
+                instruction.d,
+                instruction.e,
+                instruction.f,
+                instruction.g,
+                instruction.h,
+                instruction.i,
+                instruction.j};
+            for (const auto dependency : dependencies) {
+                if (dependency.valid()) {
+                    pending.emplace_back(dependency);
+                }
+            }
+        }
+        return active;
+    }
+
     [[nodiscard]] TracedValues trace_values(
         const ShaderServices &services,
         const SurfacePoint &point,
-        bool bump_context = false) const noexcept {
+        const std::vector<bool> *active_mask = nullptr) const noexcept {
         TracedValues result;
         result.shading_normal = point.shading_normal;
-        result.values.reserve(
-            _program->value_instructions().size());
-        for (const auto &instruction :
-             _program->value_instructions()) {
+        const auto &instructions =
+            _program->value_instructions();
+        result.values.reserve(instructions.size());
+        for (std::size_t instruction_index = 0u;
+             instruction_index < instructions.size();
+             ++instruction_index) {
+            if (active_mask != nullptr &&
+                !(*active_mask)[instruction_index]) {
+                result.values.emplace_back(
+                    make_float4(0.0f));
+                continue;
+            }
+            const auto &instruction =
+                instructions[instruction_index];
             Float4 value = make_float4(0.0f);
             switch (instruction.operation) {
                 case compiler::ValueOperation::parameter:
@@ -1001,10 +1051,6 @@ private:
                     auto normal_in = safe_normalize(
                         vector(instruction.e, result),
                         result.shading_normal);
-                    if (bump_context) {
-                        value = make_float4(normal_in, 0.0f);
-                        break;
-                    }
 
                     auto point_x = point;
                     point_x.position =
@@ -1032,10 +1078,16 @@ private:
                         point.barycentric +
                         point.barycentric_dy;
 
-                    auto values_x =
-                        trace_values(services, point_x, true);
-                    auto values_y =
-                        trace_values(services, point_y, true);
+                    const auto height_dependencies =
+                        value_dependency_mask(instruction.a);
+                    auto values_x = trace_values(
+                        services,
+                        point_x,
+                        &height_dependencies);
+                    auto values_y = trace_values(
+                        services,
+                        point_y,
+                        &height_dependencies);
                     auto height_center =
                         scalar(instruction.a, result);
                     auto height_x =
@@ -1643,8 +1695,26 @@ public:
                     inverse_pi;
                 auto glossy_pdf = microfacet_pdf(
                     closure, incoming, outgoing);
-                auto specular_chance =
-                    specular_probability(closure);
+                auto diffuse_allowed =
+                    diffuse_enabled &
+                    (is_diffuse || is_principled);
+                auto glossy_allowed =
+                    glossy_enabled &
+                    (is_principled || is_glossy);
+                Float specular_chance =
+                    is_glossy
+                        ? 1.0f
+                        : is_diffuse
+                              ? 0.0f
+                              : specular_probability(closure);
+                specular_chance = select(
+                    specular_chance,
+                    0.0f,
+                    !glossy_allowed);
+                specular_chance = select(
+                    specular_chance,
+                    1.0f,
+                    glossy_allowed & (!diffuse_allowed));
                 auto pdf = lerp(
                     diffuse_pdf,
                     glossy_pdf,
@@ -1673,12 +1743,6 @@ public:
                                   closure,
                                   incoming,
                                   outgoing);
-                auto diffuse_allowed =
-                    diffuse_enabled &
-                    (is_diffuse || is_principled);
-                auto glossy_allowed =
-                    glossy_enabled &
-                    (is_principled || is_glossy);
                 auto contribution =
                     select(
                         make_float3(0.0f),
@@ -1871,8 +1935,27 @@ public:
                     (!selected) &
                     (weight > 0.0f) &
                     (target < next);
-                auto specular_chance =
-                    specular_probability(closure);
+                auto local_diffuse_enabled =
+                    diffuse_enabled &
+                    (is_diffuse || is_principled);
+                auto local_glossy_enabled =
+                    glossy_enabled &
+                    (is_glossy || is_principled);
+                Float specular_chance =
+                    is_glossy
+                        ? 1.0f
+                        : is_diffuse
+                              ? 0.0f
+                              : specular_probability(closure);
+                specular_chance = select(
+                    specular_chance,
+                    0.0f,
+                    !local_glossy_enabled);
+                specular_chance = select(
+                    specular_chance,
+                    1.0f,
+                    local_glossy_enabled &
+                        (!local_diffuse_enabled));
                 auto remapped_specular =
                     random_direction.x /
                     max(specular_chance, 1.0e-20f);
@@ -1895,12 +1978,10 @@ public:
                     remapped_random);
                 auto transparent_direction = -point.incoming;
                 auto sample_glossy =
-                    is_glossy
-                        ? Bool{true}
-                        : is_diffuse
-                              ? Bool{false}
-                              : random_direction.x <
-                                    specular_chance;
+                    local_glossy_enabled &
+                    ((!local_diffuse_enabled) |
+                     (random_direction.x <
+                      specular_chance));
                 auto candidate_direction =
                     is_transparent
                         ? transparent_direction

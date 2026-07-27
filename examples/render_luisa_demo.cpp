@@ -264,6 +264,8 @@ void add_quad(
             .transform =
                 look_at({0.0f, 2.05f, 7.0f}, {0.0f, 1.5f, -0.8f}),
             .field_of_view = 47.0f * pi / 180.0f,
+            .horizontal_field_of_view = 47.0f * pi / 180.0f,
+            .sensor_fit = CameraSensorFit::vertical,
             .orthographic_scale = 1.0f,
             .near_clip = 1.0e-3f,
             .far_clip = 100.0f});
@@ -346,9 +348,7 @@ int main(int argc, char **argv) {
     auto device = context.create_device(backend_name);
     psycles::luisa_backend::LuisaPathTracerBackend renderer{
         std::move(device),
-        {.max_bounces = 7u,
-         .russian_roulette_depth = 3u,
-         .next_event_estimation = true}};
+        {.next_event_estimation = true}};
     auto compilation = renderer.compile_scene(make_scene());
     if (!compilation.ok()) {
         for (const auto &diagnostic : compilation.diagnostics) {
@@ -361,6 +361,12 @@ int main(int argc, char **argv) {
         .window = {},
         .seed = 0x5a17c9e3u,
         .transparent_background = false,
+        .integrator = {
+            .max_bounces = 7u,
+            .min_bounces = 2u,
+            .diffuse_bounces = 7u,
+            .glossy_bounces = 7u,
+            .transmission_bounces = 7u},
         .passes = {
             {.kind = PassKind::combined,
              .name = "Combined",

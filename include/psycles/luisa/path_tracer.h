@@ -13,8 +13,6 @@
 namespace psycles::luisa_backend {
 
 struct LuisaPathTracerOptions {
-    std::uint32_t max_bounces{8u};
-    std::uint32_t russian_roulette_depth{4u};
     bool next_event_estimation{true};
 };
 

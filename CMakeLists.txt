@@ -200,4 +200,13 @@ if(PSYCLES_BUILD_TESTS)
     target_compile_features(psycles_tests PRIVATE cxx_std_20)
     add_test(NAME psycles.contracts COMMAND psycles_tests)
 
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        add_test(
+            NAME psycles.cycles_shader_node_inventory
+            COMMAND
+                "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_cycles_shader_node_coverage.py"
+                "${CMAKE_CURRENT_SOURCE_DIR}/docs/cycles-shader-nodes-4.5.10.json")
+    endif()
 endif()

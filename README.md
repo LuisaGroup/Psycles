@@ -25,7 +25,8 @@ geometry, transport, and scheduling implementations must obey:
 - direct differential validation against Blender Cycles linear render passes.
 
 See [docs/architecture.md](docs/architecture.md) for the design and current
-scope.
+scope and [docs/cycles-compatibility.md](docs/cycles-compatibility.md) for the
+shader-graph path, integrator contract, and explicit compatibility gaps.
 
 ## Build
 

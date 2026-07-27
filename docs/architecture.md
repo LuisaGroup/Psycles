@@ -65,10 +65,12 @@ how parameters are packed or cached.
 
 ### Surface program
 
-`compiler::SurfaceProgram` is a typed, immutable semantic program with separate
-float, float3, and closure instruction streams. The current closure operations
-are diffuse, emission, transparent, add, and mix. Composition remains a tree;
-there is no fixed-size `ShaderClosure[]`.
+`compiler::SurfaceProgram` is a typed, immutable semantic program with one
+topologically ordered value instruction stream and a separate closure tree.
+The unified stream is required for cross-type dependencies such as
+texture-color to scalar Math to Principled roughness, and for explicit Cycles
+socket conversions. Closure composition remains a tree; there is no fixed-size
+`ShaderClosure[]`.
 
 Every unlinked editable socket becomes a typed `ParameterDesc`. A
 `SurfaceParameterBlock` can therefore be regenerated from a new shader graph
@@ -108,14 +110,10 @@ closure tree using ordinary host control flow while tracing Luisa DSL.
 
 `luisa_backend::GraphSurface` is the first implementation. It consumes a shared
 `SurfaceProgram`, emits host-specialized Luisa expressions, and obtains runtime
-parameters from `ShaderServices`. It currently implements:
-
-- Lambertian and Cycles-style improved Oren-Nayar evaluation;
-- cosine-hemisphere diffuse sampling;
-- emission;
-- RGB transparent extinction and transparent delta sampling;
-- add/mix closure weights and one-sample mixture PDFs;
-- basic diffuse color and roughness AOVs.
+parameters, textures, attributes, and surface differentials from
+`ShaderServices`. Implementations visible in a complex scene remain
+unverified until focused Cycles probes pass; the authoritative status is
+reported by `tools/check_cycles_shader_node_coverage.py`.
 
 ### Scene
 
@@ -159,8 +157,8 @@ independently written CPU renderer.
 - No closure-array size limit.
 - No approximate implementation labeled as Cycles-compatible.
 - No OSL execution path yet.
-- No texture, bump, volume, hair, motion-blur, glossy, transmission, or
-  subsurface implementation yet.
+- No compatibility claim based only on a full-scene image or an unverified
+  node implementation.
 
 ## Next implementation slices
 

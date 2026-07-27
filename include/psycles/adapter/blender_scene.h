@@ -31,6 +31,7 @@ struct BlenderSceneImport {
     contract::PixelFilter pixel_filter{
         contract::PixelFilter::box};
     float filter_width{1.0f};
+    contract::PathIntegratorSettings integrator;
     std::vector<BlenderSceneDiagnostic> diagnostics;
 
     [[nodiscard]] bool ok() const noexcept {

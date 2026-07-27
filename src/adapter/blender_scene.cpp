@@ -31,6 +31,7 @@ namespace {
 using contract::CameraDesc;
 using contract::CameraId;
 using contract::CameraProjection;
+using contract::CameraSensorFit;
 using contract::EnvironmentDesc;
 using contract::EnvironmentSunDesc;
 using contract::GeometryId;
@@ -1863,6 +1864,88 @@ BlenderSceneImport load_blender_scene_bundle(
             unsigned_number(
                 member(member(render, "cycles"), "samples"),
                 64u));
+        auto *cycles = member(render, "cycles");
+        result.integrator.max_bounces =
+            static_cast<std::uint32_t>(unsigned_number(
+                member(cycles, "max_bounces"),
+                result.integrator.max_bounces));
+        result.integrator.min_bounces =
+            static_cast<std::uint32_t>(unsigned_number(
+                member(cycles, "min_light_bounces"),
+                result.integrator.min_bounces));
+        result.integrator.diffuse_bounces =
+            static_cast<std::uint32_t>(unsigned_number(
+                member(cycles, "diffuse_bounces"),
+                result.integrator.diffuse_bounces));
+        result.integrator.glossy_bounces =
+            static_cast<std::uint32_t>(unsigned_number(
+                member(cycles, "glossy_bounces"),
+                result.integrator.glossy_bounces));
+        result.integrator.transmission_bounces =
+            static_cast<std::uint32_t>(unsigned_number(
+                member(cycles, "transmission_bounces"),
+                result.integrator.transmission_bounces));
+        result.integrator.volume_bounces =
+            static_cast<std::uint32_t>(unsigned_number(
+                member(cycles, "volume_bounces"),
+                result.integrator.volume_bounces));
+        result.integrator.transparent_min_bounces =
+            static_cast<std::uint32_t>(unsigned_number(
+                member(cycles, "min_transparent_bounces"),
+                result.integrator.transparent_min_bounces));
+        result.integrator.transparent_max_bounces =
+            static_cast<std::uint32_t>(unsigned_number(
+                member(cycles, "transparent_max_bounces"),
+                result.integrator.transparent_max_bounces));
+        result.integrator.sample_clamp_direct = std::max(
+            number(
+                member(cycles, "sample_clamp_direct"),
+                result.integrator.sample_clamp_direct),
+            0.0f);
+        result.integrator.sample_clamp_indirect = std::max(
+            number(
+                member(cycles, "sample_clamp_indirect"),
+                result.integrator.sample_clamp_indirect),
+            0.0f);
+        result.integrator.light_sampling_threshold = std::max(
+            number(
+                member(cycles, "light_sampling_threshold"),
+                result.integrator.light_sampling_threshold),
+            0.0f);
+        result.integrator.reflective_caustics = boolean(
+            member(cycles, "caustics_reflective"),
+            result.integrator.reflective_caustics);
+        result.integrator.refractive_caustics = boolean(
+            member(cycles, "caustics_refractive"),
+            result.integrator.refractive_caustics);
+        result.integrator.use_light_tree = boolean(
+            member(cycles, "use_light_tree"),
+            result.integrator.use_light_tree);
+        const auto direct_light_sampling = text(
+            member(cycles, "direct_light_sampling_type"),
+            "MULTIPLE_IMPORTANCE_SAMPLING");
+        if (direct_light_sampling ==
+            "MULTIPLE_IMPORTANCE_SAMPLING") {
+            result.integrator.direct_light_sampling =
+                contract::DirectLightSampling::
+                    multiple_importance_sampling;
+        } else if (
+            direct_light_sampling ==
+            "FORWARD_PATH_TRACING") {
+            result.integrator.direct_light_sampling =
+                contract::DirectLightSampling::
+                    forward_path_tracing;
+        } else if (
+            direct_light_sampling ==
+            "NEXT_EVENT_ESTIMATION") {
+            result.integrator.direct_light_sampling =
+                contract::DirectLightSampling::
+                    next_event_estimation;
+        } else {
+            throw std::runtime_error(
+                "unsupported Cycles direct light sampling type: " +
+                direct_light_sampling);
+        }
         result.transparent_background =
             boolean(member(render, "transparent"));
         result.filter_width = std::max(
@@ -1894,6 +1977,14 @@ BlenderSceneImport load_blender_scene_bundle(
         }
         const CameraId camera_id{1u};
         const auto camera_type = text(member(camera, "type"));
+        const auto sensor_fit_name =
+            text(member(camera, "sensor_fit"));
+        const auto sensor_fit =
+            sensor_fit_name == "HORIZONTAL"
+                ? CameraSensorFit::horizontal
+                : sensor_fit_name == "VERTICAL"
+                      ? CameraSensorFit::vertical
+                      : CameraSensorFit::automatic;
         auto *depth_of_field = member(camera, "dof");
         const auto depth_of_field_enabled =
             boolean(member(depth_of_field, "enabled"));
@@ -1922,6 +2013,10 @@ BlenderSceneImport load_blender_scene_bundle(
                 .field_of_view = number(
                     member(camera, "angle_y"),
                     number(member(camera, "angle"), 0.7853982f)),
+                .horizontal_field_of_view = number(
+                    member(camera, "angle_x"),
+                    number(member(camera, "angle"), 0.7853982f)),
+                .sensor_fit = sensor_fit,
                 .orthographic_scale = number(
                     member(camera, "ortho_scale"), 1.0f),
                 .lens_shift_x = number(

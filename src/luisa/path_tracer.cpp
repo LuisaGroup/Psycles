@@ -117,6 +117,7 @@ using compiler::MaterialLibrary;
 using compiler::ShaderCompiler;
 using contract::CameraDesc;
 using contract::CameraProjection;
+using contract::CameraSensorFit;
 using contract::ImageExtent;
 using contract::LightType;
 using contract::PassKind;
@@ -508,19 +509,80 @@ private:
         auto scene = _scene;
         const auto render_settings = _settings;
         const auto render_window = _window;
-        const auto max_bounces = _options.max_bounces;
-        const auto rr_depth = _options.russian_roulette_depth;
+        const auto integrator = render_settings.integrator;
+        const auto max_bounces = integrator.max_bounces;
+        const auto min_bounces = integrator.min_bounces;
+        const auto max_diffuse_bounces =
+            integrator.diffuse_bounces;
+        const auto max_glossy_bounces =
+            integrator.glossy_bounces;
+        const auto max_transmission_bounces =
+            integrator.transmission_bounces;
+        const auto transparent_min_bounces =
+            integrator.transparent_min_bounces;
+        const auto transparent_max_bounces =
+            integrator.transparent_max_bounces;
+        const auto sample_clamp_direct =
+            integrator.sample_clamp_direct;
+        const auto sample_clamp_indirect =
+            integrator.sample_clamp_indirect;
+        const auto reflective_caustics =
+            integrator.reflective_caustics;
+        const auto refractive_caustics =
+            integrator.refractive_caustics;
+        const auto max_path_steps = static_cast<std::uint32_t>(
+            std::min<std::uint64_t>(
+                static_cast<std::uint64_t>(
+                    std::max(max_bounces, 1u)) +
+                    static_cast<std::uint64_t>(std::max(
+                        transparent_max_bounces, 1u)) +
+                    1u,
+                1024u));
         const auto next_event_estimation =
-            _options.next_event_estimation;
+            _options.next_event_estimation &&
+            integrator.direct_light_sampling !=
+                contract::DirectLightSampling::
+                    forward_path_tracing;
+        const auto direct_light_sampling =
+            next_event_estimation
+                ? integrator.direct_light_sampling
+                : contract::DirectLightSampling::
+                      forward_path_tracing;
         const auto camera_transform = to_luisa(scene->camera.transform);
         const auto camera_projection = scene->camera.projection;
-        const auto camera_fov = scene->camera.field_of_view;
+        const auto camera_aspect =
+            static_cast<float>(std::max(
+                render_settings.full_extent.width, 1u)) /
+            static_cast<float>(std::max(
+                render_settings.full_extent.height, 1u));
+        const auto camera_horizontal_fit =
+            scene->camera.sensor_fit ==
+                CameraSensorFit::horizontal ||
+            (scene->camera.sensor_fit ==
+                 CameraSensorFit::automatic &&
+             camera_aspect >= 1.0f);
+        const auto camera_vertical_tangent =
+            camera_horizontal_fit
+                ? std::tan(
+                      scene->camera.horizontal_field_of_view *
+                      0.5f) /
+                      camera_aspect
+                : std::tan(
+                      scene->camera.field_of_view * 0.5f);
+        const auto camera_horizontal_tangent =
+            camera_vertical_tangent * camera_aspect;
         const auto camera_ortho_scale =
             scene->camera.orthographic_scale;
         const auto camera_shift_x =
-            scene->camera.lens_shift_x;
+            scene->camera.lens_shift_x *
+            (camera_horizontal_fit
+                 ? 1.0f
+                 : 1.0f / camera_aspect);
         const auto camera_shift_y =
-            scene->camera.lens_shift_y;
+            scene->camera.lens_shift_y *
+            (camera_horizontal_fit
+                 ? camera_aspect
+                 : 1.0f);
         const auto camera_near = scene->camera.near_clip;
         const auto camera_far = scene->camera.far_clip;
         const auto camera_aperture_radius =
@@ -703,6 +765,67 @@ private:
                        sampled_squared + other_squared,
                        1.0e-20f);
         };
+        Callable forward_light_weight =
+            [=](Float forward_pdf,
+                Float nee_pdf,
+                Bool competing,
+                Bool nee_available) noexcept {
+                if (direct_light_sampling ==
+                    contract::DirectLightSampling::
+                        forward_path_tracing) {
+                    return Float{1.0f};
+                }
+                if (direct_light_sampling ==
+                    contract::DirectLightSampling::
+                        next_event_estimation) {
+                    return select(
+                        1.0f,
+                        0.0f,
+                        competing & nee_available);
+                }
+                return select(
+                    1.0f,
+                    power_heuristic(
+                        forward_pdf, nee_pdf),
+                    competing & nee_available);
+            };
+        Callable nee_light_weight =
+            [=](Float nee_pdf,
+                Float forward_pdf) noexcept {
+                if (direct_light_sampling ==
+                    contract::DirectLightSampling::
+                        next_event_estimation) {
+                    return Float{1.0f};
+                }
+                if (direct_light_sampling ==
+                    contract::DirectLightSampling::
+                        forward_path_tracing) {
+                    return select(
+                        0.0f,
+                        1.0f,
+                        forward_pdf <= 0.0f);
+                }
+                return power_heuristic(
+                    nee_pdf, forward_pdf);
+            };
+        Callable clamp_light_contribution =
+            [=](Float3 contribution, UInt depth) noexcept {
+                Float limit = select(
+                    sample_clamp_direct,
+                    sample_clamp_indirect,
+                    depth > 0u);
+                Float magnitude =
+                    abs(contribution.x) +
+                    abs(contribution.y) +
+                    abs(contribution.z);
+                Bool should_clamp =
+                    (limit > 0.0f) & (magnitude > limit);
+                return select(
+                    contribution,
+                    contribution *
+                        (limit / max(magnitude, 1.0e-20f)),
+                    should_clamp);
+            };
 
         Kernel1D kernel = [=, &surfaces = scene->surfaces](
                               BufferFloat4 combined,
@@ -1253,23 +1376,23 @@ private:
                 Float ray_dD = 0.0f;
                 if (camera_projection ==
                     CameraProjection::perspective) {
-                    const auto tangent =
-                        std::tan(camera_fov * 0.5f);
                     local_direction = normalize(make_float3(
-                        screen_x * tangent * aspect,
-                        screen_y * tangent,
+                        screen_x * camera_horizontal_tangent,
+                        screen_y * camera_vertical_tangent,
                         -1.0f));
                     auto local_direction_dx =
                         normalize(make_float3(
                             (screen_x + 2.0f / width) *
-                                tangent * aspect,
-                            screen_y * tangent,
+                                camera_horizontal_tangent,
+                            screen_y *
+                                camera_vertical_tangent,
                             -1.0f));
                     auto local_direction_dy =
                         normalize(make_float3(
-                            screen_x * tangent * aspect,
+                            screen_x *
+                                camera_horizontal_tangent,
                             (screen_y - 2.0f / height) *
-                                tangent,
+                                camera_vertical_tangent,
                             -1.0f));
                     ray_dD =
                         0.5f *
@@ -1390,8 +1513,12 @@ private:
                 UInt glossy_depth = 0u;
                 UInt transparent_depth = 0u;
                 UInt transmission_depth = 0u;
+                UInt path_depth = 0u;
+                Bool terminate_after_transparent = false;
+                Bool terminate_on_next_surface = false;
 
-                $for (bounce, max_bounces) {
+                $for (path_step, max_path_steps) {
+                    static_cast<void>(path_step);
                     Var<luisa::compute::SurfaceHit> hit =
                         scene->accel->intersect(
                             ray,
@@ -1399,46 +1526,42 @@ private:
                                  ray_visibility});
                     $if (hit->miss()) {
                         Bool competing =
-                            (bounce > 0u) & (!previous_delta);
-                        Float environment_weight = 1.0f;
-                        if (next_event_estimation) {
-                            environment_weight = select(
-                                1.0f,
-                                power_heuristic(
-                                    previous_bsdf_pdf,
-                                    uniform_sphere_pdf),
-                                competing);
-                        }
-                        radiance +=
+                            (path_depth > 0u) & (!previous_delta);
+                        Float environment_weight =
+                            forward_light_weight(
+                                previous_bsdf_pdf,
+                                uniform_sphere_pdf,
+                                competing,
+                                true);
+                        radiance += clamp_light_contribution(
                             throughput *
                             evaluate_environment_base(
                                 ray->direction()) *
-                            environment_weight;
+                                environment_weight,
+                            path_depth);
                         for (const auto &sun :
                              scene->environment_suns) {
-                            Float sun_weight = 1.0f;
-                            if (next_event_estimation) {
-                                const auto solid_angle =
-                                    2.0f * pi *
-                                    (1.0f -
-                                     std::cos(
-                                         sun.angular_radius));
-                                const auto sun_pdf =
-                                    1.0f /
-                                    std::max(
-                                        solid_angle, 1.0e-20f);
-                                sun_weight = select(
-                                    1.0f,
-                                    power_heuristic(
-                                        previous_bsdf_pdf,
-                                        sun_pdf),
-                                    competing);
-                            }
-                            radiance +=
+                            const auto solid_angle =
+                                2.0f * pi *
+                                (1.0f -
+                                 std::cos(
+                                     sun.angular_radius));
+                            const auto sun_pdf =
+                                1.0f /
+                                std::max(
+                                    solid_angle, 1.0e-20f);
+                            Float sun_weight =
+                                forward_light_weight(
+                                    previous_bsdf_pdf,
+                                    sun_pdf,
+                                    competing,
+                                    true);
+                            radiance += clamp_light_contribution(
                                 throughput *
                                 evaluate_environment_sun(
                                     ray->direction(), sun) *
-                                sun_weight;
+                                    sun_weight,
+                                path_depth);
                         }
                         $break;
                     };
@@ -1718,7 +1841,7 @@ private:
                             random_per_island,
                         .ray_visibility = ray_visibility,
                         .ray_events = ray_events,
-                        .ray_depth = bounce,
+                        .ray_depth = path_depth,
                         .diffuse_depth = diffuse_depth,
                         .glossy_depth = glossy_depth,
                         .transparent_depth =
@@ -1729,6 +1852,42 @@ private:
                             hit->committed_ray_t,
                         .time = 0.0f,
                         .back_facing = back_facing};
+                    UInt path_lobe_mask =
+                        surface_query.lobe_mask;
+                    Bool previous_ray_was_diffuse =
+                        (ray_events &
+                         static_cast<std::uint32_t>(
+                             contract::event_diffuse)) != 0u;
+                    if (!reflective_caustics) {
+                        path_lobe_mask = select(
+                            path_lobe_mask,
+                            path_lobe_mask &
+                                ~static_cast<std::uint32_t>(
+                                    contract::event_glossy),
+                            previous_ray_was_diffuse);
+                    }
+                    if (!refractive_caustics) {
+                        path_lobe_mask = select(
+                            path_lobe_mask,
+                            path_lobe_mask &
+                                ~static_cast<std::uint32_t>(
+                                    contract::event_transmission),
+                            previous_ray_was_diffuse);
+                    }
+                    // Cycles' PATH_RAY_TERMINATE_AFTER_TRANSPARENT
+                    // evaluates emission but allocates only transparent
+                    // closures. Filtering the query here also renormalizes
+                    // mixed transparent/opaque closure selection instead of
+                    // probabilistically losing the transparent branch.
+                    path_lobe_mask = select(
+                        path_lobe_mask,
+                        static_cast<std::uint32_t>(
+                            contract::event_transparent),
+                        terminate_after_transparent);
+                    SurfaceQuery path_surface_query{
+                        .lobe_mask = path_lobe_mask,
+                        .transport_mode =
+                            surface_query.transport_mode};
 
                     Float3 emitted = surfaces.emission(
                         surface_tag,
@@ -1739,7 +1898,7 @@ private:
                     if (next_event_estimation &&
                         scene->emissive_triangle_count > 0u) {
                         Bool competing =
-                            (bounce > 0u) & (!previous_delta);
+                            (path_depth > 0u) & (!previous_delta);
                         Float light_pdf =
                             emissive_triangle_pdf(
                                 hit->inst,
@@ -1749,15 +1908,55 @@ private:
                                 wp0,
                                 wp1,
                                 wp2);
-                        emission_weight = select(
-                            1.0f,
-                            power_heuristic(
+                        emission_weight =
+                            forward_light_weight(
                                 previous_bsdf_pdf,
-                                light_pdf),
-                            competing & (light_pdf > 0.0f));
+                                light_pdf,
+                                competing,
+                                light_pdf > 0.0f);
                     }
-                    radiance +=
-                        throughput * emitted * emission_weight;
+                    radiance += clamp_light_contribution(
+                        throughput * emitted * emission_weight,
+                        path_depth);
+
+                    // PATH_RAY_TERMINATE_ON_NEXT_SURFACE still records
+                    // surface emission, then stops before data passes, direct
+                    // lighting, or another closure sample.
+                    $if (terminate_on_next_surface) {
+                        $break;
+                    };
+
+                    // Cycles performs continuation roulette only after the
+                    // next ray is known to hit a surface. Background and
+                    // surface-emission contributions above are therefore
+                    // retained even when the path does not continue
+                    // scattering.
+                    Bool arrived_through_transparency =
+                        (ray_events &
+                         static_cast<std::uint32_t>(
+                             contract::event_transparent)) != 0u;
+                    Bool use_roulette = select(
+                        path_depth > min_bounces,
+                        transparent_depth >
+                            transparent_min_bounces,
+                        arrived_through_transparency);
+                    $if (use_roulette) {
+                        Float survival = min(
+                            sqrt(
+                                max(
+                                    abs(throughput.x),
+                                    max(
+                                        abs(throughput.y),
+                                        abs(throughput.z)))),
+                            1.0f);
+                        $if (survival <= 0.0f) {
+                            $break;
+                        };
+                        $if (random_float(state) >= survival) {
+                            $break;
+                        };
+                        throughput /= survival;
+                    };
 
                     $if (!primary_recorded) {
                         auto aov = surfaces.aov(
@@ -1810,18 +2009,19 @@ private:
                                         services,
                                         point,
                                         wi,
-                                        surface_query);
+                                        path_surface_query);
                                 Float mis_weight =
-                                    power_heuristic(
+                                    nee_light_weight(
                                         uniform_sphere_pdf,
                                         evaluation.pdf);
-                                radiance +=
+                                radiance += clamp_light_contribution(
                                     throughput *
                                     evaluation.f *
                                     evaluate_environment_base(wi) *
                                     shadow_transmittance *
                                     mis_weight /
-                                    uniform_sphere_pdf;
+                                        uniform_sphere_pdf,
+                                    path_depth);
                             };
                         }
                         for (const auto &sun :
@@ -1891,19 +2091,20 @@ private:
                                         services,
                                         point,
                                         wi,
-                                        surface_query);
+                                        path_surface_query);
                                 auto mis_weight =
-                                    power_heuristic(
+                                    nee_light_weight(
                                         sun_pdf,
                                         evaluation.pdf);
-                                radiance +=
+                                radiance += clamp_light_contribution(
                                     throughput *
                                     evaluation.f *
                                     evaluate_environment_sun(
                                         wi, sun) *
                                     shadow_transmittance *
                                     mis_weight /
-                                    sun_pdf;
+                                        sun_pdf,
+                                    path_depth);
                             };
                         }
                         if (scene->emissive_triangle_count > 0u) {
@@ -2165,7 +2366,7 @@ private:
                                 .ray_visibility =
                                     shadow_visibility,
                                 .ray_events = 0u,
-                                .ray_depth = bounce,
+                                .ray_depth = path_depth,
                                 .diffuse_depth =
                                     diffuse_depth,
                                 .glossy_depth =
@@ -2222,18 +2423,19 @@ private:
                                             services,
                                             point,
                                             wi,
-                                            surface_query);
+                                            path_surface_query);
                                     Float mis_weight =
-                                        power_heuristic(
+                                        nee_light_weight(
                                             light_pdf,
                                             evaluation.pdf);
-                                    radiance +=
+                                    radiance += clamp_light_contribution(
                                         throughput *
                                         evaluation.f *
                                         light_radiance *
                                         shadow_transmittance *
                                         mis_weight /
-                                        light_pdf;
+                                            light_pdf,
+                                        path_depth);
                                 };
                             };
                         }
@@ -2353,17 +2555,14 @@ private:
                                             services,
                                             point,
                                             wi,
-                                            surface_query);
+                                            path_surface_query);
+                                    // Analytic lights are not part of the
+                                    // Psycles acceleration structure yet, so
+                                    // forward BSDF rays cannot hit them. Their
+                                    // NEE estimator has no competing forward
+                                    // technique and must carry full weight.
                                     Float mis_weight = 1.0f;
-                                    $if (light.type ==
-                                         static_cast<std::uint32_t>(
-                                             LightType::area)) {
-                                        mis_weight =
-                                            power_heuristic(
-                                                light_pdf,
-                                                evaluation.pdf);
-                                    };
-                                    radiance +=
+                                    radiance += clamp_light_contribution(
                                         throughput *
                                         evaluation.f *
                                         light_radiance /
@@ -2371,7 +2570,8 @@ private:
                                             light_pdf,
                                             1.0e-20f) *
                                         shadow_transmittance *
-                                        mis_weight;
+                                            mis_weight,
+                                        path_depth);
                                 };
                             };
                         }
@@ -2385,18 +2585,10 @@ private:
                         make_float2(
                             random_float(state),
                             random_float(state)),
-                        surface_query);
+                        path_surface_query);
                     $if (!surface_sample.valid |
                          (surface_sample.evaluation.pdf <=
                           0.0f)) {
-                        $break;
-                    };
-                    throughput *=
-                        surface_sample.evaluation.f /
-                        surface_sample.evaluation.pdf;
-                    $if (any(luisa::compute::dsl::isnan(
-                             throughput)) |
-                         any(throughput < 0.0f)) {
                         $break;
                     };
 
@@ -2416,6 +2608,30 @@ private:
                         (surface_sample.evaluation.events &
                          static_cast<std::uint32_t>(
                              contract::event_diffuse)) != 0u;
+                    Bool singular =
+                        (surface_sample.evaluation.events &
+                         static_cast<std::uint32_t>(
+                             contract::event_singular)) != 0u;
+                    Bool reflection =
+                        (surface_sample.evaluation.events &
+                         static_cast<std::uint32_t>(
+                             contract::event_reflection)) != 0u;
+                    Bool diffuse_reflection =
+                        diffuse & reflection & (!transparent);
+                    Bool glossy_reflection =
+                        glossy & reflection & (!transparent);
+                    Bool material_transmission =
+                        transmission & (!transparent);
+
+                    throughput *=
+                        surface_sample.evaluation.f /
+                        surface_sample.evaluation.pdf;
+                    $if (any(luisa::compute::dsl::isnan(
+                             throughput)) |
+                         any(throughput < 0.0f)) {
+                        $break;
+                    };
+
                     UInt scattered_visibility = select(
                         diffuse_visibility,
                         glossy_visibility,
@@ -2428,19 +2644,48 @@ private:
                         scattered_visibility,
                         ray_visibility,
                         transparent);
-                    ray_events =
-                        surface_sample.evaluation.events;
+                    ray_events = select(
+                        surface_sample.evaluation.events,
+                        ray_events |
+                            surface_sample.evaluation.events,
+                        transparent);
                     diffuse_depth += select(
-                        0u, 1u, diffuse & (!transparent));
+                        0u, 1u, diffuse_reflection);
                     glossy_depth += select(
-                        0u, 1u, glossy & (!transparent));
+                        0u, 1u, glossy_reflection);
                     transmission_depth += select(
-                        0u, 1u, transmission & (!transparent));
+                        0u, 1u, material_transmission);
                     transparent_depth += select(
                         0u, 1u, transparent);
-                    previous_bsdf_pdf =
-                        surface_sample.evaluation.pdf;
-                    previous_delta = transparent;
+                    path_depth += select(
+                        0u, 1u, !transparent);
+                    terminate_on_next_surface |=
+                        transparent &
+                        (transparent_depth >=
+                         transparent_max_bounces);
+                    terminate_after_transparent |=
+                        (!transparent) &
+                        ((path_depth >= max_bounces) |
+                         (diffuse_reflection &
+                          (diffuse_depth >=
+                           max_diffuse_bounces)) |
+                         (glossy_reflection &
+                          (glossy_depth >=
+                           max_glossy_bounces)) |
+                         (material_transmission &
+                          (transmission_depth >=
+                           max_transmission_bounces)));
+                    // Cycles does not update forward-MIS state for a
+                    // transparent bounce. The next emitter remains paired
+                    // with the most recent non-transparent BSDF technique.
+                    previous_bsdf_pdf = select(
+                        surface_sample.evaluation.pdf,
+                        previous_bsdf_pdf,
+                        transparent);
+                    previous_delta = select(
+                        singular,
+                        previous_delta,
+                        transparent);
                     Float3 next_origin = select(
                         offset_ray_origin(
                             hit_position,
@@ -2449,27 +2694,16 @@ private:
                         hit_position +
                             ray->direction() * 1.0e-4f,
                         transparent);
+                    // The compact scalar differential is rebased to the new
+                    // origin even for transparent rays. Cycles keeps its full
+                    // ray and advances tmin instead; these are equivalent only
+                    // after this radius update in Psycles' compact model.
                     ray_dP = surface_radius;
                     ray = make_ray(
                         next_origin,
                         surface_sample.wi,
                         0.0f,
                         ray_maximum);
-
-                    $if (bounce + 1u >= rr_depth) {
-                        Float survival = clamp(
-                            max(
-                                throughput.x,
-                                max(
-                                    throughput.y,
-                                    throughput.z)),
-                            0.05f,
-                            0.95f);
-                        $if (random_float(state) >= survival) {
-                            $break;
-                        };
-                        throughput /= survival;
-                    };
                 };
 
                 radiance = select(
@@ -3241,14 +3475,45 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             false,
             instance_index);
     }
-    if (!result.diagnostics.empty() ||
-        instances.empty()) {
-        if (instances.empty()) {
-            diagnose(
-                result.diagnostics,
-                "Scene has no renderable instances.");
-        }
+    if (!result.diagnostics.empty()) {
         return result;
+    }
+
+    if (instances.empty()) {
+        // Luisa requires at least one TLAS instance. Represent an empty
+        // Cycles scene with a backend-only triangle whose visibility mask is
+        // zero. It cannot be hit by any Psycles ray and never appears in the
+        // logical scene, passes, material tables, or emitter distribution.
+        luisa::vector<luisa::float3> dummy_positions;
+        dummy_positions.emplace_back(
+            luisa::make_float3(0.0f, 0.0f, 0.0f));
+        dummy_positions.emplace_back(
+            luisa::make_float3(1.0f, 0.0f, 0.0f));
+        dummy_positions.emplace_back(
+            luisa::make_float3(0.0f, 1.0f, 0.0f));
+        luisa::vector<Triangle> dummy_triangles;
+        dummy_triangles.emplace_back(
+            Triangle{0u, 1u, 2u});
+        auto &dummy = data->geometries.emplace_back();
+        dummy.positions =
+            data->device.create_buffer<luisa::float3>(
+                dummy_positions.size());
+        dummy.triangles =
+            data->device.create_buffer<Triangle>(
+                dummy_triangles.size());
+        dummy.mesh = data->device.create_mesh(
+            dummy.positions, dummy.triangles);
+        stream << dummy.positions.copy_from(
+                      luisa::span{dummy_positions})
+               << dummy.triangles.copy_from(
+                      luisa::span{dummy_triangles})
+               << dummy.mesh.build();
+        data->accel.emplace_back(
+            dummy.mesh,
+            to_luisa(Mat4f{}),
+            std::uint8_t{0u},
+            false,
+            0u);
     }
 
     luisa::vector<LightGpu> lights;
@@ -3297,6 +3562,16 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     }
     if (override_materials.empty()) {
         override_materials.emplace_back(0u);
+    }
+    // Empty-world renders are valid Cycles scenes. Luisa buffers cannot be
+    // zero-sized, so keep inert storage records while leaving the acceleration
+    // structure itself empty; the render kernel only reads these buffers after
+    // a committed hit.
+    if (geometry_gpu.empty()) {
+        geometry_gpu.emplace_back(GeometryGpu{});
+    }
+    if (instances.empty()) {
+        instances.emplace_back(InstanceGpu{});
     }
 
     data->geometry_buffer =

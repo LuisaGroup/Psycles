@@ -1,0 +1,91 @@
+{
+  "schema": "psycles.cycles-shader-probe-baselines.v1",
+  "blender_version": "4.5.10 LTS",
+  "backend": "Luisa/fallback",
+  "height": 64,
+  "samples": 4,
+  "seed": 20903,
+  "width": 64,
+  "verified": {
+    "BACKGROUND": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 0.0
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "background_world",
+      "samples": 4
+    },
+    "BSDF_TRANSPARENT": {
+      "max_rmse": 0.0001,
+      "passes": {
+        "Combined": {
+          "rmse": 1.4357816326082684e-05
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "transparent_mix",
+      "samples": 4096
+    },
+    "EMISSION": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 0.0
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "emission_surface",
+      "samples": 4
+    },
+    "RGB": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 0.0
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "rgb_emission",
+      "samples": 4
+    },
+    "VALUE": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 0.0
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "value_emission",
+      "samples": 4
+    }
+  }
+}

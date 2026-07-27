@@ -88,9 +88,7 @@ int main(int argc, char **argv) {
     auto device = context.create_device(backend_name);
     psycles::luisa_backend::LuisaPathTracerBackend renderer{
         std::move(device),
-        {.max_bounces = 8u,
-         .russian_roulette_depth = 4u,
-         .next_event_estimation = true}};
+        {.next_event_estimation = true}};
     const auto compile_begin = std::chrono::steady_clock::now();
     auto compilation = renderer.compile_scene(*imported.scene);
     if (!compilation.ok()) {
@@ -112,6 +110,7 @@ int main(int argc, char **argv) {
             imported.transparent_background,
         .pixel_filter = imported.pixel_filter,
         .filter_width = imported.filter_width,
+        .integrator = imported.integrator,
         .passes = {
             {.kind = psycles::contract::PassKind::combined,
              .name = "Combined",

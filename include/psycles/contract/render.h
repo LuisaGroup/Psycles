@@ -66,6 +66,34 @@ enum class PixelFilter : std::uint8_t {
     blackman_harris
 };
 
+enum class DirectLightSampling : std::uint8_t {
+    multiple_importance_sampling,
+    forward_path_tracing,
+    next_event_estimation
+};
+
+// Transport controls are part of the render contract, not backend tuning.
+// A scene imported from Blender must carry the same values that Cycles uses so
+// a backend cannot silently render with convenient hard-coded limits.
+struct PathIntegratorSettings {
+    std::uint32_t max_bounces{12u};
+    std::uint32_t min_bounces{};
+    std::uint32_t diffuse_bounces{4u};
+    std::uint32_t glossy_bounces{4u};
+    std::uint32_t transmission_bounces{12u};
+    std::uint32_t volume_bounces{};
+    std::uint32_t transparent_min_bounces{};
+    std::uint32_t transparent_max_bounces{8u};
+    float sample_clamp_direct{};
+    float sample_clamp_indirect{};
+    float light_sampling_threshold{0.01f};
+    bool reflective_caustics{true};
+    bool refractive_caustics{true};
+    bool use_light_tree{false};
+    DirectLightSampling direct_light_sampling{
+        DirectLightSampling::multiple_importance_sampling};
+};
+
 struct RenderSettings {
     ImageExtent full_extent;
     PixelWindow window;
@@ -73,6 +101,7 @@ struct RenderSettings {
     bool transparent_background{false};
     PixelFilter pixel_filter{PixelFilter::box};
     float filter_width{1.0f};
+    PathIntegratorSettings integrator;
     std::vector<PassRequest> passes;
 };
 
