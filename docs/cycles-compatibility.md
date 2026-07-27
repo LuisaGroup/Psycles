@@ -12,23 +12,29 @@ Shader data follows this path:
 
 1. Blender exports the original node trees, links, socket defaults, static
    node properties, image identities, and evaluated scene geometry.
-2. The Blender adapter walks each active Surface, Volume, and Displacement
-   root recursively. It inserts explicit Cycles socket conversions and emits a
-   single topologically ordered typed-value instruction stream.
+2. The Blender adapter walks the active Surface root recursively. It inserts
+   explicit Cycles socket conversions and emits a single topologically ordered
+   typed-value instruction stream. Volume and Displacement roots remain
+   release-gated work.
 3. Closure-producing nodes remain an Add/Mix tree. They are not flattened into
    a fixed-size closure array.
-4. Image pixels, mesh attributes, parameter blocks, and geometry are uploaded
+4. Shader node groups are recursively expanded through their exported Group
+   Input/Output interfaces. Group instance names have no semantic role;
+   missing and recursive groups produce explicit diagnostics.
+5. Image pixels, mesh attributes, parameter blocks, and geometry are uploaded
    to Luisa resources. No host-side shader evaluator is used.
-5. `GraphSurface` traces the typed program while constructing Luisa DSL. Bump
+6. `GraphSurface` traces the typed program while constructing Luisa DSL. Bump
    evaluates its height dependency subgraph at the center and two ray
    differential offsets.
-6. `Polymorphic<Surface>` performs device-side material dispatch. The same
+7. `Polymorphic<Surface>` performs device-side material dispatch. The same
    generated program runs on Luisa `fallback` and GPU backends.
 
 Unknown nodes, modes, sockets, or properties produce named coverage
-diagnostics. A material with no usable surface root is rendered with an
-explicit magenta coverage material; it is never silently replaced with a
-plausible BSDF.
+diagnostics and keep the release gate red. Missing material slots use an
+explicit magenta coverage material; an unconnected Cycles Surface follows the
+separately probed opaque-black surface contract. Unsupported node outputs use
+their exported socket default only together with a named warning, never as an
+unreported compatibility claim.
 
 `docs/cycles-shader-nodes-4.5.10.json` is the versioned Blender RNA inventory.
 `tools/check_cycles_shader_node_coverage.py --require-complete` is deliberately
@@ -36,6 +42,10 @@ red until every Cycles-applicable node has a verified Luisa implementation.
 An implementation used by Lone Monk is still classified as partial or
 unverified until a focused Cycles linear-EXR probe covers its modes and socket
 semantics.
+
+The `node_group_color` structural probe uses two levels of arbitrarily named
+group instances and currently matches Cycles exactly for Combined, Normal, and
+DiffCol at 64×64 (RMSE 0 for all three passes).
 
 ## Integrator contract
 

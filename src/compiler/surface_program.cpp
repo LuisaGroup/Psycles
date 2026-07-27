@@ -992,6 +992,24 @@ private:
             }
             return;
         }
+        if (node.type == node_type::combine_color) {
+            auto r = lower_value_input(node, "R");
+            auto g = lower_value_input(node, "G");
+            auto b = lower_value_input(node, "B");
+            if (r && g && b) {
+                publish(
+                    node.id,
+                    "Color",
+                    append(ValueInstruction{
+                        .operation = ValueOperation::combine_color,
+                        .source_node = node.id,
+                        .result_type = SocketType::color,
+                        .a = *r,
+                        .b = *g,
+                        .c = *b}));
+            }
+            return;
+        }
         if (node.type == node_type::nishita_sky) {
             auto elevation =
                 lower_value_input(node, "SunElevation");

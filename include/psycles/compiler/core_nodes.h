@@ -41,6 +41,7 @@ inline constexpr auto invert_color = "psycles.color.invert";
 inline constexpr auto color_ramp = "psycles.color.ramp";
 inline constexpr auto rgb_curve = "psycles.color.rgb_curve";
 inline constexpr auto separate_color = "psycles.color.separate";
+inline constexpr auto combine_color = "psycles.color.combine";
 inline constexpr auto normal_map = "psycles.normal_map";
 inline constexpr auto bump = "psycles.bump";
 inline constexpr auto vertex_color = "psycles.attribute.vertex_color";

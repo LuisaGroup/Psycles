@@ -195,17 +195,31 @@ struct RawOutputKey {
 class BlenderGraphNormalizer {
 
 private:
+    using RawNodeMap =
+        std::map<std::string, yyjson_val *, std::less<>>;
+    using RawLinkMap =
+        std::map<RawOutputKey, RawOutputKey>;
+    using LoweredOutputMap =
+        std::map<RawOutputKey, TypedOutput>;
+    using GroupInputMap =
+        std::map<std::string, TypedOutput, std::less<>>;
+    using NodeGroupMap =
+        std::map<std::string, yyjson_val *, std::less<>>;
+
     yyjson_val *_tree{};
     std::string _material_name;
     const std::map<std::string, ImageId, std::less<>> &_image_ids;
     const std::map<std::string, ImageColorSpace, std::less<>> &
         _image_color_spaces;
+    const NodeGroupMap &_node_groups;
     std::vector<BlenderSceneDiagnostic> &_diagnostics;
     ShaderGraph _graph;
-    std::map<std::string, yyjson_val *, std::less<>> _raw_nodes;
-    std::map<RawOutputKey, RawOutputKey> _links;
-    std::map<RawOutputKey, TypedOutput> _outputs;
+    RawNodeMap _raw_nodes;
+    RawLinkMap _links;
+    LoweredOutputMap _outputs;
+    GroupInputMap _group_inputs;
     std::set<std::string, std::less<>> _building;
+    std::set<std::string, std::less<>> _group_stack;
     std::set<std::string, std::less<>> _warned;
     std::optional<contract::NodeId> _default_image_coordinates;
     std::optional<contract::NodeId> _geometry;
@@ -238,6 +252,71 @@ private:
         yyjson_val *node,
         std::string_view identifier) const noexcept {
         return find_socket(node, "outputs", identifier);
+    }
+
+    [[nodiscard]] static contract::SocketType socket_type(
+        yyjson_val *socket,
+        contract::SocketType fallback =
+            contract::SocketType::color) {
+        using contract::SocketType;
+        const auto type = text(member(socket, "type"));
+        if (type.find("Shader") != std::string::npos) {
+            return SocketType::closure;
+        }
+        if (type.find("Color") != std::string::npos) {
+            return SocketType::color;
+        }
+        if (type.find("Vector") != std::string::npos) {
+            return SocketType::vector;
+        }
+        if (type.find("Float") != std::string::npos) {
+            return SocketType::floating;
+        }
+        if (type.find("Bool") != std::string::npos) {
+            return SocketType::boolean;
+        }
+        if (type.find("Int") != std::string::npos) {
+            return SocketType::integer;
+        }
+        return fallback;
+    }
+
+    void load_tree_context(yyjson_val *tree) {
+        _tree = tree;
+        _raw_nodes.clear();
+        _links.clear();
+        _outputs.clear();
+        _building.clear();
+
+        auto *nodes = member(_tree, "nodes");
+        if (nodes != nullptr && yyjson_is_arr(nodes)) {
+            yyjson_arr_iter iterator =
+                yyjson_arr_iter_with(nodes);
+            while (auto *node =
+                       yyjson_arr_iter_next(&iterator)) {
+                _raw_nodes.emplace(
+                    text(member(node, "name")), node);
+            }
+        }
+        auto *links = member(_tree, "links");
+        if (links != nullptr && yyjson_is_arr(links)) {
+            yyjson_arr_iter iterator =
+                yyjson_arr_iter_with(links);
+            while (auto *link =
+                       yyjson_arr_iter_next(&iterator)) {
+                _links.insert_or_assign(
+                    RawOutputKey{
+                        .node = text(
+                            member(link, "to_node")),
+                        .socket = text(
+                            member(link, "to_socket"))},
+                    RawOutputKey{
+                        .node = text(
+                            member(link, "from_node")),
+                        .socket = text(
+                            member(link, "from_socket"))});
+            }
+        }
     }
 
     [[nodiscard]] std::optional<RawOutputKey> input_source(
@@ -600,35 +679,72 @@ private:
         return stream.str();
     }
 
-    [[nodiscard]] TypedOutput constant_from_output(
-        yyjson_val *node,
-        std::string_view socket,
+    [[nodiscard]] TypedOutput constant_from_socket(
+        yyjson_val *socket,
+        std::string label,
         contract::SocketType type) {
-        auto *raw = raw_output(node, socket);
-        if (type == contract::SocketType::floating) {
+        using contract::SocketType;
+        if (type == SocketType::closure) {
+            const auto id = _graph.add_node(
+                compiler::node_type::diffuse_bsdf,
+                std::move(label));
+            static_cast<void>(_graph.set_input(
+                id,
+                "Color",
+                SocketValue::color({0.0f, 0.0f, 0.0f})));
+            static_cast<void>(_graph.set_input(
+                id,
+                "Roughness",
+                SocketValue::floating(0.0f)));
+            static_cast<void>(_graph.set_input(
+                id,
+                "Normal",
+                SocketValue::normal({0.0f, 0.0f, 0.0f})));
+            return {
+                .ref = {.node = id, .socket = "Closure"},
+                .type = SocketType::closure};
+        }
+        if (type == SocketType::floating ||
+            type == SocketType::boolean ||
+            type == SocketType::integer ||
+            type == SocketType::unsigned_integer) {
             const auto id = _graph.add_node(
                 compiler::node_type::constant_float,
-                text(member(node, "name")));
+                std::move(label));
             static_cast<void>(_graph.set_input(
                 id,
                 "Value",
-                literal(member(raw, "default"), type)));
+                SocketValue::floating(number(
+                    member(socket, "default")))));
             return {
                 .ref = {.node = id, .socket = "Value"},
-                .type = type};
+                .type = SocketType::floating};
         }
         const auto id = _graph.add_node(
             compiler::node_type::constant_color,
-            text(member(node, "name")));
+            std::move(label));
         static_cast<void>(_graph.set_input(
             id,
             "Color",
             literal(
-                member(raw, "default"),
-                contract::SocketType::color)));
-        return {
+                member(socket, "default"),
+                SocketType::color)));
+        TypedOutput result{
             .ref = {.node = id, .socket = "Color"},
-            .type = contract::SocketType::color};
+            .type = SocketType::color};
+        return type == SocketType::color
+                   ? result
+                   : conversion(result, type);
+    }
+
+    [[nodiscard]] TypedOutput constant_from_output(
+        yyjson_val *node,
+        std::string_view socket,
+        contract::SocketType type) {
+        return constant_from_socket(
+            raw_output(node, socket),
+            text(member(node, "name")),
+            type);
     }
 
     [[nodiscard]] TypedOutput lower_natural_output(
@@ -697,34 +813,23 @@ private:
                 .ref = {.node = id, .socket = "Normal"},
                 .type = SocketType::normal};
         }
-        if (type == "GROUP") {
-            warn_once(
-                "group:" + node_name,
-                "node group '" +
-                    text(member(node, "node_tree")) +
-                    "' is lowered as its observed color-invert "
-                    "interface");
-            auto source = input_source(node, "Input_1");
-            if (!source) {
-                return constant_from_output(
-                    node, socket, SocketType::color);
+        if (type == "GROUP_INPUT") {
+            if (auto iter = _group_inputs.find(socket);
+                iter != _group_inputs.end()) {
+                return iter->second;
             }
-            const auto invert = _graph.add_node(
-                compiler::node_type::invert_color,
-                node_name);
-            auto input = lower_output(
-                source->node,
-                source->socket,
-                SocketType::color);
-            static_cast<void>(_graph.connect(
-                input.ref, invert, "Color"));
-            static_cast<void>(_graph.set_input(
-                invert,
-                "Factor",
-                SocketValue::floating(1.0f)));
-            return {
-                .ref = {.node = invert, .socket = "Color"},
-                .type = SocketType::color};
+            auto *output = raw_output(node, socket);
+            warn_once(
+                "group-input:" + node_name + ":" + socket,
+                "node group input '" + socket +
+                    "' has no instance binding; using its default");
+            return constant_from_socket(
+                output,
+                node_name + " / " + socket,
+                socket_type(output));
+        }
+        if (type == "GROUP") {
+            return lower_group_output(node, socket);
         }
 
         if (!_building.emplace(node_name).second) {
@@ -1314,6 +1419,28 @@ private:
                 .ref = {.node = id, .socket = output},
                 .type = SocketType::floating});
         }
+        if (type == "COMBINE_COLOR") {
+            const auto mode =
+                node_property_text(node, "mode", "RGB");
+            if (mode != "RGB") {
+                warn_once(
+                    "combine-color-mode:" + mode,
+                    "Combine Color mode '" + mode +
+                        "' is not yet represented; using RGB channels");
+            }
+            const auto id = _graph.add_node(
+                compiler::node_type::combine_color,
+                node_name);
+            static_cast<void>(bind(
+                id, "R", node, "Red", SocketType::floating));
+            static_cast<void>(bind(
+                id, "G", node, "Green", SocketType::floating));
+            static_cast<void>(bind(
+                id, "B", node, "Blue", SocketType::floating));
+            return finish({
+                .ref = {.node = id, .socket = "Color"},
+                .type = SocketType::color});
+        }
         if (type == "TEX_SKY") {
             const auto id = _graph.add_node(
                 compiler::node_type::nishita_sky,
@@ -1542,6 +1669,154 @@ private:
         return conversion(iter->second, requested);
     }
 
+    [[nodiscard]] TypedOutput lower_group_output(
+        yyjson_val *instance,
+        const std::string &socket) {
+        using contract::SocketType;
+        const auto instance_name =
+            text(member(instance, "name"));
+        const auto group_name =
+            text(member(instance, "node_tree"));
+        auto *instance_output = raw_output(instance, socket);
+        const auto result_type =
+            socket_type(instance_output);
+
+        auto group = _node_groups.find(group_name);
+        if (group == _node_groups.end()) {
+            warn_once(
+                "group-missing:" + group_name,
+                "node group '" + group_name +
+                    "' was not exported; using the output default");
+            return constant_from_socket(
+                instance_output,
+                instance_name + " / " + socket,
+                result_type);
+        }
+        if (!_group_stack.emplace(group_name).second) {
+            warn_once(
+                "group-recursion:" + group_name,
+                "recursive node group '" + group_name +
+                    "' is unsupported");
+            return constant_from_socket(
+                instance_output,
+                instance_name + " / " + socket,
+                result_type);
+        }
+
+        GroupInputMap bindings;
+        auto *inputs = member(instance, "inputs");
+        if (inputs != nullptr && yyjson_is_arr(inputs)) {
+            yyjson_arr_iter iterator =
+                yyjson_arr_iter_with(inputs);
+            while (auto *input =
+                       yyjson_arr_iter_next(&iterator)) {
+                const auto identifier =
+                    text(member(input, "identifier"));
+                if (identifier.empty() ||
+                    identifier == "__extend__") {
+                    continue;
+                }
+                const auto type = socket_type(input);
+                if (auto source =
+                        input_source(instance, identifier)) {
+                    bindings.insert_or_assign(
+                        identifier,
+                        lower_output(
+                            source->node,
+                            source->socket,
+                            type));
+                } else {
+                    bindings.insert_or_assign(
+                        identifier,
+                        constant_from_socket(
+                            input,
+                            instance_name + " / " +
+                                identifier,
+                            type));
+                }
+            }
+        }
+
+        auto *saved_tree = _tree;
+        auto saved_raw_nodes = std::move(_raw_nodes);
+        auto saved_links = std::move(_links);
+        auto saved_outputs = std::move(_outputs);
+        auto saved_group_inputs =
+            std::move(_group_inputs);
+        auto saved_building = std::move(_building);
+        auto restore = [&] {
+            _tree = saved_tree;
+            _raw_nodes = std::move(saved_raw_nodes);
+            _links = std::move(saved_links);
+            _outputs = std::move(saved_outputs);
+            _group_inputs =
+                std::move(saved_group_inputs);
+            _building = std::move(saved_building);
+            _group_stack.erase(group_name);
+        };
+
+        try {
+            load_tree_context(group->second);
+            _group_inputs = std::move(bindings);
+
+            yyjson_val *active_output = nullptr;
+            yyjson_val *fallback_output = nullptr;
+            for (const auto &[name, node] : _raw_nodes) {
+                static_cast<void>(name);
+                if (text(member(node, "type")) !=
+                    "GROUP_OUTPUT") {
+                    continue;
+                }
+                fallback_output = node;
+                if (node_property_bool(
+                        node, "is_active_output")) {
+                    active_output = node;
+                    break;
+                }
+            }
+            if (active_output == nullptr) {
+                active_output = fallback_output;
+            }
+
+            TypedOutput result;
+            if (active_output == nullptr) {
+                warn_once(
+                    "group-output:" + group_name,
+                    "node group '" + group_name +
+                        "' has no Group Output node");
+                result = constant_from_socket(
+                    instance_output,
+                    instance_name + " / " + socket,
+                    result_type);
+            } else if (
+                auto source =
+                    input_source(active_output, socket)) {
+                result = lower_output(
+                    source->node,
+                    source->socket,
+                    result_type);
+            } else {
+                auto *group_output =
+                    raw_input(active_output, socket);
+                warn_once(
+                    "group-output-unlinked:" +
+                        group_name + ":" + socket,
+                    "node group '" + group_name +
+                        "' output '" + socket +
+                        "' is unlinked; using its default");
+                result = constant_from_socket(
+                    group_output,
+                    group_name + " / " + socket,
+                    result_type);
+            }
+            restore();
+            return result;
+        } catch (...) {
+            restore();
+            throw;
+        }
+    }
+
 public:
     BlenderGraphNormalizer(
         yyjson_val *tree,
@@ -1552,41 +1827,15 @@ public:
             std::string,
             ImageColorSpace,
             std::less<>> &image_color_spaces,
+        const NodeGroupMap &node_groups,
         std::vector<BlenderSceneDiagnostic> &diagnostics)
         : _tree{tree},
           _material_name{std::move(material_name)},
           _image_ids{image_ids},
           _image_color_spaces{image_color_spaces},
+          _node_groups{node_groups},
           _diagnostics{diagnostics} {
-        auto *nodes = member(_tree, "nodes");
-        if (nodes != nullptr && yyjson_is_arr(nodes)) {
-            yyjson_arr_iter iterator =
-                yyjson_arr_iter_with(nodes);
-            while (auto *node =
-                       yyjson_arr_iter_next(&iterator)) {
-                _raw_nodes.emplace(
-                    text(member(node, "name")), node);
-            }
-        }
-        auto *links = member(_tree, "links");
-        if (links != nullptr && yyjson_is_arr(links)) {
-            yyjson_arr_iter iterator =
-                yyjson_arr_iter_with(links);
-            while (auto *link =
-                       yyjson_arr_iter_next(&iterator)) {
-                _links.insert_or_assign(
-                    RawOutputKey{
-                        .node = text(
-                            member(link, "to_node")),
-                        .socket = text(
-                            member(link, "to_socket"))},
-                    RawOutputKey{
-                        .node = text(
-                            member(link, "from_node")),
-                        .socket = text(
-                            member(link, "from_socket"))});
-            }
-        }
+        load_tree_context(_tree);
     }
 
     [[nodiscard]] ShaderGraph build() {
@@ -1594,10 +1843,9 @@ public:
         const auto node = text(member(root, "node"));
         const auto socket = text(member(root, "socket"));
         if (node.empty() || socket.empty()) {
-            warn_once(
-                "no-root",
-                "node tree has no connected surface root");
-            return diffuse_graph({1.0f, 0.0f, 1.0f});
+            // Cycles treats an unconnected material surface as an opaque
+            // black path terminator while retaining the shading normal pass.
+            return diffuse_graph({0.0f, 0.0f, 0.0f}, 0.0f);
         }
         auto output = lower_output(
             node, socket, contract::SocketType::closure);
@@ -1613,25 +1861,24 @@ public:
         std::string,
         ImageColorSpace,
         std::less<>> &image_color_spaces,
+    const std::map<
+        std::string,
+        yyjson_val *,
+        std::less<>> &node_groups,
     std::vector<BlenderSceneDiagnostic> &diagnostics) {
     const auto material_name = text(member(material, "name"));
     auto *tree = member(material, "node_tree");
     if (tree == nullptr || yyjson_is_null(tree) ||
         member(tree, "surface_root") == nullptr ||
         yyjson_is_null(member(tree, "surface_root"))) {
-        diagnostics.emplace_back(BlenderSceneDiagnostic{
-            .severity = BlenderSceneDiagnosticSeverity::warning,
-            .message =
-                "material '" + material_name +
-                "' has no connected surface root; using an explicit "
-                "magenta coverage material"});
-        return diffuse_graph({1.0f, 0.0f, 1.0f}, 0.0f);
+        return diffuse_graph({0.0f, 0.0f, 0.0f}, 0.0f);
     }
     return BlenderGraphNormalizer{
         tree,
         material_name,
         image_ids,
         image_color_spaces,
+        node_groups,
         diagnostics}
         .build();
 }
@@ -1792,6 +2039,29 @@ BlenderSceneImport load_blender_scene_bundle(
                     text(member(image, "colorspace"))));
         }
 
+        std::map<
+            std::string,
+            yyjson_val *,
+            std::less<>>
+            node_groups;
+        auto *raw_node_groups = member(root, "node_groups");
+        if (raw_node_groups != nullptr &&
+            yyjson_is_arr(raw_node_groups)) {
+            yyjson_arr_iter group_iterator =
+                yyjson_arr_iter_with(raw_node_groups);
+            while (auto *group =
+                       yyjson_arr_iter_next(
+                           &group_iterator)) {
+                if (group == nullptr ||
+                    yyjson_is_null(group)) {
+                    continue;
+                }
+                node_groups.insert_or_assign(
+                    text(member(group, "name")),
+                    group);
+            }
+        }
+
         std::map<std::string, MaterialId, std::less<>>
             material_ids;
         const MaterialId default_material{1u};
@@ -1819,6 +2089,7 @@ BlenderSceneImport load_blender_scene_bundle(
                         material,
                         image_ids,
                         image_color_spaces,
+                        node_groups,
                         result.diagnostics)});
         }
 
@@ -2301,6 +2572,7 @@ BlenderSceneImport load_blender_scene_bundle(
                           world,
                           image_ids,
                           image_color_spaces,
+                          node_groups,
                           result.diagnostics)
                     : emission_graph(world_color, 1.0f);
             scene.materials.emplace(

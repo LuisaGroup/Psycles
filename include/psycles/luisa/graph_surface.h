@@ -1434,6 +1434,13 @@ private:
                     value = make_float4(
                         vector(instruction.a, result).z);
                     break;
+                case compiler::ValueOperation::combine_color:
+                    value = make_float4(
+                        scalar(instruction.a, result),
+                        scalar(instruction.b, result),
+                        scalar(instruction.c, result),
+                        1.0f);
+                    break;
                 case compiler::ValueOperation::nishita_sky: {
                     auto direction = safe_normalize(
                         -point.incoming,
@@ -1636,17 +1643,12 @@ public:
         return _capabilities;
     }
 
-    [[nodiscard]] SurfaceEvaluation evaluate(
-        const ShaderServices &services,
+    [[nodiscard]] SurfaceEvaluation evaluate_traced(
+        const TracedValues &values,
         const SurfacePoint &point,
         Expr<luisa::float3> outgoing_expression,
-        const SurfaceQuery &query) const noexcept override {
+        const SurfaceQuery &query) const noexcept {
         auto result = SurfaceEvaluation::zero();
-        if (!_program) {
-            return result;
-        }
-
-        auto values = trace_values(services, point);
         Float total_sample_weight = 0.0f;
         Float weighted_pdf = 0.0f;
         auto outgoing = safe_normalize(
@@ -1819,6 +1821,19 @@ public:
             events,
             has_diffuse_pdf);
         return result;
+    }
+
+    [[nodiscard]] SurfaceEvaluation evaluate(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        Expr<luisa::float3> outgoing_expression,
+        const SurfaceQuery &query) const noexcept override {
+        if (!_program) {
+            return SurfaceEvaluation::zero();
+        }
+        auto values = trace_values(services, point);
+        return evaluate_traced(
+            values, point, outgoing_expression, query);
     }
 
     [[nodiscard]] SurfaceSample sample(
@@ -2018,8 +2033,8 @@ public:
                 accumulated = next;
             });
 
-        auto diffuse_evaluation = evaluate(
-            services, point, result.wi, query);
+        auto diffuse_evaluation = evaluate_traced(
+            values, point, result.wi, query);
         auto geometric_valid =
             dot(point.geometric_normal, result.wi) > 0.0f;
         auto diffuse_valid =

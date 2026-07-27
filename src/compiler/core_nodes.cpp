@@ -470,6 +470,16 @@ NodeRegistry make_core_node_registry() {
         .required_features = {}}));
 
     static_cast<void>(registry.register_schema(NodeSchema{
+        .type = node_type::combine_color,
+        .inputs = {
+            input("R", SocketType::floating, SocketValue::floating(0.0f)),
+            input("G", SocketType::floating, SocketValue::floating(0.0f)),
+            input("B", SocketType::floating, SocketValue::floating(0.0f))},
+        .outputs = {output("Color", SocketType::color)},
+        .properties = {},
+        .required_features = {}}));
+
+    static_cast<void>(registry.register_schema(NodeSchema{
         .type = node_type::normal_map,
         .inputs = {
             input("Strength", SocketType::floating, SocketValue::floating(1.0f)),

@@ -130,6 +130,45 @@ void test_closure_tree_is_preserved() {
         "emission feature was not preserved through the closure tree");
 }
 
+void test_combine_color_lowers_to_surface_program() {
+    ShaderGraph graph;
+    const auto combine =
+        graph.add_node(node_type::combine_color, "Combine RGB");
+    const auto diffuse =
+        graph.add_node(node_type::diffuse_bsdf, "Diffuse");
+    expect(
+        graph.set_input(
+            combine, "R", SocketValue::floating(0.25f)) &&
+            graph.set_input(
+                combine, "G", SocketValue::floating(0.5f)) &&
+            graph.set_input(
+                combine, "B", SocketValue::floating(0.75f)),
+        "failed to configure Combine Color");
+    expect(
+        graph.connect(
+            {.node = combine, .socket = "Color"},
+            diffuse,
+            "Color"),
+        "failed to connect Combine Color");
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = diffuse, .socket = "Closure"});
+
+    ShaderCompiler compiler{make_core_node_registry()};
+    auto shader = compiler.compile(graph);
+    expect(shader.ok(), "Combine Color graph failed to compile");
+    auto surface = compile_surface_program(*shader.program);
+    expect(surface.ok(), "Combine Color graph failed to lower");
+    expect(
+        std::ranges::any_of(
+            surface.program->value_instructions(),
+            [](const ValueInstruction &instruction) {
+                return instruction.operation ==
+                       ValueOperation::combine_color;
+            }),
+        "Combine Color instruction is missing");
+}
+
 void test_cycles_normalized_graph_adapter() {
     CyclesNormalizedShaderGraph source;
     source.nodes = {
@@ -554,6 +593,7 @@ int main() {
     try {
         test_shader_graph_and_invalidation();
         test_closure_tree_is_preserved();
+        test_combine_color_lowers_to_surface_program();
         test_cycles_normalized_graph_adapter();
         test_cycles_adapter_rejects_svm_lowered_graph();
         test_incremental_material_library();

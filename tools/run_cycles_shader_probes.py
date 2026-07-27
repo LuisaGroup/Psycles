@@ -20,6 +20,7 @@ _ALL_PROBES = (
     "diffuse_surface",
     "emission_surface",
     "mix_shader_emission",
+    "node_group_color",
     "rgb_emission",
     "transparent_mix",
     "value_emission",

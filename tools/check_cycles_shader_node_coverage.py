@@ -44,6 +44,7 @@ DEVICE_PARTIAL = {
     "BSDF_GLOSSY",
     "BSDF_PRINCIPLED",
     "BUMP",
+    "COMBINE_COLOR",
     "CURVE_RGB",
     "HUE_SAT",
     "INVERT",

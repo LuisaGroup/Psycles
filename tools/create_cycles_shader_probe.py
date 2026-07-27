@@ -27,6 +27,7 @@ def _clear() -> None:
         bpy.data.cameras,
         bpy.data.lights,
         bpy.data.meshes,
+        bpy.data.node_groups,
         bpy.data.worlds,
     ):
         for datablock in list(collection):
@@ -259,12 +260,103 @@ def _background_world(scene: Any) -> None:
     _world(scene, (0.16, 0.48, 0.77, 1.0), 2.3)
 
 
+def _node_group_color(scene: Any) -> None:
+    material, tree, output = _material("Node Group Probe")
+
+    group = bpy.data.node_groups.new(
+        "Generic Color Transform", "ShaderNodeTree"
+    )
+    group.interface.new_socket(
+        name="Color",
+        in_out="INPUT",
+        socket_type="NodeSocketColor",
+    )
+    group.interface.new_socket(
+        name="Color",
+        in_out="OUTPUT",
+        socket_type="NodeSocketColor",
+    )
+    group_input = group.nodes.new("NodeGroupInput")
+    group_input.name = "Group Input"
+    group_output = group.nodes.new("NodeGroupOutput")
+    group_output.name = "Group Output"
+    invert = group.nodes.new("ShaderNodeInvert")
+    invert.name = "Invert"
+    _input(invert, "Fac").default_value = 0.25
+    group.links.new(
+        _output(group_input, "Color"),
+        _input(invert, "Color"),
+    )
+    group.links.new(
+        _output(invert, "Color"),
+        _input(group_output, "Color"),
+    )
+
+    outer = bpy.data.node_groups.new(
+        "Nested Color Wrapper", "ShaderNodeTree"
+    )
+    outer.interface.new_socket(
+        name="Color",
+        in_out="INPUT",
+        socket_type="NodeSocketColor",
+    )
+    outer.interface.new_socket(
+        name="Color",
+        in_out="OUTPUT",
+        socket_type="NodeSocketColor",
+    )
+    outer_input = outer.nodes.new("NodeGroupInput")
+    outer_input.name = "Group Input"
+    outer_output = outer.nodes.new("NodeGroupOutput")
+    outer_output.name = "Group Output"
+    nested = outer.nodes.new("ShaderNodeGroup")
+    nested.name = "Nested Arbitrary Instance"
+    nested.node_tree = group
+    outer.links.new(
+        _output(outer_input, "Color"),
+        _input(nested, "Color"),
+    )
+    outer.links.new(
+        _output(nested, "Color"),
+        _input(outer_output, "Color"),
+    )
+
+    source = tree.nodes.new("ShaderNodeRGB")
+    source.name = "Group Source"
+    _output(source, "Color").default_value = (
+        0.12,
+        0.47,
+        0.81,
+        1.0,
+    )
+    instance = tree.nodes.new("ShaderNodeGroup")
+    instance.name = "Arbitrarily Named Group Instance"
+    instance.node_tree = outer
+    tree.links.new(
+        _output(source, "Color"),
+        _input(instance, "Color"),
+    )
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Emission"
+    _input(emission, "Strength").default_value = 2.0
+    tree.links.new(
+        _output(instance, "Color"),
+        _input(emission, "Color"),
+    )
+    tree.links.new(
+        _output(emission, "Emission"),
+        _input(output, "Surface"),
+    )
+    _plane(material)
+
+
 _PROBES: dict[str, Callable[[Any], None]] = {
     "add_shader_emission": _add_shader_emission,
     "background_world": _background_world,
     "diffuse_surface": _diffuse_surface,
     "emission_surface": _emission_surface,
     "mix_shader_emission": _mix_shader_emission,
+    "node_group_color": _node_group_color,
     "rgb_emission": _rgb_emission,
     "transparent_mix": _transparent_mix,
     "value_emission": _value_emission,

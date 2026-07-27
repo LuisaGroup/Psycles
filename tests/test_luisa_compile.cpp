@@ -42,6 +42,11 @@ public:
         std::uint32_t) const noexcept override {
         return make_float3(0.8f, 0.4f, 0.2f);
     }
+
+    [[nodiscard]] Float cycles_bsdf_data(
+        Expr<std::uint32_t>) const noexcept override {
+        return 1.0f;
+    }
 };
 
 [[nodiscard]] ShaderGraph make_graph() {
@@ -91,8 +96,20 @@ int main() {
             .shading_normal = make_float3(0.0f, 0.0f, 1.0f),
             .dpdu = make_float3(1.0f, 0.0f, 0.0f),
             .dpdv = make_float3(0.0f, 1.0f, 0.0f),
+            .dPdx = make_float3(0.0f),
+            .dPdy = make_float3(0.0f),
+            .object_dPdx = make_float3(0.0f),
+            .object_dPdy = make_float3(0.0f),
+            .generated_dx = make_float3(0.0f),
+            .generated_dy = make_float3(0.0f),
             .incoming = make_float3(0.0f, 0.0f, 1.0f),
             .uv = make_float2(0.0f),
+            .uv_dx = make_float2(0.0f),
+            .uv_dy = make_float2(0.0f),
+            .geometry_index = 0u,
+            .barycentric = make_float2(0.0f),
+            .barycentric_dx = make_float2(0.0f),
+            .barycentric_dy = make_float2(0.0f),
             .instance_id = 0u,
             .primitive_id = 0u,
             .object_random = 0.0f,
