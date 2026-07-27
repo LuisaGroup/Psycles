@@ -1,0 +1,203 @@
+cmake_minimum_required(VERSION 3.26)
+
+project(Psycles
+    VERSION 0.1.0
+    DESCRIPTION "Cycles-compatible renderer contracts on LuisaCompute DSL/JIT"
+    LANGUAGES C CXX)
+
+option(PSYCLES_BUILD_TESTS "Build Psycles contract tests" ON)
+option(PSYCLES_BUILD_EXAMPLES "Build Psycles executable examples" ON)
+option(PSYCLES_ENABLE_LUISA "Build the LuisaCompute DSL interface when available" ON)
+option(PSYCLES_ENABLE_LUISA_FALLBACK
+    "Build LuisaCompute's fallback backend for machines without a GPU backend" ON)
+option(PSYCLES_FETCH_LUISA_NEXT
+    "Fetch LuisaCompute from its next branch when no source tree is supplied" OFF)
+set(PSYCLES_LUISA_SOURCE_DIR "" CACHE PATH
+    "Path to a LuisaCompute source tree. Leave empty when the parent project already defines luisa::compute.")
+
+if(PSYCLES_BUILD_TESTS)
+    include(CTest)
+endif()
+
+add_library(psycles_core
+    src/adapter/cycles_shader_graph.cpp
+    src/compiler/core_nodes.cpp
+    src/compiler/material_library.cpp
+    src/compiler/shader_program.cpp
+    src/compiler/surface_program.cpp
+    src/contract/scene.cpp
+    src/contract/shader_graph.cpp
+    src/io/image.cpp)
+add_library(Psycles::core ALIAS psycles_core)
+
+target_include_directories(psycles_core
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>)
+target_compile_features(psycles_core PUBLIC cxx_std_20)
+
+if(MSVC)
+    target_compile_options(psycles_core PRIVATE /W4 /permissive-)
+else()
+    target_compile_options(psycles_core PRIVATE
+        -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion)
+endif()
+
+if(PSYCLES_ENABLE_LUISA)
+    if(PSYCLES_LUISA_SOURCE_DIR)
+        if(NOT EXISTS "${PSYCLES_LUISA_SOURCE_DIR}/CMakeLists.txt")
+            message(FATAL_ERROR
+                "PSYCLES_LUISA_SOURCE_DIR does not point to a LuisaCompute source tree: "
+                "${PSYCLES_LUISA_SOURCE_DIR}")
+        endif()
+        set(LUISA_COMPUTE_ENABLE_DSL ON CACHE BOOL "" FORCE)
+        # LuisaCompute's legacy Rust CPU backend is retired. The supported
+        # no-GPU execution path is the fallback backend, which consumes the
+        # same Luisa DSL AST/JIT program as every other device backend.
+        set(LUISA_COMPUTE_ENABLE_CPU OFF CACHE BOOL "" FORCE)
+        set(LUISA_COMPUTE_ENABLE_FALLBACK
+            ${PSYCLES_ENABLE_LUISA_FALLBACK} CACHE BOOL "" FORCE)
+        set(LUISA_COMPUTE_ENABLE_CLANG_CXX OFF CACHE BOOL "" FORCE)
+        set(LUISA_COMPUTE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+        add_subdirectory(
+            "${PSYCLES_LUISA_SOURCE_DIR}"
+            "${CMAKE_CURRENT_BINARY_DIR}/_deps/luisa-compute"
+            EXCLUDE_FROM_ALL)
+    elseif(PSYCLES_FETCH_LUISA_NEXT AND NOT TARGET luisa::compute)
+        set(LUISA_COMPUTE_ENABLE_DSL ON CACHE BOOL "" FORCE)
+        set(LUISA_COMPUTE_ENABLE_CPU OFF CACHE BOOL "" FORCE)
+        set(LUISA_COMPUTE_ENABLE_FALLBACK
+            ${PSYCLES_ENABLE_LUISA_FALLBACK} CACHE BOOL "" FORCE)
+        set(LUISA_COMPUTE_ENABLE_CLANG_CXX OFF CACHE BOOL "" FORCE)
+        set(LUISA_COMPUTE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+        include(FetchContent)
+        FetchContent_Declare(
+            psycles_luisa_compute
+            GIT_REPOSITORY https://github.com/LuisaGroup/LuisaCompute.git
+            GIT_TAG next
+            GIT_SHALLOW TRUE
+            GIT_PROGRESS TRUE)
+        FetchContent_MakeAvailable(psycles_luisa_compute)
+    endif()
+
+    if(TARGET luisa::compute)
+        add_library(psycles_luisa INTERFACE)
+        add_library(Psycles::luisa ALIAS psycles_luisa)
+        target_include_directories(psycles_luisa INTERFACE
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include>)
+        target_compile_features(psycles_luisa INTERFACE cxx_std_20)
+        target_compile_definitions(psycles_luisa INTERFACE PSYCLES_WITH_LUISA=1)
+        target_link_libraries(psycles_luisa INTERFACE
+            Psycles::core
+            luisa::compute)
+        message(STATUS "Psycles Luisa DSL interface enabled")
+
+        add_library(
+            psycles_luisa_runtime
+            src/adapter/blender_scene.cpp
+            src/luisa/path_tracer.cpp)
+        add_library(
+            Psycles::luisa_runtime
+            ALIAS psycles_luisa_runtime)
+        target_include_directories(psycles_luisa_runtime
+            PUBLIC
+                $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+                $<INSTALL_INTERFACE:include>)
+        target_compile_features(
+            psycles_luisa_runtime
+            PUBLIC cxx_std_20)
+        target_link_libraries(
+            psycles_luisa_runtime
+            PUBLIC Psycles::luisa)
+
+        if(MSVC)
+            target_compile_options(
+                psycles_luisa_runtime
+                PRIVATE /W4 /permissive-)
+        else()
+            target_compile_options(
+                psycles_luisa_runtime
+                PRIVATE
+                    -Wall -Wextra -Wpedantic
+                    -Wconversion -Wsign-conversion)
+        endif()
+
+        if(PSYCLES_BUILD_TESTS)
+            add_executable(
+                psycles_luisa_compile_tests
+                tests/test_luisa_compile.cpp)
+            target_link_libraries(
+                psycles_luisa_compile_tests
+                PRIVATE Psycles::luisa)
+            target_compile_features(
+                psycles_luisa_compile_tests
+                PRIVATE cxx_std_20)
+            add_test(
+                NAME psycles.luisa_ast
+                COMMAND psycles_luisa_compile_tests)
+        endif()
+
+        if(PSYCLES_BUILD_EXAMPLES)
+            add_executable(
+                psycles_luisa_render_demo
+                examples/render_luisa_demo.cpp)
+            target_link_libraries(
+                psycles_luisa_render_demo
+                PRIVATE
+                    Psycles::luisa_runtime)
+            target_compile_features(
+                psycles_luisa_render_demo
+                PRIVATE cxx_std_20)
+            set_target_properties(
+                psycles_luisa_render_demo
+                PROPERTIES
+                    RUNTIME_OUTPUT_DIRECTORY
+                        "${CMAKE_BINARY_DIR}/bin")
+
+            add_executable(
+                psycles_render_blender_scene
+                examples/render_blender_scene.cpp)
+            target_link_libraries(
+                psycles_render_blender_scene
+                PRIVATE
+                    Psycles::luisa_runtime)
+            target_compile_features(
+                psycles_render_blender_scene
+                PRIVATE cxx_std_20)
+            set_target_properties(
+                psycles_render_blender_scene
+                PROPERTIES
+                    RUNTIME_OUTPUT_DIRECTORY
+                        "${CMAKE_BINARY_DIR}/bin")
+
+            add_executable(
+                psycles_inspect_blender_material
+                tools/inspect_blender_material.cpp)
+            target_link_libraries(
+                psycles_inspect_blender_material
+                PRIVATE
+                    Psycles::luisa_runtime)
+            target_compile_features(
+                psycles_inspect_blender_material
+                PRIVATE cxx_std_20)
+            set_target_properties(
+                psycles_inspect_blender_material
+                PROPERTIES
+                    RUNTIME_OUTPUT_DIRECTORY
+                        "${CMAKE_BINARY_DIR}/bin")
+        endif()
+    else()
+        message(STATUS
+            "LuisaCompute target luisa::compute is unavailable; "
+            "building contract core only")
+    endif()
+endif()
+
+if(PSYCLES_BUILD_TESTS)
+    add_executable(psycles_tests tests/test_main.cpp)
+    target_link_libraries(psycles_tests PRIVATE Psycles::core)
+    target_compile_features(psycles_tests PRIVATE cxx_std_20)
+    add_test(NAME psycles.contracts COMMAND psycles_tests)
+
+endif()
