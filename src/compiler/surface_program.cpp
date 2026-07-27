@@ -421,6 +421,23 @@ private:
                     .result_type = SocketType::floating}));
             return;
         }
+        if (node.type == node_type::particle_info) {
+            publish(
+                node.id,
+                "Index",
+                append(ValueInstruction{
+                    .operation = ValueOperation::particle_index,
+                    .source_node = node.id,
+                    .result_type = SocketType::floating}));
+            publish(
+                node.id,
+                "Random",
+                append(ValueInstruction{
+                    .operation = ValueOperation::particle_random,
+                    .source_node = node.id,
+                    .result_type = SocketType::floating}));
+            return;
+        }
         if (node.type == node_type::light_path) {
             for (const auto &[output_name, operation] : {
                      std::pair{
@@ -814,6 +831,21 @@ private:
             auto strength = lower_value_input(node, "Strength");
             auto color = lower_value_input(node, "Color");
             if (strength && color) {
+                const auto space =
+                    property_string(node, "Space", "TANGENT");
+                const auto normal_map_space =
+                    space == "OBJECT"
+                        ? NormalMapSpace::object
+                        : space == "WORLD"
+                              ? NormalMapSpace::world
+                              : space == "BLENDER_OBJECT"
+                                    ? NormalMapSpace::
+                                          blender_object
+                                    : space == "BLENDER_WORLD"
+                                          ? NormalMapSpace::
+                                                blender_world
+                                          : NormalMapSpace::
+                                                tangent;
                 publish(
                     node.id,
                     "Normal",
@@ -822,7 +854,10 @@ private:
                         .source_node = node.id,
                         .result_type = SocketType::normal,
                         .a = *color,
-                        .b = *strength}));
+                        .b = *strength,
+                        .static_u0 =
+                            static_cast<std::uint64_t>(
+                                normal_map_space)}));
             }
             return;
         }
@@ -877,32 +912,65 @@ private:
         }
         if (node.type == node_type::noise_texture) {
             auto vector = lower_value_input(node, "Vector");
+            auto w = lower_value_input(node, "W");
             auto scale = lower_value_input(node, "Scale");
             auto detail = lower_value_input(node, "Detail");
             auto roughness =
                 lower_value_input(node, "Roughness");
-            if (vector && scale && detail && roughness) {
+            auto lacunarity =
+                lower_value_input(node, "Lacunarity");
+            auto offset = lower_value_input(node, "Offset");
+            auto gain = lower_value_input(node, "Gain");
+            auto distortion =
+                lower_value_input(node, "Distortion");
+            if (vector && w && scale && detail && roughness &&
+                lacunarity && offset && gain && distortion) {
+                const auto type_name =
+                    property_string(node, "NoiseType", "FBM");
+                const auto noise_type =
+                    type_name == "MULTIFRACTAL"
+                        ? NoiseType::multifractal
+                        : type_name == "HYBRID_MULTIFRACTAL"
+                              ? NoiseType::hybrid_multifractal
+                              : type_name == "RIDGED_MULTIFRACTAL"
+                                    ? NoiseType::
+                                          ridged_multifractal
+                                    : type_name == "HETERO_TERRAIN"
+                                          ? NoiseType::
+                                                hetero_terrain
+                                          : NoiseType::fbm;
+                const auto needs_color =
+                    property_bool(node, "NeedsColor");
                 auto instruction = ValueInstruction{
-                    .operation = ValueOperation::noise_factor,
+                    .operation =
+                        needs_color
+                            ? ValueOperation::noise_color
+                            : ValueOperation::noise_factor,
                     .source_node = node.id,
-                    .result_type = SocketType::floating,
+                    .result_type =
+                        needs_color
+                            ? SocketType::color
+                            : SocketType::floating,
                     .a = *vector,
                     .b = *scale,
                     .c = *detail,
                     .d = *roughness,
+                    .e = *lacunarity,
+                    .f = *distortion,
+                    .g = *w,
+                    .h = *offset,
+                    .i = *gain,
                     .static_u0 =
                         property_uint(node, "Dimensions", 3u),
                     .static_u1 =
-                        property_bool(node, "Normalize") ? 1u : 0u};
+                        (property_bool(node, "Normalize")
+                             ? 1u
+                             : 0u) |
+                        (static_cast<std::uint64_t>(noise_type)
+                         << 8u)};
                 publish(
                     node.id,
-                    "Factor",
-                    append(instruction));
-                instruction.operation = ValueOperation::noise_color;
-                instruction.result_type = SocketType::color;
-                publish(
-                    node.id,
-                    "Color",
+                    needs_color ? "Color" : "Factor",
                     append(std::move(instruction)));
             }
             return;

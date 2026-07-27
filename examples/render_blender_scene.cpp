@@ -105,7 +105,7 @@ int main(int argc, char **argv) {
     const psycles::contract::RenderSettings settings{
         .full_extent = {.width = width, .height = height},
         .window = {},
-        .seed = 0x51a7u,
+        .seed = imported.seed,
         .transparent_background =
             imported.transparent_background,
         .pixel_filter = imported.pixel_filter,

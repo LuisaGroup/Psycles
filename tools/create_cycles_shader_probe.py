@@ -176,6 +176,22 @@ def _emission_surface(scene: Any) -> None:
     _plane(material)
 
 
+def _integrator_clamp_direct(scene: Any) -> None:
+    """Exercise Blender UI clamp to Cycles device-clamp conversion."""
+    material, tree, output = _material("Direct Clamp Probe")
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Emission"
+    _input(emission, "Color").default_value = (10.0, 10.0, 10.0, 1.0)
+    _input(emission, "Strength").default_value = 1.0
+    tree.links.new(
+        _output(emission, "Emission"),
+        _input(output, "Surface"),
+    )
+    scene.cycles.sample_clamp_direct = 2.0
+    scene.cycles.sample_clamp_indirect = 0.0
+    _plane(material)
+
+
 def _add_shader_emission(scene: Any) -> None:
     material, tree, output = _material("Add Shader Probe")
     first = tree.nodes.new("ShaderNodeEmission")
@@ -324,6 +340,228 @@ def _bump_surface(scene: Any) -> None:
         _input(output, "Surface"),
     )
     _sphere(material)
+
+
+def _normal_map_surface(scene: Any) -> None:
+    _world(scene, (0.42, 0.52, 0.65, 1.0), 0.8)
+    material, tree, output = _material("Normal Map Probe")
+    normal_map = tree.nodes.new("ShaderNodeNormalMap")
+    normal_map.name = "Normal Map"
+    normal_map.space = "TANGENT"
+    _input(normal_map, "Strength").default_value = 0.7
+    _input(normal_map, "Color").default_value = (
+        0.65,
+        0.35,
+        0.95,
+        1.0,
+    )
+    diffuse = tree.nodes.new("ShaderNodeBsdfDiffuse")
+    diffuse.name = "Diffuse BSDF"
+    _input(diffuse, "Color").default_value = (
+        0.5,
+        0.22,
+        0.08,
+        1.0,
+    )
+    _input(diffuse, "Roughness").default_value = 0.0
+    tree.links.new(
+        _output(normal_map, "Normal"),
+        _input(diffuse, "Normal"),
+    )
+    tree.links.new(
+        _output(diffuse, "BSDF"),
+        _input(output, "Surface"),
+    )
+    _sphere(material)
+
+
+def _noise_color_3d(scene: Any) -> None:
+    material, tree, output = _material("Noise Color 3D Probe")
+    coordinates = tree.nodes.new("ShaderNodeTexCoord")
+    coordinates.name = "Texture Coordinate"
+    noise = tree.nodes.new("ShaderNodeTexNoise")
+    noise.name = "Cycles Noise 3D"
+    noise.noise_dimensions = "3D"
+    noise.noise_type = "FBM"
+    noise.normalize = True
+    _input(noise, "Scale").default_value = 1.7
+    _input(noise, "Detail").default_value = 2.35
+    _input(noise, "Roughness").default_value = 0.61
+    _input(noise, "Lacunarity").default_value = 2.2
+    _input(noise, "Distortion").default_value = 0.37
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Emission"
+    tree.links.new(
+        _output(coordinates, "Object"),
+        _input(noise, "Vector"),
+    )
+    tree.links.new(
+        _output(noise, "Color"),
+        _input(emission, "Color"),
+    )
+    tree.links.new(
+        _output(emission, "Emission"),
+        _input(output, "Surface"),
+    )
+    _plane(material)
+
+
+def _noise_factor_2d(scene: Any) -> None:
+    material, tree, output = _material("Noise Factor 2D Probe")
+    coordinates = tree.nodes.new("ShaderNodeTexCoord")
+    coordinates.name = "Texture Coordinate"
+    noise = tree.nodes.new("ShaderNodeTexNoise")
+    noise.name = "Cycles Noise 2D"
+    noise.noise_dimensions = "2D"
+    noise.noise_type = "FBM"
+    noise.normalize = False
+    _input(noise, "Scale").default_value = 2.3
+    _input(noise, "Detail").default_value = 1.75
+    _input(noise, "Roughness").default_value = 0.43
+    _input(noise, "Lacunarity").default_value = 1.8
+    _input(noise, "Distortion").default_value = 0.0
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Emission"
+    tree.links.new(
+        _output(coordinates, "Object"),
+        _input(noise, "Vector"),
+    )
+    tree.links.new(
+        _output(noise, "Fac"),
+        _input(emission, "Color"),
+    )
+    tree.links.new(
+        _output(emission, "Emission"),
+        _input(output, "Surface"),
+    )
+    _plane(material)
+
+
+def _noise_bump_object(scene: Any) -> None:
+    _world(scene, (0.42, 0.52, 0.65, 1.0), 0.8)
+    material, tree, output = _material("Noise Bump Object Probe")
+    coordinates = tree.nodes.new("ShaderNodeTexCoord")
+    coordinates.name = "Texture Coordinate"
+    noise = tree.nodes.new("ShaderNodeTexNoise")
+    noise.name = "Cycles Noise 3D"
+    noise.noise_dimensions = "3D"
+    noise.noise_type = "FBM"
+    noise.normalize = True
+    _input(noise, "Scale").default_value = 20.0
+    _input(noise, "Detail").default_value = 2.0
+    _input(noise, "Roughness").default_value = 0.5
+    _input(noise, "Lacunarity").default_value = 2.0
+    bump = tree.nodes.new("ShaderNodeBump")
+    bump.name = "Bump"
+    _input(bump, "Strength").default_value = 0.2
+    _input(bump, "Distance").default_value = 0.005
+    diffuse = tree.nodes.new("ShaderNodeBsdfDiffuse")
+    diffuse.name = "Diffuse BSDF"
+    _input(diffuse, "Color").default_value = (
+        0.5,
+        0.22,
+        0.08,
+        1.0,
+    )
+    tree.links.new(
+        _output(coordinates, "Object"),
+        _input(noise, "Vector"),
+    )
+    tree.links.new(
+        _output(noise, "Fac"),
+        _input(bump, "Height"),
+    )
+    tree.links.new(
+        _output(bump, "Normal"),
+        _input(diffuse, "Normal"),
+    )
+    tree.links.new(
+        _output(diffuse, "BSDF"),
+        _input(output, "Surface"),
+    )
+    _plane(material)
+
+
+def _particle_random_nonparticle(scene: Any) -> None:
+    material, tree, output = _material("Particle Random Probe")
+    particle = tree.nodes.new("ShaderNodeParticleInfo")
+    particle.name = "Particle Info"
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Emission"
+    tree.links.new(
+        _output(particle, "Random"),
+        _input(emission, "Color"),
+    )
+    tree.links.new(
+        _output(emission, "Emission"),
+        _input(output, "Surface"),
+    )
+    _plane(material)
+
+
+def _particle_random_instances(scene: Any) -> None:
+    material, tree, output = _material("Particle Instance Random Probe")
+    particle = tree.nodes.new("ShaderNodeParticleInfo")
+    particle.name = "Particle Info"
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Emission"
+    tree.links.new(
+        _output(particle, "Random"),
+        _input(emission, "Color"),
+    )
+    tree.links.new(
+        _output(emission, "Emission"),
+        _input(output, "Surface"),
+    )
+
+    bpy.ops.mesh.primitive_ico_sphere_add(
+        subdivisions=2,
+        radius=0.11,
+        enter_editmode=False,
+        location=(10.0, 10.0, 0.0),
+    )
+    instance = bpy.context.object
+    instance.name = "Particle Instance"
+    instance.data.materials.append(material)
+
+    emitter_material, emitter_tree, emitter_output = _material(
+        "Particle Emitter"
+    )
+    emitter_diffuse = emitter_tree.nodes.new("ShaderNodeBsdfDiffuse")
+    _input(emitter_diffuse, "Color").default_value = (
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+    )
+    emitter_tree.links.new(
+        _output(emitter_diffuse, "BSDF"),
+        _input(emitter_output, "Surface"),
+    )
+    bpy.ops.mesh.primitive_grid_add(
+        x_subdivisions=5,
+        y_subdivisions=5,
+        size=1.8,
+        enter_editmode=False,
+        location=(0.0, 0.0, -0.12),
+    )
+    emitter = bpy.context.object
+    emitter.name = "Particle Emitter"
+    emitter.data.materials.append(emitter_material)
+    bpy.context.view_layer.objects.active = emitter
+    emitter.select_set(True)
+    bpy.ops.object.particle_system_add()
+    system = emitter.particle_systems[-1]
+    settings = system.settings
+    settings.type = "HAIR"
+    settings.count = 25
+    settings.hair_length = 0.12
+    settings.render_type = "OBJECT"
+    settings.instance_object = instance
+    settings.particle_size = 1.0
+    settings.size_random = 0.0
+    settings.emit_from = "VERT"
+    settings.use_modifier_stack = True
 
 
 def _background_world(scene: Any) -> None:
@@ -671,8 +909,15 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "diffuse_surface": _diffuse_surface,
     "emission_surface": _emission_surface,
     "gamma_color": _gamma_color,
+    "integrator_clamp_direct": _integrator_clamp_direct,
     "mix_shader_emission": _mix_shader_emission,
     "node_group_color": _node_group_color,
+    "noise_bump_object": _noise_bump_object,
+    "noise_color_3d": _noise_color_3d,
+    "noise_factor_2d": _noise_factor_2d,
+    "normal_map_surface": _normal_map_surface,
+    "particle_random_instances": _particle_random_instances,
+    "particle_random_nonparticle": _particle_random_nonparticle,
     "principled_surface": _principled_surface,
     "rgb_emission": _rgb_emission,
     "rgb_to_bw": _rgb_to_bw,

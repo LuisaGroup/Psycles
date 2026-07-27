@@ -49,7 +49,6 @@ def _main() -> None:
     scene.cycles.samples = samples
     scene.cycles.use_adaptive_sampling = False
     scene.cycles.use_denoising = False
-    scene.cycles.seed = 0x51A7
     scene.render.resolution_x = width
     scene.render.resolution_y = height
     scene.render.resolution_percentage = 100

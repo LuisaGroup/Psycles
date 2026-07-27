@@ -86,6 +86,9 @@ struct PathIntegratorSettings {
     std::uint32_t transparent_max_bounces{8u};
     float sample_clamp_direct{};
     float sample_clamp_indirect{};
+    // Cycles uses film exposure when converting the UI light-sampling
+    // threshold into the device-side shadow-ray roulette threshold.
+    float film_exposure{1.0f};
     float light_sampling_threshold{0.01f};
     bool reflective_caustics{true};
     bool refractive_caustics{true};

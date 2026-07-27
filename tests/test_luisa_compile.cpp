@@ -94,6 +94,17 @@ int main() {
             .generated = make_float3(0.5f),
             .geometric_normal = make_float3(0.0f, 0.0f, 1.0f),
             .shading_normal = make_float3(0.0f, 0.0f, 1.0f),
+            .object_shading_normal =
+                make_float3(0.0f, 0.0f, 1.0f),
+            .object_tangent =
+                make_float3(1.0f, 0.0f, 0.0f),
+            .tangent_sign = 1.0f,
+            .normal_to_world_x =
+                make_float3(1.0f, 0.0f, 0.0f),
+            .normal_to_world_y =
+                make_float3(0.0f, 1.0f, 0.0f),
+            .normal_to_world_z =
+                make_float3(0.0f, 0.0f, 1.0f),
             .dpdu = make_float3(1.0f, 0.0f, 0.0f),
             .dpdv = make_float3(0.0f, 1.0f, 0.0f),
             .dPdx = make_float3(0.0f),
@@ -113,6 +124,7 @@ int main() {
             .instance_id = 0u,
             .primitive_id = 0u,
             .object_random = 0.0f,
+            .particle_index = 0u,
             .random_per_island = 0.0f,
             .ray_visibility = 1u,
             .ray_events = 0u,

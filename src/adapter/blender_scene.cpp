@@ -869,8 +869,7 @@ private:
                     .socket = output_socket},
                 .type = output_type});
         }
-        if (type == "OBJECT_INFO" ||
-            type == "PARTICLE_INFO") {
+        if (type == "OBJECT_INFO") {
             const auto id = _graph.add_node(
                 compiler::node_type::object_info,
                 node_name);
@@ -882,6 +881,16 @@ private:
                     output_socket == std::string_view{"Location"}
                         ? SocketType::vector
                         : SocketType::floating});
+        }
+        if (type == "PARTICLE_INFO") {
+            const auto id = _graph.add_node(
+                compiler::node_type::particle_info,
+                node_name);
+            const auto output_socket =
+                socket == "Index" ? "Index" : "Random";
+            return finish({
+                .ref = {.node = id, .socket = output_socket},
+                .type = SocketType::floating});
         }
         if (type == "LIGHT_PATH") {
             const auto id = _graph.add_node(
@@ -1321,10 +1330,13 @@ private:
                 node_name);
             for (const auto &[target, source] : {
                      std::pair{"Vector", "Vector"},
+                     std::pair{"W", "W"},
                      std::pair{"Scale", "Scale"},
                      std::pair{"Detail", "Detail"},
                      std::pair{"Roughness", "Roughness"},
                      std::pair{"Lacunarity", "Lacunarity"},
+                     std::pair{"Offset", "Offset"},
+                     std::pair{"Gain", "Gain"},
                      std::pair{"Distortion", "Distortion"}}) {
                 const auto target_type =
                     std::string_view{target} == "Vector"
@@ -1344,12 +1356,25 @@ private:
                 id,
                 "Dimensions",
                 SocketValue::unsigned_integer(
-                    dimensions == "4D" ? 4u : 3u)));
+                    dimensions == "1D"
+                        ? 1u
+                        : dimensions == "2D"
+                              ? 2u
+                              : dimensions == "4D" ? 4u : 3u)));
             static_cast<void>(_graph.set_property(
                 id,
                 "Normalize",
                 SocketValue::boolean(node_property_bool(
                     node, "normalize"))));
+            static_cast<void>(_graph.set_property(
+                id,
+                "NoiseType",
+                SocketValue::string(node_property_text(
+                    node, "noise_type", "FBM"))));
+            static_cast<void>(_graph.set_property(
+                id,
+                "NeedsColor",
+                SocketValue::boolean(socket == "Color")));
             return finish({
                 .ref = {
                     .node = id,
@@ -1953,7 +1978,31 @@ public:
     std::vector<BlenderSceneDiagnostic> &diagnostics) {
     const auto material_name = text(member(material, "name"));
     auto *tree = member(material, "node_tree");
-    if (tree == nullptr || yyjson_is_null(tree) ||
+    if (tree == nullptr || yyjson_is_null(tree)) {
+        return diffuse_graph({0.0f, 0.0f, 0.0f}, 0.0f);
+    }
+    const auto connected_root =
+        [tree](const char *name) noexcept {
+            auto *root = member(tree, name);
+            return root != nullptr && !yyjson_is_null(root) &&
+                   !text(member(root, "node")).empty() &&
+                   !text(member(root, "socket")).empty();
+        };
+    for (const auto &[root, label] : {
+             std::pair{"volume_root", "Volume"},
+             std::pair{"displacement_root", "Displacement"}}) {
+        if (connected_root(root)) {
+            diagnostics.emplace_back(BlenderSceneDiagnostic{
+                .severity =
+                    BlenderSceneDiagnosticSeverity::error,
+                .message =
+                    "shader '" + material_name +
+                    "' has a connected " + label +
+                    " root, which the Luisa integrator does not yet "
+                    "implement"});
+        }
+    }
+    if (
         member(tree, "surface_root") == nullptr ||
         yyjson_is_null(member(tree, "surface_root"))) {
         return diffuse_graph({0.0f, 0.0f, 0.0f}, 0.0f);
@@ -2071,6 +2120,11 @@ BlenderSceneImport load_blender_scene_bundle(
     auto error = [&](std::string message) {
         result.diagnostics.emplace_back(BlenderSceneDiagnostic{
             .severity = BlenderSceneDiagnosticSeverity::error,
+            .message = std::move(message)});
+    };
+    auto warning = [&](std::string message) {
+        result.diagnostics.emplace_back(BlenderSceneDiagnostic{
+            .severity = BlenderSceneDiagnosticSeverity::warning,
             .message = std::move(message)});
     };
 
@@ -2221,6 +2275,12 @@ BlenderSceneImport load_blender_scene_bundle(
                 member(member(render, "cycles"), "samples"),
                 64u));
         auto *cycles = member(render, "cycles");
+        result.seed = static_cast<std::uint32_t>(
+            unsigned_number(member(cycles, "seed")));
+        result.adaptive_sampling = boolean(
+            member(cycles, "use_adaptive_sampling"));
+        result.denoising =
+            boolean(member(cycles, "use_denoising"));
         result.integrator.max_bounces =
             static_cast<std::uint32_t>(unsigned_number(
                 member(cycles, "max_bounces"),
@@ -2263,6 +2323,11 @@ BlenderSceneImport load_blender_scene_bundle(
                 member(cycles, "sample_clamp_indirect"),
                 result.integrator.sample_clamp_indirect),
             0.0f);
+        result.integrator.film_exposure = std::max(
+            number(
+                member(cycles, "film_exposure"),
+                result.integrator.film_exposure),
+            0.0f);
         result.integrator.light_sampling_threshold = std::max(
             number(
                 member(cycles, "light_sampling_threshold"),
@@ -2301,6 +2366,23 @@ BlenderSceneImport load_blender_scene_bundle(
             throw std::runtime_error(
                 "unsupported Cycles direct light sampling type: " +
                 direct_light_sampling);
+        }
+        if (result.adaptive_sampling) {
+            warning(
+                "Cycles adaptive sampling is enabled in the source scene; "
+                "Psycles currently renders a fixed sample count. Official "
+                "differential goldens must disable adaptive sampling.");
+        }
+        if (result.denoising) {
+            warning(
+                "Cycles denoising is enabled in the source scene; Psycles "
+                "outputs un-denoised linear passes. Official differential "
+                "goldens must disable denoising.");
+        }
+        if (result.integrator.use_light_tree) {
+            error(
+                "Cycles light-tree sampling is enabled, but the Luisa "
+                "integrator does not yet implement light-tree traversal.");
         }
         result.transparent_background =
             boolean(member(render, "transparent"));
@@ -2440,6 +2522,13 @@ BlenderSceneImport load_blender_scene_bundle(
                 geometry_stream,
                 section_offset(geometry, "uv"),
                 vertex_count * 2u);
+            std::vector<float> uv_tangent_values;
+            if (member(geometry, "uv_tangents") != nullptr) {
+                uv_tangent_values = read_values<float>(
+                    geometry_stream,
+                    section_offset(geometry, "uv_tangents"),
+                    vertex_count * 4u);
+            }
             auto generated_values = read_values<float>(
                 geometry_stream,
                 section_offset(geometry, "generated"),
@@ -2468,6 +2557,7 @@ BlenderSceneImport load_blender_scene_bundle(
             mesh.positions.reserve(vertex_count);
             mesh.normals.reserve(vertex_count);
             mesh.uv.reserve(vertex_count);
+            mesh.uv_tangents.reserve(vertex_count);
             mesh.generated.reserve(vertex_count);
             for (std::size_t i = 0u; i < vertex_count; ++i) {
                 mesh.positions.emplace_back(Vec3f{
@@ -2481,6 +2571,15 @@ BlenderSceneImport load_blender_scene_bundle(
                 mesh.uv.emplace_back(Vec2f{
                     uv_values[i * 2u],
                     uv_values[i * 2u + 1u]});
+                mesh.uv_tangents.emplace_back(
+                    uv_tangent_values.size() ==
+                            vertex_count * 4u
+                        ? Vec4f{
+                              uv_tangent_values[i * 4u],
+                              uv_tangent_values[i * 4u + 1u],
+                              uv_tangent_values[i * 4u + 2u],
+                              uv_tangent_values[i * 4u + 3u]}
+                        : Vec4f{});
                 mesh.generated.emplace_back(Vec3f{
                     generated_values[i * 3u],
                     generated_values[i * 3u + 1u],
@@ -2606,6 +2705,9 @@ BlenderSceneImport load_blender_scene_bundle(
                             4294967295.0f,
                         0.0f,
                         1.0f),
+                    .particle_index = static_cast<std::uint32_t>(
+                        unsigned_number(
+                            member(instance, "particle_index"))),
                     .visibility_mask = visibility_mask});
         }
 

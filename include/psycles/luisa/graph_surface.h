@@ -14,6 +14,7 @@
 
 #include <psycles/compiler/surface_program.h>
 #include <psycles/luisa/cycles_bsdf_tables.h>
+#include <psycles/luisa/cycles_noise.h>
 #include <psycles/luisa/surface.h>
 
 #include <luisa/core/stl/vector.h>
@@ -954,44 +955,6 @@ private:
         return select(low, high, value > 0.04045f);
     }
 
-    [[nodiscard]] static Float hash_noise(Float3 p) noexcept {
-        return fract(
-            sin(dot(
-                p,
-                make_float3(
-                    127.1f, 311.7f, 74.7f))) *
-            43758.5453123f);
-    }
-
-    [[nodiscard]] static Float value_noise(Float3 p) noexcept {
-        auto cell = floor(p);
-        auto f = fract(p);
-        auto u = f * f * (make_float3(3.0f) - 2.0f * f);
-        auto n000 = hash_noise(cell);
-        auto n100 = hash_noise(
-            cell + make_float3(1.0f, 0.0f, 0.0f));
-        auto n010 = hash_noise(
-            cell + make_float3(0.0f, 1.0f, 0.0f));
-        auto n110 = hash_noise(
-            cell + make_float3(1.0f, 1.0f, 0.0f));
-        auto n001 = hash_noise(
-            cell + make_float3(0.0f, 0.0f, 1.0f));
-        auto n101 = hash_noise(
-            cell + make_float3(1.0f, 0.0f, 1.0f));
-        auto n011 = hash_noise(
-            cell + make_float3(0.0f, 1.0f, 1.0f));
-        auto n111 = hash_noise(
-            cell + make_float3(1.0f, 1.0f, 1.0f));
-        auto x00 = lerp(n000, n100, u.x);
-        auto x10 = lerp(n010, n110, u.x);
-        auto x01 = lerp(n001, n101, u.x);
-        auto x11 = lerp(n011, n111, u.x);
-        return lerp(
-            lerp(x00, x10, u.y),
-            lerp(x01, x11, u.y),
-            u.z);
-    }
-
     [[nodiscard]] static Float3 rotate_euler(
         Float3 value,
         Float3 rotation) noexcept {
@@ -1356,6 +1319,16 @@ private:
                 case compiler::ValueOperation::object_random:
                     value = make_float4(point.object_random);
                     break;
+                case compiler::ValueOperation::particle_index:
+                    value = make_float4(
+                        cast<float>(point.particle_index));
+                    break;
+                case compiler::ValueOperation::particle_random:
+                    value = make_float4(
+                        cycles_noise::uint_to_float_inclusive(
+                            cycles_noise::hash_uint2(
+                                point.particle_index, 0u)));
+                    break;
                 case compiler::ValueOperation::back_facing:
                     value = make_float4(select(
                         0.0f, 1.0f, point.back_facing));
@@ -1573,28 +1546,95 @@ private:
                     break;
                 }
                 case compiler::ValueOperation::normal_map: {
-                    auto tangent_normal =
+                    auto mapped =
                         vector(instruction.a, result) * 2.0f -
                         1.0f;
-                    auto strength = max(
-                        scalar(instruction.b, result), 0.0f);
-                    tangent_normal.x *= strength;
-                    tangent_normal.y *= strength;
-                    tangent_normal = safe_normalize(
-                        tangent_normal,
-                        make_float3(0.0f, 0.0f, 1.0f));
-                    auto tangent = safe_normalize(
-                        point.dpdu,
-                        make_float3(1.0f, 0.0f, 0.0f));
-                    auto bitangent = safe_normalize(
-                        point.dpdv,
-                        cross(point.shading_normal, tangent));
-                    auto world = safe_normalize(
-                        tangent * tangent_normal.x +
-                            bitangent * tangent_normal.y +
-                            point.shading_normal *
-                                tangent_normal.z,
-                        point.shading_normal);
+                    auto strength =
+                        scalar(instruction.b, result);
+                    const auto space =
+                        static_cast<compiler::NormalMapSpace>(
+                            instruction.static_u0);
+                    const auto transform_object_normal =
+                        [&](Float3 object_normal) noexcept {
+                            return safe_normalize(
+                                point.normal_to_world_x *
+                                        object_normal.x +
+                                    point.normal_to_world_y *
+                                        object_normal.y +
+                                    point.normal_to_world_z *
+                                        object_normal.z,
+                                point.shading_normal);
+                        };
+                    Float3 world;
+                    if (space ==
+                        compiler::NormalMapSpace::tangent) {
+                        // This is the Cycles SVM tangent-space path:
+                        // construct from Blender's MikkTSpace tangent/sign
+                        // and the unnormalized interpolated object normal,
+                        // then apply the inverse-transpose normal transform.
+                        mapped.x *= strength;
+                        mapped.y *= strength;
+                        mapped.z =
+                            1.0f +
+                            (mapped.z - 1.0f) *
+                                clamp(strength, 0.0f, 1.0f);
+                        auto object_bitangent =
+                            point.tangent_sign *
+                            cross(
+                                point.object_shading_normal,
+                                point.object_tangent);
+                        auto object_normal = safe_normalize(
+                            point.object_tangent * mapped.x +
+                                object_bitangent * mapped.y +
+                                point.object_shading_normal *
+                                    mapped.z,
+                            point.object_shading_normal);
+                        world =
+                            transform_object_normal(object_normal);
+                        world = select(
+                            world, -world, point.back_facing);
+                        auto tangent_available =
+                            (length_squared(
+                                 point.object_tangent) >
+                             1.0e-20f) &
+                            (abs(point.tangent_sign) >
+                             1.0e-20f);
+                        world = select(
+                            point.shading_normal,
+                            world,
+                            tangent_available);
+                    } else {
+                        if (space ==
+                                compiler::NormalMapSpace::
+                                    blender_object ||
+                            space ==
+                                compiler::NormalMapSpace::
+                                    blender_world) {
+                            mapped.y = -mapped.y;
+                            mapped.z = -mapped.z;
+                        }
+                        world =
+                            space ==
+                                        compiler::NormalMapSpace::
+                                            object ||
+                                    space ==
+                                        compiler::NormalMapSpace::
+                                            blender_object
+                                ? transform_object_normal(mapped)
+                                : safe_normalize(
+                                      mapped,
+                                      point.shading_normal);
+                        world = select(
+                            world, -world, point.back_facing);
+                        auto nonnegative_strength =
+                            max(strength, 0.0f);
+                        world = safe_normalize(
+                            point.shading_normal +
+                                (world -
+                                 point.shading_normal) *
+                                    nonnegative_strength,
+                            point.shading_normal);
+                    }
                     value = make_float4(world, 0.0f);
                     break;
                 }
@@ -1687,47 +1727,35 @@ private:
                 }
                 case compiler::ValueOperation::noise_factor:
                 case compiler::ValueOperation::noise_color: {
-                    auto p = vector(instruction.a, result) *
-                             scalar(instruction.b, result);
-                    auto detail = clamp(
-                        scalar(instruction.c, result),
-                        0.0f,
-                        8.0f);
-                    auto roughness = clamp(
-                        scalar(instruction.d, result),
-                        0.0f,
-                        1.0f);
-                    Float amplitude = 1.0f;
-                    Float frequency = 1.0f;
-                    Float sum = 0.0f;
-                    Float weight = 0.0f;
-                    for (std::uint32_t octave = 0u;
-                         octave < 8u;
-                         ++octave) {
-                        auto enabled =
-                            detail >= static_cast<float>(octave);
-                        auto contribution =
-                            value_noise(p * frequency);
-                        sum += select(
-                            0.0f,
-                            contribution * amplitude,
-                            enabled);
-                        weight += select(
-                            0.0f, amplitude, enabled);
-                        amplitude *= roughness;
-                        frequency *= 2.0f;
-                    }
-                    auto noise =
-                        sum / max(weight, 1.0e-20f);
-                    value =
+                    const auto color_needed =
                         instruction.operation ==
-                                compiler::ValueOperation::noise_color
-                            ? make_float4(
-                                  noise,
-                                  value_noise(p + 19.19f),
-                                  value_noise(p + 47.47f),
-                                  1.0f)
-                            : make_float4(noise);
+                        compiler::ValueOperation::noise_color;
+                    const auto normalize =
+                        (instruction.static_u1 & 1u) != 0u;
+                    const auto noise_type =
+                        static_cast<cycles_noise::Type>(
+                            (instruction.static_u1 >> 8u) &
+                            0xffu);
+                    auto scale =
+                        scalar(instruction.b, result);
+                    auto noise = cycles_noise::evaluate(
+                        vector(instruction.a, result) * scale,
+                        scalar(instruction.g, result) * scale,
+                        scalar(instruction.c, result),
+                        scalar(instruction.d, result),
+                        scalar(instruction.e, result),
+                        scalar(instruction.h, result),
+                        scalar(instruction.i, result),
+                        scalar(instruction.f, result),
+                        static_cast<std::uint32_t>(
+                            instruction.static_u0),
+                        noise_type,
+                        normalize,
+                        color_needed);
+                    value =
+                        color_needed
+                            ? make_float4(noise.color, 1.0f)
+                            : make_float4(noise.value);
                     break;
                 }
                 case compiler::ValueOperation::brick_color:

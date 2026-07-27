@@ -2,7 +2,10 @@
 
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/compiler/material_library.h>
+#include <psycles/luisa/cycles_bsdf_tables.h>
 #include <psycles/luisa/graph_surface.h>
+
+#include "cycles_shader_tables_4_5_10.inl"
 
 #include <algorithm>
 #include <array>
@@ -53,6 +56,7 @@ struct InstanceGpu {
     luisa::uint override_offset{};
     luisa::uint override_count{};
     float object_random{};
+    luisa::uint particle_index{};
 };
 
 struct LightGpu {
@@ -88,7 +92,8 @@ LUISA_STRUCT(
     geometry_index,
     override_offset,
     override_count,
-    object_random) {};
+    object_random,
+    particle_index) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::LightGpu,
     type,
@@ -180,7 +185,7 @@ using luisa::compute::triangle_interpolate;
 constexpr auto pi = 3.14159265358979323846f;
 constexpr auto uniform_sphere_pdf = 1.0f / (4.0f * pi);
 constexpr auto ray_maximum = 1.0e30f;
-constexpr std::uint32_t geometry_bindless_stride = 7u;
+constexpr std::uint32_t geometry_bindless_stride = 8u;
 constexpr auto camera_visibility =
     contract::visibility_bit(RayVisibility::camera);
 constexpr auto diffuse_visibility =
@@ -274,6 +279,7 @@ class BufferShaderServices final : public ShaderServices {
 
 private:
     const Buffer<luisa::float4> &_parameters;
+    const Buffer<float> &_cycles_bsdf_tables;
     const BindlessArray &_textures;
     const BindlessArray &_geometry_heap;
     const std::vector<AttributeBinding> &_attributes;
@@ -281,10 +287,12 @@ private:
 public:
     explicit BufferShaderServices(
         const Buffer<luisa::float4> &parameters,
+        const Buffer<float> &cycles_bsdf_tables,
         const BindlessArray &textures,
         const BindlessArray &geometry_heap,
         const std::vector<AttributeBinding> &attributes) noexcept
         : _parameters{parameters},
+          _cycles_bsdf_tables{cycles_bsdf_tables},
           _textures{textures},
           _geometry_heap{geometry_heap},
           _attributes{attributes} {}
@@ -343,12 +351,18 @@ public:
         std::uint32_t slot) const noexcept override {
         return _parameters->read(block + slot).xyz();
     }
+
+    [[nodiscard]] Float cycles_bsdf_data(
+        Expr<std::uint32_t> index) const noexcept override {
+        return _cycles_bsdf_tables->read(index);
+    }
 };
 
 struct GeometryResource {
     Buffer<luisa::float3> positions;
     Buffer<luisa::float3> normals;
     Buffer<luisa::float2> uv;
+    Buffer<luisa::float4> uv_tangents;
     Buffer<luisa::float3> generated;
     Buffer<Triangle> triangles;
     Buffer<luisa::uint> triangle_material_slots;
@@ -366,6 +380,7 @@ struct GeometryUpload {
     luisa::vector<luisa::float3> positions;
     luisa::vector<luisa::float3> normals;
     luisa::vector<luisa::float2> uv;
+    luisa::vector<luisa::float4> uv_tangents;
     luisa::vector<luisa::float3> generated;
     luisa::vector<Triangle> triangles;
     luisa::vector<luisa::uint> triangle_material_slots;
@@ -381,6 +396,7 @@ struct LuisaSceneData {
     std::map<contract::MaterialId, std::uint32_t> material_tags;
     std::optional<std::uint32_t> world_surface_tag;
     Buffer<luisa::float4> parameter_buffer;
+    Buffer<float> cycles_bsdf_table_buffer;
     std::vector<GeometryResource> geometries;
     std::vector<Image<float>> images;
     BindlessArray texture_heap;
@@ -522,10 +538,23 @@ private:
             integrator.transparent_min_bounces;
         const auto transparent_max_bounces =
             integrator.transparent_max_bounces;
+        // Blender exposes clamp per RGB channel. Cycles' device kernel
+        // compares the sum of absolute RGB components, so scene sync
+        // multiplies non-zero UI values by three.
         const auto sample_clamp_direct =
-            integrator.sample_clamp_direct;
+            integrator.sample_clamp_direct > 0.0f
+                ? integrator.sample_clamp_direct * 3.0f
+                : 0.0f;
         const auto sample_clamp_indirect =
-            integrator.sample_clamp_indirect;
+            integrator.sample_clamp_indirect > 0.0f
+                ? integrator.sample_clamp_indirect * 3.0f
+                : 0.0f;
+        const auto light_inv_rr_threshold =
+            !integrator.use_light_tree &&
+                    integrator.light_sampling_threshold > 0.0f
+                ? integrator.film_exposure /
+                      integrator.light_sampling_threshold
+                : 0.0f;
         const auto reflective_caustics =
             integrator.reflective_caustics;
         const auto refractive_caustics =
@@ -826,6 +855,30 @@ private:
                         (limit / max(magnitude, 1.0e-20f)),
                     should_clamp);
             };
+        Callable light_sample_roulette_weight =
+            [=](Float3 unshadowed_contribution,
+                Float random) noexcept {
+                Float maximum = max(
+                    abs(unshadowed_contribution.x),
+                    max(
+                        abs(unshadowed_contribution.y),
+                        abs(unshadowed_contribution.z)));
+                Float probability =
+                    maximum * light_inv_rr_threshold;
+                Bool roulette =
+                    (light_inv_rr_threshold > 0.0f) &
+                    (probability < 1.0f);
+                Bool survives =
+                    (!roulette) | (random < probability);
+                Float inverse_probability = select(
+                    1.0f,
+                    1.0f / max(probability, 1.0e-20f),
+                    roulette);
+                return select(
+                    0.0f,
+                    inverse_probability,
+                    survives);
+            };
 
         Kernel1D kernel = [=, &surfaces = scene->surfaces](
                               BufferFloat4 combined,
@@ -851,6 +904,7 @@ private:
 
             BufferShaderServices services{
                 scene->parameter_buffer,
+                scene->cycles_bsdf_table_buffer,
                 scene->texture_heap,
                 scene->heap,
                 scene->attribute_bindings};
@@ -903,6 +957,7 @@ private:
                             .instance_id = 0u,
                             .primitive_id = 0u,
                             .object_random = 0.0f,
+                            .particle_index = 0u,
                             .random_per_island = 0.0f,
                             .ray_visibility =
                                 camera_visibility,
@@ -1051,6 +1106,24 @@ private:
                                                 geometry.bindless_base +
                                                 3u)
                                             .read(triangle.i2);
+                                    Float4 tangent0 =
+                                        scene->heap
+                                            ->buffer<luisa::float4>(
+                                                geometry.bindless_base +
+                                                7u)
+                                            .read(triangle.i0);
+                                    Float4 tangent1 =
+                                        scene->heap
+                                            ->buffer<luisa::float4>(
+                                                geometry.bindless_base +
+                                                7u)
+                                            .read(triangle.i1);
+                                    Float4 tangent2 =
+                                        scene->heap
+                                            ->buffer<luisa::float4>(
+                                                geometry.bindless_base +
+                                                7u)
+                                            .read(triangle.i2);
                                     Float3 generated0 =
                                         scene->heap
                                             ->buffer<luisa::float3>(
@@ -1110,15 +1183,23 @@ private:
                                                 wp2 - wp0),
                                             -candidate_ray
                                                  ->direction());
+                                    Float3 object_shading_normal =
+                                        triangle_interpolate(
+                                            hit->bary,
+                                            n0,
+                                            n1,
+                                            n2);
+                                    Float4 object_tangent =
+                                        triangle_interpolate(
+                                            hit->bary,
+                                            tangent0,
+                                            tangent1,
+                                            tangent2);
                                     Float3 shading_normal =
                                         safe_normalize(
                                             (normal_to_world *
                                              make_float4(
-                                                 triangle_interpolate(
-                                                     hit->bary,
-                                                     n0,
-                                                     n1,
-                                                     n2),
+                                                 object_shading_normal,
                                                  0.0f))
                                                 .xyz(),
                                             geometric_normal);
@@ -1149,15 +1230,21 @@ private:
                                             hit->committed_ray_t;
                                     Float3 tangent =
                                         safe_normalize(
-                                            (wp1 - wp0) -
-                                                geometric_normal *
-                                                    dot(
-                                                        wp1 - wp0,
-                                                        geometric_normal),
-                                            make_float3(
-                                                1.0f,
-                                                0.0f,
-                                                0.0f));
+                                            (object_to_world *
+                                             make_float4(
+                                                 object_tangent.xyz(),
+                                                 0.0f))
+                                                .xyz(),
+                                            safe_normalize(
+                                                (wp1 - wp0) -
+                                                    geometric_normal *
+                                                        dot(
+                                                            wp1 - wp0,
+                                                            geometric_normal),
+                                                make_float3(
+                                                    1.0f,
+                                                    0.0f,
+                                                    0.0f)));
                                     UInt surface_tag =
                                         scene
                                             ->geometry_material_buffer
@@ -1206,6 +1293,36 @@ private:
                                             geometric_normal,
                                         .shading_normal =
                                             shading_normal,
+                                        .object_shading_normal =
+                                            object_shading_normal,
+                                        .object_tangent =
+                                            object_tangent.xyz(),
+                                        .tangent_sign =
+                                            object_tangent.w,
+                                        .normal_to_world_x =
+                                            (normal_to_world *
+                                             make_float4(
+                                                 1.0f,
+                                                 0.0f,
+                                                 0.0f,
+                                                 0.0f))
+                                                .xyz(),
+                                        .normal_to_world_y =
+                                            (normal_to_world *
+                                             make_float4(
+                                                 0.0f,
+                                                 1.0f,
+                                                 0.0f,
+                                                 0.0f))
+                                                .xyz(),
+                                        .normal_to_world_z =
+                                            (normal_to_world *
+                                             make_float4(
+                                                 0.0f,
+                                                 0.0f,
+                                                 1.0f,
+                                                 0.0f))
+                                                .xyz(),
                                         .dpdu = tangent,
                                         .dpdv = cross(
                                             shading_normal, tangent),
@@ -1240,6 +1357,8 @@ private:
                                         .primitive_id = hit->prim,
                                         .object_random =
                                             instance.object_random,
+                                        .particle_index =
+                                            instance.particle_index,
                                         .random_per_island =
                                             random_per_island,
                                         .ray_visibility =
@@ -1370,8 +1489,12 @@ private:
                 Float aspect = width / height;
 
                 Float3 local_origin = make_float3(0.0f);
+                Float3 local_origin_dx = make_float3(0.0f);
+                Float3 local_origin_dy = make_float3(0.0f);
                 Float3 local_direction =
                     make_float3(0.0f, 0.0f, -1.0f);
+                Float3 local_direction_dx = local_direction;
+                Float3 local_direction_dy = local_direction;
                 Float ray_dP = 0.0f;
                 Float ray_dD = 0.0f;
                 if (camera_projection ==
@@ -1380,14 +1503,14 @@ private:
                         screen_x * camera_horizontal_tangent,
                         screen_y * camera_vertical_tangent,
                         -1.0f));
-                    auto local_direction_dx =
+                    local_direction_dx =
                         normalize(make_float3(
                             (screen_x + 2.0f / width) *
                                 camera_horizontal_tangent,
                             screen_y *
                                 camera_vertical_tangent,
                             -1.0f));
-                    auto local_direction_dy =
+                    local_direction_dy =
                         normalize(make_float3(
                             screen_x *
                                 camera_horizontal_tangent,
@@ -1410,6 +1533,17 @@ private:
                             aspect * 0.5f,
                         screen_y * camera_ortho_scale * 0.5f,
                         0.0f);
+                    local_origin_dx = make_float3(
+                        (screen_x + 2.0f / width) *
+                            camera_ortho_scale * aspect * 0.5f,
+                        screen_y * camera_ortho_scale * 0.5f,
+                        0.0f);
+                    local_origin_dy = make_float3(
+                        screen_x * camera_ortho_scale *
+                            aspect * 0.5f,
+                        (screen_y - 2.0f / height) *
+                            camera_ortho_scale * 0.5f,
+                        0.0f);
                     ray_dP =
                         0.5f *
                         (camera_ortho_scale * aspect / width +
@@ -1427,7 +1561,7 @@ private:
                     Float latitude_dy =
                         (screen_y - 2.0f / height) *
                         pi * 0.5f;
-                    Float3 local_direction_dx =
+                    local_direction_dx =
                         make_float3(
                             cosine_latitude *
                                 sin(longitude_dx),
@@ -1436,7 +1570,7 @@ private:
                                 cos(longitude_dx));
                     Float cosine_latitude_dy =
                         cos(latitude_dy);
-                    Float3 local_direction_dy =
+                    local_direction_dy =
                         make_float3(
                             cosine_latitude_dy *
                                 sin(longitude),
@@ -1474,12 +1608,28 @@ private:
                         max(-local_direction.z, 1.0e-6f);
                     Float3 focus_position =
                         local_direction * focus_scale;
+                    Float focus_scale_dx =
+                        camera_focal_distance /
+                        max(-local_direction_dx.z, 1.0e-6f);
+                    Float focus_scale_dy =
+                        camera_focal_distance /
+                        max(-local_direction_dy.z, 1.0e-6f);
+                    Float3 focus_position_dx =
+                        local_direction_dx * focus_scale_dx;
+                    Float3 focus_position_dy =
+                        local_direction_dy * focus_scale_dy;
                     local_origin = make_float3(
                         lens_position.x,
                         lens_position.y,
                         0.0f);
+                    local_origin_dx = local_origin;
+                    local_origin_dy = local_origin;
                     local_direction = normalize(
                         focus_position - local_origin);
+                    local_direction_dx = normalize(
+                        focus_position_dx - local_origin_dx);
+                    local_direction_dy = normalize(
+                        focus_position_dy - local_origin_dy);
                 }
                 Float3 ray_origin =
                     (camera_transform *
@@ -1490,6 +1640,29 @@ private:
                      make_float4(local_direction, 0.0f))
                         .xyz(),
                     make_float3(0.0f, 0.0f, -1.0f));
+                Float3 differential_origin_x =
+                    (camera_transform *
+                     make_float4(local_origin_dx, 1.0f))
+                        .xyz();
+                Float3 differential_origin_y =
+                    (camera_transform *
+                     make_float4(local_origin_dy, 1.0f))
+                        .xyz();
+                Float3 differential_direction_x =
+                    safe_normalize(
+                        (camera_transform *
+                         make_float4(
+                             local_direction_dx, 0.0f))
+                            .xyz(),
+                        ray_direction);
+                Float3 differential_direction_y =
+                    safe_normalize(
+                        (camera_transform *
+                         make_float4(
+                             local_direction_dy, 0.0f))
+                            .xyz(),
+                        ray_direction);
+                Bool use_full_ray_differentials = true;
                 Var<luisa::compute::Ray> ray = make_ray(
                     ray_origin,
                     ray_direction,
@@ -1621,6 +1794,21 @@ private:
                             ->buffer<luisa::float2>(
                                 geometry.bindless_base + 3u)
                             .read(triangle.i2);
+                    Float4 tangent0 =
+                        scene->heap
+                            ->buffer<luisa::float4>(
+                                geometry.bindless_base + 7u)
+                            .read(triangle.i0);
+                    Float4 tangent1 =
+                        scene->heap
+                            ->buffer<luisa::float4>(
+                                geometry.bindless_base + 7u)
+                            .read(triangle.i1);
+                    Float4 tangent2 =
+                        scene->heap
+                            ->buffer<luisa::float4>(
+                                geometry.bindless_base + 7u)
+                            .read(triangle.i2);
                     Float3 generated0 =
                         scene->heap
                             ->buffer<luisa::float3>(
@@ -1669,11 +1857,19 @@ private:
                     Float3 geometric_normal = safe_normalize(
                         cross(wp1 - wp0, wp2 - wp0),
                         -ray->direction());
+                    Float3 object_shading_normal =
+                        triangle_interpolate(
+                            hit->bary, n0, n1, n2);
+                    Float4 object_tangent =
+                        triangle_interpolate(
+                            hit->bary,
+                            tangent0,
+                            tangent1,
+                            tangent2);
                     Float3 shading_normal = safe_normalize(
                         (normal_to_world *
                          make_float4(
-                             triangle_interpolate(
-                                 hit->bary, n0, n1, n2),
+                             object_shading_normal,
                              0.0f))
                             .xyz(),
                         geometric_normal);
@@ -1697,12 +1893,18 @@ private:
                         ray->origin() +
                         ray->direction() * hit->committed_ray_t;
                     Float3 tangent = safe_normalize(
-                        (wp1 - wp0) -
-                            geometric_normal *
-                                dot(
-                                    wp1 - wp0,
-                                    geometric_normal),
-                        make_float3(1.0f, 0.0f, 0.0f));
+                        (object_to_world *
+                         make_float4(
+                             object_tangent.xyz(), 0.0f))
+                            .xyz(),
+                        safe_normalize(
+                            (wp1 - wp0) -
+                                geometric_normal *
+                                    dot(
+                                        wp1 - wp0,
+                                        geometric_normal),
+                            make_float3(
+                                1.0f, 0.0f, 0.0f)));
                     Float3 differential_bitangent =
                         safe_normalize(
                             cross(geometric_normal, tangent),
@@ -1710,11 +1912,57 @@ private:
                     Float surface_radius =
                         ray_dP +
                         hit->committed_ray_t * ray_dD;
-                    Float3 dPdx =
+                    Float3 approximate_dPdx =
                         tangent * surface_radius;
-                    Float3 dPdy =
+                    Float3 approximate_dPdy =
                         differential_bitangent *
                         surface_radius;
+                    auto surface_ray_differential =
+                        [&](Float3 differential_origin,
+                            Float3 differential_direction,
+                            Float3 approximation) noexcept {
+                            auto ray_direction =
+                                ray->direction();
+                            auto origin_delta =
+                                differential_origin -
+                                ray->origin();
+                            auto direction_delta =
+                                differential_direction -
+                                ray_direction;
+                            auto denominator = dot(
+                                geometric_normal,
+                                ray_direction);
+                            auto valid =
+                                use_full_ray_differentials &
+                                (abs(denominator) > 1.0e-7f);
+                            auto safe_denominator = select(
+                                1.0f, denominator, valid);
+                            auto distance_delta =
+                                -dot(
+                                    geometric_normal,
+                                    origin_delta +
+                                        hit->committed_ray_t *
+                                            direction_delta) /
+                                safe_denominator;
+                            auto exact =
+                                origin_delta +
+                                hit->committed_ray_t *
+                                    direction_delta +
+                                ray_direction * distance_delta;
+                            return select(
+                                approximation, exact, valid);
+                        };
+                    Float3 dPdx = surface_ray_differential(
+                        differential_origin_x,
+                        differential_direction_x,
+                        approximate_dPdx);
+                    Float3 dPdy = surface_ray_differential(
+                        differential_origin_y,
+                        differential_direction_y,
+                        approximate_dPdy);
+                    Float differential_radius =
+                        0.5f *
+                        (length(dPdx) + length(dPdy));
                     Float3 edge1 = wp1 - wp0;
                     Float3 edge2 = wp2 - wp0;
                     Float gram00 = dot(edge1, edge1);
@@ -1813,6 +2061,35 @@ private:
                                 generated2),
                         .geometric_normal = geometric_normal,
                         .shading_normal = shading_normal,
+                        .object_shading_normal =
+                            object_shading_normal,
+                        .object_tangent =
+                            object_tangent.xyz(),
+                        .tangent_sign = object_tangent.w,
+                        .normal_to_world_x =
+                            (normal_to_world *
+                             make_float4(
+                                 1.0f,
+                                 0.0f,
+                                 0.0f,
+                                 0.0f))
+                                .xyz(),
+                        .normal_to_world_y =
+                            (normal_to_world *
+                             make_float4(
+                                 0.0f,
+                                 1.0f,
+                                 0.0f,
+                                 0.0f))
+                                .xyz(),
+                        .normal_to_world_z =
+                            (normal_to_world *
+                             make_float4(
+                                 0.0f,
+                                 0.0f,
+                                 1.0f,
+                                 0.0f))
+                                .xyz(),
                         .dpdu = tangent,
                         .dpdv = cross(
                             shading_normal, tangent),
@@ -1837,6 +2114,8 @@ private:
                         .primitive_id = hit->prim,
                         .object_random =
                             instance.object_random,
+                        .particle_index =
+                            instance.particle_index,
                         .random_per_island =
                             random_per_island,
                         .ray_visibility = ray_visibility,
@@ -2014,13 +2293,20 @@ private:
                                     nee_light_weight(
                                         uniform_sphere_pdf,
                                         evaluation.pdf);
-                                radiance += clamp_light_contribution(
-                                    throughput *
+                                Float3 unshadowed_contribution =
                                     evaluation.f *
                                     evaluate_environment_base(wi) *
+                                    (mis_weight /
+                                     uniform_sphere_pdf);
+                                Float roulette_weight =
+                                    light_sample_roulette_weight(
+                                        unshadowed_contribution,
+                                        random_float(state));
+                                radiance += clamp_light_contribution(
+                                    throughput *
+                                    unshadowed_contribution *
                                     shadow_transmittance *
-                                    mis_weight /
-                                        uniform_sphere_pdf,
+                                    roulette_weight,
                                     path_depth);
                             };
                         }
@@ -2096,14 +2382,20 @@ private:
                                     nee_light_weight(
                                         sun_pdf,
                                         evaluation.pdf);
-                                radiance += clamp_light_contribution(
-                                    throughput *
+                                Float3 unshadowed_contribution =
                                     evaluation.f *
                                     evaluate_environment_sun(
                                         wi, sun) *
+                                    (mis_weight / sun_pdf);
+                                Float roulette_weight =
+                                    light_sample_roulette_weight(
+                                        unshadowed_contribution,
+                                        random_float(state));
+                                radiance += clamp_light_contribution(
+                                    throughput *
+                                    unshadowed_contribution *
                                     shadow_transmittance *
-                                    mis_weight /
-                                        sun_pdf,
+                                    roulette_weight,
                                     path_depth);
                             };
                         }
@@ -2180,6 +2472,24 @@ private:
                                         light_geometry.bindless_base +
                                         3u)
                                     .read(light_triangle.i2);
+                            Float4 light_tangent0 =
+                                scene->heap
+                                    ->buffer<luisa::float4>(
+                                        light_geometry.bindless_base +
+                                        7u)
+                                    .read(light_triangle.i0);
+                            Float4 light_tangent1 =
+                                scene->heap
+                                    ->buffer<luisa::float4>(
+                                        light_geometry.bindless_base +
+                                        7u)
+                                    .read(light_triangle.i1);
+                            Float4 light_tangent2 =
+                                scene->heap
+                                    ->buffer<luisa::float4>(
+                                        light_geometry.bindless_base +
+                                        7u)
+                                    .read(light_triangle.i2);
                             Float3 light_generated0 =
                                 scene->heap
                                     ->buffer<luisa::float3>(
@@ -2250,15 +2560,23 @@ private:
                                     light_unnormalized_normal,
                                     make_float3(
                                         0.0f, 0.0f, 1.0f));
+                            Float3 light_object_shading_normal =
+                                triangle_interpolate(
+                                    light_barycentric,
+                                    ln0,
+                                    ln1,
+                                    ln2);
+                            Float4 light_object_tangent =
+                                triangle_interpolate(
+                                    light_barycentric,
+                                    light_tangent0,
+                                    light_tangent1,
+                                    light_tangent2);
                             Float3 light_shading_normal =
                                 safe_normalize(
                                     (light_normal_to_world *
                                      make_float4(
-                                         triangle_interpolate(
-                                             light_barycentric,
-                                             ln0,
-                                             ln1,
-                                             ln2),
+                                         light_object_shading_normal,
                                          0.0f))
                                         .xyz(),
                                     light_geometric_normal);
@@ -2292,13 +2610,21 @@ private:
                                     0.0f);
                             Float3 light_tangent =
                                 safe_normalize(
-                                    (lp1 - lp0) -
-                                        light_geometric_normal *
-                                            dot(
-                                                lp1 - lp0,
-                                                light_geometric_normal),
-                                    make_float3(
-                                        1.0f, 0.0f, 0.0f));
+                                    (light_object_to_world *
+                                     make_float4(
+                                         light_object_tangent.xyz(),
+                                         0.0f))
+                                        .xyz(),
+                                    safe_normalize(
+                                        (lp1 - lp0) -
+                                            light_geometric_normal *
+                                                dot(
+                                                    lp1 - lp0,
+                                                    light_geometric_normal),
+                                        make_float3(
+                                            1.0f,
+                                            0.0f,
+                                            0.0f)));
                             SurfacePoint light_point{
                                 .position = light_position,
                                 .object_position =
@@ -2325,6 +2651,36 @@ private:
                                     light_geometric_normal,
                                 .shading_normal =
                                     light_shading_normal,
+                                .object_shading_normal =
+                                    light_object_shading_normal,
+                                .object_tangent =
+                                    light_object_tangent.xyz(),
+                                .tangent_sign =
+                                    light_object_tangent.w,
+                                .normal_to_world_x =
+                                    (light_normal_to_world *
+                                     make_float4(
+                                         1.0f,
+                                         0.0f,
+                                         0.0f,
+                                         0.0f))
+                                        .xyz(),
+                                .normal_to_world_y =
+                                    (light_normal_to_world *
+                                     make_float4(
+                                         0.0f,
+                                         1.0f,
+                                         0.0f,
+                                         0.0f))
+                                        .xyz(),
+                                .normal_to_world_z =
+                                    (light_normal_to_world *
+                                     make_float4(
+                                         0.0f,
+                                         0.0f,
+                                         1.0f,
+                                         0.0f))
+                                        .xyz(),
                                 .dpdu = light_tangent,
                                 .dpdv = cross(
                                     light_shading_normal,
@@ -2361,6 +2717,8 @@ private:
                                     emitter.primitive_index,
                                 .object_random =
                                     light_instance.object_random,
+                                .particle_index =
+                                    light_instance.particle_index,
                                 .random_per_island =
                                     light_random_per_island,
                                 .ray_visibility =
@@ -2428,13 +2786,19 @@ private:
                                         nee_light_weight(
                                             light_pdf,
                                             evaluation.pdf);
-                                    radiance += clamp_light_contribution(
-                                        throughput *
+                                    Float3 unshadowed_contribution =
                                         evaluation.f *
                                         light_radiance *
+                                        (mis_weight / light_pdf);
+                                    Float roulette_weight =
+                                        light_sample_roulette_weight(
+                                            unshadowed_contribution,
+                                            random_float(state));
+                                    radiance += clamp_light_contribution(
+                                        throughput *
+                                        unshadowed_contribution *
                                         shadow_transmittance *
-                                        mis_weight /
-                                            light_pdf,
+                                        roulette_weight,
                                         path_depth);
                                 };
                             };
@@ -2562,15 +2926,22 @@ private:
                                     // NEE estimator has no competing forward
                                     // technique and must carry full weight.
                                     Float mis_weight = 1.0f;
+                                    Float3 unshadowed_contribution =
+                                        evaluation.f *
+                                        light_radiance *
+                                        (mis_weight /
+                                         max(
+                                             light_pdf,
+                                             1.0e-20f));
+                                    Float roulette_weight =
+                                        light_sample_roulette_weight(
+                                            unshadowed_contribution,
+                                            random_float(state));
                                     radiance += clamp_light_contribution(
                                         throughput *
-                                        evaluation.f *
-                                        light_radiance /
-                                        max(
-                                            light_pdf,
-                                            1.0e-20f) *
+                                        unshadowed_contribution *
                                         shadow_transmittance *
-                                            mis_weight,
+                                        roulette_weight,
                                         path_depth);
                                 };
                             };
@@ -2694,11 +3065,22 @@ private:
                         hit_position +
                             ray->direction() * 1.0e-4f,
                         transparent);
-                    // The compact scalar differential is rebased to the new
-                    // origin even for transparent rays. Cycles keeps its full
-                    // ray and advances tmin instead; these are equivalent only
-                    // after this radius update in Psycles' compact model.
-                    ray_dP = surface_radius;
+                    // Preserve the two full camera differentials through
+                    // transparent hits. After the first material scatter,
+                    // rebase the compact secondary-ray footprint to the
+                    // measured surface differential radius.
+                    ray_dP = differential_radius;
+                    differential_origin_x = select(
+                        differential_origin_x,
+                        next_origin + dPdx,
+                        transparent);
+                    differential_origin_y = select(
+                        differential_origin_y,
+                        next_origin + dPdy,
+                        transparent);
+                    use_full_ray_differentials =
+                        use_full_ray_differentials &
+                        transparent;
                     ray = make_ray(
                         next_origin,
                         surface_sample.wi,
@@ -2952,6 +3334,59 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         data->device.create_buffer<luisa::float4>(
             parameters.size());
 
+    using namespace cycles45_tables;
+    static_assert(
+        std::size(table_ggx_E) == ggx_e_size);
+    static_assert(
+        std::size(table_ggx_Eavg) == ggx_eavg_size);
+    static_assert(
+        std::size(table_ggx_glass_E) ==
+        ggx_glass_e_size);
+    static_assert(
+        std::size(table_ggx_glass_Eavg) ==
+        ggx_glass_eavg_size);
+    static_assert(
+        std::size(table_ggx_glass_inv_E) ==
+        ggx_glass_inv_e_size);
+    static_assert(
+        std::size(table_ggx_glass_inv_Eavg) ==
+        ggx_glass_inv_eavg_size);
+    static_assert(
+        std::size(table_sheen_ltc) == sheen_ltc_size);
+    static_assert(
+        std::size(table_ggx_gen_schlick_ior_s) ==
+        ggx_gen_schlick_ior_s_size);
+    static_assert(
+        std::size(table_ggx_gen_schlick_s) ==
+        ggx_gen_schlick_s_size);
+
+    luisa::vector<float> cycles_bsdf_values;
+    cycles_bsdf_values.reserve(total_size);
+    const auto append_cycles_table =
+        [&cycles_bsdf_values](const auto &table) noexcept {
+            for (const auto value : table) {
+                cycles_bsdf_values.emplace_back(value);
+            }
+        };
+    append_cycles_table(table_ggx_E);
+    append_cycles_table(table_ggx_Eavg);
+    append_cycles_table(table_ggx_glass_E);
+    append_cycles_table(table_ggx_glass_Eavg);
+    append_cycles_table(table_ggx_glass_inv_E);
+    append_cycles_table(table_ggx_glass_inv_Eavg);
+    append_cycles_table(table_sheen_ltc);
+    append_cycles_table(table_ggx_gen_schlick_ior_s);
+    append_cycles_table(table_ggx_gen_schlick_s);
+    if (cycles_bsdf_values.size() != total_size) {
+        diagnose(
+            result.diagnostics,
+            "Internal Cycles BSDF table layout mismatch.");
+        return result;
+    }
+    data->cycles_bsdf_table_buffer =
+        data->device.create_buffer<float>(
+            cycles_bsdf_values.size());
+
     std::size_t color_attribute_count = 0u;
     for (const auto &[id, geometry] :
          snapshot.geometries) {
@@ -2981,7 +3416,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             fixed_geometry_slots);
     Stream stream = data->device.create_stream();
     stream << data->parameter_buffer.copy_from(
-        luisa::span{parameters});
+                  luisa::span{parameters})
+           << data->cycles_bsdf_table_buffer.copy_from(
+                  luisa::span{cycles_bsdf_values});
 
     std::size_t texture_slot_count = 1u;
     for (const auto &[image_id, image] : snapshot.images) {
@@ -3111,6 +3548,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         upload.positions.reserve(geometry.positions.size());
         upload.normals.reserve(geometry.positions.size());
         upload.uv.reserve(geometry.positions.size());
+        upload.uv_tangents.reserve(geometry.positions.size());
         upload.generated.reserve(geometry.positions.size());
         auto bounds_min = geometry.positions.front();
         auto bounds_max = geometry.positions.front();
@@ -3151,6 +3589,16 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 i < geometry.uv.size()
                     ? to_luisa(geometry.uv[i])
                     : luisa::make_float2(0.0f));
+            const auto uv_tangent =
+                i < geometry.uv_tangents.size()
+                    ? geometry.uv_tangents[i]
+                    : Vec4f{};
+            upload.uv_tangents.emplace_back(
+                luisa::make_float4(
+                    uv_tangent.x,
+                    uv_tangent.y,
+                    uv_tangent.z,
+                    uv_tangent.w));
             upload.generated.emplace_back(
                 to_luisa(
                     i < geometry.generated.size()
@@ -3252,6 +3700,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         resource.uv =
             data->device.create_buffer<luisa::float2>(
                 upload.uv.size());
+        resource.uv_tangents =
+            data->device.create_buffer<luisa::float4>(
+                upload.uv_tangents.size());
         resource.generated =
             data->device.create_buffer<luisa::float3>(
                 upload.generated.size());
@@ -3285,6 +3736,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         data->heap.emplace_on_update(
             bindless_base + 6u,
             resource.triangle_random_per_island);
+        data->heap.emplace_on_update(
+            bindless_base + 7u,
+            resource.uv_tangents);
         for (const auto &attribute :
              upload.color_attributes) {
             auto &attribute_resource =
@@ -3310,6 +3764,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                       luisa::span{upload.normals})
                << resource.uv.copy_from(
                       luisa::span{upload.uv})
+               << resource.uv_tangents.copy_from(
+                      luisa::span{upload.uv_tangents})
                << resource.generated.copy_from(
                       luisa::span{upload.generated})
                << resource.triangles.copy_from(
@@ -3401,7 +3857,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 static_cast<std::uint32_t>(
                     instance.material_overrides.size()),
             .object_random = std::clamp(
-                instance.random, 0.0f, 1.0f)});
+                instance.random, 0.0f, 1.0f),
+            .particle_index = instance.particle_index});
         const auto &geometry =
             snapshot.geometries.at(instance.geometry);
         const auto light_visible =
@@ -3623,6 +4080,25 @@ LuisaPathTracerBackend::create_session(
         static_cast<const LuisaCompiledScene &>(scene);
     if (settings.full_extent.width == 0u ||
         settings.full_extent.height == 0u) {
+        return nullptr;
+    }
+    if (settings.integrator.use_light_tree) {
+        return nullptr;
+    }
+    if (
+        !_options.next_event_estimation &&
+        settings.integrator.direct_light_sampling !=
+            contract::DirectLightSampling::
+                forward_path_tracing) {
+        return nullptr;
+    }
+    if (
+        settings.integrator.direct_light_sampling ==
+            contract::DirectLightSampling::
+                forward_path_tracing &&
+        compiled.data()->light_count > 0u) {
+        // Analytic lights are not acceleration-structure primitives yet, so
+        // a forward-only path cannot reach them.
         return nullptr;
     }
     for (const auto &pass : settings.passes) {

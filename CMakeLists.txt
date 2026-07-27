@@ -136,6 +136,19 @@ if(PSYCLES_ENABLE_LUISA)
             add_test(
                 NAME psycles.luisa_ast
                 COMMAND psycles_luisa_compile_tests)
+
+            add_executable(
+                psycles_blender_import_tests
+                tests/test_blender_import.cpp)
+            target_link_libraries(
+                psycles_blender_import_tests
+                PRIVATE Psycles::luisa_runtime)
+            target_compile_features(
+                psycles_blender_import_tests
+                PRIVATE cxx_std_20)
+            add_test(
+                NAME psycles.blender_import
+                COMMAND psycles_blender_import_tests)
         endif()
 
         if(PSYCLES_BUILD_EXAMPLES)
@@ -207,6 +220,14 @@ if(PSYCLES_BUILD_TESTS)
             COMMAND
                 "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_cycles_shader_node_coverage.py"
-                "${CMAKE_CURRENT_SOURCE_DIR}/docs/cycles-shader-nodes-4.5.10.json")
+                "${CMAKE_CURRENT_SOURCE_DIR}/docs/cycles-shader-nodes-4.5.10.json"
+                --probe-baselines
+                "${CMAKE_CURRENT_SOURCE_DIR}/docs/cycles-shader-probe-baselines-4.5.10.json")
+        add_test(
+            NAME psycles.cycles_integrator_baselines
+            COMMAND
+                "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_cycles_integrator_baselines.py"
+                "${CMAKE_CURRENT_SOURCE_DIR}/docs/cycles-integrator-probe-baselines-4.5.10.json")
     endif()
 endif()

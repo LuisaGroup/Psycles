@@ -75,6 +75,8 @@ enum class ValueOperation : std::uint8_t {
     object_position,
     object_location,
     object_random,
+    particle_index,
+    particle_random,
     back_facing,
     random_per_island,
     path_is_camera,
@@ -112,6 +114,22 @@ enum class ValueOperation : std::uint8_t {
     separate_b,
     combine_color,
     nishita_sky
+};
+
+enum class NormalMapSpace : std::uint8_t {
+    tangent,
+    object,
+    world,
+    blender_object,
+    blender_world
+};
+
+enum class NoiseType : std::uint8_t {
+    multifractal,
+    fbm,
+    hybrid_multifractal,
+    ridged_multifractal,
+    hetero_terrain
 };
 
 // A single topologically ordered value stream is intentional. Blender shader

@@ -64,6 +64,12 @@ struct TriangleMeshDesc {
     std::vector<Vec3f> positions;
     std::vector<Vec3f> normals;
     std::vector<Vec2f> uv;
+    // Blender's evaluated MikkTSpace tangent attribute, flattened to the
+    // same triangle-corner indexing as positions. xyz is the unnormalized
+    // tangent and w is Cycles' tangent sign. A zero entry means the mesh has
+    // no usable UV tangent attribute; tangent-space Normal Map then falls
+    // back to the unperturbed shading normal exactly as Cycles does.
+    std::vector<Vec4f> uv_tangents;
     // Cycles' Generated attribute is evaluated from the undeformed position
     // in Blender texture space. Keeping it explicit avoids reconstructing a
     // subtly different bounding-box mapping in a device backend.
@@ -116,6 +122,9 @@ struct InstanceDesc {
     std::vector<MaterialId> material_overrides;
     // Cycles Object Info.Random in [0, 1], computed from Object::random_id.
     float random{};
+    // Cycles Particle Info indexes its particle table separately from object
+    // identity. Zero is the non-particle sentinel used by ordinary objects.
+    std::uint32_t particle_index{};
     std::uint32_t visibility_mask{all_ray_visibility};
 };
 
@@ -125,11 +134,22 @@ enum class CameraProjection : std::uint8_t {
     panorama
 };
 
+enum class CameraSensorFit : std::uint8_t {
+    horizontal,
+    vertical,
+    automatic
+};
+
 struct CameraDesc {
     std::string name;
     CameraProjection projection{CameraProjection::perspective};
     Mat4f transform;
+    // field_of_view is the vertical sensor angle. Blender also exposes a
+    // horizontal sensor angle; keeping both avoids baking the source
+    // render aspect ratio into the scene contract.
     float field_of_view{0.78539816339f};
+    float horizontal_field_of_view{0.78539816339f};
+    CameraSensorFit sensor_fit{CameraSensorFit::vertical};
     float orthographic_scale{1.0f};
     float lens_shift_x{};
     float lens_shift_y{};

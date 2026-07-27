@@ -54,6 +54,16 @@ struct SurfacePoint {
     Float3 generated;
     Float3 geometric_normal;
     Float3 shading_normal;
+    // Cycles tangent-space Normal Map is constructed in object space from
+    // Blender's evaluated MikkTSpace attributes and only then transformed as
+    // a normal. Keeping these values explicit avoids an invalid world-space
+    // shortcut under non-uniform instance transforms.
+    Float3 object_shading_normal;
+    Float3 object_tangent;
+    Float tangent_sign;
+    Float3 normal_to_world_x;
+    Float3 normal_to_world_y;
+    Float3 normal_to_world_z;
     Float3 dpdu;
     Float3 dpdv;
     Float3 dPdx;
@@ -73,6 +83,7 @@ struct SurfacePoint {
     UInt instance_id;
     UInt primitive_id;
     Float object_random;
+    UInt particle_index;
     Float random_per_island;
     UInt ray_visibility;
     UInt ray_events;
@@ -155,6 +166,13 @@ public:
     [[nodiscard]] virtual Float3 parameter_float3(
         std::uint32_t block,
         std::uint32_t slot) const noexcept = 0;
+
+    // Versioned Cycles compatibility data. The index addresses the
+    // contiguous Blender BSDF table buffer; interpolation and table shape
+    // remain explicit in the Luisa shader so all backends execute the same
+    // semantics.
+    [[nodiscard]] virtual Float cycles_bsdf_data(
+        Expr<std::uint32_t> index) const noexcept = 0;
 };
 
 class Surface {

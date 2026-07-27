@@ -1,0 +1,35 @@
+{
+  "schema": "psycles.cycles-integrator-probe-baselines.v1",
+  "blender_version": "4.5.10 LTS",
+  "backend": "Luisa/fallback",
+  "verified": {
+    "direct_sample_clamp": {
+      "probe": "integrator_clamp_direct",
+      "samples": 4,
+      "settings": {
+        "sample_clamp_direct": 2.0,
+        "sample_clamp_indirect": 0.0
+      },
+      "expected_combined_rgb": [
+        2.0,
+        2.0,
+        2.0
+      ],
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 0.0,
+          "maximum_absolute_error": 0.0
+        },
+        "DiffCol": {
+          "rmse": 0.0,
+          "maximum_absolute_error": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0,
+          "maximum_absolute_error": 0.0
+        }
+      }
+    }
+  }
+}

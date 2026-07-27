@@ -28,6 +28,7 @@ import sys
 import tempfile
 from typing import Any
 
+import bmesh
 import bpy
 import numpy as np
 import OpenImageIO as oiio
@@ -111,12 +112,16 @@ def _socket_links(tree: Any) -> dict[tuple[str, str], tuple[str, str]]:
     return result
 
 
-def _active_output(tree: Any, world: bool = False) -> dict[str, str] | None:
+def _active_output(
+    tree: Any,
+    socket: str,
+    world: bool = False,
+) -> dict[str, str] | None:
     expected = "ShaderNodeOutputWorld" if world else "ShaderNodeOutputMaterial"
     for node in tree.nodes:
         if node.bl_idname == expected and getattr(node, "is_active_output", True):
             links = _socket_links(tree)
-            source = links.get((node.name, "Surface"))
+            source = links.get((node.name, socket))
             if source:
                 return {"node": source[0], "socket": source[1]}
     return None
@@ -125,7 +130,13 @@ def _active_output(tree: Any, world: bool = False) -> dict[str, str] | None:
 def _tree(tree: Any, world: bool = False) -> dict[str, Any] | None:
     data = manifest._node_tree_manifest(tree)
     if data is not None:
-        data["surface_root"] = _active_output(tree, world)
+        data["surface_root"] = _active_output(tree, "Surface", world)
+        data["volume_root"] = _active_output(tree, "Volume", world)
+        data["displacement_root"] = (
+            None
+            if world
+            else _active_output(tree, "Displacement", world)
+        )
     return data
 
 
@@ -152,14 +163,59 @@ def _geometry(
         return None
     if mesh is None:
         return None
+    owned_mesh = None
     try:
+        # Mesh.calc_tangents rejects n-gons, while Cycles and Psycles both
+        # consume triangles. Triangulate only n-gons on Blender's temporary
+        # evaluated mesh so tangent generation and exported Accel topology
+        # share the same corner-domain UV/color data. Existing triangles and
+        # quads are left untouched.
+        if any(len(polygon.vertices) > 4 for polygon in mesh.polygons):
+            # Never edit the depsgraph-owned temporary mesh in place: doing
+            # so can leave its CustomData layer pointers stale. An owned ID
+            # copy keeps UV/color corner layers valid through BMesh writeback.
+            owned_mesh = mesh.copy()
+            mesh = owned_mesh
+            edit_mesh = bmesh.new()
+            try:
+                edit_mesh.from_mesh(mesh)
+                ngon_faces = [
+                    face
+                    for face in edit_mesh.faces
+                    if len(face.verts) > 4
+                ]
+                if ngon_faces:
+                    bmesh.ops.triangulate(
+                        edit_mesh,
+                        faces=ngon_faces,
+                        quad_method="FIXED",
+                        ngon_method="BEAUTY",
+                    )
+                    edit_mesh.to_mesh(mesh)
+                    mesh.update()
+            finally:
+                edit_mesh.free()
         mesh.calc_loop_triangles()
         if not mesh.loop_triangles:
             return None
         uv_layer = mesh.uv_layers.active
+        has_uv_tangents = False
+        if uv_layer is not None:
+            try:
+                mesh.calc_tangents(uvmap=uv_layer.name)
+                has_uv_tangents = True
+            except RuntimeError:
+                # Match Cycles' missing tangent-attribute behavior. The
+                # exported zero tangent is consumed as "use sd->N".
+                has_uv_tangents = False
+        # calc_tangents may reallocate loop CustomData. Never retain the
+        # pre-call Python layer wrapper, which can become a dangling pointer
+        # on complex evaluated meshes.
+        uv_layer = mesh.uv_layers.active
         positions = array.array("f")
         normals = array.array("f")
         uvs = array.array("f")
+        uv_tangents = array.array("f")
         generated = array.array("f")
         color_layers = [
             attribute
@@ -254,6 +310,13 @@ def _geometry(
                     uvs.extend(
                         float(value) for value in uv_layer.data[loop_index].uv
                     )
+                if has_uv_tangents:
+                    uv_tangents.extend(
+                        float(value) for value in loop.tangent
+                    )
+                    uv_tangents.append(float(loop.bitangent_sign))
+                else:
+                    uv_tangents.extend((0.0, 0.0, 0.0, 0.0))
                 indices.append(next_index)
                 next_index += 1
             materials.append(int(triangle.material_index))
@@ -270,6 +333,7 @@ def _geometry(
             "positions": _write_array(stream, positions),
             "normals": _write_array(stream, normals),
             "uv": _write_array(stream, uvs),
+            "uv_tangents": _write_array(stream, uv_tangents),
             "generated": _write_array(stream, generated),
             "color_attributes": [
                 {
@@ -293,6 +357,8 @@ def _geometry(
             ],
         }
     finally:
+        if owned_mesh is not None:
+            bpy.data.meshes.remove(owned_mesh)
         evaluated.to_mesh_clear()
 
 
@@ -580,6 +646,16 @@ def _main() -> None:
                     "transform": _column_major(object_instance.matrix_world),
                     "persistent_id": list(object_instance.persistent_id),
                     "is_instance": bool(object_instance.is_instance),
+                    # Cycles stores particle data for both parent and child
+                    # particles and exposes that data index through Particle
+                    # Info. Blender's dependency-graph persistent ID is the
+                    # corresponding particle index for particle duplis.
+                    "particle_index": int(
+                        object_instance.persistent_id[0]
+                        if object_instance.particle_system is not None
+                        else 0
+                    )
+                    & _UINT32_MASK,
                     # Cycles uses the dependency-graph random id for duplis,
                     # and hash_uint2(hash_string(object name), 0) otherwise.
                     "random_id": int(
@@ -602,6 +678,38 @@ def _main() -> None:
                     },
                 }
             )
+
+    geometry_size = (output / "geometry.bin").stat().st_size
+    for geometry in geometries:
+        sections = [
+            geometry[name]
+            for name in (
+                "positions",
+                "normals",
+                "uv",
+                "uv_tangents",
+                "generated",
+                "indices",
+                "triangle_material_slots",
+                "triangle_random_per_island",
+            )
+        ]
+        sections.extend(
+            attribute["values"]
+            for attribute in geometry["color_attributes"]
+        )
+        for section in sections:
+            end = int(section["offset"]) + int(section["bytes"])
+            if (
+                int(section["offset"]) < 0
+                or int(section["bytes"]) < 0
+                or end > geometry_size
+            ):
+                raise RuntimeError(
+                    f"incomplete geometry.bin section for "
+                    f"{geometry['name']!r}: {section}, "
+                    f"file size {geometry_size}"
+                )
 
     materials = []
     for material in sorted(bpy.data.materials, key=lambda item: item.name):
@@ -629,6 +737,7 @@ def _main() -> None:
             "angle": float(camera.data.angle),
             "angle_x": float(camera.data.angle_x),
             "angle_y": float(camera.data.angle_y),
+            "sensor_fit": str(camera.data.sensor_fit),
             "lens": float(camera.data.lens),
             "ortho_scale": float(camera.data.ortho_scale),
             "shift_x": float(camera.data.shift_x),

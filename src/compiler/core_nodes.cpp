@@ -113,6 +113,17 @@ NodeRegistry make_core_node_registry() {
             feature_bit(ShaderFeature::attributes)}));
 
     static_cast<void>(registry.register_schema(NodeSchema{
+        .type = node_type::particle_info,
+        .inputs = {},
+        .outputs = {
+            output("Index", SocketType::floating),
+            output("Random", SocketType::floating)},
+        .properties = {},
+        .required_features =
+            feature_bit(ShaderFeature::surface) |
+            feature_bit(ShaderFeature::attributes)}));
+
+    static_cast<void>(registry.register_schema(NodeSchema{
         .type = node_type::light_path,
         .inputs = {},
         .outputs = {
@@ -197,10 +208,13 @@ NodeRegistry make_core_node_registry() {
         .type = node_type::noise_texture,
         .inputs = {
             input("Vector", SocketType::vector, SocketValue::vector({0.0f, 0.0f, 0.0f})),
+            input("W", SocketType::floating, SocketValue::floating(0.0f)),
             input("Scale", SocketType::floating, SocketValue::floating(5.0f)),
             input("Detail", SocketType::floating, SocketValue::floating(2.0f)),
             input("Roughness", SocketType::floating, SocketValue::floating(0.5f)),
             input("Lacunarity", SocketType::floating, SocketValue::floating(2.0f)),
+            input("Offset", SocketType::floating, SocketValue::floating(0.0f)),
+            input("Gain", SocketType::floating, SocketValue::floating(1.0f)),
             input("Distortion", SocketType::floating, SocketValue::floating(0.0f))},
         .outputs = {
             output("Factor", SocketType::floating),
@@ -212,6 +226,14 @@ NodeRegistry make_core_node_registry() {
                 SocketValue::unsigned_integer(3u)),
             property(
                 "Normalize",
+                SocketType::boolean,
+                SocketValue::boolean(false)),
+            property(
+                "NoiseType",
+                SocketType::string,
+                SocketValue::string("FBM")),
+            property(
+                "NeedsColor",
                 SocketType::boolean,
                 SocketValue::boolean(false))},
         .required_features = feature_bit(ShaderFeature::surface)}));

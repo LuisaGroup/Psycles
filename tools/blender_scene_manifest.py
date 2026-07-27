@@ -322,6 +322,7 @@ def _cycles_settings(scene: Any) -> dict[str, Any]:
     cycles = scene.cycles
     names = [
         "samples",
+        "seed",
         "use_adaptive_sampling",
         "adaptive_threshold",
         "adaptive_min_samples",
@@ -340,6 +341,7 @@ def _cycles_settings(scene: Any) -> dict[str, Any]:
         "direct_light_sampling_type",
         "use_light_tree",
         "light_sampling_threshold",
+        "film_exposure",
         "use_denoising",
     ]
     return {

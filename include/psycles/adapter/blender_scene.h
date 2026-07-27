@@ -27,6 +27,9 @@ struct BlenderSceneImport {
     std::uint32_t width{};
     std::uint32_t height{};
     std::uint32_t samples{};
+    std::uint32_t seed{};
+    bool adaptive_sampling{};
+    bool denoising{};
     bool transparent_background{};
     contract::PixelFilter pixel_filter{
         contract::PixelFilter::box};

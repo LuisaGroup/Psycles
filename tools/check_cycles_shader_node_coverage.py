@@ -41,6 +41,7 @@ DEVICE_IMPLEMENTED_UNVERIFIED = {
     "ADD_SHADER",
     "BSDF_DIFFUSE",
     "MIX_SHADER",
+    "TEX_NOISE",
 }
 
 # These nodes have a device implementation with known missing modes, inputs, or
@@ -66,7 +67,6 @@ DEVICE_PARTIAL = {
     "TEX_COORD",
     "TEX_GRADIENT",
     "TEX_IMAGE",
-    "TEX_NOISE",
     "TEX_SKY",
     "UVMAP",
     "VALTORGB",
