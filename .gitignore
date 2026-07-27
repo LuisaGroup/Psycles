@@ -1,0 +1,16 @@
+/build/
+/build-*/
+/out/
+/outputs/
+/assets/
+/pids/
+/.cache/
+compile_commands.json
+__pycache__/
+*.py[cod]
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
