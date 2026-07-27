@@ -1758,6 +1758,25 @@ private:
                             : make_float4(noise.value);
                     break;
                 }
+                case compiler::ValueOperation::white_noise_value:
+                case compiler::ValueOperation::white_noise_color: {
+                    const auto color_needed =
+                        instruction.operation ==
+                        compiler::ValueOperation::
+                            white_noise_color;
+                    const auto noise =
+                        cycles_noise::evaluate_white(
+                            vector(instruction.a, result),
+                            scalar(instruction.b, result),
+                            static_cast<std::uint32_t>(
+                                instruction.static_u0),
+                            color_needed);
+                    value =
+                        color_needed
+                            ? make_float4(noise.color, 1.0f)
+                            : make_float4(noise.value);
+                    break;
+                }
                 case compiler::ValueOperation::brick_color:
                 case compiler::ValueOperation::brick_factor: {
                     auto p =

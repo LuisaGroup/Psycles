@@ -1385,6 +1385,48 @@ private:
                         ? SocketType::color
                         : SocketType::floating});
         }
+        if (type == "TEX_WHITE_NOISE") {
+            const auto id = _graph.add_node(
+                compiler::node_type::white_noise_texture,
+                node_name);
+            static_cast<void>(bind(
+                id,
+                "Vector",
+                node,
+                "Vector",
+                SocketType::vector));
+            static_cast<void>(bind(
+                id,
+                "W",
+                node,
+                "W",
+                SocketType::floating));
+            const auto dimensions =
+                node_property_text(
+                    node, "noise_dimensions", "3D");
+            static_cast<void>(_graph.set_property(
+                id,
+                "Dimensions",
+                SocketValue::unsigned_integer(
+                    dimensions == "1D"
+                        ? 1u
+                        : dimensions == "2D"
+                              ? 2u
+                              : dimensions == "4D" ? 4u : 3u)));
+            static_cast<void>(_graph.set_property(
+                id,
+                "NeedsColor",
+                SocketValue::boolean(socket == "Color")));
+            return finish({
+                .ref = {
+                    .node = id,
+                    .socket =
+                        socket == "Color" ? "Color" : "Value"},
+                .type =
+                    socket == "Color"
+                        ? SocketType::color
+                        : SocketType::floating});
+        }
         if (type == "TEX_BRICK") {
             const auto id = _graph.add_node(
                 compiler::node_type::brick_texture,

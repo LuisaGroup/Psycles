@@ -39,6 +39,7 @@ _ALL_PROBES = (
     "separate_color_modes",
     "transparent_mix",
     "value_emission",
+    "white_noise_dimensions",
 )
 
 

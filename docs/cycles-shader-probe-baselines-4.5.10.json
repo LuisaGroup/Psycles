@@ -167,6 +167,22 @@
       "probe": "separate_color_modes",
       "samples": 4
     },
+    "TEX_WHITE_NOISE": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 0.0
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "white_noise_dimensions",
+      "samples": 4
+    },
     "VALUE": {
       "max_rmse": 1e-06,
       "passes": {

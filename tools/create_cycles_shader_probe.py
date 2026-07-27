@@ -482,6 +482,90 @@ def _noise_bump_object(scene: Any) -> None:
     _plane(material)
 
 
+def _white_noise_dimensions(scene: Any) -> None:
+    material, tree, output = _material(
+        "White Noise Dimensions Probe"
+    )
+    values: list[Any] = []
+    colors: list[dict[str, Any]] = []
+    constants = (
+        ((0.17, -2.3, 5.1), 0.37),
+        ((-0.25, 1.75, 3.5), -4.25),
+        ((2.125, -0.75, 0.03125), 8.5),
+        ((-6.0, 0.625, 4.75), 1.125),
+    )
+    for dimensions, (vector, w) in enumerate(
+        constants, start=1
+    ):
+        white = tree.nodes.new("ShaderNodeTexWhiteNoise")
+        white.name = f"White Noise {dimensions}D"
+        white.noise_dimensions = f"{dimensions}D"
+        if dimensions != 1:
+            _input(white, "Vector").default_value = vector
+        if dimensions in (1, 4):
+            _input(white, "W").default_value = w
+        values.append(_output(white, "Value"))
+        separate = tree.nodes.new("ShaderNodeSeparateColor")
+        separate.name = f"Separate {dimensions}D Color"
+        separate.mode = "RGB"
+        tree.links.new(
+            _output(white, "Color"),
+            _input(separate, "Color"),
+        )
+        colors.append(
+            {
+                channel: _output(separate, channel)
+                for channel in ("Red", "Green", "Blue")
+            }
+        )
+
+    def average(name: str, sockets: list[Any]) -> Any:
+        current = sockets[0]
+        for index, socket in enumerate(sockets[1:], start=1):
+            add = tree.nodes.new("ShaderNodeMath")
+            add.name = f"{name} Add {index}"
+            add.operation = "ADD"
+            tree.links.new(current, _input(add, "Value"))
+            tree.links.new(socket, add.inputs[1])
+            current = _output(add, "Value")
+        scale = tree.nodes.new("ShaderNodeMath")
+        scale.name = f"{name} Average"
+        scale.operation = "MULTIPLY"
+        tree.links.new(current, _input(scale, "Value"))
+        scale.inputs[1].default_value = 1.0 / len(sockets)
+        return _output(scale, "Value")
+
+    red = average(
+        "Red",
+        [values[0], values[3], colors[1]["Red"]],
+    )
+    green = average(
+        "Green",
+        [values[1], colors[2]["Green"], colors[0]["Green"]],
+    )
+    blue = average(
+        "Blue",
+        [values[2], colors[3]["Blue"], colors[0]["Blue"]],
+    )
+    combine = tree.nodes.new("ShaderNodeCombineColor")
+    combine.name = "Combine White Noise Coverage"
+    combine.mode = "RGB"
+    tree.links.new(red, _input(combine, "Red"))
+    tree.links.new(green, _input(combine, "Green"))
+    tree.links.new(blue, _input(combine, "Blue"))
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Emission"
+    tree.links.new(
+        _output(combine, "Color"),
+        _input(emission, "Color"),
+    )
+    tree.links.new(
+        _output(emission, "Emission"),
+        _input(output, "Surface"),
+    )
+    _plane(material)
+
+
 def _particle_random_nonparticle(scene: Any) -> None:
     material, tree, output = _material("Particle Random Probe")
     particle = tree.nodes.new("ShaderNodeParticleInfo")
@@ -924,6 +1008,7 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "separate_color_modes": _separate_color_modes,
     "transparent_mix": _transparent_mix,
     "value_emission": _value_emission,
+    "white_noise_dimensions": _white_noise_dimensions,
 }
 
 

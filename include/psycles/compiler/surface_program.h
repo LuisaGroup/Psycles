@@ -104,6 +104,8 @@ enum class ValueOperation : std::uint8_t {
     bump,
     noise_factor,
     noise_color,
+    white_noise_value,
+    white_noise_color,
     brick_color,
     brick_factor,
     gradient,

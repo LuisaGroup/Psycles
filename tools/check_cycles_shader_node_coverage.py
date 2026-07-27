@@ -32,6 +32,7 @@ CYCLES_VERIFIED = {
     "RGB",
     "RGBTOBW",
     "SEPARATE_COLOR",
+    "TEX_WHITE_NOISE",
     "VALUE",
 }
 

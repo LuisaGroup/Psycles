@@ -139,6 +139,106 @@ inline void hash_mix(UInt &a, UInt &b, UInt &c) noexcept {
         as<luisa::uint>(value.y)));
 }
 
+[[nodiscard]] inline Float hash_float(Float value) noexcept {
+    return uint_to_float_inclusive(
+        hash_uint(as<luisa::uint>(value)));
+}
+
+[[nodiscard]] inline Float hash_float3(Float3 value) noexcept {
+    return uint_to_float_inclusive(hash_uint3(
+        as<luisa::uint>(value.x),
+        as<luisa::uint>(value.y),
+        as<luisa::uint>(value.z)));
+}
+
+[[nodiscard]] inline Float hash_float4(Float4 value) noexcept {
+    return uint_to_float_inclusive(hash_uint4(
+        as<luisa::uint>(value.x),
+        as<luisa::uint>(value.y),
+        as<luisa::uint>(value.z),
+        as<luisa::uint>(value.w)));
+}
+
+[[nodiscard]] inline Float3 hash_float_to_color(
+    Float value) noexcept {
+    return make_float3(
+        hash_float(value),
+        hash_float2(make_float2(value, 1.0f)),
+        hash_float2(make_float2(value, 2.0f)));
+}
+
+[[nodiscard]] inline Float3 hash_float2_to_color(
+    Float2 value) noexcept {
+    return make_float3(
+        hash_float2(value),
+        hash_float3(make_float3(value, 1.0f)),
+        hash_float3(make_float3(value, 2.0f)));
+}
+
+[[nodiscard]] inline Float3 hash_float3_to_color(
+    Float3 value) noexcept {
+    return make_float3(
+        hash_float3(value),
+        hash_float4(make_float4(value, 1.0f)),
+        hash_float4(make_float4(value, 2.0f)));
+}
+
+[[nodiscard]] inline Float3 hash_float4_to_color(
+    Float4 value) noexcept {
+    return make_float3(
+        hash_float4(value),
+        hash_float4(make_float4(
+            value.z, value.x, value.w, value.y)),
+        hash_float4(make_float4(
+            value.w, value.z, value.y, value.x)));
+}
+
+[[nodiscard]] inline Result evaluate_white(
+    Float3 vector,
+    Float w,
+    std::uint32_t dimensions,
+    bool color_needed) noexcept {
+    Result result{
+        .value = 0.0f,
+        .color = make_float3(0.0f)};
+    switch (dimensions) {
+        case 1u:
+            result.value = hash_float(w);
+            if (color_needed) {
+                result.color = hash_float_to_color(w);
+            }
+            break;
+        case 2u: {
+            const auto value =
+                make_float2(vector.x, vector.y);
+            result.value = hash_float2(value);
+            if (color_needed) {
+                result.color =
+                    hash_float2_to_color(value);
+            }
+            break;
+        }
+        case 4u: {
+            const auto value = make_float4(vector, w);
+            result.value = hash_float4(value);
+            if (color_needed) {
+                result.color =
+                    hash_float4_to_color(value);
+            }
+            break;
+        }
+        case 3u:
+        default:
+            result.value = hash_float3(vector);
+            if (color_needed) {
+                result.color =
+                    hash_float3_to_color(vector);
+            }
+            break;
+    }
+    return result;
+}
+
 [[nodiscard]] inline Float random_offset(Float seed) noexcept {
     return 100.0f +
            uint_to_float_inclusive(

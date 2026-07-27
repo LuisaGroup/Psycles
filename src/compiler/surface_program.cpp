@@ -975,6 +975,33 @@ private:
             }
             return;
         }
+        if (node.type == node_type::white_noise_texture) {
+            auto vector = lower_value_input(node, "Vector");
+            auto w = lower_value_input(node, "W");
+            if (vector && w) {
+                const auto needs_color =
+                    property_bool(node, "NeedsColor");
+                auto instruction = ValueInstruction{
+                    .operation =
+                        needs_color
+                            ? ValueOperation::white_noise_color
+                            : ValueOperation::white_noise_value,
+                    .source_node = node.id,
+                    .result_type =
+                        needs_color
+                            ? SocketType::color
+                            : SocketType::floating,
+                    .a = *vector,
+                    .b = *w,
+                    .static_u0 =
+                        property_uint(node, "Dimensions", 3u)};
+                publish(
+                    node.id,
+                    needs_color ? "Color" : "Value",
+                    append(std::move(instruction)));
+            }
+            return;
+        }
         if (node.type == node_type::brick_texture) {
             auto vector = lower_value_input(node, "Vector");
             auto color1 = lower_value_input(node, "Color1");

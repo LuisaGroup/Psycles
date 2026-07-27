@@ -239,6 +239,31 @@ NodeRegistry make_core_node_registry() {
         .required_features = feature_bit(ShaderFeature::surface)}));
 
     static_cast<void>(registry.register_schema(NodeSchema{
+        .type = node_type::white_noise_texture,
+        .inputs = {
+            input(
+                "Vector",
+                SocketType::vector,
+                SocketValue::vector({0.0f, 0.0f, 0.0f})),
+            input(
+                "W",
+                SocketType::floating,
+                SocketValue::floating(0.0f))},
+        .outputs = {
+            output("Value", SocketType::floating),
+            output("Color", SocketType::color)},
+        .properties = {
+            property(
+                "Dimensions",
+                SocketType::unsigned_integer,
+                SocketValue::unsigned_integer(3u)),
+            property(
+                "NeedsColor",
+                SocketType::boolean,
+                SocketValue::boolean(false))},
+        .required_features = feature_bit(ShaderFeature::surface)}));
+
+    static_cast<void>(registry.register_schema(NodeSchema{
         .type = node_type::brick_texture,
         .inputs = {
             input("Vector", SocketType::vector, SocketValue::vector({0.0f, 0.0f, 0.0f})),

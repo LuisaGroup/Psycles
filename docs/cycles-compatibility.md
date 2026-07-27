@@ -64,12 +64,22 @@ focused probes cover every dimension, fractal mode, normalization state, and
 socket combination; finite-sample Combined differences also include the
 known random-dimension sequence gap.
 
-Particle Info's non-particle fallback contract is also explicit: its Random
+Particle Info's non-particle sentinel contract is also explicit: its Random
 output now follows Cycles rather than reusing Object Info random. The
 `particle_random_nonparticle` probe matches Combined, Normal, and DiffCol
-exactly at 64×64. Actual particle-system index, age, lifetime, location,
-size, velocity, angular velocity, and per-particle random remain partial
-until particle state is exported and carried in the Luisa surface point.
+exactly at 64×64. Blender's evaluated persistent particle index is exported
+per instance and carried through the Luisa hit state; Index and Random are
+therefore distinct from Object Info and vary across an instanced particle
+system. The current 27-instance particle probe measures Combined RMSE
+`0.00402` and Normal RMSE `0.00898`, with the residual concentrated at
+finite-sample sphere silhouettes. Age, Lifetime, Location, Size, Velocity,
+and Angular Velocity remain explicit partial outputs.
+
+White Noise Texture is `cycles_verified`. Its 1D–4D Value and Color paths use
+Cycles' float-bit Jenkins hashes and channel permutations. A single
+full-frame probe combines nontrivial constants from every dimension and both
+outputs; Combined, Normal, and DiffCol all match Blender 4.5.10 exactly at
+64×64/4 spp (RMSE and maximum absolute error 0).
 
 ## Integrator contract
 

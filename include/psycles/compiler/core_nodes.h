@@ -12,6 +12,8 @@ inline constexpr auto texture_coordinate = "psycles.texture_coordinate";
 inline constexpr auto mapping = "psycles.vector.mapping";
 inline constexpr auto image_texture = "psycles.texture.image";
 inline constexpr auto noise_texture = "psycles.texture.noise";
+inline constexpr auto white_noise_texture =
+    "psycles.texture.white_noise";
 inline constexpr auto brick_texture = "psycles.texture.brick";
 inline constexpr auto gradient_texture = "psycles.texture.gradient";
 inline constexpr auto nishita_sky = "psycles.texture.nishita_sky";
