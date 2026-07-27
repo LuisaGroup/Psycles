@@ -47,6 +47,12 @@ The `node_group_color` structural probe uses two levels of arbitrarily named
 group instances and currently matches Cycles exactly for Combined, Normal, and
 DiffCol at 64×64 (RMSE 0 for all three passes).
 
+The full-frame color/value probes cover RGB-to-BW scene-linear luminance,
+Gamma's zero/positive/negative exponents, Brightness/Contrast clipping, both
+Clamp range-order modes, and RGB/HSV/HSL Separate/Combine Color dispatch.
+All six currently match Blender 4.5.10 Cycles exactly for Combined, Normal,
+and DiffCol at 64×64 (RMSE and maximum absolute error 0).
+
 ## Integrator contract
 
 The Blender scene package carries these Cycles settings into

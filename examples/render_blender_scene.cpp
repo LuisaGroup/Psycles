@@ -124,17 +124,11 @@ int main(int argc, char **argv) {
              .name = "Albedo",
              .light_group = {},
              .channels = 3u}}};
-    const auto session_begin =
-        std::chrono::steady_clock::now();
     auto session =
         renderer.create_session(*compilation.scene, settings);
     if (!session) {
         return EXIT_FAILURE;
     }
-    const auto session_seconds =
-        std::chrono::duration<double>(
-            std::chrono::steady_clock::now() - session_begin)
-            .count();
     psycles::io::MemoryOutputSink sink;
     const auto render_begin = std::chrono::steady_clock::now();
     if (!session->render_samples(
@@ -186,8 +180,6 @@ int main(int argc, char **argv) {
         << imported.scene->instances.size() << " instances, "
         << imported.scene->materials.size() << " materials in "
         << compile_seconds << " s\n"
-        << "Luisa shader JIT completed in "
-        << session_seconds << " s\n"
         << "Rendered " << width << 'x' << height << " at "
         << samples << " spp in " << render_seconds << " s: "
         << output << '\n'

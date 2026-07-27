@@ -145,6 +145,10 @@ void test_combine_color_lowers_to_surface_program() {
                 combine, "B", SocketValue::floating(0.75f)),
         "failed to configure Combine Color");
     expect(
+        graph.set_property(
+            combine, "Mode", SocketValue::string("HSL")),
+        "failed to configure Combine Color mode");
+    expect(
         graph.connect(
             {.node = combine, .socket = "Color"},
             diffuse,
@@ -164,9 +168,108 @@ void test_combine_color_lowers_to_surface_program() {
             surface.program->value_instructions(),
             [](const ValueInstruction &instruction) {
                 return instruction.operation ==
-                       ValueOperation::combine_color;
+                           ValueOperation::combine_color &&
+                       instruction.static_u0 == 2u;
             }),
-        "Combine Color instruction is missing");
+        "HSL Combine Color instruction is missing");
+}
+
+void test_cycles_color_value_nodes_lower_to_surface_program() {
+    ShaderGraph graph;
+    const auto source =
+        graph.add_node(node_type::constant_color, "Source");
+    const auto gamma =
+        graph.add_node(node_type::gamma_color, "Gamma");
+    const auto bright = graph.add_node(
+        node_type::brightness_contrast,
+        "Brightness/Contrast");
+    const auto gray =
+        graph.add_node(node_type::color_to_scalar, "RGB to BW");
+    const auto clamp =
+        graph.add_node(node_type::clamp_range, "Clamp");
+    const auto color =
+        graph.add_node(node_type::scalar_to_color, "To Color");
+    const auto diffuse =
+        graph.add_node(node_type::diffuse_bsdf, "Diffuse");
+
+    expect(
+        graph.connect(
+            {.node = source, .socket = "Color"},
+            gamma,
+            "Color") &&
+            graph.connect(
+                {.node = gamma, .socket = "Color"},
+                bright,
+                "Color") &&
+            graph.connect(
+                {.node = bright, .socket = "Color"},
+                gray,
+                "Color") &&
+            graph.connect(
+                {.node = gray, .socket = "Value"},
+                clamp,
+                "Value") &&
+            graph.connect(
+                {.node = clamp, .socket = "Result"},
+                color,
+                "Value") &&
+            graph.connect(
+                {.node = color, .socket = "Color"},
+                diffuse,
+                "Color"),
+        "failed to connect Cycles color/value test graph");
+    expect(
+        graph.set_input(
+            gamma, "Gamma", SocketValue::floating(2.2f)) &&
+            graph.set_input(
+                bright, "Bright", SocketValue::floating(0.1f)) &&
+            graph.set_input(
+                bright,
+                "Contrast",
+                SocketValue::floating(-0.25f)) &&
+            graph.set_input(
+                clamp, "Min", SocketValue::floating(0.8f)) &&
+            graph.set_input(
+                clamp, "Max", SocketValue::floating(0.2f)) &&
+            graph.set_property(
+                clamp, "Mode", SocketValue::string("RANGE")),
+        "failed to configure Cycles color/value test graph");
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = diffuse, .socket = "Closure"});
+
+    ShaderCompiler compiler{make_core_node_registry()};
+    auto shader = compiler.compile(graph);
+    expect(
+        shader.ok(),
+        "Cycles color/value graph failed to compile");
+    auto surface = compile_surface_program(*shader.program);
+    expect(
+        surface.ok(),
+        "Cycles color/value graph failed to lower");
+    const auto &instructions =
+        surface.program->value_instructions();
+    for (const auto operation : {
+             ValueOperation::gamma,
+             ValueOperation::brightness_contrast,
+             ValueOperation::color_to_scalar}) {
+        expect(
+            std::ranges::any_of(
+                instructions,
+                [operation](const ValueInstruction &instruction) {
+                    return instruction.operation == operation;
+                }),
+            "Cycles color/value instruction is missing");
+    }
+    expect(
+        std::ranges::any_of(
+            instructions,
+            [](const ValueInstruction &instruction) {
+                return instruction.operation ==
+                           ValueOperation::clamp_range &&
+                       instruction.static_u0 == 1u;
+            }),
+        "range-swapping Clamp instruction is missing");
 }
 
 void test_cycles_normalized_graph_adapter() {
@@ -594,6 +697,7 @@ int main() {
         test_shader_graph_and_invalidation();
         test_closure_tree_is_preserved();
         test_combine_color_lowers_to_surface_program();
+        test_cycles_color_value_nodes_lower_to_surface_program();
         test_cycles_normalized_graph_adapter();
         test_cycles_adapter_rejects_svm_lowered_graph();
         test_incremental_material_library();

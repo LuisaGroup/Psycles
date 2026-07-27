@@ -23,6 +23,22 @@
       "probe": "background_world",
       "samples": 4
     },
+    "BRIGHTCONTRAST": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 0.0
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "brightness_contrast",
+      "samples": 4
+    },
     "BSDF_TRANSPARENT": {
       "max_rmse": 0.0001,
       "passes": {
@@ -38,6 +54,38 @@
       },
       "probe": "transparent_mix",
       "samples": 4096
+    },
+    "CLAMP": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 0.0
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "clamp",
+      "samples": 4
+    },
+    "COMBINE_COLOR": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 0.0
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "combine_color_modes",
+      "samples": 4
     },
     "EMISSION": {
       "max_rmse": 1e-06,
@@ -55,6 +103,22 @@
       "probe": "emission_surface",
       "samples": 4
     },
+    "GAMMA": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 0.0
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "gamma_color",
+      "samples": 4
+    },
     "RGB": {
       "max_rmse": 1e-06,
       "passes": {
@@ -69,6 +133,38 @@
         }
       },
       "probe": "rgb_emission",
+      "samples": 4
+    },
+    "RGBTOBW": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 0.0
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "rgb_to_bw",
+      "samples": 4
+    },
+    "SEPARATE_COLOR": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 0.0
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "separate_color_modes",
       "samples": 4
     },
     "VALUE": {

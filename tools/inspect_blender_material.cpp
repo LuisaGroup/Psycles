@@ -50,16 +50,10 @@ int main(int argc, char **argv) {
     }
     auto imported =
         psycles::adapter::load_blender_scene_bundle(argv[1]);
-    for (const auto &diagnostic : imported.diagnostics) {
-        std::cerr
-            << (diagnostic.severity ==
-                        psycles::adapter::
-                            BlenderSceneDiagnosticSeverity::error
-                    ? "error: "
-                    : "warning: ")
-            << diagnostic.message << '\n';
-    }
     if (!imported.ok()) {
+        for (const auto &diagnostic : imported.diagnostics) {
+            std::cerr << diagnostic.message << '\n';
+        }
         return EXIT_FAILURE;
     }
     psycles::compiler::ShaderCompiler shader_compiler{

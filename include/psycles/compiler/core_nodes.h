@@ -24,6 +24,7 @@ inline constexpr auto maximum_float = "psycles.math.maximum";
 inline constexpr auto power_float = "psycles.math.power";
 inline constexpr auto absolute_float = "psycles.math.absolute";
 inline constexpr auto clamp_float = "psycles.math.clamp";
+inline constexpr auto clamp_range = "psycles.math.clamp_range";
 inline constexpr auto scalar_to_color = "psycles.convert.scalar_to_color";
 inline constexpr auto color_to_scalar = "psycles.convert.color_to_scalar";
 inline constexpr auto vector_to_scalar = "psycles.convert.vector_to_scalar";
@@ -38,6 +39,9 @@ inline constexpr auto mix_color = "psycles.color.mix";
 inline constexpr auto multiply_color = "psycles.color.multiply";
 inline constexpr auto hue_saturation = "psycles.color.hue_saturation";
 inline constexpr auto invert_color = "psycles.color.invert";
+inline constexpr auto gamma_color = "psycles.color.gamma";
+inline constexpr auto brightness_contrast =
+    "psycles.color.brightness_contrast";
 inline constexpr auto color_ramp = "psycles.color.ramp";
 inline constexpr auto rgb_curve = "psycles.color.rgb_curve";
 inline constexpr auto separate_color = "psycles.color.separate";

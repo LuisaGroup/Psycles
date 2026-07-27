@@ -256,6 +256,76 @@ def _diffuse_surface(scene: Any) -> None:
     _sphere(material)
 
 
+def _principled_surface(scene: Any) -> None:
+    _world(scene, (0.42, 0.52, 0.65, 1.0), 0.8)
+    material, tree, output = _material("Principled Probe")
+    principled = tree.nodes.new("ShaderNodeBsdfPrincipled")
+    principled.name = "Principled BSDF"
+    principled.distribution = "GGX"
+    _input(principled, "Base Color").default_value = (
+        0.32,
+        0.12,
+        0.06,
+        1.0,
+    )
+    _input(principled, "Metallic").default_value = 0.35
+    _input(principled, "Roughness").default_value = 0.28
+    _input(principled, "Diffuse Roughness").default_value = 0.0
+    _input(principled, "IOR").default_value = 1.45
+    _input(principled, "Specular IOR Level").default_value = 0.5
+    _input(principled, "Specular Tint").default_value = (
+        0.7,
+        0.9,
+        1.0,
+        1.0,
+    )
+    tree.links.new(
+        _output(principled, "BSDF"),
+        _input(output, "Surface"),
+    )
+    _sphere(material)
+
+
+def _bump_surface(scene: Any) -> None:
+    _world(scene, (0.42, 0.52, 0.65, 1.0), 0.8)
+    material, tree, output = _material("Bump Probe")
+    coordinates = tree.nodes.new("ShaderNodeTexCoord")
+    coordinates.name = "Texture Coordinate"
+    gradient = tree.nodes.new("ShaderNodeTexGradient")
+    gradient.name = "Gradient Texture"
+    gradient.gradient_type = "LINEAR"
+    bump = tree.nodes.new("ShaderNodeBump")
+    bump.name = "Bump"
+    _input(bump, "Strength").default_value = 1.0
+    _input(bump, "Distance").default_value = 0.2
+    diffuse = tree.nodes.new("ShaderNodeBsdfDiffuse")
+    diffuse.name = "Diffuse BSDF"
+    _input(diffuse, "Color").default_value = (
+        0.5,
+        0.22,
+        0.08,
+        1.0,
+    )
+    _input(diffuse, "Roughness").default_value = 0.0
+    tree.links.new(
+        _output(coordinates, "Generated"),
+        _input(gradient, "Vector"),
+    )
+    tree.links.new(
+        _output(gradient, "Fac"),
+        _input(bump, "Height"),
+    )
+    tree.links.new(
+        _output(bump, "Normal"),
+        _input(diffuse, "Normal"),
+    )
+    tree.links.new(
+        _output(diffuse, "BSDF"),
+        _input(output, "Surface"),
+    )
+    _sphere(material)
+
+
 def _background_world(scene: Any) -> None:
     _world(scene, (0.16, 0.48, 0.77, 1.0), 2.3)
 
@@ -350,14 +420,263 @@ def _node_group_color(scene: Any) -> None:
     _plane(material)
 
 
+def _rgb_to_bw(scene: Any) -> None:
+    material, tree, output = _material("RGB to BW")
+    combine = tree.nodes.new("ShaderNodeCombineColor")
+    combine.name = "Pack Luminance Weights"
+    combine.mode = "RGB"
+    for color, target in (
+        ((1.0, 0.0, 0.0, 1.0), "Red"),
+        ((0.0, 1.0, 0.0, 1.0), "Green"),
+        ((0.0, 0.0, 1.0, 1.0), "Blue"),
+    ):
+        convert = tree.nodes.new("ShaderNodeRGBToBW")
+        convert.name = "RGB to BW"
+        _input(convert, "Color").default_value = color
+        tree.links.new(
+            _output(convert, "Val"),
+            _input(combine, target),
+        )
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Emission"
+    tree.links.new(
+        _output(combine, "Color"),
+        _input(emission, "Color"),
+    )
+    tree.links.new(
+        _output(emission, "Emission"),
+        _input(output, "Surface"),
+    )
+    _plane(material)
+
+
+def _gamma_color(scene: Any) -> None:
+    material, tree, output = _material("Gamma")
+    combine = tree.nodes.new("ShaderNodeCombineColor")
+    combine.name = "Pack Gamma Branches"
+    combine.mode = "RGB"
+    for index, (color, gamma, source, target) in enumerate(
+        (
+            ((0.2, 0.5, 0.9, 1.0), 0.0, "Red", "Red"),
+            ((0.18, 0.5, 0.87, 1.0), 2.2, "Green", "Green"),
+            ((0.0, 0.25, 0.25, 1.0), -0.5, "Blue", "Blue"),
+        )
+    ):
+        node = tree.nodes.new("ShaderNodeGamma")
+        node.name = f"Gamma Branch {index}"
+        _input(node, "Color").default_value = color
+        _input(node, "Gamma").default_value = gamma
+        separate = tree.nodes.new("ShaderNodeSeparateColor")
+        separate.name = f"Select Gamma Channel {index}"
+        separate.mode = "RGB"
+        tree.links.new(
+            _output(node, "Color"),
+            _input(separate, "Color"),
+        )
+        tree.links.new(
+            _output(separate, source),
+            _input(combine, target),
+        )
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Emission"
+    tree.links.new(
+        _output(combine, "Color"),
+        _input(emission, "Color"),
+    )
+    tree.links.new(
+        _output(emission, "Emission"),
+        _input(output, "Surface"),
+    )
+    _plane(material)
+
+
+def _brightness_contrast(scene: Any) -> None:
+    material, tree, output = _material("Brightness Contrast")
+    combine = tree.nodes.new("ShaderNodeCombineColor")
+    combine.name = "Pack Brightness/Contrast Branches"
+    combine.mode = "RGB"
+    for index, (color, bright, contrast, source, target) in enumerate(
+        (
+            ((0.14, 0.52, 0.88, 1.0), 0.0, 0.0, "Red", "Red"),
+            (
+                (0.09, 0.44, 0.81, 1.0),
+                0.17,
+                -0.35,
+                "Green",
+                "Green",
+            ),
+            (
+                (0.08, 0.37, 0.08, 1.0),
+                -0.22,
+                0.48,
+                "Blue",
+                "Blue",
+            ),
+        )
+    ):
+        node = tree.nodes.new("ShaderNodeBrightContrast")
+        node.name = f"Brightness/Contrast Branch {index}"
+        _input(node, "Color").default_value = color
+        _input(node, "Bright").default_value = bright
+        _input(node, "Contrast").default_value = contrast
+        separate = tree.nodes.new("ShaderNodeSeparateColor")
+        separate.name = f"Select Brightness Channel {index}"
+        separate.mode = "RGB"
+        tree.links.new(
+            _output(node, "Color"),
+            _input(separate, "Color"),
+        )
+        tree.links.new(
+            _output(separate, source),
+            _input(combine, target),
+        )
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Emission"
+    tree.links.new(
+        _output(combine, "Color"),
+        _input(emission, "Color"),
+    )
+    tree.links.new(
+        _output(emission, "Emission"),
+        _input(output, "Surface"),
+    )
+    _plane(material)
+
+
+def _clamp(scene: Any) -> None:
+    material, tree, output = _material("Clamp")
+    combine = tree.nodes.new("ShaderNodeCombineColor")
+    combine.name = "Pack Clamp Branches"
+    combine.mode = "RGB"
+    for index, (mode, value, minimum, maximum, target) in enumerate(
+        (
+            ("MINMAX", 0.5, 0.8, 0.2, "Red"),
+            ("RANGE", 0.5, 0.8, 0.2, "Green"),
+            ("MINMAX", 2.0, -0.2, 0.7, "Blue"),
+        )
+    ):
+        node = tree.nodes.new("ShaderNodeClamp")
+        node.name = f"Clamp Branch {index}"
+        node.clamp_type = mode
+        _input(node, "Value").default_value = value
+        _input(node, "Min").default_value = minimum
+        _input(node, "Max").default_value = maximum
+        tree.links.new(
+            _output(node, "Result"),
+            _input(combine, target),
+        )
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Emission"
+    tree.links.new(
+        _output(combine, "Color"),
+        _input(emission, "Color"),
+    )
+    tree.links.new(
+        _output(emission, "Emission"),
+        _input(output, "Surface"),
+    )
+    _plane(material)
+
+
+def _separate_color_modes(scene: Any) -> None:
+    material, tree, output = _material("Separate Color Modes")
+    combine = tree.nodes.new("ShaderNodeCombineColor")
+    combine.name = "Pack Separate Modes"
+    combine.mode = "RGB"
+    for index, (mode, source, target) in enumerate(
+        (
+            ("RGB", "Red", "Red"),
+            ("HSV", "Green", "Green"),
+            ("HSL", "Red", "Blue"),
+        )
+    ):
+        separate = tree.nodes.new("ShaderNodeSeparateColor")
+        separate.name = f"Separate Color {mode} {index}"
+        separate.mode = mode
+        _input(separate, "Color").default_value = (
+            0.13,
+            0.47,
+            0.82,
+            1.0,
+        )
+        tree.links.new(
+            _output(separate, source),
+            _input(combine, target),
+        )
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Emission"
+    tree.links.new(
+        _output(combine, "Color"),
+        _input(emission, "Color"),
+    )
+    tree.links.new(
+        _output(emission, "Emission"),
+        _input(output, "Surface"),
+    )
+    _plane(material)
+
+
+def _combine_color_modes(scene: Any) -> None:
+    material, tree, output = _material("Combine Color Modes")
+    packed = tree.nodes.new("ShaderNodeCombineColor")
+    packed.name = "Pack Combine Modes"
+    packed.mode = "RGB"
+    for index, (mode, channels, source, target) in enumerate(
+        (
+            ("RGB", (0.2, 0.6, 0.9), "Red", "Red"),
+            ("HSV", (0.73, 0.61, 0.84), "Green", "Green"),
+            ("HSL", (0.13, 0.55, 0.36), "Blue", "Blue"),
+        )
+    ):
+        combine = tree.nodes.new("ShaderNodeCombineColor")
+        combine.name = f"Combine Color {mode} {index}"
+        combine.mode = mode
+        for name, value in zip(
+            ("Red", "Green", "Blue"),
+            channels,
+            strict=True,
+        ):
+            _input(combine, name).default_value = value
+        separate = tree.nodes.new("ShaderNodeSeparateColor")
+        separate.name = f"Select Combine Channel {index}"
+        separate.mode = "RGB"
+        tree.links.new(
+            _output(combine, "Color"),
+            _input(separate, "Color"),
+        )
+        tree.links.new(
+            _output(separate, source),
+            _input(packed, target),
+        )
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Emission"
+    tree.links.new(
+        _output(packed, "Color"),
+        _input(emission, "Color"),
+    )
+    tree.links.new(
+        _output(emission, "Emission"),
+        _input(output, "Surface"),
+    )
+    _plane(material)
+
+
 _PROBES: dict[str, Callable[[Any], None]] = {
     "add_shader_emission": _add_shader_emission,
     "background_world": _background_world,
+    "bump_surface": _bump_surface,
+    "brightness_contrast": _brightness_contrast,
+    "clamp": _clamp,
+    "combine_color_modes": _combine_color_modes,
     "diffuse_surface": _diffuse_surface,
     "emission_surface": _emission_surface,
+    "gamma_color": _gamma_color,
     "mix_shader_emission": _mix_shader_emission,
     "node_group_color": _node_group_color,
+    "principled_surface": _principled_surface,
     "rgb_emission": _rgb_emission,
+    "rgb_to_bw": _rgb_to_bw,
+    "separate_color_modes": _separate_color_modes,
     "transparent_mix": _transparent_mix,
     "value_emission": _value_emission,
 }

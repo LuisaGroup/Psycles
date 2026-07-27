@@ -48,6 +48,7 @@ enum class ValueOperation : std::uint8_t {
     passthrough,
     scalar_to_color,
     color_to_scalar,
+    vector_to_scalar,
     add,
     subtract,
     multiply,
@@ -57,10 +58,13 @@ enum class ValueOperation : std::uint8_t {
     power,
     absolute,
     clamp01,
+    clamp_range,
     mix,
     multiply_color,
     hue_saturation,
     invert,
+    gamma,
+    brightness_contrast,
     surface_position,
     shading_normal,
     geometric_normal,
@@ -155,8 +159,12 @@ struct ClosureInstruction {
     ValueExpressionId color;
     ValueExpressionId normal;
     ValueExpressionId roughness;
+    ValueExpressionId diffuse_roughness;
     ValueExpressionId metallic;
     ValueExpressionId ior;
+    ValueExpressionId specular_ior_level;
+    ValueExpressionId specular_tint;
+    bool preserve_ggx_energy{};
     ValueExpressionId strength;
     ValueExpressionId factor;
     ClosureExpressionId a;

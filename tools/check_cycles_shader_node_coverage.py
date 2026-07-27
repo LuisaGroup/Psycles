@@ -23,9 +23,15 @@ from typing import Any
 # ``run_cycles_shader_probes.py``.
 CYCLES_VERIFIED = {
     "BACKGROUND",
+    "BRIGHTCONTRAST",
     "BSDF_TRANSPARENT",
+    "CLAMP",
+    "COMBINE_COLOR",
     "EMISSION",
+    "GAMMA",
     "RGB",
+    "RGBTOBW",
+    "SEPARATE_COLOR",
     "VALUE",
 }
 
@@ -44,7 +50,6 @@ DEVICE_PARTIAL = {
     "BSDF_GLOSSY",
     "BSDF_PRINCIPLED",
     "BUMP",
-    "COMBINE_COLOR",
     "CURVE_RGB",
     "HUE_SAT",
     "INVERT",
@@ -57,7 +62,6 @@ DEVICE_PARTIAL = {
     "NORMAL_MAP",
     "OBJECT_INFO",
     "PARTICLE_INFO",
-    "SEPARATE_COLOR",
     "TEX_BRICK",
     "TEX_COORD",
     "TEX_GRADIENT",

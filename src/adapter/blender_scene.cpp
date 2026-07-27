@@ -1100,6 +1100,46 @@ private:
                 .ref = {.node = id, .socket = "Color"},
                 .type = SocketType::color});
         }
+        if (type == "RGBTOBW") {
+            const auto id = _graph.add_node(
+                compiler::node_type::color_to_scalar,
+                node_name);
+            static_cast<void>(bind(
+                id, "Color", node, "Color", SocketType::color));
+            return finish({
+                .ref = {.node = id, .socket = "Value"},
+                .type = SocketType::floating});
+        }
+        if (type == "GAMMA") {
+            const auto id = _graph.add_node(
+                compiler::node_type::gamma_color,
+                node_name);
+            static_cast<void>(bind(
+                id, "Color", node, "Color", SocketType::color));
+            static_cast<void>(bind(
+                id, "Gamma", node, "Gamma", SocketType::floating));
+            return finish({
+                .ref = {.node = id, .socket = "Color"},
+                .type = SocketType::color});
+        }
+        if (type == "BRIGHTCONTRAST") {
+            const auto id = _graph.add_node(
+                compiler::node_type::brightness_contrast,
+                node_name);
+            static_cast<void>(bind(
+                id, "Color", node, "Color", SocketType::color));
+            static_cast<void>(bind(
+                id, "Bright", node, "Bright", SocketType::floating));
+            static_cast<void>(bind(
+                id,
+                "Contrast",
+                node,
+                "Contrast",
+                SocketType::floating));
+            return finish({
+                .ref = {.node = id, .socket = "Color"},
+                .type = SocketType::color});
+        }
         if (type == "MIX") {
             const auto blend_type =
                 node_property_text(node, "blend_type", "MIX");
@@ -1137,6 +1177,25 @@ private:
             return finish({
                 .ref = {.node = id, .socket = "Color"},
                 .type = SocketType::color});
+        }
+        if (type == "CLAMP") {
+            const auto id = _graph.add_node(
+                compiler::node_type::clamp_range,
+                node_name);
+            static_cast<void>(bind(
+                id, "Value", node, "Value", SocketType::floating));
+            static_cast<void>(bind(
+                id, "Min", node, "Min", SocketType::floating));
+            static_cast<void>(bind(
+                id, "Max", node, "Max", SocketType::floating));
+            static_cast<void>(_graph.set_property(
+                id,
+                "Mode",
+                SocketValue::string(node_property_text(
+                    node, "clamp_type", "MINMAX"))));
+            return finish({
+                .ref = {.node = id, .socket = "Result"},
+                .type = SocketType::floating});
         }
         if (type == "MATH") {
             const auto operation =
@@ -1411,6 +1470,11 @@ private:
                 node_name);
             static_cast<void>(bind(
                 id, "Color", node, "Color", SocketType::color));
+            static_cast<void>(_graph.set_property(
+                id,
+                "Mode",
+                SocketValue::string(node_property_text(
+                    node, "mode", "RGB"))));
             const auto output =
                 socket == "Red"
                     ? "R"
@@ -1422,12 +1486,6 @@ private:
         if (type == "COMBINE_COLOR") {
             const auto mode =
                 node_property_text(node, "mode", "RGB");
-            if (mode != "RGB") {
-                warn_once(
-                    "combine-color-mode:" + mode,
-                    "Combine Color mode '" + mode +
-                        "' is not yet represented; using RGB channels");
-            }
             const auto id = _graph.add_node(
                 compiler::node_type::combine_color,
                 node_name);
@@ -1437,6 +1495,10 @@ private:
                 id, "G", node, "Green", SocketType::floating));
             static_cast<void>(bind(
                 id, "B", node, "Blue", SocketType::floating));
+            static_cast<void>(_graph.set_property(
+                id,
+                "Mode",
+                SocketValue::string(mode)));
             return finish({
                 .ref = {.node = id, .socket = "Color"},
                 .type = SocketType::color});
@@ -1509,6 +1571,11 @@ private:
             const auto id = _graph.add_node(
                 compiler::node_type::principled_bsdf,
                 node_name);
+            static_cast<void>(_graph.set_property(
+                id,
+                "Distribution",
+                SocketValue::string(node_property_text(
+                    node, "distribution", "GGX"))));
             static_cast<void>(bind(
                 id,
                 "BaseColor",
@@ -1528,7 +1595,25 @@ private:
                 "Roughness",
                 SocketType::floating));
             static_cast<void>(bind(
+                id,
+                "DiffuseRoughness",
+                node,
+                "Diffuse Roughness",
+                SocketType::floating));
+            static_cast<void>(bind(
                 id, "IOR", node, "IOR", SocketType::floating));
+            static_cast<void>(bind(
+                id,
+                "SpecularIORLevel",
+                node,
+                "Specular IOR Level",
+                SocketType::floating));
+            static_cast<void>(bind(
+                id,
+                "SpecularTint",
+                node,
+                "Specular Tint",
+                SocketType::color));
             static_cast<void>(bind(
                 id, "Normal", node, "Normal", SocketType::normal));
             return finish({
@@ -2481,7 +2566,7 @@ BlenderSceneImport load_blender_scene_bundle(
                 unsigned_number(member(instance, "geometry"));
             auto *visibility = member(instance, "visibility");
             std::uint32_t visibility_mask = 0u;
-            for (const auto [name, bit] : {
+            for (const auto &[name, bit] : {
                      std::pair{
                          "camera",
                          contract::RayVisibility::camera},

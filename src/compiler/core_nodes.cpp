@@ -327,6 +327,20 @@ NodeRegistry make_core_node_registry() {
     }
 
     static_cast<void>(registry.register_schema(NodeSchema{
+        .type = node_type::clamp_range,
+        .inputs = {
+            input("Value", SocketType::floating, SocketValue::floating(1.0f)),
+            input("Min", SocketType::floating, SocketValue::floating(0.0f)),
+            input("Max", SocketType::floating, SocketValue::floating(1.0f))},
+        .outputs = {output("Result", SocketType::floating)},
+        .properties = {
+            property(
+                "Mode",
+                SocketType::string,
+                SocketValue::string("MINMAX"))},
+        .required_features = {}}));
+
+    static_cast<void>(registry.register_schema(NodeSchema{
         .type = node_type::scalar_to_color,
         .inputs = {
             input("Value", SocketType::floating, SocketValue::floating(0.0f))},
@@ -428,6 +442,25 @@ NodeRegistry make_core_node_registry() {
         .required_features = {}}));
 
     static_cast<void>(registry.register_schema(NodeSchema{
+        .type = node_type::gamma_color,
+        .inputs = {
+            input("Color", SocketType::color, SocketValue::color({1.0f, 1.0f, 1.0f})),
+            input("Gamma", SocketType::floating, SocketValue::floating(1.0f))},
+        .outputs = {output("Color", SocketType::color)},
+        .properties = {},
+        .required_features = {}}));
+
+    static_cast<void>(registry.register_schema(NodeSchema{
+        .type = node_type::brightness_contrast,
+        .inputs = {
+            input("Color", SocketType::color, SocketValue::color({1.0f, 1.0f, 1.0f})),
+            input("Bright", SocketType::floating, SocketValue::floating(0.0f)),
+            input("Contrast", SocketType::floating, SocketValue::floating(0.0f))},
+        .outputs = {output("Color", SocketType::color)},
+        .properties = {},
+        .required_features = {}}));
+
+    static_cast<void>(registry.register_schema(NodeSchema{
         .type = node_type::color_ramp,
         .inputs = {
             input("Factor", SocketType::floating, SocketValue::floating(0.0f))},
@@ -466,7 +499,11 @@ NodeRegistry make_core_node_registry() {
             output("R", SocketType::floating),
             output("G", SocketType::floating),
             output("B", SocketType::floating)},
-        .properties = {},
+        .properties = {
+            property(
+                "Mode",
+                SocketType::string,
+                SocketValue::string("RGB"))},
         .required_features = {}}));
 
     static_cast<void>(registry.register_schema(NodeSchema{
@@ -476,7 +513,11 @@ NodeRegistry make_core_node_registry() {
             input("G", SocketType::floating, SocketValue::floating(0.0f)),
             input("B", SocketType::floating, SocketValue::floating(0.0f))},
         .outputs = {output("Color", SocketType::color)},
-        .properties = {},
+        .properties = {
+            property(
+                "Mode",
+                SocketType::string,
+                SocketValue::string("RGB"))},
         .required_features = {}}));
 
     static_cast<void>(registry.register_schema(NodeSchema{
@@ -543,10 +584,14 @@ NodeRegistry make_core_node_registry() {
             input("BaseColor", SocketType::color, SocketValue::color({0.8f, 0.8f, 0.8f})),
             input("Metallic", SocketType::floating, SocketValue::floating(0.0f)),
             input("Roughness", SocketType::floating, SocketValue::floating(0.5f)),
+            input("DiffuseRoughness", SocketType::floating, SocketValue::floating(0.0f)),
             input("IOR", SocketType::floating, SocketValue::floating(1.5f)),
+            input("SpecularIORLevel", SocketType::floating, SocketValue::floating(0.5f)),
+            input("SpecularTint", SocketType::color, SocketValue::color({1.0f, 1.0f, 1.0f})),
             input("Normal", SocketType::normal, SocketValue::normal({0.0f, 0.0f, 0.0f}))},
         .outputs = {output("Closure", SocketType::closure)},
-        .properties = {},
+        .properties = {
+            property("Distribution", SocketType::string, SocketValue::string("GGX"))},
         .required_features = feature_bit(ShaderFeature::surface)}));
 
     static_cast<void>(registry.register_schema(NodeSchema{

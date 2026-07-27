@@ -113,6 +113,12 @@ using LoweredOutput =
     return "node " + std::to_string(node.value) + ": ";
 }
 
+[[nodiscard]] std::uint64_t color_mode(
+    const contract::ShaderNode &node) {
+    const auto mode = property_string(node, "Mode", "RGB");
+    return mode == "HSV" ? 1u : mode == "HSL" ? 2u : 0u;
+}
+
 class SurfaceProgramBuilder {
 
 private:
@@ -607,6 +613,29 @@ private:
                     : ValueOperation::clamp01);
             return;
         }
+        if (node.type == node_type::clamp_range) {
+            auto value = lower_value_input(node, "Value");
+            auto minimum = lower_value_input(node, "Min");
+            auto maximum = lower_value_input(node, "Max");
+            if (value && minimum && maximum) {
+                publish(
+                    node.id,
+                    "Result",
+                    append(ValueInstruction{
+                        .operation = ValueOperation::clamp_range,
+                        .source_node = node.id,
+                        .result_type = SocketType::floating,
+                        .a = *value,
+                        .b = *minimum,
+                        .c = *maximum,
+                        .static_u0 =
+                            property_string(
+                                node, "Mode", "MINMAX") == "RANGE"
+                                ? 1u
+                                : 0u}));
+            }
+            return;
+        }
         if (node.type == node_type::scalar_to_color) {
             publish_unary_value(
                 node,
@@ -631,7 +660,7 @@ private:
                 "Vector",
                 "Value",
                 SocketType::floating,
-                ValueOperation::color_to_scalar);
+                ValueOperation::vector_to_scalar);
             return;
         }
         if (node.type == node_type::vector_to_color ||
@@ -743,6 +772,41 @@ private:
                         .result_type = SocketType::color,
                         .a = *color,
                         .b = *factor}));
+            }
+            return;
+        }
+        if (node.type == node_type::gamma_color) {
+            auto color = lower_value_input(node, "Color");
+            auto gamma = lower_value_input(node, "Gamma");
+            if (color && gamma) {
+                publish(
+                    node.id,
+                    "Color",
+                    append(ValueInstruction{
+                        .operation = ValueOperation::gamma,
+                        .source_node = node.id,
+                        .result_type = SocketType::color,
+                        .a = *color,
+                        .b = *gamma}));
+            }
+            return;
+        }
+        if (node.type == node_type::brightness_contrast) {
+            auto color = lower_value_input(node, "Color");
+            auto bright = lower_value_input(node, "Bright");
+            auto contrast = lower_value_input(node, "Contrast");
+            if (color && bright && contrast) {
+                publish(
+                    node.id,
+                    "Color",
+                    append(ValueInstruction{
+                        .operation =
+                            ValueOperation::brightness_contrast,
+                        .source_node = node.id,
+                        .result_type = SocketType::color,
+                        .a = *color,
+                        .b = *bright,
+                        .c = *contrast}));
             }
             return;
         }
@@ -987,7 +1051,8 @@ private:
                             .operation = operation,
                             .source_node = node.id,
                             .result_type = SocketType::floating,
-                            .a = *color}));
+                            .a = *color,
+                            .static_u0 = color_mode(node)}));
                 }
             }
             return;
@@ -1006,7 +1071,8 @@ private:
                         .result_type = SocketType::color,
                         .a = *r,
                         .b = *g,
-                        .c = *b}));
+                        .c = *b,
+                        .static_u0 = color_mode(node)}));
             }
             return;
         }
@@ -1053,14 +1119,24 @@ private:
                 lower_value_input(node, "Roughness");
             auto normal = lower_value_input(node, "Normal");
             std::optional<ValueExpressionId> metallic;
+            std::optional<ValueExpressionId> diffuse_roughness;
             std::optional<ValueExpressionId> ior;
+            std::optional<ValueExpressionId> specular_ior_level;
+            std::optional<ValueExpressionId> specular_tint;
             if (node.type == node_type::principled_bsdf) {
                 metallic = lower_value_input(node, "Metallic");
+                diffuse_roughness =
+                    lower_value_input(node, "DiffuseRoughness");
                 ior = lower_value_input(node, "IOR");
+                specular_ior_level =
+                    lower_value_input(node, "SpecularIORLevel");
+                specular_tint =
+                    lower_value_input(node, "SpecularTint");
             }
             if (color && roughness && normal &&
                 (node.type != node_type::principled_bsdf ||
-                 (metallic && ior))) {
+                 (metallic && diffuse_roughness && ior &&
+                  specular_ior_level && specular_tint))) {
                 publish(
                     node.id,
                     "Closure",
@@ -1076,9 +1152,22 @@ private:
                         .color = *color,
                         .normal = *normal,
                         .roughness = *roughness,
+                        .diffuse_roughness =
+                            diffuse_roughness.value_or(
+                                ValueExpressionId{}),
                         .metallic =
                             metallic.value_or(ValueExpressionId{}),
-                        .ior = ior.value_or(ValueExpressionId{})}));
+                        .ior = ior.value_or(ValueExpressionId{}),
+                        .specular_ior_level =
+                            specular_ior_level.value_or(
+                                ValueExpressionId{}),
+                        .specular_tint =
+                            specular_tint.value_or(
+                                ValueExpressionId{}),
+                        .preserve_ggx_energy =
+                            property_string(
+                                node, "Distribution", "GGX") ==
+                            "MULTI_GGX"}));
             }
             return;
         }

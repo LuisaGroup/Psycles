@@ -13,6 +13,7 @@
 #include <vector>
 
 #include <psycles/compiler/surface_program.h>
+#include <psycles/luisa/cycles_bsdf_tables.h>
 #include <psycles/luisa/surface.h>
 
 #include <luisa/core/stl/vector.h>
@@ -44,8 +45,34 @@ private:
         Float3 color;
         Float3 normal;
         Float roughness;
+        Float diffuse_roughness;
         Float metallic;
         Float ior;
+        Float specular_ior_level;
+        Float3 specular_tint;
+        bool preserve_ggx_energy{};
+    };
+
+    struct AdjustedIor {
+        Float eta;
+        Float f0;
+    };
+
+    struct GgxEnergy {
+        Float3 darkening;
+        Float3 evaluation_scale;
+    };
+
+    struct PrincipledState {
+        Float eta;
+        Float3 dielectric_f0;
+        Float3 metallic_f0;
+        Float3 metallic_b;
+        Float3 dielectric_evaluation_scale;
+        Float3 metallic_evaluation_scale;
+        Float3 diffuse_sample_weight;
+        Float3 glossy_sample_weight;
+        Float3 diffuse_albedo;
     };
 
 private:
@@ -76,6 +103,94 @@ private:
     [[nodiscard]] static Float sample_weight(Float3 value) noexcept {
         return (abs(value.x) + abs(value.y) + abs(value.z)) /
                3.0f;
+    }
+
+    [[nodiscard]] static Float max_component(
+        Float3 value) noexcept {
+        return max(value.x, max(value.y, value.z));
+    }
+
+    [[nodiscard]] static Float cycles_table_1d(
+        const ShaderServices &services,
+        Float x,
+        Expr<std::uint32_t> offset,
+        std::uint32_t size) noexcept {
+        auto coordinate =
+            clamp(x, 0.0f, 1.0f) *
+            static_cast<float>(size - 1u);
+        auto index = min(
+            cast<luisa::uint>(coordinate),
+            size - 1u);
+        auto next = min(index + 1u, size - 1u);
+        auto t = coordinate - cast<float>(index);
+        auto data0 =
+            services.cycles_bsdf_data(index + offset);
+        auto data1 =
+            services.cycles_bsdf_data(next + offset);
+        return lerp(data0, data1, t);
+    }
+
+    [[nodiscard]] static Float cycles_table_2d(
+        const ShaderServices &services,
+        Float x,
+        Float y,
+        Expr<std::uint32_t> offset,
+        std::uint32_t x_size,
+        std::uint32_t y_size) noexcept {
+        auto coordinate =
+            clamp(y, 0.0f, 1.0f) *
+            static_cast<float>(y_size - 1u);
+        auto index = min(
+            cast<luisa::uint>(coordinate),
+            y_size - 1u);
+        auto next = min(index + 1u, y_size - 1u);
+        auto t = coordinate - cast<float>(index);
+        auto data0 = cycles_table_1d(
+            services,
+            x,
+            offset + x_size * index,
+            x_size);
+        auto data1 = cycles_table_1d(
+            services,
+            x,
+            offset + x_size * next,
+            x_size);
+        return lerp(data0, data1, t);
+    }
+
+    [[nodiscard]] static Float cycles_table_3d(
+        const ShaderServices &services,
+        Float x,
+        Float y,
+        Float z,
+        Expr<std::uint32_t> offset,
+        std::uint32_t x_size,
+        std::uint32_t y_size,
+        std::uint32_t z_size) noexcept {
+        auto coordinate =
+            clamp(z, 0.0f, 1.0f) *
+            static_cast<float>(z_size - 1u);
+        auto index = min(
+            cast<luisa::uint>(coordinate),
+            z_size - 1u);
+        auto next = min(index + 1u, z_size - 1u);
+        auto t = coordinate - cast<float>(index);
+        auto slice_stride = x_size * y_size;
+        auto data0 = cycles_table_2d(
+            services,
+            x,
+            y,
+            offset + slice_stride * index,
+            x_size,
+            y_size);
+        auto data1 = cycles_table_2d(
+            services,
+            x,
+            y,
+            offset + slice_stride * next,
+            x_size,
+            y_size);
+        return lerp(data0, data1, t);
     }
 
     [[nodiscard]] static Float3 safe_normalize(
@@ -155,6 +270,83 @@ private:
             hsv.y != 0.0f);
     }
 
+    [[nodiscard]] static Float3 rgb_to_hsl(
+        Float3 rgb) noexcept {
+        auto cmax = max(rgb.x, max(rgb.y, rgb.z));
+        auto cmin = min(rgb.x, min(rgb.y, rgb.z));
+        auto lightness = min(
+            1.0f, (cmax + cmin) * 0.5f);
+        auto delta = cmax - cmin;
+        auto chromatic = cmax != cmin;
+        auto denominator = select(
+            cmax + cmin,
+            2.0f - cmax - cmin,
+            lightness > 0.5f);
+        auto saturation = select(
+            0.0f,
+            delta /
+                select(
+                    1.0f,
+                    denominator,
+                    abs(denominator) > 1.0e-20f),
+            chromatic);
+        auto safe_delta = select(
+            1.0f, delta, abs(delta) > 1.0e-20f);
+        auto hue =
+            (rgb.x - rgb.y) / safe_delta + 4.0f;
+        hue = select(
+            hue,
+            (rgb.z - rgb.x) / safe_delta + 2.0f,
+            cmax == rgb.y);
+        hue = select(
+            hue,
+            (rgb.y - rgb.z) / safe_delta +
+                select(0.0f, 6.0f, rgb.y < rgb.z),
+            cmax == rgb.x);
+        hue = select(0.0f, hue / 6.0f, chromatic);
+        return make_float3(hue, saturation, lightness);
+    }
+
+    [[nodiscard]] static Float3 hsl_to_rgb(
+        Float3 hsl) noexcept {
+        auto hue6 = hsl.x * 6.0f;
+        auto nr = clamp(
+            abs(hue6 - 3.0f) - 1.0f,
+            0.0f,
+            1.0f);
+        auto ng = clamp(
+            2.0f - abs(hue6 - 2.0f),
+            0.0f,
+            1.0f);
+        auto nb = clamp(
+            2.0f - abs(hue6 - 4.0f),
+            0.0f,
+            1.0f);
+        auto chroma =
+            (1.0f - abs(2.0f * hsl.z - 1.0f)) *
+            hsl.y;
+        return make_float3(
+            (nr - 0.5f) * chroma + hsl.z,
+            (ng - 0.5f) * chroma + hsl.z,
+            (nb - 0.5f) * chroma + hsl.z);
+    }
+
+    [[nodiscard]] static Float3 separate_color(
+        Float3 color,
+        std::uint64_t mode) noexcept {
+        return mode == 1u
+                   ? rgb_to_hsv(color)
+                   : mode == 2u ? rgb_to_hsl(color) : color;
+    }
+
+    [[nodiscard]] static Float3 combine_color(
+        Float3 channels,
+        std::uint64_t mode) noexcept {
+        return mode == 1u
+                   ? hsv_to_rgb(channels)
+                   : mode == 2u ? hsl_to_rgb(channels) : channels;
+    }
+
     [[nodiscard]] static Float fresnel_dielectric_cos(
         Float cosine,
         Float eta) noexcept {
@@ -172,6 +364,270 @@ private:
         auto regular =
             0.5f * a * a * (1.0f + b * b);
         return select(1.0f, regular, g_squared > 0.0f);
+    }
+
+    [[nodiscard]] static Float f0_from_ior(
+        Float ior) noexcept {
+        auto ratio =
+            (ior - 1.0f) / max(ior + 1.0f, 1.0e-20f);
+        return ratio * ratio;
+    }
+
+    [[nodiscard]] static Float ior_from_f0(
+        Float f0) noexcept {
+        auto root = sqrt(clamp(f0, 0.0f, 0.99f));
+        return (1.0f + root) / max(1.0f - root, 1.0e-20f);
+    }
+
+    [[nodiscard]] static Float fresnel_dielectric_fss(
+        Float eta) noexcept {
+        auto below_one =
+            0.997118f +
+            eta *
+                (0.1014f -
+                 eta * (0.965241f + eta * 0.130607f));
+        auto above_one =
+            (eta - 1.0f) /
+            max(4.08567f + 1.00071f * eta, 1.0e-20f);
+        return select(above_one, below_one, eta < 1.0f);
+    }
+
+    [[nodiscard]] static AdjustedIor adjusted_ior(
+        const TracedClosure &closure) noexcept {
+        auto original_eta = max(closure.ior, 1.0e-5f);
+        auto original_f0 = f0_from_ior(original_eta);
+        auto adjusted_f0 =
+            original_f0 *
+            (2.0f * max(closure.specular_ior_level, 0.0f));
+        auto eta_from_adjusted = ior_from_f0(adjusted_f0);
+        eta_from_adjusted = select(
+            eta_from_adjusted,
+            1.0f / max(eta_from_adjusted, 1.0e-20f),
+            original_eta < 1.0f);
+        auto should_adjust =
+            closure.specular_ior_level != 0.5f;
+        return {
+            .eta = select(
+                original_eta,
+                eta_from_adjusted,
+                should_adjust),
+            .f0 = select(
+                original_f0,
+                adjusted_f0,
+                should_adjust)};
+    }
+
+    [[nodiscard]] static Float3 generalized_dielectric_fresnel(
+        Float cosine,
+        Float eta,
+        Float3 f0) noexcept {
+        auto real_fresnel =
+            fresnel_dielectric_cos(cosine, eta);
+        auto real_f0 = f0_from_ior(eta);
+        auto interpolation = clamp(
+            (real_fresnel - real_f0) /
+                max(1.0f - real_f0, 1.0e-20f),
+            0.0f,
+            1.0f);
+        return lerp(f0, make_float3(1.0f), interpolation);
+    }
+
+    [[nodiscard]] static Float3 fresnel_f82_b(
+        Float3 f0,
+        Float3 tint) noexcept {
+        constexpr float f = 6.0f / 7.0f;
+        constexpr float f5 = f * f * f * f * f;
+        auto schlick =
+            lerp(f0, make_float3(1.0f), f5);
+        return schlick *
+               (7.0f / (f5 * f)) *
+               (make_float3(1.0f) - tint);
+    }
+
+    [[nodiscard]] static Float3 fresnel_f82(
+        Float cosine,
+        Float3 f0,
+        Float3 b) noexcept {
+        auto mu = clamp(1.0f - cosine, 0.0f, 1.0f);
+        auto mu2 = mu * mu;
+        auto mu5 = mu2 * mu2 * mu;
+        auto schlick =
+            lerp(f0, make_float3(1.0f), mu5);
+        return clamp(
+            schlick - b * cosine * mu5 * mu,
+            make_float3(0.0f),
+            make_float3(1.0f));
+    }
+
+    [[nodiscard]] static GgxEnergy ggx_energy(
+        const ShaderServices &services,
+        const TracedClosure &closure,
+        Float incoming_cosine,
+        Float3 fss) noexcept {
+        if (!closure.preserve_ggx_energy) {
+            return {
+                .darkening = make_float3(1.0f),
+                .evaluation_scale = make_float3(1.0f)};
+        }
+
+        auto roughness =
+            clamp(closure.roughness, 0.0f, 1.0f);
+        auto energy = max(
+            cycles_table_2d(
+                services,
+                roughness,
+                incoming_cosine,
+                UInt{cycles45_tables::ggx_e_offset},
+                32u,
+                32u),
+            1.0e-20f);
+        auto average_energy = cycles_table_1d(
+            services,
+            roughness,
+            UInt{cycles45_tables::ggx_eavg_offset},
+            32u);
+        auto missing_factor =
+            (1.0f - energy) / energy;
+        auto energy_scale = 1.0f / energy;
+        auto fms =
+            fss * average_energy /
+            max(
+                make_float3(1.0f) -
+                    fss * (1.0f - average_energy),
+                make_float3(1.0e-20f));
+        auto darkening =
+            (make_float3(1.0f) +
+             fms * missing_factor) /
+            energy_scale;
+        return {
+            .darkening = darkening,
+            .evaluation_scale =
+                darkening * energy_scale};
+    }
+
+    [[nodiscard]] static PrincipledState principled_state(
+        const ShaderServices &services,
+        const TracedClosure &closure,
+        Float3 incoming) noexcept {
+        auto adjusted = adjusted_ior(closure);
+        auto tint = max(
+            closure.specular_tint,
+            make_float3(0.0f));
+        auto dielectric_f0 = clamp(
+            make_float3(adjusted.f0) * tint,
+            make_float3(0.0f),
+            make_float3(1.0f));
+        auto metallic_f0 = clamp(
+            closure.color,
+            make_float3(0.0f),
+            make_float3(1.0f));
+        auto metallic_tint = min(
+            tint, make_float3(1.0f));
+        auto metallic_b = fresnel_f82_b(
+            metallic_f0, metallic_tint);
+
+        auto real_f0 = f0_from_ior(adjusted.eta);
+        auto real_fss =
+            fresnel_dielectric_fss(adjusted.eta);
+        auto fss_interpolation = clamp(
+            (real_fss - real_f0) /
+                max(1.0f - real_f0, 1.0e-20f),
+            0.0f,
+            1.0f);
+        auto dielectric_fss = lerp(
+            dielectric_f0,
+            make_float3(1.0f),
+            fss_interpolation);
+        auto metallic_fss =
+            lerp(
+                metallic_f0,
+                make_float3(1.0f),
+                1.0f / 21.0f) -
+            metallic_b * (1.0f / 126.0f);
+
+        auto incoming_cosine = clamp(
+            dot(closure.normal, incoming), 0.0f, 1.0f);
+        auto dielectric_energy = ggx_energy(
+            services,
+            closure,
+            incoming_cosine,
+            dielectric_fss);
+        auto metallic_energy = ggx_energy(
+            services,
+            closure,
+            incoming_cosine,
+            metallic_fss);
+
+        auto roughness =
+            clamp(closure.roughness, 0.0f, 1.0f);
+        auto dielectric_z = sqrt(abs(
+            (adjusted.eta - 1.0f) /
+            max(adjusted.eta + 1.0f, 1.0e-20f)));
+        auto dielectric_s = cycles_table_3d(
+            services,
+            roughness,
+            incoming_cosine,
+            dielectric_z,
+            UInt{
+                cycles45_tables::
+                    ggx_gen_schlick_ior_s_offset},
+            16u,
+            16u,
+            16u);
+        auto metallic_s = cycles_table_3d(
+            services,
+            roughness,
+            incoming_cosine,
+            0.5f,
+            UInt{
+                cycles45_tables::
+                    ggx_gen_schlick_s_offset},
+            16u,
+            16u,
+            16u);
+        auto dielectric_albedo = lerp(
+            dielectric_f0,
+            make_float3(1.0f),
+            dielectric_s);
+        auto metallic_albedo = lerp(
+            metallic_f0,
+            make_float3(1.0f),
+            metallic_s);
+        auto lower_layer_factor = clamp(
+            1.0f -
+                max_component(
+                    dielectric_energy.darkening *
+                    dielectric_albedo),
+            0.0f,
+            1.0f);
+        auto metallic =
+            clamp(closure.metallic, 0.0f, 1.0f);
+        auto dielectric_weight = 1.0f - metallic;
+        auto diffuse_albedo =
+            closure.weight *
+            max(closure.color, make_float3(0.0f)) *
+            dielectric_weight *
+            lower_layer_factor;
+        auto glossy_sample_weight =
+            closure.weight *
+            (metallic *
+                 metallic_energy.darkening *
+                 metallic_albedo +
+             dielectric_weight *
+                 dielectric_energy.darkening *
+                 dielectric_albedo);
+        return {
+            .eta = adjusted.eta,
+            .dielectric_f0 = dielectric_f0,
+            .metallic_f0 = metallic_f0,
+            .metallic_b = metallic_b,
+            .dielectric_evaluation_scale =
+                dielectric_energy.evaluation_scale,
+            .metallic_evaluation_scale =
+                metallic_energy.evaluation_scale,
+            .diffuse_sample_weight = diffuse_albedo,
+            .glossy_sample_weight = glossy_sample_weight,
+            .diffuse_albedo = diffuse_albedo};
     }
 
     [[nodiscard]] static Float oren_nayar_g(
@@ -195,7 +651,13 @@ private:
         auto nl = max(dot(closure.normal, outgoing), 0.0f);
         auto lambert = make_float3(nl * inverse_pi);
 
-        auto sigma = clamp(closure.roughness, 0.0f, 1.0f);
+        auto sigma = clamp(
+            closure.operation ==
+                    compiler::ClosureOperation::principled
+                ? closure.diffuse_roughness
+                : closure.roughness,
+            0.0f,
+            1.0f);
         auto a = 1.0f /
                  (pi + sigma * (pi * 0.5f - 2.0f / 3.0f));
         auto b = sigma * a;
@@ -233,20 +695,7 @@ private:
         return select(
             oren_nayar,
             lambert,
-            closure.roughness < 1.0e-5f);
-    }
-
-    [[nodiscard]] static Float specular_probability(
-        const TracedClosure &closure) noexcept {
-        if (closure.operation ==
-            compiler::ClosureOperation::glossy) {
-            return 1.0f;
-        }
-        if (closure.operation !=
-            compiler::ClosureOperation::principled) {
-            return 0.0f;
-        }
-        return lerp(0.25f, 0.8f, closure.metallic);
+            sigma < 1.0e-5f);
     }
 
     [[nodiscard]] static Float ggx_distribution(
@@ -291,6 +740,7 @@ private:
     }
 
     [[nodiscard]] static Float3 microfacet_intensity(
+        const ShaderServices &services,
         const TracedClosure &closure,
         Float3 incoming,
         Float3 outgoing) noexcept {
@@ -316,11 +766,36 @@ private:
             1.0f / smith_g1(n_dot_l, alpha) - 1.0f;
         auto geometry =
             1.0f / (1.0f + lambda_v + lambda_l);
-        auto fresnel =
-            specular_f0(closure) +
-            (make_float3(1.0f) -
-             specular_f0(closure)) *
-                pow(1.0f - v_dot_h, 5.0f);
+        Float3 fresnel;
+        if (closure.operation ==
+            compiler::ClosureOperation::principled) {
+            auto state =
+                principled_state(services, closure, incoming);
+            auto dielectric_fresnel =
+                generalized_dielectric_fresnel(
+                    v_dot_h,
+                    state.eta,
+                    state.dielectric_f0);
+            auto metallic_fresnel = fresnel_f82(
+                v_dot_h,
+                state.metallic_f0,
+                state.metallic_b);
+            auto metallic =
+                clamp(closure.metallic, 0.0f, 1.0f);
+            fresnel =
+                metallic *
+                    metallic_fresnel *
+                    state.metallic_evaluation_scale +
+                (1.0f - metallic) *
+                    dielectric_fresnel *
+                    state.dielectric_evaluation_scale;
+        } else {
+            auto f0 = specular_f0(closure);
+            fresnel =
+                f0 +
+                (make_float3(1.0f) - f0) *
+                    pow(1.0f - v_dot_h, 5.0f);
+        }
         auto intensity =
             fresnel * distribution * geometry /
             max(4.0f * n_dot_v, 1.0e-20f);
@@ -620,7 +1095,23 @@ private:
                 case compiler::ValueOperation::color_to_scalar: {
                     auto color = vector(instruction.a, result);
                     value = make_float4(
-                        (color.x + color.y + color.z) /
+                        dot(
+                            color,
+                            // Blender 4.5 default scene-linear
+                            // Film::rgb_to_y coefficients.
+                            make_float3(
+                                0.21267404f,
+                                0.7151516f,
+                                0.07217542f)));
+                    break;
+                }
+                case compiler::ValueOperation::vector_to_scalar: {
+                    auto vector_value =
+                        vector(instruction.a, result);
+                    value = make_float4(
+                        (vector_value.x +
+                         vector_value.y +
+                         vector_value.z) /
                         3.0f);
                     break;
                 }
@@ -676,6 +1167,26 @@ private:
                         0.0f,
                         1.0f));
                     break;
+                case compiler::ValueOperation::clamp_range: {
+                    auto input = scalar(instruction.a, result);
+                    auto minimum =
+                        scalar(instruction.b, result);
+                    auto maximum =
+                        scalar(instruction.c, result);
+                    if (instruction.static_u0 == 1u) {
+                        auto reverse = minimum > maximum;
+                        auto original_minimum = minimum;
+                        minimum = select(
+                            minimum, maximum, reverse);
+                        maximum = select(
+                            maximum,
+                            original_minimum,
+                            reverse);
+                    }
+                    value = make_float4(
+                        min(max(input, minimum), maximum));
+                    break;
+                }
                 case compiler::ValueOperation::mix: {
                     auto t = clamp(
                         scalar(instruction.c, result),
@@ -767,6 +1278,46 @@ private:
                             color,
                             make_float3(1.0f) - color,
                             factor),
+                        1.0f);
+                    break;
+                }
+                case compiler::ValueOperation::gamma: {
+                    auto color = vector(instruction.a, result);
+                    auto exponent =
+                        scalar(instruction.b, result);
+                    auto adjusted = make_float3(
+                        select(
+                            color.x,
+                            pow(max(color.x, 0.0f), exponent),
+                            color.x > 0.0f),
+                        select(
+                            color.y,
+                            pow(max(color.y, 0.0f), exponent),
+                            color.y > 0.0f),
+                        select(
+                            color.z,
+                            pow(max(color.z, 0.0f), exponent),
+                            color.z > 0.0f));
+                    adjusted = select(
+                        adjusted,
+                        make_float3(1.0f),
+                        exponent == 0.0f);
+                    value = make_float4(adjusted, 1.0f);
+                    break;
+                }
+                case compiler::ValueOperation::brightness_contrast: {
+                    auto color = vector(instruction.a, result);
+                    auto brightness =
+                        scalar(instruction.b, result);
+                    auto contrast =
+                        scalar(instruction.c, result);
+                    auto a = 1.0f + contrast;
+                    auto b = brightness -
+                             contrast * 0.5f;
+                    value = make_float4(
+                        max(
+                            a * color + make_float3(b),
+                            make_float3(0.0f)),
                         1.0f);
                     break;
                 }
@@ -1051,32 +1602,40 @@ private:
                     auto normal_in = safe_normalize(
                         vector(instruction.e, result),
                         result.shading_normal);
+                    auto filter_width = max(
+                        scalar(instruction.d, result), 0.0f);
 
                     auto point_x = point;
                     point_x.position =
-                        point.position + point.dPdx;
+                        point.position +
+                        point.dPdx * filter_width;
                     point_x.object_position =
                         point.object_position +
-                        point.object_dPdx;
+                        point.object_dPdx * filter_width;
                     point_x.generated =
-                        point.generated + point.generated_dx;
-                    point_x.uv = point.uv + point.uv_dx;
+                        point.generated +
+                        point.generated_dx * filter_width;
+                    point_x.uv =
+                        point.uv + point.uv_dx * filter_width;
                     point_x.barycentric =
                         point.barycentric +
-                        point.barycentric_dx;
+                        point.barycentric_dx * filter_width;
 
                     auto point_y = point;
                     point_y.position =
-                        point.position + point.dPdy;
+                        point.position +
+                        point.dPdy * filter_width;
                     point_y.object_position =
                         point.object_position +
-                        point.object_dPdy;
+                        point.object_dPdy * filter_width;
                     point_y.generated =
-                        point.generated + point.generated_dy;
-                    point_y.uv = point.uv + point.uv_dy;
+                        point.generated +
+                        point.generated_dy * filter_width;
+                    point_y.uv =
+                        point.uv + point.uv_dy * filter_width;
                     point_y.barycentric =
                         point.barycentric +
-                        point.barycentric_dy;
+                        point.barycentric_dy * filter_width;
 
                     const auto height_dependencies =
                         value_dependency_mask(instruction.a);
@@ -1110,8 +1669,6 @@ private:
                         -1.0f,
                         1.0f,
                         determinant >= 0.0f);
-                    auto filter_width = max(
-                        scalar(instruction.d, result), 0.0f);
                     auto perturbed = safe_normalize(
                         filter_width * abs(determinant) *
                                 normal_in -
@@ -1424,23 +1981,37 @@ private:
                 }
                 case compiler::ValueOperation::separate_r:
                     value = make_float4(
-                        vector(instruction.a, result).x);
+                        separate_color(
+                            vector(instruction.a, result),
+                            instruction.static_u0)
+                            .x);
                     break;
                 case compiler::ValueOperation::separate_g:
                     value = make_float4(
-                        vector(instruction.a, result).y);
+                        separate_color(
+                            vector(instruction.a, result),
+                            instruction.static_u0)
+                            .y);
                     break;
                 case compiler::ValueOperation::separate_b:
                     value = make_float4(
-                        vector(instruction.a, result).z);
+                        separate_color(
+                            vector(instruction.a, result),
+                            instruction.static_u0)
+                            .z);
                     break;
-                case compiler::ValueOperation::combine_color:
-                    value = make_float4(
+                case compiler::ValueOperation::combine_color: {
+                    auto channels = make_float3(
                         scalar(instruction.a, result),
                         scalar(instruction.b, result),
-                        scalar(instruction.c, result),
+                        scalar(instruction.c, result));
+                    value = make_float4(
+                        combine_color(
+                            channels,
+                            instruction.static_u0),
                         1.0f);
                     break;
+                }
                 case compiler::ValueOperation::nishita_sky: {
                     auto direction = safe_normalize(
                         -point.incoming,
@@ -1564,8 +2135,34 @@ private:
                                 compiler::ClosureOperation::principled
                             ? max(
                                   scalar(closure.ior, values),
-                                  1.0f)
+                                  1.0e-5f)
                             : Float{1.5f};
+                    auto diffuse_roughness =
+                        closure.operation ==
+                                compiler::ClosureOperation::principled
+                            ? scalar(
+                                  closure.diffuse_roughness,
+                                  values)
+                            : scalar(
+                                  closure.roughness, values);
+                    auto specular_ior_level =
+                        closure.operation ==
+                                compiler::ClosureOperation::principled
+                            ? max(
+                                  scalar(
+                                      closure.specular_ior_level,
+                                      values),
+                                  0.0f)
+                            : Float{0.5f};
+                    auto specular_tint =
+                        closure.operation ==
+                                compiler::ClosureOperation::principled
+                            ? max(
+                                  vector(
+                                      closure.specular_tint,
+                                      values),
+                                  make_float3(0.0f))
+                            : make_float3(1.0f);
                     function(TracedClosure{
                         .operation = closure.operation,
                         .weight =
@@ -1579,8 +2176,15 @@ private:
                             values.shading_normal),
                         .roughness = scalar(
                             closure.roughness, values),
+                        .diffuse_roughness =
+                            diffuse_roughness,
                         .metallic = metallic,
-                        .ior = ior});
+                        .ior = ior,
+                        .specular_ior_level =
+                            specular_ior_level,
+                        .specular_tint = specular_tint,
+                        .preserve_ggx_energy =
+                            closure.preserve_ggx_energy});
                     return;
                 }
                 case compiler::ClosureOperation::emission: {
@@ -1644,6 +2248,7 @@ public:
     }
 
     [[nodiscard]] SurfaceEvaluation evaluate_traced(
+        const ShaderServices &services,
         const TracedValues &values,
         const SurfacePoint &point,
         Expr<luisa::float3> outgoing_expression,
@@ -1703,12 +2308,65 @@ public:
                 auto glossy_allowed =
                     glossy_enabled &
                     (is_principled || is_glossy);
-                Float specular_chance =
-                    is_glossy
-                        ? 1.0f
-                        : is_diffuse
-                              ? 0.0f
-                              : specular_probability(closure);
+                Float specular_chance;
+                Float3 diffuse_contribution;
+                Float3 glossy_contribution;
+                Float3 selection_color;
+                if (is_principled) {
+                    auto state = principled_state(
+                        services, closure, incoming);
+                    auto diffuse_weight =
+                        sample_weight(
+                            state.diffuse_sample_weight);
+                    auto glossy_weight =
+                        sample_weight(
+                            state.glossy_sample_weight);
+                    specular_chance =
+                        glossy_weight /
+                        max(
+                            diffuse_weight +
+                                glossy_weight,
+                            1.0e-20f);
+                    diffuse_contribution =
+                        state.diffuse_albedo *
+                        diffuse_intensity(
+                            closure, incoming, outgoing);
+                    glossy_contribution =
+                        closure.weight *
+                        microfacet_intensity(
+                            services,
+                            closure,
+                            incoming,
+                            outgoing);
+                    selection_color =
+                        state.diffuse_sample_weight +
+                        state.glossy_sample_weight;
+                } else if (is_glossy) {
+                    specular_chance = 1.0f;
+                    diffuse_contribution =
+                        make_float3(0.0f);
+                    glossy_contribution =
+                        closure.weight *
+                        microfacet_intensity(
+                            services,
+                            closure,
+                            incoming,
+                            outgoing);
+                    selection_color =
+                        closure.weight *
+                        max(
+                            closure.color,
+                            make_float3(0.04f));
+                } else {
+                    specular_chance = 0.0f;
+                    diffuse_contribution =
+                        closure.weight *
+                        diffuse_intensity(
+                            closure, incoming, outgoing);
+                    glossy_contribution =
+                        make_float3(0.0f);
+                    selection_color = closure.weight;
+                }
                 specular_chance = select(
                     specular_chance,
                     0.0f,
@@ -1721,30 +2379,6 @@ public:
                     diffuse_pdf,
                     glossy_pdf,
                     specular_chance);
-                auto diffuse_contribution =
-                    closure.weight *
-                    diffuse_intensity(
-                        closure, incoming, outgoing);
-                if (is_principled) {
-                    diffuse_contribution =
-                        closure.weight *
-                        closure.color *
-                        (1.0f - closure.metallic) *
-                        diffuse_intensity(
-                            closure, incoming, outgoing);
-                }
-                if (is_glossy) {
-                    diffuse_contribution =
-                        make_float3(0.0f);
-                }
-                auto glossy_contribution =
-                    is_diffuse
-                        ? make_float3(0.0f)
-                        : closure.weight *
-                              microfacet_intensity(
-                                  closure,
-                                  incoming,
-                                  outgoing);
                 auto contribution =
                     select(
                         make_float3(0.0f),
@@ -1767,13 +2401,6 @@ public:
                     make_float3(0.0f),
                     diffuse_contribution,
                     diffuse_allowed);
-                auto selection_color =
-                    is_diffuse
-                        ? closure.weight
-                        : closure.weight *
-                              max(
-                                  closure.color,
-                                  make_float3(0.04f));
                 auto weight =
                     sample_weight(selection_color);
                 weight = select(
@@ -1833,7 +2460,11 @@ public:
         }
         auto values = trace_values(services, point);
         return evaluate_traced(
-            values, point, outgoing_expression, query);
+            services,
+            values,
+            point,
+            outgoing_expression,
+            query);
     }
 
     [[nodiscard]] SurfaceSample sample(
@@ -1848,6 +2479,9 @@ public:
         }
 
         auto values = trace_values(services, point);
+        auto incoming = safe_normalize(
+            point.incoming,
+            point.shading_normal);
         Float total_weight = 0.0f;
         auto diffuse_enabled =
             (query.lobe_mask &
@@ -1884,13 +2518,22 @@ public:
                                     : is_glossy
                                           ? glossy_enabled
                                           : Bool{false};
-                auto selection_color =
-                    is_diffuse || is_transparent
-                        ? closure.weight
-                        : closure.weight *
-                              max(
-                                  closure.color,
-                                  make_float3(0.04f));
+                Float3 selection_color;
+                if (is_principled) {
+                    auto state = principled_state(
+                        services, closure, incoming);
+                    selection_color =
+                        state.diffuse_sample_weight +
+                        state.glossy_sample_weight;
+                } else {
+                    selection_color =
+                        is_diffuse || is_transparent
+                            ? closure.weight
+                            : closure.weight *
+                                  max(
+                                      closure.color,
+                                      make_float3(0.04f));
+                }
                 total_weight += select(
                     0.0f,
                     sample_weight(selection_color),
@@ -1934,13 +2577,33 @@ public:
                                     : is_glossy
                                           ? glossy_enabled
                                           : Bool{false};
-                auto selection_color =
-                    is_diffuse || is_transparent
-                        ? closure.weight
-                        : closure.weight *
-                              max(
-                                  closure.color,
-                                  make_float3(0.04f));
+                Float3 selection_color;
+                Float principled_specular_chance = 0.0f;
+                if (is_principled) {
+                    auto state = principled_state(
+                        services, closure, incoming);
+                    selection_color =
+                        state.diffuse_sample_weight +
+                        state.glossy_sample_weight;
+                    auto diffuse_weight = sample_weight(
+                        state.diffuse_sample_weight);
+                    auto glossy_weight = sample_weight(
+                        state.glossy_sample_weight);
+                    principled_specular_chance =
+                        glossy_weight /
+                        max(
+                            diffuse_weight +
+                                glossy_weight,
+                            1.0e-20f);
+                } else {
+                    selection_color =
+                        is_diffuse || is_transparent
+                            ? closure.weight
+                            : closure.weight *
+                                  max(
+                                      closure.color,
+                                      make_float3(0.04f));
+                }
                 auto weight = select(
                     0.0f,
                     sample_weight(selection_color),
@@ -1961,7 +2624,7 @@ public:
                         ? 1.0f
                         : is_diffuse
                               ? 0.0f
-                              : specular_probability(closure);
+                              : principled_specular_chance;
                 specular_chance = select(
                     specular_chance,
                     0.0f,
@@ -1989,7 +2652,7 @@ public:
                         closure.normal, remapped_random);
                 auto glossy_direction = sample_ggx(
                     closure,
-                    point.incoming,
+                    incoming,
                     remapped_random);
                 auto transparent_direction = -point.incoming;
                 auto sample_glossy =
@@ -2034,7 +2697,7 @@ public:
             });
 
         auto diffuse_evaluation = evaluate_traced(
-            values, point, result.wi, query);
+            services, values, point, result.wi, query);
         auto geometric_valid =
             dot(point.geometric_normal, result.wi) > 0.0f;
         auto diffuse_valid =
@@ -2127,6 +2790,9 @@ public:
         Float total_weight = 0.0f;
         Float roughness = 0.0f;
         Float3 normal = make_float3(0.0f);
+        auto incoming = safe_normalize(
+            point.incoming,
+            point.shading_normal);
         for_each_closure(
             values,
             [&](const TracedClosure &closure) noexcept {
@@ -2143,10 +2809,19 @@ public:
                     !is_glossy) {
                     return;
                 }
-                auto albedo =
-                    is_diffuse
-                        ? closure.weight
-                        : closure.weight * closure.color;
+                Float3 albedo;
+                if (is_principled) {
+                    albedo = principled_state(
+                                 services,
+                                 closure,
+                                 incoming)
+                                 .diffuse_albedo;
+                } else {
+                    albedo =
+                        is_diffuse
+                            ? closure.weight
+                            : closure.weight * closure.color;
+                }
                 auto weight = sample_weight(albedo);
                 total_weight += weight;
                 result.albedo += albedo;
