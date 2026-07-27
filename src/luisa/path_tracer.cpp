@@ -625,6 +625,10 @@ private:
             render_settings.pixel_filter;
         const auto filter_width =
             std::max(render_settings.filter_width, 1.0e-5f);
+        const auto pass_alpha_threshold = std::clamp(
+            render_settings.pass_alpha_threshold,
+            0.0f,
+            1.0f);
 
         Callable random_float = [](UInt &state) noexcept {
             state = state * 747796405u + 2891336453u;
@@ -2214,10 +2218,14 @@ private:
                         (ray_events &
                          static_cast<std::uint32_t>(
                              contract::event_transparent)) != 0u;
+                    // Cycles scene sync stores both UI minimum-bounce
+                    // settings as value + 1. A depth of zero is the camera
+                    // segment, so roulette starts only after that extra
+                    // guaranteed bounce.
                     Bool use_roulette = select(
-                        path_depth > min_bounces,
+                        path_depth > min_bounces + 1u,
                         transparent_depth >
-                            transparent_min_bounces,
+                            transparent_min_bounces + 1u,
                         arrived_through_transparency);
                     $if (use_roulette) {
                         Float survival = min(
@@ -2237,13 +2245,43 @@ private:
                         throughput /= survival;
                     };
 
-                    $if (!primary_recorded) {
+                    // Cycles writes camera data passes only along the
+                    // transparent-background chain. Diffuse Color is
+                    // throughput-weighted at every surface in that chain;
+                    // Normal is captured once, after skipping transparent
+                    // surfaces below the View Layer alpha threshold.
+                    $if (path_depth == 0u) {
                         auto aov = surfaces.aov(
                             surface_tag, services, point);
-                        sample_normal = aov.normal;
-                        sample_albedo = aov.albedo;
-                        sample_alpha = 1.0f;
-                        primary_recorded = true;
+                        sample_albedo +=
+                            throughput * aov.albedo;
+                        auto surface_alpha =
+                            clamp(
+                                make_float3(1.0f) -
+                                    aov.transparency,
+                                make_float3(0.0f),
+                                make_float3(1.0f));
+                        auto average_alpha =
+                            (surface_alpha.x +
+                             surface_alpha.y +
+                             surface_alpha.z) *
+                            (1.0f / 3.0f);
+                        auto writes_normal =
+                            (!primary_recorded) &
+                            ((pass_alpha_threshold == 0.0f) |
+                             (average_alpha >=
+                              pass_alpha_threshold));
+                        sample_normal = select(
+                            sample_normal,
+                            aov.normal,
+                            writes_normal);
+                        primary_recorded =
+                            primary_recorded |
+                            writes_normal;
+                        sample_alpha = select(
+                            sample_alpha,
+                            1.0f,
+                            average_alpha > 0.0f);
                     };
 
                     if (next_event_estimation) {
@@ -3497,6 +3535,37 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             texture_uploads.emplace_back(pixel_bytes);
         std::memcpy(pixels.data(), decoded, pixel_bytes);
         stbi_image_free(decoded);
+        if (image.alpha_type ==
+            contract::ImageAlphaType::straight) {
+            for (std::size_t offset = 0u;
+                 offset < pixel_bytes;
+                 offset += 4u) {
+                const auto alpha =
+                    static_cast<std::uint32_t>(
+                        std::to_integer<std::uint8_t>(
+                            pixels[offset + 3u]));
+                for (std::size_t channel = 0u;
+                     channel < 3u;
+                     ++channel) {
+                    const auto value =
+                        static_cast<std::uint32_t>(
+                            std::to_integer<std::uint8_t>(
+                                pixels[offset + channel]));
+                    pixels[offset + channel] =
+                        static_cast<std::byte>(
+                            (value * alpha) / 255u);
+                }
+            }
+        } else if (
+            image.alpha_type ==
+            contract::ImageAlphaType::ignore) {
+            for (std::size_t offset = 3u;
+                 offset < pixel_bytes;
+                 offset += 4u) {
+                pixels[offset] =
+                    static_cast<std::byte>(255u);
+            }
+        }
 
         auto &resource = data->images.emplace_back(
             data->device.create_image<float>(

@@ -140,6 +140,7 @@ struct SurfaceAov {
     Float3 albedo;
     Float2 roughness;
     Float3 normal;
+    Float3 transparency;
 };
 
 class ShaderServices {
@@ -214,7 +215,8 @@ public:
         return {
             .albedo = make_float3(0.0f),
             .roughness = make_float2(0.0f),
-            .normal = point.shading_normal};
+            .normal = point.shading_normal,
+            .transparency = make_float3(0.0f)};
     }
 };
 
@@ -309,7 +311,8 @@ public:
         auto result = SurfaceAov{
             .albedo = make_float3(0.0f),
             .roughness = make_float2(0.0f),
-            .normal = point.shading_normal};
+            .normal = point.shading_normal,
+            .transparency = make_float3(0.0f)};
         _surfaces.dispatch(tag, [&](const Surface *surface) noexcept {
             result = surface->aov(services, point);
         });

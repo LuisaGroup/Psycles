@@ -111,6 +111,27 @@ private:
         return max(value.x, max(value.y, value.z));
     }
 
+    [[nodiscard]] static Float srgb_to_linear(
+        Float value) noexcept {
+        auto linear_segment =
+            max(value, 0.0f) * (1.0f / 12.92f);
+        auto power_segment = pow(
+            (value + 0.055f) * (1.0f / 1.055f),
+            2.4f);
+        return select(
+            power_segment,
+            linear_segment,
+            value < 0.04045f);
+    }
+
+    [[nodiscard]] static Float3 srgb_to_linear(
+        Float3 value) noexcept {
+        return make_float3(
+            srgb_to_linear(value.x),
+            srgb_to_linear(value.y),
+            srgb_to_linear(value.z));
+    }
+
     [[nodiscard]] static Float cycles_table_1d(
         const ShaderServices &services,
         Float x,
@@ -215,9 +236,11 @@ private:
         auto delta = cmax - cmin;
         auto saturation = select(
             0.0f,
-            delta / max(abs(cmax), 1.0e-20f),
+            delta /
+                select(1.0f, cmax, cmax != 0.0f),
             cmax != 0.0f);
-        auto safe_delta = max(abs(delta), 1.0e-20f);
+        auto safe_delta =
+            select(1.0f, delta, delta != 0.0f);
         auto c = (make_float3(cmax) - rgb) / safe_delta;
         auto hue = 4.0f + c.y - c.x;
         hue = select(
@@ -946,15 +969,6 @@ private:
             normal);
     }
 
-    [[nodiscard]] static Float3 srgb_to_linear(
-        Float3 value) noexcept {
-        auto low = value / 12.92f;
-        auto high = pow(
-            (value + 0.055f) / 1.055f,
-            make_float3(2.4f));
-        return select(low, high, value > 0.04045f);
-    }
-
     [[nodiscard]] static Float3 rotate_euler(
         Float3 value,
         Float3 rotation) noexcept {
@@ -1196,37 +1210,31 @@ private:
                     break;
                 }
                 case compiler::ValueOperation::hue_saturation: {
+                    // Cycles' NODE_HSV contract: adjust in HSV space,
+                    // wrap hue with fract(), clamp only saturation, blend
+                    // with the unmodified input, and clamp the final RGB
+                    // against negative oversaturation artifacts. Fac is
+                    // intentionally not clamped.
                     auto color = vector(instruction.a, result);
-                    auto hue =
-                        scalar(instruction.b, result) - 0.5f;
-                    auto saturation = max(
-                        scalar(instruction.c, result), 0.0f);
-                    auto brightness =
-                        scalar(instruction.d, result);
-                    auto factor = clamp(
-                        scalar(instruction.e, result),
+                    auto adjusted = rgb_to_hsv(color);
+                    adjusted.x = fract(
+                        adjusted.x +
+                        scalar(instruction.b, result) +
+                        0.5f);
+                    adjusted.y = clamp(
+                        adjusted.y *
+                            scalar(instruction.c, result),
                         0.0f,
                         1.0f);
-                    auto axis = make_float3(
-                        0.57735026919f);
-                    auto angle = hue * two_pi;
-                    auto rotated =
-                        color * cos(angle) +
-                        cross(axis, color) * sin(angle) +
-                        axis * dot(axis, color) *
-                            (1.0f - cos(angle));
-                    auto luminance = dot(
-                        rotated,
-                        make_float3(
-                            0.2126f, 0.7152f, 0.0722f));
-                    auto adjusted =
-                        (make_float3(luminance) +
-                         (rotated -
-                          make_float3(luminance)) *
-                             saturation) *
-                        brightness;
+                    adjusted.z *=
+                        scalar(instruction.d, result);
+                    adjusted = hsv_to_rgb(adjusted);
+                    auto factor =
+                        scalar(instruction.e, result);
                     value = make_float4(
-                        lerp(color, adjusted, factor),
+                        max(
+                            lerp(color, adjusted, factor),
+                            make_float3(0.0f)),
                         1.0f);
                     break;
                 }
@@ -1522,12 +1530,37 @@ private:
                         valid);
                     if (instruction.operation ==
                         compiler::ValueOperation::image_color) {
+                        const auto unassociate_alpha =
+                            ((instruction.static_u1 >> 9u) & 1u) !=
+                            0u;
+                        if (unassociate_alpha) {
+                            auto alpha = sampled.w;
+                            auto should_unassociate =
+                                (alpha != 0.0f) &
+                                (alpha != 1.0f);
+                            auto safe_alpha = select(
+                                1.0f,
+                                alpha,
+                                should_unassociate);
+                            sampled = make_float4(
+                                select(
+                                    sampled.xyz(),
+                                    sampled.xyz() / safe_alpha,
+                                    should_unassociate),
+                                alpha);
+                        }
+                        const auto encoded_as_srgb =
+                            ((instruction.static_u1 >> 8u) & 1u) !=
+                            0u;
                         auto color = sampled.xyz();
-                        if (((instruction.static_u1 >> 8u) &
-                             1u) != 0u) {
+                        if (encoded_as_srgb) {
+                            // Match Cycles' svm_image_texture ordering:
+                            // filter associated encoded texels, optionally
+                            // unassociate, then decode sRGB.
                             color = srgb_to_linear(color);
                         }
-                        value = make_float4(color, sampled.w);
+                        value = make_float4(
+                            color, sampled.w);
                     } else {
                         value = make_float4(sampled.w);
                     }
@@ -1738,7 +1771,13 @@ private:
                             0xffu);
                     auto scale =
                         scalar(instruction.b, result);
-                    auto noise = cycles_noise::evaluate(
+                    value = cycles_noise::
+                        evaluate_texture_shared(
+                        static_cast<std::uint32_t>(
+                            instruction.static_u0),
+                        noise_type,
+                        normalize,
+                        color_needed,
                         vector(instruction.a, result) * scale,
                         scalar(instruction.g, result) * scale,
                         scalar(instruction.c, result),
@@ -1746,16 +1785,7 @@ private:
                         scalar(instruction.e, result),
                         scalar(instruction.h, result),
                         scalar(instruction.i, result),
-                        scalar(instruction.f, result),
-                        static_cast<std::uint32_t>(
-                            instruction.static_u0),
-                        noise_type,
-                        normalize,
-                        color_needed);
-                    value =
-                        color_needed
-                            ? make_float4(noise.color, 1.0f)
-                            : make_float4(noise.value);
+                        scalar(instruction.f, result));
                     break;
                 }
                 case compiler::ValueOperation::white_noise_value:
@@ -1764,17 +1794,13 @@ private:
                         instruction.operation ==
                         compiler::ValueOperation::
                             white_noise_color;
-                    const auto noise =
-                        cycles_noise::evaluate_white(
-                            vector(instruction.a, result),
-                            scalar(instruction.b, result),
+                    value =
+                        cycles_noise::evaluate_white_shared(
                             static_cast<std::uint32_t>(
                                 instruction.static_u0),
-                            color_needed);
-                    value =
-                        color_needed
-                            ? make_float4(noise.color, 1.0f)
-                            : make_float4(noise.value);
+                            color_needed,
+                            vector(instruction.a, result),
+                            scalar(instruction.b, result));
                     break;
                 }
                 case compiler::ValueOperation::brick_color:
@@ -1906,11 +1932,17 @@ private:
                         gradient =
                             atan2(p.y, p.x) / two_pi + 0.5f;
                     } else if (instruction.static_u0 == 5u) {
-                        gradient = length(p);
+                        gradient = max(
+                            0.999999f - length(p),
+                            0.0f);
                     } else if (instruction.static_u0 == 6u) {
-                        gradient = length(p);
+                        gradient = max(
+                            0.999999f - length(p),
+                            0.0f);
                         gradient *= gradient;
                     }
+                    gradient = clamp(
+                        gradient, 0.0f, 1.0f);
                     value = make_float4(gradient);
                     break;
                 }
@@ -1968,6 +2000,25 @@ private:
                             alpha = select(
                                 alpha, lerp(a0, a1, t), use);
                         }
+                        const auto last =
+                            (count - 1u) * 5u;
+                        auto use_last =
+                            factor >=
+                            instruction.static_table[last];
+                        color = select(
+                            color,
+                            make_float3(
+                                instruction.static_table[
+                                    last + 1u],
+                                instruction.static_table[
+                                    last + 2u],
+                                instruction.static_table[
+                                    last + 3u]),
+                            use_last);
+                        alpha = select(
+                            alpha,
+                            instruction.static_table[last + 4u],
+                            use_last);
                     }
                     value =
                         instruction.static_u1 != 0u
@@ -2277,6 +2328,43 @@ public:
         : _program{std::move(program)},
           _parameter_block{parameter_block} {
         if (_program) {
+            for (const auto &instruction :
+                 _program->value_instructions()) {
+                if (
+                    instruction.operation ==
+                        compiler::ValueOperation::noise_factor ||
+                    instruction.operation ==
+                        compiler::ValueOperation::noise_color) {
+                    const auto color_needed =
+                        instruction.operation ==
+                        compiler::ValueOperation::noise_color;
+                    const auto normalize =
+                        (instruction.static_u1 & 1u) != 0u;
+                    const auto noise_type =
+                        static_cast<cycles_noise::Type>(
+                            (instruction.static_u1 >> 8u) &
+                            0xffu);
+                    cycles_noise::prepare_texture(
+                        static_cast<std::uint32_t>(
+                            instruction.static_u0),
+                        noise_type,
+                        normalize,
+                        color_needed);
+                } else if (
+                    instruction.operation ==
+                        compiler::ValueOperation::
+                            white_noise_value ||
+                    instruction.operation ==
+                        compiler::ValueOperation::
+                            white_noise_color) {
+                    cycles_noise::prepare_white_texture(
+                        static_cast<std::uint32_t>(
+                            instruction.static_u0),
+                        instruction.operation ==
+                            compiler::ValueOperation::
+                                white_noise_color);
+                }
+            }
             for (const auto &closure :
                  _program->closure_instructions()) {
                 _capabilities.may_emit |=
@@ -2829,7 +2917,8 @@ public:
         auto result = SurfaceAov{
             .albedo = make_float3(0.0f),
             .roughness = make_float2(0.0f),
-            .normal = point.shading_normal};
+            .normal = point.shading_normal,
+            .transparency = make_float3(0.0f)};
         if (!_program) {
             return result;
         }
@@ -2843,6 +2932,11 @@ public:
         for_each_closure(
             values,
             [&](const TracedClosure &closure) noexcept {
+                if (closure.operation ==
+                    compiler::ClosureOperation::transparent) {
+                    result.transparency += closure.weight;
+                    return;
+                }
                 const auto is_diffuse =
                     closure.operation ==
                     compiler::ClosureOperation::diffuse;

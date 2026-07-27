@@ -50,10 +50,18 @@ enum class ImageColorSpace : std::uint8_t {
     srgb
 };
 
+enum class ImageAlphaType : std::uint8_t {
+    straight,
+    premultiplied,
+    channel_packed,
+    ignore
+};
+
 struct ImageDesc {
     std::string name;
     std::string source_format;
     ImageColorSpace color_space{ImageColorSpace::data};
+    ImageAlphaType alpha_type{ImageAlphaType::straight};
     std::uint32_t width{};
     std::uint32_t height{};
     std::vector<std::uint8_t> encoded_data;

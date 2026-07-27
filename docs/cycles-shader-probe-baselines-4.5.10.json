@@ -119,6 +119,22 @@
       "probe": "gamma_color",
       "samples": 4
     },
+    "HUE_SAT": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 0.0
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "hue_saturation_value",
+      "samples": 256
+    },
     "RGB": {
       "max_rmse": 1e-06,
       "passes": {

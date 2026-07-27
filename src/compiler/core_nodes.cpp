@@ -199,7 +199,11 @@ NodeRegistry make_core_node_registry() {
             property(
                 "ColorSpace",
                 SocketType::string,
-                SocketValue::string("sRGB"))},
+                SocketValue::string("sRGB")),
+            property(
+                "UnassociateAlpha",
+                SocketType::boolean,
+                SocketValue::boolean(false))},
         .required_features =
             feature_bit(ShaderFeature::surface) |
             feature_bit(ShaderFeature::derivatives)}));

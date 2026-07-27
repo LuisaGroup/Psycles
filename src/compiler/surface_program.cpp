@@ -563,6 +563,12 @@ private:
                               : extension == "MIRROR" ? 3u : 0u;
                 const auto srgb =
                     color_space == "sRGB" ? 1u : 0u;
+                const auto unassociate_alpha =
+                    property_bool(node, "UnassociateAlpha") ? 1u : 0u;
+                const auto flags =
+                    address |
+                    (srgb << 8u) |
+                    (unassociate_alpha << 9u);
                 publish(
                     node.id,
                     "Color",
@@ -572,7 +578,7 @@ private:
                         .result_type = SocketType::color,
                         .a = *vector,
                         .static_u0 = image,
-                        .static_u1 = address | (srgb << 8u)}));
+                        .static_u1 = flags}));
                 publish(
                     node.id,
                     "Alpha",
@@ -582,7 +588,7 @@ private:
                         .result_type = SocketType::floating,
                         .a = *vector,
                         .static_u0 = image,
-                        .static_u1 = address}));
+                        .static_u1 = flags}));
             }
             return;
         }

@@ -13,10 +13,13 @@ from __future__ import annotations
 
 import pathlib
 import sys
+import tempfile
 from collections.abc import Callable
 from typing import Any
 
 import bpy
+import numpy as np
+import OpenImageIO as oiio
 
 
 def _clear() -> None:
@@ -259,6 +262,64 @@ def _transparent_mix(scene: Any) -> None:
     _plane(material)
 
 
+def _transparent_data_pass(scene: Any) -> None:
+    """Verify Normal/DiffCol traversal through a transparent camera hit."""
+    _world(scene, (0.3, 0.42, 0.65, 1.0), 0.8)
+
+    foreground, tree, output = _material(
+        "Transparent Data Pass Foreground"
+    )
+    transparent = tree.nodes.new("ShaderNodeBsdfTransparent")
+    transparent.name = "Transparent BSDF"
+    _input(transparent, "Color").default_value = (
+        0.72,
+        0.9,
+        0.61,
+        1.0,
+    )
+    tree.links.new(
+        _output(transparent, "BSDF"),
+        _input(output, "Surface"),
+    )
+    bpy.ops.mesh.primitive_plane_add(
+        size=8.0,
+        enter_editmode=False,
+        align="WORLD",
+        location=(0.0, 0.0, 0.0),
+        rotation=(0.31, 0.0, 0.0),
+    )
+    front_plane = bpy.context.object
+    front_plane.name = "Transparent Foreground"
+    front_plane.data.materials.append(foreground)
+
+    background, tree, output = _material(
+        "Transparent Data Pass Background"
+    )
+    diffuse = tree.nodes.new("ShaderNodeBsdfDiffuse")
+    diffuse.name = "Diffuse BSDF"
+    _input(diffuse, "Color").default_value = (
+        0.63,
+        0.17,
+        0.08,
+        1.0,
+    )
+    _input(diffuse, "Roughness").default_value = 0.27
+    tree.links.new(
+        _output(diffuse, "BSDF"),
+        _input(output, "Surface"),
+    )
+    bpy.ops.mesh.primitive_plane_add(
+        size=16.0,
+        enter_editmode=False,
+        align="WORLD",
+        location=(0.0, 0.0, -3.0),
+    )
+    back_plane = bpy.context.object
+    back_plane.name = "Diffuse Background"
+    back_plane.data.materials.append(background)
+    bpy.context.view_layer.pass_alpha_threshold = 0.5
+
+
 def _diffuse_surface(scene: Any) -> None:
     _world(scene, (0.42, 0.52, 0.65, 1.0), 0.8)
     material, tree, output = _material("Diffuse Probe")
@@ -477,6 +538,358 @@ def _noise_bump_object(scene: Any) -> None:
     )
     tree.links.new(
         _output(diffuse, "BSDF"),
+        _input(output, "Surface"),
+    )
+    _plane(material)
+
+
+def _gradient_spherical(scene: Any) -> None:
+    material, tree, output = _material("Spherical Gradient Probe")
+    coordinates = tree.nodes.new("ShaderNodeTexCoord")
+    coordinates.name = "Texture Coordinate"
+    mapping = tree.nodes.new("ShaderNodeMapping")
+    mapping.name = "Point Mapping"
+    mapping.vector_type = "POINT"
+    _input(mapping, "Scale").default_value = (0.6, 0.6, 0.6)
+    gradient = tree.nodes.new("ShaderNodeTexGradient")
+    gradient.name = "Spherical Gradient"
+    gradient.gradient_type = "SPHERICAL"
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Emission"
+    tree.links.new(
+        _output(coordinates, "Object"),
+        _input(mapping, "Vector"),
+    )
+    tree.links.new(
+        _output(mapping, "Vector"),
+        _input(gradient, "Vector"),
+    )
+    tree.links.new(
+        _output(gradient, "Fac"),
+        _input(emission, "Color"),
+    )
+    tree.links.new(
+        _output(emission, "Emission"),
+        _input(output, "Surface"),
+    )
+    _plane(material)
+
+
+def _image_texture_srgb(scene: Any) -> None:
+    """Exercise sRGB-before-filtering and straight-alpha sampling."""
+    with tempfile.NamedTemporaryFile(
+        suffix=".png", delete=False
+    ) as temporary:
+        texture_path = pathlib.Path(temporary.name)
+    pixels = np.asarray(
+        [
+            [
+                (16, 64, 240, 32),
+                (240, 32, 16, 224),
+            ],
+            [
+                (32, 220, 64, 96),
+                (180, 128, 200, 160),
+            ],
+        ],
+        dtype=np.uint8,
+    )
+    output_image = oiio.ImageOutput.create(str(texture_path))
+    if output_image is None:
+        raise RuntimeError("could not create probe PNG")
+    try:
+        if not output_image.open(
+            str(texture_path),
+            oiio.ImageSpec(2, 2, 4, oiio.UINT8),
+        ):
+            raise RuntimeError("could not open probe PNG")
+        if not output_image.write_image(pixels):
+            raise RuntimeError("could not write probe PNG")
+    finally:
+        output_image.close()
+
+    try:
+        image = bpy.data.images.load(
+            str(texture_path), check_existing=False
+        )
+        image.name = "Probe sRGB Texture"
+        image.colorspace_settings.name = "sRGB"
+        image.alpha_mode = "STRAIGHT"
+        image.pack()
+    finally:
+        texture_path.unlink(missing_ok=True)
+
+    material, tree, output = _material("sRGB Image Texture")
+    texture = tree.nodes.new("ShaderNodeTexImage")
+    texture.name = "Image Texture"
+    texture.image = image
+    texture.interpolation = "Linear"
+    texture.extension = "EXTEND"
+    separate = tree.nodes.new("ShaderNodeSeparateColor")
+    separate.name = "Separate Image Color"
+    separate.mode = "RGB"
+    tree.links.new(
+        _output(texture, "Color"),
+        _input(separate, "Color"),
+    )
+    combine = tree.nodes.new("ShaderNodeCombineColor")
+    combine.name = "Pack Color and Alpha"
+    combine.mode = "RGB"
+    tree.links.new(
+        _output(separate, "Red"),
+        _input(combine, "Red"),
+    )
+    tree.links.new(
+        _output(separate, "Green"),
+        _input(combine, "Green"),
+    )
+    tree.links.new(
+        _output(texture, "Alpha"),
+        _input(combine, "Blue"),
+    )
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Emission"
+    tree.links.new(
+        _output(combine, "Color"),
+        _input(emission, "Color"),
+    )
+    tree.links.new(
+        _output(emission, "Emission"),
+        _input(output, "Surface"),
+    )
+    _plane(material)
+
+
+def _color_ramp_rgb(scene: Any) -> None:
+    """Exercise scene-reachable linear and constant RGB ramps."""
+    material, tree, output = _material("RGB Color Ramp Probe")
+    coordinates = tree.nodes.new("ShaderNodeTexCoord")
+    coordinates.name = "Texture Coordinate"
+    gradient = tree.nodes.new("ShaderNodeTexGradient")
+    gradient.name = "Linear Gradient"
+    gradient.gradient_type = "LINEAR"
+    tree.links.new(
+        _output(coordinates, "Generated"),
+        _input(gradient, "Vector"),
+    )
+
+    linear = tree.nodes.new("ShaderNodeValToRGB")
+    linear.name = "Linear RGB Ramp"
+    linear.color_ramp.color_mode = "RGB"
+    linear.color_ramp.interpolation = "LINEAR"
+    linear.color_ramp.elements[0].position = 0.13
+    linear.color_ramp.elements[0].color = (0.04, 0.17, 0.73, 0.21)
+    middle = linear.color_ramp.elements.new(0.47)
+    middle.color = (0.82, 0.09, 0.24, 0.68)
+    linear.color_ramp.elements[1].position = 0.82
+    linear.color_ramp.elements[1].color = (0.15, 0.91, 0.36, 0.94)
+    tree.links.new(
+        _output(gradient, "Fac"),
+        _input(linear, "Fac"),
+    )
+
+    constant = tree.nodes.new("ShaderNodeValToRGB")
+    constant.name = "Constant RGB Ramp"
+    constant.color_ramp.color_mode = "RGB"
+    constant.color_ramp.interpolation = "CONSTANT"
+    constant.color_ramp.elements[0].position = 0.19
+    constant.color_ramp.elements[0].color = (0.91, 0.11, 0.07, 0.32)
+    middle = constant.color_ramp.elements.new(0.58)
+    middle.color = (0.13, 0.77, 0.31, 0.61)
+    constant.color_ramp.elements[1].position = 0.88
+    constant.color_ramp.elements[1].color = (0.22, 0.36, 0.95, 0.86)
+    tree.links.new(
+        _output(gradient, "Fac"),
+        _input(constant, "Fac"),
+    )
+
+    linear_channels = tree.nodes.new("ShaderNodeSeparateColor")
+    linear_channels.mode = "RGB"
+    constant_channels = tree.nodes.new("ShaderNodeSeparateColor")
+    constant_channels.mode = "RGB"
+    tree.links.new(
+        _output(linear, "Color"),
+        _input(linear_channels, "Color"),
+    )
+    tree.links.new(
+        _output(constant, "Color"),
+        _input(constant_channels, "Color"),
+    )
+    combine = tree.nodes.new("ShaderNodeCombineColor")
+    combine.mode = "RGB"
+    tree.links.new(
+        _output(linear_channels, "Red"),
+        _input(combine, "Red"),
+    )
+    tree.links.new(
+        _output(constant_channels, "Green"),
+        _input(combine, "Green"),
+    )
+    tree.links.new(
+        _output(linear, "Alpha"),
+        _input(combine, "Blue"),
+    )
+    emission = tree.nodes.new("ShaderNodeEmission")
+    tree.links.new(
+        _output(combine, "Color"),
+        _input(emission, "Color"),
+    )
+    tree.links.new(
+        _output(emission, "Emission"),
+        _input(output, "Surface"),
+    )
+    _plane(material)
+
+
+def _brick_texture(scene: Any) -> None:
+    """Exercise both Brick Color and Fac with non-default row controls."""
+    material, tree, output = _material("Brick Texture Probe")
+    coordinates = tree.nodes.new("ShaderNodeTexCoord")
+    coordinates.name = "Texture Coordinate"
+    brick = tree.nodes.new("ShaderNodeTexBrick")
+    brick.name = "Brick Texture"
+    brick.offset = 0.37
+    brick.offset_frequency = 3
+    brick.squash = 0.72
+    brick.squash_frequency = 2
+    _input(brick, "Color1").default_value = (0.78, 0.08, 0.03, 1.0)
+    _input(brick, "Color2").default_value = (0.12, 0.43, 0.91, 1.0)
+    _input(brick, "Mortar").default_value = (0.07, 0.21, 0.13, 1.0)
+    _input(brick, "Scale").default_value = 5.3
+    _input(brick, "Mortar Size").default_value = 0.036
+    _input(brick, "Mortar Smooth").default_value = 0.017
+    _input(brick, "Bias").default_value = -0.14
+    _input(brick, "Brick Width").default_value = 0.53
+    _input(brick, "Row Height").default_value = 0.19
+    tree.links.new(
+        _output(coordinates, "Generated"),
+        _input(brick, "Vector"),
+    )
+    channels = tree.nodes.new("ShaderNodeSeparateColor")
+    channels.mode = "RGB"
+    tree.links.new(
+        _output(brick, "Color"),
+        _input(channels, "Color"),
+    )
+    combine = tree.nodes.new("ShaderNodeCombineColor")
+    combine.mode = "RGB"
+    tree.links.new(
+        _output(channels, "Red"),
+        _input(combine, "Red"),
+    )
+    tree.links.new(
+        _output(channels, "Green"),
+        _input(combine, "Green"),
+    )
+    tree.links.new(
+        _output(brick, "Fac"),
+        _input(combine, "Blue"),
+    )
+    emission = tree.nodes.new("ShaderNodeEmission")
+    tree.links.new(
+        _output(combine, "Color"),
+        _input(emission, "Color"),
+    )
+    tree.links.new(
+        _output(emission, "Emission"),
+        _input(output, "Surface"),
+    )
+    _plane(material)
+
+
+def _brick_texture_constants(scene: Any) -> None:
+    """Compare Brick numerics without reconstruction-filter edge noise."""
+    material, tree, output = _material("Brick Texture Constant Probe")
+
+    def brick_at(
+        name: str, coordinate: tuple[float, float, float]
+    ) -> Any:
+        coordinate_node = tree.nodes.new("ShaderNodeRGB")
+        coordinate_node.name = f"{name} Coordinates"
+        _output(coordinate_node, "Color").default_value = (
+            *coordinate,
+            1.0,
+        )
+        brick = tree.nodes.new("ShaderNodeTexBrick")
+        brick.name = name
+        brick.offset = 0.37
+        brick.offset_frequency = 3
+        brick.squash = 0.72
+        brick.squash_frequency = 2
+        tree.links.new(
+            _output(coordinate_node, "Color"),
+            _input(brick, "Vector"),
+        )
+        _input(brick, "Color1").default_value = (
+            0.78,
+            0.08,
+            0.03,
+            1.0,
+        )
+        _input(brick, "Color2").default_value = (
+            0.12,
+            0.43,
+            0.91,
+            1.0,
+        )
+        _input(brick, "Mortar").default_value = (
+            0.07,
+            0.21,
+            0.13,
+            1.0,
+        )
+        _input(brick, "Scale").default_value = 5.3
+        _input(brick, "Mortar Size").default_value = 0.036
+        _input(brick, "Mortar Smooth").default_value = 0.017
+        _input(brick, "Bias").default_value = -0.14
+        _input(brick, "Brick Width").default_value = 0.53
+        _input(brick, "Row Height").default_value = 0.19
+        return brick
+
+    brick_red = brick_at("Brick Red Sample", (0.113, 0.257, 0.0))
+    brick_green = brick_at(
+        "Brick Green Sample", (0.471, 0.379, 0.0)
+    )
+    brick_factor = brick_at(
+        "Brick Mortar Sample", (0.811, 0.541, 0.0)
+    )
+    red_channels = tree.nodes.new("ShaderNodeSeparateColor")
+    red_channels.name = "Separate Red Sample"
+    red_channels.mode = "RGB"
+    tree.links.new(
+        _output(brick_red, "Color"),
+        _input(red_channels, "Color"),
+    )
+    green_channels = tree.nodes.new("ShaderNodeSeparateColor")
+    green_channels.name = "Separate Green Sample"
+    green_channels.mode = "RGB"
+    tree.links.new(
+        _output(brick_green, "Color"),
+        _input(green_channels, "Color"),
+    )
+    combine = tree.nodes.new("ShaderNodeCombineColor")
+    combine.name = "Pack Brick Samples"
+    combine.mode = "RGB"
+    tree.links.new(
+        _output(red_channels, "Red"),
+        _input(combine, "Red"),
+    )
+    tree.links.new(
+        _output(green_channels, "Green"),
+        _input(combine, "Green"),
+    )
+    tree.links.new(
+        _output(brick_factor, "Fac"),
+        _input(combine, "Blue"),
+    )
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Emission"
+    tree.links.new(
+        _output(combine, "Color"),
+        _input(emission, "Color"),
+    )
+    tree.links.new(
+        _output(emission, "Emission"),
         _input(output, "Surface"),
     )
     _plane(material)
@@ -865,6 +1278,77 @@ def _brightness_contrast(scene: Any) -> None:
     _plane(material)
 
 
+def _hue_saturation_value(scene: Any) -> None:
+    """Cover Cycles HSV adjustment, hue wrapping, and factor blending."""
+    material, tree, output = _material("Hue Saturation Value")
+    combine = tree.nodes.new("ShaderNodeCombineColor")
+    combine.name = "Pack HSV Branches"
+    combine.mode = "RGB"
+    branches = (
+        (
+            (0.12, 0.65, 0.9, 1.0),
+            0.3,
+            1.4,
+            0.75,
+            1.0,
+            "Red",
+        ),
+        (
+            (0.83, 0.2, 0.06, 1.0),
+            0.82,
+            0.25,
+            1.7,
+            0.37,
+            "Green",
+        ),
+        (
+            (0.1, 0.4, 0.7, 1.0),
+            0.05,
+            2.2,
+            0.4,
+            0.85,
+            "Blue",
+        ),
+    )
+    for index, (
+        color,
+        hue,
+        saturation,
+        value,
+        factor,
+        channel,
+    ) in enumerate(branches):
+        node = tree.nodes.new("ShaderNodeHueSaturation")
+        node.name = f"HSV Branch {index}"
+        _input(node, "Color").default_value = color
+        _input(node, "Hue").default_value = hue
+        _input(node, "Saturation").default_value = saturation
+        _input(node, "Value").default_value = value
+        _input(node, "Fac").default_value = factor
+        separate = tree.nodes.new("ShaderNodeSeparateColor")
+        separate.name = f"Select HSV Channel {index}"
+        separate.mode = "RGB"
+        tree.links.new(
+            _output(node, "Color"),
+            _input(separate, "Color"),
+        )
+        tree.links.new(
+            _output(separate, channel),
+            _input(combine, channel),
+        )
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Emission"
+    tree.links.new(
+        _output(combine, "Color"),
+        _input(emission, "Color"),
+    )
+    tree.links.new(
+        _output(emission, "Emission"),
+        _input(output, "Surface"),
+    )
+    _plane(material)
+
+
 def _clamp(scene: Any) -> None:
     material, tree, output = _material("Clamp")
     combine = tree.nodes.new("ShaderNodeCombineColor")
@@ -988,11 +1472,17 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "background_world": _background_world,
     "bump_surface": _bump_surface,
     "brightness_contrast": _brightness_contrast,
+    "brick_texture": _brick_texture,
+    "brick_texture_constants": _brick_texture_constants,
     "clamp": _clamp,
+    "color_ramp_rgb": _color_ramp_rgb,
     "combine_color_modes": _combine_color_modes,
     "diffuse_surface": _diffuse_surface,
     "emission_surface": _emission_surface,
     "gamma_color": _gamma_color,
+    "gradient_spherical": _gradient_spherical,
+    "hue_saturation_value": _hue_saturation_value,
+    "image_texture_srgb": _image_texture_srgb,
     "integrator_clamp_direct": _integrator_clamp_direct,
     "mix_shader_emission": _mix_shader_emission,
     "node_group_color": _node_group_color,
@@ -1007,6 +1497,7 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "rgb_to_bw": _rgb_to_bw,
     "separate_color_modes": _separate_color_modes,
     "transparent_mix": _transparent_mix,
+    "transparent_data_pass": _transparent_data_pass,
     "value_emission": _value_emission,
     "white_noise_dimensions": _white_noise_dimensions,
 }

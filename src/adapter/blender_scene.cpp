@@ -35,6 +35,7 @@ using contract::CameraSensorFit;
 using contract::EnvironmentDesc;
 using contract::EnvironmentSunDesc;
 using contract::GeometryId;
+using contract::ImageAlphaType;
 using contract::ImageColorSpace;
 using contract::ImageDesc;
 using contract::ImageId;
@@ -211,6 +212,8 @@ private:
     const std::map<std::string, ImageId, std::less<>> &_image_ids;
     const std::map<std::string, ImageColorSpace, std::less<>> &
         _image_color_spaces;
+    const std::map<std::string, ImageAlphaType, std::less<>> &
+        _image_alpha_types;
     const NodeGroupMap &_node_groups;
     std::vector<BlenderSceneDiagnostic> &_diagnostics;
     ShaderGraph _graph;
@@ -222,6 +225,7 @@ private:
     std::set<std::string, std::less<>> _group_stack;
     std::set<std::string, std::less<>> _warned;
     std::optional<contract::NodeId> _default_image_coordinates;
+    std::optional<contract::NodeId> _default_generated_coordinates;
     std::optional<contract::NodeId> _geometry;
 
 private:
@@ -331,6 +335,20 @@ private:
                    : std::optional<RawOutputKey>{iter->second};
     }
 
+    [[nodiscard]] bool output_is_linked(
+        yyjson_val *node,
+        std::string_view identifier) const {
+        const auto key = RawOutputKey{
+            .node = text(member(node, "name")),
+            .socket = std::string{identifier}};
+        return std::any_of(
+            _links.begin(),
+            _links.end(),
+            [&key](const auto &link) {
+                return link.second == key;
+            });
+    }
+
     [[nodiscard]] std::string node_property_text(
         yyjson_val *node,
         const char *name,
@@ -404,6 +422,20 @@ private:
             .ref = {
                 .node = *_default_image_coordinates,
                 .socket = "UV"},
+            .type = contract::SocketType::vector};
+    }
+
+    [[nodiscard]] TypedOutput default_generated_coordinates() {
+        if (!_default_generated_coordinates) {
+            _default_generated_coordinates =
+                _graph.add_node(
+                    compiler::node_type::texture_coordinate,
+                    "Default Generated Coordinates");
+        }
+        return {
+            .ref = {
+                .node = *_default_generated_coordinates,
+                .socket = "Generated"},
             .type = contract::SocketType::vector};
     }
 
@@ -1046,12 +1078,25 @@ private:
                     : image_iter->second.value;
             const auto color_iter =
                 _image_color_spaces.find(image_name);
+            const auto image_color_space =
+                color_iter == _image_color_spaces.end()
+                    ? ImageColorSpace::data
+                    : color_iter->second;
             const auto color_space =
-                color_iter != _image_color_spaces.end() &&
-                        color_iter->second ==
-                            ImageColorSpace::srgb
+                image_color_space == ImageColorSpace::srgb
                     ? "sRGB"
                     : "Non-Color";
+            const auto alpha_iter =
+                _image_alpha_types.find(image_name);
+            const auto alpha_type =
+                alpha_iter == _image_alpha_types.end()
+                    ? ImageAlphaType::straight
+                    : alpha_iter->second;
+            const auto unassociate_alpha =
+                output_is_linked(node, "Alpha") &&
+                image_color_space != ImageColorSpace::data &&
+                alpha_type != ImageAlphaType::channel_packed &&
+                alpha_type != ImageAlphaType::ignore;
             static_cast<void>(_graph.set_property(
                 id,
                 "Image",
@@ -1065,6 +1110,10 @@ private:
                 id,
                 "ColorSpace",
                 SocketValue::string(color_space)));
+            static_cast<void>(_graph.set_property(
+                id,
+                "UnassociateAlpha",
+                SocketValue::boolean(unassociate_alpha)));
             return finish({
                 .ref = {
                     .node = id,
@@ -1342,12 +1391,20 @@ private:
                     std::string_view{target} == "Vector"
                         ? SocketType::vector
                         : SocketType::floating;
-                static_cast<void>(bind(
-                    id,
-                    target,
-                    node,
-                    source,
-                    target_type));
+                if (target_type == SocketType::vector &&
+                    !input_source(node, source)) {
+                    static_cast<void>(_graph.connect(
+                        default_generated_coordinates().ref,
+                        id,
+                        target));
+                } else {
+                    static_cast<void>(bind(
+                        id,
+                        target,
+                        node,
+                        source,
+                        target_type));
+                }
             }
             const auto dimensions =
                 node_property_text(
@@ -1452,12 +1509,20 @@ private:
                                   target_view == "Mortar"
                               ? SocketType::color
                               : SocketType::floating;
-                static_cast<void>(bind(
-                    id,
-                    target,
-                    node,
-                    source,
-                    target_type));
+                if (target_type == SocketType::vector &&
+                    !input_source(node, source)) {
+                    static_cast<void>(_graph.connect(
+                        default_generated_coordinates().ref,
+                        id,
+                        target));
+                } else {
+                    static_cast<void>(bind(
+                        id,
+                        target,
+                        node,
+                        source,
+                        target_type));
+                }
             }
             static_cast<void>(_graph.set_property(
                 id,
@@ -1499,8 +1564,19 @@ private:
             const auto id = _graph.add_node(
                 compiler::node_type::gradient_texture,
                 node_name);
-            static_cast<void>(bind(
-                id, "Vector", node, "Vector", SocketType::vector));
+            if (input_source(node, "Vector")) {
+                static_cast<void>(bind(
+                    id,
+                    "Vector",
+                    node,
+                    "Vector",
+                    SocketType::vector));
+            } else {
+                static_cast<void>(_graph.connect(
+                    default_generated_coordinates().ref,
+                    id,
+                    "Vector"));
+            }
             static_cast<void>(_graph.set_property(
                 id,
                 "GradientType",
@@ -1979,12 +2055,17 @@ public:
             std::string,
             ImageColorSpace,
             std::less<>> &image_color_spaces,
+        const std::map<
+            std::string,
+            ImageAlphaType,
+            std::less<>> &image_alpha_types,
         const NodeGroupMap &node_groups,
         std::vector<BlenderSceneDiagnostic> &diagnostics)
         : _tree{tree},
           _material_name{std::move(material_name)},
           _image_ids{image_ids},
           _image_color_spaces{image_color_spaces},
+          _image_alpha_types{image_alpha_types},
           _node_groups{node_groups},
           _diagnostics{diagnostics} {
         load_tree_context(_tree);
@@ -2013,6 +2094,10 @@ public:
         std::string,
         ImageColorSpace,
         std::less<>> &image_color_spaces,
+    const std::map<
+        std::string,
+        ImageAlphaType,
+        std::less<>> &image_alpha_types,
     const std::map<
         std::string,
         yyjson_val *,
@@ -2054,6 +2139,7 @@ public:
         material_name,
         image_ids,
         image_color_spaces,
+        image_alpha_types,
         node_groups,
         diagnostics}
         .build();
@@ -2095,6 +2181,20 @@ template<typename T>
         return ImageColorSpace::linear;
     }
     return ImageColorSpace::data;
+}
+
+[[nodiscard]] ImageAlphaType image_alpha_type(
+    std::string_view name) noexcept {
+    if (name == "PREMUL") {
+        return ImageAlphaType::premultiplied;
+    }
+    if (name == "CHANNEL_PACKED") {
+        return ImageAlphaType::channel_packed;
+    }
+    if (name == "NONE" || name == "IGNORE") {
+        return ImageAlphaType::ignore;
+    }
+    return ImageAlphaType::straight;
 }
 
 [[nodiscard]] std::vector<std::uint8_t> read_file(
@@ -2205,6 +2305,11 @@ BlenderSceneImport load_blender_scene_bundle(
             ImageColorSpace,
             std::less<>>
             image_color_spaces;
+        std::map<
+            std::string,
+            ImageAlphaType,
+            std::less<>>
+            image_alpha_types;
         auto *images = member(root, "images");
         yyjson_arr_iter image_metadata_iterator =
             yyjson_arr_iter_with(images);
@@ -2218,6 +2323,10 @@ BlenderSceneImport load_blender_scene_bundle(
                 name,
                 image_color_space(
                     text(member(image, "colorspace"))));
+            image_alpha_types.emplace(
+                name,
+                image_alpha_type(
+                    text(member(image, "alpha_mode"))));
         }
 
         std::map<
@@ -2270,6 +2379,7 @@ BlenderSceneImport load_blender_scene_bundle(
                         material,
                         image_ids,
                         image_color_spaces,
+                        image_alpha_types,
                         node_groups,
                         result.diagnostics)});
         }
@@ -2292,6 +2402,8 @@ BlenderSceneImport load_blender_scene_bundle(
                         source_path.extension().string(),
                     .color_space = image_color_space(
                         text(member(image, "colorspace"))),
+                    .alpha_type = image_alpha_type(
+                        text(member(image, "alpha_mode"))),
                     .width = static_cast<std::uint32_t>(
                         unsigned_number(
                             member(image, "width"))),
@@ -2316,6 +2428,12 @@ BlenderSceneImport load_blender_scene_bundle(
             unsigned_number(
                 member(member(render, "cycles"), "samples"),
                 64u));
+        result.pass_alpha_threshold = std::clamp(
+            number(
+                member(render, "pass_alpha_threshold"),
+                result.pass_alpha_threshold),
+            0.0f,
+            1.0f);
         auto *cycles = member(render, "cycles");
         result.seed = static_cast<std::uint32_t>(
             unsigned_number(member(cycles, "seed")));
@@ -2801,6 +2919,7 @@ BlenderSceneImport load_blender_scene_bundle(
                           world,
                           image_ids,
                           image_color_spaces,
+                          image_alpha_types,
                           node_groups,
                           result.diagnostics)
                     : emission_graph(world_color, 1.0f);

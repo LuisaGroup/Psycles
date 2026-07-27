@@ -768,6 +768,9 @@ def _main() -> None:
             "transparent": scene.render.film_transparent,
             "pixel_filter_type": scene.cycles.pixel_filter_type,
             "filter_width": float(scene.cycles.filter_width),
+            "pass_alpha_threshold": float(
+                bpy.context.view_layer.pass_alpha_threshold
+            ),
             "cycles": manifest._cycles_settings(scene),
         },
         "geometries": geometries,

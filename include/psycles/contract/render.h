@@ -104,6 +104,7 @@ struct RenderSettings {
     bool transparent_background{false};
     PixelFilter pixel_filter{PixelFilter::box};
     float filter_width{1.0f};
+    float pass_alpha_threshold{0.5f};
     PathIntegratorSettings integrator;
     std::vector<PassRequest> passes;
 };

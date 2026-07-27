@@ -6,9 +6,11 @@
 
 #include <cstdint>
 #include <type_traits>
+#include <utility>
 
 #include <psycles/luisa/surface.h>
 
+#include <luisa/dsl/func.h>
 #include <luisa/dsl/sugar.h>
 
 namespace psycles::luisa_backend::cycles_noise {
@@ -1032,6 +1034,353 @@ template<typename P, typename Offset>
                 },
                 3.0f);
     }
+}
+
+template<std::uint32_t Dimensions,
+         Type NoiseType,
+         bool Normalize,
+         bool ColorNeeded>
+[[nodiscard]] inline const auto &texture_callable() noexcept {
+    static luisa::compute::Callable callable{
+        [](Float3 vector,
+           Float w,
+           Float detail,
+           Float roughness,
+           Float lacunarity,
+           Float offset,
+           Float gain,
+           Float distortion) noexcept {
+            const auto result = evaluate(
+                vector,
+                w,
+                detail,
+                roughness,
+                lacunarity,
+                offset,
+                gain,
+                distortion,
+                Dimensions,
+                NoiseType,
+                Normalize,
+                ColorNeeded);
+            if constexpr (ColorNeeded) {
+                return make_float4(result.color, 1.0f);
+            } else {
+                return make_float4(result.value);
+            }
+        }};
+    return callable;
+}
+
+template<std::uint32_t Dimensions,
+         Type NoiseType,
+         bool ColorNeeded>
+inline void prepare_texture_normalization(
+    bool normalize) noexcept {
+    if (normalize) {
+        static_cast<void>(
+            texture_callable<
+                Dimensions,
+                NoiseType,
+                true,
+                ColorNeeded>());
+    } else {
+        static_cast<void>(
+            texture_callable<
+                Dimensions,
+                NoiseType,
+                false,
+                ColorNeeded>());
+    }
+}
+
+template<std::uint32_t Dimensions, bool ColorNeeded>
+inline void prepare_texture_type(
+    Type type,
+    bool normalize) noexcept {
+    switch (type) {
+        case Type::multifractal:
+            prepare_texture_normalization<
+                Dimensions,
+                Type::multifractal,
+                ColorNeeded>(normalize);
+            break;
+        case Type::hybrid_multifractal:
+            prepare_texture_normalization<
+                Dimensions,
+                Type::hybrid_multifractal,
+                ColorNeeded>(normalize);
+            break;
+        case Type::ridged_multifractal:
+            prepare_texture_normalization<
+                Dimensions,
+                Type::ridged_multifractal,
+                ColorNeeded>(normalize);
+            break;
+        case Type::hetero_terrain:
+            prepare_texture_normalization<
+                Dimensions,
+                Type::hetero_terrain,
+                ColorNeeded>(normalize);
+            break;
+        case Type::fbm:
+        default:
+            prepare_texture_normalization<
+                Dimensions,
+                Type::fbm,
+                ColorNeeded>(normalize);
+            break;
+    }
+}
+
+template<bool ColorNeeded>
+inline void prepare_texture_dimensions(
+    std::uint32_t dimensions,
+    Type type,
+    bool normalize) noexcept {
+    switch (dimensions) {
+        case 1u:
+            prepare_texture_type<1u, ColorNeeded>(
+                type, normalize);
+            break;
+        case 2u:
+            prepare_texture_type<2u, ColorNeeded>(
+                type, normalize);
+            break;
+        case 4u:
+            prepare_texture_type<4u, ColorNeeded>(
+                type, normalize);
+            break;
+        case 3u:
+        default:
+            prepare_texture_type<3u, ColorNeeded>(
+                type, normalize);
+            break;
+    }
+}
+
+inline void prepare_texture(
+    std::uint32_t dimensions,
+    Type type,
+    bool normalize,
+    bool color_needed) noexcept {
+    if (color_needed) {
+        prepare_texture_dimensions<true>(
+            dimensions, type, normalize);
+    } else {
+        prepare_texture_dimensions<false>(
+            dimensions, type, normalize);
+    }
+}
+
+template<std::uint32_t Dimensions,
+         Type NoiseType,
+         bool ColorNeeded,
+         typename... Args>
+[[nodiscard]] inline Float4 evaluate_texture_normalization(
+    bool normalize,
+    Args &&...args) noexcept {
+    if (normalize) {
+        return texture_callable<
+            Dimensions,
+            NoiseType,
+            true,
+            ColorNeeded>()(
+            std::forward<Args>(args)...);
+    }
+    return texture_callable<
+        Dimensions,
+        NoiseType,
+        false,
+        ColorNeeded>()(
+        std::forward<Args>(args)...);
+}
+
+template<std::uint32_t Dimensions,
+         bool ColorNeeded,
+         typename... Args>
+[[nodiscard]] inline Float4 evaluate_texture_type(
+    Type type,
+    bool normalize,
+    Args &&...args) noexcept {
+    switch (type) {
+        case Type::multifractal:
+            return evaluate_texture_normalization<
+                Dimensions,
+                Type::multifractal,
+                ColorNeeded>(
+                normalize,
+                std::forward<Args>(args)...);
+        case Type::hybrid_multifractal:
+            return evaluate_texture_normalization<
+                Dimensions,
+                Type::hybrid_multifractal,
+                ColorNeeded>(
+                normalize,
+                std::forward<Args>(args)...);
+        case Type::ridged_multifractal:
+            return evaluate_texture_normalization<
+                Dimensions,
+                Type::ridged_multifractal,
+                ColorNeeded>(
+                normalize,
+                std::forward<Args>(args)...);
+        case Type::hetero_terrain:
+            return evaluate_texture_normalization<
+                Dimensions,
+                Type::hetero_terrain,
+                ColorNeeded>(
+                normalize,
+                std::forward<Args>(args)...);
+        case Type::fbm:
+        default:
+            return evaluate_texture_normalization<
+                Dimensions,
+                Type::fbm,
+                ColorNeeded>(
+                normalize,
+                std::forward<Args>(args)...);
+    }
+}
+
+template<bool ColorNeeded, typename... Args>
+[[nodiscard]] inline Float4 evaluate_texture_dimensions(
+    std::uint32_t dimensions,
+    Type type,
+    bool normalize,
+    Args &&...args) noexcept {
+    switch (dimensions) {
+        case 1u:
+            return evaluate_texture_type<1u, ColorNeeded>(
+                type,
+                normalize,
+                std::forward<Args>(args)...);
+        case 2u:
+            return evaluate_texture_type<2u, ColorNeeded>(
+                type,
+                normalize,
+                std::forward<Args>(args)...);
+        case 4u:
+            return evaluate_texture_type<4u, ColorNeeded>(
+                type,
+                normalize,
+                std::forward<Args>(args)...);
+        case 3u:
+        default:
+            return evaluate_texture_type<3u, ColorNeeded>(
+                type,
+                normalize,
+                std::forward<Args>(args)...);
+    }
+}
+
+template<typename... Args>
+[[nodiscard]] inline Float4 evaluate_texture_shared(
+    std::uint32_t dimensions,
+    Type type,
+    bool normalize,
+    bool color_needed,
+    Args &&...args) noexcept {
+    if (color_needed) {
+        return evaluate_texture_dimensions<true>(
+            dimensions,
+            type,
+            normalize,
+            std::forward<Args>(args)...);
+    }
+    return evaluate_texture_dimensions<false>(
+        dimensions,
+        type,
+        normalize,
+        std::forward<Args>(args)...);
+}
+
+template<std::uint32_t Dimensions, bool ColorNeeded>
+[[nodiscard]] inline const auto &
+white_texture_callable() noexcept {
+    static luisa::compute::Callable callable{
+        [](Float3 vector, Float w) noexcept {
+            const auto result = evaluate_white(
+                vector,
+                w,
+                Dimensions,
+                ColorNeeded);
+            if constexpr (ColorNeeded) {
+                return make_float4(result.color, 1.0f);
+            } else {
+                return make_float4(result.value);
+            }
+        }};
+    return callable;
+}
+
+template<bool ColorNeeded>
+inline void prepare_white_dimensions(
+    std::uint32_t dimensions) noexcept {
+    switch (dimensions) {
+        case 1u:
+            static_cast<void>(
+                white_texture_callable<1u, ColorNeeded>());
+            break;
+        case 2u:
+            static_cast<void>(
+                white_texture_callable<2u, ColorNeeded>());
+            break;
+        case 4u:
+            static_cast<void>(
+                white_texture_callable<4u, ColorNeeded>());
+            break;
+        case 3u:
+        default:
+            static_cast<void>(
+                white_texture_callable<3u, ColorNeeded>());
+            break;
+    }
+}
+
+inline void prepare_white_texture(
+    std::uint32_t dimensions,
+    bool color_needed) noexcept {
+    if (color_needed) {
+        prepare_white_dimensions<true>(dimensions);
+    } else {
+        prepare_white_dimensions<false>(dimensions);
+    }
+}
+
+template<bool ColorNeeded>
+[[nodiscard]] inline Float4 evaluate_white_dimensions(
+    std::uint32_t dimensions,
+    Float3 vector,
+    Float w) noexcept {
+    switch (dimensions) {
+        case 1u:
+            return white_texture_callable<
+                1u, ColorNeeded>()(vector, w);
+        case 2u:
+            return white_texture_callable<
+                2u, ColorNeeded>()(vector, w);
+        case 4u:
+            return white_texture_callable<
+                4u, ColorNeeded>()(vector, w);
+        case 3u:
+        default:
+            return white_texture_callable<
+                3u, ColorNeeded>()(vector, w);
+    }
+}
+
+[[nodiscard]] inline Float4 evaluate_white_shared(
+    std::uint32_t dimensions,
+    bool color_needed,
+    Float3 vector,
+    Float w) noexcept {
+    if (color_needed) {
+        return evaluate_white_dimensions<true>(
+            dimensions, vector, w);
+    }
+    return evaluate_white_dimensions<false>(
+        dimensions, vector, w);
 }
 
 }// namespace psycles::luisa_backend::cycles_noise

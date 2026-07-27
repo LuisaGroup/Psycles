@@ -110,6 +110,8 @@ int main(int argc, char **argv) {
             imported.transparent_background,
         .pixel_filter = imported.pixel_filter,
         .filter_width = imported.filter_width,
+        .pass_alpha_threshold =
+            imported.pass_alpha_threshold,
         .integrator = imported.integrator,
         .passes = {
             {.kind = psycles::contract::PassKind::combined,

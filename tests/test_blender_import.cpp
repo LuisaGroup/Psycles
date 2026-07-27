@@ -80,6 +80,7 @@ void test_integrator_settings_round_trip() {
     "transparent": true,
     "pixel_filter_type": "GAUSSIAN",
     "filter_width": 2.25,
+    "pass_alpha_threshold": 0.375,
     "cycles": {
       "samples": 37,
       "seed": 305419896,
@@ -146,6 +147,10 @@ void test_integrator_settings_round_trip() {
     expect(
         imported.transparent_background,
         "transparent-film setting did not round-trip");
+    expect_near(
+        imported.pass_alpha_threshold,
+        0.375f,
+        "pass alpha threshold did not round-trip");
 
     const auto &integrator = imported.integrator;
     expect(integrator.max_bounces == 11u, "max bounce mismatch");

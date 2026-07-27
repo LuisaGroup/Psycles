@@ -49,9 +49,10 @@ DiffCol at 64×64 (RMSE 0 for all three passes).
 
 The full-frame color/value probes cover RGB-to-BW scene-linear luminance,
 Gamma's zero/positive/negative exponents, Brightness/Contrast clipping, both
-Clamp range-order modes, and RGB/HSV/HSL Separate/Combine Color dispatch.
-All six currently match Blender 4.5.10 Cycles exactly for Combined, Normal,
-and DiffCol at 64×64 (RMSE and maximum absolute error 0).
+Clamp range-order modes, RGB/HSV/HSL Separate/Combine Color dispatch, and
+Hue/Saturation/Value hue wrapping, saturation clamp, value scaling, and factor
+blending. All currently match Blender 4.5.10 Cycles exactly for Combined,
+Normal, and DiffCol at 64×64 (RMSE and maximum absolute error 0).
 
 Noise Texture now lowers the Blender 4.5.10 Cycles hash, 1D–4D Perlin
 gradients, coordinate precision correction, five fractal recurrences,
@@ -62,7 +63,10 @@ RMSE is `0.000401`. Unaffected data passes are exactly zero and all probe
 pixels are finite. The node remains `device_implemented_unverified` until
 focused probes cover every dimension, fractal mode, normalization state, and
 socket combination; finite-sample Combined differences also include the
-known random-dimension sequence gap.
+known random-dimension sequence gap. Each static dimension/fractal/output
+combination is emitted once as a Luisa `Callable` and shared by every
+`GraphSurface`, instead of duplicating the full Cycles noise implementation
+inside every material dispatch case.
 
 Particle Info's non-particle sentinel contract is also explicit: its Random
 output now follows Cycles rather than reusing Object Info random. The
