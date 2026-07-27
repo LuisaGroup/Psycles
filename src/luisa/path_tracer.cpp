@@ -68,9 +68,16 @@ struct LightGpu {
     luisa::float3 axis_z{};
     luisa::float3 color{};
     float power{};
-    float size{};
+    float radius{};
+    float size_u{};
+    float size_v{};
     float spread{};
-    float padding{};
+    float spot_angle{};
+    float spot_smooth{};
+    float angle{};
+    luisa::uint flags{};
+    luisa::uint surface_tag{};
+    luisa::uint parameter_block{};
 };
 
 struct EmissiveTriangleGpu {
@@ -150,9 +157,54 @@ struct SurfaceSampleCall {
 
 struct SurfaceAovCall {
     luisa::float3 albedo{};
+    luisa::float3 glossy_albedo{};
+    luisa::float3 transmission_albedo{};
     luisa::float2 roughness{};
     luisa::float3 normal{};
     luisa::float3 transparency{};
+};
+
+struct LightPassContributionCall {
+    luisa::float3 diffuse_direct{};
+    luisa::float3 diffuse_indirect{};
+    luisa::float3 glossy_direct{};
+    luisa::float3 glossy_indirect{};
+    luisa::float3 transmission_direct{};
+    luisa::float3 transmission_indirect{};
+};
+
+struct RenderKernelParameters {
+    luisa::uint window_x{};
+    luisa::uint window_y{};
+    luisa::uint window_width{};
+    luisa::uint full_width{};
+    luisa::uint full_height{};
+    luisa::uint max_bounces{};
+    luisa::uint min_bounces{};
+    luisa::uint max_diffuse_bounces{};
+    luisa::uint max_glossy_bounces{};
+    luisa::uint max_transmission_bounces{};
+    luisa::uint transparent_min_bounces{};
+    luisa::uint transparent_max_bounces{};
+    luisa::uint max_path_steps{};
+    luisa::uint transparent_background{};
+    float sample_clamp_direct{};
+    float sample_clamp_indirect{};
+    float light_inv_rr_threshold{};
+    float camera_horizontal_tangent{};
+    float camera_vertical_tangent{};
+    float camera_ortho_scale{};
+    float camera_shift_x{};
+    float camera_shift_y{};
+    float camera_near{};
+    float camera_far{};
+    float camera_aperture_radius{};
+    float camera_focal_distance{};
+    float camera_aperture_ratio{};
+    float filter_width{};
+    float pass_alpha_threshold{};
+    luisa::float3 background{};
+    luisa::float4x4 camera_transform{};
 };
 
 }// namespace psycles::luisa_backend::detail
@@ -179,9 +231,16 @@ LUISA_STRUCT(
     axis_z,
     color,
     power,
-    size,
+    radius,
+    size_u,
+    size_v,
     spread,
-    padding) {};
+    spot_angle,
+    spot_smooth,
+    angle,
+    flags,
+    surface_tag,
+    parameter_block) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::EmissiveTriangleGpu,
     instance_index,
@@ -256,9 +315,52 @@ LUISA_STRUCT(
 LUISA_STRUCT(
     psycles::luisa_backend::detail::SurfaceAovCall,
     albedo,
+    glossy_albedo,
+    transmission_albedo,
     roughness,
     normal,
     transparency) {};
+LUISA_STRUCT(
+    psycles::luisa_backend::detail::LightPassContributionCall,
+    diffuse_direct,
+    diffuse_indirect,
+    glossy_direct,
+    glossy_indirect,
+    transmission_direct,
+    transmission_indirect) {};
+LUISA_STRUCT(
+    psycles::luisa_backend::detail::RenderKernelParameters,
+    window_x,
+    window_y,
+    window_width,
+    full_width,
+    full_height,
+    max_bounces,
+    min_bounces,
+    max_diffuse_bounces,
+    max_glossy_bounces,
+    max_transmission_bounces,
+    transparent_min_bounces,
+    transparent_max_bounces,
+    max_path_steps,
+    transparent_background,
+    sample_clamp_direct,
+    sample_clamp_indirect,
+    light_inv_rr_threshold,
+    camera_horizontal_tangent,
+    camera_vertical_tangent,
+    camera_ortho_scale,
+    camera_shift_x,
+    camera_shift_y,
+    camera_near,
+    camera_far,
+    camera_aperture_radius,
+    camera_focal_distance,
+    camera_aperture_ratio,
+    filter_width,
+    pass_alpha_threshold,
+    background,
+    camera_transform) {};
 
 namespace psycles::luisa_backend {
 
@@ -284,7 +386,9 @@ using contract::SceneSnapshot;
 using detail::GeometryGpu;
 using detail::EmissiveTriangleGpu;
 using detail::InstanceGpu;
+using detail::LightPassContributionCall;
 using detail::LightGpu;
+using detail::RenderKernelParameters;
 using detail::SurfaceAovCall;
 using detail::SurfaceEvaluationCall;
 using detail::SurfacePointCall;
@@ -305,6 +409,7 @@ using luisa::compute::Float2;
 using luisa::compute::Float3;
 using luisa::compute::Float4;
 using luisa::compute::ImageFloat;
+using luisa::compute::Int;
 using luisa::compute::Kernel1D;
 using luisa::compute::Kernel2D;
 using luisa::compute::Image;
@@ -354,6 +459,9 @@ constexpr auto transmission_visibility =
     contract::visibility_bit(RayVisibility::transmission);
 constexpr auto shadow_visibility =
     contract::visibility_bit(RayVisibility::shadow);
+constexpr std::uint32_t light_flag_normalize = 1u << 0u;
+constexpr std::uint32_t light_flag_ellipse = 1u << 1u;
+constexpr std::uint32_t light_flag_sphere = 1u << 2u;
 
 struct MaterialBinding {
     std::uint32_t surface_tag{};
@@ -524,6 +632,8 @@ pack_surface_evaluation(
     const SurfaceAov &aov) noexcept {
     Var<SurfaceAovCall> result;
     result.albedo = aov.albedo;
+    result.glossy_albedo = aov.glossy_albedo;
+    result.transmission_albedo = aov.transmission_albedo;
     result.roughness = aov.roughness;
     result.normal = aov.normal;
     result.transparency = aov.transparency;
@@ -534,6 +644,8 @@ pack_surface_evaluation(
     const Var<SurfaceAovCall> &aov) noexcept {
     return {
         .albedo = aov.albedo,
+        .glossy_albedo = aov.glossy_albedo,
+        .transmission_albedo = aov.transmission_albedo,
         .roughness = aov.roughness,
         .normal = aov.normal,
         .transparency = aov.transparency};
@@ -639,6 +751,7 @@ private:
     const GeometryHeap &_geometry_heap;
     const std::vector<AttributeBinding> &_attributes;
     const std::vector<NishitaTextureBinding> &_nishita_textures;
+    const contract::ShaderColorSpace &_shader_color_space;
 
 public:
     explicit BufferShaderServices(
@@ -648,20 +761,147 @@ public:
         const GeometryHeap &geometry_heap,
         const std::vector<AttributeBinding> &attributes,
         const std::vector<NishitaTextureBinding>
-            &nishita_textures) noexcept
+            &nishita_textures,
+        const contract::ShaderColorSpace
+            &shader_color_space) noexcept
         : _parameters{parameters},
           _cycles_bsdf_tables{cycles_bsdf_tables},
           _textures{textures},
           _geometry_heap{geometry_heap},
           _attributes{attributes},
-          _nishita_textures{nishita_textures} {}
+          _nishita_textures{nishita_textures},
+          _shader_color_space{shader_color_space} {}
 
     [[nodiscard]] Float4 texture_2d(
         Expr<std::uint32_t> handle,
         Expr<luisa::float2> uv,
         Expr<luisa::float2>,
-        Expr<luisa::float2>) const noexcept override {
-        return _textures->tex2d(handle).sample(uv);
+        Expr<luisa::float2>,
+        std::uint32_t interpolation,
+        std::uint32_t extension) const noexcept override {
+        // Implement Cycles' TextureInterpolator explicitly. Relying on a
+        // backend sampler here makes clip-border, mirror, and cubic behavior
+        // backend-dependent and differs from Cycles at texel boundaries.
+        auto texture = _textures->tex2d(handle);
+        auto size = texture.size();
+        Int width = cast<int>(size.x);
+        Int height = cast<int>(size.y);
+
+        const auto split_coordinate =
+            [](Float coordinate, Int &index) noexcept -> Float {
+                // Match Cycles' frac(): truncation followed by an explicit
+                // negative correction (including negative integers).
+                index =
+                    cast<int>(coordinate) -
+                    select(0, 1, coordinate < 0.0f);
+                return coordinate - cast<float>(index);
+            };
+        const auto wrap_periodic =
+            [](Int coordinate, Int extent) noexcept -> Int {
+                auto wrapped = coordinate % extent;
+                return select(
+                    wrapped,
+                    wrapped + extent,
+                    wrapped < 0);
+            };
+        const auto wrap_mirror =
+            [](Int coordinate, Int extent) noexcept -> Int {
+                auto adjusted =
+                    coordinate +
+                    select(0, 1, coordinate < 0);
+                auto period = abs(adjusted) % (2 * extent);
+                return select(
+                    period,
+                    2 * extent - period - 1,
+                    period >= extent);
+            };
+        const auto read_clip =
+            [&](Int x, Int y) noexcept -> Float4 {
+                Float4 value = make_float4(0.0f);
+                $if ((x >= 0) & (x < width) &
+                     (y >= 0) & (y < height)) {
+                    value = texture.read(make_uint2(
+                        cast<uint>(x), cast<uint>(y)));
+                };
+                return value;
+            };
+        const auto wrap_coordinate =
+            [&](Int coordinate, Int extent) noexcept -> Int {
+                if (extension == 0u) {
+                    return wrap_periodic(coordinate, extent);
+                }
+                if (extension == 2u) {
+                    return clamp(coordinate, 0, extent - 1);
+                }
+                if (extension == 3u) {
+                    return wrap_mirror(coordinate, extent);
+                }
+                return coordinate;
+            };
+        const auto read_wrapped =
+            [&](Int x, Int y) noexcept -> Float4 {
+                return read_clip(
+                    wrap_coordinate(x, width),
+                    wrap_coordinate(y, height));
+            };
+
+        auto coordinate = def(uv);
+        if (interpolation == 0u) {
+            Int x;
+            Int y;
+            static_cast<void>(split_coordinate(
+                coordinate.x * cast<float>(width), x));
+            static_cast<void>(split_coordinate(
+                coordinate.y * cast<float>(height), y));
+            return read_wrapped(x, y);
+        }
+
+        Int x;
+        Int y;
+        auto tx = split_coordinate(
+            coordinate.x * cast<float>(width) - 0.5f, x);
+        auto ty = split_coordinate(
+            coordinate.y * cast<float>(height) - 0.5f, y);
+
+        if (interpolation == 1u) {
+            auto x1 = x + 1;
+            auto y1 = y + 1;
+            auto row0 =
+                (1.0f - tx) * read_wrapped(x, y) +
+                tx * read_wrapped(x1, y);
+            auto row1 =
+                (1.0f - tx) * read_wrapped(x, y1) +
+                tx * read_wrapped(x1, y1);
+            return (1.0f - ty) * row0 + ty * row1;
+        }
+
+        // Cycles treats both Cubic and Smart as cubic. These are the exact
+        // cubic B-spline weights used by its CPU and GPU image paths.
+        auto cubic_weights = [](Float t) noexcept {
+            return std::array<Float, 4u>{
+                (((-1.0f / 6.0f) * t + 0.5f) * t -
+                 0.5f) *
+                        t +
+                    (1.0f / 6.0f),
+                ((0.5f * t - 1.0f) * t) * t +
+                    (2.0f / 3.0f),
+                ((-0.5f * t + 0.5f) * t + 0.5f) *
+                        t +
+                    (1.0f / 6.0f),
+                (1.0f / 6.0f) * t * t * t};
+        };
+        auto wx = cubic_weights(tx);
+        auto wy = cubic_weights(ty);
+        auto cubic_row = [&](Int row) noexcept {
+            return wx[0u] * read_wrapped(x - 1, row) +
+                   wx[1u] * read_wrapped(x, row) +
+                   wx[2u] * read_wrapped(x + 1, row) +
+                   wx[3u] * read_wrapped(x + 2, row);
+        };
+        return wy[0u] * cubic_row(y - 1) +
+               wy[1u] * cubic_row(y) +
+               wy[2u] * cubic_row(y + 1) +
+               wy[3u] * cubic_row(y + 2);
     }
 
     [[nodiscard]] Float4 attribute(
@@ -716,6 +956,56 @@ public:
         return _cycles_bsdf_tables->read(index);
     }
 
+    [[nodiscard]] Float3 xyz_to_rgb(
+        Expr<luisa::float3> xyz_expression)
+        const noexcept override {
+        Float3 xyz{xyz_expression};
+        return make_float3(
+            dot(
+                make_float3(
+                    _shader_color_space.xyz_to_r.x,
+                    _shader_color_space.xyz_to_r.y,
+                    _shader_color_space.xyz_to_r.z),
+                xyz),
+            dot(
+                make_float3(
+                    _shader_color_space.xyz_to_g.x,
+                    _shader_color_space.xyz_to_g.y,
+                    _shader_color_space.xyz_to_g.z),
+                xyz),
+            dot(
+                make_float3(
+                    _shader_color_space.xyz_to_b.x,
+                    _shader_color_space.xyz_to_b.y,
+                    _shader_color_space.xyz_to_b.z),
+                xyz));
+    }
+
+    [[nodiscard]] Float3 rec709_to_rgb(
+        Expr<luisa::float3> rec709_expression)
+        const noexcept override {
+        Float3 rec709{rec709_expression};
+        return make_float3(
+            dot(
+                make_float3(
+                    _shader_color_space.rec709_to_r.x,
+                    _shader_color_space.rec709_to_r.y,
+                    _shader_color_space.rec709_to_r.z),
+                rec709),
+            dot(
+                make_float3(
+                    _shader_color_space.rec709_to_g.x,
+                    _shader_color_space.rec709_to_g.y,
+                    _shader_color_space.rec709_to_g.z),
+                rec709),
+            dot(
+                make_float3(
+                    _shader_color_space.rec709_to_b.x,
+                    _shader_color_space.rec709_to_b.y,
+                    _shader_color_space.rec709_to_b.z),
+                rec709));
+    }
+
     [[nodiscard]] Float3 nishita_sky(
         Expr<std::uint32_t> block,
         std::uint32_t sky_index,
@@ -754,8 +1044,9 @@ public:
                         sun_elevation,
                         angular_diameter,
                         sun_intensity);
-                result = cycles_nishita::xyz_to_rgb(
-                    sky_xyz + sun_xyz);
+                result = max(
+                    xyz_to_rgb(sky_xyz + sun_xyz),
+                    make_float3(0.0f));
             };
         }
         return result;
@@ -771,11 +1062,11 @@ struct GeometryResource {
     Buffer<Triangle> triangles;
     Buffer<luisa::uint> triangle_material_slots;
     Buffer<float> triangle_random_per_island;
-    std::vector<Buffer<luisa::float4>> color_attributes;
+    std::vector<Buffer<luisa::float4>> attributes;
     Mesh mesh;
 };
 
-struct ColorAttributeUpload {
+struct AttributeUpload {
     std::uint64_t id{};
     luisa::vector<luisa::float4> values;
 };
@@ -789,7 +1080,7 @@ struct GeometryUpload {
     luisa::vector<Triangle> triangles;
     luisa::vector<luisa::uint> triangle_material_slots;
     luisa::vector<float> triangle_random_per_island;
-    std::vector<ColorAttributeUpload> color_attributes;
+    std::vector<AttributeUpload> attributes;
 };
 
 struct NishitaEnvironmentRuntime {
@@ -832,6 +1123,7 @@ struct LuisaSceneData {
     Buffer<EmissiveTriangleGpu> emissive_triangle_buffer;
     std::uint32_t emissive_triangle_count{};
     luisa::float3 background{};
+    contract::ShaderColorSpace shader_color_space;
     Accel accel;
     CameraDesc camera;
 };
@@ -875,11 +1167,78 @@ public:
     return std::max(pass.channels, 1u);
 }
 
+enum class LightPassBuffer : std::uint32_t {
+    diffuse_direct,
+    diffuse_indirect,
+    glossy_direct,
+    glossy_indirect,
+    transmission_direct,
+    transmission_indirect,
+    emission,
+    environment,
+    glossy_color,
+    transmission_color,
+    count
+};
+
+[[nodiscard]] constexpr std::uint32_t light_pass_index(
+    LightPassBuffer pass) noexcept {
+    return static_cast<std::uint32_t>(pass);
+}
+
+inline constexpr auto light_pass_buffer_count =
+    light_pass_index(LightPassBuffer::count);
+
+[[nodiscard]] luisa::float3 safe_divide_even_color(
+    const luisa::float4 &numerator,
+    const luisa::float4 &denominator) noexcept {
+    auto x = denominator.x != 0.0f
+                 ? numerator.x / denominator.x
+                 : 0.0f;
+    auto y = denominator.y != 0.0f
+                 ? numerator.y / denominator.y
+                 : 0.0f;
+    auto z = denominator.z != 0.0f
+                 ? numerator.z / denominator.z
+                 : 0.0f;
+    if (denominator.x == 0.0f) {
+        if (denominator.y == 0.0f) {
+            x = z;
+            y = z;
+        } else if (denominator.z == 0.0f) {
+            x = y;
+            z = y;
+        } else {
+            x = 0.5f * (y + z);
+        }
+    } else if (denominator.y == 0.0f) {
+        if (denominator.z == 0.0f) {
+            y = x;
+            z = x;
+        } else {
+            y = 0.5f * (x + z);
+        }
+    } else if (denominator.z == 0.0f) {
+        z = 0.5f * (x + y);
+    }
+    return luisa::make_float3(x, y, z);
+}
+
 [[nodiscard]] bool supported_pass(PassKind pass) noexcept {
     switch (pass) {
         case PassKind::combined:
         case PassKind::normal:
         case PassKind::albedo:
+        case PassKind::glossy_color:
+        case PassKind::transmission_color:
+        case PassKind::emission:
+        case PassKind::environment:
+        case PassKind::diffuse_direct:
+        case PassKind::diffuse_indirect:
+        case PassKind::glossy_direct:
+        case PassKind::glossy_indirect:
+        case PassKind::transmission_direct:
+        case PassKind::transmission_indirect:
         case PassKind::denoising_normal:
         case PassKind::denoising_albedo:
         case PassKind::sample_count:
@@ -900,15 +1259,19 @@ private:
     Buffer<luisa::float4> _combined;
     Buffer<luisa::float4> _normal;
     Buffer<luisa::float4> _albedo;
+    Buffer<luisa::float4> _light_passes;
     Buffer<luisa::uint> _sample_count;
+    RenderKernelParameters _kernel_parameters{};
     Shader1D<
+        Buffer<luisa::float4>,
         Buffer<luisa::float4>,
         Buffer<luisa::float4>,
         Buffer<luisa::float4>,
         Buffer<luisa::uint>,
         std::uint32_t,
         std::uint32_t,
-        std::uint32_t>
+        std::uint32_t,
+        RenderKernelParameters>
         _render_shader;
     std::atomic_bool _cancelled{false};
 
@@ -928,14 +1291,21 @@ private:
             _scene->device.create_buffer<luisa::float4>(count);
         _albedo =
             _scene->device.create_buffer<luisa::float4>(count);
+        _light_passes =
+            _scene->device.create_buffer<luisa::float4>(
+                count * light_pass_buffer_count);
         _sample_count =
             _scene->device.create_buffer<luisa::uint>(count);
 
         luisa::vector<luisa::float4> zeros_float(count);
+        luisa::vector<luisa::float4> zeros_light_passes(
+            count * light_pass_buffer_count);
         luisa::vector<luisa::uint> zeros_uint(count);
         _stream << _combined.copy_from(luisa::span{zeros_float})
                 << _normal.copy_from(luisa::span{zeros_float})
                 << _albedo.copy_from(luisa::span{zeros_float})
+                << _light_passes.copy_from(
+                       luisa::span{zeros_light_passes})
                 << _sample_count.copy_from(luisa::span{zeros_uint})
                 << synchronize();
 
@@ -1038,6 +1408,10 @@ private:
         const auto camera_aperture_ratio =
             scene->camera.aperture_ratio;
         const auto background = scene->background;
+        const auto camera_depth_of_field =
+            camera_projection == CameraProjection::perspective &&
+            camera_aperture_radius > 0.0f &&
+            camera_focal_distance > 0.0f;
         const auto pixel_filter =
             render_settings.pixel_filter;
         const auto filter_width =
@@ -1046,6 +1420,52 @@ private:
             render_settings.pass_alpha_threshold,
             0.0f,
             1.0f);
+        _kernel_parameters = RenderKernelParameters{
+            .window_x = render_window.x,
+            .window_y = render_window.y,
+            .window_width =
+                std::max(render_window.width, 1u),
+            .full_width = std::max(
+                render_settings.full_extent.width, 1u),
+            .full_height = std::max(
+                render_settings.full_extent.height, 1u),
+            .max_bounces = max_bounces,
+            .min_bounces = min_bounces,
+            .max_diffuse_bounces = max_diffuse_bounces,
+            .max_glossy_bounces = max_glossy_bounces,
+            .max_transmission_bounces =
+                max_transmission_bounces,
+            .transparent_min_bounces =
+                transparent_min_bounces,
+            .transparent_max_bounces =
+                transparent_max_bounces,
+            .max_path_steps = max_path_steps,
+            .transparent_background =
+                render_settings.transparent_background ? 1u : 0u,
+            .sample_clamp_direct = sample_clamp_direct,
+            .sample_clamp_indirect = sample_clamp_indirect,
+            .light_inv_rr_threshold =
+                light_inv_rr_threshold,
+            .camera_horizontal_tangent =
+                camera_horizontal_tangent,
+            .camera_vertical_tangent =
+                camera_vertical_tangent,
+            .camera_ortho_scale = camera_ortho_scale,
+            .camera_shift_x = camera_shift_x,
+            .camera_shift_y = camera_shift_y,
+            .camera_near = camera_near,
+            .camera_far = camera_far,
+            .camera_aperture_radius =
+                camera_aperture_radius,
+            .camera_focal_distance =
+                camera_focal_distance,
+            .camera_aperture_ratio =
+                camera_aperture_ratio,
+            .filter_width = filter_width,
+            .pass_alpha_threshold =
+                pass_alpha_threshold,
+            .background = background,
+            .camera_transform = camera_transform};
 
         Callable random_float = [](UInt &state) noexcept {
             state = state * 747796405u + 2891336453u;
@@ -1072,17 +1492,17 @@ private:
             return value;
         };
         Callable sample_box_filter =
-            [filter_width](Float u) noexcept {
+            [](Float u, Float width) noexcept {
                 return 0.5f +
-                       (u - 0.5f) * filter_width;
+                       (u - 0.5f) * width;
             };
         Callable sample_gaussian_filter =
-            [filter_width](Float u) noexcept {
+            [](Float u, Float width) noexcept {
                 // Cycles' Gaussian filter is exp(-2*x*x) over
                 // [-width/2, width/2]. Invert its normalized CDF
                 // numerically so raster sampling remains entirely in
                 // the Luisa program.
-                const auto radius = filter_width * 0.5f;
+                const auto radius = width * 0.5f;
                 const auto target =
                     abs(u * 2.0f - 1.0f);
                 Float x = radius * target;
@@ -1137,7 +1557,7 @@ private:
                        select(-x, x, u >= 0.5f);
             };
         Callable sample_blackman_harris_filter =
-            [filter_width](Float u) noexcept {
+            [](Float u, Float width) noexcept {
                 // This is the continuous form of Cycles'
                 // BLACKMAN_HARRIS inverse-CDF table. Cycles doubles
                 // filter_width before building this symmetric filter,
@@ -1148,7 +1568,7 @@ private:
                 constexpr auto a3 = 0.01168f;
                 constexpr auto two_pi =
                     6.28318530717958647692f;
-                const auto radius = filter_width;
+                const auto radius = width;
                 const auto full_width = radius * 2.0f;
                 const auto target_fraction =
                     abs(u * 2.0f - 1.0f);
@@ -1184,16 +1604,17 @@ private:
                        select(-x, x, u >= 0.5f);
             };
         Callable sample_pixel_filter =
-            [=](Float u) noexcept {
+            [=](Float u, Float width) noexcept {
                 if (pixel_filter ==
                     contract::PixelFilter::box) {
-                    return sample_box_filter(u);
+                    return sample_box_filter(u, width);
                 }
                 if (pixel_filter ==
                     contract::PixelFilter::gaussian) {
-                    return sample_gaussian_filter(u);
+                    return sample_gaussian_filter(u, width);
                 }
-                return sample_blackman_harris_filter(u);
+                return sample_blackman_harris_filter(
+                    u, width);
             };
         Callable safe_normalize = [](
                                       Float3 value,
@@ -1259,10 +1680,13 @@ private:
                     nee_pdf, forward_pdf);
             };
         Callable clamp_light_contribution =
-            [=](Float3 contribution, UInt depth) noexcept {
+            [](Float3 contribution,
+               UInt depth,
+               Float direct_limit,
+               Float indirect_limit) noexcept {
                 Float limit = select(
-                    sample_clamp_direct,
-                    sample_clamp_indirect,
+                    direct_limit,
+                    indirect_limit,
                     depth > 0u);
                 Float magnitude =
                     abs(contribution.x) +
@@ -1277,17 +1701,18 @@ private:
                     should_clamp);
             };
         Callable light_sample_roulette_weight =
-            [=](Float3 unshadowed_contribution,
-                Float random) noexcept {
+            [](Float3 unshadowed_contribution,
+               Float random,
+               Float inverse_threshold) noexcept {
                 Float maximum = max(
                     abs(unshadowed_contribution.x),
                     max(
                         abs(unshadowed_contribution.y),
                         abs(unshadowed_contribution.z)));
                 Float probability =
-                    maximum * light_inv_rr_threshold;
+                    maximum * inverse_threshold;
                 Bool roulette =
-                    (light_inv_rr_threshold > 0.0f) &
+                    (inverse_threshold > 0.0f) &
                     (probability < 1.0f);
                 Bool survives =
                     (!roulette) | (random < probability);
@@ -1299,6 +1724,89 @@ private:
                     0.0f,
                     inverse_probability,
                     survives);
+            };
+        Callable light_component_ratio =
+            [](Float3 numerator,
+               Float3 denominator) noexcept {
+                return make_float3(
+                    select(
+                        0.0f,
+                        numerator.x / denominator.x,
+                        abs(denominator.x) > 1.0e-20f),
+                    select(
+                        0.0f,
+                        numerator.y / denominator.y,
+                        abs(denominator.y) > 1.0e-20f),
+                    select(
+                        0.0f,
+                        numerator.z / denominator.z,
+                        abs(denominator.z) > 1.0e-20f));
+            };
+        Callable split_scattered_light =
+            [](Float3 contribution,
+               Float3 diffuse_weight,
+               Float3 glossy_weight,
+               Bool direct) noexcept {
+                auto diffuse_contribution =
+                    contribution * diffuse_weight;
+                auto glossy_contribution =
+                    contribution * glossy_weight;
+                auto transmission_contribution =
+                    contribution -
+                    diffuse_contribution -
+                    glossy_contribution;
+                Var<LightPassContributionCall> result;
+                result.diffuse_direct = select(
+                    make_float3(0.0f),
+                    diffuse_contribution,
+                    direct);
+                result.diffuse_indirect = select(
+                    diffuse_contribution,
+                    make_float3(0.0f),
+                    direct);
+                result.glossy_direct = select(
+                    make_float3(0.0f),
+                    glossy_contribution,
+                    direct);
+                result.glossy_indirect = select(
+                    glossy_contribution,
+                    make_float3(0.0f),
+                    direct);
+                result.transmission_direct = select(
+                    make_float3(0.0f),
+                    transmission_contribution,
+                    direct);
+                result.transmission_indirect = select(
+                    transmission_contribution,
+                    make_float3(0.0f),
+                    direct);
+                return result;
+            };
+        Callable split_nee_light =
+            [&light_component_ratio,
+             &split_scattered_light](
+                Float3 contribution,
+                Float3 f,
+                Float3 diffuse_f,
+                Float3 path_diffuse_weight,
+                Float3 path_glossy_weight,
+                UInt depth) noexcept {
+                auto local_diffuse_weight =
+                    light_component_ratio(diffuse_f, f);
+                auto local_glossy_weight =
+                    light_component_ratio(f - diffuse_f, f);
+                auto direct = depth == 0u;
+                return split_scattered_light(
+                    contribution,
+                    select(
+                        path_diffuse_weight,
+                        local_diffuse_weight,
+                        direct),
+                    select(
+                        path_glossy_weight,
+                        local_glossy_weight,
+                        direct),
+                    direct);
             };
 
         Callable shared_surface_evaluate =
@@ -1318,7 +1826,8 @@ private:
                     textures,
                     geometry_heap,
                     scene->attribute_bindings,
-                    scene->nishita_texture_bindings};
+                    scene->nishita_texture_bindings,
+                    scene->shader_color_space};
                 auto point =
                     unpack_surface_point(packed_point);
                 auto query = SurfaceQuery{
@@ -1347,7 +1856,8 @@ private:
                     textures,
                     geometry_heap,
                     scene->attribute_bindings,
-                    scene->nishita_texture_bindings};
+                    scene->nishita_texture_bindings,
+                    scene->shader_color_space};
                 return scene->surfaces.emission(
                     surface_tag,
                     services,
@@ -1372,7 +1882,8 @@ private:
                     textures,
                     geometry_heap,
                     scene->attribute_bindings,
-                    scene->nishita_texture_bindings};
+                    scene->nishita_texture_bindings,
+                    scene->shader_color_space};
                 auto query = SurfaceQuery{
                     .lobe_mask = lobe_mask,
                     .transport_mode = transport_mode};
@@ -1399,7 +1910,8 @@ private:
                     textures,
                     geometry_heap,
                     scene->attribute_bindings,
-                    scene->nishita_texture_bindings};
+                    scene->nishita_texture_bindings,
+                    scene->shader_color_space};
                 return pack_surface_aov(
                     scene->surfaces.aov(
                         surface_tag,
@@ -1413,26 +1925,90 @@ private:
                               &shared_surface_evaluate,
                               &shared_surface_emission,
                               &shared_surface_sample,
-                              &shared_surface_aov](
+                              &shared_surface_aov,
+                              &light_component_ratio,
+                              &split_scattered_light,
+                              &split_nee_light](
                               BufferFloat4 combined,
                               BufferFloat4 normal,
                               BufferFloat4 albedo,
+                              BufferFloat4 light_passes,
                               BufferUInt sample_count,
                               UInt sample_first,
                               UInt samples,
-                              UInt seed) noexcept {
+                              UInt seed,
+                              Var<RenderKernelParameters>
+                                  kernel_parameters) noexcept {
             UInt pixel = dispatch_x();
             UInt local_x =
-                pixel % static_cast<std::uint32_t>(
-                            std::max(render_window.width, 1u));
+                pixel % kernel_parameters.window_width;
             UInt local_y =
-                pixel / static_cast<std::uint32_t>(
-                            std::max(render_window.width, 1u));
-            UInt full_x = local_x + render_window.x;
-            UInt full_y = local_y + render_window.y;
+                pixel / kernel_parameters.window_width;
+            UInt full_x =
+                local_x + kernel_parameters.window_x;
+            UInt full_y =
+                local_y + kernel_parameters.window_y;
+            auto clamp_contribution =
+                [&](Float3 contribution,
+                    UInt depth) noexcept {
+                    return clamp_light_contribution(
+                        contribution,
+                        depth,
+                        kernel_parameters.sample_clamp_direct,
+                        kernel_parameters
+                            .sample_clamp_indirect);
+                };
+            auto sample_light_roulette =
+                [&](Float3 unshadowed_contribution,
+                    Float random) noexcept {
+                    return light_sample_roulette_weight(
+                        unshadowed_contribution,
+                        random,
+                        kernel_parameters
+                            .light_inv_rr_threshold);
+                };
             Float4 combined_sum = combined.read(pixel);
             Float4 normal_sum = normal.read(pixel);
             Float4 albedo_sum = albedo.read(pixel);
+            const auto light_pass_base =
+                pixel * light_pass_buffer_count;
+            Float4 diffuse_direct_sum = light_passes.read(
+                light_pass_base +
+                light_pass_index(
+                    LightPassBuffer::diffuse_direct));
+            Float4 diffuse_indirect_sum = light_passes.read(
+                light_pass_base +
+                light_pass_index(
+                    LightPassBuffer::diffuse_indirect));
+            Float4 glossy_direct_sum = light_passes.read(
+                light_pass_base +
+                light_pass_index(
+                    LightPassBuffer::glossy_direct));
+            Float4 glossy_indirect_sum = light_passes.read(
+                light_pass_base +
+                light_pass_index(
+                    LightPassBuffer::glossy_indirect));
+            Float4 transmission_direct_sum = light_passes.read(
+                light_pass_base +
+                light_pass_index(
+                    LightPassBuffer::transmission_direct));
+            Float4 transmission_indirect_sum = light_passes.read(
+                light_pass_base +
+                light_pass_index(
+                    LightPassBuffer::transmission_indirect));
+            Float4 emission_sum = light_passes.read(
+                light_pass_base +
+                light_pass_index(LightPassBuffer::emission));
+            Float4 environment_sum = light_passes.read(
+                light_pass_base +
+                light_pass_index(LightPassBuffer::environment));
+            Float4 glossy_color_sum = light_passes.read(
+                light_pass_base +
+                light_pass_index(LightPassBuffer::glossy_color));
+            Float4 transmission_color_sum = light_passes.read(
+                light_pass_base +
+                light_pass_index(
+                    LightPassBuffer::transmission_color));
             UInt completed = sample_count.read(pixel);
 
             BufferShaderServices services{
@@ -1441,7 +2017,8 @@ private:
                 scene->texture_heap,
                 scene->heap,
                 scene->attribute_bindings,
-                scene->nishita_texture_bindings};
+                scene->nishita_texture_bindings,
+                scene->shader_color_space};
             auto evaluate_surface =
                 [&](UInt surface_tag,
                     const SurfacePoint &point,
@@ -1517,7 +2094,8 @@ private:
                         contract::TransportMode::radiance)};
             auto evaluate_world_graph =
                 [&](Float3 direction) noexcept {
-                    Float3 world = background;
+                    Float3 world =
+                        kernel_parameters.background;
                     if (scene->world_surface) {
                         SurfacePoint world_point{
                             .position = make_float3(0.0f),
@@ -1525,7 +2103,7 @@ private:
                                 make_float3(0.0f),
                             .object_location =
                                 make_float3(0.0f),
-                            .generated = make_float3(0.0f),
+                            .generated = direction,
                             .geometric_normal = -direction,
                             .shading_normal = -direction,
                             .dpdu = make_float3(
@@ -1584,15 +2162,17 @@ private:
                             const auto &sky =
                                 scene->nishita_environment
                                     ->parameters;
-                            return cycles_nishita::xyz_to_rgb(
-                                       cycles_nishita::
-                                           sky_radiance_xyz(
-                                               scene->texture_heap
-                                                   ->tex2d(
-                                                       *scene
-                                                            ->environment_texture_slot),
-                                               direction,
-                                               sky.sun_rotation)) *
+                            return max(
+                                       services.xyz_to_rgb(
+                                           cycles_nishita::
+                                               sky_radiance_xyz(
+                                                   scene->texture_heap
+                                                       ->tex2d(
+                                                           *scene
+                                                                ->environment_texture_slot),
+                                                   direction,
+                                                   sky.sun_rotation)),
+                                       make_float3(0.0f)) *
                                    sky.background_strength;
                         }
                         auto u = fract(
@@ -1653,19 +2233,21 @@ private:
                     const auto &sun =
                         *scene->nishita_environment;
                     const auto &sky = sun.parameters;
-                    return cycles_nishita::xyz_to_rgb(
-                               cycles_nishita::
-                                   sun_disc_radiance_xyz(
-                                       direction,
-                                       make_float3(
-                                           sun.sun_direction),
-                                       make_float3(
-                                           sun.pixel_bottom_xyz),
-                                       make_float3(
-                                           sun.pixel_top_xyz),
-                                       sky.sun_elevation,
-                                       sky.angular_diameter,
-                                       sky.sun_intensity)) *
+                    return max(
+                               services.xyz_to_rgb(
+                                   cycles_nishita::
+                                       sun_disc_radiance_xyz(
+                                           direction,
+                                           make_float3(
+                                               sun.sun_direction),
+                                           make_float3(
+                                               sun.pixel_bottom_xyz),
+                                           make_float3(
+                                               sun.pixel_top_xyz),
+                                           sky.sun_elevation,
+                                           sky.angular_diameter,
+                                           sky.sun_intensity)),
+                               make_float3(0.0f)) *
                            sky.background_strength;
                 };
             auto trace_shadow =
@@ -1816,11 +2398,23 @@ private:
                                             .xyz();
                                     auto candidate_ray =
                                         candidate.ray();
+                                    Float3
+                                        object_geometric_normal =
+                                            safe_normalize(
+                                                cross(
+                                                    p1 - p0,
+                                                    p2 - p0),
+                                                make_float3(
+                                                    0.0f,
+                                                    0.0f,
+                                                    1.0f));
                                     Float3 geometric_normal =
                                         safe_normalize(
-                                            cross(
-                                                wp1 - wp0,
-                                                wp2 - wp0),
+                                            (normal_to_world *
+                                             make_float4(
+                                                 object_geometric_normal,
+                                                 0.0f))
+                                                .xyz(),
                                             -candidate_ray
                                                  ->direction());
                                     Float3 object_shading_normal =
@@ -2109,32 +2703,34 @@ private:
                 UInt state = hash_seed(
                     pixel, sample_index, seed);
                 Float jitter_x =
-                    sample_pixel_filter(random_float(state));
+                    sample_pixel_filter(
+                        random_float(state),
+                        kernel_parameters.filter_width);
                 Float jitter_y =
-                    sample_pixel_filter(random_float(state));
-                Float width = static_cast<float>(
-                    std::max(
-                        render_settings.full_extent.width, 1u));
-                Float height = static_cast<float>(
-                    std::max(
-                        render_settings.full_extent.height, 1u));
+                    sample_pixel_filter(
+                        random_float(state),
+                        kernel_parameters.filter_width);
+                Float width =
+                    cast<float>(kernel_parameters.full_width);
+                Float height =
+                    cast<float>(kernel_parameters.full_height);
                 Float screen_x =
                     2.0f *
                         (cast<float>(full_x) + jitter_x) /
                         width -
                     1.0f +
-                    2.0f * camera_shift_x;
+                    2.0f *
+                        kernel_parameters.camera_shift_x;
                 Float screen_y =
                     1.0f -
                     2.0f *
                         (cast<float>(full_y) + jitter_y) /
                         height +
-                    2.0f * camera_shift_y;
+                    2.0f *
+                        kernel_parameters.camera_shift_y;
                 Float aspect = width / height;
 
                 Float3 local_origin = make_float3(0.0f);
-                Float3 local_origin_dx = make_float3(0.0f);
-                Float3 local_origin_dy = make_float3(0.0f);
                 Float3 local_direction =
                     make_float3(0.0f, 0.0f, -1.0f);
                 Float3 local_direction_dx = local_direction;
@@ -2144,22 +2740,30 @@ private:
                 if (camera_projection ==
                     CameraProjection::perspective) {
                     local_direction = normalize(make_float3(
-                        screen_x * camera_horizontal_tangent,
-                        screen_y * camera_vertical_tangent,
+                        screen_x *
+                            kernel_parameters
+                                .camera_horizontal_tangent,
+                        screen_y *
+                            kernel_parameters
+                                .camera_vertical_tangent,
                         -1.0f));
                     local_direction_dx =
                         normalize(make_float3(
                             (screen_x + 2.0f / width) *
-                                camera_horizontal_tangent,
+                                kernel_parameters
+                                    .camera_horizontal_tangent,
                             screen_y *
-                                camera_vertical_tangent,
+                                kernel_parameters
+                                    .camera_vertical_tangent,
                             -1.0f));
                     local_direction_dy =
                         normalize(make_float3(
                             screen_x *
-                                camera_horizontal_tangent,
+                                kernel_parameters
+                                    .camera_horizontal_tangent,
                             (screen_y - 2.0f / height) *
-                                camera_vertical_tangent,
+                                kernel_parameters
+                                    .camera_vertical_tangent,
                             -1.0f));
                     ray_dD =
                         0.5f *
@@ -2173,25 +2777,21 @@ private:
                     camera_projection ==
                     CameraProjection::orthographic) {
                     local_origin = make_float3(
-                        screen_x * camera_ortho_scale *
+                        screen_x *
+                            kernel_parameters
+                                .camera_ortho_scale *
                             aspect * 0.5f,
-                        screen_y * camera_ortho_scale * 0.5f,
-                        0.0f);
-                    local_origin_dx = make_float3(
-                        (screen_x + 2.0f / width) *
-                            camera_ortho_scale * aspect * 0.5f,
-                        screen_y * camera_ortho_scale * 0.5f,
-                        0.0f);
-                    local_origin_dy = make_float3(
-                        screen_x * camera_ortho_scale *
-                            aspect * 0.5f,
-                        (screen_y - 2.0f / height) *
-                            camera_ortho_scale * 0.5f,
+                        screen_y *
+                            kernel_parameters
+                                .camera_ortho_scale *
+                            0.5f,
                         0.0f);
                     ray_dP =
                         0.5f *
-                        (camera_ortho_scale * aspect / width +
-                         camera_ortho_scale / height);
+                        (kernel_parameters.camera_ortho_scale *
+                             aspect / width +
+                         kernel_parameters.camera_ortho_scale /
+                             height);
                 } else {
                     Float longitude = screen_x * pi;
                     Float latitude = screen_y * pi * 0.5f;
@@ -2230,10 +2830,7 @@ private:
                              local_direction_dy -
                              local_direction));
                 }
-                if (camera_projection ==
-                        CameraProjection::perspective &&
-                    camera_aperture_radius > 0.0f &&
-                    camera_focal_distance > 0.0f) {
+                if (camera_depth_of_field) {
                     Float lens_radius =
                         sqrt(random_float(state));
                     Float lens_angle =
@@ -2243,20 +2840,26 @@ private:
                             cos(lens_angle),
                             sin(lens_angle)) *
                         (lens_radius *
-                         camera_aperture_radius);
+                         kernel_parameters
+                             .camera_aperture_radius);
                     lens_position.x /=
-                        std::max(
-                            camera_aperture_ratio, 1.0e-5f);
+                        max(
+                            kernel_parameters
+                                .camera_aperture_ratio,
+                            1.0e-5f);
                     Float focus_scale =
-                        camera_focal_distance /
+                        kernel_parameters
+                            .camera_focal_distance /
                         max(-local_direction.z, 1.0e-6f);
                     Float3 focus_position =
                         local_direction * focus_scale;
                     Float focus_scale_dx =
-                        camera_focal_distance /
+                        kernel_parameters
+                            .camera_focal_distance /
                         max(-local_direction_dx.z, 1.0e-6f);
                     Float focus_scale_dy =
-                        camera_focal_distance /
+                        kernel_parameters
+                            .camera_focal_distance /
                         max(-local_direction_dy.z, 1.0e-6f);
                     Float3 focus_position_dx =
                         local_direction_dx * focus_scale_dx;
@@ -2266,65 +2869,64 @@ private:
                         lens_position.x,
                         lens_position.y,
                         0.0f);
-                    local_origin_dx = local_origin;
-                    local_origin_dy = local_origin;
                     local_direction = normalize(
                         focus_position - local_origin);
                     local_direction_dx = normalize(
-                        focus_position_dx - local_origin_dx);
+                        focus_position_dx - local_origin);
                     local_direction_dy = normalize(
-                        focus_position_dy - local_origin_dy);
+                        focus_position_dy - local_origin);
                 }
                 Float3 ray_origin =
-                    (camera_transform *
+                    (kernel_parameters.camera_transform *
                      make_float4(local_origin, 1.0f))
                         .xyz();
                 Float3 ray_direction = safe_normalize(
-                    (camera_transform *
+                    (kernel_parameters.camera_transform *
                      make_float4(local_direction, 0.0f))
                         .xyz(),
                     make_float3(0.0f, 0.0f, -1.0f));
-                Float3 differential_origin_x =
-                    (camera_transform *
-                     make_float4(local_origin_dx, 1.0f))
-                        .xyz();
-                Float3 differential_origin_y =
-                    (camera_transform *
-                     make_float4(local_origin_dy, 1.0f))
-                        .xyz();
-                Float3 differential_direction_x =
-                    safe_normalize(
-                        (camera_transform *
-                         make_float4(
-                             local_direction_dx, 0.0f))
-                            .xyz(),
-                        ray_direction);
-                Float3 differential_direction_y =
-                    safe_normalize(
-                        (camera_transform *
-                         make_float4(
-                             local_direction_dy, 0.0f))
-                            .xyz(),
-                        ray_direction);
-                Bool use_full_ray_differentials = true;
                 Var<luisa::compute::Ray> ray = make_ray(
                     ray_origin,
                     ray_direction,
-                    camera_near,
-                    camera_far);
+                    kernel_parameters.camera_near,
+                    kernel_parameters.camera_far);
                 UInt ray_visibility = camera_visibility;
 
                 Float3 radiance = make_float3(0.0f);
                 Float3 throughput = make_float3(1.0f);
                 Float3 sample_normal = make_float3(0.0f);
                 Float3 sample_albedo = make_float3(0.0f);
-                Float sample_alpha =
-                    render_settings.transparent_background
-                        ? 0.0f
-                        : 1.0f;
+                Float3 sample_glossy_color =
+                    make_float3(0.0f);
+                Float3 sample_transmission_color =
+                    make_float3(0.0f);
+                Float3 sample_diffuse_direct =
+                    make_float3(0.0f);
+                Float3 sample_diffuse_indirect =
+                    make_float3(0.0f);
+                Float3 sample_glossy_direct =
+                    make_float3(0.0f);
+                Float3 sample_glossy_indirect =
+                    make_float3(0.0f);
+                Float3 sample_transmission_direct =
+                    make_float3(0.0f);
+                Float3 sample_transmission_indirect =
+                    make_float3(0.0f);
+                Float3 sample_emission = make_float3(0.0f);
+                Float3 sample_environment =
+                    make_float3(0.0f);
+                Float sample_alpha = select(
+                    1.0f,
+                    0.0f,
+                    kernel_parameters.transparent_background !=
+                        0u);
                 Bool primary_recorded = false;
                 Float previous_bsdf_pdf = 0.0f;
                 Bool previous_delta = true;
+                Float3 path_diffuse_weight =
+                    make_float3(0.0f);
+                Float3 path_glossy_weight =
+                    make_float3(0.0f);
                 UInt ray_events = 0u;
                 UInt diffuse_depth = 0u;
                 UInt glossy_depth = 0u;
@@ -2333,8 +2935,26 @@ private:
                 UInt path_depth = 0u;
                 Bool terminate_after_transparent = false;
                 Bool terminate_on_next_surface = false;
+                auto accumulate_light_pass =
+                    [&](Var<LightPassContributionCall>
+                            contribution) noexcept {
+                        sample_diffuse_direct +=
+                            contribution.diffuse_direct;
+                        sample_diffuse_indirect +=
+                            contribution.diffuse_indirect;
+                        sample_glossy_direct +=
+                            contribution.glossy_direct;
+                        sample_glossy_indirect +=
+                            contribution.glossy_indirect;
+                        sample_transmission_direct +=
+                            contribution.transmission_direct;
+                        sample_transmission_indirect +=
+                            contribution.transmission_indirect;
+                    };
 
-                $for (path_step, max_path_steps) {
+                $for (
+                    path_step,
+                    kernel_parameters.max_path_steps) {
                     static_cast<void>(path_step);
                     Var<luisa::compute::SurfaceHit> hit =
                         scene->accel->intersect(
@@ -2350,12 +2970,29 @@ private:
                                 uniform_sphere_pdf,
                                 competing,
                                 true);
-                        radiance += clamp_light_contribution(
+                        Float3 environment_contribution =
+                            clamp_contribution(
                             throughput *
                             evaluate_environment_base(
                                 ray->direction()) *
                                 environment_weight,
                             path_depth);
+                        radiance += environment_contribution;
+                        auto directly_visible_environment =
+                            path_depth == 0u;
+                        sample_environment += select(
+                            make_float3(0.0f),
+                            environment_contribution,
+                            directly_visible_environment);
+                        accumulate_light_pass(
+                            split_scattered_light(
+                            select(
+                                environment_contribution,
+                                make_float3(0.0f),
+                                directly_visible_environment),
+                            path_diffuse_weight,
+                            path_glossy_weight,
+                            path_depth == 1u));
                         for (const auto &sun :
                              scene->environment_suns) {
                             const auto solid_angle =
@@ -2373,12 +3010,27 @@ private:
                                     sun_pdf,
                                     competing,
                                     true);
-                            radiance += clamp_light_contribution(
+                            Float3 sun_contribution =
+                                clamp_contribution(
                                 throughput *
                                 evaluate_environment_sun(
                                     ray->direction(), sun) *
                                     sun_weight,
                                 path_depth);
+                            radiance += sun_contribution;
+                            sample_environment += select(
+                                make_float3(0.0f),
+                                sun_contribution,
+                                directly_visible_environment);
+                            accumulate_light_pass(
+                                split_scattered_light(
+                                select(
+                                    sun_contribution,
+                                    make_float3(0.0f),
+                                    directly_visible_environment),
+                                path_diffuse_weight,
+                                path_glossy_weight,
+                                path_depth == 1u));
                         }
                         if (scene->nishita_environment &&
                             scene->nishita_environment
@@ -2400,13 +3052,27 @@ private:
                                     sun_pdf,
                                     competing,
                                     true);
-                            radiance +=
-                                clamp_light_contribution(
+                            Float3 nishita_sun_contribution =
+                                clamp_contribution(
                                     throughput *
                                         evaluate_nishita_sun(
                                             ray->direction()) *
                                         sun_weight,
                                     path_depth);
+                            radiance += nishita_sun_contribution;
+                            sample_environment += select(
+                                make_float3(0.0f),
+                                nishita_sun_contribution,
+                                directly_visible_environment);
+                            accumulate_light_pass(
+                                split_scattered_light(
+                                select(
+                                    nishita_sun_contribution,
+                                    make_float3(0.0f),
+                                    directly_visible_environment),
+                                path_diffuse_weight,
+                                path_glossy_weight,
+                                path_depth == 1u));
                         }
                         $break;
                     };
@@ -2526,8 +3192,15 @@ private:
                         (object_to_world *
                          make_float4(p2, 1.0f))
                             .xyz();
+                    Float3 object_geometric_normal =
+                        safe_normalize(
+                            cross(p1 - p0, p2 - p0),
+                            make_float3(0.0f, 0.0f, 1.0f));
                     Float3 geometric_normal = safe_normalize(
-                        cross(wp1 - wp0, wp2 - wp0),
+                        (normal_to_world *
+                         make_float4(
+                             object_geometric_normal, 0.0f))
+                            .xyz(),
                         -ray->direction());
                     Float3 object_shading_normal =
                         triangle_interpolate(
@@ -2577,64 +3250,42 @@ private:
                                         geometric_normal),
                             make_float3(
                                 1.0f, 0.0f, 0.0f)));
-                    Float3 differential_bitangent =
-                        safe_normalize(
-                            cross(geometric_normal, tangent),
-                            make_float3(0.0f, 1.0f, 0.0f));
                     Float surface_radius =
                         ray_dP +
                         hit->committed_ray_t * ray_dD;
-                    Float3 approximate_dPdx =
-                        tangent * surface_radius;
-                    Float3 approximate_dPdy =
-                        differential_bitangent *
-                        surface_radius;
-                    auto surface_ray_differential =
-                        [&](Float3 differential_origin,
-                            Float3 differential_direction,
-                            Float3 approximation) noexcept {
-                            auto ray_direction =
-                                ray->direction();
-                            auto origin_delta =
-                                differential_origin -
-                                ray->origin();
-                            auto direction_delta =
-                                differential_direction -
-                                ray_direction;
-                            auto denominator = dot(
-                                geometric_normal,
-                                ray_direction);
-                            auto valid =
-                                use_full_ray_differentials &
-                                (abs(denominator) > 1.0e-7f);
-                            auto safe_denominator = select(
-                                1.0f, denominator, valid);
-                            auto distance_delta =
-                                -dot(
-                                    geometric_normal,
-                                    origin_delta +
-                                        hit->committed_ray_t *
-                                            direction_delta) /
-                                safe_denominator;
-                            auto exact =
-                                origin_delta +
-                                hit->committed_ray_t *
-                                    direction_delta +
-                                ray_direction * distance_delta;
-                            return select(
-                                approximation, exact, valid);
-                        };
-                    Float3 dPdx = surface_ray_differential(
-                        differential_origin_x,
-                        differential_direction_x,
-                        approximate_dPdx);
-                    Float3 dPdy = surface_ray_differential(
-                        differential_origin_y,
-                        differential_direction_y,
-                        approximate_dPdy);
-                    Float differential_radius =
-                        0.5f *
-                        (length(dPdx) + length(dPdy));
+                    // Cycles stores a compact scalar ray differential.
+                    // ShaderData reconstructs its two surface directions
+                    // with make_orthonormals(sd->Ng), rather than retaining
+                    // the full camera-ray differential vectors.
+                    auto normal_components_differ =
+                        (geometric_normal.x != geometric_normal.y) |
+                        (geometric_normal.x != geometric_normal.z);
+                    Float3 compact_dx = select(
+                        make_float3(
+                            geometric_normal.z -
+                                geometric_normal.y,
+                            geometric_normal.x +
+                                geometric_normal.z,
+                            -geometric_normal.y -
+                                geometric_normal.x),
+                        make_float3(
+                            geometric_normal.z -
+                                geometric_normal.y,
+                            geometric_normal.x -
+                                geometric_normal.z,
+                            geometric_normal.y -
+                                geometric_normal.x),
+                        normal_components_differ);
+                    compact_dx = safe_normalize(
+                        compact_dx,
+                        tangent);
+                    Float3 compact_dy =
+                        cross(geometric_normal, compact_dx);
+                    Float3 dPdx =
+                        compact_dx * surface_radius;
+                    Float3 dPdy =
+                        compact_dy * surface_radius;
+                    Float differential_radius = surface_radius;
                     Float3 edge1 = wp1 - wp0;
                     Float3 edge2 = wp2 - wp0;
                     Float gram00 = dot(edge1, edge1);
@@ -2662,10 +3313,17 @@ private:
                                 (projected2 * gram00 -
                                  projected1 * gram01) /
                                     safe_gram_determinant);
-                            return select(
+                            delta = select(
                                 make_float2(0.0f),
                                 delta,
                                 valid_gram);
+                            // Cycles flips dPdu/dPdv when ShaderData is
+                            // oriented to a backfacing hit. Solving the
+                            // compact surface differential in that basis
+                            // therefore reverses arbitrary attribute
+                            // derivatives while leaving world P unchanged.
+                            return select(
+                                delta, -delta, back_facing);
                         };
                     Float2 barycentric_dx =
                         barycentric_differential(dPdx);
@@ -2868,9 +3526,27 @@ private:
                                 competing,
                                 light_pdf > 0.0f);
                     }
-                    radiance += clamp_light_contribution(
-                        throughput * emitted * emission_weight,
-                        path_depth);
+                    Float3 emission_contribution =
+                        clamp_contribution(
+                            throughput * emitted *
+                                emission_weight,
+                            path_depth);
+                    radiance += emission_contribution;
+                    auto directly_visible_emission =
+                        path_depth == 0u;
+                    sample_emission += select(
+                        make_float3(0.0f),
+                        emission_contribution,
+                        directly_visible_emission);
+                    accumulate_light_pass(
+                        split_scattered_light(
+                        select(
+                            emission_contribution,
+                            make_float3(0.0f),
+                            directly_visible_emission),
+                        path_diffuse_weight,
+                        path_glossy_weight,
+                        path_depth == 1u));
 
                     // PATH_RAY_TERMINATE_ON_NEXT_SURFACE still records
                     // surface emission, then stops before data passes, direct
@@ -2893,9 +3569,13 @@ private:
                     // segment, so roulette starts only after that extra
                     // guaranteed bounce.
                     Bool use_roulette = select(
-                        path_depth > min_bounces + 1u,
+                        path_depth >
+                            kernel_parameters.min_bounces +
+                                1u,
                         transparent_depth >
-                            transparent_min_bounces + 1u,
+                            kernel_parameters
+                                    .transparent_min_bounces +
+                                1u,
                         arrived_through_transparency);
                     $if (use_roulette) {
                         Float survival = min(
@@ -2925,6 +3605,11 @@ private:
                             surface_aov(surface_tag, point);
                         sample_albedo +=
                             throughput * aov.albedo;
+                        sample_glossy_color +=
+                            throughput * aov.glossy_albedo;
+                        sample_transmission_color +=
+                            throughput *
+                            aov.transmission_albedo;
                         auto surface_alpha =
                             clamp(
                                 make_float3(1.0f) -
@@ -2938,9 +3623,12 @@ private:
                             (1.0f / 3.0f);
                         auto writes_normal =
                             (!primary_recorded) &
-                            ((pass_alpha_threshold == 0.0f) |
+                            ((kernel_parameters
+                                      .pass_alpha_threshold ==
+                              0.0f) |
                              (average_alpha >=
-                              pass_alpha_threshold));
+                              kernel_parameters
+                                  .pass_alpha_threshold));
                         sample_normal = select(
                             sample_normal,
                             aov.normal,
@@ -3006,15 +3694,25 @@ private:
                                     (mis_weight /
                                      uniform_sphere_pdf);
                                 Float roulette_weight =
-                                    light_sample_roulette_weight(
+                                    sample_light_roulette(
                                         unshadowed_contribution,
                                         random_float(state));
-                                radiance += clamp_light_contribution(
-                                    throughput *
-                                    unshadowed_contribution *
-                                    shadow_transmittance *
-                                    roulette_weight,
-                                    path_depth);
+                                Float3 contribution =
+                                    clamp_contribution(
+                                        throughput *
+                                            unshadowed_contribution *
+                                            shadow_transmittance *
+                                            roulette_weight,
+                                        path_depth);
+                                radiance += contribution;
+                                accumulate_light_pass(
+                                    split_nee_light(
+                                    contribution,
+                                    evaluation.f,
+                                    evaluation.diffuse_f,
+                                    path_diffuse_weight,
+                                    path_glossy_weight,
+                                    path_depth));
                             };
                         }
                         for (const auto &sun :
@@ -3094,15 +3792,25 @@ private:
                                         wi, sun) *
                                     (mis_weight / sun_pdf);
                                 Float roulette_weight =
-                                    light_sample_roulette_weight(
+                                    sample_light_roulette(
                                         unshadowed_contribution,
                                         random_float(state));
-                                radiance += clamp_light_contribution(
-                                    throughput *
-                                    unshadowed_contribution *
-                                    shadow_transmittance *
-                                    roulette_weight,
-                                    path_depth);
+                                Float3 contribution =
+                                    clamp_contribution(
+                                        throughput *
+                                            unshadowed_contribution *
+                                            shadow_transmittance *
+                                            roulette_weight,
+                                        path_depth);
+                                radiance += contribution;
+                                accumulate_light_pass(
+                                    split_nee_light(
+                                    contribution,
+                                    evaluation.f,
+                                    evaluation.diffuse_f,
+                                    path_diffuse_weight,
+                                    path_glossy_weight,
+                                    path_depth));
                             };
                         }
                         if (scene->nishita_environment &&
@@ -3187,16 +3895,25 @@ private:
                                     evaluate_nishita_sun(wi) *
                                     (mis_weight / sun_pdf);
                                 Float roulette_weight =
-                                    light_sample_roulette_weight(
+                                    sample_light_roulette(
                                         unshadowed_contribution,
                                         random_float(state));
-                                radiance +=
-                                    clamp_light_contribution(
+                                Float3 contribution =
+                                    clamp_contribution(
                                         throughput *
                                             unshadowed_contribution *
                                             shadow_transmittance *
                                             roulette_weight,
                                         path_depth);
+                                radiance += contribution;
+                                accumulate_light_pass(
+                                    split_nee_light(
+                                    contribution,
+                                    evaluation.f,
+                                    evaluation.diffuse_f,
+                                    path_diffuse_weight,
+                                    path_glossy_weight,
+                                    path_depth));
                             };
                         }
                         if (scene->emissive_triangle_count > 0u) {
@@ -3353,11 +4070,23 @@ private:
                                     lp0,
                                     lp1,
                                     lp2);
-                            Float3 light_unnormalized_normal =
-                                cross(lp1 - lp0, lp2 - lp0);
+                            Float3
+                                light_object_geometric_normal =
+                                    safe_normalize(
+                                        cross(
+                                            local_lp1 - local_lp0,
+                                            local_lp2 - local_lp0),
+                                        make_float3(
+                                            0.0f,
+                                            0.0f,
+                                            1.0f));
                             Float3 light_geometric_normal =
                                 safe_normalize(
-                                    light_unnormalized_normal,
+                                    (light_normal_to_world *
+                                     make_float4(
+                                         light_object_geometric_normal,
+                                         0.0f))
+                                        .xyz(),
                                     make_float3(
                                         0.0f, 0.0f, 1.0f));
                             Float3 light_object_shading_normal =
@@ -3591,15 +4320,25 @@ private:
                                         light_radiance *
                                         (mis_weight / light_pdf);
                                     Float roulette_weight =
-                                        light_sample_roulette_weight(
+                                        sample_light_roulette(
                                             unshadowed_contribution,
                                             random_float(state));
-                                    radiance += clamp_light_contribution(
-                                        throughput *
-                                        unshadowed_contribution *
-                                        shadow_transmittance *
-                                        roulette_weight,
-                                        path_depth);
+                                    Float3 contribution =
+                                        clamp_contribution(
+                                            throughput *
+                                                unshadowed_contribution *
+                                                shadow_transmittance *
+                                                roulette_weight,
+                                            path_depth);
+                                    radiance += contribution;
+                                    accumulate_light_pass(
+                                        split_nee_light(
+                                        contribution,
+                                        evaluation.f,
+                                        evaluation.diffuse_f,
+                                        path_diffuse_weight,
+                                        path_glossy_weight,
+                                        path_depth));
                                 };
                             };
                         }
@@ -3612,6 +4351,13 @@ private:
                             Float3 wi = make_float3(0.0f);
                             Float3 light_radiance =
                                 make_float3(0.0f);
+                            Float3 light_position =
+                                light.position;
+                            Float3 light_normal =
+                                make_float3(
+                                    0.0f, 0.0f, 1.0f);
+                            Float2 light_uv =
+                                make_float2(0.5f);
                             Float light_distance = ray_maximum;
                             Float light_pdf = 0.0f;
                             Bool light_valid = false;
@@ -3619,14 +4365,33 @@ private:
                             $if (light.type ==
                                  static_cast<std::uint32_t>(
                                      LightType::area)) {
-                                Float u = random_float(state) -
-                                          0.5f;
-                                Float v = random_float(state) -
-                                          0.5f;
-                                Float3 light_position =
+                                Float sample_x =
+                                    random_float(state);
+                                Float sample_y =
+                                    random_float(state);
+                                Bool ellipse =
+                                    (light.flags &
+                                     light_flag_ellipse) != 0u;
+                                Float disk_radius =
+                                    0.5f * sqrt(sample_x);
+                                Float disk_angle =
+                                    2.0f * pi * sample_y;
+                                Float u = select(
+                                    sample_x - 0.5f,
+                                    disk_radius *
+                                        cos(disk_angle),
+                                    ellipse);
+                                Float v = select(
+                                    sample_y - 0.5f,
+                                    disk_radius *
+                                        sin(disk_angle),
+                                    ellipse);
+                                light_position =
                                     light.position +
-                                    light.axis_x * (u * light.size) +
-                                    light.axis_y * (v * light.size);
+                                    light.axis_x *
+                                        (u * light.size_u) +
+                                    light.axis_y *
+                                        (v * light.size_v);
                                 Float3 offset =
                                     light_position - hit_position;
                                 Float distance2 =
@@ -3639,26 +4404,173 @@ private:
                                         -light.axis_z,
                                         -wi),
                                     0.0f);
-                                Float area = max(
-                                    light.size * light.size,
-                                    1.0e-12f);
+                                Float area =
+                                    light.size_u *
+                                    light.size_v;
+                                area *= select(
+                                    1.0f,
+                                    0.25f * pi,
+                                    ellipse);
+                                area = max(area, 1.0e-12f);
                                 light_pdf =
                                     distance2 /
                                     max(cosine * area, 1.0e-20f);
+                                Bool normalize_power =
+                                    (light.flags &
+                                     light_flag_normalize) != 0u;
+                                Float inverse_area = select(
+                                    1.0f,
+                                    1.0f / area,
+                                    normalize_power);
+                                Float spread_attenuation = 1.0f;
+                                $if (light.spread <
+                                     pi - 1.0e-6f) {
+                                    Float half_spread =
+                                        0.5f *
+                                        max(light.spread, 0.0f);
+                                    Float sine_angle = sqrt(max(
+                                        1.0f -
+                                            cosine * cosine,
+                                        0.0f));
+                                    Float tangent_angle =
+                                        sine_angle /
+                                        max(cosine, 1.0e-20f);
+                                    $if (half_spread <= 0.0f) {
+                                        spread_attenuation =
+                                            select(
+                                                pi,
+                                                0.0f,
+                                                tangent_angle >
+                                                    1.0e-5f);
+                                    }
+                                    $else {
+                                        Float tangent_spread =
+                                            tan(half_spread);
+                                        Float normalization =
+                                            select(
+                                                3.0f /
+                                                    max(
+                                                        half_spread *
+                                                            half_spread *
+                                                            half_spread,
+                                                        1.0e-20f),
+                                                1.0f /
+                                                    max(
+                                                        tangent_spread -
+                                                            half_spread,
+                                                        1.0e-20f),
+                                                half_spread >
+                                                    0.05f);
+                                        spread_attenuation =
+                                            max(
+                                                (tangent_spread -
+                                                 tangent_angle) *
+                                                    normalization,
+                                                0.0f);
+                                    };
+                                };
                                 light_radiance =
-                                    light.color * light.power;
+                                    light.color *
+                                    (light.power *
+                                     inverse_area *
+                                     (1.0f / pi) *
+                                     spread_attenuation);
+                                light_normal =
+                                    -light.axis_z;
+                                light_uv = make_float2(
+                                    u + 0.5f,
+                                    v + 0.5f);
                                 light_valid =
                                     (distance2 > 1.0e-12f) &
-                                    (cosine > 0.0f);
+                                    (cosine > 0.0f) &
+                                    (spread_attenuation > 0.0f);
                             }
                             $elif (
                                 light.type ==
                                     static_cast<std::uint32_t>(
                                         LightType::distant)) {
-                                wi = -light.axis_z;
+                                Float half_angle =
+                                    0.5f *
+                                    max(light.angle, 0.0f);
+                                Bool finite_sun =
+                                    half_angle > 0.0f;
+                                Float cosine_max =
+                                    cos(half_angle);
+                                Float3 sun_axis = light.axis_z;
+                                Float3 basis_reference = select(
+                                    make_float3(
+                                        0.0f, 0.0f, 1.0f),
+                                    make_float3(
+                                        0.0f, 1.0f, 0.0f),
+                                    abs(sun_axis.z) > 0.999f);
+                                Float3 sun_tangent =
+                                    safe_normalize(
+                                        cross(
+                                            basis_reference,
+                                            sun_axis),
+                                        make_float3(
+                                            1.0f,
+                                            0.0f,
+                                            0.0f));
+                                Float3 sun_bitangent =
+                                    cross(
+                                        sun_axis,
+                                        sun_tangent);
+                                Float cosine_theta =
+                                    1.0f -
+                                    random_float(state) *
+                                        (1.0f - cosine_max);
+                                Float sine_theta = sqrt(max(
+                                    1.0f -
+                                        cosine_theta *
+                                            cosine_theta,
+                                    0.0f));
+                                Float phi =
+                                    2.0f * pi *
+                                    random_float(state);
+                                Float3 cone_direction =
+                                    sun_tangent *
+                                        (cos(phi) *
+                                         sine_theta) +
+                                    sun_bitangent *
+                                        (sin(phi) *
+                                         sine_theta) +
+                                    sun_axis * cosine_theta;
+                                wi = select(
+                                    sun_axis,
+                                    cone_direction,
+                                    finite_sun);
+                                Float solid_angle =
+                                    2.0f * pi *
+                                    (1.0f - cosine_max);
+                                light_pdf = select(
+                                    1.0f,
+                                    1.0f /
+                                        max(
+                                            solid_angle,
+                                            1.0e-20f),
+                                    finite_sun);
+                                Bool normalize_power =
+                                    (light.flags &
+                                     light_flag_normalize) != 0u;
+                                Float disk_area =
+                                    pi *
+                                    sin(half_angle) *
+                                    sin(half_angle);
+                                Float eval_factor = select(
+                                    1.0f,
+                                    1.0f /
+                                        max(
+                                            disk_area,
+                                            1.0e-20f),
+                                    normalize_power &
+                                        finite_sun);
                                 light_radiance =
-                                    light.color * light.power;
-                                light_pdf = 1.0f;
+                                    light.color *
+                                    (light.power *
+                                     eval_factor);
+                                light_position = wi;
+                                light_normal = -wi;
                                 light_valid = true;
                             }
                             $else {
@@ -3666,31 +4578,379 @@ private:
                                     light.position - hit_position;
                                 Float distance2 =
                                     length_squared(offset);
-                                light_distance = sqrt(max(
+                                Float center_distance = sqrt(max(
                                     distance2, 1.0e-20f));
-                                wi = offset / light_distance;
-                                light_radiance =
-                                    light.color *
-                                    (light.power /
-                                     (4.0f * pi *
-                                      max(distance2, 1.0e-20f)));
-                                light_pdf = 1.0f;
+                                Float3 center_direction =
+                                    offset / center_distance;
+                                Bool normalize_power =
+                                    (light.flags &
+                                     light_flag_normalize) != 0u;
                                 light_valid =
                                     distance2 > 1.0e-12f;
+                                $if (light.radius > 0.0f) {
+                                    Float sample_x =
+                                        random_float(state);
+                                    Float sample_y =
+                                        random_float(state);
+                                    Bool sphere =
+                                        (light.flags &
+                                         light_flag_sphere) != 0u;
+                                    $if (sphere) {
+                                        Float sine2 = min(
+                                            light.radius *
+                                                light.radius /
+                                                max(
+                                                    distance2,
+                                                    1.0e-20f),
+                                            1.0f);
+                                        Float cosine_max =
+                                            sqrt(max(
+                                                1.0f - sine2,
+                                                0.0f));
+                                        Float3 basis_reference =
+                                            select(
+                                                make_float3(
+                                                    0.0f,
+                                                    0.0f,
+                                                    1.0f),
+                                                make_float3(
+                                                    0.0f,
+                                                    1.0f,
+                                                    0.0f),
+                                                abs(
+                                                    center_direction
+                                                        .z) >
+                                                    0.999f);
+                                        Float3 tangent =
+                                            safe_normalize(
+                                                cross(
+                                                    basis_reference,
+                                                    center_direction),
+                                                make_float3(
+                                                    1.0f,
+                                                    0.0f,
+                                                    0.0f));
+                                        Float3 bitangent = cross(
+                                            center_direction,
+                                            tangent);
+                                        Float cosine_theta =
+                                            1.0f -
+                                            sample_x *
+                                                (1.0f -
+                                                 cosine_max);
+                                        Float sine_theta =
+                                            sqrt(max(
+                                                1.0f -
+                                                    cosine_theta *
+                                                        cosine_theta,
+                                                0.0f));
+                                        Float phi =
+                                            2.0f * pi *
+                                            sample_y;
+                                        wi =
+                                            tangent *
+                                                (cos(phi) *
+                                                 sine_theta) +
+                                            bitangent *
+                                                (sin(phi) *
+                                                 sine_theta) +
+                                            center_direction *
+                                                cosine_theta;
+                                        light_pdf =
+                                            1.0f /
+                                            max(
+                                                2.0f * pi *
+                                                    (1.0f -
+                                                     cosine_max),
+                                                1.0e-20f);
+                                        Float root = sqrt(max(
+                                            light.radius *
+                                                    light.radius -
+                                                distance2 +
+                                                distance2 *
+                                                    cosine_theta *
+                                                    cosine_theta,
+                                            0.0f));
+                                        light_distance =
+                                            center_distance *
+                                                cosine_theta -
+                                            root;
+                                        light_position =
+                                            hit_position +
+                                            wi *
+                                                light_distance;
+                                        light_normal =
+                                            safe_normalize(
+                                                light_position -
+                                                    light.position,
+                                                -wi);
+                                        light_valid =
+                                            light_valid &
+                                            (distance2 >
+                                             light.radius *
+                                                 light.radius);
+                                    }
+                                    $else {
+                                        Float3 disk_normal =
+                                            -center_direction;
+                                        Float3 basis_reference =
+                                            select(
+                                                make_float3(
+                                                    0.0f,
+                                                    0.0f,
+                                                    1.0f),
+                                                make_float3(
+                                                    0.0f,
+                                                    1.0f,
+                                                    0.0f),
+                                                abs(disk_normal.z) >
+                                                    0.999f);
+                                        Float3 tangent =
+                                            safe_normalize(
+                                                cross(
+                                                    basis_reference,
+                                                    disk_normal),
+                                                make_float3(
+                                                    1.0f,
+                                                    0.0f,
+                                                    0.0f));
+                                        Float3 bitangent = cross(
+                                            disk_normal,
+                                            tangent);
+                                        Float disk_radius =
+                                            light.radius *
+                                            sqrt(sample_x);
+                                        Float disk_angle =
+                                            2.0f * pi *
+                                            sample_y;
+                                        light_position =
+                                            light.position +
+                                            tangent *
+                                                (disk_radius *
+                                                 cos(
+                                                     disk_angle)) +
+                                            bitangent *
+                                                (disk_radius *
+                                                 sin(
+                                                     disk_angle));
+                                        Float3 light_offset =
+                                            light_position -
+                                            hit_position;
+                                        Float sampled_distance2 =
+                                            length_squared(
+                                                light_offset);
+                                        light_distance = sqrt(max(
+                                            sampled_distance2,
+                                            1.0e-20f));
+                                        wi =
+                                            light_offset /
+                                            light_distance;
+                                        Float light_cosine = abs(
+                                            dot(
+                                                disk_normal,
+                                                -wi));
+                                        light_pdf =
+                                            sampled_distance2 /
+                                            max(
+                                                pi *
+                                                    light.radius *
+                                                    light.radius *
+                                                    light_cosine,
+                                                1.0e-20f);
+                                        light_normal =
+                                            disk_normal;
+                                        light_valid =
+                                            light_valid &
+                                            (light_cosine >
+                                             0.0f);
+                                    };
+                                    Float point_area =
+                                        4.0f * pi *
+                                        light.radius *
+                                        light.radius;
+                                    Float point_eval_factor =
+                                        select(
+                                            1.0f / pi,
+                                            1.0f /
+                                                max(
+                                                    pi *
+                                                        point_area,
+                                                    1.0e-20f),
+                                            normalize_power);
+                                    light_radiance =
+                                        light.color *
+                                        (light.power *
+                                         point_eval_factor);
+                                }
+                                $else {
+                                    wi = center_direction;
+                                    light_distance =
+                                        center_distance;
+                                    Float point_eval_factor =
+                                        select(
+                                            1.0f / pi,
+                                            1.0f /
+                                                (4.0f * pi),
+                                            normalize_power);
+                                    light_radiance =
+                                        light.color *
+                                        (light.power *
+                                         point_eval_factor /
+                                         max(
+                                             distance2,
+                                             1.0e-20f));
+                                    light_pdf = 1.0f;
+                                    light_position =
+                                        light.position;
+                                    light_normal = -wi;
+                                };
                                 $if (light.type ==
                                      static_cast<std::uint32_t>(
                                          LightType::spot)) {
                                     Float cone =
                                         dot(-light.axis_z, -wi);
+                                    Float cone_minimum =
+                                        cos(
+                                            max(
+                                                light.spot_angle,
+                                                0.0f) *
+                                            0.5f);
+                                    Float blend_width =
+                                        (1.0f - cone_minimum) *
+                                        max(
+                                            light.spot_smooth,
+                                            0.0f);
+                                    Float attenuation =
+                                        select(
+                                            select(
+                                                0.0f,
+                                                1.0f,
+                                                cone >=
+                                                    cone_minimum),
+                                            clamp(
+                                                (cone -
+                                                 cone_minimum) /
+                                                    max(
+                                                        blend_width,
+                                                        1.0e-20f),
+                                                0.0f,
+                                                1.0f),
+                                            blend_width >
+                                                0.0f);
+                                    attenuation =
+                                        attenuation *
+                                        attenuation *
+                                        (3.0f -
+                                         2.0f * attenuation);
+                                    light_radiance *= attenuation;
                                     light_valid =
                                         light_valid &
-                                        (cone >=
-                                         cos(
-                                             max(
-                                                 light.spread,
-                                                 0.0f) *
-                                             0.5f));
+                                        (attenuation > 0.0f);
                                 };
+                            };
+
+                            $if (light.surface_tag !=
+                                 ~std::uint32_t{0u}) {
+                                Float3 relative_position =
+                                    light_position -
+                                    light.position;
+                                Float3 object_position =
+                                    make_float3(
+                                        dot(
+                                            relative_position,
+                                            light.axis_x),
+                                        dot(
+                                            relative_position,
+                                            light.axis_y),
+                                        dot(
+                                            relative_position,
+                                            light.axis_z));
+                                SurfacePoint light_point{
+                                    .position =
+                                        light_position,
+                                    .object_position =
+                                        object_position,
+                                    .object_location =
+                                        light.position,
+                                    .generated =
+                                        object_position,
+                                    .geometric_normal =
+                                        light_normal,
+                                    .shading_normal =
+                                        light_normal,
+                                    .object_shading_normal =
+                                        light_normal,
+                                    .object_tangent =
+                                        light.axis_x,
+                                    .tangent_sign = 1.0f,
+                                    .normal_to_world_x =
+                                        light.axis_x,
+                                    .normal_to_world_y =
+                                        light.axis_y,
+                                    .normal_to_world_z =
+                                        light.axis_z,
+                                    .dpdu =
+                                        light.axis_x *
+                                        light.size_u,
+                                    .dpdv =
+                                        light.axis_y *
+                                        light.size_v,
+                                    .dPdx =
+                                        make_float3(0.0f),
+                                    .dPdy =
+                                        make_float3(0.0f),
+                                    .object_dPdx =
+                                        make_float3(0.0f),
+                                    .object_dPdy =
+                                        make_float3(0.0f),
+                                    .generated_dx =
+                                        make_float3(0.0f),
+                                    .generated_dy =
+                                        make_float3(0.0f),
+                                    .incoming = -wi,
+                                    .uv = light_uv,
+                                    .uv_dx =
+                                        make_float2(0.0f),
+                                    .uv_dy =
+                                        make_float2(0.0f),
+                                    .geometry_index = ~0u,
+                                    .barycentric =
+                                        make_float2(0.0f),
+                                    .barycentric_dx =
+                                        make_float2(0.0f),
+                                    .barycentric_dy =
+                                        make_float2(0.0f),
+                                    .instance_id = 0u,
+                                    .primitive_id =
+                                        light_index,
+                                    .parameter_block =
+                                        light.parameter_block,
+                                    .object_random = 0.0f,
+                                    .particle_index = 0u,
+                                    .random_per_island = 0.0f,
+                                    .ray_visibility =
+                                        ray_visibility,
+                                    .ray_events =
+                                        ray_events,
+                                    .ray_depth =
+                                        path_depth,
+                                    .diffuse_depth =
+                                        diffuse_depth,
+                                    .glossy_depth =
+                                        glossy_depth,
+                                    .transparent_depth =
+                                        transparent_depth,
+                                    .transmission_depth =
+                                        transmission_depth,
+                                    .ray_length =
+                                        light_distance,
+                                    .time = 0.0f,
+                                    .back_facing = false};
+                                light_radiance *=
+                                    surface_emission(
+                                        light.surface_tag,
+                                        light_point,
+                                        -wi);
                             };
 
                             $if (light_valid &
@@ -3733,15 +4993,25 @@ private:
                                              light_pdf,
                                              1.0e-20f));
                                     Float roulette_weight =
-                                        light_sample_roulette_weight(
+                                        sample_light_roulette(
                                             unshadowed_contribution,
                                             random_float(state));
-                                    radiance += clamp_light_contribution(
-                                        throughput *
-                                        unshadowed_contribution *
-                                        shadow_transmittance *
-                                        roulette_weight,
-                                        path_depth);
+                                    Float3 contribution =
+                                        clamp_contribution(
+                                            throughput *
+                                                unshadowed_contribution *
+                                                shadow_transmittance *
+                                                roulette_weight,
+                                            path_depth);
+                                    radiance += contribution;
+                                    accumulate_light_pass(
+                                        split_nee_light(
+                                        contribution,
+                                        evaluation.f,
+                                        evaluation.diffuse_f,
+                                        path_diffuse_weight,
+                                        path_glossy_weight,
+                                        path_depth));
                                 };
                             };
                         }
@@ -3792,6 +5062,26 @@ private:
                     Bool material_transmission =
                         transmission & (!transparent);
 
+                    auto sampled_diffuse_weight =
+                        light_component_ratio(
+                            surface_sample.evaluation.diffuse_f,
+                            surface_sample.evaluation.f);
+                    auto sampled_glossy_weight =
+                        light_component_ratio(
+                            surface_sample.evaluation.f -
+                                surface_sample.evaluation.diffuse_f,
+                            surface_sample.evaluation.f);
+                    auto records_first_surface =
+                        (path_depth == 0u) & (!transparent);
+                    path_diffuse_weight = select(
+                        path_diffuse_weight,
+                        sampled_diffuse_weight,
+                        records_first_surface);
+                    path_glossy_weight = select(
+                        path_glossy_weight,
+                        sampled_glossy_weight,
+                        records_first_surface);
+
                     throughput *=
                         surface_sample.evaluation.f /
                         surface_sample.evaluation.pdf;
@@ -3831,19 +5121,24 @@ private:
                     terminate_on_next_surface |=
                         transparent &
                         (transparent_depth >=
-                         transparent_max_bounces);
+                         kernel_parameters
+                             .transparent_max_bounces);
                     terminate_after_transparent |=
                         (!transparent) &
-                        ((path_depth >= max_bounces) |
+                        ((path_depth >=
+                          kernel_parameters.max_bounces) |
                          (diffuse_reflection &
                           (diffuse_depth >=
-                           max_diffuse_bounces)) |
+                           kernel_parameters
+                               .max_diffuse_bounces)) |
                          (glossy_reflection &
                           (glossy_depth >=
-                           max_glossy_bounces)) |
+                           kernel_parameters
+                               .max_glossy_bounces)) |
                          (material_transmission &
                           (transmission_depth >=
-                           max_transmission_bounces)));
+                           kernel_parameters
+                               .max_transmission_bounces)));
                     // Cycles does not update forward-MIS state for a
                     // transparent bounce. The next emitter remains paired
                     // with the most recent non-transparent BSDF technique.
@@ -3863,22 +5158,7 @@ private:
                         hit_position +
                             ray->direction() * 1.0e-4f,
                         transparent);
-                    // Preserve the two full camera differentials through
-                    // transparent hits. After the first material scatter,
-                    // rebase the compact secondary-ray footprint to the
-                    // measured surface differential radius.
                     ray_dP = differential_radius;
-                    differential_origin_x = select(
-                        differential_origin_x,
-                        next_origin + dPdx,
-                        transparent);
-                    differential_origin_y = select(
-                        differential_origin_y,
-                        next_origin + dPdy,
-                        transparent);
-                    use_full_ray_differentials =
-                        use_full_ray_differentials &
-                        transparent;
                     ray = make_ray(
                         next_origin,
                         surface_sample.wi,
@@ -3896,11 +5176,83 @@ private:
                     make_float4(sample_normal, 1.0f);
                 albedo_sum +=
                     make_float4(sample_albedo, 1.0f);
+                glossy_color_sum +=
+                    make_float4(sample_glossy_color, 1.0f);
+                transmission_color_sum +=
+                    make_float4(
+                        sample_transmission_color, 1.0f);
+                diffuse_direct_sum +=
+                    make_float4(sample_diffuse_direct, 1.0f);
+                diffuse_indirect_sum +=
+                    make_float4(sample_diffuse_indirect, 1.0f);
+                glossy_direct_sum +=
+                    make_float4(sample_glossy_direct, 1.0f);
+                glossy_indirect_sum +=
+                    make_float4(sample_glossy_indirect, 1.0f);
+                transmission_direct_sum +=
+                    make_float4(
+                        sample_transmission_direct, 1.0f);
+                transmission_indirect_sum +=
+                    make_float4(
+                        sample_transmission_indirect, 1.0f);
+                emission_sum +=
+                    make_float4(sample_emission, 1.0f);
+                environment_sum +=
+                    make_float4(sample_environment, 1.0f);
                 completed += 1u;
             };
             combined.write(pixel, combined_sum);
             normal.write(pixel, normal_sum);
             albedo.write(pixel, albedo_sum);
+            light_passes.write(
+                light_pass_base +
+                    light_pass_index(
+                        LightPassBuffer::diffuse_direct),
+                diffuse_direct_sum);
+            light_passes.write(
+                light_pass_base +
+                    light_pass_index(
+                        LightPassBuffer::diffuse_indirect),
+                diffuse_indirect_sum);
+            light_passes.write(
+                light_pass_base +
+                    light_pass_index(
+                        LightPassBuffer::glossy_direct),
+                glossy_direct_sum);
+            light_passes.write(
+                light_pass_base +
+                    light_pass_index(
+                        LightPassBuffer::glossy_indirect),
+                glossy_indirect_sum);
+            light_passes.write(
+                light_pass_base +
+                    light_pass_index(
+                        LightPassBuffer::transmission_direct),
+                transmission_direct_sum);
+            light_passes.write(
+                light_pass_base +
+                    light_pass_index(
+                        LightPassBuffer::transmission_indirect),
+                transmission_indirect_sum);
+            light_passes.write(
+                light_pass_base +
+                    light_pass_index(LightPassBuffer::emission),
+                emission_sum);
+            light_passes.write(
+                light_pass_base +
+                    light_pass_index(
+                        LightPassBuffer::environment),
+                environment_sum);
+            light_passes.write(
+                light_pass_base +
+                    light_pass_index(
+                        LightPassBuffer::glossy_color),
+                glossy_color_sum);
+            light_passes.write(
+                light_pass_base +
+                    light_pass_index(
+                        LightPassBuffer::transmission_color),
+                transmission_color_sum);
             sample_count.write(pixel, completed);
         };
 
@@ -3908,8 +5260,7 @@ private:
             kernel,
             luisa::compute::ShaderOption{
                 .enable_cache = true,
-                .enable_fast_math = false,
-                .name = "psycles_luisa_path_tracer"});
+                .enable_fast_math = false});
     }
 
     void write_passes(contract::OutputSink &output) {
@@ -3917,10 +5268,14 @@ private:
         luisa::vector<luisa::float4> combined(count);
         luisa::vector<luisa::float4> normal(count);
         luisa::vector<luisa::float4> albedo(count);
+        luisa::vector<luisa::float4> light_passes(
+            count * light_pass_buffer_count);
         luisa::vector<luisa::uint> samples(count);
         _stream << _combined.copy_to(luisa::span{combined})
                 << _normal.copy_to(luisa::span{normal})
                 << _albedo.copy_to(luisa::span{albedo})
+                << _light_passes.copy_to(
+                       luisa::span{light_passes})
                 << _sample_count.copy_to(luisa::span{samples})
                 << synchronize();
 
@@ -3935,10 +5290,33 @@ private:
             for (std::size_t i = 0u; i < count; ++i) {
                 const auto denominator =
                     static_cast<float>(std::max(samples[i], 1u));
+                const auto exposure =
+                    _settings.integrator.film_exposure;
+                const auto light_pass_base =
+                    i * light_pass_buffer_count;
+                const auto read_light_pass =
+                    [&](LightPassBuffer kind) noexcept
+                    -> const luisa::float4 & {
+                    return light_passes[
+                        light_pass_base +
+                        light_pass_index(kind)];
+                };
+                const auto divided_light_pass =
+                    [&](LightPassBuffer kind,
+                        const luisa::float4 &color) noexcept {
+                        const auto divided =
+                            safe_divide_even_color(
+                                read_light_pass(kind), color) *
+                            exposure;
+                        return luisa::make_float4(
+                            divided, 1.0f);
+                    };
                 luisa::float4 value{};
                 switch (pass.kind) {
                     case PassKind::combined:
-                        value = combined[i] / denominator;
+                        value =
+                            combined[i] *
+                            (exposure / denominator);
                         break;
                     case PassKind::normal:
                     case PassKind::denoising_normal:
@@ -3947,6 +5325,69 @@ private:
                     case PassKind::albedo:
                     case PassKind::denoising_albedo:
                         value = albedo[i] / denominator;
+                        break;
+                    case PassKind::glossy_color:
+                        value =
+                            read_light_pass(
+                                LightPassBuffer::glossy_color) /
+                            denominator;
+                        break;
+                    case PassKind::transmission_color:
+                        value =
+                            read_light_pass(
+                                LightPassBuffer::
+                                    transmission_color) /
+                            denominator;
+                        break;
+                    case PassKind::emission:
+                        value =
+                            read_light_pass(
+                                LightPassBuffer::emission) *
+                            (exposure / denominator);
+                        break;
+                    case PassKind::environment:
+                        value =
+                            read_light_pass(
+                                LightPassBuffer::environment) *
+                            (exposure / denominator);
+                        break;
+                    case PassKind::diffuse_direct:
+                        value = divided_light_pass(
+                            LightPassBuffer::diffuse_direct,
+                            albedo[i]);
+                        break;
+                    case PassKind::diffuse_indirect:
+                        value = divided_light_pass(
+                            LightPassBuffer::diffuse_indirect,
+                            albedo[i]);
+                        break;
+                    case PassKind::glossy_direct:
+                        value = divided_light_pass(
+                            LightPassBuffer::glossy_direct,
+                            read_light_pass(
+                                LightPassBuffer::glossy_color));
+                        break;
+                    case PassKind::glossy_indirect:
+                        value = divided_light_pass(
+                            LightPassBuffer::glossy_indirect,
+                            read_light_pass(
+                                LightPassBuffer::glossy_color));
+                        break;
+                    case PassKind::transmission_direct:
+                        value = divided_light_pass(
+                            LightPassBuffer::
+                                transmission_direct,
+                            read_light_pass(
+                                LightPassBuffer::
+                                    transmission_color));
+                        break;
+                    case PassKind::transmission_indirect:
+                        value = divided_light_pass(
+                            LightPassBuffer::
+                                transmission_indirect,
+                            read_light_pass(
+                                LightPassBuffer::
+                                    transmission_color));
                         break;
                     case PassKind::sample_count:
                         value = luisa::make_float4(
@@ -4001,10 +5442,12 @@ public:
                    _combined,
                    _normal,
                    _albedo,
+                   _light_passes,
                    _sample_count,
                    samples.first + samples.offset,
                    samples.count,
-                   _settings.seed)
+                   _settings.seed,
+                   _kernel_parameters)
                    .dispatch(
                        static_cast<std::uint32_t>(
                            std::max<std::size_t>(
@@ -4082,6 +5525,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         luisa::compute::Device{_device.impl_shared()};
     data->revision = snapshot.revision;
     data->camera = camera_iter->second;
+    data->shader_color_space = snapshot.shader_color_space;
 
     ShaderCompiler shader_compiler{
         compiler::make_core_node_registry()};
@@ -4281,12 +5725,14 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         data->device.create_buffer<float>(
             cycles_bsdf_values.size());
 
-    std::size_t color_attribute_count = 0u;
+    std::size_t attribute_count = 0u;
     for (const auto &[id, geometry] :
          snapshot.geometries) {
         static_cast<void>(id);
-        color_attribute_count +=
-            geometry.color_attributes.size();
+        attribute_count +=
+            geometry.color_attributes.size() +
+            geometry.uv_layers.size() +
+            geometry.uv_tangent_layers.size();
     }
     const auto fixed_geometry_slots =
         snapshot.geometries.size() *
@@ -4294,7 +5740,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     const auto bindless_slots =
         std::max<std::size_t>(
             fixed_geometry_slots +
-                color_attribute_count,
+                attribute_count,
             1u);
     data->heap =
         data->device.create_bindless_array(bindless_slots);
@@ -4438,7 +5884,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         std::memcpy(pixels.data(), decoded, pixel_bytes);
         stbi_image_free(decoded);
         if (image.alpha_type ==
-            contract::ImageAlphaType::straight) {
+                contract::ImageAlphaType::straight &&
+            image.color_space !=
+                contract::ImageColorSpace::data) {
             for (std::size_t offset = 0u;
                  offset < pixel_bytes;
                  offset += 4u) {
@@ -4693,13 +6141,44 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                         : generated_fallback(
                               geometry.positions[i])));
         }
-        upload.color_attributes.reserve(
-            geometry.color_attributes.size());
+        upload.attributes.reserve(
+            geometry.color_attributes.size() +
+            geometry.uv_layers.size() +
+            geometry.uv_tangent_layers.size());
         for (const auto &[name, values] :
              geometry.color_attributes) {
             auto &attribute =
-                upload.color_attributes.emplace_back();
+                upload.attributes.emplace_back();
             attribute.id = contract::attribute_id(name);
+            attribute.values.reserve(values.size());
+            for (const auto value : values) {
+                attribute.values.emplace_back(
+                    luisa::make_float4(
+                        value.x,
+                        value.y,
+                        value.z,
+                        value.w));
+            }
+        }
+        for (const auto &[name, values] :
+             geometry.uv_layers) {
+            auto &attribute =
+                upload.attributes.emplace_back();
+            attribute.id =
+                contract::uv_attribute_id(name);
+            attribute.values.reserve(values.size());
+            for (const auto value : values) {
+                attribute.values.emplace_back(
+                    luisa::make_float4(
+                        value.x, value.y, 0.0f, 0.0f));
+            }
+        }
+        for (const auto &[name, values] :
+             geometry.uv_tangent_layers) {
+            auto &attribute =
+                upload.attributes.emplace_back();
+            attribute.id =
+                contract::uv_tangent_attribute_id(name);
             attribute.values.reserve(values.size());
             for (const auto value : values) {
                 attribute.values.emplace_back(
@@ -4804,8 +6283,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         resource.triangle_random_per_island =
             data->device.create_buffer<float>(
                 upload.triangle_random_per_island.size());
-        resource.color_attributes.reserve(
-            upload.color_attributes.size());
+        resource.attributes.reserve(
+            upload.attributes.size());
         resource.mesh = data->device.create_mesh(
             resource.positions, resource.triangles);
         data->heap.emplace_on_update(
@@ -4829,9 +6308,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             bindless_base + 7u,
             resource.uv_tangents);
         for (const auto &attribute :
-             upload.color_attributes) {
+             upload.attributes) {
             auto &attribute_resource =
-                resource.color_attributes.emplace_back(
+                resource.attributes.emplace_back(
                     data->device.create_buffer<luisa::float4>(
                         attribute.values.size()));
             const auto attribute_slot =
@@ -5078,22 +6557,81 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             background.z += light.color.z * light.power;
             continue;
         }
+        auto normalized_axis = [](Vec3f axis) noexcept {
+            const auto length = std::sqrt(
+                axis.x * axis.x +
+                axis.y * axis.y +
+                axis.z * axis.z);
+            if (length <= 1.0e-20f) {
+                return std::pair{
+                    Vec3f{0.0f, 0.0f, 0.0f},
+                    0.0f};
+            }
+            return std::pair{
+                Vec3f{
+                    axis.x / length,
+                    axis.y / length,
+                    axis.z / length},
+                length};
+        };
+        const auto [axis_x, axis_x_length] =
+            normalized_axis(matrix_axis(light.transform, 0u));
+        const auto [axis_y, axis_y_length] =
+            normalized_axis(matrix_axis(light.transform, 1u));
+        auto [axis_z, axis_z_length] =
+            normalized_axis(matrix_axis(light.transform, 2u));
+        static_cast<void>(axis_z_length);
+        if (axis_z == Vec3f{}) {
+            axis_z = {0.0f, 0.0f, 1.0f};
+        }
+        std::uint32_t flags = 0u;
+        flags |= light.normalize
+                     ? light_flag_normalize
+                     : 0u;
+        flags |= light.ellipse
+                     ? light_flag_ellipse
+                     : 0u;
+        flags |= light.is_sphere
+                     ? light_flag_sphere
+                     : 0u;
+        MaterialBinding light_binding{
+            .surface_tag = ~std::uint32_t{0u},
+            .parameter_block = 0u};
+        if (light.shader) {
+            if (const auto iter =
+                    data->material_bindings.find(
+                        *light.shader);
+                iter != data->material_bindings.end()) {
+                light_binding = iter->second;
+            }
+        }
         lights.emplace_back(LightGpu{
             .type =
                 static_cast<std::uint32_t>(light.type),
             .position =
                 to_luisa(matrix_translation(light.transform)),
-            .axis_x =
-                to_luisa(matrix_axis(light.transform, 0u)),
-            .axis_y =
-                to_luisa(matrix_axis(light.transform, 1u)),
-            .axis_z =
-                to_luisa(matrix_axis(light.transform, 2u)),
+            .axis_x = to_luisa(axis_x),
+            .axis_y = to_luisa(axis_y),
+            .axis_z = to_luisa(axis_z),
             .color = to_luisa(light.color),
             .power = light.power,
-            .size = light.size,
+            .radius = light.size,
+            .size_u =
+                light.size * axis_x_length,
+            .size_v =
+                (light.size_y > 0.0f
+                     ? light.size_y
+                     : light.size) *
+                axis_y_length,
             .spread = light.spread,
-            .padding = 0.0f});
+            .spot_angle = light.spot_angle,
+            .spot_smooth = light.spot_smooth,
+            .angle = light.angle,
+            .flags = flags,
+            .surface_tag =
+                light_binding.surface_tag,
+            .parameter_block =
+                light_binding.parameter_block});
     }
     data->background = to_luisa(background);
     data->light_count =

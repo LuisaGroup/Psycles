@@ -7,6 +7,22 @@
   "seed": 20903,
   "width": 64,
   "verified": {
+    "ADD_SHADER": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 3.5471856563162873e-08
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "add_shader_emission",
+      "samples": 4
+    },
     "BACKGROUND": {
       "max_rmse": 1e-06,
       "passes": {
@@ -21,6 +37,22 @@
         }
       },
       "probe": "background_world",
+      "samples": 4
+    },
+    "BLACKBODY": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 9.837402359380576e-08
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "blackbody_matrix",
       "samples": 4
     },
     "BRIGHTCONTRAST": {
@@ -39,6 +71,92 @@
       "probe": "brightness_contrast",
       "samples": 4
     },
+    "BSDF_DIFFUSE": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 0.0
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "DiffDir": {
+          "rmse": 0.0
+        },
+        "DiffInd": {
+          "rmse": 0.0
+        },
+        "Emit": {
+          "rmse": 0.0
+        },
+        "Env": {
+          "rmse": 0.0
+        },
+        "GlossCol": {
+          "rmse": 0.0
+        },
+        "GlossDir": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        },
+        "TransCol": {
+          "rmse": 0.0
+        },
+        "TransDir": {
+          "rmse": 0.0
+        },
+        "TransInd": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "diffuse_bsdf_matrix",
+      "samples": 4
+    },
+    "BSDF_TRANSLUCENT": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 0.0
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "DiffDir": {
+          "rmse": 0.0
+        },
+        "DiffInd": {
+          "rmse": 0.0
+        },
+        "Emit": {
+          "rmse": 0.0
+        },
+        "Env": {
+          "rmse": 0.0
+        },
+        "GlossCol": {
+          "rmse": 0.0
+        },
+        "GlossDir": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        },
+        "TransCol": {
+          "rmse": 0.0
+        },
+        "TransDir": {
+          "rmse": 0.0
+        },
+        "TransInd": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "translucent_bsdf_matrix",
+      "samples": 4
+    },
     "BSDF_TRANSPARENT": {
       "max_rmse": 0.0001,
       "passes": {
@@ -55,6 +173,70 @@
       "probe": "transparent_mix",
       "samples": 4096
     },
+    "BUMP": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 6.921986823726911e-07
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "DiffDir": {
+          "rmse": 0.0
+        },
+        "DiffInd": {
+          "rmse": 0.0
+        },
+        "Emit": {
+          "rmse": 6.921986823726911e-07
+        },
+        "Env": {
+          "rmse": 0.0
+        },
+        "GlossCol": {
+          "rmse": 0.0
+        },
+        "GlossDir": {
+          "rmse": 0.0
+        },
+        "GlossInd": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 5.360967492151758e-08
+        },
+        "TransCol": {
+          "rmse": 0.0
+        },
+        "TransDir": {
+          "rmse": 0.0
+        },
+        "TransInd": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "bump_matrix",
+      "samples": 4,
+      "supplemental_probes": [
+        {
+          "max_rmse": 1e-06,
+          "passes": {
+            "Combined": {
+              "rmse": 9.749004448167398e-07
+            },
+            "Emit": {
+              "rmse": 9.749004448167398e-07
+            },
+            "Normal": {
+              "rmse": 5.361447463769764e-08
+            }
+          },
+          "probe": "bump_nested_matrix",
+          "samples": 4
+        }
+      ]
+    },
     "CLAMP": {
       "max_rmse": 1e-06,
       "passes": {
@@ -69,6 +251,54 @@
         }
       },
       "probe": "clamp",
+      "samples": 4
+    },
+    "COMBHSV": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 9.125060707049215e-09
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "legacy_separate_combine_matrix",
+      "samples": 4
+    },
+    "COMBRGB": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 9.125060707049215e-09
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "legacy_separate_combine_matrix",
+      "samples": 4
+    },
+    "COMBXYZ": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 9.125060707049215e-09
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "legacy_separate_combine_matrix",
       "samples": 4
     },
     "COMBINE_COLOR": {
@@ -87,6 +317,22 @@
       "probe": "combine_color_modes",
       "samples": 4
     },
+    "CURVE_RGB": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 7.628868203823913e-09
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "rgb_curve_matrix",
+      "samples": 4
+    },
     "EMISSION": {
       "max_rmse": 1e-06,
       "passes": {
@@ -101,6 +347,22 @@
         }
       },
       "probe": "emission_surface",
+      "samples": 4
+    },
+    "FRESNEL": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 2.6082293658191702e-08
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "fresnel_matrix",
       "samples": 4
     },
     "GAMMA": {
@@ -134,6 +396,226 @@
       },
       "probe": "hue_saturation_value",
       "samples": 256
+    },
+    "INVERT": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 0.0
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "invert_color_matrix",
+      "samples": 4
+    },
+    "LAYER_WEIGHT": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 0.0
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "layer_weight_matrix",
+      "samples": 4
+    },
+    "MAPPING": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 1.7206378544187828e-08
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "mapping_modes",
+      "samples": 4
+    },
+    "MAP_RANGE": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 0.0
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "map_range_matrix",
+      "samples": 4
+    },
+    "MATH": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 0.0
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "math_operations",
+      "samples": 4,
+      "supplemental_probes": [
+        {
+          "max_rmse": 1e-06,
+          "passes": {
+            "Combined": {
+              "rmse": 0.0
+            },
+            "DiffCol": {
+              "rmse": 0.0
+            },
+            "Normal": {
+              "rmse": 0.0
+            }
+          },
+          "probe": "math_edge_cases",
+          "samples": 4
+        }
+      ]
+    },
+    "MIX": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 0.0
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "mix_color_modes",
+      "samples": 4,
+      "supplemental_probes": [
+        {
+          "max_rmse": 1e-06,
+          "passes": {
+            "Combined": {
+              "rmse": 3.4412757088375656e-08
+            },
+            "DiffCol": {
+              "rmse": 0.0
+            },
+            "Normal": {
+              "rmse": 0.0
+            }
+          },
+          "probe": "mix_data_types",
+          "samples": 4
+        },
+        {
+          "max_rmse": 1e-06,
+          "passes": {
+            "Combined": {
+              "rmse": 0.0
+            },
+            "DiffCol": {
+              "rmse": 0.0
+            },
+            "Normal": {
+              "rmse": 0.0
+            }
+          },
+          "probe": "mix_color_edge_cases",
+          "samples": 4
+        }
+      ]
+    },
+    "MIX_RGB": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 0.0
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "mix_rgb_legacy_modes",
+      "samples": 4
+    },
+    "MIX_SHADER": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 3.0416869023497384e-09
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "mix_shader_emission",
+      "samples": 4
+    },
+    "NORMAL_MAP": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 4.774622652803373e-08
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Emit": {
+          "rmse": 4.774622652803373e-08
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "normal_map_matrix",
+      "samples": 4,
+      "supplemental_probes": [
+        {
+          "max_rmse": 1e-06,
+          "passes": {
+            "Combined": {
+              "rmse": 3.606213994089558e-08
+            },
+            "DiffCol": {
+              "rmse": 0.0
+            },
+            "Emit": {
+              "rmse": 3.606213994089558e-08
+            },
+            "Normal": {
+              "rmse": 5.5042029600826936e-08
+            }
+          },
+          "probe": "normal_map_named_uv_matrix",
+          "samples": 4
+        }
+      ]
     },
     "RGB": {
       "max_rmse": 1e-06,
@@ -183,6 +665,171 @@
       "probe": "separate_color_modes",
       "samples": 4
     },
+    "SEPHSV": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 9.125060707049215e-09
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "legacy_separate_combine_matrix",
+      "samples": 4
+    },
+    "SEPRGB": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 9.125060707049215e-09
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "legacy_separate_combine_matrix",
+      "samples": 4
+    },
+    "SEPXYZ": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 9.125060707049215e-09
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "legacy_separate_combine_matrix",
+      "samples": 4
+    },
+    "TEX_CHECKER": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 0.0
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "checker_texture_matrix",
+      "samples": 4
+    },
+    "TEX_GRADIENT": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 3.725290298461914e-09
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Emit": {
+          "rmse": 3.725290298461914e-09
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "gradient_matrix",
+      "samples": 4
+    },
+    "TEX_NOISE": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 1.0807087846842478e-07
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "noise_fbm_matrix",
+      "samples": 4,
+      "supplemental_probes": [
+        {
+          "max_rmse": 1e-06,
+          "passes": {
+            "Combined": {
+              "rmse": 1.252643215821081e-07
+            },
+            "DiffCol": {
+              "rmse": 0.0
+            },
+            "Normal": {
+              "rmse": 0.0
+            }
+          },
+          "probe": "noise_multifractal_matrix",
+          "samples": 4
+        },
+        {
+          "max_rmse": 1e-06,
+          "passes": {
+            "Combined": {
+              "rmse": 2.3102305846123272e-08
+            },
+            "DiffCol": {
+              "rmse": 0.0
+            },
+            "Normal": {
+              "rmse": 0.0
+            }
+          },
+          "probe": "noise_ridged_multifractal_matrix",
+          "samples": 4
+        },
+        {
+          "max_rmse": 1e-06,
+          "passes": {
+            "Combined": {
+              "rmse": 1.1084433992891718e-07
+            },
+            "DiffCol": {
+              "rmse": 0.0
+            },
+            "Normal": {
+              "rmse": 0.0
+            }
+          },
+          "probe": "noise_hybrid_multifractal_matrix",
+          "samples": 4
+        },
+        {
+          "max_rmse": 1e-06,
+          "passes": {
+            "Combined": {
+              "rmse": 1.198285559667056e-07
+            },
+            "DiffCol": {
+              "rmse": 0.0
+            },
+            "Normal": {
+              "rmse": 0.0
+            }
+          },
+          "probe": "noise_hetero_terrain_matrix",
+          "samples": 4
+        }
+      ]
+    },
     "TEX_WHITE_NOISE": {
       "max_rmse": 1e-06,
       "passes": {
@@ -199,6 +846,56 @@
       "probe": "white_noise_dimensions",
       "samples": 4
     },
+    "VALTORGB": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 1.6110803358060366e-08
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "color_ramp_modes",
+      "samples": 4,
+      "supplemental_probes": [
+        {
+          "max_rmse": 1e-06,
+          "passes": {
+            "Combined": {
+              "rmse": 0.0
+            },
+            "DiffCol": {
+              "rmse": 0.0
+            },
+            "Normal": {
+              "rmse": 0.0
+            }
+          },
+          "probe": "color_ramp_alpha_modes",
+          "samples": 4
+        },
+        {
+          "max_rmse": 0.001,
+          "passes": {
+            "Combined": {
+              "rmse": 0.0006359341787174344
+            },
+            "DiffCol": {
+              "rmse": 0.0
+            },
+            "Normal": {
+              "rmse": 0.0
+            }
+          },
+          "probe": "color_ramp_rgb",
+          "samples": 4
+        }
+      ]
+    },
     "VALUE": {
       "max_rmse": 1e-06,
       "passes": {
@@ -213,6 +910,38 @@
         }
       },
       "probe": "value_emission",
+      "samples": 4
+    },
+    "VECT_MATH": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 8.412889940245805e-09
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "vector_math_matrix",
+      "samples": 4
+    },
+    "WAVELENGTH": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 1.953807782228978e-08
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "wavelength_matrix",
       "samples": 4
     }
   }

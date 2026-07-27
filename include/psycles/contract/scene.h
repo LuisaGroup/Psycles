@@ -25,6 +25,20 @@ namespace psycles::contract {
     return hash;
 }
 
+[[nodiscard]] inline std::uint64_t uv_attribute_id(
+    std::string_view name) {
+    std::string qualified{"geom:uv:"};
+    qualified.append(name);
+    return attribute_id(qualified);
+}
+
+[[nodiscard]] inline std::uint64_t uv_tangent_attribute_id(
+    std::string_view name) {
+    std::string qualified{"geom:tangent:"};
+    qualified.append(name);
+    return attribute_id(qualified);
+}
+
 struct MaterialTag;
 struct ImageTag;
 struct GeometryTag;
@@ -78,6 +92,14 @@ struct TriangleMeshDesc {
     // no usable UV tangent attribute; tangent-space Normal Map then falls
     // back to the unperturbed shading normal exactly as Cycles does.
     std::vector<Vec4f> uv_tangents;
+    // Every evaluated Blender UV layer is retained by name. The active layer
+    // is also present in `uv`/`uv_tangents` for the unnamed Cycles contract.
+    // Named UV Map and Normal Map nodes select these immutable attributes by
+    // their structure-time layer name.
+    std::map<std::string, std::vector<Vec2f>, std::less<>>
+        uv_layers;
+    std::map<std::string, std::vector<Vec4f>, std::less<>>
+        uv_tangent_layers;
     // Cycles' Generated attribute is evaluated from the undeformed position
     // in Blender texture space. Keeping it explicit avoids reconstructing a
     // subtly different bounding-box mapping in a device backend.
@@ -185,7 +207,14 @@ struct LightDesc {
     Vec3f color{1.0f, 1.0f, 1.0f};
     float power{1.0f};
     float size{};
+    float size_y{};
     float spread{3.14159265359f};
+    float spot_angle{0.78539816339f};
+    float spot_smooth{0.15f};
+    float angle{};
+    bool normalize{true};
+    bool ellipse{};
+    bool is_sphere{true};
     std::optional<MaterialId> shader;
 };
 
@@ -224,6 +253,18 @@ struct EnvironmentDesc {
     std::optional<NishitaSkyDesc> nishita;
 };
 
+// Cycles derives these transforms from the active OCIO configuration and
+// uploads them with film data. Shader nodes such as Blackbody and Wavelength
+// must use the same scene-linear working space as the rest of the graph.
+struct ShaderColorSpace {
+    Vec3f xyz_to_r{3.2404542f, -1.5371385f, -0.4985314f};
+    Vec3f xyz_to_g{-0.9692660f, 1.8760108f, 0.0415560f};
+    Vec3f xyz_to_b{0.0556434f, -0.2040259f, 1.0572252f};
+    Vec3f rec709_to_r{1.0f, 0.0f, 0.0f};
+    Vec3f rec709_to_g{0.0f, 1.0f, 0.0f};
+    Vec3f rec709_to_b{0.0f, 0.0f, 1.0f};
+};
+
 struct SceneSnapshot {
     std::uint64_t revision{};
     std::map<MaterialId, MaterialDesc> materials;
@@ -235,6 +276,7 @@ struct SceneSnapshot {
     std::optional<CameraId> active_camera;
     std::optional<MaterialId> world_shader;
     std::optional<EnvironmentDesc> environment;
+    ShaderColorSpace shader_color_space;
 };
 
 struct UpsertMaterial {

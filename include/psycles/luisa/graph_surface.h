@@ -14,6 +14,7 @@
 
 #include <psycles/compiler/surface_program.h>
 #include <psycles/luisa/cycles_bsdf_tables.h>
+#include <psycles/luisa/cycles_color_nodes.h>
 #include <psycles/luisa/cycles_noise.h>
 #include <psycles/luisa/surface.h>
 
@@ -73,6 +74,7 @@ private:
         Float3 metallic_evaluation_scale;
         Float3 diffuse_sample_weight;
         Float3 glossy_sample_weight;
+        Float3 glossy_closure_weight;
         Float3 diffuse_albedo;
     };
 
@@ -103,6 +105,25 @@ private:
     [[nodiscard]] static Float sample_weight(Float3 value) noexcept {
         return (abs(value.x) + abs(value.y) + abs(value.z)) /
                3.0f;
+    }
+
+    [[nodiscard]] static Float3 bsdf_allocated_weight(
+        Float3 value) noexcept {
+        // Cycles bsdf_alloc() removes negative spectral weight and skips
+        // closures whose average weight is below CLOSURE_WEIGHT_CUTOFF.
+        value = max(value, make_float3(0.0f));
+        auto average = (value.x + value.y + value.z) / 3.0f;
+        return select(
+            make_float3(0.0f),
+            value,
+            average >= 1.0e-5f);
+    }
+
+    [[nodiscard]] static Float pass_weight(Float3 value) noexcept {
+        // Cycles data passes use fabsf(average(sc->weight)), which differs
+        // from the lobe-selection weight when signed closure weights are
+        // present.
+        return abs((value.x + value.y + value.z) / 3.0f);
     }
 
     [[nodiscard]] static Float max_component(
@@ -482,6 +503,59 @@ private:
             make_float3(1.0f));
     }
 
+    [[nodiscard]] static Float3
+    ensure_valid_specular_reflection(
+        Float3 geometric_normal,
+        Float3 incoming,
+        Float3 shading_normal) noexcept {
+        auto reflected =
+            2.0f * dot(shading_normal, incoming) *
+                shading_normal -
+            incoming;
+        auto incoming_geometric_cosine =
+            max(dot(incoming, geometric_normal), 0.0f);
+        auto threshold = min(
+            0.9f * incoming_geometric_cosine, 0.01f);
+        auto reflection_is_valid =
+            dot(geometric_normal, reflected) >= threshold;
+
+        auto tangent = safe_normalize(
+            shading_normal -
+                dot(shading_normal, geometric_normal) *
+                    geometric_normal,
+            shading_normal);
+        auto incoming_tangent = dot(incoming, tangent);
+        auto a =
+            incoming_tangent * incoming_tangent +
+            incoming_geometric_cosine *
+                incoming_geometric_cosine;
+        auto b =
+            2.0f *
+            (a + incoming_geometric_cosine * threshold);
+        auto c =
+            (threshold + incoming_geometric_cosine) *
+            (threshold + incoming_geometric_cosine);
+        auto discriminant = max(
+            b * b - 4.0f * a * c, 0.0f);
+        auto signed_root = select(
+            b - sqrt(discriminant),
+            b + sqrt(discriminant),
+            incoming_tangent < 0.0f);
+        auto normal_z_squared = clamp(
+            0.25f * signed_root / max(a, 1.0e-20f),
+            0.0f,
+            1.0f);
+        auto corrected = safe_normalize(
+            sqrt(max(1.0f - normal_z_squared, 0.0f)) *
+                    tangent +
+                sqrt(normal_z_squared) * geometric_normal,
+            geometric_normal);
+        return select(
+            shading_normal,
+            corrected,
+            (!reflection_is_valid) & (a > 1.0e-20f));
+    }
+
     [[nodiscard]] static GgxEnergy ggx_energy(
         const ShaderServices &services,
         const TracedClosure &closure,
@@ -531,7 +605,8 @@ private:
     [[nodiscard]] static PrincipledState principled_state(
         const ShaderServices &services,
         const TracedClosure &closure,
-        Float3 incoming) noexcept {
+        Float3 incoming,
+        Float3 glossy_normal) noexcept {
         auto adjusted = adjusted_ior(closure);
         auto tint = max(
             closure.specular_tint,
@@ -569,7 +644,7 @@ private:
             metallic_b * (1.0f / 126.0f);
 
         auto incoming_cosine = clamp(
-            dot(closure.normal, incoming), 0.0f, 1.0f);
+            dot(glossy_normal, incoming), 0.0f, 1.0f);
         auto dielectric_energy = ggx_energy(
             services,
             closure,
@@ -639,6 +714,14 @@ private:
              dielectric_weight *
                  dielectric_energy.darkening *
                  dielectric_albedo);
+        // Cycles' Normal and Roughness passes weight each closure by its
+        // actual closure weight, not by the estimated albedo used for BSDF
+        // sampling. The microfacet energy compensation darkens that weight
+        // for MULTI_GGX; plain GGX leaves it unchanged.
+        auto glossy_closure_weight =
+            closure.weight *
+            (metallic * metallic_energy.darkening +
+             dielectric_weight * dielectric_energy.darkening);
         return {
             .eta = adjusted.eta,
             .dielectric_f0 = dielectric_f0,
@@ -650,6 +733,7 @@ private:
                 metallic_energy.evaluation_scale,
             .diffuse_sample_weight = diffuse_albedo,
             .glossy_sample_weight = glossy_sample_weight,
+            .glossy_closure_weight = glossy_closure_weight,
             .diffuse_albedo = diffuse_albedo};
     }
 
@@ -715,10 +799,12 @@ private:
             nl * (make_float3(single_scatter) +
                   multiscatter_term * (1.0f - e_outgoing));
 
-        return select(
-            oren_nayar,
-            lambert,
-            sigma < 1.0e-5f);
+        auto use_lambert =
+            closure.operation ==
+                    compiler::ClosureOperation::principled
+                ? sigma < 1.0e-5f
+                : sigma == 0.0f;
+        return select(oren_nayar, lambert, use_lambert);
     }
 
     [[nodiscard]] static Float ggx_distribution(
@@ -766,16 +852,17 @@ private:
         const ShaderServices &services,
         const TracedClosure &closure,
         Float3 incoming,
-        Float3 outgoing) noexcept {
+        Float3 outgoing,
+        Float3 glossy_normal) noexcept {
         auto n_dot_v =
-            max(dot(closure.normal, incoming), 0.0f);
+            max(dot(glossy_normal, incoming), 0.0f);
         auto n_dot_l =
-            max(dot(closure.normal, outgoing), 0.0f);
+            max(dot(glossy_normal, outgoing), 0.0f);
         auto half_vector = safe_normalize(
             incoming + outgoing,
-            closure.normal);
+            glossy_normal);
         auto n_dot_h =
-            max(dot(closure.normal, half_vector), 0.0f);
+            max(dot(glossy_normal, half_vector), 0.0f);
         auto v_dot_h =
             max(dot(incoming, half_vector), 0.0f);
         auto alpha = max(
@@ -793,7 +880,11 @@ private:
         if (closure.operation ==
             compiler::ClosureOperation::principled) {
             auto state =
-                principled_state(services, closure, incoming);
+                principled_state(
+                    services,
+                    closure,
+                    incoming,
+                    glossy_normal);
             auto dielectric_fresnel =
                 generalized_dielectric_fresnel(
                     v_dot_h,
@@ -834,21 +925,22 @@ private:
     [[nodiscard]] static Float microfacet_pdf(
         const TracedClosure &closure,
         Float3 incoming,
-        Float3 outgoing) noexcept {
+        Float3 outgoing,
+        Float3 glossy_normal) noexcept {
         auto half_vector = safe_normalize(
             incoming + outgoing,
-            closure.normal);
+            glossy_normal);
         auto n_dot_h =
-            max(dot(closure.normal, half_vector), 0.0f);
+            max(dot(glossy_normal, half_vector), 0.0f);
         auto v_dot_h =
             max(dot(incoming, half_vector), 0.0f);
         auto alpha = max(
             closure.roughness * closure.roughness,
             1.0e-3f);
         auto n_dot_v =
-            max(dot(closure.normal, incoming), 0.0f);
+            max(dot(glossy_normal, incoming), 0.0f);
         auto n_dot_l =
-            max(dot(closure.normal, outgoing), 0.0f);
+            max(dot(glossy_normal, outgoing), 0.0f);
         auto pdf =
             ggx_distribution(n_dot_h, alpha) *
             smith_g1(n_dot_v, alpha) /
@@ -865,12 +957,13 @@ private:
     [[nodiscard]] static Float3 sample_ggx(
         const TracedClosure &closure,
         Float3 incoming,
-        Float2 random) noexcept {
+        Float2 random,
+        Float3 glossy_normal) noexcept {
         auto alpha = max(
             closure.roughness * closure.roughness,
             1.0e-3f);
         auto normal = safe_normalize(
-            closure.normal,
+            glossy_normal,
             make_float3(0.0f, 0.0f, 1.0f));
         auto helper = select(
             make_float3(1.0f, 0.0f, 0.0f),
@@ -989,6 +1082,45 @@ private:
             cz * y_rotated.x - sz * y_rotated.y,
             sz * y_rotated.x + cz * y_rotated.y,
             y_rotated.z);
+    }
+
+    [[nodiscard]] static Float3 rotate_euler_transposed(
+        Float3 value,
+        Float3 rotation) noexcept {
+        auto sx = sin(rotation.x);
+        auto cx = cos(rotation.x);
+        auto sy = sin(rotation.y);
+        auto cy = cos(rotation.y);
+        auto sz = sin(rotation.z);
+        auto cz = cos(rotation.z);
+        return make_float3(
+            cy * cz * value.x +
+                cy * sz * value.y -
+                sy * value.z,
+            (sy * sx * cz - cx * sz) * value.x +
+                (sy * sx * sz + cx * cz) * value.y +
+                cy * sx * value.z,
+            (sy * cx * cz + sx * sz) * value.x +
+                (sy * cx * sz - sx * cz) * value.y +
+                cy * cx * value.z);
+    }
+
+    [[nodiscard]] static Float3 safe_divide_components(
+        Float3 numerator,
+        Float3 denominator) noexcept {
+        return make_float3(
+            select(
+                0.0f,
+                numerator.x / denominator.x,
+                denominator.x != 0.0f),
+            select(
+                0.0f,
+                numerator.y / denominator.y,
+                denominator.y != 0.0f),
+            select(
+                0.0f,
+                numerator.z / denominator.z,
+                denominator.z != 0.0f));
     }
 
     [[nodiscard]] std::vector<bool> value_dependency_mask(
@@ -1133,6 +1265,222 @@ private:
                             0.0f),
                         scalar(instruction.b, result)));
                     break;
+                case compiler::ValueOperation::math: {
+                    auto a = scalar(instruction.a, result);
+                    auto b = scalar(instruction.b, result);
+                    auto c = scalar(instruction.c, result);
+                    Float evaluated = 0.0f;
+                    switch (static_cast<compiler::MathOperation>(
+                        instruction.static_u0)) {
+                        case compiler::MathOperation::add:
+                            evaluated = a + b;
+                            break;
+                        case compiler::MathOperation::subtract:
+                            evaluated = a - b;
+                            break;
+                        case compiler::MathOperation::multiply:
+                            evaluated = a * b;
+                            break;
+                        case compiler::MathOperation::divide:
+                            evaluated = select(
+                                0.0f, a / b, b != 0.0f);
+                            break;
+                        case compiler::MathOperation::multiply_add:
+                            evaluated = a * b + c;
+                            break;
+                        case compiler::MathOperation::power: {
+                            auto integer_exponent = b == trunc(b);
+                            auto powered = pow(abs(a), b);
+                            auto odd_exponent =
+                                fmod(abs(b), 2.0f) != 0.0f;
+                            powered = select(
+                                powered,
+                                -powered,
+                                (a < 0.0f) & odd_exponent);
+                            evaluated = select(
+                                0.0f,
+                                powered,
+                                (a >= 0.0f) | integer_exponent);
+                            break;
+                        }
+                        case compiler::MathOperation::logarithm: {
+                            auto denominator = log(b);
+                            evaluated = select(
+                                0.0f,
+                                log(a) / denominator,
+                                (a > 0.0f) &
+                                    (b > 0.0f) &
+                                    (denominator != 0.0f));
+                            break;
+                        }
+                        case compiler::MathOperation::square_root:
+                            evaluated = sqrt(max(a, 0.0f));
+                            break;
+                        case compiler::MathOperation::
+                            inverse_square_root:
+                            evaluated = select(
+                                0.0f,
+                                1.0f / sqrt(a),
+                                a > 0.0f);
+                            break;
+                        case compiler::MathOperation::absolute:
+                            evaluated = abs(a);
+                            break;
+                        case compiler::MathOperation::exponent:
+                            evaluated = exp(a);
+                            break;
+                        case compiler::MathOperation::minimum:
+                            evaluated = min(a, b);
+                            break;
+                        case compiler::MathOperation::maximum:
+                            evaluated = max(a, b);
+                            break;
+                        case compiler::MathOperation::less_than:
+                            evaluated = select(
+                                0.0f, 1.0f, a < b);
+                            break;
+                        case compiler::MathOperation::greater_than:
+                            evaluated = select(
+                                0.0f, 1.0f, a > b);
+                            break;
+                        case compiler::MathOperation::sign:
+                            evaluated = select(
+                                select(1.0f, -1.0f, a < 0.0f),
+                                0.0f,
+                                a == 0.0f);
+                            break;
+                        case compiler::MathOperation::compare:
+                            evaluated = select(
+                                0.0f,
+                                1.0f,
+                                (a == b) |
+                                    (abs(a - b) <=
+                                     max(
+                                         c,
+                                         1.1920928955078125e-7f)));
+                            break;
+                        case compiler::MathOperation::smooth_minimum: {
+                            auto nonzero = c != 0.0f;
+                            auto h =
+                                max(c - abs(a - b), 0.0f) / c;
+                            auto smooth =
+                                min(a, b) -
+                                h * h * h * c *
+                                    (1.0f / 6.0f);
+                            evaluated = select(
+                                min(a, b), smooth, nonzero);
+                            break;
+                        }
+                        case compiler::MathOperation::smooth_maximum: {
+                            auto nonzero = c != 0.0f;
+                            auto h =
+                                max(c - abs(a - b), 0.0f) / c;
+                            auto smooth =
+                                max(a, b) +
+                                h * h * h * c *
+                                    (1.0f / 6.0f);
+                            evaluated = select(
+                                max(a, b), smooth, nonzero);
+                            break;
+                        }
+                        case compiler::MathOperation::round:
+                            evaluated = floor(a + 0.5f);
+                            break;
+                        case compiler::MathOperation::floor:
+                            evaluated = floor(a);
+                            break;
+                        case compiler::MathOperation::ceil:
+                            evaluated = ceil(a);
+                            break;
+                        case compiler::MathOperation::trunc:
+                            evaluated = trunc(a);
+                            break;
+                        case compiler::MathOperation::fraction:
+                            evaluated = a - floor(a);
+                            break;
+                        case compiler::MathOperation::modulo:
+                            evaluated = select(
+                                0.0f, fmod(a, b), b != 0.0f);
+                            break;
+                        case compiler::MathOperation::floored_modulo:
+                            evaluated = select(
+                                0.0f,
+                                a - floor(a / b) * b,
+                                b != 0.0f);
+                            break;
+                        case compiler::MathOperation::wrap: {
+                            auto range = b - c;
+                            evaluated = select(
+                                c,
+                                a - range *
+                                        floor((a - c) / range),
+                                range != 0.0f);
+                            break;
+                        }
+                        case compiler::MathOperation::snap:
+                            evaluated = floor(select(
+                                            0.0f,
+                                            a / b,
+                                            b != 0.0f)) *
+                                        b;
+                            break;
+                        case compiler::MathOperation::ping_pong:
+                            evaluated = select(
+                                0.0f,
+                                abs(
+                                    fract(
+                                        (a - b) /
+                                        (b * 2.0f)) *
+                                        b * 2.0f -
+                                    b),
+                                b != 0.0f);
+                            break;
+                        case compiler::MathOperation::sine:
+                            evaluated = sin(a);
+                            break;
+                        case compiler::MathOperation::cosine:
+                            evaluated = cos(a);
+                            break;
+                        case compiler::MathOperation::tangent:
+                            evaluated = tan(a);
+                            break;
+                        case compiler::MathOperation::arcsine:
+                            evaluated = asin(clamp(a, -1.0f, 1.0f));
+                            break;
+                        case compiler::MathOperation::arccosine:
+                            evaluated = acos(clamp(a, -1.0f, 1.0f));
+                            break;
+                        case compiler::MathOperation::arctangent:
+                            evaluated = atan(a);
+                            break;
+                        case compiler::MathOperation::arctangent2:
+                            evaluated = select(
+                                atan2(a, b),
+                                0.0f,
+                                (a == 0.0f) & (b == 0.0f));
+                            break;
+                        case compiler::MathOperation::
+                            hyperbolic_sine:
+                            evaluated = sinh(a);
+                            break;
+                        case compiler::MathOperation::
+                            hyperbolic_cosine:
+                            evaluated = cosh(a);
+                            break;
+                        case compiler::MathOperation::
+                            hyperbolic_tangent:
+                            evaluated = tanh(a);
+                            break;
+                        case compiler::MathOperation::radians:
+                            evaluated = a * (pi / 180.0f);
+                            break;
+                        case compiler::MathOperation::degrees:
+                            evaluated = a * (180.0f / pi);
+                            break;
+                    }
+                    value = make_float4(evaluated);
+                    break;
+                }
                 case compiler::ValueOperation::absolute:
                     value = make_float4(abs(
                         scalar(instruction.a, result)));
@@ -1163,31 +1511,601 @@ private:
                         min(max(input, minimum), maximum));
                     break;
                 }
-                case compiler::ValueOperation::mix: {
-                    auto t = clamp(
-                        scalar(instruction.c, result),
-                        0.0f,
-                        1.0f);
+                case compiler::ValueOperation::map_range_float: {
+                    auto input = scalar(instruction.a, result);
+                    auto from_min =
+                        scalar(instruction.b, result);
+                    auto from_max =
+                        scalar(instruction.c, result);
+                    auto to_min =
+                        scalar(instruction.d, result);
+                    auto to_max =
+                        scalar(instruction.e, result);
+                    auto steps =
+                        scalar(instruction.f, result);
+                    auto denominator = from_max - from_min;
+                    auto has_range = denominator != 0.0f;
+                    auto factor =
+                        (input - from_min) /
+                        select(1.0f, denominator, has_range);
+                    if (instruction.static_u0 == 1u) {
+                        factor = select(
+                            0.0f,
+                            floor(
+                                factor * (steps + 1.0f)) /
+                                select(
+                                    1.0f,
+                                    steps,
+                                    steps > 0.0f),
+                            steps > 0.0f);
+                    } else if (
+                        instruction.static_u0 == 2u) {
+                        factor = clamp(
+                            factor, 0.0f, 1.0f);
+                        factor =
+                            (3.0f - 2.0f * factor) *
+                            (factor * factor);
+                    } else if (
+                        instruction.static_u0 == 3u) {
+                        factor = clamp(
+                            factor, 0.0f, 1.0f);
+                        factor =
+                            factor * factor * factor *
+                            (factor *
+                                     (factor * 6.0f - 15.0f) +
+                             10.0f);
+                    }
+                    auto mapped =
+                        to_min + factor * (to_max - to_min);
+                    mapped = select(
+                        0.0f, mapped, has_range);
+                    if (instruction.static_u1 != 0u) {
+                        auto minimum = min(to_min, to_max);
+                        auto maximum = max(to_min, to_max);
+                        mapped = min(
+                            max(mapped, minimum), maximum);
+                    }
+                    value = make_float4(mapped);
+                    break;
+                }
+                case compiler::ValueOperation::map_range_vector: {
+                    auto input = vector(instruction.a, result);
+                    auto from_min =
+                        vector(instruction.b, result);
+                    auto from_max =
+                        vector(instruction.c, result);
+                    auto to_min =
+                        vector(instruction.d, result);
+                    auto to_max =
+                        vector(instruction.e, result);
+                    auto steps =
+                        vector(instruction.f, result);
+                    auto numerator = input - from_min;
+                    auto denominator = from_max - from_min;
+                    auto safe_divide = [](
+                                           Float numerator_component,
+                                           Float denominator_component) {
+                        auto nonzero =
+                            denominator_component != 0.0f;
+                        return select(
+                            0.0f,
+                            numerator_component /
+                                select(
+                                    1.0f,
+                                    denominator_component,
+                                    nonzero),
+                            nonzero);
+                    };
+                    auto factor = make_float3(
+                        safe_divide(
+                            numerator.x, denominator.x),
+                        safe_divide(
+                            numerator.y, denominator.y),
+                        safe_divide(
+                            numerator.z, denominator.z));
+                    if (instruction.static_u0 == 1u) {
+                        auto stepped = [](
+                                           Float factor_component,
+                                           Float steps_component) {
+                            auto valid =
+                                steps_component > 0.0f;
+                            return select(
+                                0.0f,
+                                floor(
+                                    factor_component *
+                                    (steps_component + 1.0f)) /
+                                    select(
+                                        1.0f,
+                                        steps_component,
+                                        valid),
+                                valid);
+                        };
+                        factor = make_float3(
+                            stepped(factor.x, steps.x),
+                            stepped(factor.y, steps.y),
+                            stepped(factor.z, steps.z));
+                    } else if (
+                        instruction.static_u0 == 2u) {
+                        factor = clamp(
+                            factor, 0.0f, 1.0f);
+                        factor =
+                            (make_float3(3.0f) -
+                             2.0f * factor) *
+                            (factor * factor);
+                    } else if (
+                        instruction.static_u0 == 3u) {
+                        factor = clamp(
+                            factor, 0.0f, 1.0f);
+                        factor =
+                            factor * factor * factor *
+                            (factor *
+                                     (factor * 6.0f - 15.0f) +
+                             10.0f);
+                    }
+                    auto mapped =
+                        to_min + factor * (to_max - to_min);
+                    if (instruction.static_u1 != 0u &&
+                        instruction.static_u0 < 2u) {
+                        mapped = min(
+                            max(mapped, min(to_min, to_max)),
+                            max(to_min, to_max));
+                    }
+                    value = make_float4(mapped, 0.0f);
+                    break;
+                }
+                case compiler::ValueOperation::vector_math_value:
+                case compiler::ValueOperation::vector_math_vector: {
                     auto a = vector(instruction.a, result);
                     auto b = vector(instruction.b, result);
-                    Float3 mixed;
-                    if (instruction.static_u0 == 1u) {
+                    auto c = vector(instruction.c, result);
+                    auto scale =
+                        scalar(instruction.d, result);
+                    auto safe_divide = [](
+                                           Float numerator,
+                                           Float denominator) {
+                        auto valid = denominator != 0.0f;
+                        return select(
+                            0.0f,
+                            numerator /
+                                select(
+                                    1.0f,
+                                    denominator,
+                                    valid),
+                            valid);
+                    };
+                    auto safe_divide_vector =
+                        [&](Float3 numerator, Float3 denominator) {
+                            return make_float3(
+                                safe_divide(
+                                    numerator.x,
+                                    denominator.x),
+                                safe_divide(
+                                    numerator.y,
+                                    denominator.y),
+                                safe_divide(
+                                    numerator.z,
+                                    denominator.z));
+                        };
+                    auto safe_normalize_zero =
+                        [](Float3 input) {
+                            auto input_length =
+                                sqrt(dot(input, input));
+                            auto valid =
+                                input_length != 0.0f;
+                            return select(
+                                input,
+                                input /
+                                    select(
+                                        1.0f,
+                                        input_length,
+                                        valid),
+                                valid);
+                        };
+                    auto safe_power = [](Float base, Float exponent) {
+                        auto integer_exponent =
+                            exponent == trunc(exponent);
+                        auto powered =
+                            pow(abs(base), exponent);
+                        auto odd_exponent =
+                            fmod(abs(exponent), 2.0f) != 0.0f;
+                        powered = select(
+                            powered,
+                            -powered,
+                            (base < 0.0f) & odd_exponent);
+                        return select(
+                            0.0f,
+                            powered,
+                            (base >= 0.0f) |
+                                integer_exponent);
+                    };
+                    auto wrap_component = [](
+                                              Float input,
+                                              Float maximum,
+                                              Float minimum) {
+                        auto range = maximum - minimum;
+                        auto valid = range != 0.0f;
+                        return select(
+                            minimum,
+                            input -
+                                range *
+                                    floor(
+                                        (input - minimum) /
+                                        select(
+                                            1.0f,
+                                            range,
+                                            valid)),
+                            valid);
+                    };
+
+                    Float scalar_result = 0.0f;
+                    Float3 vector_result =
+                        make_float3(0.0f);
+                    switch (
+                        static_cast<compiler::VectorMathOperation>(
+                            instruction.static_u0)) {
+                        case compiler::VectorMathOperation::add:
+                            vector_result = a + b;
+                            break;
+                        case compiler::VectorMathOperation::subtract:
+                            vector_result = a - b;
+                            break;
+                        case compiler::VectorMathOperation::multiply:
+                            vector_result = a * b;
+                            break;
+                        case compiler::VectorMathOperation::divide:
+                            vector_result =
+                                safe_divide_vector(a, b);
+                            break;
+                        case compiler::VectorMathOperation::
+                            multiply_add:
+                            vector_result = a * b + c;
+                            break;
+                        case compiler::VectorMathOperation::
+                            cross_product:
+                            vector_result = cross(a, b);
+                            break;
+                        case compiler::VectorMathOperation::project: {
+                            auto length_squared = dot(b, b);
+                            auto valid =
+                                length_squared != 0.0f;
+                            vector_result = select(
+                                make_float3(0.0f),
+                                safe_divide(
+                                    dot(a, b),
+                                    length_squared) *
+                                    b,
+                                valid);
+                            break;
+                        }
+                        case compiler::VectorMathOperation::reflect: {
+                            auto normal =
+                                safe_normalize_zero(b);
+                            vector_result =
+                                a -
+                                2.0f * normal *
+                                    dot(a, normal);
+                            break;
+                        }
+                        case compiler::VectorMathOperation::refract: {
+                            auto normal =
+                                safe_normalize_zero(b);
+                            auto cosine = dot(normal, a);
+                            auto k =
+                                1.0f -
+                                scale * scale *
+                                    (1.0f -
+                                     cosine * cosine);
+                            vector_result = select(
+                                make_float3(0.0f),
+                                scale * a -
+                                    (scale * cosine +
+                                     sqrt(max(k, 0.0f))) *
+                                        normal,
+                                k >= 0.0f);
+                            break;
+                        }
+                        case compiler::VectorMathOperation::
+                            faceforward:
+                            vector_result = select(
+                                -a,
+                                a,
+                                dot(c, b) < 0.0f);
+                            break;
+                        case compiler::VectorMathOperation::
+                            dot_product:
+                            scalar_result = dot(a, b);
+                            break;
+                        case compiler::VectorMathOperation::distance: {
+                            auto delta = a - b;
+                            scalar_result =
+                                sqrt(dot(delta, delta));
+                            break;
+                        }
+                        case compiler::VectorMathOperation::length:
+                            scalar_result = sqrt(dot(a, a));
+                            break;
+                        case compiler::VectorMathOperation::scale:
+                            vector_result = a * scale;
+                            break;
+                        case compiler::VectorMathOperation::normalize:
+                            vector_result =
+                                safe_normalize_zero(a);
+                            break;
+                        case compiler::VectorMathOperation::absolute:
+                            vector_result = abs(a);
+                            break;
+                        case compiler::VectorMathOperation::power:
+                            vector_result = make_float3(
+                                safe_power(a.x, b.x),
+                                safe_power(a.y, b.y),
+                                safe_power(a.z, b.z));
+                            break;
+                        case compiler::VectorMathOperation::sign: {
+                            auto sign_component = [](Float input) {
+                                return select(
+                                    select(
+                                        1.0f,
+                                        -1.0f,
+                                        input < 0.0f),
+                                    0.0f,
+                                    input == 0.0f);
+                            };
+                            vector_result = make_float3(
+                                sign_component(a.x),
+                                sign_component(a.y),
+                                sign_component(a.z));
+                            break;
+                        }
+                        case compiler::VectorMathOperation::minimum:
+                            vector_result = min(a, b);
+                            break;
+                        case compiler::VectorMathOperation::maximum:
+                            vector_result = max(a, b);
+                            break;
+                        case compiler::VectorMathOperation::floor:
+                            vector_result = floor(a);
+                            break;
+                        case compiler::VectorMathOperation::ceil:
+                            vector_result = ceil(a);
+                            break;
+                        case compiler::VectorMathOperation::fraction:
+                            vector_result = a - floor(a);
+                            break;
+                        case compiler::VectorMathOperation::modulo:
+                            vector_result = make_float3(
+                                select(
+                                    0.0f,
+                                    fmod(a.x, b.x),
+                                    b.x != 0.0f),
+                                select(
+                                    0.0f,
+                                    fmod(a.y, b.y),
+                                    b.y != 0.0f),
+                                select(
+                                    0.0f,
+                                    fmod(a.z, b.z),
+                                    b.z != 0.0f));
+                            break;
+                        case compiler::VectorMathOperation::wrap:
+                            vector_result = make_float3(
+                                wrap_component(
+                                    a.x, b.x, c.x),
+                                wrap_component(
+                                    a.y, b.y, c.y),
+                                wrap_component(
+                                    a.z, b.z, c.z));
+                            break;
+                        case compiler::VectorMathOperation::snap:
+                            vector_result =
+                                floor(
+                                    safe_divide_vector(a, b)) *
+                                b;
+                            break;
+                        case compiler::VectorMathOperation::sine:
+                            vector_result = make_float3(
+                                sin(a.x), sin(a.y), sin(a.z));
+                            break;
+                        case compiler::VectorMathOperation::cosine:
+                            vector_result = make_float3(
+                                cos(a.x), cos(a.y), cos(a.z));
+                            break;
+                        case compiler::VectorMathOperation::tangent:
+                            vector_result = make_float3(
+                                tan(a.x), tan(a.y), tan(a.z));
+                            break;
+                    }
+                    value =
+                        instruction.operation ==
+                                compiler::ValueOperation::
+                                    vector_math_value
+                            ? make_float4(scalar_result)
+                            : make_float4(
+                                  vector_result, 0.0f);
+                    break;
+                }
+                case compiler::ValueOperation::mix_float: {
+                    auto t = scalar(instruction.c, result);
+                    if (instruction.static_u0 != 0u) {
+                        t = clamp(t, 0.0f, 1.0f);
+                    }
+                    value = make_float4(lerp(
+                        scalar(instruction.a, result),
+                        scalar(instruction.b, result),
+                        t));
+                    break;
+                }
+                case compiler::ValueOperation::mix_vector: {
+                    auto t = instruction.static_u0 != 0u
+                                 ? vector(instruction.c, result)
+                                 : make_float3(
+                                       scalar(
+                                           instruction.c,
+                                           result));
+                    if (instruction.static_u1 != 0u) {
+                        t = clamp(t, 0.0f, 1.0f);
+                    }
+                    value = make_float4(
+                        lerp(
+                            vector(instruction.a, result),
+                            vector(instruction.b, result),
+                            t),
+                        1.0f);
+                    break;
+                }
+                case compiler::ValueOperation::mix: {
+                    auto t = scalar(instruction.c, result);
+                    if ((instruction.static_u1 & 1u) != 0u) {
+                        t = clamp(t, 0.0f, 1.0f);
+                    }
+                    auto a = vector(instruction.a, result);
+                    auto b = vector(instruction.b, result);
+                    Float3 mixed = a;
+                    switch (static_cast<compiler::BlendOperation>(
+                        instruction.static_u0)) {
+                        case compiler::BlendOperation::mix:
+                            mixed = lerp(a, b, t);
+                            break;
+                        case compiler::BlendOperation::darken:
+                            mixed = lerp(a, min(a, b), t);
+                            break;
+                        case compiler::BlendOperation::multiply:
+                            mixed = lerp(a, a * b, t);
+                            break;
+                        case compiler::BlendOperation::burn: {
+                            auto denominator =
+                                1.0f - t + t * b;
+                            auto burned = clamp(
+                                1.0f -
+                                    (make_float3(1.0f) - a) /
+                                        denominator,
+                                0.0f,
+                                1.0f);
+                            mixed = select(
+                                burned,
+                                make_float3(0.0f),
+                                denominator <= 0.0f);
+                            break;
+                        }
+                        case compiler::BlendOperation::lighten:
+                            mixed = lerp(a, max(a, b), t);
+                            break;
+                        case compiler::BlendOperation::screen:
+                            mixed =
+                                1.0f -
+                                (1.0f - t +
+                                 t * (make_float3(1.0f) - b)) *
+                                    (make_float3(1.0f) - a);
+                            break;
+                        case compiler::BlendOperation::dodge: {
+                            auto denominator = 1.0f - t * b;
+                            auto dodged = min(
+                                a / denominator,
+                                make_float3(1.0f));
+                            dodged = select(
+                                dodged,
+                                make_float3(1.0f),
+                                denominator <= 0.0f);
+                            mixed = select(
+                                a, dodged, a != 0.0f);
+                            break;
+                        }
+                        case compiler::BlendOperation::add:
+                            mixed = lerp(a, a + b, t);
+                            break;
+                        case compiler::BlendOperation::overlay: {
+                            auto low =
+                                a * (1.0f - t + 2.0f * t * b);
+                            auto high =
+                                1.0f -
+                                (1.0f - t +
+                                 2.0f * t *
+                                     (make_float3(1.0f) - b)) *
+                                    (make_float3(1.0f) - a);
+                            mixed = select(
+                                high, low, a < 0.5f);
+                            break;
+                        }
+                        case compiler::BlendOperation::soft_light: {
+                            auto screen =
+                                1.0f -
+                                (make_float3(1.0f) - b) *
+                                    (make_float3(1.0f) - a);
+                            mixed =
+                                (1.0f - t) * a +
+                                t * ((make_float3(1.0f) - a) *
+                                         b * a +
+                                     a * screen);
+                            break;
+                        }
+                        case compiler::BlendOperation::linear_light:
+                            mixed =
+                                a + t * (2.0f * b - 1.0f);
+                            break;
+                        case compiler::BlendOperation::difference:
+                            mixed = lerp(a, abs(a - b), t);
+                            break;
+                        case compiler::BlendOperation::exclusion:
+                            mixed = max(
+                                lerp(
+                                    a,
+                                    a + b - 2.0f * a * b,
+                                    t),
+                                make_float3(0.0f));
+                            break;
+                        case compiler::BlendOperation::subtract:
+                            mixed = lerp(a, a - b, t);
+                            break;
+                        case compiler::BlendOperation::divide: {
+                            auto divided =
+                                (1.0f - t) * a + t * a / b;
+                            mixed = select(
+                                a, divided, b != 0.0f);
+                            break;
+                        }
+                        case compiler::BlendOperation::hue: {
+                            auto hsv_b = rgb_to_hsv(b);
+                            auto hsv = rgb_to_hsv(a);
+                            hsv.x = hsv_b.x;
+                            auto recolored = hsv_to_rgb(hsv);
+                            mixed = select(
+                                a,
+                                lerp(a, recolored, t),
+                                hsv_b.y != 0.0f);
+                            break;
+                        }
+                        case compiler::BlendOperation::saturation: {
+                            auto hsv = rgb_to_hsv(a);
+                            auto hsv_b = rgb_to_hsv(b);
+                            auto has_saturation = hsv.y != 0.0f;
+                            hsv.y = lerp(hsv.y, hsv_b.y, t);
+                            mixed = select(
+                                a,
+                                hsv_to_rgb(hsv),
+                                has_saturation);
+                            break;
+                        }
+                        case compiler::BlendOperation::color: {
+                            auto hsv_b = rgb_to_hsv(b);
+                            auto hsv = rgb_to_hsv(a);
+                            hsv.x = hsv_b.x;
+                            hsv.y = hsv_b.y;
+                            auto recolored = hsv_to_rgb(hsv);
+                            mixed = select(
+                                a,
+                                lerp(a, recolored, t),
+                                hsv_b.y != 0.0f);
+                            break;
+                        }
+                        case compiler::BlendOperation::value: {
                         auto hsv = rgb_to_hsv(a);
                         auto hsv_b = rgb_to_hsv(b);
                         hsv.z = lerp(hsv.z, hsv_b.z, t);
                         mixed = hsv_to_rgb(hsv);
-                    } else if (instruction.static_u0 == 2u) {
-                        auto hsv_b = rgb_to_hsv(b);
-                        auto hsv = rgb_to_hsv(a);
-                        hsv.x = hsv_b.x;
-                        hsv.y = hsv_b.y;
-                        auto recolored = hsv_to_rgb(hsv);
-                        mixed = select(
-                            a,
-                            lerp(a, recolored, t),
-                            hsv_b.y != 0.0f);
-                    } else {
-                        mixed = lerp(a, b, t);
+                            break;
+                        }
+                    }
+                    if ((instruction.static_u1 & 2u) != 0u) {
+                        mixed = clamp(mixed, 0.0f, 1.0f);
                     }
                     value = make_float4(
                         mixed,
@@ -1239,10 +2157,8 @@ private:
                 }
                 case compiler::ValueOperation::invert: {
                     auto color = vector(instruction.a, result);
-                    auto factor = clamp(
-                        scalar(instruction.b, result),
-                        0.0f,
-                        1.0f);
+                    auto factor =
+                        scalar(instruction.b, result);
                     value = make_float4(
                         lerp(
                             color,
@@ -1291,6 +2207,31 @@ private:
                         1.0f);
                     break;
                 }
+                case compiler::ValueOperation::blackbody:
+                    value = make_float4(
+                        max(
+                            services.rec709_to_rgb(
+                                cycles_color_nodes::
+                                    blackbody_rec709(
+                                        scalar(
+                                            instruction.a,
+                                            result))),
+                            make_float3(0.0f)),
+                        1.0f);
+                    break;
+                case compiler::ValueOperation::wavelength:
+                    value = make_float4(
+                        max(
+                            services.xyz_to_rgb(
+                                cycles_color_nodes::
+                                    wavelength_xyz(
+                                        scalar(
+                                            instruction.a,
+                                            result))) *
+                                (1.0f / 2.52f),
+                            make_float3(0.0f)),
+                        1.0f);
+                    break;
                 case compiler::ValueOperation::surface_position:
                     value = make_float4(point.position, 1.0f);
                     break;
@@ -1309,8 +2250,16 @@ private:
                     value = make_float4(point.dpdu, 0.0f);
                     break;
                 case compiler::ValueOperation::uv:
-                    value = make_float4(
-                        point.uv.x, point.uv.y, 0.0f, 0.0f);
+                    if (instruction.static_u0 != 0u) {
+                        value = services.attribute(
+                            instruction.static_u1, point);
+                    } else {
+                        value = make_float4(
+                            point.uv.x,
+                            point.uv.y,
+                            0.0f,
+                            0.0f);
+                    }
                     break;
                 case compiler::ValueOperation::generated:
                     value = make_float4(point.generated, 1.0f);
@@ -1427,11 +2376,29 @@ private:
                         cast<float>(
                             point.transmission_depth));
                     break;
-                case compiler::ValueOperation::layer_weight_fresnel: {
-                    auto blend = scalar(instruction.a, result);
+                case compiler::ValueOperation::fresnel: {
+                    auto eta = max(
+                        scalar(instruction.a, result),
+                        1.0e-5f);
+                    eta = select(
+                        eta,
+                        1.0f / eta,
+                        point.back_facing);
                     auto normal = safe_normalize(
                         vector(instruction.b, result),
                         result.shading_normal);
+                    value = make_float4(
+                        fresnel_dielectric_cos(
+                            dot(point.incoming, normal),
+                            eta));
+                    break;
+                }
+                case compiler::ValueOperation::layer_weight_fresnel: {
+                    auto blend = scalar(instruction.a, result);
+                    auto normal =
+                        instruction.static_u0 != 0u
+                            ? vector(instruction.b, result)
+                            : result.shading_normal;
                     auto eta = max(1.0f - blend, 1.0e-5f);
                     eta = select(
                         1.0f / eta,
@@ -1448,9 +2415,10 @@ private:
                         scalar(instruction.a, result),
                         0.0f,
                         1.0f - 1.0e-5f);
-                    auto normal = safe_normalize(
-                        vector(instruction.b, result),
-                        result.shading_normal);
+                    auto normal =
+                        instruction.static_u0 != 0u
+                            ? vector(instruction.b, result)
+                            : result.shading_normal;
                     auto facing = abs(dot(
                         point.incoming, normal));
                     auto exponent = select(
@@ -1468,22 +2436,27 @@ private:
                     auto scale = vector(instruction.d, result);
                     Float3 mapped = input;
                     if (instruction.static_u0 == 1u) {
+                        mapped = safe_divide_components(
+                            rotate_euler_transposed(
+                                input - location,
+                                rotation),
+                            scale);
+                    } else if (
+                        instruction.static_u0 == 3u) {
                         mapped = rotate_euler(
-                            input - location, -rotation);
+                            safe_divide_components(
+                                input, scale),
+                            rotation);
+                        auto mapped_length = length(mapped);
                         mapped /= select(
-                            make_float3(1.0f),
-                            scale,
-                            abs(scale) > 1.0e-20f);
+                            1.0f,
+                            mapped_length,
+                            mapped_length != 0.0f);
                     } else {
                         mapped = rotate_euler(
                             input * scale, rotation);
                         if (instruction.static_u0 == 0u) {
                             mapped += location;
-                        }
-                        if (instruction.static_u0 == 3u) {
-                            mapped = safe_normalize(
-                                mapped,
-                                point.shading_normal);
                         }
                     }
                     value = make_float4(mapped, 0.0f);
@@ -1491,47 +2464,25 @@ private:
                 }
                 case compiler::ValueOperation::image_color:
                 case compiler::ValueOperation::image_alpha: {
-                    auto uv = vector(instruction.a, result).xy();
-                    Bool valid = true;
-                    const auto address =
-                        instruction.static_u1 & 0xffu;
-                    if (address == 0u) {
-                        uv = fract(uv);
-                    } else if (address == 1u) {
-                        valid =
-                            all(uv >= make_float2(0.0f)) &
-                            all(uv <= make_float2(1.0f));
-                        uv = clamp(
-                            uv,
-                            make_float2(0.0f),
-                            make_float2(1.0f));
-                    } else if (address == 2u) {
-                        uv = clamp(
-                            uv,
-                            make_float2(0.0f),
-                            make_float2(1.0f));
-                    } else {
-                        auto period = fract(uv * 0.5f) * 2.0f;
-                        uv = 1.0f - abs(period - 1.0f);
-                    }
-                    // Blender UVs use a bottom-left origin while decoded
-                    // host images are uploaded in top-to-bottom row order.
-                    uv.y = 1.0f - uv.y;
-                    auto sampled = services.texture_2d(
+                    const auto extension =
                         static_cast<std::uint32_t>(
-                            instruction.static_u0),
-                        uv,
-                        make_float2(0.0f),
-                        make_float2(0.0f));
-                    sampled = select(
-                        make_float4(0.0f),
-                        sampled,
-                        valid);
-                    if (instruction.operation ==
-                        compiler::ValueOperation::image_color) {
-                        const auto unassociate_alpha =
-                            ((instruction.static_u1 >> 9u) & 1u) !=
-                            0u;
+                            instruction.static_u1 & 0xffu);
+                    const auto interpolation =
+                        static_cast<std::uint32_t>(
+                            (instruction.static_u1 >> 10u) &
+                            0x03u);
+                    const auto projection =
+                        static_cast<std::uint32_t>(
+                            (instruction.static_u1 >> 12u) &
+                            0x03u);
+                    const auto unassociate_alpha =
+                        ((instruction.static_u1 >> 9u) & 1u) !=
+                        0u;
+                    const auto encoded_as_srgb =
+                        ((instruction.static_u1 >> 8u) & 1u) !=
+                        0u;
+                    const auto decode_sample =
+                        [&](Float4 sampled) noexcept {
                         if (unassociate_alpha) {
                             auto alpha = sampled.w;
                             auto should_unassociate =
@@ -1548,21 +2499,232 @@ private:
                                     should_unassociate),
                                 alpha);
                         }
-                        const auto encoded_as_srgb =
-                            ((instruction.static_u1 >> 8u) & 1u) !=
-                            0u;
-                        auto color = sampled.xyz();
                         if (encoded_as_srgb) {
                             // Match Cycles' svm_image_texture ordering:
                             // filter associated encoded texels, optionally
                             // unassociate, then decode sRGB.
-                            color = srgb_to_linear(color);
+                            sampled = make_float4(
+                                srgb_to_linear(sampled.xyz()),
+                                sampled.w);
                         }
-                        value = make_float4(
-                            color, sampled.w);
+                        return sampled;
+                    };
+                    const auto sample_uv =
+                        [&](Float2 uv) noexcept {
+                        // Blender UVs use a bottom-left origin while decoded
+                        // host images are uploaded in top-to-bottom row
+                        // order.
+                        uv.y = 1.0f - uv.y;
+                        return decode_sample(
+                            services.texture_2d(
+                                static_cast<std::uint32_t>(
+                                    instruction.static_u0),
+                                uv,
+                                make_float2(0.0f),
+                                make_float2(0.0f),
+                                interpolation,
+                                extension));
+                    };
+
+                    auto coordinate =
+                        vector(instruction.a, result);
+                    Float4 sampled;
+                    if (projection == 1u) {
+                        // Cycles' object-normal weighted box projection.
+                        auto signed_normal =
+                            point.object_shading_normal;
+                        auto normal = abs(signed_normal);
+                        auto normal_sum =
+                            normal.x + normal.y + normal.z;
+                        normal /= select(
+                            1.0f,
+                            normal_sum,
+                            normal_sum != 0.0f);
+                        Float3 weight =
+                            make_float3(0.0f);
+                        const auto blend =
+                            instruction.static_f0;
+                        const auto limit =
+                            0.5f * (1.0f + blend);
+                        $if ((normal.x >
+                              limit *
+                                  (normal.x + normal.y)) &
+                             (normal.x >
+                              limit *
+                                  (normal.x + normal.z))) {
+                            weight.x = 1.0f;
+                        }
+                        $elif ((normal.y >
+                                limit *
+                                    (normal.x + normal.y)) &
+                               (normal.y >
+                                limit *
+                                    (normal.y + normal.z))) {
+                            weight.y = 1.0f;
+                        }
+                        $elif ((normal.z >
+                                limit *
+                                    (normal.x + normal.z)) &
+                               (normal.z >
+                                limit *
+                                    (normal.y + normal.z))) {
+                            weight.z = 1.0f;
+                        }
+                        $elif (blend > 0.0f) {
+                            $if (
+                                normal.z <
+                                (1.0f - limit) *
+                                    (normal.y + normal.x)) {
+                                weight.x =
+                                    normal.x /
+                                    (normal.x + normal.y);
+                                weight.x = luisa::compute::clamp(
+                                    (weight.x -
+                                     0.5f *
+                                         (1.0f - blend)) /
+                                        blend,
+                                    0.0f,
+                                    1.0f);
+                                weight.y = 1.0f - weight.x;
+                            }
+                            $elif (
+                                normal.x <
+                                (1.0f - limit) *
+                                    (normal.y + normal.z)) {
+                                weight.y =
+                                    normal.y /
+                                    (normal.y + normal.z);
+                                weight.y = luisa::compute::clamp(
+                                    (weight.y -
+                                     0.5f *
+                                         (1.0f - blend)) /
+                                        blend,
+                                    0.0f,
+                                    1.0f);
+                                weight.z = 1.0f - weight.y;
+                            }
+                            $elif (
+                                normal.y <
+                                (1.0f - limit) *
+                                    (normal.x + normal.z)) {
+                                weight.x =
+                                    normal.x /
+                                    (normal.x + normal.z);
+                                weight.x = luisa::compute::clamp(
+                                    (weight.x -
+                                     0.5f *
+                                         (1.0f - blend)) /
+                                        blend,
+                                    0.0f,
+                                    1.0f);
+                                weight.z = 1.0f - weight.x;
+                            }
+                            $else {
+                                weight.x =
+                                    ((2.0f - limit) *
+                                         normal.x +
+                                     (limit - 1.0f)) /
+                                    (2.0f * limit - 1.0f);
+                                weight.y =
+                                    ((2.0f - limit) *
+                                         normal.y +
+                                     (limit - 1.0f)) /
+                                    (2.0f * limit - 1.0f);
+                                weight.z =
+                                    ((2.0f - limit) *
+                                         normal.z +
+                                     (limit - 1.0f)) /
+                                    (2.0f * limit - 1.0f);
+                            };
+                        }
+                        $else {
+                            weight.x = 1.0f;
+                        };
+
+                        auto uv_x = make_float2(
+                            select(
+                                coordinate.y,
+                                1.0f - coordinate.y,
+                                signed_normal.x < 0.0f),
+                            coordinate.z);
+                        auto uv_y = make_float2(
+                            select(
+                                coordinate.x,
+                                1.0f - coordinate.x,
+                                signed_normal.y > 0.0f),
+                            coordinate.z);
+                        auto uv_z = make_float2(
+                            select(
+                                coordinate.y,
+                                1.0f - coordinate.y,
+                                signed_normal.z > 0.0f),
+                            coordinate.x);
+                        sampled =
+                            weight.x * sample_uv(uv_x) +
+                            weight.y * sample_uv(uv_y) +
+                            weight.z * sample_uv(uv_z);
                     } else {
-                        value = make_float4(sampled.w);
+                        Float2 uv = coordinate.xy();
+                        if (projection == 2u) {
+                            auto direction =
+                                (coordinate - 0.5f) * 2.0f;
+                            auto length_squared =
+                                dot(direction, direction);
+                            Float2 spherical =
+                                make_float2(0.0f);
+                            $if (length_squared > 0.0f) {
+                                Float u = 0.0f;
+                                $if ((direction.x != 0.0f) |
+                                     (direction.y != 0.0f)) {
+                                    u =
+                                        0.5f -
+                                        atan2(
+                                            direction.x,
+                                            direction.y) /
+                                            (2.0f * pi);
+                                };
+                                auto z = luisa::compute::clamp(
+                                    direction.z /
+                                        sqrt(length_squared),
+                                    -1.0f,
+                                    1.0f);
+                                spherical = make_float2(
+                                    u,
+                                    1.0f -
+                                        acos(z) / pi);
+                            };
+                            uv = spherical;
+                        } else if (projection == 3u) {
+                            auto direction =
+                                (coordinate - 0.5f) * 2.0f;
+                            auto radial_length = sqrt(
+                                direction.x * direction.x +
+                                direction.y * direction.y);
+                            Float2 tube =
+                                make_float2(0.0f);
+                            $if (radial_length > 0.0f) {
+                                tube = make_float2(
+                                    (1.0f -
+                                     atan2(
+                                         direction.x /
+                                             radial_length,
+                                         direction.y /
+                                             radial_length) /
+                                         pi) *
+                                        0.5f,
+                                    (direction.z + 1.0f) *
+                                        0.5f);
+                            };
+                            uv = tube;
+                        }
+                        sampled = sample_uv(uv);
                     }
+                    value =
+                        instruction.operation ==
+                                compiler::ValueOperation::
+                                    image_color
+                            ? sampled
+                            : make_float4(sampled.w);
                     break;
                 }
                 case compiler::ValueOperation::attribute_color:
@@ -1585,7 +2747,22 @@ private:
                         scalar(instruction.b, result);
                     const auto space =
                         static_cast<compiler::NormalMapSpace>(
-                            instruction.static_u0);
+                            instruction.static_u0 & 0xffu);
+                    auto object_tangent =
+                        point.object_tangent;
+                    auto tangent_sign =
+                        point.tangent_sign;
+                    if ((instruction.static_u0 & 0x100u) !=
+                        0u) {
+                        auto named_tangent =
+                            services.attribute(
+                                instruction.static_u1,
+                                point);
+                        object_tangent =
+                            named_tangent.xyz();
+                        tangent_sign =
+                            named_tangent.w;
+                    }
                     const auto transform_object_normal =
                         [&](Float3 object_normal) noexcept {
                             return safe_normalize(
@@ -1611,12 +2788,12 @@ private:
                             (mapped.z - 1.0f) *
                                 clamp(strength, 0.0f, 1.0f);
                         auto object_bitangent =
-                            point.tangent_sign *
+                            tangent_sign *
                             cross(
                                 point.object_shading_normal,
-                                point.object_tangent);
+                                object_tangent);
                         auto object_normal = safe_normalize(
-                            point.object_tangent * mapped.x +
+                            object_tangent * mapped.x +
                                 object_bitangent * mapped.y +
                                 point.object_shading_normal *
                                     mapped.z,
@@ -1627,9 +2804,9 @@ private:
                             world, -world, point.back_facing);
                         auto tangent_available =
                             (length_squared(
-                                 point.object_tangent) >
+                                 object_tangent) >
                              1.0e-20f) &
-                            (abs(point.tangent_sign) >
+                            (abs(tangent_sign) >
                              1.0e-20f);
                         world = select(
                             point.shading_normal,
@@ -1671,9 +2848,10 @@ private:
                     break;
                 }
                 case compiler::ValueOperation::bump: {
-                    auto normal_in = safe_normalize(
-                        vector(instruction.e, result),
-                        result.shading_normal);
+                    auto normal_in =
+                        (instruction.static_u0 & 2u) != 0u
+                            ? vector(instruction.e, result)
+                            : result.shading_normal;
                     auto filter_width = max(
                         scalar(instruction.d, result), 0.0f);
 
@@ -1734,25 +2912,32 @@ private:
                         (height_y - height_center) * ry;
                     auto distance =
                         scalar(instruction.c, result);
-                    if (instruction.static_u0 != 0u) {
+                    if ((instruction.static_u0 & 1u) != 0u) {
                         distance = -distance;
                     }
                     auto determinant_sign = select(
                         -1.0f,
                         1.0f,
                         determinant >= 0.0f);
-                    auto perturbed = safe_normalize(
+                    auto perturbed_vector =
                         filter_width * abs(determinant) *
-                                normal_in -
-                            distance * determinant_sign *
-                                surface_gradient,
-                        normal_in);
+                            normal_in -
+                        distance * determinant_sign *
+                            surface_gradient;
+                    auto perturbed_valid =
+                        length_squared(perturbed_vector) >
+                        0.0f;
+                    auto perturbed = safe_normalize(
+                        perturbed_vector,
+                        make_float3(0.0f));
                     auto strength =
                         max(scalar(instruction.b, result), 0.0f);
-                    auto normal_out = safe_normalize(
+                    auto blended = safe_normalize(
                         strength * perturbed +
                             (1.0f - strength) * normal_in,
-                        normal_in);
+                        make_float3(0.0f));
+                    auto normal_out = select(
+                        normal_in, blended, perturbed_valid);
                     value = make_float4(normal_out, 0.0f);
                     result.shading_normal = normal_out;
                     break;
@@ -1800,6 +2985,57 @@ private:
                             color_needed,
                             vector(instruction.a, result),
                             scalar(instruction.b, result));
+                    break;
+                }
+                case compiler::ValueOperation::checker_color:
+                case compiler::ValueOperation::checker_factor: {
+                    auto scaled_raw =
+                        vector(instruction.a, result) *
+                        scalar(instruction.d, result);
+                    auto p = select(
+                        scaled_raw,
+                        make_float3(0.0f),
+                        luisa::compute::dsl::isnan(
+                            scaled_raw));
+                    // Cycles computes `(p + 1e-6f) * 0.999999f`.
+                    // Express the second factor as `1 - 0x1.1p-20f`,
+                    // which is bit-identical in float32 but remains below
+                    // the unit boundary even if a backend contracts the
+                    // arithmetic.
+                    auto shifted_raw = p + 0.000001f;
+                    auto shifted = select(
+                        shifted_raw,
+                        make_float3(0.0f),
+                        luisa::compute::dsl::isnan(
+                            shifted_raw));
+                    p =
+                        shifted -
+                        shifted * 0x1.1p-20f;
+                    auto xi = abs(cast<int>(floor(p.x)));
+                    auto yi = abs(cast<int>(floor(p.y)));
+                    auto zi = abs(cast<int>(floor(p.z)));
+                    auto xy_same = select(
+                        0,
+                        1,
+                        (xi % 2) == (yi % 2));
+                    auto is_first =
+                        xy_same == (zi % 2);
+                    auto factor = select(
+                        0.0f, 1.0f, is_first);
+                    if (instruction.operation ==
+                        compiler::ValueOperation::
+                            checker_color) {
+                        value = make_float4(
+                            lerp(
+                                vector(
+                                    instruction.c, result),
+                                vector(
+                                    instruction.b, result),
+                                factor),
+                            1.0f);
+                    } else {
+                        value = make_float4(factor);
+                    }
                     break;
                 }
                 case compiler::ValueOperation::brick_color:
@@ -1952,7 +3188,49 @@ private:
                     Float alpha = 1.0f;
                     const auto count =
                         instruction.static_table.size() / 5u;
-                    if (count != 0u) {
+                    if (
+                        count >= 2u &&
+                        (instruction.static_u0 & 2u) != 0u) {
+                        std::vector<luisa::float4> samples;
+                        samples.reserve(count);
+                        for (std::size_t i = 0u;
+                             i < count;
+                             ++i) {
+                            samples.emplace_back(
+                                instruction.static_table[
+                                    i * 5u + 1u],
+                                instruction.static_table[
+                                    i * 5u + 2u],
+                                instruction.static_table[
+                                    i * 5u + 3u],
+                                instruction.static_table[
+                                    i * 5u + 4u]);
+                        }
+                        luisa::compute::Constant<luisa::float4>
+                            table{samples};
+                        auto scaled =
+                            clamp(factor, 0.0f, 1.0f) *
+                            static_cast<float>(count - 1u);
+                        auto index = min(
+                            cast<luisa::uint>(scaled),
+                            static_cast<std::uint32_t>(
+                                count - 1u));
+                        auto t =
+                            scaled - cast<float>(index);
+                        auto sampled = table.read(index);
+                        if ((instruction.static_u0 & 1u) == 0u) {
+                            auto next = table.read(min(
+                                index + 1u,
+                                static_cast<std::uint32_t>(
+                                    count - 1u)));
+                            sampled = select(
+                                sampled,
+                                lerp(sampled, next, t),
+                                t > 0.0f);
+                        }
+                        color = sampled.xyz();
+                        alpha = sampled.w;
+                    } else if (count != 0u) {
                         color = make_float3(
                             instruction.static_table[1u],
                             instruction.static_table[2u],
@@ -1969,7 +3247,9 @@ private:
                                     std::max(p1 - p0, 1.0e-20f),
                                 0.0f,
                                 1.0f);
-                            if (instruction.static_u0 == 1u) {
+                            if (
+                                (instruction.static_u0 & 1u) !=
+                                0u) {
                                 t = 0.0f;
                             }
                             auto c0 = make_float3(
@@ -2026,19 +3306,123 @@ private:
                     break;
                 }
                 case compiler::ValueOperation::rgb_curve: {
-                    // The normalized adapter stores a compact sampled
-                    // transfer table. Until a bindless LUT is warranted,
-                    // the identity path remains exact and non-identity
-                    // tables use a host-unrolled linear interpolation.
                     auto input = vector(instruction.a, result);
-                    auto factor = clamp(
-                        scalar(instruction.b, result),
-                        0.0f,
-                        1.0f);
+                    auto factor = scalar(instruction.b, result);
                     Float3 mapped = input;
                     const auto count =
                         instruction.static_table.size() / 4u;
-                    if (count >= 2u) {
+                    if (
+                        count >= 2u &&
+                        (instruction.static_u0 & 1u) != 0u) {
+                        std::vector<luisa::float3> samples;
+                        samples.reserve(count);
+                        for (std::size_t i = 0u;
+                             i < count;
+                             ++i) {
+                            samples.emplace_back(
+                                instruction.static_table[
+                                    i * 4u + 1u],
+                                instruction.static_table[
+                                    i * 4u + 2u],
+                                instruction.static_table[
+                                    i * 4u + 3u]);
+                        }
+                        luisa::compute::Constant<luisa::float3>
+                            table{samples};
+                        const auto component =
+                            [](Float3 value,
+                               std::uint32_t channel) {
+                                return channel == 0u
+                                           ? value.x
+                                           : channel == 1u
+                                                 ? value.y
+                                                 : value.z;
+                            };
+                        const auto lookup =
+                            [&](Float coordinate,
+                                std::uint32_t channel) {
+                                auto scaled =
+                                    clamp(
+                                        coordinate,
+                                        0.0f,
+                                        1.0f) *
+                                    static_cast<float>(
+                                        count - 1u);
+                                auto index = min(
+                                    cast<luisa::uint>(scaled),
+                                    static_cast<std::uint32_t>(
+                                        count - 1u));
+                                auto t =
+                                    scaled - cast<float>(index);
+                                auto sampled = component(
+                                    table.read(index), channel);
+                                auto next = component(
+                                    table.read(min(
+                                        index + 1u,
+                                        static_cast<
+                                            std::uint32_t>(
+                                            count - 1u))),
+                                    channel);
+                                sampled = select(
+                                    sampled,
+                                    lerp(sampled, next, t),
+                                    t > 0.0f);
+                                if (
+                                    (instruction.static_u0 &
+                                     2u) != 0u) {
+                                    auto first = component(
+                                        table.read(0u),
+                                        channel);
+                                    auto second = component(
+                                        table.read(1u),
+                                        channel);
+                                    auto last = component(
+                                        table.read(
+                                            static_cast<
+                                                std::uint32_t>(
+                                                count - 1u)),
+                                        channel);
+                                    auto previous = component(
+                                        table.read(
+                                            static_cast<
+                                                std::uint32_t>(
+                                                count - 2u)),
+                                        channel);
+                                    auto below =
+                                        first +
+                                        (first - second) *
+                                            (-coordinate) *
+                                            static_cast<float>(
+                                                count - 1u);
+                                    auto above =
+                                        last +
+                                        (last - previous) *
+                                            (coordinate - 1.0f) *
+                                            static_cast<float>(
+                                                count - 1u);
+                                    sampled = select(
+                                        sampled,
+                                        below,
+                                        coordinate < 0.0f);
+                                    sampled = select(
+                                        sampled,
+                                        above,
+                                        coordinate > 1.0f);
+                                }
+                                return sampled;
+                            };
+                        const auto range =
+                            instruction.static_f1 -
+                            instruction.static_f0;
+                        auto relative =
+                            (input -
+                             instruction.static_f0) /
+                            range;
+                        mapped = make_float3(
+                            lookup(relative.x, 0u),
+                            lookup(relative.y, 1u),
+                            lookup(relative.z, 2u));
+                    } else if (count >= 2u) {
                         mapped = make_float3(0.0f);
                         for (std::size_t i = 1u; i < count; ++i) {
                             const auto x0 =
@@ -2111,7 +3495,7 @@ private:
                 }
                 case compiler::ValueOperation::nishita_sky: {
                     auto direction = safe_normalize(
-                        -point.incoming,
+                        vector(instruction.i, result),
                         make_float3(0.0f, 0.0f, 1.0f));
                     value = make_float4(
                         services.nishita_sky(
@@ -2143,6 +3527,8 @@ private:
             const auto &closure =
                 _program->closure_instructions()[id.value];
             switch (closure.operation) {
+                case compiler::ClosureOperation::null_closure:
+                    return;
                 case compiler::ClosureOperation::add:
                     self(self, closure.a, mix_weight);
                     self(self, closure.b, mix_weight);
@@ -2168,7 +3554,8 @@ private:
                     function(TracedClosure{
                         .operation =
                             compiler::ClosureOperation::translucent,
-                        .weight = color * mix_weight,
+                        .weight = bsdf_allocated_weight(
+                            color * mix_weight),
                         .color = color,
                         .normal = safe_normalize(
                             vector(closure.normal, values),
@@ -2236,7 +3623,8 @@ private:
                         .weight =
                             closure.operation ==
                                     compiler::ClosureOperation::diffuse
-                                ? color * mix_weight
+                                ? bsdf_allocated_weight(
+                                      color * mix_weight)
                                 : make_float3(mix_weight),
                         .color = color,
                         .normal = safe_normalize(
@@ -2408,15 +3796,23 @@ public:
                     !is_glossy) {
                     return;
                 }
+                auto glossy_normal =
+                    ensure_valid_specular_reflection(
+                        point.geometric_normal,
+                        incoming,
+                        closure.normal);
                 auto diffuse_normal =
                     is_translucent
-                        ? -closure.normal
+                        ? -glossy_normal
                         : closure.normal;
                 auto diffuse_pdf =
                     max(dot(diffuse_normal, outgoing), 0.0f) *
                     inverse_pi;
                 auto glossy_pdf = microfacet_pdf(
-                    closure, incoming, outgoing);
+                    closure,
+                    incoming,
+                    outgoing,
+                    glossy_normal);
                 auto translucent_allowed =
                     diffuse_enabled &
                     transmission_enabled &
@@ -2434,7 +3830,10 @@ public:
                 Float3 selection_color;
                 if (is_principled) {
                     auto state = principled_state(
-                        services, closure, incoming);
+                        services,
+                        closure,
+                        incoming,
+                        glossy_normal);
                     auto diffuse_weight =
                         sample_weight(
                             state.diffuse_sample_weight);
@@ -2457,7 +3856,8 @@ public:
                             services,
                             closure,
                             incoming,
-                            outgoing);
+                            outgoing,
+                            glossy_normal);
                     selection_color =
                         state.diffuse_sample_weight +
                         state.glossy_sample_weight;
@@ -2471,7 +3871,8 @@ public:
                             services,
                             closure,
                             incoming,
-                            outgoing);
+                            outgoing,
+                            glossy_normal);
                     selection_color =
                         closure.weight *
                         max(
@@ -2481,7 +3882,7 @@ public:
                     specular_chance = 0.0f;
                     auto cosine =
                         max(
-                            dot(-closure.normal, outgoing),
+                            dot(-glossy_normal, outgoing),
                             0.0f) *
                         inverse_pi;
                     diffuse_contribution =
@@ -2672,10 +4073,18 @@ public:
                                     : is_glossy
                                           ? glossy_enabled
                                           : Bool{false};
+                auto glossy_normal =
+                    ensure_valid_specular_reflection(
+                        point.geometric_normal,
+                        incoming,
+                        closure.normal);
                 Float3 selection_color;
                 if (is_principled) {
                     auto state = principled_state(
-                        services, closure, incoming);
+                        services,
+                        closure,
+                        incoming,
+                        glossy_normal);
                     selection_color =
                         state.diffuse_sample_weight +
                         state.glossy_sample_weight;
@@ -2739,11 +4148,19 @@ public:
                                     : is_glossy
                                           ? glossy_enabled
                                           : Bool{false};
+                auto glossy_normal =
+                    ensure_valid_specular_reflection(
+                        point.geometric_normal,
+                        incoming,
+                        closure.normal);
                 Float3 selection_color;
                 Float principled_specular_chance = 0.0f;
                 if (is_principled) {
                     auto state = principled_state(
-                        services, closure, incoming);
+                        services,
+                        closure,
+                        incoming,
+                        glossy_normal);
                     selection_color =
                         state.diffuse_sample_weight +
                         state.glossy_sample_weight;
@@ -2820,13 +4237,14 @@ public:
                 auto diffuse_direction =
                     sample_cosine_hemisphere(
                         is_translucent
-                            ? -closure.normal
+                            ? -glossy_normal
                             : closure.normal,
                         remapped_random);
                 auto glossy_direction = sample_ggx(
                     closure,
                     incoming,
-                    remapped_random);
+                    remapped_random,
+                    glossy_normal);
                 auto transparent_direction = -point.incoming;
                 auto sample_glossy =
                     local_glossy_enabled &
@@ -2968,6 +4386,8 @@ public:
         const SurfacePoint &point) const noexcept override {
         auto result = SurfaceAov{
             .albedo = make_float3(0.0f),
+            .glossy_albedo = make_float3(0.0f),
+            .transmission_albedo = make_float3(0.0f),
             .roughness = make_float2(0.0f),
             .normal = point.shading_normal,
             .transparency = make_float3(0.0f)};
@@ -3006,28 +4426,58 @@ public:
                     !is_glossy) {
                     return;
                 }
-                Float3 albedo;
+                auto glossy_normal =
+                    ensure_valid_specular_reflection(
+                        point.geometric_normal,
+                        incoming,
+                        closure.normal);
+                Float3 diffuse_albedo = make_float3(0.0f);
+                Float diffuse_weight = 0.0f;
+                Float glossy_weight = 0.0f;
                 if (is_principled) {
-                    albedo = principled_state(
-                                 services,
-                                 closure,
-                                 incoming)
-                                 .diffuse_albedo;
+                    const auto state = principled_state(
+                        services,
+                        closure,
+                        incoming,
+                        glossy_normal);
+                    diffuse_albedo = state.diffuse_albedo;
+                    result.glossy_albedo +=
+                        state.glossy_sample_weight;
+                    diffuse_weight =
+                        pass_weight(state.diffuse_albedo);
+                    glossy_weight =
+                        pass_weight(
+                            state.glossy_closure_weight);
+                } else if (is_diffuse || is_translucent) {
+                    diffuse_albedo = closure.weight;
+                    diffuse_weight =
+                        pass_weight(closure.weight);
                 } else {
-                    albedo =
-                        is_diffuse || is_translucent
-                            ? closure.weight
-                            : closure.weight * closure.color;
+                    auto glossy_albedo =
+                        closure.weight *
+                        max(closure.color, make_float3(0.0f));
+                    result.glossy_albedo += glossy_albedo;
+                    glossy_weight =
+                        pass_weight(closure.weight);
                 }
-                auto weight = sample_weight(albedo);
+                const auto weight =
+                    diffuse_weight + glossy_weight;
                 total_weight += weight;
-                result.albedo += albedo;
+                // Cycles Diffuse Color includes only diffuse/BSSRDF
+                // closures. Glossy closure weights still contribute to the
+                // Normal and Roughness passes, but never to Diffuse Color.
+                result.albedo += diffuse_albedo;
                 roughness += weight * closure.roughness;
-                normal += weight * closure.normal;
+                normal +=
+                    diffuse_weight *
+                        (is_translucent
+                             ? glossy_normal
+                             : closure.normal) +
+                    glossy_weight * glossy_normal;
             });
         auto valid = total_weight > 0.0f;
         result.roughness = make_float2(select(
-            0.0f,
+            1.0f,
             roughness / max(total_weight, 1.0e-20f),
             valid));
         result.normal = safe_normalize(

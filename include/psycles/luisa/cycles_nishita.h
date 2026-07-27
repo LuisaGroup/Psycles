@@ -522,22 +522,4 @@ template<typename Texture>
             solid_angle)};
 }
 
-[[nodiscard]] inline Float3 xyz_to_rgb(Float3 xyz) noexcept {
-    return max(
-        make_float3(
-            dot(
-                make_float3(
-                    3.2404542f, -1.5371385f, -0.4985314f),
-                xyz),
-            dot(
-                make_float3(
-                    -0.9692660f, 1.8760108f, 0.0415560f),
-                xyz),
-            dot(
-                make_float3(
-                    0.0556434f, -0.2040259f, 1.0572252f),
-                xyz)),
-        make_float3(0.0f));
-}
-
 }// namespace psycles::luisa_backend::cycles_nishita

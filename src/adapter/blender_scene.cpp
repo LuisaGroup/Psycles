@@ -721,6 +721,15 @@ private:
             .type = target};
     }
 
+    [[nodiscard]] TypedOutput null_closure(std::string label) {
+        const auto id = _graph.add_node(
+            compiler::node_type::null_closure,
+            std::move(label));
+        return {
+            .ref = {.node = id, .socket = "Closure"},
+            .type = contract::SocketType::closure};
+    }
+
     [[nodiscard]] bool bind(
         contract::NodeId destination,
         std::string target_socket,
@@ -730,6 +739,31 @@ private:
         if (auto source =
                 input_source(
                     raw_destination, raw_input_name)) {
+            auto *raw_source = raw_node(source->node);
+            if (raw_source != nullptr &&
+                text(member(raw_source, "type")) == "MIX" &&
+                node_property_text(
+                    raw_source,
+                    "data_type",
+                    "FLOAT") == "ROTATION") {
+                // Blender 4.5.10's Cycles adapter creates a MixFloatNode
+                // for ROTATION but does not map A_Rotation,
+                // B_Rotation, or Result_Rotation. The link is therefore
+                // absent from the Cycles graph and the destination keeps
+                // its own socket default.
+                warn_once(
+                    "mix-data:ROTATION",
+                    "Cycles 4.5.10 does not map Mix ROTATION sockets; "
+                    "using the destination socket default");
+                auto *socket =
+                    raw_input(raw_destination, raw_input_name);
+                return _graph.set_input(
+                    destination,
+                    std::move(target_socket),
+                    literal(
+                        member(socket, "default"),
+                        target_type));
+            }
             auto output = lower_output(
                 source->node,
                 source->socket,
@@ -741,6 +775,15 @@ private:
         }
         auto *socket =
             raw_input(raw_destination, raw_input_name);
+        if (target_type == contract::SocketType::closure) {
+            auto source = null_closure(
+                text(member(raw_destination, "name")) +
+                " Empty Closure");
+            return _graph.connect(
+                source.ref,
+                destination,
+                std::move(target_socket));
+        }
         return _graph.set_input(
             destination,
             std::move(target_socket),
@@ -788,6 +831,28 @@ private:
         yyjson_val *node) const {
         auto *ramp = member(
             member(node, "special"), "color_ramp");
+        auto *samples = member(ramp, "samples");
+        if (samples != nullptr && yyjson_is_arr(samples) &&
+            yyjson_arr_size(samples) >= 2u) {
+            std::ostringstream stream;
+            stream << std::setprecision(9);
+            const auto count = yyjson_arr_size(samples);
+            for (std::size_t i = 0u; i < count; ++i) {
+                auto *color = yyjson_arr_get(samples, i);
+                if (i != 0u) {
+                    stream << ';';
+                }
+                stream
+                    << static_cast<double>(i) /
+                           static_cast<double>(count - 1u)
+                    << ',' << number(yyjson_arr_get(color, 0u))
+                    << ',' << number(yyjson_arr_get(color, 1u))
+                    << ',' << number(yyjson_arr_get(color, 2u))
+                    << ',' << number(
+                           yyjson_arr_get(color, 3u), 1.0f);
+            }
+            return stream.str();
+        }
         auto *elements = member(ramp, "elements");
         std::ostringstream stream;
         stream << std::setprecision(9);
@@ -817,6 +882,28 @@ private:
         yyjson_val *node) const {
         auto *mapping = member(
             member(node, "special"), "curve_mapping");
+        auto *samples = member(mapping, "samples");
+        if (
+            samples != nullptr &&
+            yyjson_is_arr(samples) &&
+            yyjson_arr_size(samples) >= 2u) {
+            std::ostringstream stream;
+            stream << std::setprecision(9);
+            const auto count = yyjson_arr_size(samples);
+            for (std::size_t i = 0u; i < count; ++i) {
+                auto *sample = yyjson_arr_get(samples, i);
+                if (i != 0u) {
+                    stream << ';';
+                }
+                stream
+                    << static_cast<double>(i) /
+                           static_cast<double>(count - 1u)
+                    << ',' << number(yyjson_arr_get(sample, 0u))
+                    << ',' << number(yyjson_arr_get(sample, 1u))
+                    << ',' << number(yyjson_arr_get(sample, 2u));
+            }
+            return stream.str();
+        }
         auto *curves = member(mapping, "curves");
         if (curves == nullptr || !yyjson_is_arr(curves) ||
             yyjson_arr_size(curves) < 4u) {
@@ -849,24 +936,7 @@ private:
         contract::SocketType type) {
         using contract::SocketType;
         if (type == SocketType::closure) {
-            const auto id = _graph.add_node(
-                compiler::node_type::diffuse_bsdf,
-                std::move(label));
-            static_cast<void>(_graph.set_input(
-                id,
-                "Color",
-                SocketValue::color({0.0f, 0.0f, 0.0f})));
-            static_cast<void>(_graph.set_input(
-                id,
-                "Roughness",
-                SocketValue::floating(0.0f)));
-            static_cast<void>(_graph.set_input(
-                id,
-                "Normal",
-                SocketValue::normal({0.0f, 0.0f, 0.0f})));
-            return {
-                .ref = {.node = id, .socket = "Closure"},
-                .type = SocketType::closure};
+            return null_closure(std::move(label));
         }
         if (type == SocketType::floating ||
             type == SocketType::boolean ||
@@ -938,6 +1008,11 @@ private:
             const auto id = _graph.add_node(
                 compiler::node_type::bump,
                 node_name);
+            static_cast<void>(_graph.set_property(
+                id,
+                "NormalLinked",
+                SocketValue::boolean(
+                    input_source(node, "Normal").has_value())));
             static_cast<void>(bind(
                 id,
                 "Height",
@@ -1021,6 +1096,22 @@ private:
             const auto id = _graph.add_node(
                 compiler::node_type::texture_coordinate,
                 node_name);
+            if (type == "UVMAP") {
+                const auto uv_map =
+                    node_property_text(node, "uv_map");
+                static_cast<void>(_graph.set_property(
+                    id,
+                    "UvMapNamed",
+                    SocketValue::boolean(!uv_map.empty())));
+                static_cast<void>(_graph.set_property(
+                    id,
+                    "UvMapId",
+                    SocketValue::unsigned_integer(
+                        uv_map.empty()
+                            ? 0u
+                            : contract::uv_attribute_id(
+                                  uv_map))));
+            }
             const auto output_socket =
                 type == "UVMAP" ? std::string{"UV"} : socket;
             const auto output_type =
@@ -1104,6 +1195,11 @@ private:
             const auto id = _graph.add_node(
                 compiler::node_type::layer_weight,
                 node_name);
+            static_cast<void>(_graph.set_property(
+                id,
+                "NormalLinked",
+                SocketValue::boolean(
+                    input_source(node, "Normal").has_value())));
             static_cast<void>(bind(
                 id,
                 "Blend",
@@ -1123,6 +1219,26 @@ private:
                         socket == "Facing"
                             ? "Facing"
                             : "Fresnel"},
+                .type = SocketType::floating});
+        }
+        if (type == "FRESNEL") {
+            const auto id = _graph.add_node(
+                compiler::node_type::fresnel,
+                node_name);
+            static_cast<void>(bind(
+                id,
+                "IOR",
+                node,
+                "IOR",
+                SocketType::floating));
+            static_cast<void>(bind(
+                id,
+                "Normal",
+                node,
+                "Normal",
+                SocketType::normal));
+            return finish({
+                .ref = {.node = id, .socket = "Factor"},
                 .type = SocketType::floating});
         }
         if (type == "NEW_GEOMETRY") {
@@ -1240,6 +1356,21 @@ private:
                     node, "extension", "REPEAT"))));
             static_cast<void>(_graph.set_property(
                 id,
+                "Interpolation",
+                SocketValue::string(node_property_text(
+                    node, "interpolation", "Linear"))));
+            static_cast<void>(_graph.set_property(
+                id,
+                "Projection",
+                SocketValue::string(node_property_text(
+                    node, "projection", "FLAT"))));
+            static_cast<void>(_graph.set_property(
+                id,
+                "ProjectionBlend",
+                SocketValue::floating(node_property_number(
+                    node, "projection_blend", 0.0f))));
+            static_cast<void>(_graph.set_property(
+                id,
                 "ColorSpace",
                 SocketValue::string(color_space)));
             static_cast<void>(_graph.set_property(
@@ -1330,43 +1461,222 @@ private:
                 .ref = {.node = id, .socket = "Color"},
                 .type = SocketType::color});
         }
-        if (type == "MIX") {
-            const auto blend_type =
-                node_property_text(node, "blend_type", "MIX");
-            const auto multiply = blend_type == "MULTIPLY";
+        if (type == "BLACKBODY" || type == "WAVELENGTH") {
+            const auto is_blackbody = type == "BLACKBODY";
+            const auto input_name =
+                is_blackbody ? "Temperature" : "Wavelength";
             const auto id = _graph.add_node(
-                multiply
-                    ? compiler::node_type::multiply_color
-                    : compiler::node_type::mix_color,
+                is_blackbody
+                    ? compiler::node_type::blackbody
+                    : compiler::node_type::wavelength,
                 node_name);
             static_cast<void>(bind(
                 id,
-                "Factor",
+                input_name,
                 node,
-                "Factor_Float",
+                input_name,
                 SocketType::floating));
-            static_cast<void>(bind(
-                id, "A", node, "A_Color", SocketType::color));
-            static_cast<void>(bind(
-                id, "B", node, "B_Color", SocketType::color));
-            if (!multiply) {
-                static_cast<void>(_graph.set_property(
-                    id,
-                    "BlendMode",
-                    SocketValue::string(blend_type)));
-            }
-            if (blend_type != "MIX" &&
-                blend_type != "MULTIPLY" &&
-                blend_type != "VALUE" &&
-                blend_type != "COLOR") {
+            return finish({
+                .ref = {.node = id, .socket = "Color"},
+                .type = SocketType::color});
+        }
+        if (type == "MIX" || type == "MIX_RGB") {
+            const auto blend_type =
+                node_property_text(node, "blend_type", "MIX");
+            constexpr std::array supported_blends{
+                "MIX",
+                "DARKEN",
+                "MULTIPLY",
+                "BURN",
+                "LIGHTEN",
+                "SCREEN",
+                "DODGE",
+                "ADD",
+                "OVERLAY",
+                "SOFT_LIGHT",
+                "LINEAR_LIGHT",
+                "DIFFERENCE",
+                "EXCLUSION",
+                "SUBTRACT",
+                "DIVIDE",
+                "HUE",
+                "SATURATION",
+                "COLOR",
+                "VALUE"};
+            if (std::find(
+                    supported_blends.begin(),
+                    supported_blends.end(),
+                    blend_type) == supported_blends.end()) {
                 warn_once(
                     "mix:" + blend_type,
                     "Mix blend mode '" + blend_type +
                         "' currently uses linear Mix");
             }
-            return finish({
-                .ref = {.node = id, .socket = "Color"},
-                .type = SocketType::color});
+            if (type == "MIX_RGB") {
+                const auto id = _graph.add_node(
+                    compiler::node_type::mix_color,
+                    node_name);
+                static_cast<void>(bind(
+                    id,
+                    "Factor",
+                    node,
+                    "Fac",
+                    SocketType::floating));
+                static_cast<void>(bind(
+                    id,
+                    "A",
+                    node,
+                    "Color1",
+                    SocketType::color));
+                static_cast<void>(bind(
+                    id,
+                    "B",
+                    node,
+                    "Color2",
+                    SocketType::color));
+                static_cast<void>(_graph.set_property(
+                    id,
+                    "BlendMode",
+                    SocketValue::string(blend_type)));
+                // Cycles always clamps the legacy MixRGB factor. The
+                // Blender use_alpha option is not consumed by Cycles.
+                static_cast<void>(_graph.set_property(
+                    id,
+                    "ClampFactor",
+                    SocketValue::boolean(true)));
+                static_cast<void>(_graph.set_property(
+                    id,
+                    "ClampResult",
+                    SocketValue::boolean(node_property_bool(
+                        node, "use_clamp"))));
+                return finish({
+                    .ref = {.node = id, .socket = "Color"},
+                    .type = SocketType::color});
+            }
+
+            const auto data_type =
+                node_property_text(node, "data_type", "FLOAT");
+            const auto clamp_factor =
+                node_property_bool(node, "clamp_factor", true);
+            if (data_type == "FLOAT") {
+                const auto id = _graph.add_node(
+                    compiler::node_type::mix_float,
+                    node_name);
+                static_cast<void>(bind(
+                    id,
+                    "Factor",
+                    node,
+                    "Factor_Float",
+                    SocketType::floating));
+                static_cast<void>(bind(
+                    id,
+                    "A",
+                    node,
+                    "A_Float",
+                    SocketType::floating));
+                static_cast<void>(bind(
+                    id,
+                    "B",
+                    node,
+                    "B_Float",
+                    SocketType::floating));
+                static_cast<void>(_graph.set_property(
+                    id,
+                    "ClampFactor",
+                    SocketValue::boolean(clamp_factor)));
+                return finish({
+                    .ref = {.node = id, .socket = "Value"},
+                    .type = SocketType::floating});
+            }
+            if (data_type == "VECTOR") {
+                const auto nonuniform =
+                    node_property_text(
+                        node,
+                        "factor_mode",
+                        "UNIFORM") == "NON_UNIFORM";
+                const auto id = _graph.add_node(
+                    nonuniform
+                        ? compiler::node_type::
+                              mix_vector_nonuniform
+                        : compiler::node_type::mix_vector,
+                    node_name);
+                static_cast<void>(bind(
+                    id,
+                    "Factor",
+                    node,
+                    nonuniform
+                        ? "Factor_Vector"
+                        : "Factor_Float",
+                    nonuniform
+                        ? SocketType::vector
+                        : SocketType::floating));
+                static_cast<void>(bind(
+                    id,
+                    "A",
+                    node,
+                    "A_Vector",
+                    SocketType::vector));
+                static_cast<void>(bind(
+                    id,
+                    "B",
+                    node,
+                    "B_Vector",
+                    SocketType::vector));
+                static_cast<void>(_graph.set_property(
+                    id,
+                    "ClampFactor",
+                    SocketValue::boolean(clamp_factor)));
+                return finish({
+                    .ref = {.node = id, .socket = "Vector"},
+                    .type = SocketType::vector});
+            }
+            if (data_type == "RGBA") {
+                const auto id = _graph.add_node(
+                    compiler::node_type::mix_color,
+                    node_name);
+                static_cast<void>(bind(
+                    id,
+                    "Factor",
+                    node,
+                    "Factor_Float",
+                    SocketType::floating));
+                static_cast<void>(bind(
+                    id,
+                    "A",
+                    node,
+                    "A_Color",
+                    SocketType::color));
+                static_cast<void>(bind(
+                    id,
+                    "B",
+                    node,
+                    "B_Color",
+                    SocketType::color));
+                static_cast<void>(_graph.set_property(
+                    id,
+                    "BlendMode",
+                    SocketValue::string(blend_type)));
+                static_cast<void>(_graph.set_property(
+                    id,
+                    "ClampFactor",
+                    SocketValue::boolean(clamp_factor)));
+                static_cast<void>(_graph.set_property(
+                    id,
+                    "ClampResult",
+                    SocketValue::boolean(node_property_bool(
+                        node, "clamp_result"))));
+                return finish({
+                    .ref = {.node = id, .socket = "Color"},
+                    .type = SocketType::color});
+            }
+            warn_once(
+                "mix-data:" + data_type,
+                "Mix data type '" + data_type +
+                    "' is not exposed by the Cycles device adapter");
+            return finish(constant_from_output(
+                node,
+                socket,
+                SocketType::vector));
         }
         if (type == "CLAMP") {
             const auto id = _graph.add_node(
@@ -1387,37 +1697,216 @@ private:
                 .ref = {.node = id, .socket = "Result"},
                 .type = SocketType::floating});
         }
+        if (type == "MAP_RANGE") {
+            const auto data_type =
+                node_property_text(node, "data_type", "FLOAT");
+            const auto vector_mode =
+                data_type == "FLOAT_VECTOR";
+            const auto id = _graph.add_node(
+                compiler::node_type::map_range,
+                node_name);
+            if (vector_mode) {
+                static_cast<void>(bind(
+                    id,
+                    "Vector",
+                    node,
+                    "Vector",
+                    SocketType::vector));
+                static_cast<void>(bind(
+                    id,
+                    "FromMinVector",
+                    node,
+                    "From_Min_FLOAT3",
+                    SocketType::vector));
+                static_cast<void>(bind(
+                    id,
+                    "FromMaxVector",
+                    node,
+                    "From_Max_FLOAT3",
+                    SocketType::vector));
+                static_cast<void>(bind(
+                    id,
+                    "ToMinVector",
+                    node,
+                    "To_Min_FLOAT3",
+                    SocketType::vector));
+                static_cast<void>(bind(
+                    id,
+                    "ToMaxVector",
+                    node,
+                    "To_Max_FLOAT3",
+                    SocketType::vector));
+                static_cast<void>(bind(
+                    id,
+                    "StepsVector",
+                    node,
+                    "Steps_FLOAT3",
+                    SocketType::vector));
+            } else {
+                static_cast<void>(bind(
+                    id,
+                    "Value",
+                    node,
+                    "Value",
+                    SocketType::floating));
+                static_cast<void>(bind(
+                    id,
+                    "FromMin",
+                    node,
+                    "From Min",
+                    SocketType::floating));
+                static_cast<void>(bind(
+                    id,
+                    "FromMax",
+                    node,
+                    "From Max",
+                    SocketType::floating));
+                static_cast<void>(bind(
+                    id,
+                    "ToMin",
+                    node,
+                    "To Min",
+                    SocketType::floating));
+                static_cast<void>(bind(
+                    id,
+                    "ToMax",
+                    node,
+                    "To Max",
+                    SocketType::floating));
+                static_cast<void>(bind(
+                    id,
+                    "Steps",
+                    node,
+                    "Steps",
+                    SocketType::floating));
+            }
+            static_cast<void>(_graph.set_property(
+                id,
+                "DataType",
+                SocketValue::string(data_type)));
+            static_cast<void>(_graph.set_property(
+                id,
+                "Interpolation",
+                SocketValue::string(node_property_text(
+                    node,
+                    "interpolation_type",
+                    "LINEAR"))));
+            static_cast<void>(_graph.set_property(
+                id,
+                "Clamp",
+                SocketValue::boolean(node_property_bool(
+                    node, "clamp", true))));
+            return finish({
+                .ref = {
+                    .node = id,
+                    .socket =
+                        vector_mode ? "Vector" : "Result"},
+                .type =
+                    vector_mode
+                        ? SocketType::vector
+                        : SocketType::floating});
+        }
+        if (type == "VECT_MATH") {
+            const auto id = _graph.add_node(
+                compiler::node_type::vector_math,
+                node_name);
+            static_cast<void>(bind(
+                id,
+                "A",
+                node,
+                "Vector",
+                SocketType::vector));
+            static_cast<void>(bind(
+                id,
+                "B",
+                node,
+                "Vector_001",
+                SocketType::vector));
+            static_cast<void>(bind(
+                id,
+                "C",
+                node,
+                "Vector_002",
+                SocketType::vector));
+            static_cast<void>(bind(
+                id,
+                "Scale",
+                node,
+                "Scale",
+                SocketType::floating));
+            static_cast<void>(_graph.set_property(
+                id,
+                "Operation",
+                SocketValue::string(node_property_text(
+                    node, "operation", "ADD"))));
+            const auto scalar_output = socket == "Value";
+            return finish({
+                .ref = {
+                    .node = id,
+                    .socket =
+                        scalar_output ? "Value" : "Vector"},
+                .type =
+                    scalar_output
+                        ? SocketType::floating
+                        : SocketType::vector});
+        }
         if (type == "MATH") {
             const auto operation =
                 node_property_text(node, "operation", "ADD");
-            const auto *psycles_type =
-                operation == "MULTIPLY"
-                    ? compiler::node_type::multiply_float
-                    : operation == "SUBTRACT"
-                          ? compiler::node_type::subtract_float
-                          : operation == "DIVIDE"
-                                ? compiler::node_type::divide_float
-                                : operation == "MINIMUM"
-                                      ? compiler::node_type::minimum_float
-                                      : operation == "MAXIMUM"
-                                            ? compiler::node_type::maximum_float
-                                            : operation == "POWER"
-                                                  ? compiler::node_type::power_float
-                                                  : compiler::node_type::add_float;
-            if (operation != "ADD" &&
-                operation != "MULTIPLY" &&
-                operation != "SUBTRACT" &&
-                operation != "DIVIDE" &&
-                operation != "MINIMUM" &&
-                operation != "MAXIMUM" &&
-                operation != "POWER") {
+            constexpr std::array supported{
+                "ADD",
+                "SUBTRACT",
+                "MULTIPLY",
+                "DIVIDE",
+                "MULTIPLY_ADD",
+                "POWER",
+                "LOGARITHM",
+                "SQRT",
+                "INVERSE_SQRT",
+                "ABSOLUTE",
+                "EXPONENT",
+                "MINIMUM",
+                "MAXIMUM",
+                "LESS_THAN",
+                "GREATER_THAN",
+                "SIGN",
+                "COMPARE",
+                "SMOOTH_MIN",
+                "SMOOTH_MAX",
+                "ROUND",
+                "FLOOR",
+                "CEIL",
+                "TRUNC",
+                "FRACT",
+                "MODULO",
+                "FLOORED_MODULO",
+                "WRAP",
+                "SNAP",
+                "PINGPONG",
+                "SINE",
+                "COSINE",
+                "TANGENT",
+                "ARCSINE",
+                "ARCCOSINE",
+                "ARCTANGENT",
+                "ARCTAN2",
+                "SINH",
+                "COSH",
+                "TANH",
+                "RADIANS",
+                "DEGREES"};
+            if (std::find(
+                    supported.begin(),
+                    supported.end(),
+                    operation) == supported.end()) {
                 warn_once(
                     "math:" + operation,
                     "Math operation '" + operation +
                         "' currently uses Add");
             }
-            const auto id =
-                _graph.add_node(psycles_type, node_name);
+            const auto id = _graph.add_node(
+                compiler::node_type::math,
+                node_name);
             static_cast<void>(bind(
                 id, "A", node, "Value", SocketType::floating));
             static_cast<void>(bind(
@@ -1426,6 +1915,16 @@ private:
                 node,
                 "Value_001",
                 SocketType::floating));
+            static_cast<void>(bind(
+                id,
+                "C",
+                node,
+                "Value_002",
+                SocketType::floating));
+            static_cast<void>(_graph.set_property(
+                id,
+                "Operation",
+                SocketValue::string(operation)));
             TypedOutput result{
                 .ref = {.node = id, .socket = "Value"},
                 .type = SocketType::floating};
@@ -1448,12 +1947,20 @@ private:
                 id, "Factor", node, "Fac", SocketType::floating));
             auto *ramp = member(
                 member(node, "special"), "color_ramp");
+            auto *samples = member(ramp, "samples");
             static_cast<void>(_graph.set_property(
                 id,
                 "Interpolation",
                 SocketValue::string(text(
                     member(ramp, "interpolation"),
                     "LINEAR"))));
+            static_cast<void>(_graph.set_property(
+                id,
+                "Sampled",
+                SocketValue::boolean(
+                    samples != nullptr &&
+                    yyjson_is_arr(samples) &&
+                    yyjson_arr_size(samples) >= 2u)));
             static_cast<void>(_graph.set_property(
                 id,
                 "Table",
@@ -1472,10 +1979,37 @@ private:
             const auto id = _graph.add_node(
                 compiler::node_type::rgb_curve,
                 node_name);
+            auto *mapping = member(
+                member(node, "special"), "curve_mapping");
+            auto *samples = member(mapping, "samples");
             static_cast<void>(bind(
                 id, "Factor", node, "Fac", SocketType::floating));
             static_cast<void>(bind(
                 id, "Color", node, "Color", SocketType::color));
+            static_cast<void>(_graph.set_property(
+                id,
+                "Sampled",
+                SocketValue::boolean(
+                    samples != nullptr &&
+                    yyjson_is_arr(samples) &&
+                    yyjson_arr_size(samples) >= 2u)));
+            static_cast<void>(_graph.set_property(
+                id,
+                "MinX",
+                SocketValue::floating(
+                    number(member(mapping, "min_x"), 0.0f))));
+            static_cast<void>(_graph.set_property(
+                id,
+                "MaxX",
+                SocketValue::floating(
+                    number(member(mapping, "max_x"), 1.0f))));
+            static_cast<void>(_graph.set_property(
+                id,
+                "Extrapolate",
+                SocketValue::boolean(
+                    boolean(
+                        member(mapping, "extrapolate"),
+                        true))));
             static_cast<void>(_graph.set_property(
                 id,
                 "Table",
@@ -1488,6 +2022,8 @@ private:
             const auto id = _graph.add_node(
                 compiler::node_type::normal_map,
                 node_name);
+            const auto uv_map =
+                node_property_text(node, "uv_map");
             static_cast<void>(bind(
                 id,
                 "Strength",
@@ -1501,6 +2037,18 @@ private:
                 "Space",
                 SocketValue::string(node_property_text(
                     node, "space", "TANGENT"))));
+            static_cast<void>(_graph.set_property(
+                id,
+                "UvMapNamed",
+                SocketValue::boolean(!uv_map.empty())));
+            static_cast<void>(_graph.set_property(
+                id,
+                "UvMapId",
+                SocketValue::unsigned_integer(
+                    uv_map.empty()
+                        ? 0u
+                        : contract::uv_tangent_attribute_id(
+                              uv_map))));
             return finish({
                 .ref = {.node = id, .socket = "Normal"},
                 .type = SocketType::normal});
@@ -1615,6 +2163,49 @@ private:
                     socket == "Color"
                         ? SocketType::color
                         : SocketType::floating});
+        }
+        if (type == "TEX_CHECKER") {
+            const auto id = _graph.add_node(
+                compiler::node_type::checker_texture,
+                node_name);
+            for (const auto &[target, source] : {
+                     std::pair{"Vector", "Vector"},
+                     std::pair{"Color1", "Color1"},
+                     std::pair{"Color2", "Color2"},
+                     std::pair{"Scale", "Scale"}}) {
+                const auto target_view =
+                    std::string_view{target};
+                const auto target_type =
+                    target_view == "Vector"
+                        ? SocketType::vector
+                        : target_view == "Color1" ||
+                                  target_view == "Color2"
+                              ? SocketType::color
+                              : SocketType::floating;
+                if (target_type == SocketType::vector &&
+                    !input_source(node, source)) {
+                    static_cast<void>(_graph.connect(
+                        default_generated_coordinates().ref,
+                        id,
+                        target));
+                } else {
+                    static_cast<void>(bind(
+                        id,
+                        target,
+                        node,
+                        source,
+                        target_type));
+                }
+            }
+            return finish({
+                .ref = {
+                    .node = id,
+                    .socket =
+                        socket == "Fac" ? "Factor" : "Color"},
+                .type =
+                    socket == "Fac"
+                        ? SocketType::floating
+                        : SocketType::color});
         }
         if (type == "TEX_BRICK") {
             const auto id = _graph.add_node(
@@ -1758,6 +2349,41 @@ private:
                 .ref = {.node = id, .socket = output},
                 .type = SocketType::floating});
         }
+        if (type == "SEPRGB" ||
+            type == "SEPHSV" ||
+            type == "SEPXYZ") {
+            const auto id = _graph.add_node(
+                compiler::node_type::separate_color,
+                node_name);
+            const auto input_name =
+                type == "SEPRGB"
+                    ? "Image"
+                    : type == "SEPHSV"
+                          ? "Color"
+                          : "Vector";
+            static_cast<void>(bind(
+                id,
+                "Color",
+                node,
+                input_name,
+                SocketType::color));
+            static_cast<void>(_graph.set_property(
+                id,
+                "Mode",
+                SocketValue::string(
+                    type == "SEPHSV" ? "HSV" : "RGB")));
+            const auto output =
+                socket == "R" || socket == "H" ||
+                        socket == "X"
+                    ? "R"
+                    : socket == "G" || socket == "S" ||
+                              socket == "Y"
+                          ? "G"
+                          : "B";
+            return finish({
+                .ref = {.node = id, .socket = output},
+                .type = SocketType::floating});
+        }
         if (type == "COMBINE_COLOR") {
             const auto mode =
                 node_property_text(node, "mode", "RGB");
@@ -1778,10 +2404,73 @@ private:
                 .ref = {.node = id, .socket = "Color"},
                 .type = SocketType::color});
         }
+        if (type == "COMBRGB" ||
+            type == "COMBHSV" ||
+            type == "COMBXYZ") {
+            const auto id = _graph.add_node(
+                compiler::node_type::combine_color,
+                node_name);
+            const auto first =
+                type == "COMBRGB"
+                    ? "R"
+                    : type == "COMBHSV" ? "H" : "X";
+            const auto second =
+                type == "COMBRGB"
+                    ? "G"
+                    : type == "COMBHSV" ? "S" : "Y";
+            const auto third =
+                type == "COMBRGB"
+                    ? "B"
+                    : type == "COMBHSV" ? "V" : "Z";
+            static_cast<void>(bind(
+                id,
+                "R",
+                node,
+                first,
+                SocketType::floating));
+            static_cast<void>(bind(
+                id,
+                "G",
+                node,
+                second,
+                SocketType::floating));
+            static_cast<void>(bind(
+                id,
+                "B",
+                node,
+                third,
+                SocketType::floating));
+            static_cast<void>(_graph.set_property(
+                id,
+                "Mode",
+                SocketValue::string(
+                    type == "COMBHSV" ? "HSV" : "RGB")));
+            TypedOutput result{
+                .ref = {.node = id, .socket = "Color"},
+                .type = SocketType::color};
+            return finish(
+                type == "COMBXYZ"
+                    ? conversion(
+                          result, SocketType::vector)
+                    : result);
+        }
         if (type == "TEX_SKY") {
             const auto id = _graph.add_node(
                 compiler::node_type::nishita_sky,
                 node_name);
+            if (input_source(node, "Vector")) {
+                static_cast<void>(bind(
+                    id,
+                    "Vector",
+                    node,
+                    "Vector",
+                    SocketType::vector));
+            } else {
+                static_cast<void>(_graph.connect(
+                    default_generated_coordinates().ref,
+                    id,
+                    "Vector"));
+            }
             constexpr auto pi = 3.14159265358979323846f;
             constexpr auto two_pi = 2.0f * pi;
             auto elevation = std::fmod(
@@ -2587,6 +3276,63 @@ BlenderSceneImport load_blender_scene_bundle(
                 result.pass_alpha_threshold),
             0.0f,
             1.0f);
+        auto *color_management =
+            member(render, "color_management");
+        result.color_management.display_device = text(
+            member(color_management, "display_device"),
+            result.color_management.display_device);
+        result.color_management.view_transform = text(
+            member(color_management, "view_transform"),
+            result.color_management.view_transform);
+        result.color_management.look = text(
+            member(color_management, "look"),
+            result.color_management.look);
+        result.color_management.sequencer_color_space = text(
+            member(color_management, "sequencer_color_space"),
+            result.color_management.sequencer_color_space);
+        result.color_management.exposure = number(
+            member(color_management, "exposure"),
+            result.color_management.exposure);
+        result.color_management.gamma = std::max(
+            number(
+                member(color_management, "gamma"),
+                result.color_management.gamma),
+            1.0e-6f);
+        result.color_management.use_curve_mapping = boolean(
+            member(color_management, "use_curve_mapping"),
+            result.color_management.use_curve_mapping);
+        auto *shader_transforms =
+            member(color_management, "shader_transforms");
+        auto *xyz_to_rgb =
+            member(shader_transforms, "xyz_to_rgb");
+        auto *rec709_to_rgb =
+            member(shader_transforms, "rec709_to_rgb");
+        if (
+            yyjson_is_arr(xyz_to_rgb) &&
+            yyjson_arr_size(xyz_to_rgb) >= 3u) {
+            scene.shader_color_space.xyz_to_r = float3(
+                yyjson_arr_get(xyz_to_rgb, 0u),
+                scene.shader_color_space.xyz_to_r);
+            scene.shader_color_space.xyz_to_g = float3(
+                yyjson_arr_get(xyz_to_rgb, 1u),
+                scene.shader_color_space.xyz_to_g);
+            scene.shader_color_space.xyz_to_b = float3(
+                yyjson_arr_get(xyz_to_rgb, 2u),
+                scene.shader_color_space.xyz_to_b);
+        }
+        if (
+            yyjson_is_arr(rec709_to_rgb) &&
+            yyjson_arr_size(rec709_to_rgb) >= 3u) {
+            scene.shader_color_space.rec709_to_r = float3(
+                yyjson_arr_get(rec709_to_rgb, 0u),
+                scene.shader_color_space.rec709_to_r);
+            scene.shader_color_space.rec709_to_g = float3(
+                yyjson_arr_get(rec709_to_rgb, 1u),
+                scene.shader_color_space.rec709_to_g);
+            scene.shader_color_space.rec709_to_b = float3(
+                yyjson_arr_get(rec709_to_rgb, 2u),
+                scene.shader_color_space.rec709_to_b);
+        }
         auto *cycles = member(render, "cycles");
         result.seed = static_cast<std::uint32_t>(
             unsigned_number(member(cycles, "seed")));
@@ -2898,6 +3644,44 @@ BlenderSceneImport load_blender_scene_bundle(
                     generated_values[i * 3u + 1u],
                     generated_values[i * 3u + 2u]});
             }
+            auto *uv_layers = member(geometry, "uv_layers");
+            if (uv_layers != nullptr &&
+                yyjson_is_arr(uv_layers)) {
+                yyjson_arr_iter uv_layer_iterator =
+                    yyjson_arr_iter_with(uv_layers);
+                while (auto *uv_layer =
+                           yyjson_arr_iter_next(
+                               &uv_layer_iterator)) {
+                    const auto name =
+                        text(member(uv_layer, "name"));
+                    auto values = read_values<float>(
+                        geometry_stream,
+                        section_offset(uv_layer, "values"),
+                        vertex_count * 2u);
+                    auto tangents = read_values<float>(
+                        geometry_stream,
+                        section_offset(uv_layer, "tangents"),
+                        vertex_count * 4u);
+                    auto &uv_destination =
+                        mesh.uv_layers[name];
+                    auto &tangent_destination =
+                        mesh.uv_tangent_layers[name];
+                    uv_destination.reserve(vertex_count);
+                    tangent_destination.reserve(vertex_count);
+                    for (std::size_t i = 0u;
+                         i < vertex_count;
+                         ++i) {
+                        uv_destination.emplace_back(Vec2f{
+                            values[i * 2u],
+                            values[i * 2u + 1u]});
+                        tangent_destination.emplace_back(Vec4f{
+                            tangents[i * 4u],
+                            tangents[i * 4u + 1u],
+                            tangents[i * 4u + 2u],
+                            tangents[i * 4u + 3u]});
+                    }
+                }
+            }
             auto *color_attributes =
                 member(geometry, "color_attributes");
             if (color_attributes != nullptr &&
@@ -3031,6 +3815,42 @@ BlenderSceneImport load_blender_scene_bundle(
         while (auto *light =
                    yyjson_arr_iter_next(&light_iterator)) {
             const auto type = text(member(light, "type"));
+            auto color = float3(
+                member(light, "color"),
+                {1.0f, 1.0f, 1.0f});
+            const auto temperature_color = float3(
+                member(light, "temperature_color"),
+                {1.0f, 1.0f, 1.0f});
+            color.x *= temperature_color.x;
+            color.y *= temperature_color.y;
+            color.z *= temperature_color.z;
+            const auto size =
+                number(member(light, "size"), 0.0f);
+            const auto shape =
+                text(member(light, "shape"), "POINT");
+            std::optional<MaterialId> light_shader;
+            auto *light_tree = member(light, "node_tree");
+            if (light_tree != nullptr &&
+                !yyjson_is_null(light_tree) &&
+                member(light_tree, "surface_root") != nullptr &&
+                !yyjson_is_null(
+                    member(light_tree, "surface_root"))) {
+                light_shader = MaterialId{material_index++};
+                scene.materials.emplace(
+                    *light_shader,
+                    MaterialDesc{
+                        .name =
+                            text(member(light, "name")) +
+                            " / Light Shader",
+                        .shader =
+                            normalized_material_graph(
+                                light,
+                                image_ids,
+                                image_color_spaces,
+                                image_alpha_types,
+                                node_groups,
+                                result.diagnostics)});
+            }
             scene.lights.emplace(
                 LightId{light_index++},
                 LightDesc{
@@ -3045,16 +3865,34 @@ BlenderSceneImport load_blender_scene_bundle(
                                         : LightType::point,
                     .transform =
                         matrix(member(light, "transform")),
-                    .color = float3(
-                        member(light, "color"),
-                        {1.0f, 1.0f, 1.0f}),
+                    .color = color,
                     .power =
-                        number(member(light, "energy"), 1.0f),
-                    .size =
-                        number(member(light, "size"), 0.0f),
+                        number(member(light, "energy"), 1.0f) *
+                        std::exp2(number(
+                            member(light, "exposure"),
+                            0.0f)),
+                    .size = size,
+                    .size_y = number(
+                        member(light, "size_y"), size),
                     .spread =
                         number(member(light, "spread"), 3.14159265f),
-                    .shader = std::nullopt});
+                    .spot_angle = number(
+                        member(light, "spot_size"),
+                        0.78539816339f),
+                    .spot_smooth = number(
+                        member(light, "spot_blend"),
+                        0.15f),
+                    .angle =
+                        number(member(light, "angle"), 0.0f),
+                    .normalize = boolean(
+                        member(light, "normalize"), true),
+                    .ellipse =
+                        shape == "DISK" ||
+                        shape == "ELLIPSE",
+                    .is_sphere = !boolean(
+                        member(light, "use_soft_falloff"),
+                        false),
+                    .shader = light_shader});
         }
 
         auto *world = member(root, "world");

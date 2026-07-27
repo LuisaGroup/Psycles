@@ -25,6 +25,16 @@ _PASS_CHANNELS = {
     "Combined": ("R", "G", "B"),
     "Normal": ("X", "Y", "Z"),
     "DiffCol": ("R", "G", "B"),
+    "GlossCol": ("R", "G", "B"),
+    "TransCol": ("R", "G", "B"),
+    "DiffDir": ("R", "G", "B"),
+    "DiffInd": ("R", "G", "B"),
+    "GlossDir": ("R", "G", "B"),
+    "GlossInd": ("R", "G", "B"),
+    "TransDir": ("R", "G", "B"),
+    "TransInd": ("R", "G", "B"),
+    "Emit": ("R", "G", "B"),
+    "Env": ("R", "G", "B"),
     "Depth": ("Z",),
     "Debug Sample Count": ("X",),
 }
@@ -82,9 +92,43 @@ def _metrics(reference: np.ndarray, actual: np.ndarray) -> dict[str, Any]:
     difference = actual[valid_pixels] - reference[valid_pixels]
     absolute = np.abs(difference)
     reference_values = reference[valid_pixels]
+    actual_values = actual[valid_pixels]
     rmse = float(np.sqrt(np.mean(difference * difference)))
     reference_rms = float(np.sqrt(np.mean(reference_values * reference_values)))
     per_pixel = np.sqrt(np.mean(difference * difference, axis=1))
+    reference_channel_mean = np.mean(reference_values, axis=0)
+    actual_channel_mean = np.mean(actual_values, axis=0)
+    channel_mean_ratio = np.divide(
+        actual_channel_mean,
+        reference_channel_mean,
+        out=np.zeros_like(actual_channel_mean),
+        where=np.abs(reference_channel_mean) > 1.0e-20,
+    )
+    mean_metrics: dict[str, Any] = {
+        "cycles_channel_mean": reference_channel_mean.tolist(),
+        "psycles_channel_mean": actual_channel_mean.tolist(),
+        "channel_mean_ratio": channel_mean_ratio.tolist(),
+    }
+    if reference_values.shape[1] == 3:
+        luminance_weights = np.asarray(
+            [0.2126, 0.7152, 0.0722], dtype=np.float32
+        )
+        reference_luminance_mean = float(
+            np.mean(reference_values @ luminance_weights)
+        )
+        actual_luminance_mean = float(
+            np.mean(actual_values @ luminance_weights)
+        )
+        mean_metrics.update(
+            {
+                "cycles_luminance_mean": reference_luminance_mean,
+                "psycles_luminance_mean": actual_luminance_mean,
+                "luminance_mean_ratio": (
+                    actual_luminance_mean
+                    / max(abs(reference_luminance_mean), 1.0e-20)
+                ),
+            }
+        )
     orientation_rmse = {}
     for name, candidate in {
         "identity": actual,
@@ -114,6 +158,7 @@ def _metrics(reference: np.ndarray, actual: np.ndarray) -> dict[str, Any]:
         "psycles_rms": float(
             math.sqrt(float(np.mean(actual[valid_pixels] ** 2)))
         ),
+        **mean_metrics,
         "orientation_rmse": orientation_rmse,
     }
 

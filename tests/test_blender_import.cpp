@@ -210,6 +210,15 @@ void test_integrator_settings_round_trip() {
     "pixel_filter_type": "GAUSSIAN",
     "filter_width": 2.25,
     "pass_alpha_threshold": 0.375,
+    "color_management": {
+      "display_device": "Display P3",
+      "view_transform": "Filmic",
+      "look": "Medium Contrast",
+      "exposure": -2.0,
+      "gamma": 1.1,
+      "use_curve_mapping": false,
+      "sequencer_color_space": "Linear Rec.709"
+    },
     "cycles": {
       "samples": 37,
       "seed": 305419896,
@@ -280,6 +289,30 @@ void test_integrator_settings_round_trip() {
         imported.pass_alpha_threshold,
         0.375f,
         "pass alpha threshold did not round-trip");
+    expect(
+        imported.color_management.display_device == "Display P3",
+        "display device did not round-trip");
+    expect(
+        imported.color_management.view_transform == "Filmic",
+        "view transform did not round-trip");
+    expect(
+        imported.color_management.look == "Medium Contrast",
+        "view look did not round-trip");
+    expect_near(
+        imported.color_management.exposure,
+        -2.0f,
+        "view exposure did not round-trip");
+    expect_near(
+        imported.color_management.gamma,
+        1.1f,
+        "view gamma did not round-trip");
+    expect(
+        !imported.color_management.use_curve_mapping,
+        "curve-mapping setting did not round-trip");
+    expect(
+        imported.color_management.sequencer_color_space ==
+            "Linear Rec.709",
+        "sequencer color space did not round-trip");
     expect(
         imported.scene->environment.has_value(),
         "Nishita world did not produce an environment");

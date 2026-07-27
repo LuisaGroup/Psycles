@@ -54,16 +54,73 @@ Hue/Saturation/Value hue wrapping, saturation clamp, value scaling, and factor
 blending. All currently match Blender 4.5.10 Cycles exactly for Combined,
 Normal, and DiffCol at 64×64 (RMSE and maximum absolute error 0).
 
+Color Ramp follows Cycles' normalized pre-SVM contract rather than reimplementing
+Blender's color-band evaluator in the path kernel. The exporter evaluates the
+Blender ramp at the same 257 endpoints used by Cycles; the Luisa shader indexes
+that immutable table with Cycles' clamp, scale, floor, and interpolation rules.
+The constant matrix covers RGB/HSV/HSL, Linear/Constant/Ease/Cardinal/B-Spline,
+all four hue paths, out-of-range factors, exact table boundaries, Color, and
+Alpha. Against official Cycles its Combined RMSE is `1.61e-8` for Color and
+exactly zero for Alpha; Normal and DiffCol are exactly zero. A spatial
+Generated-coordinate probe additionally exercises dynamic indexing and measures
+Combined RMSE `6.36e-4`, with the residual attributable to film sampling.
+`VALTORGB` is therefore `cycles_verified`.
+
+Mapping now implements Cycles' four device formulas directly in Luisa:
+Point applies scale, Euler rotation, and translation; Texture applies inverse
+translation, transposed Euler rotation, and safe inverse scale; Vector omits
+translation; Normal applies safe inverse scale, rotation, and normalization.
+The matrix probe covers all four modes with non-commuting rotations and
+positive, negative, and zero scale components. Combined RMSE is `1.72e-8`
+against official Cycles, with Normal and DiffCol exactly zero; `MAPPING` is
+`cycles_verified`.
+
+Blender's `ShaderNodeBump` is `cycles_verified`. Psycles reconstructs the same
+compact Cycles ray differentials from the geometric normal, reevaluates the
+height dependency subgraph at center/dx/dy, preserves the raw linked Normal
+socket semantics, and follows Cycles' determinant, invert, nonnegative-strength,
+zero-normal fallback, and final blend rules. The 16-cell matrix covers
+Strength/Distance/Filter Width boundaries, mixed height gradients, Invert,
+backfaces, linked non-unit/zero/tangent normals, and a rotated non-uniform
+object transform. Against official Blender 4.5.10 Cycles, Combined and Emit
+RMSE are `6.92e-7`, Normal RMSE is `5.36e-8`, and all other recorded passes
+are exactly zero. A second 16-cell matrix connects a complete inner Bump to
+the outer Bump's Normal input and varies both nodes independently; Combined
+and Emit RMSE are `9.75e-7`, with Normal RMSE `5.36e-8`. Cycles' internal
+object-space bump generated from a Displacement root remains part of the
+separately release-gated Displacement domain; it is not claimed by the Blender
+Bump-node result.
+
+Normal Map is `cycles_verified` across Tangent, Object, World,
+Blender Object, and Blender World spaces. Blender exports every evaluated UV
+layer together with its own MikkTSpace tangent/sign data; the normalized graph
+stores a named tangent attribute ID, and Luisa selects that geometry attribute
+at the hit. A missing named layer follows Cycles' zero-tangent fallback to the
+unperturbed shading normal. The primary 16-cell matrix covers all spaces,
+strength boundaries, mirrored UVs, backfaces, and a rotated non-uniform object
+transform (Combined/Emit RMSE `4.77e-8`). A second matrix selects the active
+layer, two differently oriented named layers, and a missing layer
+(Combined/Emit RMSE `3.61e-8`, Normal RMSE `5.50e-8`).
+
+RGB Curves uses the same normalized pre-SVM contract as Cycles. The Blender
+adapter finds the common domain of the four curves, evaluates 257 endpoints,
+applies the Combined curve before the R/G/B curves, and exports the resulting
+immutable table. Luisa performs Cycles' per-channel lookup, horizontal or
+linear extrapolation, and unbounded Fac blend. The focused matrix covers
+ordinary and expanded domains, out-of-range colors, both extension modes, and
+Fac values below zero and above one. Combined RMSE is `7.63e-9`, and Normal
+and DiffCol are exactly zero; `CURVE_RGB` is `cycles_verified`.
+
 Noise Texture now lowers the Blender 4.5.10 Cycles hash, 1D–4D Perlin
 gradients, coordinate precision correction, five fractal recurrences,
-normalization, distortion, and color seeds directly into Luisa DSL. Focused
-256 spp probes currently measure Combined RMSE `0.000924` for 3D Color,
-`0.00357` for 2D Fac, and `0.00179` for Noise-to-Bump; the latter's Normal
-RMSE is `0.000401`. Unaffected data passes are exactly zero and all probe
-pixels are finite. The node remains `device_implemented_unverified` until
-focused probes cover every dimension, fractal mode, normalization state, and
-socket combination; finite-sample Combined differences also include the
-known random-dimension sequence gap. Each static dimension/fractal/output
+normalization, distortion, and color seeds directly into Luisa DSL. Five
+matrix probes cover every cross-product of 1D–4D, FBM/Multifractal/Ridged/
+Hybrid/Hetero Terrain, normalize off/on, and Fac/Color with nonzero
+distortion and fractional detail. Against official Blender 4.5.10 Cycles,
+their Combined RMSE ranges from `2.31e-8` to `1.25e-7`, with Normal and
+DiffCol exactly zero; `TEX_NOISE` is therefore `cycles_verified`. Spatial
+Generated-coordinate and Noise-to-Bump probes remain as integration coverage
+for derivatives and film sampling. Each static dimension/fractal/output
 combination is emitted once as a Luisa `Callable` and shared by every
 `GraphSurface`, instead of duplicating the full Cycles noise implementation
 inside every material dispatch case.
@@ -84,6 +141,132 @@ Cycles' float-bit Jenkins hashes and channel permutations. A single
 full-frame probe combines nontrivial constants from every dimension and both
 outputs; Combined, Normal, and DiffCol all match Blender 4.5.10 exactly at
 64×64/4 spp (RMSE and maximum absolute error 0).
+
+Checker Texture is `cycles_verified`. Its Luisa lowering preserves Cycles'
+float32 rounding boundaries around the coordinate-scale product and the
+`(p + 1e-6) * 0.999999` precision correction, including exact integer,
+negative, zero-scale, negative-scale, and large-coordinate cases. A 16-cell
+constant matrix encodes both Color and Fac; Combined, Normal, and DiffCol all
+match Blender 4.5.10 exactly at 64×64/4 spp (RMSE and maximum absolute error
+0).
+
+Gradient Texture is `cycles_verified` for Linear, Quadratic, Easing, Diagonal,
+Radial, Spherical, and Quadratic Sphere. Its matrix covers negative and
+over-one saturation, easing endpoints, radial quadrants, and Cycles'
+`0.999999` spherical precision bias. Against official Cycles, Combined and
+Emit RMSE are `3.73e-9` with maximum error `1.49e-8`; Normal, DiffCol, and all
+unrelated light passes are exact.
+
+Fresnel is `cycles_verified`. A 16-cell matrix covers the IOR lower clamp,
+IOR below and above one, negative inputs, explicit surface normals from normal
+incidence to grazing, and actual backfacing triangles with reciprocal eta.
+Combined RMSE is `2.61e-8` with maximum absolute error `1.04e-7`; Normal and
+DiffCol are exactly zero.
+
+Legacy Separate/Combine RGB, HSV, and XYZ nodes are `cycles_verified`.
+Their old socket identifiers and Color/Vector conversions are mapped
+explicitly rather than treated as aliases by name. A 16-cell matrix makes
+every component input and output reachable, including signed and
+out-of-range values. Combined RMSE is `9.13e-9` with a one-ULP maximum error;
+Normal and DiffCol are exactly zero.
+
+Map Range is `cycles_verified` for both FLOAT and FLOAT_VECTOR. Its Luisa
+lowering follows Cycles' distinct scalar and component-wise vector contracts,
+including the scalar graph-expansion clamp, vector safe division, all four
+interpolation modes, positive/zero/negative Steps, reversed From/To ranges,
+zero-length From intervals, and Clamp. A 16-cell constant matrix matches
+official Blender 4.5.10 Cycles exactly for Combined, Emit, Normal, DiffCol,
+and every requested direct/indirect light pass at 64×64/4 spp (RMSE and
+maximum absolute error 0).
+
+Vector Math is `cycles_verified`. One 40-cell constant matrix covers all 29
+Blender 4.5.10 operations plus guarded zero divisors, zero projection and
+normal vectors, total internal reflection, both Faceforward branches, invalid
+negative powers, zero Wrap ranges, zero Snap increments, and parallel cross
+products. The official Cycles and Psycles-Luisa/fallback outputs differ by
+only float roundoff: Combined and Emit RMSE are `8.41e-9`, with a maximum
+absolute error of `5.96e-8`; Normal, DiffCol, and every requested light pass
+are exact.
+
+Add Shader and Mix Shader are `cycles_verified` without flattening their
+closure trees. Psycles has an explicit null-closure IR/DSL operation, so
+unconnected A/B sockets do not masquerade as zero-color diffuse lobes.
+Four Add cells cover both, either, and neither input; eight Mix cells cover
+linked factors below zero, within range, and above one plus every empty-input
+combination. Combined/Emit RMSE are `3.55e-8` and `3.04e-9` respectively;
+Normal, DiffCol, and all light passes are exact.
+
+Blackbody and Wavelength are `cycles_verified`. Their polynomial intervals,
+CIE table interpolation, out-of-range clamps, and working-space conversion run
+inside Luisa DSL. The Blender exporter reproduces the same OCIO-derived
+`rec709_to_rgb` and `xyz_to_rgb` film matrices that Cycles uploads; Psycles
+does not assume the active scene-linear space is exactly Rec.709. Matrices
+cover every Blackbody interval boundary and Wavelength table/range branch.
+Against official Cycles, Combined/Emit RMSE are `9.84e-8` and `1.95e-8`
+respectively, while Normal, DiffCol, and all unrelated light passes are exact.
+
+Invert Color is `cycles_verified`. Its linked factor is deliberately
+unbounded; treating the UI Factor subtype as an implicit `[0, 1]` device clamp
+is incorrect. A 16-cell signed/HDR matrix covers factors from `-3` through `4`
+and applies a verified positive bias only to make negative intermediate values
+observable through Emission. Combined, Emit, Normal, DiffCol, and all unrelated
+light passes match official Cycles exactly.
+
+Layer Weight is `cycles_verified` for both Fresnel and Facing outputs, including
+every Blend branch and backfacing behavior. The graph IR preserves whether the
+Normal socket is linked: an unlinked socket uses the shading normal, whereas a
+linked socket consumes its raw vector without normalization or a zero-vector
+fallback. The matrix therefore includes non-unit, signed, and zero linked
+normals as well as the default normal path. Official Cycles and
+Psycles-Luisa/fallback match exactly at both 64×64/4 spp and 64×64/256 spp for
+Combined, Emit, Normal, DiffCol, and all unrelated light passes.
+
+Diffuse BSDF and Translucent BSDF are `cycles_verified`. Their Luisa closure
+allocation applies Cycles' component-wise negative-weight clamp and average
+weight cutoff; Diffuse preserves the exact Lambert-versus-Oren–Nayar roughness
+branch, and Translucent applies Cycles' valid-reflection-normal correction
+before constructing the opposite-hemisphere lobe. Two 16-cell matrices cover
+zero, signed, HDR, cutoff-boundary, and linked normal inputs, including
+non-unit, zero, tangent, and backfacing cases. Official Cycles and
+Psycles-Luisa/fallback match pixel-for-pixel at 64×64/4 spp: Combined,
+Diffuse Color, Normal, every direct/indirect light pass, emission, and
+environment passes all have zero RMSE and zero maximum absolute error.
+
+Math and Mix are now `cycles_verified`. Two Math probes cover all 41 Blender
+4.5.10 operations plus signed, zero-divisor, invalid-domain, epsilon-compare,
+three-input, and output-clamp branches; all recorded passes have zero RMSE.
+Modern Mix probes cover FLOAT, uniform and non-uniform VECTOR, RGBA, factor
+and result clamping, every color blend mode, and guarded divide/dodge/burn/HSV
+branches. Color modes and edge cases are exact; the data-type probe differs
+by at most one float ULP (`5.96e-8`, RMSE `3.44e-8`). The legacy MixRGB node
+also covers all 19 blend modes with exact passes, including Cycles' deliberate
+choice to ignore its `use_alpha` property. The RNA-only ROTATION enum is not a
+constructible Cycles mode in Blender 4.5.10; Blender itself restricts the
+runtime property to FLOAT, VECTOR, and RGBA.
+
+## Analytic-light contract
+
+Point, Spot, Area, and Sun lights are represented as scene data and sampled
+inside the Luisa path-tracing kernel. Their power normalization, temperature
+and exposure scaling, finite-radius shape, spot attenuation, rectangular or
+elliptical area, area spread, and finite Sun disk follow the Blender 4.5.10
+Cycles light sampling equations. The `fallback` runs this same generated
+Luisa program; there is no separate host light evaluator.
+
+An analytic light's Blender node tree is lowered to the same parameterized
+`GraphSurface` program used by geometry and world shaders. The direct-light
+kernel invokes its Emission root through `Polymorphic<Surface>` at the sampled
+light point. The focused `point_light_nodes` probe measures Combined relative
+RMSE `0.000710` against official Cycles; its Normal and DiffCol passes match
+exactly.
+
+`docs/cycles-light-probe-baselines-4.5.10.json` records eleven official
+Cycles/Psycles differential probes covering all four light families, point
+disk/sphere shapes, smooth Spot, rectangle/ellipse/spread Area, finite-angle
+Sun, and a Light Output node tree. High-sample ellipse and spread probes show
+energy-relative errors below `3e-5`; their remaining pixel error decreases
+with sample count and is treated as estimator variance, not a compatibility
+claim for Cycles' random sequence.
 
 ## Integrator contract
 

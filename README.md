@@ -30,37 +30,38 @@ shader-graph path, integrator contract, and explicit compatibility gaps.
 
 ## Build
 
-The contract core has no third-party dependency:
+Clone with submodules and build the default Luisa/fallback configuration:
 
 ```bash
+git clone --recurse-submodules https://github.com/LuisaGroup/Psycles.git
+cd Psycles
 cmake -S . -B build -G Ninja
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-To expose the Luisa DSL interface, configure against a LuisaCompute
-[`next`](https://github.com/LuisaGroup/LuisaCompute/tree/next) checkout:
+Psycles uses `third_party/LuisaCompute` as a CMake subdirectory. An external
+LuisaCompute checkout can still override the submodule:
 
 ```bash
 cmake -S . -B build -G Ninja \
   -DPSYCLES_LUISA_SOURCE_DIR=/path/to/LuisaCompute
-cmake --build build
 ```
 
-Alternatively, let CMake fetch that exact branch:
+For a dependency-free contract-core build:
 
 ```bash
-cmake -S . -B build -G Ninja -DPSYCLES_FETCH_LUISA_NEXT=ON
-cmake --build build
+cmake -S . -B build-core -G Ninja -DPSYCLES_ENABLE_LUISA=OFF
 ```
 
-`clangcxx` is explicitly disabled. Psycles uses the ordinary Luisa C++ DSL
-AST construction and device JIT path.
+See [BUILD.md](BUILD.md) for prerequisites, backend options, cache behavior,
+and troubleshooting. Current implementation status and release gates are in
+[DEVELOP.md](DEVELOP.md).
 
 ## Render through Luisa
 
 ```bash
-./build/psycles_luisa_render_demo psycles-luisa.ppm fallback 640 400 256
+./build/bin/psycles_luisa_render_demo psycles-luisa.ppm fallback 640 400 256
 ```
 
 The arguments are output path, Luisa backend, width, height, and samples per

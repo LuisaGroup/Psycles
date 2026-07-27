@@ -3,6 +3,7 @@
 #include <psycles/io/image.h>
 #include <psycles/luisa/path_tracer.h>
 
+#include <array>
 #include <charconv>
 #include <chrono>
 #include <cstdint>
@@ -10,7 +11,9 @@
 #include <filesystem>
 #include <iostream>
 #include <optional>
+#include <string>
 #include <string_view>
+#include <utility>
 
 #include <luisa/luisa-compute.h>
 
@@ -125,6 +128,58 @@ int main(int argc, char **argv) {
             {.kind = psycles::contract::PassKind::albedo,
              .name = "Albedo",
              .light_group = {},
+             .channels = 3u},
+            {.kind =
+                 psycles::contract::PassKind::glossy_color,
+             .name = "GlossCol",
+             .light_group = {},
+             .channels = 3u},
+            {.kind =
+                 psycles::contract::PassKind::
+                     transmission_color,
+             .name = "TransCol",
+             .light_group = {},
+             .channels = 3u},
+            {.kind = psycles::contract::PassKind::emission,
+             .name = "Emit",
+             .light_group = {},
+             .channels = 3u},
+            {.kind =
+                 psycles::contract::PassKind::environment,
+             .name = "Env",
+             .light_group = {},
+             .channels = 3u},
+            {.kind =
+                 psycles::contract::PassKind::diffuse_direct,
+             .name = "DiffDir",
+             .light_group = {},
+             .channels = 3u},
+            {.kind =
+                 psycles::contract::PassKind::diffuse_indirect,
+             .name = "DiffInd",
+             .light_group = {},
+             .channels = 3u},
+            {.kind =
+                 psycles::contract::PassKind::glossy_direct,
+             .name = "GlossDir",
+             .light_group = {},
+             .channels = 3u},
+            {.kind =
+                 psycles::contract::PassKind::glossy_indirect,
+             .name = "GlossInd",
+             .light_group = {},
+             .channels = 3u},
+            {.kind =
+                 psycles::contract::PassKind::
+                     transmission_direct,
+             .name = "TransDir",
+             .light_group = {},
+             .channels = 3u},
+            {.kind =
+                 psycles::contract::PassKind::
+                     transmission_indirect,
+             .name = "TransInd",
+             .light_group = {},
              .channels = 3u}}};
     const auto session_begin =
         std::chrono::steady_clock::now();
@@ -180,6 +235,46 @@ int main(int argc, char **argv) {
         !psycles::io::write_pfm(*normal, normal_path) ||
         !psycles::io::write_pfm(*albedo, albedo_path)) {
         return EXIT_FAILURE;
+    }
+    constexpr std::array component_passes{
+        std::pair{
+            psycles::contract::PassKind::glossy_color,
+            std::string_view{"glossy-color"}},
+        std::pair{
+            psycles::contract::PassKind::transmission_color,
+            std::string_view{"transmission-color"}},
+        std::pair{
+            psycles::contract::PassKind::emission,
+            std::string_view{"emission"}},
+        std::pair{
+            psycles::contract::PassKind::environment,
+            std::string_view{"environment"}},
+        std::pair{
+            psycles::contract::PassKind::diffuse_direct,
+            std::string_view{"diffuse-direct"}},
+        std::pair{
+            psycles::contract::PassKind::diffuse_indirect,
+            std::string_view{"diffuse-indirect"}},
+        std::pair{
+            psycles::contract::PassKind::glossy_direct,
+            std::string_view{"glossy-direct"}},
+        std::pair{
+            psycles::contract::PassKind::glossy_indirect,
+            std::string_view{"glossy-indirect"}},
+        std::pair{
+            psycles::contract::PassKind::transmission_direct,
+            std::string_view{"transmission-direct"}},
+        std::pair{
+            psycles::contract::PassKind::transmission_indirect,
+            std::string_view{"transmission-indirect"}}};
+    for (const auto &[kind, suffix] : component_passes) {
+        const auto *pass = sink.find(kind);
+        const auto path = std::filesystem::path{
+            stem.string() + "-" + std::string{suffix} + ".pfm"};
+        if (pass == nullptr ||
+            !psycles::io::write_pfm(*pass, path)) {
+            return EXIT_FAILURE;
+        }
     }
 
     std::cout

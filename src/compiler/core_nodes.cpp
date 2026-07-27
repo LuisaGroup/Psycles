@@ -96,7 +96,15 @@ NodeRegistry make_core_node_registry() {
             output("Normal", SocketType::vector),
             output("Generated", SocketType::vector),
             output("Object", SocketType::vector)},
-        .properties = {},
+        .properties = {
+            property(
+                "UvMapNamed",
+                SocketType::boolean,
+                SocketValue::boolean(false)),
+            property(
+                "UvMapId",
+                SocketType::unsigned_integer,
+                SocketValue::unsigned_integer(0u))},
         .required_features =
             feature_bit(ShaderFeature::surface) |
             feature_bit(ShaderFeature::attributes)}));
@@ -160,6 +168,28 @@ NodeRegistry make_core_node_registry() {
         .outputs = {
             output("Fresnel", SocketType::floating),
             output("Facing", SocketType::floating)},
+        .properties = {
+            property(
+                "NormalLinked",
+                SocketType::boolean,
+                SocketValue::boolean(false))},
+        .required_features =
+            feature_bit(ShaderFeature::surface) |
+            feature_bit(ShaderFeature::ray_state)}));
+
+    static_cast<void>(registry.register_schema(NodeSchema{
+        .type = node_type::fresnel,
+        .inputs = {
+            input(
+                "IOR",
+                SocketType::floating,
+                SocketValue::floating(1.5f)),
+            input(
+                "Normal",
+                SocketType::normal,
+                SocketValue::normal({0.0f, 0.0f, 0.0f}))},
+        .outputs = {
+            output("Factor", SocketType::floating)},
         .properties = {},
         .required_features =
             feature_bit(ShaderFeature::surface) |
@@ -196,6 +226,18 @@ NodeRegistry make_core_node_registry() {
                 "Extension",
                 SocketType::string,
                 SocketValue::string("REPEAT")),
+            property(
+                "Interpolation",
+                SocketType::string,
+                SocketValue::string("Linear")),
+            property(
+                "Projection",
+                SocketType::string,
+                SocketValue::string("FLAT")),
+            property(
+                "ProjectionBlend",
+                SocketType::floating,
+                SocketValue::floating(0.0f)),
             property(
                 "ColorSpace",
                 SocketType::string,
@@ -268,6 +310,31 @@ NodeRegistry make_core_node_registry() {
         .required_features = feature_bit(ShaderFeature::surface)}));
 
     static_cast<void>(registry.register_schema(NodeSchema{
+        .type = node_type::checker_texture,
+        .inputs = {
+            input(
+                "Vector",
+                SocketType::vector,
+                SocketValue::vector({0.0f, 0.0f, 0.0f})),
+            input(
+                "Color1",
+                SocketType::color,
+                SocketValue::color({0.8f, 0.8f, 0.8f})),
+            input(
+                "Color2",
+                SocketType::color,
+                SocketValue::color({0.2f, 0.2f, 0.2f})),
+            input(
+                "Scale",
+                SocketType::floating,
+                SocketValue::floating(5.0f))},
+        .outputs = {
+            output("Color", SocketType::color),
+            output("Factor", SocketType::floating)},
+        .properties = {},
+        .required_features = feature_bit(ShaderFeature::surface)}));
+
+    static_cast<void>(registry.register_schema(NodeSchema{
         .type = node_type::brick_texture,
         .inputs = {
             input("Vector", SocketType::vector, SocketValue::vector({0.0f, 0.0f, 0.0f})),
@@ -317,6 +384,7 @@ NodeRegistry make_core_node_registry() {
     static_cast<void>(registry.register_schema(NodeSchema{
         .type = node_type::nishita_sky,
         .inputs = {
+            input("Vector", SocketType::vector, SocketValue::vector({0.0f, 0.0f, 0.0f})),
             input("SunElevation", SocketType::floating, SocketValue::floating(0.7853982f)),
             input("SunRotation", SocketType::floating, SocketValue::floating(0.0f)),
             input("SunSize", SocketType::floating, SocketValue::floating(0.00918043f)),
@@ -330,6 +398,20 @@ NodeRegistry make_core_node_registry() {
         .required_features =
             feature_bit(ShaderFeature::surface) |
             feature_bit(ShaderFeature::ray_state)}));
+
+    static_cast<void>(registry.register_schema(NodeSchema{
+        .type = node_type::math,
+        .inputs = {
+            input("A", SocketType::floating, SocketValue::floating(0.5f)),
+            input("B", SocketType::floating, SocketValue::floating(0.5f)),
+            input("C", SocketType::floating, SocketValue::floating(0.5f))},
+        .outputs = {output("Value", SocketType::floating)},
+        .properties = {
+            property(
+                "Operation",
+                SocketType::string,
+                SocketValue::string("ADD"))},
+        .required_features = {}}));
 
     static_cast<void>(registry.register_schema(NodeSchema{
         .type = node_type::add_float,
@@ -392,6 +474,104 @@ NodeRegistry make_core_node_registry() {
         .required_features = {}}));
 
     static_cast<void>(registry.register_schema(NodeSchema{
+        .type = node_type::map_range,
+        .inputs = {
+            input(
+                "Value",
+                SocketType::floating,
+                SocketValue::floating(1.0f)),
+            input(
+                "FromMin",
+                SocketType::floating,
+                SocketValue::floating(0.0f)),
+            input(
+                "FromMax",
+                SocketType::floating,
+                SocketValue::floating(1.0f)),
+            input(
+                "ToMin",
+                SocketType::floating,
+                SocketValue::floating(0.0f)),
+            input(
+                "ToMax",
+                SocketType::floating,
+                SocketValue::floating(1.0f)),
+            input(
+                "Steps",
+                SocketType::floating,
+                SocketValue::floating(4.0f)),
+            input(
+                "Vector",
+                SocketType::vector,
+                SocketValue::vector({0.0f, 0.0f, 0.0f})),
+            input(
+                "FromMinVector",
+                SocketType::vector,
+                SocketValue::vector({0.0f, 0.0f, 0.0f})),
+            input(
+                "FromMaxVector",
+                SocketType::vector,
+                SocketValue::vector({1.0f, 1.0f, 1.0f})),
+            input(
+                "ToMinVector",
+                SocketType::vector,
+                SocketValue::vector({0.0f, 0.0f, 0.0f})),
+            input(
+                "ToMaxVector",
+                SocketType::vector,
+                SocketValue::vector({1.0f, 1.0f, 1.0f})),
+            input(
+                "StepsVector",
+                SocketType::vector,
+                SocketValue::vector({4.0f, 4.0f, 4.0f}))},
+        .outputs = {
+            output("Result", SocketType::floating),
+            output("Vector", SocketType::vector)},
+        .properties = {
+            property(
+                "DataType",
+                SocketType::string,
+                SocketValue::string("FLOAT")),
+            property(
+                "Interpolation",
+                SocketType::string,
+                SocketValue::string("LINEAR")),
+            property(
+                "Clamp",
+                SocketType::boolean,
+                SocketValue::boolean(true))},
+        .required_features = {}}));
+
+    static_cast<void>(registry.register_schema(NodeSchema{
+        .type = node_type::vector_math,
+        .inputs = {
+            input(
+                "A",
+                SocketType::vector,
+                SocketValue::vector({0.0f, 0.0f, 0.0f})),
+            input(
+                "B",
+                SocketType::vector,
+                SocketValue::vector({0.0f, 0.0f, 0.0f})),
+            input(
+                "C",
+                SocketType::vector,
+                SocketValue::vector({0.0f, 0.0f, 0.0f})),
+            input(
+                "Scale",
+                SocketType::floating,
+                SocketValue::floating(1.0f))},
+        .outputs = {
+            output("Vector", SocketType::vector),
+            output("Value", SocketType::floating)},
+        .properties = {
+            property(
+                "Operation",
+                SocketType::string,
+                SocketValue::string("ADD"))},
+        .required_features = {}}));
+
+    static_cast<void>(registry.register_schema(NodeSchema{
         .type = node_type::scalar_to_color,
         .inputs = {
             input("Value", SocketType::floating, SocketValue::floating(0.0f))},
@@ -448,6 +628,46 @@ NodeRegistry make_core_node_registry() {
         .required_features = {}}));
 
     static_cast<void>(registry.register_schema(NodeSchema{
+        .type = node_type::mix_float,
+        .inputs = {
+            input("Factor", SocketType::floating, SocketValue::floating(0.5f)),
+            input("A", SocketType::floating, SocketValue::floating(0.0f)),
+            input("B", SocketType::floating, SocketValue::floating(0.0f))},
+        .outputs = {output("Value", SocketType::floating)},
+        .properties = {
+            property(
+                "ClampFactor",
+                SocketType::boolean,
+                SocketValue::boolean(true))},
+        .required_features = {}}));
+
+    for (const auto *type : {
+             node_type::mix_vector,
+             node_type::mix_vector_nonuniform}) {
+        static_cast<void>(registry.register_schema(NodeSchema{
+            .type = type,
+            .inputs = {
+                input(
+                    "Factor",
+                    type == node_type::mix_vector
+                        ? SocketType::floating
+                        : SocketType::vector,
+                    type == node_type::mix_vector
+                        ? SocketValue::floating(0.5f)
+                        : SocketValue::vector(
+                              {0.5f, 0.5f, 0.5f})),
+                input("A", SocketType::vector, SocketValue::vector({0.0f, 0.0f, 0.0f})),
+                input("B", SocketType::vector, SocketValue::vector({0.0f, 0.0f, 0.0f}))},
+            .outputs = {output("Vector", SocketType::vector)},
+            .properties = {
+                property(
+                    "ClampFactor",
+                    SocketType::boolean,
+                    SocketValue::boolean(true))},
+            .required_features = {}}));
+    }
+
+    static_cast<void>(registry.register_schema(NodeSchema{
         .type = node_type::mix_color,
         .inputs = {
             input("Factor", SocketType::floating, SocketValue::floating(0.5f)),
@@ -458,7 +678,15 @@ NodeRegistry make_core_node_registry() {
             property(
                 "BlendMode",
                 SocketType::string,
-                SocketValue::string("MIX"))},
+                SocketValue::string("MIX")),
+            property(
+                "ClampFactor",
+                SocketType::boolean,
+                SocketValue::boolean(true)),
+            property(
+                "ClampResult",
+                SocketType::boolean,
+                SocketValue::boolean(false))},
         .required_features = {}}));
 
     static_cast<void>(registry.register_schema(NodeSchema{
@@ -512,6 +740,28 @@ NodeRegistry make_core_node_registry() {
         .required_features = {}}));
 
     static_cast<void>(registry.register_schema(NodeSchema{
+        .type = node_type::blackbody,
+        .inputs = {
+            input(
+                "Temperature",
+                SocketType::floating,
+                SocketValue::floating(1200.0f))},
+        .outputs = {output("Color", SocketType::color)},
+        .properties = {},
+        .required_features = {}}));
+
+    static_cast<void>(registry.register_schema(NodeSchema{
+        .type = node_type::wavelength,
+        .inputs = {
+            input(
+                "Wavelength",
+                SocketType::floating,
+                SocketValue::floating(500.0f))},
+        .outputs = {output("Color", SocketType::color)},
+        .properties = {},
+        .required_features = {}}));
+
+    static_cast<void>(registry.register_schema(NodeSchema{
         .type = node_type::color_ramp,
         .inputs = {
             input("Factor", SocketType::floating, SocketValue::floating(0.0f))},
@@ -523,6 +773,10 @@ NodeRegistry make_core_node_registry() {
                 "Interpolation",
                 SocketType::string,
                 SocketValue::string("LINEAR")),
+            property(
+                "Sampled",
+                SocketType::boolean,
+                SocketValue::boolean(false)),
             property(
                 "Table",
                 SocketType::string,
@@ -536,6 +790,22 @@ NodeRegistry make_core_node_registry() {
             input("Color", SocketType::color, SocketValue::color({0.0f, 0.0f, 0.0f}))},
         .outputs = {output("Color", SocketType::color)},
         .properties = {
+            property(
+                "Sampled",
+                SocketType::boolean,
+                SocketValue::boolean(false)),
+            property(
+                "MinX",
+                SocketType::floating,
+                SocketValue::floating(0.0f)),
+            property(
+                "MaxX",
+                SocketType::floating,
+                SocketValue::floating(1.0f)),
+            property(
+                "Extrapolate",
+                SocketType::boolean,
+                SocketValue::boolean(true)),
             property(
                 "Table",
                 SocketType::string,
@@ -581,7 +851,15 @@ NodeRegistry make_core_node_registry() {
             property(
                 "Space",
                 SocketType::string,
-                SocketValue::string("TANGENT"))},
+                SocketValue::string("TANGENT")),
+            property(
+                "UvMapNamed",
+                SocketType::boolean,
+                SocketValue::boolean(false)),
+            property(
+                "UvMapId",
+                SocketType::unsigned_integer,
+                SocketValue::unsigned_integer(0u))},
         .required_features =
             feature_bit(ShaderFeature::surface) |
             feature_bit(ShaderFeature::derivatives)}));
@@ -598,6 +876,10 @@ NodeRegistry make_core_node_registry() {
         .properties = {
             property(
                 "Invert",
+                SocketType::boolean,
+                SocketValue::boolean(false)),
+            property(
+                "NormalLinked",
                 SocketType::boolean,
                 SocketValue::boolean(false))},
         .required_features =
@@ -684,6 +966,13 @@ NodeRegistry make_core_node_registry() {
         .required_features =
             feature_bit(ShaderFeature::surface) |
             feature_bit(ShaderFeature::transparency)}));
+
+    static_cast<void>(registry.register_schema(NodeSchema{
+        .type = node_type::null_closure,
+        .inputs = {},
+        .outputs = {output("Closure", SocketType::closure)},
+        .properties = {},
+        .required_features = feature_bit(ShaderFeature::surface)}));
 
     static_cast<void>(registry.register_schema(NodeSchema{
         .type = node_type::add_closure,

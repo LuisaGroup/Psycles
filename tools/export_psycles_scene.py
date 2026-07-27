@@ -37,6 +37,83 @@ import blender_scene_manifest as manifest  # noqa: E402
 _UINT32_MASK = 0xFFFFFFFF
 
 
+def _cycles_shader_color_space() -> dict[str, list[list[float]]]:
+    """Reproduce Cycles ShaderManager::init_xyz_transforms from OCIO."""
+    xyz_to_rec709 = np.asarray(
+        (
+            (3.2404542, -1.5371385, -0.4985314),
+            (-0.9692660, 1.8760108, 0.0415560),
+            (0.0556434, -0.2040259, 1.0572252),
+        ),
+        dtype=np.float32,
+    )
+    xyz_to_rgb = xyz_to_rec709.copy()
+    try:
+        import PyOpenColorIO as ocio
+
+        config = ocio.GetCurrentConfig()
+        roles = dict(config.getRoles())
+        if "aces_interchange" in roles:
+            processor = config.getProcessor(
+                "scene_linear", "aces_interchange"
+            ).getDefaultCPUProcessor()
+            transformed_basis = np.asarray(
+                [
+                    processor.applyRGB([1.0, 0.0, 0.0]),
+                    processor.applyRGB([0.0, 1.0, 0.0]),
+                    processor.applyRGB([0.0, 0.0, 1.0]),
+                ],
+                dtype=np.float32,
+            )
+            aces_ap0_to_xyz_d65 = np.asarray(
+                (
+                    (0.938280, -0.004451, 0.016628),
+                    (0.337369, 0.729522, -0.066890),
+                    (0.001174, -0.003711, 1.091595),
+                ),
+                dtype=np.float32,
+            )
+            xyz_to_rgb = (
+                np.linalg.inv(transformed_basis.T)
+                @ np.linalg.inv(aces_ap0_to_xyz_d65)
+            ).astype(np.float32)
+        elif "XYZ" in roles:
+            processor = config.getProcessor(
+                "scene_linear", "XYZ"
+            ).getDefaultCPUProcessor()
+            transformed_basis = np.asarray(
+                [
+                    processor.applyRGB([1.0, 0.0, 0.0]),
+                    processor.applyRGB([0.0, 1.0, 0.0]),
+                    processor.applyRGB([0.0, 0.0, 1.0]),
+                ],
+                dtype=np.float32,
+            )
+            xyz_to_rgb = np.linalg.inv(
+                transformed_basis.T
+            ).astype(np.float32)
+    except Exception as error:
+        print(
+            "Warning: could not derive Cycles OCIO shader transforms; "
+            f"using Rec.709 defaults: {error}",
+            file=sys.stderr,
+        )
+
+    rec709_to_rgb = (
+        xyz_to_rgb @ np.linalg.inv(xyz_to_rec709)
+    ).astype(np.float32)
+    return {
+        "xyz_to_rgb": [
+            [float(component) for component in row]
+            for row in xyz_to_rgb
+        ],
+        "rec709_to_rgb": [
+            [float(component) for component in row]
+            for row in rec709_to_rgb
+        ],
+    }
+
+
 def _u32(value: int) -> int:
     return value & _UINT32_MASK
 
@@ -112,8 +189,17 @@ def _active_output(
     tree: Any,
     socket: str,
     world: bool = False,
+    light: bool = False,
 ) -> dict[str, str] | None:
-    expected = "ShaderNodeOutputWorld" if world else "ShaderNodeOutputMaterial"
+    expected = (
+        "ShaderNodeOutputLight"
+        if light
+        else (
+            "ShaderNodeOutputWorld"
+            if world
+            else "ShaderNodeOutputMaterial"
+        )
+    )
     for node in tree.nodes:
         if node.bl_idname == expected and getattr(node, "is_active_output", True):
             links = _socket_links(tree)
@@ -123,14 +209,24 @@ def _active_output(
     return None
 
 
-def _tree(tree: Any, world: bool = False) -> dict[str, Any] | None:
+def _tree(
+    tree: Any,
+    world: bool = False,
+    light: bool = False,
+) -> dict[str, Any] | None:
     data = manifest._node_tree_manifest(tree)
     if data is not None:
-        data["surface_root"] = _active_output(tree, "Surface", world)
-        data["volume_root"] = _active_output(tree, "Volume", world)
+        data["surface_root"] = _active_output(
+            tree, "Surface", world, light
+        )
+        data["volume_root"] = (
+            None
+            if light
+            else _active_output(tree, "Volume", world)
+        )
         data["displacement_root"] = (
             None
-            if world
+            if world or light
             else _active_output(tree, "Displacement", world)
         )
     return data
@@ -140,8 +236,19 @@ def _write_array(stream: Any, values: array.array[Any]) -> dict[str, int]:
     if sys.byteorder != "little":
         values.byteswap()
     offset = stream.tell()
-    values.tofile(stream)
-    return {"offset": offset, "bytes": stream.tell() - offset}
+    # Do not mix ``array.tofile`` with writes to Python's buffered stream.
+    # Some Blender/Python builds let ``tofile`` bypass the buffered writer;
+    # the logical file position then advances while the last physical write
+    # is absent when the section table is validated.  A byte memoryview keeps
+    # every write on the same stream path without copying large meshes.
+    payload = memoryview(values).cast("B")
+    written = stream.write(payload)
+    if written != len(payload):
+        raise OSError(
+            f"short geometry write: expected {len(payload)} bytes, "
+            f"wrote {written}"
+        )
+    return {"offset": offset, "bytes": written}
 
 
 def _geometry(
@@ -194,24 +301,55 @@ def _geometry(
         mesh.calc_loop_triangles()
         if not mesh.loop_triangles:
             return None
-        uv_layer = mesh.uv_layers.active
-        has_uv_tangents = False
-        if uv_layer is not None:
+        uv_layer_names = [layer.name for layer in mesh.uv_layers]
+        active_uv_name = (
+            mesh.uv_layers.active.name
+            if mesh.uv_layers.active is not None
+            else None
+        )
+        uv_by_layer: dict[str, list[tuple[float, float]]] = {}
+        tangent_by_layer: dict[
+            str, list[tuple[float, float, float, float]]
+        ] = {}
+        for uv_layer_name in uv_layer_names:
+            has_tangents = False
             try:
-                mesh.calc_tangents(uvmap=uv_layer.name)
-                has_uv_tangents = True
+                mesh.calc_tangents(uvmap=uv_layer_name)
+                has_tangents = True
             except RuntimeError:
-                # Match Cycles' missing tangent-attribute behavior. The
-                # exported zero tangent is consumed as "use sd->N".
-                has_uv_tangents = False
-        # calc_tangents may reallocate loop CustomData. Never retain the
-        # pre-call Python layer wrapper, which can become a dangling pointer
-        # on complex evaluated meshes.
-        uv_layer = mesh.uv_layers.active
+                # Match Cycles' missing tangent-attribute behavior. A zero
+                # tangent is consumed as "use sd->N" by Normal Map.
+                pass
+            # calc_tangents may reallocate loop CustomData. Reacquire the
+            # layer by name after every call before copying its values.
+            uv_layer = mesh.uv_layers.get(uv_layer_name)
+            if uv_layer is None:
+                continue
+            uv_by_layer[uv_layer_name] = [
+                tuple(float(value) for value in item.uv)
+                for item in uv_layer.data
+            ]
+            tangent_by_layer[uv_layer_name] = [
+                (
+                    float(loop.tangent[0]),
+                    float(loop.tangent[1]),
+                    float(loop.tangent[2]),
+                    float(loop.bitangent_sign),
+                )
+                if has_tangents
+                else (0.0, 0.0, 0.0, 0.0)
+                for loop in mesh.loops
+            ]
         positions = array.array("f")
         normals = array.array("f")
         uvs = array.array("f")
         uv_tangents = array.array("f")
+        uv_layer_values = {
+            name: array.array("f") for name in uv_by_layer
+        }
+        uv_tangent_values = {
+            name: array.array("f") for name in uv_by_layer
+        }
         generated = array.array("f")
         color_layers = [
             attribute
@@ -300,19 +438,25 @@ def _geometry(
                             attribute_index
                         ].color
                     )
-                if uv_layer is None:
+                if active_uv_name not in uv_by_layer:
                     uvs.extend((0.0, 0.0))
                 else:
                     uvs.extend(
-                        float(value) for value in uv_layer.data[loop_index].uv
+                        uv_by_layer[active_uv_name][loop_index]
                     )
-                if has_uv_tangents:
-                    uv_tangents.extend(
-                        float(value) for value in loop.tangent
-                    )
-                    uv_tangents.append(float(loop.bitangent_sign))
-                else:
+                if active_uv_name not in tangent_by_layer:
                     uv_tangents.extend((0.0, 0.0, 0.0, 0.0))
+                else:
+                    uv_tangents.extend(
+                        tangent_by_layer[active_uv_name][loop_index]
+                    )
+                for layer_name, values in uv_by_layer.items():
+                    uv_layer_values[layer_name].extend(
+                        values[loop_index]
+                    )
+                    uv_tangent_values[layer_name].extend(
+                        tangent_by_layer[layer_name][loop_index]
+                    )
                 indices.append(next_index)
                 next_index += 1
             materials.append(int(triangle.material_index))
@@ -330,6 +474,18 @@ def _geometry(
             "normals": _write_array(stream, normals),
             "uv": _write_array(stream, uvs),
             "uv_tangents": _write_array(stream, uv_tangents),
+            "uv_layers": [
+                {
+                    "name": name,
+                    "values": _write_array(
+                        stream, uv_layer_values[name]
+                    ),
+                    "tangents": _write_array(
+                        stream, uv_tangent_values[name]
+                    ),
+                }
+                for name in uv_layer_values
+            ],
             "generated": _write_array(stream, generated),
             "color_attributes": [
                 {
@@ -411,19 +567,41 @@ def _export_images(output: pathlib.Path) -> list[dict[str, Any]]:
 
 def _light(obj: Any) -> dict[str, Any]:
     light = obj.data
+    use_temperature = bool(getattr(light, "use_temperature", False))
+    temperature_color = (
+        list(light.temperature_color)
+        if use_temperature
+        else [1.0, 1.0, 1.0]
+    )
+    size = (
+        float(light.shadow_soft_size)
+        if light.type in {"POINT", "SPOT"}
+        else float(getattr(light, "size", 0.0))
+    )
     return {
         "name": obj.name,
         "type": light.type,
         "transform": _column_major(obj.matrix_world),
         "color": list(light.color),
+        "temperature_color": temperature_color,
         "energy": float(light.energy),
+        "exposure": float(getattr(light, "exposure", 0.0)),
+        "normalize": bool(getattr(light, "normalize", True)),
         "shape": getattr(light, "shape", "POINT"),
-        "size": float(getattr(light, "size", 0.0)),
+        "size": size,
         "size_y": float(getattr(light, "size_y", 0.0)),
         "spread": float(getattr(light, "spread", 3.141592653589793)),
         "spot_size": float(getattr(light, "spot_size", 0.7853981633974483)),
         "spot_blend": float(getattr(light, "spot_blend", 0.15)),
-        "node_tree": _tree(light.node_tree) if light.use_nodes else None,
+        "angle": float(getattr(light, "angle", 0.0)),
+        "use_soft_falloff": bool(
+            getattr(light, "use_soft_falloff", False)
+        ),
+        "node_tree": (
+            _tree(light.node_tree, light=True)
+            if light.use_nodes
+            else None
+        ),
     }
 
 
@@ -532,6 +710,9 @@ def _main() -> None:
             attribute["values"]
             for attribute in geometry["color_attributes"]
         )
+        for uv_layer in geometry["uv_layers"]:
+            sections.append(uv_layer["values"])
+            sections.append(uv_layer["tangents"])
         for section in sections:
             end = int(section["offset"]) + int(section["bytes"])
             if (
@@ -604,6 +785,20 @@ def _main() -> None:
             "pass_alpha_threshold": float(
                 bpy.context.view_layer.pass_alpha_threshold
             ),
+            "color_management": {
+                "display_device": scene.display_settings.display_device,
+                "view_transform": scene.view_settings.view_transform,
+                "look": scene.view_settings.look,
+                "exposure": float(scene.view_settings.exposure),
+                "gamma": float(scene.view_settings.gamma),
+                "use_curve_mapping": bool(
+                    scene.view_settings.use_curve_mapping
+                ),
+                "sequencer_color_space": (
+                    scene.sequencer_colorspace_settings.name
+                ),
+                "shader_transforms": _cycles_shader_color_space(),
+            },
             "cycles": manifest._cycles_settings(scene),
         },
         "geometries": geometries,

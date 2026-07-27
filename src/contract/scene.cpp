@@ -191,6 +191,27 @@ template<typename Id>
                 "light '" + light.name +
                     "' references a missing shader");
         }
+        if (!std::isfinite(light.color.x) ||
+            !std::isfinite(light.color.y) ||
+            !std::isfinite(light.color.z) ||
+            !std::isfinite(light.power) ||
+            !std::isfinite(light.size) ||
+            !std::isfinite(light.size_y) ||
+            !std::isfinite(light.spread) ||
+            !std::isfinite(light.spot_angle) ||
+            !std::isfinite(light.spot_smooth) ||
+            !std::isfinite(light.angle) ||
+            light.size < 0.0f ||
+            light.size_y < 0.0f ||
+            light.spread < 0.0f ||
+            light.spot_angle < 0.0f ||
+            light.spot_smooth < 0.0f ||
+            light.angle < 0.0f) {
+            diagnose(
+                SceneDiagnosticCode::invalid_reference,
+                "light '" + light.name +
+                    "' contains invalid radiometric or shape parameters");
+        }
     }
 
     if (scene.world_shader &&

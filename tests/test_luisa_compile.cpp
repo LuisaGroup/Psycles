@@ -21,7 +21,9 @@ public:
         Expr<std::uint32_t>,
         Expr<luisa::float2>,
         Expr<luisa::float2>,
-        Expr<luisa::float2>) const noexcept override {
+        Expr<luisa::float2>,
+        std::uint32_t,
+        std::uint32_t) const noexcept override {
         return make_float4(0.0f);
     }
 
@@ -46,6 +48,24 @@ public:
     [[nodiscard]] Float cycles_bsdf_data(
         Expr<std::uint32_t>) const noexcept override {
         return 1.0f;
+    }
+
+    [[nodiscard]] Float3 xyz_to_rgb(
+        Expr<luisa::float3> xyz_expression)
+        const noexcept override {
+        Float3 xyz{xyz_expression};
+        return make_float3(
+            3.2404542f * xyz.x - 1.5371385f * xyz.y -
+                0.4985314f * xyz.z,
+            -0.9692660f * xyz.x + 1.8760108f * xyz.y +
+                0.0415560f * xyz.z,
+            0.0556434f * xyz.x - 0.2040259f * xyz.y +
+                1.0572252f * xyz.z);
+    }
+
+    [[nodiscard]] Float3 rec709_to_rgb(
+        Expr<luisa::float3> rec709) const noexcept override {
+        return Float3{rec709};
     }
 
     [[nodiscard]] Float3 nishita_sky(

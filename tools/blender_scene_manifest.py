@@ -101,6 +101,15 @@ def _node_special_data(node: Any) -> dict[str, Any]:
             "color_mode": ramp.color_mode,
             "interpolation": ramp.interpolation,
             "hue_interpolation": ramp.hue_interpolation,
+            # Cycles' Blender adapter evaluates ColorBand at i / 256 for
+            # i=[0, 256], then the device linearly (or constantly) looks up
+            # that 257-entry table. Export the same normalized pre-SVM data
+            # rather than reimplementing Blender's HSV/HSL/Cardinal/B-Spline
+            # ColorBand evaluator in the renderer.
+            "samples": [
+                list(ramp.evaluate(index / 256.0))
+                for index in range(257)
+            ],
             "elements": [
                 {
                     "position": element.position,
@@ -111,12 +120,15 @@ def _node_special_data(node: Any) -> dict[str, Any]:
         }
     if hasattr(node, "mapping"):
         mapping = node.mapping
+        mapping.update()
+        curves = list(mapping.curves)
         result["curve_mapping"] = {
             "black_level": list(mapping.black_level),
             "white_level": list(mapping.white_level),
             "clip_min": [mapping.clip_min_x, mapping.clip_min_y],
             "clip_max": [mapping.clip_max_x, mapping.clip_max_y],
             "use_clip": mapping.use_clip,
+            "extrapolate": mapping.extend == "EXTRAPOLATED",
             "curves": [
                 {
                     "points": [
@@ -127,9 +139,35 @@ def _node_special_data(node: Any) -> dict[str, Any]:
                         for point in curve.points
                     ]
                 }
-                for curve in mapping.curves
+                for curve in curves
             ],
         }
+        if len(curves) >= 4:
+            # This is the exact normalized data route used by Cycles'
+            # Blender adapter for ShaderNodeRGBCurve: find the common
+            # domain across all four curves, sample 257 endpoints, apply
+            # the combined curve (index 3), then the R/G/B curves.
+            min_x = min(
+                float(curve.points[0].location[0])
+                for curve in curves[:4]
+            )
+            max_x = max(
+                float(curve.points[-1].location[0])
+                for curve in curves[:4]
+            )
+            curve_mapping = result["curve_mapping"]
+            curve_mapping["min_x"] = min_x
+            curve_mapping["max_x"] = max_x
+            curve_mapping["samples"] = []
+            for index in range(257):
+                x = min_x + index / 256.0 * (max_x - min_x)
+                combined = mapping.evaluate(curves[3], x)
+                curve_mapping["samples"].append(
+                    [
+                        mapping.evaluate(curves[channel], combined)
+                        for channel in range(3)
+                    ]
+                )
     if hasattr(node, "image_user"):
         image_user = node.image_user
         result["image_user"] = {

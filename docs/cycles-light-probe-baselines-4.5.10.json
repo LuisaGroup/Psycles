@@ -1,0 +1,186 @@
+{
+  "schema": "psycles.cycles-light-probe-baselines.v1",
+  "blender_version": "4.5.10 LTS",
+  "backend": "Luisa/fallback",
+  "height": 64,
+  "seed": 20903,
+  "width": 64,
+  "verified": {
+    "area_ellipse": {
+      "combined": {
+        "energy_relative_error": 1.3527305787075505e-05,
+        "invalid_pixels": 0,
+        "maximum_absolute_error": 0.0027064383029937744,
+        "relative_rmse": 0.002057847612025304
+      },
+      "family": "area",
+      "limits": {
+        "max_energy_relative_error": 0.001,
+        "max_maximum_absolute_error": 0.004,
+        "max_relative_rmse": 0.003
+      },
+      "probe": "area_light_ellipse",
+      "samples": 8192
+    },
+    "area_rectangle": {
+      "combined": {
+        "energy_relative_error": 0.0003381719012380824,
+        "invalid_pixels": 0,
+        "maximum_absolute_error": 0.01661542057991028,
+        "relative_rmse": 0.013067619777915145
+      },
+      "family": "area",
+      "limits": {
+        "max_energy_relative_error": 0.001,
+        "max_maximum_absolute_error": 0.022,
+        "max_relative_rmse": 0.018
+      },
+      "probe": "area_light",
+      "samples": 256
+    },
+    "area_spread": {
+      "combined": {
+        "energy_relative_error": 2.7912136351337935e-05,
+        "invalid_pixels": 0,
+        "maximum_absolute_error": 0.14110851287841797,
+        "relative_rmse": 0.010523224502692665
+      },
+      "family": "area",
+      "limits": {
+        "max_energy_relative_error": 0.001,
+        "max_maximum_absolute_error": 0.18,
+        "max_relative_rmse": 0.014
+      },
+      "probe": "area_light_spread",
+      "samples": 8192
+    },
+    "point": {
+      "combined": {
+        "energy_relative_error": 4.790690145584087e-06,
+        "invalid_pixels": 0,
+        "maximum_absolute_error": 0.0002377927303314209,
+        "relative_rmse": 0.0007093966011657351
+      },
+      "family": "point",
+      "limits": {
+        "max_energy_relative_error": 0.001,
+        "max_maximum_absolute_error": 0.00035,
+        "max_relative_rmse": 0.001
+      },
+      "probe": "point_light",
+      "samples": 256
+    },
+    "point_shader_nodes": {
+      "combined": {
+        "energy_relative_error": 4.758047316477665e-06,
+        "invalid_pixels": 0,
+        "maximum_absolute_error": 8.71904194355011e-05,
+        "relative_rmse": 0.0007097485484811195
+      },
+      "family": "point",
+      "limits": {
+        "max_energy_relative_error": 0.001,
+        "max_maximum_absolute_error": 0.00015,
+        "max_relative_rmse": 0.001
+      },
+      "probe": "point_light_nodes",
+      "samples": 256
+    },
+    "point_soft_disk": {
+      "combined": {
+        "energy_relative_error": 4.4018702921477804e-05,
+        "invalid_pixels": 0,
+        "maximum_absolute_error": 0.0003333538770675659,
+        "relative_rmse": 0.001037069967550137
+      },
+      "family": "point",
+      "limits": {
+        "max_energy_relative_error": 0.001,
+        "max_maximum_absolute_error": 0.0005,
+        "max_relative_rmse": 0.0015
+      },
+      "probe": "point_light_soft_disk",
+      "samples": 1024
+    },
+    "point_soft_sphere": {
+      "combined": {
+        "energy_relative_error": 3.381765101273526e-05,
+        "invalid_pixels": 0,
+        "maximum_absolute_error": 0.0003419741988182068,
+        "relative_rmse": 0.0010127604699685557
+      },
+      "family": "point",
+      "limits": {
+        "max_energy_relative_error": 0.001,
+        "max_maximum_absolute_error": 0.0005,
+        "max_relative_rmse": 0.0015
+      },
+      "probe": "point_light_soft_sphere",
+      "samples": 1024
+    },
+    "spot": {
+      "combined": {
+        "energy_relative_error": 2.106632923559726e-05,
+        "invalid_pixels": 0,
+        "maximum_absolute_error": 0.0023418590426445007,
+        "relative_rmse": 0.004154768196664448
+      },
+      "family": "spot",
+      "limits": {
+        "max_energy_relative_error": 0.001,
+        "max_maximum_absolute_error": 0.0035,
+        "max_relative_rmse": 0.006
+      },
+      "probe": "spot_light",
+      "samples": 256
+    },
+    "spot_soft": {
+      "combined": {
+        "energy_relative_error": 7.005051513675475e-05,
+        "invalid_pixels": 0,
+        "maximum_absolute_error": 0.004064235836267471,
+        "relative_rmse": 0.0088400546984962
+      },
+      "family": "spot",
+      "limits": {
+        "max_energy_relative_error": 0.001,
+        "max_maximum_absolute_error": 0.006,
+        "max_relative_rmse": 0.012
+      },
+      "probe": "spot_light_soft",
+      "samples": 1024
+    },
+    "sun": {
+      "combined": {
+        "energy_relative_error": 9.806946457135979e-07,
+        "invalid_pixels": 0,
+        "maximum_absolute_error": 0.0006239861249923706,
+        "relative_rmse": 6.103512952579281e-05
+      },
+      "family": "sun",
+      "limits": {
+        "max_energy_relative_error": 0.001,
+        "max_maximum_absolute_error": 0.001,
+        "max_relative_rmse": 0.0001
+      },
+      "probe": "sun_light",
+      "samples": 256
+    },
+    "sun_disk": {
+      "combined": {
+        "energy_relative_error": 4.747815068872896e-06,
+        "invalid_pixels": 0,
+        "maximum_absolute_error": 1.93864107131958e-05,
+        "relative_rmse": 3.374635019641659e-05
+      },
+      "family": "sun",
+      "limits": {
+        "max_energy_relative_error": 0.001,
+        "max_maximum_absolute_error": 0.00005,
+        "max_relative_rmse": 0.0001
+      },
+      "probe": "sun_light_disk",
+      "samples": 1024
+    }
+  }
+}

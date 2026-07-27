@@ -34,7 +34,10 @@ enum class PassKind : std::uint16_t {
     denoising_albedo,
     sample_count,
     aov_color,
-    aov_value
+    aov_value,
+    glossy_color,
+    transmission_color,
+    environment
 };
 
 struct PassRequest {

@@ -11,9 +11,11 @@ option(PSYCLES_ENABLE_LUISA "Build the LuisaCompute DSL interface when available
 option(PSYCLES_ENABLE_LUISA_FALLBACK
     "Build LuisaCompute's fallback backend for machines without a GPU backend" ON)
 option(PSYCLES_FETCH_LUISA_NEXT
-    "Fetch LuisaCompute from its next branch when no source tree is supplied" OFF)
+    "Fetch LuisaCompute from its next branch when neither a source tree nor the bundled submodule is available" OFF)
 set(PSYCLES_LUISA_SOURCE_DIR "" CACHE PATH
-    "Path to a LuisaCompute source tree. Leave empty when the parent project already defines luisa::compute.")
+    "Optional path to an external LuisaCompute source tree. Overrides the bundled submodule.")
+set(PSYCLES_LUISA_SUBMODULE_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/LuisaCompute")
 
 if(PSYCLES_BUILD_TESTS)
     include(CTest)
@@ -44,27 +46,42 @@ else()
 endif()
 
 if(PSYCLES_ENABLE_LUISA)
+    set(_psycles_luisa_source_dir "")
     if(PSYCLES_LUISA_SOURCE_DIR)
-        if(NOT EXISTS "${PSYCLES_LUISA_SOURCE_DIR}/CMakeLists.txt")
+        set(_psycles_luisa_source_dir "${PSYCLES_LUISA_SOURCE_DIR}")
+        if(NOT EXISTS "${_psycles_luisa_source_dir}/CMakeLists.txt")
             message(FATAL_ERROR
                 "PSYCLES_LUISA_SOURCE_DIR does not point to a LuisaCompute source tree: "
-                "${PSYCLES_LUISA_SOURCE_DIR}")
+                "${_psycles_luisa_source_dir}")
         endif()
+        message(STATUS
+            "Using external LuisaCompute source tree: "
+            "${_psycles_luisa_source_dir}")
+    elseif(EXISTS "${PSYCLES_LUISA_SUBMODULE_DIR}/CMakeLists.txt")
+        set(_psycles_luisa_source_dir "${PSYCLES_LUISA_SUBMODULE_DIR}")
+        message(STATUS
+            "Using bundled LuisaCompute submodule: "
+            "${_psycles_luisa_source_dir}")
+    endif()
+
+    if(_psycles_luisa_source_dir)
         set(LUISA_COMPUTE_ENABLE_DSL ON CACHE BOOL "" FORCE)
         # LuisaCompute's legacy Rust CPU backend is retired. The supported
         # no-GPU execution path is the fallback backend, which consumes the
         # same Luisa DSL AST/JIT program as every other device backend.
+        set(LUISA_COMPUTE_ENABLE_RUST OFF CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_ENABLE_CPU OFF CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_ENABLE_FALLBACK
             ${PSYCLES_ENABLE_LUISA_FALLBACK} CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_ENABLE_CLANG_CXX OFF CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
         add_subdirectory(
-            "${PSYCLES_LUISA_SOURCE_DIR}"
+            "${_psycles_luisa_source_dir}"
             "${CMAKE_CURRENT_BINARY_DIR}/_deps/luisa-compute"
             EXCLUDE_FROM_ALL)
     elseif(PSYCLES_FETCH_LUISA_NEXT AND NOT TARGET luisa::compute)
         set(LUISA_COMPUTE_ENABLE_DSL ON CACHE BOOL "" FORCE)
+        set(LUISA_COMPUTE_ENABLE_RUST OFF CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_ENABLE_CPU OFF CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_ENABLE_FALLBACK
             ${PSYCLES_ENABLE_LUISA_FALLBACK} CACHE BOOL "" FORCE)
@@ -78,6 +95,13 @@ if(PSYCLES_ENABLE_LUISA)
             GIT_SHALLOW TRUE
             GIT_PROGRESS TRUE)
         FetchContent_MakeAvailable(psycles_luisa_compute)
+    elseif(NOT TARGET luisa::compute AND
+           EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.gitmodules")
+        message(FATAL_ERROR
+            "The bundled LuisaCompute submodule is not initialized. Run "
+            "'git submodule update --init --recursive', set "
+            "PSYCLES_LUISA_SOURCE_DIR, enable PSYCLES_FETCH_LUISA_NEXT, or "
+            "configure with PSYCLES_ENABLE_LUISA=OFF for the contract core.")
     endif()
 
     if(TARGET luisa::compute)
@@ -245,5 +269,11 @@ if(PSYCLES_BUILD_TESTS)
                 "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_cycles_integrator_baselines.py"
                 "${CMAKE_CURRENT_SOURCE_DIR}/docs/cycles-integrator-probe-baselines-4.5.10.json")
+        add_test(
+            NAME psycles.cycles_light_baselines
+            COMMAND
+                "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_cycles_light_baselines.py"
+                "${CMAKE_CURRENT_SOURCE_DIR}/docs/cycles-light-probe-baselines-4.5.10.json")
     endif()
 endif()

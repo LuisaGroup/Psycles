@@ -119,6 +119,294 @@ using LoweredOutput =
     return mode == "HSV" ? 1u : mode == "HSL" ? 2u : 0u;
 }
 
+[[nodiscard]] MathOperation math_operation(
+    const contract::ShaderNode &node) {
+    const auto operation = property_string(node, "Operation", "ADD");
+    if (operation == "SUBTRACT") {
+        return MathOperation::subtract;
+    }
+    if (operation == "MULTIPLY") {
+        return MathOperation::multiply;
+    }
+    if (operation == "DIVIDE") {
+        return MathOperation::divide;
+    }
+    if (operation == "MULTIPLY_ADD") {
+        return MathOperation::multiply_add;
+    }
+    if (operation == "POWER") {
+        return MathOperation::power;
+    }
+    if (operation == "LOGARITHM") {
+        return MathOperation::logarithm;
+    }
+    if (operation == "SQRT") {
+        return MathOperation::square_root;
+    }
+    if (operation == "INVERSE_SQRT") {
+        return MathOperation::inverse_square_root;
+    }
+    if (operation == "ABSOLUTE") {
+        return MathOperation::absolute;
+    }
+    if (operation == "EXPONENT") {
+        return MathOperation::exponent;
+    }
+    if (operation == "MINIMUM") {
+        return MathOperation::minimum;
+    }
+    if (operation == "MAXIMUM") {
+        return MathOperation::maximum;
+    }
+    if (operation == "LESS_THAN") {
+        return MathOperation::less_than;
+    }
+    if (operation == "GREATER_THAN") {
+        return MathOperation::greater_than;
+    }
+    if (operation == "SIGN") {
+        return MathOperation::sign;
+    }
+    if (operation == "COMPARE") {
+        return MathOperation::compare;
+    }
+    if (operation == "SMOOTH_MIN") {
+        return MathOperation::smooth_minimum;
+    }
+    if (operation == "SMOOTH_MAX") {
+        return MathOperation::smooth_maximum;
+    }
+    if (operation == "ROUND") {
+        return MathOperation::round;
+    }
+    if (operation == "FLOOR") {
+        return MathOperation::floor;
+    }
+    if (operation == "CEIL") {
+        return MathOperation::ceil;
+    }
+    if (operation == "TRUNC") {
+        return MathOperation::trunc;
+    }
+    if (operation == "FRACT") {
+        return MathOperation::fraction;
+    }
+    if (operation == "MODULO") {
+        return MathOperation::modulo;
+    }
+    if (operation == "FLOORED_MODULO") {
+        return MathOperation::floored_modulo;
+    }
+    if (operation == "WRAP") {
+        return MathOperation::wrap;
+    }
+    if (operation == "SNAP") {
+        return MathOperation::snap;
+    }
+    if (operation == "PINGPONG") {
+        return MathOperation::ping_pong;
+    }
+    if (operation == "SINE") {
+        return MathOperation::sine;
+    }
+    if (operation == "COSINE") {
+        return MathOperation::cosine;
+    }
+    if (operation == "TANGENT") {
+        return MathOperation::tangent;
+    }
+    if (operation == "ARCSINE") {
+        return MathOperation::arcsine;
+    }
+    if (operation == "ARCCOSINE") {
+        return MathOperation::arccosine;
+    }
+    if (operation == "ARCTANGENT") {
+        return MathOperation::arctangent;
+    }
+    if (operation == "ARCTAN2") {
+        return MathOperation::arctangent2;
+    }
+    if (operation == "SINH") {
+        return MathOperation::hyperbolic_sine;
+    }
+    if (operation == "COSH") {
+        return MathOperation::hyperbolic_cosine;
+    }
+    if (operation == "TANH") {
+        return MathOperation::hyperbolic_tangent;
+    }
+    if (operation == "RADIANS") {
+        return MathOperation::radians;
+    }
+    if (operation == "DEGREES") {
+        return MathOperation::degrees;
+    }
+    return MathOperation::add;
+}
+
+[[nodiscard]] std::uint64_t map_range_interpolation(
+    const contract::ShaderNode &node) {
+    const auto interpolation =
+        property_string(node, "Interpolation", "LINEAR");
+    return interpolation == "STEPPED"
+               ? 1u
+               : interpolation == "SMOOTHSTEP"
+                     ? 2u
+                     : interpolation == "SMOOTHERSTEP" ? 3u : 0u;
+}
+
+[[nodiscard]] VectorMathOperation vector_math_operation(
+    const contract::ShaderNode &node) {
+    const auto operation =
+        property_string(node, "Operation", "ADD");
+    if (operation == "SUBTRACT") {
+        return VectorMathOperation::subtract;
+    }
+    if (operation == "MULTIPLY") {
+        return VectorMathOperation::multiply;
+    }
+    if (operation == "DIVIDE") {
+        return VectorMathOperation::divide;
+    }
+    if (operation == "MULTIPLY_ADD") {
+        return VectorMathOperation::multiply_add;
+    }
+    if (operation == "CROSS_PRODUCT") {
+        return VectorMathOperation::cross_product;
+    }
+    if (operation == "PROJECT") {
+        return VectorMathOperation::project;
+    }
+    if (operation == "REFLECT") {
+        return VectorMathOperation::reflect;
+    }
+    if (operation == "REFRACT") {
+        return VectorMathOperation::refract;
+    }
+    if (operation == "FACEFORWARD") {
+        return VectorMathOperation::faceforward;
+    }
+    if (operation == "DOT_PRODUCT") {
+        return VectorMathOperation::dot_product;
+    }
+    if (operation == "DISTANCE") {
+        return VectorMathOperation::distance;
+    }
+    if (operation == "LENGTH") {
+        return VectorMathOperation::length;
+    }
+    if (operation == "SCALE") {
+        return VectorMathOperation::scale;
+    }
+    if (operation == "NORMALIZE") {
+        return VectorMathOperation::normalize;
+    }
+    if (operation == "ABSOLUTE") {
+        return VectorMathOperation::absolute;
+    }
+    if (operation == "POWER") {
+        return VectorMathOperation::power;
+    }
+    if (operation == "SIGN") {
+        return VectorMathOperation::sign;
+    }
+    if (operation == "MINIMUM") {
+        return VectorMathOperation::minimum;
+    }
+    if (operation == "MAXIMUM") {
+        return VectorMathOperation::maximum;
+    }
+    if (operation == "FLOOR") {
+        return VectorMathOperation::floor;
+    }
+    if (operation == "CEIL") {
+        return VectorMathOperation::ceil;
+    }
+    if (operation == "FRACTION") {
+        return VectorMathOperation::fraction;
+    }
+    if (operation == "MODULO") {
+        return VectorMathOperation::modulo;
+    }
+    if (operation == "WRAP") {
+        return VectorMathOperation::wrap;
+    }
+    if (operation == "SNAP") {
+        return VectorMathOperation::snap;
+    }
+    if (operation == "SINE") {
+        return VectorMathOperation::sine;
+    }
+    if (operation == "COSINE") {
+        return VectorMathOperation::cosine;
+    }
+    if (operation == "TANGENT") {
+        return VectorMathOperation::tangent;
+    }
+    return VectorMathOperation::add;
+}
+
+[[nodiscard]] BlendOperation blend_operation(
+    const contract::ShaderNode &node) {
+    const auto mode = property_string(node, "BlendMode", "MIX");
+    if (mode == "DARKEN") {
+        return BlendOperation::darken;
+    }
+    if (mode == "MULTIPLY") {
+        return BlendOperation::multiply;
+    }
+    if (mode == "BURN") {
+        return BlendOperation::burn;
+    }
+    if (mode == "LIGHTEN") {
+        return BlendOperation::lighten;
+    }
+    if (mode == "SCREEN") {
+        return BlendOperation::screen;
+    }
+    if (mode == "DODGE") {
+        return BlendOperation::dodge;
+    }
+    if (mode == "ADD") {
+        return BlendOperation::add;
+    }
+    if (mode == "OVERLAY") {
+        return BlendOperation::overlay;
+    }
+    if (mode == "SOFT_LIGHT") {
+        return BlendOperation::soft_light;
+    }
+    if (mode == "LINEAR_LIGHT") {
+        return BlendOperation::linear_light;
+    }
+    if (mode == "DIFFERENCE") {
+        return BlendOperation::difference;
+    }
+    if (mode == "EXCLUSION") {
+        return BlendOperation::exclusion;
+    }
+    if (mode == "SUBTRACT") {
+        return BlendOperation::subtract;
+    }
+    if (mode == "DIVIDE") {
+        return BlendOperation::divide;
+    }
+    if (mode == "HUE") {
+        return BlendOperation::hue;
+    }
+    if (mode == "SATURATION") {
+        return BlendOperation::saturation;
+    }
+    if (mode == "COLOR") {
+        return BlendOperation::color;
+    }
+    if (mode == "VALUE") {
+        return BlendOperation::value;
+    }
+    return BlendOperation::mix;
+}
+
 class SurfaceProgramBuilder {
 
 private:
@@ -381,7 +669,13 @@ private:
                 append(ValueInstruction{
                     .operation = ValueOperation::uv,
                     .source_node = node.id,
-                    .result_type = SocketType::vector}));
+                    .result_type = SocketType::vector,
+                    .static_u0 =
+                        property_bool(node, "UvMapNamed")
+                            ? 1u
+                            : 0u,
+                    .static_u1 =
+                        property_uint(node, "UvMapId")}));
             publish(
                 node.id,
                 "Normal",
@@ -506,7 +800,11 @@ private:
                         .source_node = node.id,
                         .result_type = SocketType::floating,
                         .a = *blend,
-                        .b = *normal}));
+                        .b = *normal,
+                        .static_u0 =
+                            property_bool(node, "NormalLinked")
+                                ? 1u
+                                : 0u}));
                 publish(
                     node.id,
                     "Facing",
@@ -516,6 +814,26 @@ private:
                         .source_node = node.id,
                         .result_type = SocketType::floating,
                         .a = *blend,
+                        .b = *normal,
+                        .static_u0 =
+                            property_bool(node, "NormalLinked")
+                                ? 1u
+                                : 0u}));
+            }
+            return;
+        }
+        if (node.type == node_type::fresnel) {
+            auto ior = lower_value_input(node, "IOR");
+            auto normal = lower_value_input(node, "Normal");
+            if (ior && normal) {
+                publish(
+                    node.id,
+                    "Factor",
+                    append(ValueInstruction{
+                        .operation = ValueOperation::fresnel,
+                        .source_node = node.id,
+                        .result_type = SocketType::floating,
+                        .a = *ior,
                         .b = *normal}));
             }
             return;
@@ -556,6 +874,11 @@ private:
                     property_string(node, "Extension", "REPEAT");
                 const auto color_space =
                     property_string(node, "ColorSpace", "sRGB");
+                const auto interpolation_name =
+                    property_string(
+                        node, "Interpolation", "Linear");
+                const auto projection_name =
+                    property_string(node, "Projection", "FLAT");
                 const auto address =
                     extension == "CLIP"
                         ? 1u
@@ -566,10 +889,31 @@ private:
                     color_space == "sRGB" ? 1u : 0u;
                 const auto unassociate_alpha =
                     property_bool(node, "UnassociateAlpha") ? 1u : 0u;
+                const auto interpolation =
+                    interpolation_name == "Closest"
+                        ? 0u
+                        : interpolation_name == "Linear"
+                              ? 1u
+                              : interpolation_name == "Cubic"
+                                    ? 2u
+                                    : 3u;
+                const auto projection =
+                    projection_name == "BOX"
+                        ? 1u
+                        : projection_name == "SPHERE"
+                              ? 2u
+                              : projection_name == "TUBE"
+                                    ? 3u
+                                    : 0u;
                 const auto flags =
                     address |
                     (srgb << 8u) |
-                    (unassociate_alpha << 9u);
+                    (unassociate_alpha << 9u) |
+                    (interpolation << 10u) |
+                    (projection << 12u);
+                const auto projection_blend =
+                    property_float(
+                        node, "ProjectionBlend", 0.0f);
                 publish(
                     node.id,
                     "Color",
@@ -579,7 +923,8 @@ private:
                         .result_type = SocketType::color,
                         .a = *vector,
                         .static_u0 = image,
-                        .static_u1 = flags}));
+                        .static_u1 = flags,
+                        .static_f0 = projection_blend}));
                 publish(
                     node.id,
                     "Alpha",
@@ -589,7 +934,8 @@ private:
                         .result_type = SocketType::floating,
                         .a = *vector,
                         .static_u0 = image,
-                        .static_u1 = flags}));
+                        .static_u1 = flags,
+                        .static_f0 = projection_blend}));
             }
             return;
         }
@@ -625,6 +971,26 @@ private:
                 operation);
             return;
         }
+        if (node.type == node_type::math) {
+            auto a = lower_value_input(node, "A");
+            auto b = lower_value_input(node, "B");
+            auto c = lower_value_input(node, "C");
+            if (a && b && c) {
+                publish(
+                    node.id,
+                    "Value",
+                    append(ValueInstruction{
+                        .operation = ValueOperation::math,
+                        .source_node = node.id,
+                        .result_type = SocketType::floating,
+                        .a = *a,
+                        .b = *b,
+                        .c = *c,
+                        .static_u0 = static_cast<std::uint64_t>(
+                            math_operation(node))}));
+            }
+            return;
+        }
         if (node.type == node_type::absolute_float ||
             node.type == node_type::clamp_float) {
             publish_unary_value(
@@ -657,6 +1023,114 @@ private:
                                 node, "Mode", "MINMAX") == "RANGE"
                                 ? 1u
                                 : 0u}));
+            }
+            return;
+        }
+        if (node.type == node_type::map_range) {
+            const auto vector_mode =
+                property_string(node, "DataType", "FLOAT") ==
+                "FLOAT_VECTOR";
+            const auto interpolation =
+                map_range_interpolation(node);
+            const auto clamp =
+                property_bool(node, "Clamp", true) ? 1u : 0u;
+            if (vector_mode) {
+                auto value = lower_value_input(node, "Vector");
+                auto from_min =
+                    lower_value_input(node, "FromMinVector");
+                auto from_max =
+                    lower_value_input(node, "FromMaxVector");
+                auto to_min =
+                    lower_value_input(node, "ToMinVector");
+                auto to_max =
+                    lower_value_input(node, "ToMaxVector");
+                auto steps =
+                    lower_value_input(node, "StepsVector");
+                if (value && from_min && from_max && to_min &&
+                    to_max && steps) {
+                    publish(
+                        node.id,
+                        "Vector",
+                        append(ValueInstruction{
+                            .operation =
+                                ValueOperation::map_range_vector,
+                            .source_node = node.id,
+                            .result_type = SocketType::vector,
+                            .a = *value,
+                            .b = *from_min,
+                            .c = *from_max,
+                            .d = *to_min,
+                            .e = *to_max,
+                            .f = *steps,
+                            .static_u0 = interpolation,
+                            .static_u1 = clamp}));
+                }
+            } else {
+                auto value = lower_value_input(node, "Value");
+                auto from_min =
+                    lower_value_input(node, "FromMin");
+                auto from_max =
+                    lower_value_input(node, "FromMax");
+                auto to_min = lower_value_input(node, "ToMin");
+                auto to_max = lower_value_input(node, "ToMax");
+                auto steps = lower_value_input(node, "Steps");
+                if (value && from_min && from_max && to_min &&
+                    to_max && steps) {
+                    publish(
+                        node.id,
+                        "Result",
+                        append(ValueInstruction{
+                            .operation =
+                                ValueOperation::map_range_float,
+                            .source_node = node.id,
+                            .result_type = SocketType::floating,
+                            .a = *value,
+                            .b = *from_min,
+                            .c = *from_max,
+                            .d = *to_min,
+                            .e = *to_max,
+                            .f = *steps,
+                            .static_u0 = interpolation,
+                            .static_u1 = clamp}));
+                }
+            }
+            return;
+        }
+        if (node.type == node_type::vector_math) {
+            auto a = lower_value_input(node, "A");
+            auto b = lower_value_input(node, "B");
+            auto c = lower_value_input(node, "C");
+            auto scale = lower_value_input(node, "Scale");
+            if (a && b && c && scale) {
+                const auto operation =
+                    static_cast<std::uint64_t>(
+                        vector_math_operation(node));
+                publish(
+                    node.id,
+                    "Vector",
+                    append(ValueInstruction{
+                        .operation =
+                            ValueOperation::vector_math_vector,
+                        .source_node = node.id,
+                        .result_type = SocketType::vector,
+                        .a = *a,
+                        .b = *b,
+                        .c = *c,
+                        .d = *scale,
+                        .static_u0 = operation}));
+                publish(
+                    node.id,
+                    "Value",
+                    append(ValueInstruction{
+                        .operation =
+                            ValueOperation::vector_math_value,
+                        .source_node = node.id,
+                        .result_type = SocketType::floating,
+                        .a = *a,
+                        .b = *b,
+                        .c = *c,
+                        .d = *scale,
+                        .static_u0 = operation}));
             }
             return;
         }
@@ -718,13 +1192,65 @@ private:
                 ValueOperation::passthrough);
             return;
         }
+        if (node.type == node_type::mix_float) {
+            auto factor = lower_value_input(node, "Factor");
+            auto a = lower_value_input(node, "A");
+            auto b = lower_value_input(node, "B");
+            if (factor && a && b) {
+                publish(
+                    node.id,
+                    "Value",
+                    append(ValueInstruction{
+                        .operation = ValueOperation::mix_float,
+                        .source_node = node.id,
+                        .result_type = SocketType::floating,
+                        .a = *a,
+                        .b = *b,
+                        .c = *factor,
+                        .static_u0 = property_bool(
+                                         node,
+                                         "ClampFactor",
+                                         true)
+                                         ? 1u
+                                         : 0u}));
+            }
+            return;
+        }
+        if (node.type == node_type::mix_vector ||
+            node.type == node_type::mix_vector_nonuniform) {
+            auto factor = lower_value_input(node, "Factor");
+            auto a = lower_value_input(node, "A");
+            auto b = lower_value_input(node, "B");
+            if (factor && a && b) {
+                publish(
+                    node.id,
+                    "Vector",
+                    append(ValueInstruction{
+                        .operation = ValueOperation::mix_vector,
+                        .source_node = node.id,
+                        .result_type = SocketType::vector,
+                        .a = *a,
+                        .b = *b,
+                        .c = *factor,
+                        .static_u0 =
+                            node.type ==
+                                    node_type::mix_vector_nonuniform
+                                ? 1u
+                                : 0u,
+                        .static_u1 = property_bool(
+                                         node,
+                                         "ClampFactor",
+                                         true)
+                                         ? 1u
+                                         : 0u}));
+            }
+            return;
+        }
         if (node.type == node_type::mix_color) {
             auto factor = lower_value_input(node, "Factor");
             auto a = lower_value_input(node, "A");
             auto b = lower_value_input(node, "B");
             if (factor && a && b) {
-                const auto mode = property_string(
-                    node, "BlendMode", "MIX");
                 publish(
                     node.id,
                     "Color",
@@ -735,10 +1261,21 @@ private:
                         .a = *a,
                         .b = *b,
                         .c = *factor,
-                        .static_u0 =
-                            mode == "VALUE"
-                                ? 1u
-                                : mode == "COLOR" ? 2u : 0u}));
+                        .static_u0 = static_cast<std::uint64_t>(
+                            blend_operation(node)),
+                        .static_u1 =
+                            (property_bool(
+                                 node,
+                                 "ClampFactor",
+                                 true)
+                                 ? 1u
+                                 : 0u) |
+                            (property_bool(
+                                 node,
+                                 "ClampResult",
+                                 false)
+                                 ? 2u
+                                 : 0u)}));
             }
             return;
         }
@@ -834,6 +1371,24 @@ private:
             }
             return;
         }
+        if (node.type == node_type::blackbody) {
+            publish_unary_value(
+                node,
+                "Temperature",
+                "Color",
+                SocketType::color,
+                ValueOperation::blackbody);
+            return;
+        }
+        if (node.type == node_type::wavelength) {
+            publish_unary_value(
+                node,
+                "Wavelength",
+                "Color",
+                SocketType::color,
+                ValueOperation::wavelength);
+            return;
+        }
         if (node.type == node_type::normal_map) {
             auto strength = lower_value_input(node, "Strength");
             auto color = lower_value_input(node, "Color");
@@ -864,7 +1419,13 @@ private:
                         .b = *strength,
                         .static_u0 =
                             static_cast<std::uint64_t>(
-                                normal_map_space)}));
+                                normal_map_space) |
+                            (property_bool(
+                                 node, "UvMapNamed")
+                                 ? 0x100u
+                                 : 0u),
+                        .static_u1 =
+                            property_uint(node, "UvMapId")}));
             }
             return;
         }
@@ -890,9 +1451,13 @@ private:
                         .d = *filter_width,
                         .e = *normal,
                         .static_u0 =
-                            property_bool(node, "Invert")
-                                ? 1u
-                                : 0u}));
+                            (property_bool(node, "Invert")
+                                 ? 1u
+                                 : 0u) |
+                            (property_bool(
+                                 node, "NormalLinked")
+                                 ? 2u
+                                 : 0u)}));
             }
             return;
         }
@@ -1009,6 +1574,35 @@ private:
             }
             return;
         }
+        if (node.type == node_type::checker_texture) {
+            auto vector = lower_value_input(node, "Vector");
+            auto color1 = lower_value_input(node, "Color1");
+            auto color2 = lower_value_input(node, "Color2");
+            auto scale = lower_value_input(node, "Scale");
+            if (vector && color1 && color2 && scale) {
+                auto instruction = ValueInstruction{
+                    .operation = ValueOperation::checker_color,
+                    .source_node = node.id,
+                    .result_type = SocketType::color,
+                    .a = *vector,
+                    .b = *color1,
+                    .c = *color2,
+                    .d = *scale};
+                publish(
+                    node.id,
+                    "Color",
+                    append(instruction));
+                instruction.operation =
+                    ValueOperation::checker_factor;
+                instruction.result_type =
+                    SocketType::floating;
+                publish(
+                    node.id,
+                    "Factor",
+                    append(std::move(instruction)));
+            }
+            return;
+        }
         if (node.type == node_type::brick_texture) {
             auto vector = lower_value_input(node, "Vector");
             auto color1 = lower_value_input(node, "Color1");
@@ -1102,11 +1696,14 @@ private:
                     .result_type = SocketType::color,
                     .a = *factor,
                     .static_u0 =
-                        property_string(
-                            node, "Interpolation", "LINEAR") ==
-                                "CONSTANT"
-                            ? 1u
-                            : 0u,
+                        (property_string(
+                             node, "Interpolation", "LINEAR") ==
+                                 "CONSTANT"
+                             ? 1u
+                             : 0u) |
+                        (property_bool(node, "Sampled")
+                             ? 2u
+                             : 0u),
                     .static_table = parse_float_table(
                         property_string(node, "Table"))};
                 publish(
@@ -1135,6 +1732,18 @@ private:
                         .result_type = SocketType::color,
                         .a = *color,
                         .b = *factor,
+                        .static_u0 =
+                            (property_bool(node, "Sampled")
+                                 ? 1u
+                                 : 0u) |
+                            (property_bool(
+                                 node, "Extrapolate", true)
+                                 ? 2u
+                                 : 0u),
+                        .static_f0 =
+                            property_float(node, "MinX", 0.0f),
+                        .static_f1 =
+                            property_float(node, "MaxX", 1.0f),
                         .static_table = parse_float_table(
                             property_string(node, "Table"))}));
             }
@@ -1179,6 +1788,7 @@ private:
             return;
         }
         if (node.type == node_type::nishita_sky) {
+            auto direction = lower_value_input(node, "Vector");
             auto elevation =
                 lower_value_input(node, "SunElevation");
             auto rotation = lower_value_input(node, "SunRotation");
@@ -1189,8 +1799,8 @@ private:
             auto air = lower_value_input(node, "AirDensity");
             auto dust = lower_value_input(node, "DustDensity");
             auto ozone = lower_value_input(node, "OzoneDensity");
-            if (elevation && rotation && size && intensity &&
-                altitude && air && dust && ozone) {
+            if (direction && elevation && rotation && size &&
+                intensity && altitude && air && dust && ozone) {
                 publish(
                     node.id,
                     "Color",
@@ -1206,6 +1816,7 @@ private:
                         .f = *air,
                         .g = *dust,
                         .h = *ozone,
+                        .i = *direction,
                         .static_u0 = _nishita_count++}));
             }
             return;
@@ -1314,6 +1925,15 @@ private:
                         .source_node = node.id,
                         .color = *color}));
             }
+            return;
+        }
+        if (node.type == node_type::null_closure) {
+            publish(
+                node.id,
+                "Closure",
+                append(ClosureInstruction{
+                    .operation = ClosureOperation::null_closure,
+                    .source_node = node.id}));
             return;
         }
         if (node.type == node_type::add_closure ||

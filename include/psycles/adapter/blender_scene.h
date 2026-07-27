@@ -22,6 +22,19 @@ struct BlenderSceneDiagnostic {
     std::string message;
 };
 
+// Blender's display transform is intentionally kept outside the linear render
+// contract. It is nevertheless part of a scene bundle so standalone tools can
+// produce the same view as Blender without changing the path-tracing result.
+struct BlenderColorManagement {
+    std::string display_device{"sRGB"};
+    std::string view_transform{"Standard"};
+    std::string look{"None"};
+    std::string sequencer_color_space{"sRGB"};
+    float exposure{};
+    float gamma{1.0f};
+    bool use_curve_mapping{};
+};
+
 struct BlenderSceneImport {
     std::optional<contract::SceneSnapshot> scene;
     std::uint32_t width{};
@@ -35,6 +48,7 @@ struct BlenderSceneImport {
         contract::PixelFilter::box};
     float filter_width{1.0f};
     float pass_alpha_threshold{0.5f};
+    BlenderColorManagement color_management;
     contract::PathIntegratorSettings integrator;
     std::vector<BlenderSceneDiagnostic> diagnostics;
 

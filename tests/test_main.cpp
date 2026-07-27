@@ -45,6 +45,52 @@ void expect(bool condition, const std::string &message) {
     return graph;
 }
 
+[[nodiscard]] ShaderGraph make_image_emission_graph(
+    std::string interpolation,
+    std::string extension,
+    std::string projection,
+    float projection_blend) {
+    ShaderGraph graph;
+    const auto image =
+        graph.add_node(node_type::image_texture, "Image Texture");
+    const auto emission =
+        graph.add_node(node_type::emission, "Emission");
+    expect(
+        graph.set_property(
+            image,
+            "Interpolation",
+            SocketValue::string(std::move(interpolation))),
+        "failed to set image interpolation");
+    expect(
+        graph.set_property(
+            image,
+            "Extension",
+            SocketValue::string(std::move(extension))),
+        "failed to set image extension");
+    expect(
+        graph.set_property(
+            image,
+            "Projection",
+            SocketValue::string(std::move(projection))),
+        "failed to set image projection");
+    expect(
+        graph.set_property(
+            image,
+            "ProjectionBlend",
+            SocketValue::floating(projection_blend)),
+        "failed to set image projection blend");
+    expect(
+        graph.connect(
+            {.node = image, .socket = "Color"},
+            emission,
+            "Color"),
+        "failed to connect image color to emission");
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = emission, .socket = "Closure"});
+    return graph;
+}
+
 void test_shader_graph_and_invalidation() {
     ShaderCompiler compiler{make_core_node_registry()};
 
@@ -91,6 +137,50 @@ void test_shader_graph_and_invalidation() {
             std::get<Vec3f>(value->value) ==
                 Vec3f{0.0f, 0.0f, 1.0f},
         "rebound parameter block retained the red color");
+}
+
+void test_image_texture_modes_are_structural() {
+    ShaderCompiler compiler{make_core_node_registry()};
+    const auto baseline = compiler.compile(
+        make_image_emission_graph(
+            "Linear", "REPEAT", "FLAT", 0.0f));
+    const auto closest = compiler.compile(
+        make_image_emission_graph(
+            "Closest", "REPEAT", "FLAT", 0.0f));
+    const auto mirror = compiler.compile(
+        make_image_emission_graph(
+            "Linear", "MIRROR", "FLAT", 0.0f));
+    const auto sphere = compiler.compile(
+        make_image_emission_graph(
+            "Linear", "REPEAT", "SPHERE", 0.0f));
+    const auto box_blend = compiler.compile(
+        make_image_emission_graph(
+            "Linear", "REPEAT", "BOX", 0.55f));
+
+    expect(baseline.ok(), "baseline image graph failed to compile");
+    expect(closest.ok(), "closest image graph failed to compile");
+    expect(mirror.ok(), "mirror image graph failed to compile");
+    expect(sphere.ok(), "sphere image graph failed to compile");
+    expect(box_blend.ok(), "box image graph failed to compile");
+
+    const auto baseline_signature =
+        baseline.program->analysis().structure_signature;
+    expect(
+        closest.program->analysis().structure_signature !=
+            baseline_signature,
+        "image interpolation did not invalidate shader structure");
+    expect(
+        mirror.program->analysis().structure_signature !=
+            baseline_signature,
+        "image extension did not invalidate shader structure");
+    expect(
+        sphere.program->analysis().structure_signature !=
+            baseline_signature,
+        "image projection did not invalidate shader structure");
+    expect(
+        box_blend.program->analysis().structure_signature !=
+            baseline_signature,
+        "image projection blend did not invalidate shader structure");
 }
 
 void test_closure_tree_is_preserved() {
@@ -270,6 +360,238 @@ void test_cycles_color_value_nodes_lower_to_surface_program() {
                        instruction.static_u0 == 1u;
             }),
         "range-swapping Clamp instruction is missing");
+}
+
+void test_spectral_color_nodes_lower_to_surface_program() {
+    const auto verify =
+        [](const char *type_name,
+           const char *input_name,
+           float input_value,
+           ValueOperation expected_operation) {
+            ShaderGraph graph;
+            const auto spectral =
+                graph.add_node(type_name, "Spectral Color");
+            const auto emission =
+                graph.add_node(node_type::emission, "Emission");
+            expect(
+                graph.set_input(
+                    spectral,
+                    input_name,
+                    SocketValue::floating(input_value)),
+                "failed to configure spectral color node");
+            expect(
+                graph.connect(
+                    {.node = spectral, .socket = "Color"},
+                    emission,
+                    "Color"),
+                "failed to connect spectral color node");
+            graph.set_root(
+                ShaderDomain::surface,
+                OutputRef{
+                    .node = emission,
+                    .socket = "Closure"});
+
+            ShaderCompiler compiler{make_core_node_registry()};
+            auto shader = compiler.compile(graph);
+            expect(
+                shader.ok(),
+                "spectral color graph failed to compile");
+            auto surface =
+                compile_surface_program(*shader.program);
+            expect(
+                surface.ok(),
+                "spectral color graph failed to lower");
+            expect(
+                std::ranges::any_of(
+                    surface.program->value_instructions(),
+                    [expected_operation](
+                        const ValueInstruction &instruction) {
+                        return instruction.operation ==
+                               expected_operation;
+                    }),
+                "spectral color instruction is missing");
+        };
+
+    verify(
+        node_type::blackbody,
+        "Temperature",
+        6500.0f,
+        ValueOperation::blackbody);
+    verify(
+        node_type::wavelength,
+        "Wavelength",
+        555.0f,
+        ValueOperation::wavelength);
+}
+
+void test_map_range_modes_lower_to_surface_program() {
+    ShaderCompiler compiler{make_core_node_registry()};
+
+    ShaderGraph scalar_graph;
+    const auto scalar_map =
+        scalar_graph.add_node(node_type::map_range, "Scalar Map Range");
+    const auto scalar_color = scalar_graph.add_node(
+        node_type::scalar_to_color, "Scalar Map Range Color");
+    const auto scalar_emission =
+        scalar_graph.add_node(node_type::emission, "Scalar Emission");
+    expect(
+        scalar_graph.set_property(
+            scalar_map,
+            "DataType",
+            SocketValue::string("FLOAT")) &&
+            scalar_graph.set_property(
+                scalar_map,
+                "Interpolation",
+                SocketValue::string("STEPPED")) &&
+            scalar_graph.set_property(
+                scalar_map,
+                "Clamp",
+                SocketValue::boolean(true)) &&
+            scalar_graph.set_input(
+                scalar_map,
+                "Steps",
+                SocketValue::floating(3.0f)) &&
+            scalar_graph.connect(
+                {.node = scalar_map, .socket = "Result"},
+                scalar_color,
+                "Value") &&
+            scalar_graph.connect(
+                {.node = scalar_color, .socket = "Color"},
+                scalar_emission,
+                "Color"),
+        "failed to construct scalar Map Range graph");
+    scalar_graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{
+            .node = scalar_emission,
+            .socket = "Closure"});
+    auto compiled_scalar = compiler.compile(scalar_graph);
+    expect(
+        compiled_scalar.ok(),
+        "scalar Map Range graph failed to compile");
+    auto scalar_surface =
+        compile_surface_program(*compiled_scalar.program);
+    expect(
+        scalar_surface.ok(),
+        "scalar Map Range graph failed to lower");
+    expect(
+        std::ranges::any_of(
+            scalar_surface.program->value_instructions(),
+            [](const ValueInstruction &instruction) {
+                return instruction.operation ==
+                           ValueOperation::map_range_float &&
+                       instruction.static_u0 == 1u &&
+                       instruction.static_u1 == 1u;
+            }),
+        "scalar stepped/clamped Map Range instruction is missing");
+
+    ShaderGraph vector_graph;
+    const auto vector_map =
+        vector_graph.add_node(node_type::map_range, "Vector Map Range");
+    const auto vector_color = vector_graph.add_node(
+        node_type::vector_to_color, "Vector Map Range Color");
+    const auto vector_emission =
+        vector_graph.add_node(node_type::emission, "Vector Emission");
+    expect(
+        vector_graph.set_property(
+            vector_map,
+            "DataType",
+            SocketValue::string("FLOAT_VECTOR")) &&
+            vector_graph.set_property(
+                vector_map,
+                "Interpolation",
+                SocketValue::string("SMOOTHERSTEP")) &&
+            vector_graph.set_property(
+                vector_map,
+                "Clamp",
+                SocketValue::boolean(false)) &&
+            vector_graph.set_input(
+                vector_map,
+                "FromMaxVector",
+                SocketValue::vector({2.0f, 1.0f, 0.0f})) &&
+            vector_graph.connect(
+                {.node = vector_map, .socket = "Vector"},
+                vector_color,
+                "Vector") &&
+            vector_graph.connect(
+                {.node = vector_color, .socket = "Color"},
+                vector_emission,
+                "Color"),
+        "failed to construct vector Map Range graph");
+    vector_graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{
+            .node = vector_emission,
+            .socket = "Closure"});
+    auto compiled_vector = compiler.compile(vector_graph);
+    expect(
+        compiled_vector.ok(),
+        "vector Map Range graph failed to compile");
+    auto vector_surface =
+        compile_surface_program(*compiled_vector.program);
+    expect(
+        vector_surface.ok(),
+        "vector Map Range graph failed to lower");
+    expect(
+        std::ranges::any_of(
+            vector_surface.program->value_instructions(),
+            [](const ValueInstruction &instruction) {
+                return instruction.operation ==
+                           ValueOperation::map_range_vector &&
+                       instruction.static_u0 == 3u &&
+                       instruction.static_u1 == 0u;
+            }),
+        "vector smootherstep Map Range instruction is missing");
+}
+
+void test_vector_math_modes_lower_to_surface_program() {
+    ShaderCompiler compiler{make_core_node_registry()};
+
+    ShaderGraph graph;
+    const auto vector_math = graph.add_node(
+        node_type::vector_math, "Vector Math Refract");
+    const auto vector_color = graph.add_node(
+        node_type::vector_to_color, "Vector Math Color");
+    const auto emission =
+        graph.add_node(node_type::emission, "Vector Math Emission");
+    expect(
+        graph.set_property(
+            vector_math,
+            "Operation",
+            SocketValue::string("REFRACT")) &&
+            graph.set_input(
+                vector_math,
+                "Scale",
+                SocketValue::floating(1.33f)) &&
+            graph.connect(
+                {.node = vector_math, .socket = "Vector"},
+                vector_color,
+                "Vector") &&
+            graph.connect(
+                {.node = vector_color, .socket = "Color"},
+                emission,
+                "Color"),
+        "failed to construct Vector Math graph");
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{
+            .node = emission,
+            .socket = "Closure"});
+    auto compiled = compiler.compile(graph);
+    expect(compiled.ok(), "Vector Math graph failed to compile");
+    auto surface = compile_surface_program(*compiled.program);
+    expect(surface.ok(), "Vector Math graph failed to lower");
+    expect(
+        std::ranges::any_of(
+            surface.program->value_instructions(),
+            [](const ValueInstruction &instruction) {
+                return instruction.operation ==
+                           ValueOperation::vector_math_vector &&
+                       instruction.static_u0 ==
+                           static_cast<std::uint64_t>(
+                               VectorMathOperation::refract);
+            }),
+        "Vector Math refract instruction is missing");
 }
 
 void test_cycles_normalized_graph_adapter() {
@@ -622,6 +944,66 @@ void test_graph_errors_are_explicit() {
     }
 }
 
+void test_sampled_color_ramp_is_part_of_the_graph_contract() {
+    ShaderCompiler compiler{make_core_node_registry()};
+    ShaderGraph graph;
+    const auto ramp = graph.add_node(node_type::color_ramp, "Sampled Ramp");
+    const auto emission = graph.add_node(node_type::emission, "Emission");
+
+    expect(
+        graph.set_input(
+            ramp,
+            "Factor",
+            SocketValue::floating(0.375f)),
+        "failed to set sampled ramp factor");
+    expect(
+        graph.set_property(
+            ramp,
+            "Sampled",
+            SocketValue::boolean(true)),
+        "failed to mark Color Ramp as sampled");
+    expect(
+        graph.set_property(
+            ramp,
+            "Table",
+            SocketValue::string(
+                "0,0.1,0.2,0.3,0.4;"
+                "0.5,0.5,0.6,0.7,0.8;"
+                "1,0.9,1,0.1,0.2")),
+        "failed to set sampled Color Ramp table");
+    expect(
+        graph.connect(
+            {.node = ramp, .socket = "Color"},
+            emission,
+            "Color"),
+        "failed to connect sampled Color Ramp");
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = emission, .socket = "Closure"});
+
+    auto compiled = compiler.compile(graph);
+    expect(
+        compiled.ok(),
+        "sampled Color Ramp was rejected by the graph contract");
+    auto surface = compile_surface_program(*compiled.program);
+    expect(
+        surface.ok(),
+        "sampled Color Ramp failed to lower");
+    const auto ramp_instruction = std::find_if(
+        surface.program->value_instructions().begin(),
+        surface.program->value_instructions().end(),
+        [](const ValueInstruction &instruction) {
+            return instruction.operation == ValueOperation::color_ramp;
+        });
+    expect(
+        ramp_instruction !=
+            surface.program->value_instructions().end(),
+        "sampled Color Ramp instruction is missing");
+    expect(
+        (ramp_instruction->static_u0 & 2u) != 0u,
+        "sampled Color Ramp lost its normalized-table flag");
+}
+
 void test_scene_delta_is_atomic() {
     SceneDatabase scene;
     SceneDelta initial{.base_revision = 0u, .commands = {}};
@@ -695,13 +1077,18 @@ void test_scene_delta_is_atomic() {
 int main() {
     try {
         test_shader_graph_and_invalidation();
+        test_image_texture_modes_are_structural();
         test_closure_tree_is_preserved();
         test_combine_color_lowers_to_surface_program();
         test_cycles_color_value_nodes_lower_to_surface_program();
+        test_spectral_color_nodes_lower_to_surface_program();
+        test_map_range_modes_lower_to_surface_program();
+        test_vector_math_modes_lower_to_surface_program();
         test_cycles_normalized_graph_adapter();
         test_cycles_adapter_rejects_svm_lowered_graph();
         test_incremental_material_library();
         test_graph_errors_are_explicit();
+        test_sampled_color_ramp_is_part_of_the_graph_contract();
         test_scene_delta_is_atomic();
         std::cout << "All Psycles contract tests passed.\n";
         return EXIT_SUCCESS;

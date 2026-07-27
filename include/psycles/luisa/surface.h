@@ -142,6 +142,8 @@ struct SurfaceSample {
 
 struct SurfaceAov {
     Float3 albedo;
+    Float3 glossy_albedo;
+    Float3 transmission_albedo;
     Float2 roughness;
     Float3 normal;
     Float3 transparency;
@@ -156,7 +158,9 @@ public:
         Expr<std::uint32_t> handle,
         Expr<luisa::float2> uv,
         Expr<luisa::float2> d_uv_dx,
-        Expr<luisa::float2> d_uv_dy) const noexcept = 0;
+        Expr<luisa::float2> d_uv_dy,
+        std::uint32_t interpolation,
+        std::uint32_t extension) const noexcept = 0;
 
     [[nodiscard]] virtual Float4 attribute(
         Expr<std::uint64_t> attribute_id,
@@ -178,6 +182,12 @@ public:
     // semantics.
     [[nodiscard]] virtual Float cycles_bsdf_data(
         Expr<std::uint32_t> index) const noexcept = 0;
+
+    [[nodiscard]] virtual Float3 xyz_to_rgb(
+        Expr<luisa::float3> xyz) const noexcept = 0;
+
+    [[nodiscard]] virtual Float3 rec709_to_rgb(
+        Expr<luisa::float3> rec709) const noexcept = 0;
 
     // Cycles Nishita is a precomputed 512x128 spectral LUT, not an analytic
     // color approximation. The host/JIT-stage sky index identifies the LUT
@@ -231,6 +241,8 @@ public:
         const SurfacePoint &point) const noexcept {
         return {
             .albedo = make_float3(0.0f),
+            .glossy_albedo = make_float3(0.0f),
+            .transmission_albedo = make_float3(0.0f),
             .roughness = make_float2(0.0f),
             .normal = point.shading_normal,
             .transparency = make_float3(0.0f)};
@@ -327,6 +339,8 @@ public:
         const SurfacePoint &point) const noexcept {
         auto result = SurfaceAov{
             .albedo = make_float3(0.0f),
+            .glossy_albedo = make_float3(0.0f),
+            .transmission_albedo = make_float3(0.0f),
             .roughness = make_float2(0.0f),
             .normal = point.shading_normal,
             .transparency = make_float3(0.0f)};

@@ -144,11 +144,22 @@ int main(int argc, char **argv) {
                 elevation,
                 diameter,
                 intensity);
+        const auto xyz = base_xyz + sun_xyz;
+        const auto rgb = max(
+            make_float3(
+                3.2404542f * xyz.x -
+                    1.5371385f * xyz.y -
+                    0.4985314f * xyz.z,
+                -0.9692660f * xyz.x +
+                    1.8760108f * xyz.y +
+                    0.0415560f * xyz.z,
+                0.0556434f * xyz.x -
+                    0.2040259f * xyz.y +
+                    1.0572252f * xyz.z),
+            make_float3(0.0f));
         output.write(
             index,
-            make_float4(
-                nishita::xyz_to_rgb(base_xyz + sun_xyz),
-                1.0f));
+            make_float4(rgb, 1.0f));
     };
     auto evaluate_shader = device.compile(evaluate);
     std::array<luisa::float4, directions.size()> values{};
