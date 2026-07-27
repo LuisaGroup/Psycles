@@ -45,6 +45,7 @@ using contract::LightId;
 using contract::LightType;
 using contract::MaterialDesc;
 using contract::MaterialId;
+using contract::NishitaSkyDesc;
 using contract::SceneSnapshot;
 using contract::ShaderDomain;
 using contract::ShaderGraph;
@@ -139,6 +140,137 @@ using Document = std::unique_ptr<yyjson_doc, DocumentDeleter>;
         }
     }
     return nullptr;
+}
+
+[[nodiscard]] std::optional<NishitaSkyDesc>
+find_simple_world_nishita(yyjson_val *world) {
+    auto *tree = member(world, "node_tree");
+    auto *root = member(tree, "surface_root");
+    const auto background_name = text(member(root, "node"));
+    if (background_name.empty()) {
+        return std::nullopt;
+    }
+
+    yyjson_val *background = nullptr;
+    yyjson_val *sky = nullptr;
+    auto *nodes = member(tree, "nodes");
+    if (nodes == nullptr || !yyjson_is_arr(nodes)) {
+        return std::nullopt;
+    }
+    yyjson_arr_iter node_iterator =
+        yyjson_arr_iter_with(nodes);
+    while (auto *node =
+               yyjson_arr_iter_next(&node_iterator)) {
+        if (text(member(node, "name")) == background_name &&
+            text(member(node, "type")) == "BACKGROUND") {
+            background = node;
+            break;
+        }
+    }
+    if (background == nullptr) {
+        return std::nullopt;
+    }
+
+    std::string sky_name;
+    auto *links = member(tree, "links");
+    if (links != nullptr && yyjson_is_arr(links)) {
+        yyjson_arr_iter link_iterator =
+            yyjson_arr_iter_with(links);
+        while (auto *link =
+                   yyjson_arr_iter_next(&link_iterator)) {
+            if (text(member(link, "to_node")) ==
+                    background_name &&
+                text(member(link, "to_socket")) == "Color") {
+                sky_name = text(member(link, "from_node"));
+                break;
+            }
+        }
+    }
+    if (sky_name.empty()) {
+        return std::nullopt;
+    }
+    node_iterator = yyjson_arr_iter_with(nodes);
+    while (auto *node =
+               yyjson_arr_iter_next(&node_iterator)) {
+        if (text(member(node, "name")) == sky_name &&
+            text(member(node, "type")) == "TEX_SKY" &&
+            text(
+                member(member(node, "properties"), "sky_type"),
+                "NISHITA") == "NISHITA") {
+            sky = node;
+            break;
+        }
+    }
+    if (sky == nullptr) {
+        return std::nullopt;
+    }
+
+    // A linked Background Strength requires evaluating the complete world
+    // graph into the environment distribution. Keep that case on the normal
+    // graph path instead of silently freezing it.
+    if (links != nullptr && yyjson_is_arr(links)) {
+        yyjson_arr_iter link_iterator =
+            yyjson_arr_iter_with(links);
+        while (auto *link =
+                   yyjson_arr_iter_next(&link_iterator)) {
+            if (text(member(link, "to_node")) ==
+                    background_name &&
+                text(member(link, "to_socket")) == "Strength") {
+                return std::nullopt;
+            }
+        }
+    }
+
+    constexpr auto pi = 3.14159265358979323846f;
+    constexpr auto two_pi = 2.0f * pi;
+    auto *properties = member(sky, "properties");
+    auto elevation = std::fmod(
+        number(
+            member(properties, "sun_elevation"),
+            0.7853982f),
+        two_pi);
+    auto rotation = number(
+        member(properties, "sun_rotation"), 0.0f);
+    if (std::abs(elevation) >= pi) {
+        elevation -= std::copysign(two_pi, elevation);
+    }
+    if (elevation >= pi * 0.5f ||
+        elevation <= -pi * 0.5f) {
+        elevation =
+            std::copysign(pi, elevation) - elevation;
+        rotation += pi;
+    }
+    rotation = std::fmod(rotation, two_pi);
+    if (rotation < 0.0f) {
+        rotation += two_pi;
+    }
+    rotation = two_pi - rotation;
+
+    auto *strength_socket =
+        find_socket(background, "inputs", "Strength");
+    const auto sun_disc =
+        boolean(member(properties, "sun_disc"), true);
+    return NishitaSkyDesc{
+        .sun_elevation = elevation,
+        .sun_rotation = rotation,
+        .angular_diameter =
+            sun_disc
+                ? number(
+                      member(properties, "sun_size"),
+                      0.00918043f)
+                : -1.0f,
+        .sun_intensity = number(
+            member(properties, "sun_intensity"), 1.0f),
+        .altitude =
+            number(member(properties, "altitude"), 0.0f),
+        .air_density =
+            number(member(properties, "air_density"), 1.0f),
+        .dust_density =
+            number(member(properties, "dust_density"), 1.0f),
+        .ozone_density =
+            number(member(properties, "ozone_density"), 1.0f),
+        .background_strength = number(
+            member(strength_socket, "default"), 1.0f)};
 }
 
 [[nodiscard]] ShaderGraph diffuse_graph(
@@ -1680,9 +1812,18 @@ private:
                 id,
                 "SunRotation",
                 SocketValue::floating(rotation)));
+            static_cast<void>(_graph.set_input(
+                id,
+                "SunSize",
+                SocketValue::floating(
+                    node_property_bool(
+                        node, "sun_disc", true)
+                        ? node_property_number(
+                              node,
+                              "sun_size",
+                              0.00918043f)
+                        : -1.0f)));
             for (const auto &[target, property_name, fallback] : {
-                     std::tuple{
-                         "SunSize", "sun_size", 0.00918043f},
                      std::tuple{
                          "SunIntensity",
                          "sun_intensity",
@@ -1775,6 +1916,18 @@ private:
                 node,
                 "Roughness",
                 SocketType::floating));
+            static_cast<void>(bind(
+                id, "Normal", node, "Normal", SocketType::normal));
+            return finish({
+                .ref = {.node = id, .socket = "Closure"},
+                .type = SocketType::closure});
+        }
+        if (type == "BSDF_TRANSLUCENT") {
+            const auto id = _graph.add_node(
+                compiler::node_type::translucent_bsdf,
+                node_name);
+            static_cast<void>(bind(
+                id, "Color", node, "Color", SocketType::color));
             static_cast<void>(bind(
                 id, "Normal", node, "Normal", SocketType::normal));
             return finish({
@@ -2930,11 +3083,25 @@ BlenderSceneImport load_blender_scene_bundle(
                         "__world__" + text(member(world, "name")),
                     .shader = std::move(world_graph)});
             scene.world_shader = world_id;
+            if (auto nishita =
+                    find_simple_world_nishita(world)) {
+                scene.environment = EnvironmentDesc{
+                    .name =
+                        "__world_nishita__" +
+                        text(member(world, "name")),
+                    .width = 0u,
+                    .height = 0u,
+                    .pixels = {},
+                    .suns = {},
+                    .nishita = std::move(nishita)};
+            }
         }
 
         auto *environment = member(root, "world_environment");
         if (environment != nullptr &&
-            !yyjson_is_null(environment)) {
+            !yyjson_is_null(environment) &&
+            (!scene.environment ||
+             !scene.environment->nishita)) {
             const auto width = static_cast<std::uint32_t>(
                 unsigned_number(member(environment, "width")));
             const auto height = static_cast<std::uint32_t>(
@@ -2951,7 +3118,8 @@ BlenderSceneImport load_blender_scene_bundle(
                             text(member(environment, "path"))},
                     width,
                     height),
-                .suns = {}};
+                .suns = {},
+                .nishita = std::nullopt};
             auto *suns = member(environment, "suns");
             yyjson_arr_iter sun_iterator =
                 yyjson_arr_iter_with(suns);

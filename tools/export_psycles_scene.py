@@ -20,19 +20,15 @@ from __future__ import annotations
 import array
 import hashlib
 import json
-import math
 import pathlib
 import shutil
 import struct
 import sys
-import tempfile
 from typing import Any
 
 import bmesh
 import bpy
 import numpy as np
-import OpenImageIO as oiio
-from mathutils import Matrix, Vector
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import blender_scene_manifest as manifest  # noqa: E402
@@ -431,168 +427,6 @@ def _light(obj: Any) -> dict[str, Any]:
     }
 
 
-def _render_result_linear(scene: Any) -> np.ndarray:
-    bpy.ops.render.render(scene=scene.name)
-    result = bpy.data.images.get("Render Result")
-    if result is None:
-        raise RuntimeError("Cycles did not produce a Render Result")
-    with tempfile.NamedTemporaryFile(suffix=".exr", delete=False) as file:
-        temporary_path = pathlib.Path(file.name)
-    try:
-        result.save_render(str(temporary_path), scene=scene)
-        source = oiio.ImageInput.open(str(temporary_path))
-        if source is None:
-            raise RuntimeError("could not open temporary world EXR")
-        try:
-            pixels = source.read_image(format=oiio.FLOAT)
-            if pixels is None:
-                raise RuntimeError("could not read temporary world EXR")
-            return np.asarray(pixels, dtype=np.float32)[:, :, :3].copy()
-        finally:
-            source.close()
-    finally:
-        temporary_path.unlink(missing_ok=True)
-
-
-def _cycles_sun_direction(node: Any) -> Vector:
-    elevation = math.fmod(float(node.sun_elevation), 2.0 * math.pi)
-    rotation = float(node.sun_rotation)
-    if abs(elevation) >= math.pi:
-        elevation -= math.copysign(2.0 * math.pi, elevation)
-    if elevation >= 0.5 * math.pi or elevation <= -0.5 * math.pi:
-        elevation = math.copysign(math.pi, elevation) - elevation
-        rotation += math.pi
-    rotation = math.fmod(rotation, 2.0 * math.pi)
-    if rotation < 0.0:
-        rotation += 2.0 * math.pi
-    rotation = 2.0 * math.pi - rotation
-    return Vector(
-        (
-            -math.cos(elevation) * math.sin(rotation),
-            math.cos(elevation) * math.cos(rotation),
-            math.sin(elevation),
-        )
-    )
-
-
-def _export_world_environment(
-    output: pathlib.Path,
-    source_scene: Any,
-) -> dict[str, Any] | None:
-    world = source_scene.world
-    if world is None or not world.use_nodes or world.node_tree is None:
-        return None
-    sky_nodes = [
-        node
-        for node in world.node_tree.nodes
-        if node.bl_idname == "ShaderNodeTexSky"
-        and node.sky_type == "NISHITA"
-    ]
-    sun_disc_states = {
-        node.name: bool(node.sun_disc) for node in sky_nodes
-    }
-    for node in sky_nodes:
-        node.sun_disc = False
-
-    render_scene = bpy.data.scenes.new("__psycles_world_precompute__")
-    camera_data = bpy.data.cameras.new(
-        "__psycles_world_precompute_camera_data__"
-    )
-    camera = bpy.data.objects.new(
-        "__psycles_world_precompute_camera__", camera_data
-    )
-    try:
-        render_scene.world = world
-        render_scene.collection.objects.link(camera)
-        render_scene.camera = camera
-        render_scene.render.engine = "CYCLES"
-        render_scene.cycles.device = "CPU"
-        render_scene.cycles.use_denoising = False
-        render_scene.render.resolution_percentage = 100
-        render_scene.render.film_transparent = False
-        render_scene.render.image_settings.file_format = "OPEN_EXR"
-        render_scene.render.image_settings.color_depth = "32"
-        render_scene.use_nodes = False
-
-        camera_data.type = "PANO"
-        # Blender 4.5 exposes the Cycles panorama projection directly on
-        # Camera RNA. Older releases used a camera.cycles property group.
-        camera_data.panorama_type = "EQUIRECTANGULAR"
-        # Cycles panorama directions use X as the camera forward axis while
-        # Blender cameras look down local -Z. An identity Blender camera maps
-        # a Cycles direction (x, y, z) to (-y, z, -x), as verified by the
-        # official-Cycles direction probe. Apply its inverse so the exported map
-        # is indexed directly by world-space Cycles equirectangular
-        # coordinates rather than carrying a camera-coordinate convention.
-        camera.matrix_world = Matrix(
-            (
-                (0.0, 0.0, -1.0, 0.0),
-                (-1.0, 0.0, 0.0, 0.0),
-                (0.0, 1.0, 0.0, 0.0),
-                (0.0, 0.0, 0.0, 1.0),
-            )
-        )
-        render_scene.cycles.samples = 1
-        render_scene.render.resolution_x = 512
-        render_scene.render.resolution_y = 256
-        pixels = _render_result_linear(render_scene)
-        environment_path = output / "world-environment.float3"
-        contiguous = np.ascontiguousarray(pixels, dtype="<f4")
-        environment_path.write_bytes(contiguous.tobytes(order="C"))
-
-        suns: list[dict[str, Any]] = []
-        camera_data.type = "PERSP"
-        camera_data.angle = 1.0e-4
-        render_scene.cycles.samples = 16
-        render_scene.render.resolution_x = 4
-        render_scene.render.resolution_y = 4
-        for node in sky_nodes:
-            if not sun_disc_states[node.name]:
-                continue
-            direction = _cycles_sun_direction(node).normalized()
-            camera.matrix_world = direction.to_track_quat(
-                "-Z", "Y"
-            ).to_matrix().to_4x4()
-            baseline = np.mean(
-                _render_result_linear(render_scene), axis=(0, 1)
-            )
-            node.sun_disc = True
-            with_sun = np.mean(
-                _render_result_linear(render_scene), axis=(0, 1)
-            )
-            node.sun_disc = False
-            # Cycles applies radial limb darkening
-            # 0.4 + 0.6 * sqrt(1-r^2). Its disk-area mean is 0.8.
-            radiance = np.maximum(
-                (with_sun - baseline) * 0.8, 0.0
-            )
-            suns.append(
-                {
-                    "name": node.name,
-                    "direction": [float(value) for value in direction],
-                    "radiance": [float(value) for value in radiance],
-                    "angular_radius": 0.5 * float(node.sun_size),
-                }
-            )
-
-        return {
-            "name": world.name,
-            "path": environment_path.relative_to(output).as_posix(),
-            "width": int(pixels.shape[1]),
-            "height": int(pixels.shape[0]),
-            "format": "float32_rgb_le",
-            "mapping": "cycles_equirectangular",
-            "sun_discs_excluded": True,
-            "suns": suns,
-        }
-    finally:
-        for node in sky_nodes:
-            node.sun_disc = sun_disc_states[node.name]
-        bpy.data.objects.remove(camera, do_unlink=True)
-        bpy.data.cameras.remove(camera_data, do_unlink=True)
-        bpy.data.scenes.remove(render_scene, do_unlink=True)
-
-
 def _main() -> None:
     args = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
     if len(args) != 1:
@@ -754,7 +588,6 @@ def _main() -> None:
             },
         }
 
-    world_environment = _export_world_environment(output, scene)
     payload = {
         "schema": "psycles.blender-scene.v1",
         "source": bpy.data.filepath,
@@ -794,7 +627,9 @@ def _main() -> None:
             if scene.world
             else None
         ),
-        "world_environment": world_environment,
+        # World shader resources are generated by Psycles/Luisa. The exporter
+        # must never call Cycles to bake a world texture.
+        "world_environment": None,
         "node_groups": [
             _tree(group)
             for group in sorted(

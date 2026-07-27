@@ -82,6 +82,10 @@ struct SurfacePoint {
     Float2 barycentric_dy;
     UInt instance_id;
     UInt primitive_id;
+    // Runtime parameter storage base for the material bound to this hit.
+    // Materials with an identical Cycles graph structure share one
+    // GraphSurface AST and differ only by this block.
+    UInt parameter_block;
     Float object_random;
     UInt particle_index;
     Float random_per_island;
@@ -161,12 +165,12 @@ public:
     // The block and slot are host/JIT-stage constants. Implementations emit
     // runtime storage reads while the material graph is being traced.
     [[nodiscard]] virtual Float parameter_float(
-        std::uint32_t block,
-        std::uint32_t slot) const noexcept = 0;
+        Expr<std::uint32_t> block,
+        Expr<std::uint32_t> slot) const noexcept = 0;
 
     [[nodiscard]] virtual Float3 parameter_float3(
-        std::uint32_t block,
-        std::uint32_t slot) const noexcept = 0;
+        Expr<std::uint32_t> block,
+        Expr<std::uint32_t> slot) const noexcept = 0;
 
     // Versioned Cycles compatibility data. The index addresses the
     // contiguous Blender BSDF table buffer; interpolation and table shape
@@ -174,6 +178,19 @@ public:
     // semantics.
     [[nodiscard]] virtual Float cycles_bsdf_data(
         Expr<std::uint32_t> index) const noexcept = 0;
+
+    // Cycles Nishita is a precomputed 512x128 spectral LUT, not an analytic
+    // color approximation. The host/JIT-stage sky index identifies the LUT
+    // associated with this material parameter block; direction-dependent
+    // sampling and the solar disc remain Luisa expressions.
+    [[nodiscard]] virtual Float3 nishita_sky(
+        Expr<std::uint32_t> block,
+        std::uint32_t sky_index,
+        Expr<luisa::float3> direction,
+        Expr<float> sun_elevation,
+        Expr<float> sun_rotation,
+        Expr<float> angular_diameter,
+        Expr<float> sun_intensity) const noexcept = 0;
 };
 
 class Surface {

@@ -3,6 +3,7 @@
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/compiler/material_library.h>
 #include <psycles/luisa/cycles_bsdf_tables.h>
+#include <psycles/luisa/cycles_nishita.h>
 #include <psycles/luisa/graph_surface.h>
 
 #include "cycles_shader_tables_4_5_10.inl"
@@ -77,6 +78,81 @@ struct EmissiveTriangleGpu {
     luisa::uint geometry_index{};
     luisa::uint primitive_index{};
     luisa::uint surface_tag{};
+    luisa::uint parameter_block{};
+};
+
+struct SurfacePointCall {
+    luisa::float3 position{};
+    luisa::float3 object_position{};
+    luisa::float3 object_location{};
+    luisa::float3 generated{};
+    luisa::float3 geometric_normal{};
+    luisa::float3 shading_normal{};
+    luisa::float3 object_shading_normal{};
+    luisa::float3 object_tangent{};
+    float tangent_sign{};
+    luisa::float3 normal_to_world_x{};
+    luisa::float3 normal_to_world_y{};
+    luisa::float3 normal_to_world_z{};
+    luisa::float3 dpdu{};
+    luisa::float3 dpdv{};
+    luisa::float3 dPdx{};
+    luisa::float3 dPdy{};
+    luisa::float3 object_dPdx{};
+    luisa::float3 object_dPdy{};
+    luisa::float3 generated_dx{};
+    luisa::float3 generated_dy{};
+    luisa::float3 incoming{};
+    luisa::float2 uv{};
+    luisa::float2 uv_dx{};
+    luisa::float2 uv_dy{};
+    luisa::uint geometry_index{};
+    luisa::float2 barycentric{};
+    luisa::float2 barycentric_dx{};
+    luisa::float2 barycentric_dy{};
+    luisa::uint instance_id{};
+    luisa::uint primitive_id{};
+    luisa::uint parameter_block{};
+    float object_random{};
+    luisa::uint particle_index{};
+    float random_per_island{};
+    luisa::uint ray_visibility{};
+    luisa::uint ray_events{};
+    luisa::uint ray_depth{};
+    luisa::uint diffuse_depth{};
+    luisa::uint glossy_depth{};
+    luisa::uint transparent_depth{};
+    luisa::uint transmission_depth{};
+    float ray_length{};
+    float time{};
+    luisa::uint back_facing{};
+};
+
+struct SurfaceEvaluationCall {
+    luisa::float3 f{};
+    float pdf{};
+    luisa::float3 diffuse_f{};
+    float diffuse_pdf{};
+    luisa::uint events{};
+};
+
+struct SurfaceSampleCall {
+    luisa::float3 f{};
+    float pdf{};
+    luisa::float3 diffuse_f{};
+    float diffuse_pdf{};
+    luisa::uint events{};
+    luisa::float3 wi{};
+    float eta{};
+    luisa::float2 roughness{};
+    luisa::uint valid{};
+};
+
+struct SurfaceAovCall {
+    luisa::float3 albedo{};
+    luisa::float2 roughness{};
+    luisa::float3 normal{};
+    luisa::float3 transparency{};
 };
 
 }// namespace psycles::luisa_backend::detail
@@ -111,7 +187,78 @@ LUISA_STRUCT(
     instance_index,
     geometry_index,
     primitive_index,
-    surface_tag) {};
+    surface_tag,
+    parameter_block) {};
+LUISA_STRUCT(
+    psycles::luisa_backend::detail::SurfacePointCall,
+    position,
+    object_position,
+    object_location,
+    generated,
+    geometric_normal,
+    shading_normal,
+    object_shading_normal,
+    object_tangent,
+    tangent_sign,
+    normal_to_world_x,
+    normal_to_world_y,
+    normal_to_world_z,
+    dpdu,
+    dpdv,
+    dPdx,
+    dPdy,
+    object_dPdx,
+    object_dPdy,
+    generated_dx,
+    generated_dy,
+    incoming,
+    uv,
+    uv_dx,
+    uv_dy,
+    geometry_index,
+    barycentric,
+    barycentric_dx,
+    barycentric_dy,
+    instance_id,
+    primitive_id,
+    parameter_block,
+    object_random,
+    particle_index,
+    random_per_island,
+    ray_visibility,
+    ray_events,
+    ray_depth,
+    diffuse_depth,
+    glossy_depth,
+    transparent_depth,
+    transmission_depth,
+    ray_length,
+    time,
+    back_facing) {};
+LUISA_STRUCT(
+    psycles::luisa_backend::detail::SurfaceEvaluationCall,
+    f,
+    pdf,
+    diffuse_f,
+    diffuse_pdf,
+    events) {};
+LUISA_STRUCT(
+    psycles::luisa_backend::detail::SurfaceSampleCall,
+    f,
+    pdf,
+    diffuse_f,
+    diffuse_pdf,
+    events,
+    wi,
+    eta,
+    roughness,
+    valid) {};
+LUISA_STRUCT(
+    psycles::luisa_backend::detail::SurfaceAovCall,
+    albedo,
+    roughness,
+    normal,
+    transparency) {};
 
 namespace psycles::luisa_backend {
 
@@ -138,11 +285,17 @@ using detail::GeometryGpu;
 using detail::EmissiveTriangleGpu;
 using detail::InstanceGpu;
 using detail::LightGpu;
+using detail::SurfaceAovCall;
+using detail::SurfaceEvaluationCall;
+using detail::SurfacePointCall;
+using detail::SurfaceSampleCall;
 using luisa::compute::Accel;
 using luisa::compute::AccelVar;
 using luisa::compute::BindlessArray;
+using luisa::compute::BindlessVar;
 using luisa::compute::Bool;
 using luisa::compute::Buffer;
+using luisa::compute::BufferFloat;
 using luisa::compute::BufferFloat4;
 using luisa::compute::BufferUInt;
 using luisa::compute::Callable;
@@ -151,7 +304,9 @@ using luisa::compute::Float;
 using luisa::compute::Float2;
 using luisa::compute::Float3;
 using luisa::compute::Float4;
+using luisa::compute::ImageFloat;
 using luisa::compute::Kernel1D;
+using luisa::compute::Kernel2D;
 using luisa::compute::Image;
 using luisa::compute::Mesh;
 using luisa::compute::Shader1D;
@@ -164,6 +319,7 @@ using luisa::compute::cast;
 using luisa::compute::clamp;
 using luisa::compute::cross;
 using luisa::compute::def;
+using luisa::compute::dispatch_id;
 using luisa::compute::dispatch_x;
 using luisa::compute::dot;
 using luisa::compute::inverse;
@@ -172,12 +328,14 @@ using luisa::compute::make_float2;
 using luisa::compute::make_float3;
 using luisa::compute::make_float4;
 using luisa::compute::make_float4x4;
+using luisa::compute::make_uint2;
 using luisa::compute::make_ray;
 using luisa::compute::max;
 using luisa::compute::min;
 using luisa::compute::normalize;
 using luisa::compute::offset_ray_origin;
 using luisa::compute::select;
+using luisa::compute::set_block_size;
 using luisa::compute::synchronize;
 using luisa::compute::transpose;
 using luisa::compute::triangle_interpolate;
@@ -196,6 +354,190 @@ constexpr auto transmission_visibility =
     contract::visibility_bit(RayVisibility::transmission);
 constexpr auto shadow_visibility =
     contract::visibility_bit(RayVisibility::shadow);
+
+struct MaterialBinding {
+    std::uint32_t surface_tag{};
+    std::uint32_t parameter_block{};
+};
+
+[[nodiscard]] luisa::uint2 to_luisa(
+    MaterialBinding binding) noexcept {
+    return luisa::make_uint2(
+        binding.surface_tag, binding.parameter_block);
+}
+
+[[nodiscard]] Var<SurfacePointCall> pack_surface_point(
+    const SurfacePoint &point) noexcept {
+    Var<SurfacePointCall> result;
+    result.position = point.position;
+    result.object_position = point.object_position;
+    result.object_location = point.object_location;
+    result.generated = point.generated;
+    result.geometric_normal = point.geometric_normal;
+    result.shading_normal = point.shading_normal;
+    result.object_shading_normal =
+        point.object_shading_normal;
+    result.object_tangent = point.object_tangent;
+    result.tangent_sign = point.tangent_sign;
+    result.normal_to_world_x = point.normal_to_world_x;
+    result.normal_to_world_y = point.normal_to_world_y;
+    result.normal_to_world_z = point.normal_to_world_z;
+    result.dpdu = point.dpdu;
+    result.dpdv = point.dpdv;
+    result.dPdx = point.dPdx;
+    result.dPdy = point.dPdy;
+    result.object_dPdx = point.object_dPdx;
+    result.object_dPdy = point.object_dPdy;
+    result.generated_dx = point.generated_dx;
+    result.generated_dy = point.generated_dy;
+    result.incoming = point.incoming;
+    result.uv = point.uv;
+    result.uv_dx = point.uv_dx;
+    result.uv_dy = point.uv_dy;
+    result.geometry_index = point.geometry_index;
+    result.barycentric = point.barycentric;
+    result.barycentric_dx = point.barycentric_dx;
+    result.barycentric_dy = point.barycentric_dy;
+    result.instance_id = point.instance_id;
+    result.primitive_id = point.primitive_id;
+    result.parameter_block = point.parameter_block;
+    result.object_random = point.object_random;
+    result.particle_index = point.particle_index;
+    result.random_per_island = point.random_per_island;
+    result.ray_visibility = point.ray_visibility;
+    result.ray_events = point.ray_events;
+    result.ray_depth = point.ray_depth;
+    result.diffuse_depth = point.diffuse_depth;
+    result.glossy_depth = point.glossy_depth;
+    result.transparent_depth = point.transparent_depth;
+    result.transmission_depth = point.transmission_depth;
+    result.ray_length = point.ray_length;
+    result.time = point.time;
+    result.back_facing = select(
+        0u, 1u, point.back_facing);
+    return result;
+}
+
+[[nodiscard]] SurfacePoint unpack_surface_point(
+    const Var<SurfacePointCall> &point) noexcept {
+    return {
+        .position = point.position,
+        .object_position = point.object_position,
+        .object_location = point.object_location,
+        .generated = point.generated,
+        .geometric_normal = point.geometric_normal,
+        .shading_normal = point.shading_normal,
+        .object_shading_normal =
+            point.object_shading_normal,
+        .object_tangent = point.object_tangent,
+        .tangent_sign = point.tangent_sign,
+        .normal_to_world_x = point.normal_to_world_x,
+        .normal_to_world_y = point.normal_to_world_y,
+        .normal_to_world_z = point.normal_to_world_z,
+        .dpdu = point.dpdu,
+        .dpdv = point.dpdv,
+        .dPdx = point.dPdx,
+        .dPdy = point.dPdy,
+        .object_dPdx = point.object_dPdx,
+        .object_dPdy = point.object_dPdy,
+        .generated_dx = point.generated_dx,
+        .generated_dy = point.generated_dy,
+        .incoming = point.incoming,
+        .uv = point.uv,
+        .uv_dx = point.uv_dx,
+        .uv_dy = point.uv_dy,
+        .geometry_index = point.geometry_index,
+        .barycentric = point.barycentric,
+        .barycentric_dx = point.barycentric_dx,
+        .barycentric_dy = point.barycentric_dy,
+        .instance_id = point.instance_id,
+        .primitive_id = point.primitive_id,
+        .parameter_block = point.parameter_block,
+        .object_random = point.object_random,
+        .particle_index = point.particle_index,
+        .random_per_island = point.random_per_island,
+        .ray_visibility = point.ray_visibility,
+        .ray_events = point.ray_events,
+        .ray_depth = point.ray_depth,
+        .diffuse_depth = point.diffuse_depth,
+        .glossy_depth = point.glossy_depth,
+        .transparent_depth = point.transparent_depth,
+        .transmission_depth = point.transmission_depth,
+        .ray_length = point.ray_length,
+        .time = point.time,
+        .back_facing = point.back_facing != 0u};
+}
+
+[[nodiscard]] Var<SurfaceEvaluationCall>
+pack_surface_evaluation(
+    const SurfaceEvaluation &evaluation) noexcept {
+    Var<SurfaceEvaluationCall> result;
+    result.f = evaluation.f;
+    result.pdf = evaluation.pdf;
+    result.diffuse_f = evaluation.diffuse_f;
+    result.diffuse_pdf = evaluation.diffuse_pdf;
+    result.events = evaluation.events;
+    return result;
+}
+
+[[nodiscard]] SurfaceEvaluation unpack_surface_evaluation(
+    const Var<SurfaceEvaluationCall> &evaluation) noexcept {
+    return {
+        .f = evaluation.f,
+        .pdf = evaluation.pdf,
+        .diffuse_f = evaluation.diffuse_f,
+        .diffuse_pdf = evaluation.diffuse_pdf,
+        .events = evaluation.events};
+}
+
+[[nodiscard]] Var<SurfaceSampleCall> pack_surface_sample(
+    const SurfaceSample &sample) noexcept {
+    Var<SurfaceSampleCall> result;
+    result.f = sample.evaluation.f;
+    result.pdf = sample.evaluation.pdf;
+    result.diffuse_f = sample.evaluation.diffuse_f;
+    result.diffuse_pdf = sample.evaluation.diffuse_pdf;
+    result.events = sample.evaluation.events;
+    result.wi = sample.wi;
+    result.eta = sample.eta;
+    result.roughness = sample.roughness;
+    result.valid = select(0u, 1u, sample.valid);
+    return result;
+}
+
+[[nodiscard]] SurfaceSample unpack_surface_sample(
+    const Var<SurfaceSampleCall> &sample) noexcept {
+    return {
+        .evaluation = {
+            .f = sample.f,
+            .pdf = sample.pdf,
+            .diffuse_f = sample.diffuse_f,
+            .diffuse_pdf = sample.diffuse_pdf,
+            .events = sample.events},
+        .wi = sample.wi,
+        .eta = sample.eta,
+        .roughness = sample.roughness,
+        .valid = sample.valid != 0u};
+}
+
+[[nodiscard]] Var<SurfaceAovCall> pack_surface_aov(
+    const SurfaceAov &aov) noexcept {
+    Var<SurfaceAovCall> result;
+    result.albedo = aov.albedo;
+    result.roughness = aov.roughness;
+    result.normal = aov.normal;
+    result.transparency = aov.transparency;
+    return result;
+}
+
+[[nodiscard]] SurfaceAov unpack_surface_aov(
+    const Var<SurfaceAovCall> &aov) noexcept {
+    return {
+        .albedo = aov.albedo,
+        .roughness = aov.roughness,
+        .normal = aov.normal,
+        .transparency = aov.transparency};
+}
 
 [[nodiscard]] luisa::float3 to_luisa(Vec3f value) noexcept {
     return luisa::make_float3(value.x, value.y, value.z);
@@ -275,27 +617,44 @@ struct AttributeBinding {
     std::uint32_t value_slot{};
 };
 
+struct NishitaTextureBinding {
+    std::uint32_t parameter_block{};
+    std::uint32_t sky_index{};
+    std::uint32_t texture_slot{};
+    contract::NishitaSkyDesc parameters;
+    luisa::float3 pixel_bottom_xyz{};
+    luisa::float3 pixel_top_xyz{};
+};
+
+template<typename ParameterBuffer,
+         typename CyclesBuffer,
+         typename TextureHeap,
+         typename GeometryHeap>
 class BufferShaderServices final : public ShaderServices {
 
 private:
-    const Buffer<luisa::float4> &_parameters;
-    const Buffer<float> &_cycles_bsdf_tables;
-    const BindlessArray &_textures;
-    const BindlessArray &_geometry_heap;
+    const ParameterBuffer &_parameters;
+    const CyclesBuffer &_cycles_bsdf_tables;
+    const TextureHeap &_textures;
+    const GeometryHeap &_geometry_heap;
     const std::vector<AttributeBinding> &_attributes;
+    const std::vector<NishitaTextureBinding> &_nishita_textures;
 
 public:
     explicit BufferShaderServices(
-        const Buffer<luisa::float4> &parameters,
-        const Buffer<float> &cycles_bsdf_tables,
-        const BindlessArray &textures,
-        const BindlessArray &geometry_heap,
-        const std::vector<AttributeBinding> &attributes) noexcept
+        const ParameterBuffer &parameters,
+        const CyclesBuffer &cycles_bsdf_tables,
+        const TextureHeap &textures,
+        const GeometryHeap &geometry_heap,
+        const std::vector<AttributeBinding> &attributes,
+        const std::vector<NishitaTextureBinding>
+            &nishita_textures) noexcept
         : _parameters{parameters},
           _cycles_bsdf_tables{cycles_bsdf_tables},
           _textures{textures},
           _geometry_heap{geometry_heap},
-          _attributes{attributes} {}
+          _attributes{attributes},
+          _nishita_textures{nishita_textures} {}
 
     [[nodiscard]] Float4 texture_2d(
         Expr<std::uint32_t> handle,
@@ -315,22 +674,22 @@ public:
                   binding.geometry_index)) {
                 Var<Triangle> triangle =
                     _geometry_heap
-                        ->buffer<Triangle>(
+                        ->template buffer<Triangle>(
                             binding.triangle_slot)
                         .read(point.primitive_id);
                 auto v0 =
                     _geometry_heap
-                        ->buffer<luisa::float4>(
+                        ->template buffer<luisa::float4>(
                             binding.value_slot)
                         .read(triangle.i0);
                 auto v1 =
                     _geometry_heap
-                        ->buffer<luisa::float4>(
+                        ->template buffer<luisa::float4>(
                             binding.value_slot)
                         .read(triangle.i1);
                 auto v2 =
                     _geometry_heap
-                        ->buffer<luisa::float4>(
+                        ->template buffer<luisa::float4>(
                             binding.value_slot)
                         .read(triangle.i2);
                 result = triangle_interpolate(
@@ -341,20 +700,65 @@ public:
     }
 
     [[nodiscard]] Float parameter_float(
-        std::uint32_t block,
-        std::uint32_t slot) const noexcept override {
+        Expr<std::uint32_t> block,
+        Expr<std::uint32_t> slot) const noexcept override {
         return _parameters->read(block + slot).x;
     }
 
     [[nodiscard]] Float3 parameter_float3(
-        std::uint32_t block,
-        std::uint32_t slot) const noexcept override {
+        Expr<std::uint32_t> block,
+        Expr<std::uint32_t> slot) const noexcept override {
         return _parameters->read(block + slot).xyz();
     }
 
     [[nodiscard]] Float cycles_bsdf_data(
         Expr<std::uint32_t> index) const noexcept override {
         return _cycles_bsdf_tables->read(index);
+    }
+
+    [[nodiscard]] Float3 nishita_sky(
+        Expr<std::uint32_t> block,
+        std::uint32_t sky_index,
+        Expr<luisa::float3> direction_expression,
+        Expr<float> sun_elevation_expression,
+        Expr<float> sun_rotation_expression,
+        Expr<float> angular_diameter_expression,
+        Expr<float> sun_intensity_expression)
+        const noexcept override {
+        Float3 result = make_float3(0.0f);
+        Float3 direction{direction_expression};
+        Float sun_elevation{sun_elevation_expression};
+        Float sun_rotation{sun_rotation_expression};
+        Float angular_diameter{angular_diameter_expression};
+        Float sun_intensity{sun_intensity_expression};
+        for (const auto &binding : _nishita_textures) {
+            if (binding.sky_index != sky_index) {
+                continue;
+            }
+            $if (block == binding.parameter_block) {
+                const auto sun_direction = make_float3(
+                    -cos(sun_elevation) * sin(sun_rotation),
+                    cos(sun_elevation) * cos(sun_rotation),
+                    sin(sun_elevation));
+                const auto sky_xyz =
+                    cycles_nishita::sky_radiance_xyz(
+                        _textures->tex2d(binding.texture_slot),
+                        direction,
+                        sun_rotation);
+                const auto sun_xyz =
+                    cycles_nishita::sun_disc_radiance_xyz(
+                        direction,
+                        sun_direction,
+                        make_float3(binding.pixel_bottom_xyz),
+                        make_float3(binding.pixel_top_xyz),
+                        sun_elevation,
+                        angular_diameter,
+                        sun_intensity);
+                result = cycles_nishita::xyz_to_rgb(
+                    sky_xyz + sun_xyz);
+            };
+        }
+        return result;
     }
 };
 
@@ -388,13 +792,22 @@ struct GeometryUpload {
     std::vector<ColorAttributeUpload> color_attributes;
 };
 
+struct NishitaEnvironmentRuntime {
+    contract::NishitaSkyDesc parameters;
+    luisa::float3 pixel_bottom_xyz{};
+    luisa::float3 pixel_top_xyz{};
+    luisa::float3 sun_direction{};
+    float angular_radius{};
+};
+
 struct LuisaSceneData {
     luisa::compute::Device device;
     std::uint64_t revision{};
     MaterialLibrary materials;
     SurfaceDispatch surfaces;
-    std::map<contract::MaterialId, std::uint32_t> material_tags;
-    std::optional<std::uint32_t> world_surface_tag;
+    std::map<contract::MaterialId, MaterialBinding>
+        material_bindings;
+    std::optional<MaterialBinding> world_surface;
     Buffer<luisa::float4> parameter_buffer;
     Buffer<float> cycles_bsdf_table_buffer;
     std::vector<GeometryResource> geometries;
@@ -404,11 +817,15 @@ struct LuisaSceneData {
     std::uint32_t environment_width{};
     std::uint32_t environment_height{};
     std::vector<contract::EnvironmentSunDesc> environment_suns;
+    std::optional<NishitaEnvironmentRuntime>
+        nishita_environment;
+    std::vector<NishitaTextureBinding>
+        nishita_texture_bindings;
     BindlessArray heap;
     Buffer<GeometryGpu> geometry_buffer;
     Buffer<InstanceGpu> instance_buffer;
-    Buffer<luisa::uint> geometry_material_buffer;
-    Buffer<luisa::uint> override_material_buffer;
+    Buffer<luisa::uint2> geometry_material_buffer;
+    Buffer<luisa::uint2> override_material_buffer;
     std::vector<AttributeBinding> attribute_bindings;
     Buffer<LightGpu> light_buffer;
     std::uint32_t light_count{};
@@ -884,7 +1301,119 @@ private:
                     survives);
             };
 
-        Kernel1D kernel = [=, &surfaces = scene->surfaces](
+        Callable shared_surface_evaluate =
+            [scene](
+                BufferFloat4 parameters,
+                BufferFloat cycles_bsdf_tables,
+                BindlessVar textures,
+                BindlessVar geometry_heap,
+                UInt surface_tag,
+                Var<SurfacePointCall> packed_point,
+                Float3 outgoing,
+                UInt lobe_mask,
+                UInt transport_mode) noexcept {
+                BufferShaderServices services{
+                    parameters,
+                    cycles_bsdf_tables,
+                    textures,
+                    geometry_heap,
+                    scene->attribute_bindings,
+                    scene->nishita_texture_bindings};
+                auto point =
+                    unpack_surface_point(packed_point);
+                auto query = SurfaceQuery{
+                    .lobe_mask = lobe_mask,
+                    .transport_mode = transport_mode};
+                return pack_surface_evaluation(
+                    scene->surfaces.evaluate(
+                        surface_tag,
+                        services,
+                        point,
+                        outgoing,
+                        query));
+            };
+        Callable shared_surface_emission =
+            [scene](
+                BufferFloat4 parameters,
+                BufferFloat cycles_bsdf_tables,
+                BindlessVar textures,
+                BindlessVar geometry_heap,
+                UInt surface_tag,
+                Var<SurfacePointCall> packed_point,
+                Float3 outgoing) noexcept {
+                BufferShaderServices services{
+                    parameters,
+                    cycles_bsdf_tables,
+                    textures,
+                    geometry_heap,
+                    scene->attribute_bindings,
+                    scene->nishita_texture_bindings};
+                return scene->surfaces.emission(
+                    surface_tag,
+                    services,
+                    unpack_surface_point(packed_point),
+                    outgoing);
+            };
+        Callable shared_surface_sample =
+            [scene](
+                BufferFloat4 parameters,
+                BufferFloat cycles_bsdf_tables,
+                BindlessVar textures,
+                BindlessVar geometry_heap,
+                UInt surface_tag,
+                Var<SurfacePointCall> packed_point,
+                Float u_lobe,
+                Float2 u_direction,
+                UInt lobe_mask,
+                UInt transport_mode) noexcept {
+                BufferShaderServices services{
+                    parameters,
+                    cycles_bsdf_tables,
+                    textures,
+                    geometry_heap,
+                    scene->attribute_bindings,
+                    scene->nishita_texture_bindings};
+                auto query = SurfaceQuery{
+                    .lobe_mask = lobe_mask,
+                    .transport_mode = transport_mode};
+                return pack_surface_sample(
+                    scene->surfaces.sample(
+                        surface_tag,
+                        services,
+                        unpack_surface_point(packed_point),
+                        u_lobe,
+                        u_direction,
+                        query));
+            };
+        Callable shared_surface_aov =
+            [scene](
+                BufferFloat4 parameters,
+                BufferFloat cycles_bsdf_tables,
+                BindlessVar textures,
+                BindlessVar geometry_heap,
+                UInt surface_tag,
+                Var<SurfacePointCall> packed_point) noexcept {
+                BufferShaderServices services{
+                    parameters,
+                    cycles_bsdf_tables,
+                    textures,
+                    geometry_heap,
+                    scene->attribute_bindings,
+                    scene->nishita_texture_bindings};
+                return pack_surface_aov(
+                    scene->surfaces.aov(
+                        surface_tag,
+                        services,
+                        unpack_surface_point(packed_point)));
+            };
+
+        Kernel1D kernel = [
+                              =,
+                              &surfaces = scene->surfaces,
+                              &shared_surface_evaluate,
+                              &shared_surface_emission,
+                              &shared_surface_sample,
+                              &shared_surface_aov](
                               BufferFloat4 combined,
                               BufferFloat4 normal,
                               BufferFloat4 albedo,
@@ -911,7 +1440,69 @@ private:
                 scene->cycles_bsdf_table_buffer,
                 scene->texture_heap,
                 scene->heap,
-                scene->attribute_bindings};
+                scene->attribute_bindings,
+                scene->nishita_texture_bindings};
+            auto evaluate_surface =
+                [&](UInt surface_tag,
+                    const SurfacePoint &point,
+                    Float3 outgoing,
+                    const SurfaceQuery &query) noexcept {
+                    return unpack_surface_evaluation(
+                        shared_surface_evaluate(
+                            scene->parameter_buffer,
+                            scene->cycles_bsdf_table_buffer,
+                            scene->texture_heap,
+                            scene->heap,
+                            surface_tag,
+                            pack_surface_point(point),
+                            outgoing,
+                            query.lobe_mask,
+                            query.transport_mode));
+                };
+            auto surface_emission =
+                [&](UInt surface_tag,
+                    const SurfacePoint &point,
+                    Float3 outgoing) noexcept {
+                    return shared_surface_emission(
+                        scene->parameter_buffer,
+                        scene->cycles_bsdf_table_buffer,
+                        scene->texture_heap,
+                        scene->heap,
+                        surface_tag,
+                        pack_surface_point(point),
+                        outgoing);
+                };
+            auto sample_surface =
+                [&](UInt surface_tag,
+                    const SurfacePoint &point,
+                    Float u_lobe,
+                    Float2 u_direction,
+                    const SurfaceQuery &query) noexcept {
+                    return unpack_surface_sample(
+                        shared_surface_sample(
+                            scene->parameter_buffer,
+                            scene->cycles_bsdf_table_buffer,
+                            scene->texture_heap,
+                            scene->heap,
+                            surface_tag,
+                            pack_surface_point(point),
+                            u_lobe,
+                            u_direction,
+                            query.lobe_mask,
+                            query.transport_mode));
+                };
+            auto surface_aov =
+                [&](UInt surface_tag,
+                    const SurfacePoint &point) noexcept {
+                    return unpack_surface_aov(
+                        shared_surface_aov(
+                            scene->parameter_buffer,
+                            scene->cycles_bsdf_table_buffer,
+                            scene->texture_heap,
+                            scene->heap,
+                            surface_tag,
+                            pack_surface_point(point)));
+                };
             SurfaceQuery surface_query{
                 .lobe_mask =
                     static_cast<std::uint32_t>(
@@ -927,7 +1518,7 @@ private:
             auto evaluate_world_graph =
                 [&](Float3 direction) noexcept {
                     Float3 world = background;
-                    if (scene->world_surface_tag) {
+                    if (scene->world_surface) {
                         SurfacePoint world_point{
                             .position = make_float3(0.0f),
                             .object_position =
@@ -960,6 +1551,9 @@ private:
                                 make_float2(0.0f),
                             .instance_id = 0u,
                             .primitive_id = 0u,
+                            .parameter_block =
+                                scene->world_surface
+                                    ->parameter_block,
                             .object_random = 0.0f,
                             .particle_index = 0u,
                             .random_per_island = 0.0f,
@@ -974,9 +1568,10 @@ private:
                             .ray_length = 0.0f,
                             .time = 0.0f,
                             .back_facing = false};
-                        world += surfaces.emission(
-                            UInt{*scene->world_surface_tag},
-                            services,
+                        world += surface_emission(
+                            UInt{
+                                scene->world_surface
+                                    ->surface_tag},
                             world_point,
                             -direction);
                     }
@@ -985,6 +1580,21 @@ private:
             auto evaluate_environment_base =
                 [&](Float3 direction) noexcept {
                     if (scene->environment_texture_slot) {
+                        if (scene->nishita_environment) {
+                            const auto &sky =
+                                scene->nishita_environment
+                                    ->parameters;
+                            return cycles_nishita::xyz_to_rgb(
+                                       cycles_nishita::
+                                           sky_radiance_xyz(
+                                               scene->texture_heap
+                                                   ->tex2d(
+                                                       *scene
+                                                            ->environment_texture_slot),
+                                               direction,
+                                               sky.sun_rotation)) *
+                                   sky.background_strength;
+                        }
                         auto u = fract(
                             (pi - atan2(direction.y, direction.x)) /
                             (2.0f * pi));
@@ -1031,6 +1641,32 @@ private:
                         to_luisa(sun.radiance) *
                             (limb / 0.8f),
                         inside);
+                };
+            auto evaluate_nishita_sun =
+                [&](Float3 direction) noexcept {
+                    if (!scene->nishita_environment ||
+                        scene->nishita_environment
+                                ->angular_radius <=
+                            0.0f) {
+                        return Float3{make_float3(0.0f)};
+                    }
+                    const auto &sun =
+                        *scene->nishita_environment;
+                    const auto &sky = sun.parameters;
+                    return cycles_nishita::xyz_to_rgb(
+                               cycles_nishita::
+                                   sun_disc_radiance_xyz(
+                                       direction,
+                                       make_float3(
+                                           sun.sun_direction),
+                                       make_float3(
+                                           sun.pixel_bottom_xyz),
+                                       make_float3(
+                                           sun.pixel_top_xyz),
+                                       sky.sun_elevation,
+                                       sky.angular_diameter,
+                                       sky.sun_intensity)) *
+                           sky.background_strength;
                 };
             auto trace_shadow =
                 [&](Var<luisa::compute::Ray> shadow_ray) noexcept {
@@ -1249,7 +1885,7 @@ private:
                                                     1.0f,
                                                     0.0f,
                                                     0.0f)));
-                                    UInt surface_tag =
+                                    UInt2 material_binding =
                                         scene
                                             ->geometry_material_buffer
                                             ->read(
@@ -1263,7 +1899,7 @@ private:
                                                         1u));
                                     $if (material_slot <
                                          instance.override_count) {
-                                        surface_tag =
+                                        material_binding =
                                             scene
                                                 ->override_material_buffer
                                                 ->read(
@@ -1271,6 +1907,8 @@ private:
                                                         .override_offset +
                                                     material_slot);
                                     };
+                                    UInt surface_tag =
+                                        material_binding.x;
                                     SurfacePoint point{
                                         .position = position,
                                         .object_position =
@@ -1359,6 +1997,8 @@ private:
                                             make_float2(0.0f),
                                         .instance_id = hit->inst,
                                         .primitive_id = hit->prim,
+                                        .parameter_block =
+                                            material_binding.y,
                                         .object_random =
                                             instance.object_random,
                                         .particle_index =
@@ -1740,6 +2380,34 @@ private:
                                     sun_weight,
                                 path_depth);
                         }
+                        if (scene->nishita_environment &&
+                            scene->nishita_environment
+                                    ->angular_radius >
+                                0.0f) {
+                            const auto radius =
+                                scene->nishita_environment
+                                    ->angular_radius;
+                            const auto solid_angle =
+                                2.0f * pi *
+                                (1.0f - std::cos(radius));
+                            const auto sun_pdf =
+                                1.0f /
+                                std::max(
+                                    solid_angle, 1.0e-20f);
+                            Float sun_weight =
+                                forward_light_weight(
+                                    previous_bsdf_pdf,
+                                    sun_pdf,
+                                    competing,
+                                    true);
+                            radiance +=
+                                clamp_light_contribution(
+                                    throughput *
+                                        evaluate_nishita_sun(
+                                            ray->direction()) *
+                                        sun_weight,
+                                    path_depth);
+                        }
                         $break;
                     };
 
@@ -2030,7 +2698,7 @@ private:
                         (uv1 - uv0) * barycentric_dy.x +
                         (uv2 - uv0) * barycentric_dy.y;
 
-                    UInt surface_tag =
+                    UInt2 material_binding =
                         scene->geometry_material_buffer->read(
                             geometry.material_offset +
                             min(
@@ -2041,11 +2709,12 @@ private:
                                     1u));
                     $if (material_slot <
                          instance.override_count) {
-                        surface_tag =
+                        material_binding =
                             scene->override_material_buffer->read(
                                 instance.override_offset +
                                 material_slot);
                     };
+                    UInt surface_tag = material_binding.x;
 
                     SurfacePoint point{
                         .position = hit_position,
@@ -2116,6 +2785,8 @@ private:
                             barycentric_dy,
                         .instance_id = hit->inst,
                         .primitive_id = hit->prim,
+                        .parameter_block =
+                            material_binding.y,
                         .object_random =
                             instance.object_random,
                         .particle_index =
@@ -2172,9 +2843,8 @@ private:
                         .transport_mode =
                             surface_query.transport_mode};
 
-                    Float3 emitted = surfaces.emission(
+                    Float3 emitted = surface_emission(
                         surface_tag,
-                        services,
                         point,
                         point.incoming);
                     Float emission_weight = 1.0f;
@@ -2251,8 +2921,8 @@ private:
                     // Normal is captured once, after skipping transparent
                     // surfaces below the View Layer alpha threshold.
                     $if (path_depth == 0u) {
-                        auto aov = surfaces.aov(
-                            surface_tag, services, point);
+                        auto aov =
+                            surface_aov(surface_tag, point);
                         sample_albedo +=
                             throughput * aov.albedo;
                         auto surface_alpha =
@@ -2321,9 +2991,8 @@ private:
                             $if (any(
                                 shadow_transmittance > 0.0f)) {
                                 auto evaluation =
-                                    surfaces.evaluate(
+                                    evaluate_surface(
                                         surface_tag,
-                                        services,
                                         point,
                                         wi,
                                         path_surface_query);
@@ -2410,9 +3079,8 @@ private:
                             $if (any(
                                 shadow_transmittance > 0.0f)) {
                                 auto evaluation =
-                                    surfaces.evaluate(
+                                    evaluate_surface(
                                         surface_tag,
-                                        services,
                                         point,
                                         wi,
                                         path_surface_query);
@@ -2435,6 +3103,100 @@ private:
                                     shadow_transmittance *
                                     roulette_weight,
                                     path_depth);
+                            };
+                        }
+                        if (scene->nishita_environment &&
+                            scene->nishita_environment
+                                    ->angular_radius >
+                                0.0f) {
+                            const auto &sun =
+                                *scene->nishita_environment;
+                            const auto cosine_max =
+                                std::cos(sun.angular_radius);
+                            const auto solid_angle =
+                                2.0f * pi *
+                                (1.0f - cosine_max);
+                            const auto sun_pdf =
+                                1.0f /
+                                std::max(
+                                    solid_angle, 1.0e-20f);
+                            Float3 sun_axis =
+                                make_float3(
+                                    sun.sun_direction);
+                            Float3 basis_reference = select(
+                                make_float3(
+                                    0.0f, 0.0f, 1.0f),
+                                make_float3(
+                                    0.0f, 1.0f, 0.0f),
+                                abs(sun_axis.z) > 0.999f);
+                            Float3 sun_tangent =
+                                safe_normalize(
+                                    cross(
+                                        basis_reference,
+                                        sun_axis),
+                                    make_float3(
+                                        1.0f, 0.0f, 0.0f));
+                            Float3 sun_bitangent =
+                                cross(
+                                    sun_axis, sun_tangent);
+                            Float cosine_theta =
+                                1.0f -
+                                random_float(state) *
+                                    (1.0f - cosine_max);
+                            Float sine_theta = sqrt(max(
+                                1.0f -
+                                    cosine_theta *
+                                        cosine_theta,
+                                0.0f));
+                            Float phi =
+                                2.0f * pi *
+                                random_float(state);
+                            Float3 wi =
+                                sun_tangent *
+                                    (cos(phi) * sine_theta) +
+                                sun_bitangent *
+                                    (sin(phi) * sine_theta) +
+                                sun_axis * cosine_theta;
+                            Float3 shadow_origin =
+                                offset_ray_origin(
+                                    hit_position,
+                                    geometric_normal,
+                                    wi);
+                            Var<luisa::compute::Ray>
+                                sun_shadow_ray = make_ray(
+                                    shadow_origin,
+                                    wi,
+                                    0.0f,
+                                    ray_maximum);
+                            Float3 shadow_transmittance =
+                                trace_shadow(sun_shadow_ray);
+                            $if (any(
+                                shadow_transmittance > 0.0f)) {
+                                auto evaluation =
+                                    evaluate_surface(
+                                        surface_tag,
+                                        point,
+                                        wi,
+                                        path_surface_query);
+                                const auto mis_weight =
+                                    nee_light_weight(
+                                        sun_pdf,
+                                        evaluation.pdf);
+                                Float3 unshadowed_contribution =
+                                    evaluation.f *
+                                    evaluate_nishita_sun(wi) *
+                                    (mis_weight / sun_pdf);
+                                Float roulette_weight =
+                                    light_sample_roulette_weight(
+                                        unshadowed_contribution,
+                                        random_float(state));
+                                radiance +=
+                                    clamp_light_contribution(
+                                        throughput *
+                                            unshadowed_contribution *
+                                            shadow_transmittance *
+                                            roulette_weight,
+                                        path_depth);
                             };
                         }
                         if (scene->emissive_triangle_count > 0u) {
@@ -2753,6 +3515,8 @@ private:
                                     emitter.instance_index,
                                 .primitive_id =
                                     emitter.primitive_index,
+                                .parameter_block =
+                                    emitter.parameter_block,
                                 .object_random =
                                     light_instance.object_random,
                                 .particle_index =
@@ -2777,9 +3541,8 @@ private:
                                 .back_facing =
                                     light_back_facing};
                             Float3 light_radiance =
-                                surfaces.emission(
+                                surface_emission(
                                     emitter.surface_tag,
-                                    services,
                                     light_point,
                                     -wi);
                             Float light_pdf =
@@ -2814,9 +3577,8 @@ private:
                                 $if (any(
                                     shadow_transmittance > 0.0f)) {
                                     auto evaluation =
-                                        surfaces.evaluate(
+                                        evaluate_surface(
                                             surface_tag,
-                                            services,
                                             point,
                                             wi,
                                             path_surface_query);
@@ -2952,9 +3714,8 @@ private:
                                 $if (any(
                                     shadow_transmittance > 0.0f)) {
                                     auto evaluation =
-                                        surfaces.evaluate(
+                                        evaluate_surface(
                                             surface_tag,
-                                            services,
                                             point,
                                             wi,
                                             path_surface_query);
@@ -2986,9 +3747,8 @@ private:
                         }
                     }
 
-                    auto surface_sample = surfaces.sample(
+                    auto surface_sample = sample_surface(
                         surface_tag,
-                        services,
                         point,
                         random_float(state),
                         make_float2(
@@ -3340,14 +4100,107 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     }
 
     luisa::vector<luisa::float4> parameters;
+    std::map<std::uint64_t, std::uint32_t>
+        surface_tags_by_signature;
     for (const auto &[id, material] :
          data->materials.materials()) {
         const auto base =
             static_cast<std::uint32_t>(parameters.size());
-        const auto tag =
-            data->surfaces.create<GraphSurface>(
-                material.surface_program(), base);
-        data->material_tags.emplace(id, tag);
+        const auto signature =
+            material.surface_program()->structure_signature();
+        auto [surface_iter, inserted] =
+            surface_tags_by_signature.try_emplace(signature, 0u);
+        if (inserted) {
+            surface_iter->second =
+                data->surfaces.create<GraphSurface>(
+                    material.surface_program());
+        }
+        data->material_bindings.emplace(
+            id,
+            MaterialBinding{
+                .surface_tag = surface_iter->second,
+                .parameter_block = base});
+        const auto &program = *material.surface_program();
+        const auto scalar_parameter =
+            [&](compiler::ValueExpressionId expression)
+            -> std::optional<float> {
+            if (!expression.valid() ||
+                expression.value >=
+                    program.value_instructions().size()) {
+                return std::nullopt;
+            }
+            const auto &source =
+                program.value_instructions()[expression.value];
+            if (source.operation !=
+                    compiler::ValueOperation::parameter ||
+                !source.parameter.valid()) {
+                return std::nullopt;
+            }
+            const auto *value =
+                material.parameters().find(source.parameter);
+            if (value == nullptr ||
+                value->type !=
+                    contract::SocketType::floating) {
+                return std::nullopt;
+            }
+            return std::get<float>(value->value);
+        };
+        for (const auto &instruction :
+             program.value_instructions()) {
+            if (instruction.operation !=
+                compiler::ValueOperation::nishita_sky) {
+                continue;
+            }
+            const std::array expressions{
+                instruction.a,
+                instruction.b,
+                instruction.c,
+                instruction.d,
+                instruction.e,
+                instruction.f,
+                instruction.g,
+                instruction.h};
+            std::array<float, expressions.size()> values{};
+            auto static_parameters = true;
+            for (std::size_t i = 0u;
+                 i < expressions.size();
+                 ++i) {
+                const auto value =
+                    scalar_parameter(expressions[i]);
+                if (!value) {
+                    static_parameters = false;
+                    break;
+                }
+                values[i] = *value;
+            }
+            if (!static_parameters) {
+                diagnose(
+                    result.diagnostics,
+                    "Material '" + material.name() +
+                        "' drives Nishita atmosphere properties from "
+                        "runtime graph expressions. Cycles treats these "
+                        "properties as precompute inputs; Psycles refuses "
+                        "to replace them with an analytic approximation.");
+                continue;
+            }
+            data->nishita_texture_bindings.emplace_back(
+                NishitaTextureBinding{
+                    .parameter_block = base,
+                    .sky_index = static_cast<std::uint32_t>(
+                        instruction.static_u0),
+                    .texture_slot = 0u,
+                    .parameters =
+                        contract::NishitaSkyDesc{
+                            .sun_elevation = values[0u],
+                            .sun_rotation = values[1u],
+                            .angular_diameter = values[2u],
+                            .sun_intensity = values[3u],
+                            .altitude = values[4u],
+                            .air_density = values[5u],
+                            .dust_density = values[6u],
+                            .ozone_density = values[7u],
+                            .background_strength = 1.0f}});
+        }
         for (const auto &parameter :
              material.surface_program()->parameters()) {
             const auto *value =
@@ -3358,11 +4211,14 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                     : luisa::make_float4(0.0f));
         }
     }
+    if (!result.diagnostics.empty()) {
+        return result;
+    }
     if (snapshot.world_shader) {
         auto iter =
-            data->material_tags.find(*snapshot.world_shader);
-        if (iter != data->material_tags.end()) {
-            data->world_surface_tag = iter->second;
+            data->material_bindings.find(*snapshot.world_shader);
+        if (iter != data->material_bindings.end()) {
+            data->world_surface = iter->second;
         }
     }
     if (parameters.empty()) {
@@ -3448,7 +4304,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     std::map<contract::GeometryId, std::uint32_t>
         geometry_indices;
     luisa::vector<GeometryGpu> geometry_gpu;
-    luisa::vector<luisa::uint> geometry_materials;
+    luisa::vector<luisa::uint2> geometry_materials;
     auto next_attribute_slot =
         static_cast<std::uint32_t>(
             fixed_geometry_slots);
@@ -3465,18 +4321,64 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             texture_slot_count,
             static_cast<std::size_t>(image_id.value) + 1u);
     }
+    for (auto &binding :
+         data->nishita_texture_bindings) {
+        binding.texture_slot =
+            static_cast<std::uint32_t>(texture_slot_count);
+        ++texture_slot_count;
+    }
     if (snapshot.environment) {
+        const auto &environment = *snapshot.environment;
+        if (environment.nishita) {
+            const auto &sky = *environment.nishita;
+            data->environment_width =
+                cycles_nishita::lut_width;
+            data->environment_height =
+                cycles_nishita::lut_height;
+            const auto cosine_elevation =
+                std::cos(sky.sun_elevation);
+            data->nishita_environment =
+                NishitaEnvironmentRuntime{
+                    .parameters = sky,
+                    .pixel_bottom_xyz = {},
+                    .pixel_top_xyz = {},
+                    .sun_direction =
+                        luisa::make_float3(
+                            -cosine_elevation *
+                                std::sin(sky.sun_rotation),
+                            cosine_elevation *
+                                std::cos(sky.sun_rotation),
+                            std::sin(sky.sun_elevation)),
+                    .angular_radius =
+                        std::max(
+                            sky.angular_diameter * 0.5f,
+                            0.0f)};
+        } else {
+            const auto expected_pixels =
+                static_cast<std::size_t>(environment.width) *
+                static_cast<std::size_t>(environment.height);
+            if (environment.width == 0u ||
+                environment.height == 0u ||
+                environment.pixels.size() != expected_pixels) {
+                diagnose(
+                    result.diagnostics,
+                    "Environment '" + environment.name +
+                        "' has an invalid precomputed texture payload.");
+                return result;
+            }
+            data->environment_width = environment.width;
+            data->environment_height = environment.height;
+        }
         data->environment_texture_slot =
             static_cast<std::uint32_t>(texture_slot_count);
-        data->environment_width = snapshot.environment->width;
-        data->environment_height = snapshot.environment->height;
-        data->environment_suns = snapshot.environment->suns;
+        data->environment_suns = environment.suns;
         ++texture_slot_count;
     }
     data->texture_heap =
         data->device.create_bindless_array(texture_slot_count);
     data->images.reserve(
         snapshot.images.size() +
+        data->nishita_texture_bindings.size() +
         (snapshot.environment ? 2u : 1u));
     std::vector<luisa::vector<std::byte>> texture_uploads;
     texture_uploads.reserve(snapshot.images.size() + 1u);
@@ -3578,10 +4480,125 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             luisa::compute::Sampler::linear_point_repeat());
         stream << resource.copy_from(luisa::span{pixels});
     }
+    const auto has_nishita_environment =
+        snapshot.environment &&
+        snapshot.environment->nishita.has_value() &&
+        data->environment_texture_slot.has_value();
+    if (!data->nishita_texture_bindings.empty() ||
+        has_nishita_environment) {
+        Kernel2D precompute_nishita =
+            [](ImageFloat image,
+               BufferFloat4 sun_pixels,
+               Float sun_elevation,
+               Float angular_diameter,
+               Float altitude,
+               Float air_density,
+               Float dust_density,
+               Float ozone_density) noexcept {
+                set_block_size(8u, 8u, 1u);
+                UInt2 coordinate = dispatch_id().xy();
+                Float3 xyz =
+                    cycles_nishita::sky_lut_texel(
+                        coordinate.x,
+                        coordinate.y,
+                        sun_elevation,
+                        altitude,
+                        air_density,
+                        dust_density,
+                        ozone_density);
+                Float4 pixel = make_float4(xyz, 1.0f);
+                image.write(coordinate, pixel);
+                image.write(
+                    make_uint2(
+                        cycles_nishita::lut_width -
+                            coordinate.x - 1u,
+                        coordinate.y),
+                    pixel);
+                $if ((coordinate.x == 0u) &
+                     (coordinate.y == 0u)) {
+                    const auto diameter =
+                        max(abs(angular_diameter), 1.0e-7f);
+                    const auto values =
+                        cycles_nishita::sun_pixels(
+                            sun_elevation,
+                            diameter,
+                            altitude,
+                            air_density,
+                            dust_density);
+                    sun_pixels.write(
+                        0u,
+                        make_float4(
+                            values.bottom_xyz, 1.0f));
+                    sun_pixels.write(
+                        1u,
+                        make_float4(
+                            values.top_xyz, 1.0f));
+                };
+            };
+        auto precompute_shader =
+            data->device.compile(precompute_nishita);
+        auto sun_output =
+            data->device.create_buffer<luisa::float4>(2u);
+        luisa::vector<luisa::float4> sun_readback(2u);
+        const auto precompute =
+            [&](std::uint32_t texture_slot,
+                const contract::NishitaSkyDesc &sky,
+                luisa::float3 &pixel_bottom,
+                luisa::float3 &pixel_top) {
+                auto &resource = data->images.emplace_back(
+                    data->device.create_image<float>(
+                        luisa::compute::PixelStorage::FLOAT4,
+                        cycles_nishita::lut_width,
+                        cycles_nishita::lut_height));
+                data->texture_heap.emplace_on_update(
+                    texture_slot,
+                    resource,
+                    luisa::compute::Sampler::
+                        linear_point_edge());
+                stream
+                    << precompute_shader(
+                           resource,
+                           sun_output,
+                           sky.sun_elevation,
+                           sky.angular_diameter,
+                           sky.altitude,
+                           sky.air_density,
+                           sky.dust_density,
+                           sky.ozone_density)
+                           .dispatch(
+                               cycles_nishita::
+                                   half_lut_width,
+                               cycles_nishita::lut_height)
+                    << sun_output.copy_to(
+                           luisa::span{sun_readback})
+                    << synchronize();
+                pixel_bottom = sun_readback[0u].xyz();
+                pixel_top = sun_readback[1u].xyz();
+            };
+        for (auto &binding :
+             data->nishita_texture_bindings) {
+            precompute(
+                binding.texture_slot,
+                binding.parameters,
+                binding.pixel_bottom_xyz,
+                binding.pixel_top_xyz);
+        }
+        if (has_nishita_environment) {
+            precompute(
+                *data->environment_texture_slot,
+                *snapshot.environment->nishita,
+                data->nishita_environment
+                    ->pixel_bottom_xyz,
+                data->nishita_environment
+                    ->pixel_top_xyz);
+        }
+    }
     if (snapshot.environment &&
-        data->environment_texture_slot) {
+        data->environment_texture_slot &&
+        !snapshot.environment->nishita) {
         const auto &environment = *snapshot.environment;
-        auto &pixels = float_texture_uploads.emplace_back();
+        auto &pixels =
+            float_texture_uploads.emplace_back();
         pixels.reserve(environment.pixels.size());
         for (const auto value : environment.pixels) {
             pixels.emplace_back(
@@ -3596,7 +4613,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         data->texture_heap.emplace_on_update(
             *data->environment_texture_slot,
             resource,
-            luisa::compute::Sampler::linear_point_repeat());
+            luisa::compute::Sampler::
+                linear_point_repeat());
         stream << resource.copy_from(luisa::span{pixels});
     }
     if (!result.diagnostics.empty()) {
@@ -3740,8 +4758,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         for (const auto material_id :
              geometry.material_slots) {
             const auto material_iter =
-                data->material_tags.find(material_id);
-            if (material_iter == data->material_tags.end()) {
+                data->material_bindings.find(material_id);
+            if (material_iter ==
+                data->material_bindings.end()) {
                 diagnose(
                     result.diagnostics,
                     "Geometry '" + geometry.name +
@@ -3749,10 +4768,11 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 break;
             }
             geometry_materials.emplace_back(
-                material_iter->second);
+                to_luisa(material_iter->second));
         }
         if (geometry.material_slots.empty()) {
-            geometry_materials.emplace_back(0u);
+            geometry_materials.emplace_back(
+                luisa::make_uint2(0u));
         }
         if (!result.diagnostics.empty()) {
             continue;
@@ -3881,7 +4901,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     }
 
     luisa::vector<InstanceGpu> instances;
-    luisa::vector<luisa::uint> override_materials;
+    luisa::vector<luisa::uint2> override_materials;
     luisa::vector<EmissiveTriangleGpu> emissive_triangles;
     data->accel = data->device.create_accel();
     for (const auto &[instance_id, instance] :
@@ -3902,8 +4922,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         for (const auto material_id :
              instance.material_overrides) {
             const auto material_iter =
-                data->material_tags.find(material_id);
-            if (material_iter == data->material_tags.end()) {
+                data->material_bindings.find(material_id);
+            if (material_iter ==
+                data->material_bindings.end()) {
                 diagnose(
                     result.diagnostics,
                     "Instance '" + instance.name +
@@ -3912,7 +4933,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 break;
             }
             override_materials.emplace_back(
-                material_iter->second);
+                to_luisa(material_iter->second));
         }
         if (!result.diagnostics.empty()) {
             continue;
@@ -3968,8 +4989,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                     continue;
                 }
                 const auto tag_iter =
-                    data->material_tags.find(*material_id);
-                if (tag_iter == data->material_tags.end()) {
+                    data->material_bindings.find(*material_id);
+                if (tag_iter ==
+                    data->material_bindings.end()) {
                     diagnose(
                         result.diagnostics,
                         "Instance '" + instance.name +
@@ -3985,7 +5007,10 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                         .primitive_index =
                             static_cast<std::uint32_t>(
                                 primitive_index),
-                        .surface_tag = tag_iter->second});
+                        .surface_tag =
+                            tag_iter->second.surface_tag,
+                        .parameter_block =
+                            tag_iter->second.parameter_block});
             }
         }
         const auto visibility =
@@ -4084,10 +5109,12 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             EmissiveTriangleGpu{});
     }
     if (geometry_materials.empty()) {
-        geometry_materials.emplace_back(0u);
+        geometry_materials.emplace_back(
+            luisa::make_uint2(0u));
     }
     if (override_materials.empty()) {
-        override_materials.emplace_back(0u);
+        override_materials.emplace_back(
+            luisa::make_uint2(0u));
     }
     // Empty-world renders are valid Cycles scenes. Luisa buffers cannot be
     // zero-sized, so keep inert storage records while leaving the acceleration
@@ -4107,10 +5134,10 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         data->device.create_buffer<InstanceGpu>(
             instances.size());
     data->geometry_material_buffer =
-        data->device.create_buffer<luisa::uint>(
+        data->device.create_buffer<luisa::uint2>(
             geometry_materials.size());
     data->override_material_buffer =
-        data->device.create_buffer<luisa::uint>(
+        data->device.create_buffer<luisa::uint2>(
             override_materials.size());
     data->light_buffer =
         data->device.create_buffer<LightGpu>(

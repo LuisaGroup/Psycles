@@ -128,6 +128,7 @@ private:
     std::vector<ValueInstruction> _value_instructions;
     std::vector<ClosureInstruction> _closure_instructions;
     std::map<OutputKey, LoweredOutput> _outputs;
+    std::uint32_t _nishita_count{};
 
 private:
     void diagnose(
@@ -1204,7 +1205,8 @@ private:
                         .e = *altitude,
                         .f = *air,
                         .g = *dust,
-                        .h = *ozone}));
+                        .h = *ozone,
+                        .static_u0 = _nishita_count++}));
             }
             return;
         }
@@ -1269,6 +1271,21 @@ private:
                             property_string(
                                 node, "Distribution", "GGX") ==
                             "MULTI_GGX"}));
+            }
+            return;
+        }
+        if (node.type == node_type::translucent_bsdf) {
+            auto color = lower_value_input(node, "Color");
+            auto normal = lower_value_input(node, "Normal");
+            if (color && normal) {
+                publish(
+                    node.id,
+                    "Closure",
+                    append(ClosureInstruction{
+                        .operation = ClosureOperation::translucent,
+                        .source_node = node.id,
+                        .color = *color,
+                        .normal = *normal}));
             }
             return;
         }

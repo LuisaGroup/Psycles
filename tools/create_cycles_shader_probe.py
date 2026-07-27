@@ -333,6 +333,25 @@ def _diffuse_surface(scene: Any) -> None:
     _sphere(material)
 
 
+def _translucent_surface(scene: Any) -> None:
+    """Exercise Cycles' diffuse-transmission hemisphere and event labels."""
+    _world(scene, (0.31, 0.56, 0.82, 1.0), 1.0)
+    material, tree, output = _material("Translucent Probe")
+    translucent = tree.nodes.new("ShaderNodeBsdfTranslucent")
+    translucent.name = "Translucent BSDF"
+    _input(translucent, "Color").default_value = (
+        0.73,
+        0.28,
+        0.11,
+        1.0,
+    )
+    tree.links.new(
+        _output(translucent, "BSDF"),
+        _input(output, "Surface"),
+    )
+    _sphere(material)
+
+
 def _principled_surface(scene: Any) -> None:
     _world(scene, (0.42, 0.52, 0.65, 1.0), 0.8)
     material, tree, output = _material("Principled Probe")
@@ -1498,6 +1517,7 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "separate_color_modes": _separate_color_modes,
     "transparent_mix": _transparent_mix,
     "transparent_data_pass": _transparent_data_pass,
+    "translucent_surface": _translucent_surface,
     "value_emission": _value_emission,
     "white_noise_dimensions": _white_noise_dimensions,
 }

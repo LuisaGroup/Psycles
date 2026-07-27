@@ -630,6 +630,15 @@ NodeRegistry make_core_node_registry() {
         .required_features = feature_bit(ShaderFeature::surface)}));
 
     static_cast<void>(registry.register_schema(NodeSchema{
+        .type = node_type::translucent_bsdf,
+        .inputs = {
+            input("Color", SocketType::color, SocketValue::color({0.8f, 0.8f, 0.8f})),
+            input("Normal", SocketType::normal, SocketValue::normal({0.0f, 0.0f, 0.0f}))},
+        .outputs = {output("Closure", SocketType::closure)},
+        .properties = {},
+        .required_features = feature_bit(ShaderFeature::surface)}));
+
+    static_cast<void>(registry.register_schema(NodeSchema{
         .type = node_type::principled_bsdf,
         .inputs = {
             input("BaseColor", SocketType::color, SocketValue::color({0.8f, 0.8f, 0.8f})),

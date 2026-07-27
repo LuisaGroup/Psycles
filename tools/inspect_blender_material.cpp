@@ -75,14 +75,24 @@ int main(int argc, char **argv) {
     }
 
     const auto requested = std::string_view{argv[2]};
+    const auto inspect_all = requested == "*";
     for (const auto &[id, material] : materials.materials()) {
-        if (material.name() != requested) {
+        if (!inspect_all && material.name() != requested) {
             continue;
         }
         const auto &program = *material.surface_program();
         std::cout << "material " << id.value << " '" << material.name()
-                  << "'\nparameters " << program.parameters().size()
+                  << "' signature " << program.structure_signature()
+                  << "\nparameters " << program.parameters().size()
                   << "\n";
+        if (inspect_all) {
+            std::cout << "values "
+                      << program.value_instructions().size()
+                      << "\nclosures "
+                      << program.closure_instructions().size()
+                      << "\n";
+            continue;
+        }
         for (const auto &parameter : program.parameters()) {
             std::cout << "  [" << parameter.id.value << "] node "
                       << parameter.node.value << ' ' << parameter.socket
@@ -120,6 +130,9 @@ int main(int argc, char **argv) {
                       << " color=" << closure.color.value
                       << " strength=" << closure.strength.value << '\n';
         }
+        return EXIT_SUCCESS;
+    }
+    if (inspect_all) {
         return EXIT_SUCCESS;
     }
     std::cerr << "material not found: " << requested << '\n';

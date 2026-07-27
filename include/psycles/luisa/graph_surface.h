@@ -78,7 +78,6 @@ private:
 
 private:
     std::shared_ptr<const compiler::SurfaceProgram> _program;
-    std::uint32_t _parameter_block{};
     SurfaceCapabilities _capabilities;
 
 private:
@@ -1055,10 +1054,10 @@ private:
                 case compiler::ValueOperation::parameter:
                     value = make_float4(
                         services.parameter_float3(
-                            _parameter_block,
+                            point.parameter_block,
                             instruction.parameter.value),
                         services.parameter_float(
-                            _parameter_block,
+                            point.parameter_block,
                             instruction.parameter.value));
                     break;
                 case compiler::ValueOperation::passthrough:
@@ -2114,64 +2113,16 @@ private:
                     auto direction = safe_normalize(
                         -point.incoming,
                         make_float3(0.0f, 0.0f, 1.0f));
-                    auto elevation =
-                        scalar(instruction.a, result);
-                    auto rotation =
-                        scalar(instruction.b, result);
-                    auto sun_size = max(
-                        scalar(instruction.c, result),
-                        1.0e-5f);
-                    auto sun_intensity = max(
-                        scalar(instruction.d, result),
-                        0.0f);
-                    auto air = max(
-                        scalar(instruction.f, result),
-                        0.0f);
-                    auto dust = max(
-                        scalar(instruction.g, result),
-                        0.0f);
-                    auto ozone = max(
-                        scalar(instruction.h, result),
-                        0.0f);
-                    auto sun_direction = make_float3(
-                        -cos(elevation) * sin(rotation),
-                        cos(elevation) * cos(rotation),
-                        sin(elevation));
-                    auto height = clamp(
-                        direction.z, 0.0f, 1.0f);
-                    auto horizon = make_float3(
-                        0.42f, 0.55f, 0.78f) /
-                        max(0.5f + 0.35f * dust, 0.1f);
-                    auto zenith = make_float3(
-                        0.08f, 0.24f, 0.72f) /
-                        max(0.65f + 0.2f * air, 0.1f);
-                    auto sky = lerp(
-                        horizon,
-                        zenith,
-                        pow(height, 0.35f));
-                    auto sunset = pow(
-                        max(
-                            dot(direction, sun_direction),
-                            0.0f),
-                        8.0f);
-                    sky += make_float3(
-                               0.9f, 0.28f, 0.04f) *
-                           sunset *
-                           max(0.0f, 0.35f - sun_direction.z) *
-                           (0.5f + dust);
-                    sky *= make_float3(
-                        1.0f,
-                        max(1.0f - 0.05f * ozone, 0.5f),
-                        max(1.0f - 0.12f * ozone, 0.35f));
-                    auto sun_cos =
-                        cos(sun_size * 0.5f);
-                    auto disc =
-                        dot(direction, sun_direction) >= sun_cos;
-                    auto sun = make_float3(
-                                   18.0f, 15.5f, 12.0f) *
-                               sun_intensity;
                     value = make_float4(
-                        select(sky, sky + sun, disc),
+                        services.nishita_sky(
+                            point.parameter_block,
+                            static_cast<std::uint32_t>(
+                                instruction.static_u0),
+                            direction,
+                            scalar(instruction.a, result),
+                            scalar(instruction.b, result),
+                            scalar(instruction.c, result),
+                            scalar(instruction.d, result)),
                         1.0f);
                     break;
                 }
@@ -2209,6 +2160,25 @@ private:
                         self,
                         closure.b,
                         mix_weight * factor);
+                    return;
+                }
+                case compiler::ClosureOperation::translucent: {
+                    auto color = vector(
+                        closure.color, values);
+                    function(TracedClosure{
+                        .operation =
+                            compiler::ClosureOperation::translucent,
+                        .weight = color * mix_weight,
+                        .color = color,
+                        .normal = safe_normalize(
+                            vector(closure.normal, values),
+                            values.shading_normal),
+                        .roughness = 0.0f,
+                        .diffuse_roughness = 0.0f,
+                        .metallic = 0.0f,
+                        .ior = 1.0f,
+                        .specular_ior_level = 0.0f,
+                        .specular_tint = make_float3(1.0f)});
                     return;
                 }
                 case compiler::ClosureOperation::diffuse:
@@ -2322,11 +2292,9 @@ private:
     }
 
 public:
-    GraphSurface(
-        std::shared_ptr<const compiler::SurfaceProgram> program,
-        std::uint32_t parameter_block) noexcept
-        : _program{std::move(program)},
-          _parameter_block{parameter_block} {
+    explicit GraphSurface(
+        std::shared_ptr<const compiler::SurfaceProgram> program) noexcept
+        : _program{std::move(program)} {
         if (_program) {
             for (const auto &instruction :
                  _program->value_instructions()) {
@@ -2406,7 +2374,11 @@ public:
         auto transparent_enabled =
             (query.lobe_mask &
              static_cast<std::uint32_t>(event_transparent)) != 0u;
+        auto transmission_enabled =
+            (query.lobe_mask &
+             static_cast<std::uint32_t>(event_transmission)) != 0u;
         Bool has_diffuse = false;
+        Bool has_translucent = false;
         Bool has_glossy = false;
 
         for_each_closure(
@@ -2422,24 +2394,37 @@ public:
                 const auto is_diffuse =
                     closure.operation ==
                     compiler::ClosureOperation::diffuse;
+                const auto is_translucent =
+                    closure.operation ==
+                    compiler::ClosureOperation::translucent;
                 const auto is_principled =
                     closure.operation ==
                     compiler::ClosureOperation::principled;
                 const auto is_glossy =
                     closure.operation ==
                     compiler::ClosureOperation::glossy;
-                if (!is_diffuse && !is_principled &&
+                if (!is_diffuse && !is_translucent &&
+                    !is_principled &&
                     !is_glossy) {
                     return;
                 }
+                auto diffuse_normal =
+                    is_translucent
+                        ? -closure.normal
+                        : closure.normal;
                 auto diffuse_pdf =
-                    max(dot(closure.normal, outgoing), 0.0f) *
+                    max(dot(diffuse_normal, outgoing), 0.0f) *
                     inverse_pi;
                 auto glossy_pdf = microfacet_pdf(
                     closure, incoming, outgoing);
-                auto diffuse_allowed =
+                auto translucent_allowed =
                     diffuse_enabled &
-                    (is_diffuse || is_principled);
+                    transmission_enabled &
+                    is_translucent;
+                auto diffuse_allowed =
+                    (diffuse_enabled &
+                     (is_diffuse || is_principled)) |
+                    translucent_allowed;
                 auto glossy_allowed =
                     glossy_enabled &
                     (is_principled || is_glossy);
@@ -2492,6 +2477,18 @@ public:
                         max(
                             closure.color,
                             make_float3(0.04f));
+                } else if (is_translucent) {
+                    specular_chance = 0.0f;
+                    auto cosine =
+                        max(
+                            dot(-closure.normal, outgoing),
+                            0.0f) *
+                        inverse_pi;
+                    diffuse_contribution =
+                        closure.weight * cosine;
+                    glossy_contribution =
+                        make_float3(0.0f);
+                    selection_color = closure.weight;
                 } else {
                     specular_chance = 0.0f;
                     diffuse_contribution =
@@ -2546,7 +2543,12 @@ public:
                 weighted_pdf += weight * enabled_pdf;
                 has_diffuse =
                     has_diffuse |
-                    (diffuse_allowed &
+                    ((diffuse_allowed & (!is_translucent)) &
+                     (sample_weight(diffuse_contribution) >
+                      0.0f));
+                has_translucent =
+                    has_translucent |
+                    (translucent_allowed &
                      (sample_weight(diffuse_contribution) >
                       0.0f));
                 has_glossy =
@@ -2562,7 +2564,9 @@ public:
             weighted_pdf / max(total_sample_weight, 1.0e-20f),
             has_pdf);
         result.diffuse_pdf = select(
-            0.0f, result.pdf, has_diffuse);
+            0.0f,
+            result.pdf,
+            has_diffuse | has_translucent);
         auto has_diffuse_pdf = weighted_pdf > 0.0f;
         UInt events =
             static_cast<std::uint32_t>(event_none);
@@ -2578,6 +2582,12 @@ public:
                 static_cast<std::uint32_t>(
                     event_glossy | event_reflection),
             has_glossy);
+        events = select(
+            events,
+            events |
+                static_cast<std::uint32_t>(
+                    event_diffuse | event_transmission),
+            has_translucent);
         result.events = select(
             static_cast<std::uint32_t>(event_none),
             events,
@@ -2627,12 +2637,18 @@ public:
         auto transparent_enabled =
             (query.lobe_mask &
              static_cast<std::uint32_t>(event_transparent)) != 0u;
+        auto transmission_enabled =
+            (query.lobe_mask &
+             static_cast<std::uint32_t>(event_transmission)) != 0u;
         for_each_closure(
             values,
             [&](const TracedClosure &closure) noexcept {
                 auto is_diffuse =
                     closure.operation ==
                     compiler::ClosureOperation::diffuse;
+                auto is_translucent =
+                    closure.operation ==
+                    compiler::ClosureOperation::translucent;
                 auto is_principled =
                     closure.operation ==
                     compiler::ClosureOperation::principled;
@@ -2645,7 +2661,10 @@ public:
                 auto eligible =
                     is_transparent
                         ? transparent_enabled
-                        : is_diffuse
+                        : is_translucent
+                              ? (diffuse_enabled &
+                                 transmission_enabled)
+                              : is_diffuse
                               ? diffuse_enabled
                               : is_principled
                                     ? (diffuse_enabled |
@@ -2662,7 +2681,8 @@ public:
                         state.glossy_sample_weight;
                 } else {
                     selection_color =
-                        is_diffuse || is_transparent
+                        is_diffuse || is_translucent ||
+                                is_transparent
                             ? closure.weight
                             : closure.weight *
                                   max(
@@ -2682,6 +2702,7 @@ public:
         Float accumulated = 0.0f;
         Bool selected = false;
         Bool selected_transparent = false;
+        Bool selected_translucent = false;
         Bool selected_glossy = false;
         Float3 transparent_weight = make_float3(0.0f);
         Float transparent_sample_weight = 0.0f;
@@ -2692,6 +2713,9 @@ public:
                 auto is_diffuse =
                     closure.operation ==
                     compiler::ClosureOperation::diffuse;
+                auto is_translucent =
+                    closure.operation ==
+                    compiler::ClosureOperation::translucent;
                 auto is_principled =
                     closure.operation ==
                     compiler::ClosureOperation::principled;
@@ -2704,7 +2728,10 @@ public:
                 auto eligible =
                     is_transparent
                         ? transparent_enabled
-                        : is_diffuse
+                        : is_translucent
+                              ? (diffuse_enabled &
+                                 transmission_enabled)
+                              : is_diffuse
                               ? diffuse_enabled
                               : is_principled
                                     ? (diffuse_enabled |
@@ -2732,7 +2759,8 @@ public:
                             1.0e-20f);
                 } else {
                     selection_color =
-                        is_diffuse || is_transparent
+                        is_diffuse || is_translucent ||
+                                is_transparent
                             ? closure.weight
                             : closure.weight *
                                   max(
@@ -2748,9 +2776,16 @@ public:
                     (!selected) &
                     (weight > 0.0f) &
                     (target < next);
+                Bool closure_diffuse_enabled = false;
+                if (is_diffuse || is_principled) {
+                    closure_diffuse_enabled = true;
+                } else if (is_translucent) {
+                    closure_diffuse_enabled =
+                        transmission_enabled;
+                }
                 auto local_diffuse_enabled =
                     diffuse_enabled &
-                    (is_diffuse || is_principled);
+                    closure_diffuse_enabled;
                 auto local_glossy_enabled =
                     glossy_enabled &
                     (is_glossy || is_principled);
@@ -2784,7 +2819,10 @@ public:
                     random_direction.y);
                 auto diffuse_direction =
                     sample_cosine_hemisphere(
-                        closure.normal, remapped_random);
+                        is_translucent
+                            ? -closure.normal
+                            : closure.normal,
+                        remapped_random);
                 auto glossy_direction = sample_ggx(
                     closure,
                     incoming,
@@ -2823,6 +2861,9 @@ public:
                 selected_transparent =
                     selected_transparent |
                     (is_transparent ? choose : Bool{false});
+                selected_translucent =
+                    selected_translucent |
+                    (is_translucent ? choose : Bool{false});
                 selected_glossy =
                     selected_glossy |
                     ((!is_transparent) & choose &
@@ -2833,8 +2874,14 @@ public:
 
         auto diffuse_evaluation = evaluate_traced(
             services, values, point, result.wi, query);
-        auto geometric_valid =
+        auto reflection_geometric_valid =
             dot(point.geometric_normal, result.wi) > 0.0f;
+        auto transmission_geometric_valid =
+            dot(point.geometric_normal, result.wi) < 0.0f;
+        auto geometric_valid = select(
+            reflection_geometric_valid,
+            transmission_geometric_valid,
+            selected_translucent);
         auto diffuse_valid =
             selected & (!selected_transparent) & geometric_valid;
         auto transparent_valid =
@@ -2863,6 +2910,11 @@ public:
             static_cast<std::uint32_t>(
                 event_glossy | event_reflection),
             selected_glossy);
+        sampled_surface_events = select(
+            sampled_surface_events,
+            static_cast<std::uint32_t>(
+                event_diffuse | event_transmission),
+            selected_translucent);
         result.evaluation.events = select(
             sampled_surface_events,
             static_cast<std::uint32_t>(
@@ -2940,13 +2992,17 @@ public:
                 const auto is_diffuse =
                     closure.operation ==
                     compiler::ClosureOperation::diffuse;
+                const auto is_translucent =
+                    closure.operation ==
+                    compiler::ClosureOperation::translucent;
                 const auto is_principled =
                     closure.operation ==
                     compiler::ClosureOperation::principled;
                 const auto is_glossy =
                     closure.operation ==
                     compiler::ClosureOperation::glossy;
-                if (!is_diffuse && !is_principled &&
+                if (!is_diffuse && !is_translucent &&
+                    !is_principled &&
                     !is_glossy) {
                     return;
                 }
@@ -2959,7 +3015,7 @@ public:
                                  .diffuse_albedo;
                 } else {
                     albedo =
-                        is_diffuse
+                        is_diffuse || is_translucent
                             ? closure.weight
                             : closure.weight * closure.color;
                 }

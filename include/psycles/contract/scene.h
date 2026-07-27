@@ -197,6 +197,20 @@ struct EnvironmentSunDesc {
     float angular_radius{};
 };
 
+struct NishitaSkyDesc {
+    // Cycles' simplified node parameters. `sun_rotation` already follows the
+    // Cycles device convention after Blender's node-space wrap.
+    float sun_elevation{};
+    float sun_rotation{};
+    float angular_diameter{-1.0f};
+    float sun_intensity{1.0f};
+    float altitude{};
+    float air_density{1.0f};
+    float dust_density{1.0f};
+    float ozone_density{1.0f};
+    float background_strength{1.0f};
+};
+
 struct EnvironmentDesc {
     std::string name;
     std::uint32_t width{};
@@ -205,6 +219,9 @@ struct EnvironmentDesc {
     // excluded and represented by `suns` so they can be sampled explicitly.
     std::vector<Vec3f> pixels;
     std::vector<EnvironmentSunDesc> suns;
+    // Procedural Cycles Nishita data is compiled into a Luisa precompute
+    // kernel. It is intentionally not a Blender/Cycles-baked image.
+    std::optional<NishitaSkyDesc> nishita;
 };
 
 struct SceneSnapshot {

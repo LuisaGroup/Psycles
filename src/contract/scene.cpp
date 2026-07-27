@@ -1,6 +1,7 @@
 #include <psycles/contract/scene.h>
 
 #include <algorithm>
+#include <cmath>
 #include <type_traits>
 
 namespace psycles::contract {
@@ -200,15 +201,32 @@ template<typename Id>
     }
     if (scene.environment) {
         const auto &environment = *scene.environment;
-        const auto expected =
-            static_cast<std::size_t>(environment.width) *
-            static_cast<std::size_t>(environment.height);
-        if (environment.width == 0u ||
-            environment.height == 0u ||
-            environment.pixels.size() != expected) {
-            diagnose(
-                SceneDiagnosticCode::invalid_reference,
-                "world environment has invalid dimensions or pixel count");
+        if (environment.nishita) {
+            const auto &sky = *environment.nishita;
+            if (!std::isfinite(sky.sun_elevation) ||
+                !std::isfinite(sky.sun_rotation) ||
+                !std::isfinite(sky.angular_diameter) ||
+                !std::isfinite(sky.sun_intensity) ||
+                !std::isfinite(sky.altitude) ||
+                !std::isfinite(sky.air_density) ||
+                !std::isfinite(sky.dust_density) ||
+                !std::isfinite(sky.ozone_density) ||
+                !std::isfinite(sky.background_strength)) {
+                diagnose(
+                    SceneDiagnosticCode::invalid_reference,
+                    "world Nishita environment contains non-finite parameters");
+            }
+        } else {
+            const auto expected =
+                static_cast<std::size_t>(environment.width) *
+                static_cast<std::size_t>(environment.height);
+            if (environment.width == 0u ||
+                environment.height == 0u ||
+                environment.pixels.size() != expected) {
+                diagnose(
+                    SceneDiagnosticCode::invalid_reference,
+                    "world environment has invalid dimensions or pixel count");
+            }
         }
         for (const auto &sun : environment.suns) {
             if (sun.angular_radius <= 0.0f) {

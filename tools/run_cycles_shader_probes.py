@@ -45,6 +45,7 @@ _ALL_PROBES = (
     "separate_color_modes",
     "transparent_mix",
     "transparent_data_pass",
+    "translucent_surface",
     "value_emission",
     "white_noise_dimensions",
 )

@@ -71,7 +71,136 @@ void test_integrator_settings_round_trip() {
   "geometries": [],
   "instances": [],
   "lights": [],
-  "world": null,
+  "world": {
+    "name": "Nishita World",
+    "color": [0.05, 0.05, 0.05],
+    "node_tree": {
+      "name": "World Nodes",
+      "surface_root": {
+        "node": "Background",
+        "socket": "Background"
+      },
+      "volume_root": null,
+      "displacement_root": null,
+      "links": [
+        {
+          "from_node": "Sky",
+          "from_socket": "Color",
+          "to_node": "Background",
+          "to_socket": "Color"
+        },
+        {
+          "from_node": "Background",
+          "from_socket": "Background",
+          "to_node": "Output",
+          "to_socket": "Surface"
+        }
+      ],
+      "nodes": [
+        {
+          "name": "Sky",
+          "label": "",
+          "type": "TEX_SKY",
+          "bl_idname": "ShaderNodeTexSky",
+          "inputs": [
+            {
+              "identifier": "Vector",
+              "name": "Vector",
+              "type": "NodeSocketVector",
+              "linked": false,
+              "default": [0.0, 0.0, 0.0]
+            }
+          ],
+          "outputs": [
+            {
+              "identifier": "Color",
+              "name": "Color",
+              "type": "NodeSocketColor",
+              "linked": true,
+              "default": [0.0, 0.0, 0.0, 0.0]
+            }
+          ],
+          "properties": {
+            "sky_type": "NISHITA",
+            "sun_elevation": 0.9250245094299316,
+            "sun_rotation": 2.6179938316345215,
+            "sun_size": 0.01745329238474369,
+            "sun_intensity": 1.25,
+            "sun_disc": true,
+            "altitude": 123.0,
+            "air_density": 0.9,
+            "dust_density": 1.1,
+            "ozone_density": 1.2
+          },
+          "special": {},
+          "image": null,
+          "node_tree": null
+        },
+        {
+          "name": "Background",
+          "label": "",
+          "type": "BACKGROUND",
+          "bl_idname": "ShaderNodeBackground",
+          "inputs": [
+            {
+              "identifier": "Color",
+              "name": "Color",
+              "type": "NodeSocketColor",
+              "linked": true,
+              "default": [0.05, 0.05, 0.05, 1.0]
+            },
+            {
+              "identifier": "Strength",
+              "name": "Strength",
+              "type": "NodeSocketFloat",
+              "linked": false,
+              "default": 2.0
+            }
+          ],
+          "outputs": [
+            {
+              "identifier": "Background",
+              "name": "Background",
+              "type": "NodeSocketShader",
+              "linked": true
+            }
+          ],
+          "properties": {},
+          "special": {},
+          "image": null,
+          "node_tree": null
+        },
+        {
+          "name": "Output",
+          "label": "",
+          "type": "OUTPUT_WORLD",
+          "bl_idname": "ShaderNodeOutputWorld",
+          "inputs": [
+            {
+              "identifier": "Surface",
+              "name": "Surface",
+              "type": "NodeSocketShader",
+              "linked": true
+            },
+            {
+              "identifier": "Volume",
+              "name": "Volume",
+              "type": "NodeSocketShader",
+              "linked": false
+            }
+          ],
+          "outputs": [],
+          "properties": {
+            "is_active_output": true,
+            "target": "ALL"
+          },
+          "special": {},
+          "image": null,
+          "node_tree": null
+        }
+      ]
+    }
+  },
   "world_environment": null,
   "render": {
     "width": 480,
@@ -151,6 +280,53 @@ void test_integrator_settings_round_trip() {
         imported.pass_alpha_threshold,
         0.375f,
         "pass alpha threshold did not round-trip");
+    expect(
+        imported.scene->environment.has_value(),
+        "Nishita world did not produce an environment");
+    expect(
+        imported.scene->environment->nishita.has_value(),
+        "Nishita world was not kept procedural");
+    expect(
+        imported.scene->environment->pixels.empty(),
+        "Nishita world was unexpectedly baked to pixels");
+    const auto &sky =
+        *imported.scene->environment->nishita;
+    expect_near(
+        sky.sun_elevation,
+        0.9250245094299316f,
+        "Nishita elevation mismatch");
+    expect_near(
+        sky.sun_rotation,
+        3.6651914755450647f,
+        "Nishita Cycles rotation mismatch");
+    expect_near(
+        sky.angular_diameter,
+        0.01745329238474369f,
+        "Nishita angular diameter mismatch");
+    expect_near(
+        sky.sun_intensity,
+        1.25f,
+        "Nishita sun intensity mismatch");
+    expect_near(
+        sky.altitude,
+        123.0f,
+        "Nishita altitude mismatch");
+    expect_near(
+        sky.air_density,
+        0.9f,
+        "Nishita air density mismatch");
+    expect_near(
+        sky.dust_density,
+        1.1f,
+        "Nishita dust density mismatch");
+    expect_near(
+        sky.ozone_density,
+        1.2f,
+        "Nishita ozone density mismatch");
+    expect_near(
+        sky.background_strength,
+        2.0f,
+        "Nishita background strength mismatch");
 
     const auto &integrator = imported.integrator;
     expect(integrator.max_bounces == 11u, "max bounce mismatch");

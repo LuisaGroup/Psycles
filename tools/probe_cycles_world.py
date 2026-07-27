@@ -22,13 +22,29 @@ from typing import Any
 import bpy
 import numpy as np
 import OpenImageIO as oiio
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 
 def _render_direction(scene: Any, camera: Any, direction: Vector) -> list[float]:
-    camera.matrix_world = direction.normalized().to_track_quat(
-        "-Z", "Y"
-    ).to_matrix().to_4x4()
+    forward = direction.normalized()
+    reference_up = (
+        Vector((0.0, 1.0, 0.0))
+        if abs(forward.z) > 0.999
+        else Vector((0.0, 0.0, 1.0))
+    )
+    right = forward.cross(reference_up).normalized()
+    up = right.cross(forward).normalized()
+    # Assign the camera basis directly. Quaternion construction around the
+    # zenith introduces tiny X/Y components; atan2 then maps those to an
+    # arbitrary azimuth in Cycles' finite top LUT row.
+    camera.matrix_world = Matrix(
+        (
+            (right.x, up.x, -forward.x, 0.0),
+            (right.y, up.y, -forward.y, 0.0),
+            (right.z, up.z, -forward.z, 0.0),
+            (0.0, 0.0, 0.0, 1.0),
+        )
+    )
     bpy.context.view_layer.update()
     bpy.ops.render.render(scene=scene.name)
     result = bpy.data.images.get("Render Result")
@@ -64,10 +80,14 @@ def _main() -> None:
     scene = bpy.context.scene
     scene.render.engine = "CYCLES"
     scene.cycles.device = "CPU"
-    scene.cycles.samples = 64
+    # A single camera ray is the probe. Background evaluation is
+    # deterministic and does not need Monte Carlo accumulation; using an
+    # odd, one-pixel image is important because an even-sized image has no
+    # center ray and averages different sky azimuths near the zenith.
+    scene.cycles.samples = 1
     scene.cycles.use_denoising = False
-    scene.render.resolution_x = 4
-    scene.render.resolution_y = 4
+    scene.render.resolution_x = 1
+    scene.render.resolution_y = 1
     scene.render.resolution_percentage = 100
     scene.render.film_transparent = False
     scene.render.image_settings.file_format = "OPEN_EXR"
@@ -76,8 +96,12 @@ def _main() -> None:
     for obj in scene.objects:
         obj.hide_render = True
     camera_data = bpy.data.cameras.new("__psycles_world_probe_camera_data__")
-    camera_data.type = "PERSP"
-    camera_data.angle = 1.0e-4
+    # Orthographic camera rays remain exactly parallel under Cycles' pixel
+    # jitter. A perspective one-pixel probe still changes azimuth near the
+    # zenith, which is observable because the finite Nishita LUT's top row is
+    # not azimuthally constant.
+    camera_data.type = "ORTHO"
+    camera_data.ortho_scale = 1.0
     camera = bpy.data.objects.new(
         "__psycles_world_probe_camera__", camera_data
     )
@@ -86,7 +110,10 @@ def _main() -> None:
     scene.camera = camera
 
     directions: dict[str, Vector] = {
-        "zenith": Vector((0.0, 0.0, 1.0)),
+        # Exact +Z has undefined azimuth (including signed-zero differences)
+        # while the finite Nishita top LUT row is not azimuthally constant.
+        # Use a fixed near-zenith direction with a well-defined azimuth.
+        "near_zenith": Vector((1.0e-3, 2.0e-3, 1.0)),
         "north_horizon": Vector((0.0, 1.0, 1.0e-4)),
         "east_horizon": Vector((1.0, 0.0, 1.0e-4)),
         "ground": Vector((0.0, 0.0, -1.0)),

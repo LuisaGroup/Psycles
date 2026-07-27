@@ -185,6 +185,22 @@ if(PSYCLES_ENABLE_LUISA)
                         "${CMAKE_BINARY_DIR}/bin")
 
             add_executable(
+                psycles_probe_nishita
+                examples/probe_nishita.cpp)
+            target_link_libraries(
+                psycles_probe_nishita
+                PRIVATE
+                    Psycles::luisa_runtime)
+            target_compile_features(
+                psycles_probe_nishita
+                PRIVATE cxx_std_20)
+            set_target_properties(
+                psycles_probe_nishita
+                PROPERTIES
+                    RUNTIME_OUTPUT_DIRECTORY
+                        "${CMAKE_BINARY_DIR}/bin")
+
+            add_executable(
                 psycles_inspect_blender_material
                 tools/inspect_blender_material.cpp)
             target_link_libraries(

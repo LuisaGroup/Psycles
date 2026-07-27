@@ -32,20 +32,31 @@ public:
     }
 
     [[nodiscard]] Float parameter_float(
-        std::uint32_t,
-        std::uint32_t) const noexcept override {
+        Expr<std::uint32_t>,
+        Expr<std::uint32_t>) const noexcept override {
         return 0.0f;
     }
 
     [[nodiscard]] Float3 parameter_float3(
-        std::uint32_t,
-        std::uint32_t) const noexcept override {
+        Expr<std::uint32_t>,
+        Expr<std::uint32_t>) const noexcept override {
         return make_float3(0.8f, 0.4f, 0.2f);
     }
 
     [[nodiscard]] Float cycles_bsdf_data(
         Expr<std::uint32_t>) const noexcept override {
         return 1.0f;
+    }
+
+    [[nodiscard]] Float3 nishita_sky(
+        Expr<std::uint32_t>,
+        std::uint32_t,
+        Expr<luisa::float3>,
+        Expr<float>,
+        Expr<float>,
+        Expr<float>,
+        Expr<float>) const noexcept override {
+        return make_float3(0.0f);
     }
 };
 
@@ -83,7 +94,7 @@ int main() {
 
     SurfaceDispatch surfaces;
     const auto surface_tag = surfaces.create<GraphSurface>(
-        surface_program.program, 0u);
+        surface_program.program);
 
     Kernel1D kernel = [&]() noexcept {
         ConstantShaderServices services;
@@ -123,6 +134,7 @@ int main() {
             .barycentric_dy = make_float2(0.0f),
             .instance_id = 0u,
             .primitive_id = 0u,
+            .parameter_block = 0u,
             .object_random = 0.0f,
             .particle_index = 0u,
             .random_per_island = 0.0f,

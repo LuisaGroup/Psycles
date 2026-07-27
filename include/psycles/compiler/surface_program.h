@@ -165,6 +165,7 @@ struct ValueInstruction {
 
 enum class ClosureOperation : std::uint8_t {
     diffuse,
+    translucent,
     principled,
     glossy,
     emission,
