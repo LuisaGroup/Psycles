@@ -191,6 +191,28 @@ wrote a Psycles multilayer EXR, compared all requested named channels, and
 generated triptychs. Blender is launched with `--python-exit-code 1`, so a
 Python-side failure cannot be mistaken for a passing process.
 
+The Cycles reference script also accepts an explicit compute backend and
+device-name filter. Before beginning the full-scene gate, both selection paths
+were exercised at 16×16/1 spp:
+
+```bash
+/usr/bin/blender flat_light_distribution.blend --background \
+  --python-exit-code 1 --python tools/render_cycles_golden.py -- \
+  cpu.exr 16 16 1 0 --cycles-device CPU
+
+/usr/bin/blender flat_light_distribution.blend --background \
+  --python-exit-code 1 --python tools/render_cycles_golden.py -- \
+  hip.exr 16 16 1 0 --cycles-device HIP \
+  --device-name "Radeon RX 9070 XT"
+```
+
+The CPU metadata contains only
+`CPU: AMD Ryzen 9 9950X3D 16-Core Processor`. The HIP metadata contains only
+`HIP: AMD Radeon RX 9070 XT`, device id
+`HIP_AMD Radeon RX 9070 XT_0000:03:00`, while `scene.cycles.device` is `GPU`.
+This explicit device inventory is recorded beside every future golden EXR so
+that a silent CPU fallback cannot be reported as a same-device comparison.
+
 The flat distribution follows the current Cycles flat-light construction:
 world-space emissive-triangle area weighting, uniform analytic/background
 lamp probability, and a 50/50 class split when triangles and lamps both

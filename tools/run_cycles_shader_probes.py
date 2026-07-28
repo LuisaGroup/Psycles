@@ -107,6 +107,8 @@ def _arguments() -> argparse.Namespace:
     )
     parser.add_argument("--output-dir", type=pathlib.Path, required=True)
     parser.add_argument("--backend", default="fallback")
+    parser.add_argument("--cycles-device", default="CPU")
+    parser.add_argument("--cycles-device-name", default="")
     parser.add_argument("--width", type=int, default=64)
     parser.add_argument("--height", type=int, default=64)
     parser.add_argument("--samples", type=int, default=256)
@@ -178,6 +180,11 @@ def _main() -> int:
                     str(arguments.width),
                     str(arguments.height),
                     str(arguments.samples),
+                    "0",
+                    "--cycles-device",
+                    arguments.cycles_device,
+                    "--device-name",
+                    arguments.cycles_device_name,
                 ]
             )
             _run(

@@ -3,7 +3,8 @@
 Usage:
 
     blender scene.blend --background --python render_cycles_golden.py -- \
-        output.exr [width height samples]
+        output.exr [width height samples seed] \
+        [--cycles-device CPU|HIP] [--device-name substring]
 
 The output is a multilayer, 32-bit float EXR before display transforms and
 without compositor modifications. It is the rendering oracle for Psycles.
@@ -11,48 +12,149 @@ without compositor modifications. It is the rendering oracle for Psycles.
 
 from __future__ import annotations
 
+import argparse
 import json
 import pathlib
 import sys
 import time
+from typing import Any
 
 import bpy
 
 
-def _integer(args: list[str], index: int, fallback: int) -> int:
-    if index >= len(args):
-        return fallback
-    value = int(args[index])
-    if value <= 0:
-        raise ValueError(f"argument {index + 1} must be positive")
-    return value
+def _positive_integer(value: str) -> int:
+    result = int(value)
+    if result <= 0:
+        raise argparse.ArgumentTypeError("value must be positive")
+    return result
 
 
-def _nonnegative_integer(args: list[str], index: int, fallback: int) -> int:
-    if index >= len(args):
-        return fallback
-    value = int(args[index])
-    if value < 0:
-        raise ValueError(f"argument {index + 1} must be non-negative")
-    return value
+def _nonnegative_integer(value: str) -> int:
+    result = int(value)
+    if result < 0:
+        raise argparse.ArgumentTypeError("value must be non-negative")
+    return result
+
+
+def _arguments(scene: Any) -> argparse.Namespace:
+    argv = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
+    parser = argparse.ArgumentParser(
+        description="Render authoritative Cycles linear passes"
+    )
+    parser.add_argument("output", type=pathlib.Path)
+    parser.add_argument(
+        "width", nargs="?", type=_positive_integer, default=320
+    )
+    parser.add_argument(
+        "height", nargs="?", type=_positive_integer, default=240
+    )
+    parser.add_argument(
+        "samples", nargs="?", type=_positive_integer, default=128
+    )
+    parser.add_argument(
+        "seed",
+        nargs="?",
+        type=_nonnegative_integer,
+        default=scene.cycles.seed,
+    )
+    parser.add_argument(
+        "--cycles-device",
+        default="CPU",
+        help="Cycles compute backend, for example CPU or HIP",
+    )
+    parser.add_argument(
+        "--device-name",
+        default="",
+        help="case-insensitive substring required in the selected device",
+    )
+    return parser.parse_args(argv)
+
+
+def _device_record(device: Any) -> dict[str, Any]:
+    return {
+        "name": device.name,
+        "type": device.type,
+        "id": device.id,
+    }
+
+
+def _configure_cycles_device(
+    scene: Any,
+    requested_type: str,
+    requested_name: str,
+) -> list[dict[str, Any]]:
+    compute_type = requested_type.strip().upper()
+    name_filter = requested_name.strip().casefold()
+    if not compute_type:
+        raise ValueError("the Cycles device type is empty")
+
+    preferences = bpy.context.preferences.addons[
+        "cycles"
+    ].preferences
+    if compute_type == "CPU":
+        preferences.get_devices()
+        selected = [
+            device
+            for device in preferences.devices
+            if device.type == "CPU"
+            and (
+                not name_filter
+                or name_filter in device.name.casefold()
+            )
+        ]
+        selected_ids = {device.id for device in selected}
+        for device in preferences.devices:
+            device.use = device.id in selected_ids
+        if not selected:
+            raise RuntimeError(
+                "Cycles did not expose a CPU device matching "
+                f"{requested_name!r}"
+            )
+        scene.cycles.device = "CPU"
+        return [_device_record(device) for device in selected]
+
+    try:
+        preferences.compute_device_type = compute_type
+    except (TypeError, ValueError) as exception:
+        raise RuntimeError(
+            f"Cycles compute backend {compute_type!r} is unavailable"
+        ) from exception
+    preferences.get_devices()
+    selected = [
+        device
+        for device in preferences.devices
+        if device.type == compute_type
+        and (
+            not name_filter
+            or name_filter in device.name.casefold()
+        )
+    ]
+    selected_ids = {device.id for device in selected}
+    for device in preferences.devices:
+        device.use = device.id in selected_ids
+    if not selected:
+        available = ", ".join(
+            f"{device.type}:{device.name}"
+            for device in preferences.devices
+        )
+        raise RuntimeError(
+            f"Cycles exposed no {compute_type} device matching "
+            f"{requested_name!r}; available devices: {available}"
+        )
+    scene.cycles.device = "GPU"
+    return [_device_record(device) for device in selected]
 
 
 def _main() -> None:
-    args = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
-    if not args:
-        raise SystemExit(
-            "expected output path: blender scene.blend --background "
-            "--python render_cycles_golden.py -- output.exr "
-            "[width height samples seed]"
-        )
-    output = pathlib.Path(args[0]).resolve()
-    width = _integer(args, 1, 320)
-    height = _integer(args, 2, 240)
-    samples = _integer(args, 3, 128)
-    seed = _nonnegative_integer(args, 4, bpy.context.scene.cycles.seed)
+    scene = bpy.context.scene
+    arguments = _arguments(scene)
+    output = arguments.output.resolve()
+    width = arguments.width
+    height = arguments.height
+    samples = arguments.samples
+    seed = arguments.seed
     output.parent.mkdir(parents=True, exist_ok=True)
 
-    scene = bpy.context.scene
     render_engines = {
         item.identifier
         for item in scene.render.bl_rna.properties["engine"].enum_items
@@ -63,7 +165,11 @@ def _main() -> None:
         else "BLENDER_EEVEE"
     )
     scene.render.engine = "CYCLES"
-    scene.cycles.device = "CPU"
+    enabled_devices = _configure_cycles_device(
+        scene,
+        arguments.cycles_device,
+        arguments.device_name,
+    )
     scene.cycles.samples = samples
     scene.cycles.seed = seed
     scene.cycles.use_adaptive_sampling = False
@@ -120,6 +226,10 @@ def _main() -> None:
         "output": str(output),
         "blender": bpy.app.version_string,
         "cycles_device": scene.cycles.device,
+        "cycles_compute_device_type": (
+            arguments.cycles_device.strip().upper()
+        ),
+        "cycles_enabled_devices": enabled_devices,
         "frame": scene.frame_current,
         "camera": scene.camera.name if scene.camera else None,
         "width": width,
@@ -154,6 +264,7 @@ def _main() -> None:
     )
     print(
         f"Cycles golden rendered {width}x{height} at {samples} spp "
+        f"on {arguments.cycles_device.strip().upper()} "
         f"in {elapsed:.3f}s: {output}"
     )
 
