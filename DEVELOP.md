@@ -34,6 +34,15 @@ Makefiles generator, followed by 4/4 core CTest groups. The existing
 Luisa/fallback 6/6 gate remains the required full-build check before any
 rendering change is published.
 
+Checkpoint 1a restores the Blender 4.5.10 tabulated-Sobol host contract as an
+independent `psycles::sampling` module. Its test locks the complete
+256-pattern × 256-sample × float4 table with an IEEE-754 FNV-1a fingerprint,
+plus pixel hash, camera, first-bounce light/BSDF, next-bounce light, and
+16-dimension bounce-stride fixtures. The fixture was independently regenerated
+from the authoritative Cycles algorithm; the clean core gate is now 5/5.
+Luisa device lowering and path-kernel integration are intentionally tracked as
+the next checkpoint rather than implied by this host-only result.
+
 ## Current checkpoint
 
 | Area | Verified state |
@@ -41,13 +50,13 @@ rendering change is published.
 | Shader inventory | 96 Cycles-applicable nodes tracked from 105 Blender shader node types |
 | Complete coverage | 43/96 complete: 41 `cycles_verified` device nodes and 2 structural output adapters |
 | Remaining nodes | 12 partial and 41 pending; no implemented node is waiting for a probe, and 1 Cycles OSL-only node is tracked separately |
-| Automated gate | 6/6 CTest groups pass in the current Luisa/fallback build |
+| Automated gate | 5/5 clean core CTest groups pass with the restored host Sobol fixture; the last pre-restoration Luisa/fallback build was 6/6 and must be rerun after device integration |
 | Analytic lights | 11 Point/Spot/Area/Sun baselines, including shapes, spread, finite Sun disk, and light node trees |
 | Full-scene geometry/AOV | Negative-scale normal transforms and closure-weighted glossy normals are fixed |
 | Full-scene transport | At 640×480/64 spp, Lone Monk Combined RMSE is `0.26116`, Normal is `0.03696`, and DiffCol is `0.01175`; Combined mean energy is 95.75% of Cycles |
 | Cold/hot fallback JIT | Frozen-runtime full-scene JIT is `327.574 s` cold and `0.682609 s` hot (479.9×); the 1.20 MB main object loads in 1.87 ms |
 | Persistent fallback cache | Native object plus exact metadata implemented, 8/8 isolated assertions pass, and the full-scene cross-process run is bitwise equal across 13 passes |
-| Upstream integration | LuisaCompute draft PR [#253](https://github.com/LuisaGroup/LuisaCompute/pull/253); Psycles pins commit `6b6a63d` as its submodule |
+| Upstream integration | LuisaCompute PR [#253](https://github.com/LuisaGroup/LuisaCompute/pull/253) is merged as `98f0150e`; Psycles currently pins the tested PR head `6b6a63d` as its submodule |
 
 The latest glossy-normal probe reduced Normal RMSE from `0.399218` to
 `0.00192210` (about 99.5%) and measures Combined relative RMSE `0.5273%`.

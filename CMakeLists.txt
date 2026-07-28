@@ -27,7 +27,8 @@ add_library(psycles_core
     src/compiler/surface_program.cpp
     src/contract/scene.cpp
     src/contract/shader_graph.cpp
-    src/io/image.cpp)
+    src/io/image.cpp
+    src/sampling/tabulated_sobol.cpp)
 add_library(Psycles::core ALIAS psycles_core)
 
 target_include_directories(psycles_core
@@ -240,6 +241,19 @@ if(PSYCLES_BUILD_TESTS)
     target_link_libraries(psycles_tests PRIVATE Psycles::core)
     target_compile_features(psycles_tests PRIVATE cxx_std_20)
     add_test(NAME psycles.contracts COMMAND psycles_tests)
+
+    add_executable(
+        psycles_tabulated_sobol_tests
+        tests/test_tabulated_sobol.cpp)
+    target_link_libraries(
+        psycles_tabulated_sobol_tests
+        PRIVATE Psycles::core)
+    target_compile_features(
+        psycles_tabulated_sobol_tests
+        PRIVATE cxx_std_20)
+    add_test(
+        NAME psycles.tabulated_sobol
+        COMMAND psycles_tabulated_sobol_tests)
 
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)
