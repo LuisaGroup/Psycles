@@ -163,6 +163,14 @@ these focused probes.
    exact-revision Cycles as the reference and adding a regression for every
    defect.
 
+The scene is now present and its first backend bring-up is recorded in
+[the Lone Monk report](docs/validation/2026-07-29/lone-monk/bringup.json).
+Before any pixel comparison, Vulkan exposed a greater-than-20-minute
+monolithic render-kernel cold JIT and HIP exposed a greater-than-10-minute
+HIPRT acceleration-structure build. Treat these as the current first
+full-scene blockers. Do not skip to a smaller showcase scene and call the
+full-scene gate complete.
+
 ## Known limitations
 
 - The 2026-07-29 committed probes are focused 64×64 tests, not a full-scene

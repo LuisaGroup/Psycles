@@ -1,0 +1,88 @@
+{
+  "schema": "psycles.full-scene-bringup.v1",
+  "status": "blocked_before_first_pixel",
+  "scene": {
+    "name": "Lone Monk",
+    "source": "/home/mike/Downloads/lone-monk_cycles_and_exposure-node_demo.blend",
+    "sha256": "4250d4205d8d01cefd98c15e81021d6dead540b2923797378bf7b32e96e8b8f7",
+    "scene": "daylight",
+    "frame": 4,
+    "camera": "cam.001",
+    "original_width": 1440,
+    "original_height": 1080,
+    "original_samples": 4096
+  },
+  "export": {
+    "elapsed_seconds": 24.85,
+    "geometries": 350,
+    "instances": 7543,
+    "materials": 35,
+    "images": 47,
+    "geometry_bytes": 450966096,
+    "scene_json_bytes": 10834008,
+    "material_node_count_max": 38,
+    "principled_node_count": 32,
+    "raw_closure_graphs": true,
+    "cycles_material_prebake": false
+  },
+  "attempts": [
+    {
+      "name": "vulkan-default",
+      "backend": "vk",
+      "width": 64,
+      "height": 48,
+      "samples": 1,
+      "environment": {},
+      "elapsed_seconds_before_interrupt": 1245.51,
+      "user_cpu_seconds": 1353.12,
+      "system_cpu_seconds": 1118.66,
+      "cpu_percent": 198,
+      "observed_rss_bytes": 9749995520,
+      "observed_vram_bytes": 5366042624,
+      "first_pixel": false,
+      "stage": "main render-kernel cold JIT",
+      "result": "interrupted at the documented 20-minute diagnostic bound"
+    },
+    {
+      "name": "vulkan-optional-optimizations-disabled",
+      "backend": "vk",
+      "width": 64,
+      "height": 48,
+      "samples": 1,
+      "environment": {
+        "LUISA_XIR_DISABLE_OPTIMIZATION": "1",
+        "LUISA_SPIRV_OPT_LEVEL": "0"
+      },
+      "elapsed_seconds_before_interrupt": 311.18,
+      "user_cpu_seconds": 335.34,
+      "system_cpu_seconds": 281.70,
+      "cpu_percent": 198,
+      "observed_rss_bytes": 8667201536,
+      "first_pixel": false,
+      "stage": "main render-kernel code generation before a cache artifact",
+      "result": "interrupted at the documented five-minute diagnostic bound"
+    },
+    {
+      "name": "hip-default",
+      "backend": "hip",
+      "width": 64,
+      "height": 48,
+      "samples": 1,
+      "environment": {},
+      "elapsed_seconds_before_interrupt": 622.45,
+      "user_cpu_seconds": 610.61,
+      "system_cpu_seconds": 7.71,
+      "cpu_percent": 99,
+      "observed_rss_bytes": 1624248320,
+      "observed_vram_bytes": 5932175360,
+      "observed_gpu_percent": 100,
+      "first_pixel": false,
+      "stage": "HIPRT acceleration-structure build",
+      "result": "interrupted at the documented ten-minute diagnostic bound"
+    }
+  ],
+  "triptychs": {
+    "status": "pending",
+    "reason": "Neither Psycles backend reached a first pixel; fabricating a comparison image would be misleading."
+  }
+}
