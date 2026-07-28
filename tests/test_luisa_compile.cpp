@@ -1,6 +1,7 @@
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/compiler/shader_program.h>
 #include <psycles/compiler/surface_program.h>
+#include <psycles/luisa/cycles_sampler.h>
 #include <psycles/luisa/graph_surface.h>
 
 #include <cstdint>
@@ -181,5 +182,35 @@ int main() {
             query);
         device_assert(evaluation.pdf >= 0.0f);
     };
-    return kernel.function() ? 0 : 3;
+    if (!kernel.function()) {
+        return 3;
+    }
+
+    Kernel1D sampler_kernel = [](
+                                  BufferFloat4 table,
+                                  UInt sequence_size,
+                                  BufferUInt indices,
+                                  BufferFloat4 samples) noexcept {
+        const auto rng_hash =
+            cycles_sampler::pixel_hash(17u, 29u, 0u);
+        const auto dimension = cycles_sampler::path_dimension(
+            0u,
+            sampling::tabulated_sobol::light_dimension);
+        indices.write(
+            0u,
+            cycles_sampler::shuffled_sample_index(
+                63u,
+                dimension,
+                rng_hash,
+                sequence_size));
+        samples.write(
+            0u,
+            cycles_sampler::sample_4d(
+                table,
+                sequence_size,
+                63u,
+                rng_hash,
+                dimension));
+    };
+    return sampler_kernel.function() ? 0 : 4;
 }

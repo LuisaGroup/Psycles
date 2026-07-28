@@ -40,13 +40,9 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-Psycles uses `third_party/LuisaCompute` as a CMake subdirectory. An external
-LuisaCompute checkout can still override the submodule:
-
-```bash
-cmake -S . -B build -G Ninja \
-  -DPSYCLES_LUISA_SOURCE_DIR=/path/to/LuisaCompute
-```
+Psycles uses the pinned `third_party/LuisaCompute` submodule as a CMake
+subdirectory so that normal builds and validation use the same tested Luisa
+revision.
 
 For a dependency-free contract-core build:
 

@@ -11,9 +11,7 @@ option(PSYCLES_ENABLE_LUISA "Build the LuisaCompute DSL interface when available
 option(PSYCLES_ENABLE_LUISA_FALLBACK
     "Build LuisaCompute's fallback backend for machines without a GPU backend" ON)
 option(PSYCLES_FETCH_LUISA_NEXT
-    "Fetch LuisaCompute from its next branch when neither a source tree nor the bundled submodule is available" OFF)
-set(PSYCLES_LUISA_SOURCE_DIR "" CACHE PATH
-    "Optional path to an external LuisaCompute source tree. Overrides the bundled submodule.")
+    "Fetch LuisaCompute from its next branch when the bundled submodule is unavailable" OFF)
 set(PSYCLES_LUISA_SUBMODULE_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/LuisaCompute")
 
@@ -29,7 +27,8 @@ add_library(psycles_core
     src/compiler/surface_program.cpp
     src/contract/scene.cpp
     src/contract/shader_graph.cpp
-    src/io/image.cpp)
+    src/io/image.cpp
+    src/sampling/tabulated_sobol.cpp)
 add_library(Psycles::core ALIAS psycles_core)
 
 target_include_directories(psycles_core
@@ -47,17 +46,7 @@ endif()
 
 if(PSYCLES_ENABLE_LUISA)
     set(_psycles_luisa_source_dir "")
-    if(PSYCLES_LUISA_SOURCE_DIR)
-        set(_psycles_luisa_source_dir "${PSYCLES_LUISA_SOURCE_DIR}")
-        if(NOT EXISTS "${_psycles_luisa_source_dir}/CMakeLists.txt")
-            message(FATAL_ERROR
-                "PSYCLES_LUISA_SOURCE_DIR does not point to a LuisaCompute source tree: "
-                "${_psycles_luisa_source_dir}")
-        endif()
-        message(STATUS
-            "Using external LuisaCompute source tree: "
-            "${_psycles_luisa_source_dir}")
-    elseif(EXISTS "${PSYCLES_LUISA_SUBMODULE_DIR}/CMakeLists.txt")
+    if(EXISTS "${PSYCLES_LUISA_SUBMODULE_DIR}/CMakeLists.txt")
         set(_psycles_luisa_source_dir "${PSYCLES_LUISA_SUBMODULE_DIR}")
         message(STATUS
             "Using bundled LuisaCompute submodule: "
@@ -74,6 +63,7 @@ if(PSYCLES_ENABLE_LUISA)
         set(LUISA_COMPUTE_ENABLE_FALLBACK
             ${PSYCLES_ENABLE_LUISA_FALLBACK} CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_ENABLE_CLANG_CXX OFF CACHE BOOL "" FORCE)
+        set(LUISA_COMPUTE_ENABLE_GUI OFF CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
         add_subdirectory(
             "${_psycles_luisa_source_dir}"
@@ -86,6 +76,7 @@ if(PSYCLES_ENABLE_LUISA)
         set(LUISA_COMPUTE_ENABLE_FALLBACK
             ${PSYCLES_ENABLE_LUISA_FALLBACK} CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_ENABLE_CLANG_CXX OFF CACHE BOOL "" FORCE)
+        set(LUISA_COMPUTE_ENABLE_GUI OFF CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
         include(FetchContent)
         FetchContent_Declare(
@@ -99,9 +90,19 @@ if(PSYCLES_ENABLE_LUISA)
            EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.gitmodules")
         message(FATAL_ERROR
             "The bundled LuisaCompute submodule is not initialized. Run "
-            "'git submodule update --init --recursive', set "
-            "PSYCLES_LUISA_SOURCE_DIR, enable PSYCLES_FETCH_LUISA_NEXT, or "
+            "'git submodule update --init --recursive', enable "
+            "PSYCLES_FETCH_LUISA_NEXT, or "
             "configure with PSYCLES_ENABLE_LUISA=OFF for the contract core.")
+    endif()
+
+    if(PSYCLES_ENABLE_LUISA_FALLBACK AND
+       NOT TARGET luisa-compute-backend-fallback)
+        message(FATAL_ERROR
+            "PSYCLES_ENABLE_LUISA_FALLBACK=ON requires a real Luisa fallback "
+            "backend, but LuisaCompute did not create "
+            "luisa-compute-backend-fallback. Install compatible LLVM and "
+            "Embree development packages, set LLVM_DIR and embree_DIR when "
+            "needed, and reconfigure.")
     endif()
 
     if(TARGET luisa::compute)
@@ -120,7 +121,16 @@ if(PSYCLES_ENABLE_LUISA)
         add_library(
             psycles_luisa_runtime
             src/adapter/blender_scene.cpp
-            src/luisa/path_tracer.cpp)
+            src/luisa/path_tracer.cpp
+            src/luisa/path_tracer_common.cpp
+            src/luisa/path_tracer_environment.cpp
+            src/luisa/path_tracer_geometry.cpp
+            src/luisa/path_tracer_kernel.cpp
+            src/luisa/path_tracer_lighting.cpp
+            src/luisa/path_tracer_sampling.cpp
+            src/luisa/path_tracer_scene.cpp
+            src/luisa/path_tracer_session.cpp
+            src/luisa/path_tracer_surfaces.cpp)
         add_library(
             Psycles::luisa_runtime
             ALIAS psycles_luisa_runtime)
@@ -160,6 +170,29 @@ if(PSYCLES_ENABLE_LUISA)
             add_test(
                 NAME psycles.luisa_ast
                 COMMAND psycles_luisa_compile_tests)
+
+            if(TARGET luisa-compute-backend-fallback)
+                add_executable(
+                    psycles_luisa_sobol_fallback_tests
+                    tests/test_luisa_sobol_fallback.cpp)
+                target_link_libraries(
+                    psycles_luisa_sobol_fallback_tests
+                    PRIVATE Psycles::luisa)
+                target_compile_features(
+                    psycles_luisa_sobol_fallback_tests
+                    PRIVATE cxx_std_20)
+                add_dependencies(
+                    psycles_luisa_sobol_fallback_tests
+                    luisa-compute-backend-fallback)
+                set_target_properties(
+                    psycles_luisa_sobol_fallback_tests
+                    PROPERTIES
+                        RUNTIME_OUTPUT_DIRECTORY
+                            "${CMAKE_BINARY_DIR}/bin")
+                add_test(
+                    NAME psycles.luisa_sobol_fallback
+                    COMMAND psycles_luisa_sobol_fallback_tests)
+            endif()
 
             add_executable(
                 psycles_blender_import_tests
@@ -252,6 +285,19 @@ if(PSYCLES_BUILD_TESTS)
     target_link_libraries(psycles_tests PRIVATE Psycles::core)
     target_compile_features(psycles_tests PRIVATE cxx_std_20)
     add_test(NAME psycles.contracts COMMAND psycles_tests)
+
+    add_executable(
+        psycles_tabulated_sobol_tests
+        tests/test_tabulated_sobol.cpp)
+    target_link_libraries(
+        psycles_tabulated_sobol_tests
+        PRIVATE Psycles::core)
+    target_compile_features(
+        psycles_tabulated_sobol_tests
+        PRIVATE cxx_std_20)
+    add_test(
+        NAME psycles.tabulated_sobol
+        COMMAND psycles_tabulated_sobol_tests)
 
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)

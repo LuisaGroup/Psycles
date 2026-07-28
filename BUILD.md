@@ -3,6 +3,7 @@
 Psycles builds LuisaCompute as a CMake subdirectory. The repository pins the
 tested Luisa revision in `third_party/LuisaCompute`; a normal user build does
 not need a separate Luisa installation or a second configure step.
+The active branch pins LuisaCompute `next@f42f3c6e`.
 
 ## Prerequisites
 
@@ -12,9 +13,38 @@ not need a separate Luisa installation or a second configure step.
 - Ninja or another CMake generator
 - Python 3 for the versioned compatibility checks
 
-The host-only `fallback` backend additionally needs LLVM and Embree development
-packages discoverable by CMake. The currently tested toolchain is LLVM 18.1.3
-and Embree 4.4.0. GPU backend prerequisites are inherited from LuisaCompute.
+The host-only `fallback` backend additionally needs LLVM, Embree, X11, and
+libuuid development packages discoverable by CMake. The active fallback
+validation baseline is:
+
+| Component | Version |
+|---|---:|
+| Ubuntu | 24.04 LTS (Noble) |
+| GCC | 13.3 |
+| CMake | 3.27.7 |
+| Ninja | 1.11.1 |
+| LLVM | 22.1.8 |
+| Embree | 4.3.0 |
+
+Install LLVM 22 from the
+[official LLVM Debian/Ubuntu repository](https://apt.llvm.org/), then install
+the development packages required by Luisa's fallback backend:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y \
+  cmake ninja-build wget gnupg lsb-release software-properties-common \
+  libembree-dev libx11-dev uuid-dev
+wget https://apt.llvm.org/llvm.sh
+chmod +x llvm.sh
+sudo ./llvm.sh 22
+sudo apt-get install -y llvm-22-dev
+```
+
+The repository disables Luisa's unused GUI component, so a headless fallback
+build does not require GLFW. Luisa's fallback module still compiles its common
+Vulkan swapchain support on Linux and therefore requires the X11 development
+headers. GPU backend prerequisites are inherited from LuisaCompute.
 
 ## Clone and build
 
@@ -44,15 +74,13 @@ build.
 | `PSYCLES_ENABLE_LUISA_FALLBACK` | `ON` | Build the LLVM/Embree host backend |
 | `PSYCLES_BUILD_TESTS` | `ON` | Build C++ tests and register compatibility gates |
 | `PSYCLES_BUILD_EXAMPLES` | `ON` | Build render and inspection CLIs |
-| `PSYCLES_LUISA_SOURCE_DIR` | empty | Override the bundled Luisa source tree |
-| `PSYCLES_FETCH_LUISA_NEXT` | `OFF` | Fetch `next` only when no source tree or initialized submodule is available |
+| `PSYCLES_FETCH_LUISA_NEXT` | `OFF` | Fetch `next` only when the initialized submodule is unavailable |
 
 The source selection order is:
 
-1. `PSYCLES_LUISA_SOURCE_DIR`;
-2. initialized `third_party/LuisaCompute`;
-3. CMake `FetchContent` when `PSYCLES_FETCH_LUISA_NEXT=ON`;
-4. a configuration error with an actionable submodule command.
+1. initialized `third_party/LuisaCompute`;
+2. CMake `FetchContent` when `PSYCLES_FETCH_LUISA_NEXT=ON`;
+3. a configuration error with an actionable submodule command.
 
 To build only the dependency-free scene, graph, and compiler contracts:
 
@@ -62,22 +90,53 @@ cmake --build build-core
 ctest --test-dir build-core --output-on-failure
 ```
 
-To use an adjacent Luisa development checkout:
-
-```bash
-cmake -S . -B build-dev -G Ninja \
-  -DPSYCLES_LUISA_SOURCE_DIR=/path/to/LuisaCompute
-cmake --build build-dev
-```
-
 For a fallback build whose packages are outside the system prefix, provide
 their package directories explicitly:
 
 ```bash
 cmake -S . -B build -G Ninja \
   -DLLVM_DIR=/path/to/llvm/lib/cmake/llvm \
-  -Dembree_DIR=/path/to/embree/lib/cmake/embree-4.4.0
+  -Dembree_DIR=/path/to/embree/lib/cmake/embree-4.3.0
 ```
+
+With the Ubuntu packages above, the explicit equivalent is:
+
+```bash
+cmake -S . -B build -G Ninja \
+  -DLLVM_DIR=/usr/lib/llvm-22/lib/cmake/llvm \
+  -Dembree_DIR=/usr/lib/x86_64-linux-gnu/cmake/embree-4.3.0
+```
+
+Configuration must print:
+
+```text
+Build with fallback backend (LLVM 22.1.8, Embree 4.3.0)
+```
+
+`PSYCLES_ENABLE_LUISA_FALLBACK=ON` is a strict postcondition: configuration
+fails if Luisa does not create `luisa-compute-backend-fallback`. Psycles never
+silently accepts a core-only build when fallback execution was requested.
+
+## Luisa path-tracer source layout
+
+The public backend entry point remains
+`src/luisa/path_tracer.cpp`. Its implementation is split across private
+translation units:
+
+| Source | Responsibility |
+|---|---|
+| `path_tracer_common.cpp` | Host conversions, packed callable values, pass helpers, diagnostics |
+| `path_tracer_sampling.cpp` | Pixel-filter callable |
+| `path_tracer_lighting.cpp` | MIS, contribution splitting, roulette, emissive-triangle PDFs |
+| `path_tracer_surfaces.cpp` | Surface evaluation/emission/sample/AOV dispatch |
+| `path_tracer_environment.cpp` | World graph, environment suns, Nishita sun |
+| `path_tracer_geometry.cpp` | Transparent shadow traversal and material lookup |
+| `path_tracer_kernel.cpp` | Production path-state machine and shader compilation |
+| `path_tracer_session.cpp` | Sobol resources, progressive dispatch, pass readback |
+| `path_tracer_scene.cpp` | Scene compiler and GPU resource upload |
+
+All of these sources are part of `psycles_luisa_runtime`; downstream users do
+not compile or include them individually.
 
 ## Render
 
@@ -97,6 +156,12 @@ The normalized Blender-scene renderer is:
 Its positional arguments are export directory, output path, backend, width,
 height, and samples per pixel.
 
+`SampleRange.total` is the total AA sample count for the entire render, not
+the current progressive chunk size. The production Sobol sequence is derived
+from `total`; every chunk must satisfy
+`first + offset + count <= total`, and one render session may not change
+`total`. Both CLIs above set `count == total == samples per pixel`.
+
 ## Fallback shader cache
 
 The fallback backend persists a native object and exact metadata for an
@@ -115,8 +180,8 @@ the runtime `.cache` directory (normally `build/bin/.cache`). Removing that
 directory forces a cold compile. Applications that supply a custom `BinaryIO`
 control cache storage themselves.
 
-The current Lone Monk fallback baseline uses the same cached main kernel for
-both 64×48/1 spp and 640×480/64 spp:
+The historical pre-Sobol Lone Monk fallback baseline uses the same cached main
+kernel, `kernel_bb7a6886f6f75b90`, for both 64×48/1 spp and 640×480/64 spp:
 
 | Frozen-runtime measurement | Time |
 |---|---:|
@@ -130,6 +195,21 @@ passes. These figures measure cache behavior, not acceptable first-build
 latency: replacing per-material expanded AST with the shared device
 instruction executor remains an active development goal.
 
+Production Sobol originally changed the focused monolithic kernel identity to
+`kernel_70ce93bbfda41afc`. After repairing Luisa XIR local-load analysis, that
+kernel compiled successfully from a cold cache 20/20 times; a subsequent hot
+load took about 9.498 ms, and its 13 cold/hot PFM outputs were byte-identical.
+
+The private-module split introduces explicit Luisa callable boundaries, which
+legitimately migrates the focused structural key once to
+`kernel_4c0f6e0d82a53e90`. The old and new metadata both report
+`ARGUMENT_HASH cf9ee8fec3c444f6` and `ARGUMENT_COUNT 19`; runtime seed, sample,
+camera, and resource bindings therefore remain outside the structural key.
+The modular focused kernel cold-compiled in about 0.407 s and then hot-loaded
+in about 8–11 ms. Do not assign the old key through `ShaderOption.name`, and
+do not compare these small focused timings with the full-scene Lone Monk
+numbers above.
+
 ## Validation
 
 The normal release gate is:
@@ -140,9 +220,48 @@ ctest --test-dir build --output-on-failure
 ```
 
 This includes Luisa AST construction, Blender import, core contracts, the
-versioned Cycles node inventory, integrator baselines, and analytic-light
-baselines. A full compatibility claim additionally requires the focused
-official-Cycles linear-pass probes described in
+real fallback-device tabulated-Sobol bit fixture, versioned Cycles node
+inventory, integrator baselines, and analytic-light baselines. The device
+fixture is registered only when the fallback target exists; it disables
+shader caching and fast math, dispatches runtime-uniform hash/sample/path-step
+inputs, and compares device-side bitcasts rather than host-converted floats.
+
+The focused sampling gate is:
+
+```bash
+cmake --build build --target \
+  psycles_tabulated_sobol_tests \
+  psycles_luisa_compile_tests \
+  psycles_luisa_sobol_fallback_tests
+ctest --test-dir build \
+  -R 'psycles\.(tabulated_sobol|luisa_ast|luisa_sobol_fallback)$' \
+  --output-on-failure
+```
+
+A production-Sobol change additionally requires official Blender 4.5.10
+linear-pass probes. The current focused baselines are:
+
+- `emission_surface`, 64×64/4 spp: Combined, Emit, and Normal RMSE/max error
+  are all 0;
+- `diffuse_bsdf_matrix`, 64×64/4 spp: Combined, DiffCol, DiffDir, and Normal
+  RMSE/max error are all 0;
+- `diffuse_surface`, 64×64/16 spp: Combined RMSE `0.006317606`, mean-energy
+  ratio `0.999740158`, and zero invalid pixels.
+
+The architecture-only module gate additionally compares every emitted Psycles
+PFM against the pre-refactor output. The current result is 13/13 byte matches
+for each of `emission_surface`, `diffuse_bsdf_matrix`, and `diffuse_surface`
+(39/39 total), plus 13/13 across repeated modular `emission_surface`
+processes. This proves refactor equivalence; it does not replace the
+Psycles-versus-Cycles metrics above.
+
+LuisaCompute also carries the upstream regression
+`local_load_elim_loop_fanout_keeps_analysis_storage_stable`. It is the narrow
+ASan/UBSan gate for the XIR data-flow storage UAF; it is not evidence that the
+entire unrelated Luisa sanitizer suite is clean.
+
+A full compatibility claim additionally requires the focused official-Cycles
+linear-pass probes described in
 `docs/cycles-compatibility.md`.
 
 ## Troubleshooting
@@ -151,7 +270,10 @@ official-Cycles linear-pass probes described in
   `git submodule update --init --recursive`.
 - `LLVM or Embree not found`: set `LLVM_DIR` and `embree_DIR`, or disable
   fallback with `-DPSYCLES_ENABLE_LUISA_FALLBACK=OFF` when another Luisa
-  backend is available.
+  backend is available. Do not treat a configure that omits the exact fallback
+  version line above as a passing fallback build.
+- `X11/Xlib.h` not found: install `libx11-dev`; disabling Luisa GUI does not
+  remove this fallback-module dependency.
 - A dependency changed but CMake retained old feature tests: re-run the CMake
   configure command before rebuilding.
 - A generated shared library is empty or is not reported as ELF/PE/Mach-O:

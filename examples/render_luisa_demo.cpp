@@ -388,7 +388,10 @@ int main(int argc, char **argv) {
     psycles::io::MemoryOutputSink sink;
     const auto begin = std::chrono::steady_clock::now();
     if (!session->render_samples(
-            {.first = 0u, .count = samples, .offset = 0u},
+            {.first = 0u,
+             .count = samples,
+             .offset = 0u,
+             .total = samples},
             sink)) {
         return EXIT_FAILURE;
     }
