@@ -1,8 +1,36 @@
 # Psycles development status
 
-This is a living implementation plan, last updated 2026-07-27. “Implemented”
+This is a living implementation plan, last updated 2026-07-28. “Implemented”
 does not mean “Cycles compatible”: compatibility requires an official Blender
 4.5.10 Cycles probe and a versioned linear-pass baseline.
+
+## Active handoff checkpoint
+
+Development continues on `refactor/path-tracer-modules` from
+`main@ad360032`. Every independently validated stage is recorded here and
+pushed before the next long-running compile or render:
+
+1. recover and integrate the unpublished Blender 4.5.10 tabulated-Sobol,
+   fixed-dimension light sampling, and Nishita-importance work;
+2. split `src/luisa/path_tracer.cpp` by stable responsibility without changing
+   rendering semantics, kernel argument ABI, or fallback-cache identity;
+3. expand official Cycles linear-pass validation to additional Blender demo
+   scenes;
+4. replace per-material expanded DSL ASTs with a buffer-driven shared device
+   instruction executor and remeasure cold/hot compilation.
+
+The prior prototype reported bitwise host/device Sobol fixtures and improved
+focused-probe RMSE, but that source state is not present in `main`. Those
+results remain unverified for this branch until the implementation and its
+fixtures are recovered, rebuilt, and committed. The repository therefore
+continues to report RNG parity as incomplete below rather than treating chat
+history as a passing gate.
+
+Checkpoint 0 removes the `PSYCLES_LUISA_SOURCE_DIR` override so the pinned
+submodule is the single normal source of LuisaCompute. Repository-wide option
+references and whitespace checks pass. A clean configure/build remains
+required on a worker with CMake and Ninja; the current handoff worker image
+does not provide either executable.
 
 ## Current checkpoint
 

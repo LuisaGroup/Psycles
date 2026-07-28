@@ -44,15 +44,13 @@ build.
 | `PSYCLES_ENABLE_LUISA_FALLBACK` | `ON` | Build the LLVM/Embree host backend |
 | `PSYCLES_BUILD_TESTS` | `ON` | Build C++ tests and register compatibility gates |
 | `PSYCLES_BUILD_EXAMPLES` | `ON` | Build render and inspection CLIs |
-| `PSYCLES_LUISA_SOURCE_DIR` | empty | Override the bundled Luisa source tree |
-| `PSYCLES_FETCH_LUISA_NEXT` | `OFF` | Fetch `next` only when no source tree or initialized submodule is available |
+| `PSYCLES_FETCH_LUISA_NEXT` | `OFF` | Fetch `next` only when the initialized submodule is unavailable |
 
 The source selection order is:
 
-1. `PSYCLES_LUISA_SOURCE_DIR`;
-2. initialized `third_party/LuisaCompute`;
-3. CMake `FetchContent` when `PSYCLES_FETCH_LUISA_NEXT=ON`;
-4. a configuration error with an actionable submodule command.
+1. initialized `third_party/LuisaCompute`;
+2. CMake `FetchContent` when `PSYCLES_FETCH_LUISA_NEXT=ON`;
+3. a configuration error with an actionable submodule command.
 
 To build only the dependency-free scene, graph, and compiler contracts:
 
@@ -60,14 +58,6 @@ To build only the dependency-free scene, graph, and compiler contracts:
 cmake -S . -B build-core -G Ninja -DPSYCLES_ENABLE_LUISA=OFF
 cmake --build build-core
 ctest --test-dir build-core --output-on-failure
-```
-
-To use an adjacent Luisa development checkout:
-
-```bash
-cmake -S . -B build-dev -G Ninja \
-  -DPSYCLES_LUISA_SOURCE_DIR=/path/to/LuisaCompute
-cmake --build build-dev
 ```
 
 For a fallback build whose packages are outside the system prefix, provide

@@ -11,9 +11,7 @@ option(PSYCLES_ENABLE_LUISA "Build the LuisaCompute DSL interface when available
 option(PSYCLES_ENABLE_LUISA_FALLBACK
     "Build LuisaCompute's fallback backend for machines without a GPU backend" ON)
 option(PSYCLES_FETCH_LUISA_NEXT
-    "Fetch LuisaCompute from its next branch when neither a source tree nor the bundled submodule is available" OFF)
-set(PSYCLES_LUISA_SOURCE_DIR "" CACHE PATH
-    "Optional path to an external LuisaCompute source tree. Overrides the bundled submodule.")
+    "Fetch LuisaCompute from its next branch when the bundled submodule is unavailable" OFF)
 set(PSYCLES_LUISA_SUBMODULE_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/LuisaCompute")
 
@@ -47,17 +45,7 @@ endif()
 
 if(PSYCLES_ENABLE_LUISA)
     set(_psycles_luisa_source_dir "")
-    if(PSYCLES_LUISA_SOURCE_DIR)
-        set(_psycles_luisa_source_dir "${PSYCLES_LUISA_SOURCE_DIR}")
-        if(NOT EXISTS "${_psycles_luisa_source_dir}/CMakeLists.txt")
-            message(FATAL_ERROR
-                "PSYCLES_LUISA_SOURCE_DIR does not point to a LuisaCompute source tree: "
-                "${_psycles_luisa_source_dir}")
-        endif()
-        message(STATUS
-            "Using external LuisaCompute source tree: "
-            "${_psycles_luisa_source_dir}")
-    elseif(EXISTS "${PSYCLES_LUISA_SUBMODULE_DIR}/CMakeLists.txt")
+    if(EXISTS "${PSYCLES_LUISA_SUBMODULE_DIR}/CMakeLists.txt")
         set(_psycles_luisa_source_dir "${PSYCLES_LUISA_SUBMODULE_DIR}")
         message(STATUS
             "Using bundled LuisaCompute submodule: "
@@ -99,8 +87,8 @@ if(PSYCLES_ENABLE_LUISA)
            EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.gitmodules")
         message(FATAL_ERROR
             "The bundled LuisaCompute submodule is not initialized. Run "
-            "'git submodule update --init --recursive', set "
-            "PSYCLES_LUISA_SOURCE_DIR, enable PSYCLES_FETCH_LUISA_NEXT, or "
+            "'git submodule update --init --recursive', enable "
+            "PSYCLES_FETCH_LUISA_NEXT, or "
             "configure with PSYCLES_ENABLE_LUISA=OFF for the contract core.")
     endif()
 
