@@ -4,6 +4,7 @@
 #include <psycles/compiler/material_library.h>
 #include <psycles/luisa/cycles_bsdf_tables.h>
 #include <psycles/luisa/cycles_nishita.h>
+#include <psycles/luisa/cycles_sampler.h>
 #include <psycles/luisa/graph_surface.h>
 
 #include "cycles_shader_tables_4_5_10.inl"
@@ -179,6 +180,8 @@ struct RenderKernelParameters {
     luisa::uint window_width{};
     luisa::uint full_width{};
     luisa::uint full_height{};
+    luisa::uint seed{};
+    luisa::uint sobol_sequence_size{};
     luisa::uint max_bounces{};
     luisa::uint min_bounces{};
     luisa::uint max_diffuse_bounces{};
@@ -335,6 +338,8 @@ LUISA_STRUCT(
     window_width,
     full_width,
     full_height,
+    seed,
+    sobol_sequence_size,
     max_bounces,
     min_bounces,
     max_diffuse_bounces,
@@ -365,6 +370,11 @@ LUISA_STRUCT(
 namespace psycles::luisa_backend {
 
 namespace {
+
+namespace cycles_sampler =
+    ::psycles::luisa_backend::cycles_sampler;
+namespace tabulated_sobol =
+    ::psycles::sampling::tabulated_sobol;
 
 using compiler::CompiledMaterial;
 using compiler::MaterialLibrary;
@@ -1261,6 +1271,9 @@ private:
     Buffer<luisa::float4> _albedo;
     Buffer<luisa::float4> _light_passes;
     Buffer<luisa::uint> _sample_count;
+    Buffer<luisa::float4> _sobol_table;
+    std::uint32_t _sobol_sequence_size{};
+    std::uint32_t _total_aa_samples{};
     RenderKernelParameters _kernel_parameters{};
     Shader1D<
         Buffer<luisa::float4>,
@@ -1270,7 +1283,7 @@ private:
         Buffer<luisa::uint>,
         std::uint32_t,
         std::uint32_t,
-        std::uint32_t,
+        Buffer<luisa::float4>,
         RenderKernelParameters>
         _render_shader;
     std::atomic_bool _cancelled{false};
@@ -1281,8 +1294,38 @@ private:
                static_cast<std::size_t>(_window.height);
     }
 
+    void prepare_sobol_table(std::uint32_t total_samples) {
+        const auto sequence_size =
+            tabulated_sobol::sequence_size_for_samples(
+                total_samples);
+        if (!_sobol_table ||
+            _sobol_sequence_size != sequence_size) {
+            const auto generated =
+                tabulated_sobol::generate_table(sequence_size);
+            luisa::vector<luisa::float4> table;
+            table.reserve(generated.size());
+            for (const auto sample : generated) {
+                table.emplace_back(luisa::make_float4(
+                    sample.x,
+                    sample.y,
+                    sample.z,
+                    sample.w));
+            }
+            _sobol_table =
+                _scene->device.create_buffer<luisa::float4>(
+                    table.size());
+            _stream
+                << _sobol_table.copy_from(luisa::span{table})
+                << synchronize();
+            _sobol_sequence_size = sequence_size;
+        }
+        _kernel_parameters.sobol_sequence_size =
+            sequence_size;
+    }
+
     void initialize(const RenderSettings &settings) {
         _settings = settings;
+        _total_aa_samples = 0u;
         _window = effective_window(settings);
         const auto count = std::max<std::size_t>(pixel_count(), 1u);
         _combined =
@@ -1429,6 +1472,8 @@ private:
                 render_settings.full_extent.width, 1u),
             .full_height = std::max(
                 render_settings.full_extent.height, 1u),
+            .seed = render_settings.seed,
+            .sobol_sequence_size = 0u,
             .max_bounces = max_bounces,
             .min_bounces = min_bounces,
             .max_diffuse_bounces = max_diffuse_bounces,
@@ -1467,30 +1512,6 @@ private:
             .background = background,
             .camera_transform = camera_transform};
 
-        Callable random_float = [](UInt &state) noexcept {
-            state = state * 747796405u + 2891336453u;
-            UInt word =
-                ((state >> ((state >> 28u) + 4u)) ^ state) *
-                277803737u;
-            word = (word >> 22u) ^ word;
-            return cast<float>(word >> 8u) *
-                   (1.0f / 16777216.0f);
-        };
-        Callable hash_seed = [](
-                                 UInt pixel,
-                                 UInt sample,
-                                 UInt seed) noexcept {
-            UInt value =
-                pixel * 0x9e3779b9u ^
-                sample * 0x85ebca6bu ^
-                seed * 0xc2b2ae35u;
-            value ^= value >> 16u;
-            value *= 0x7feb352du;
-            value ^= value >> 15u;
-            value *= 0x846ca68bu;
-            value ^= value >> 16u;
-            return value;
-        };
         Callable sample_box_filter =
             [](Float u, Float width) noexcept {
                 return 0.5f +
@@ -1936,7 +1957,7 @@ private:
                               BufferUInt sample_count,
                               UInt sample_first,
                               UInt samples,
-                              UInt seed,
+                              BufferFloat4 sobol_table,
                               Var<RenderKernelParameters>
                                   kernel_parameters) noexcept {
             UInt pixel = dispatch_x();
@@ -2700,15 +2721,39 @@ private:
             $for (sample_offset, samples) {
                 UInt sample_index =
                     sample_first + sample_offset;
-                UInt state = hash_seed(
-                    pixel, sample_index, seed);
+                UInt rng_hash = cycles_sampler::pixel_hash(
+                    full_x,
+                    full_y,
+                    kernel_parameters.seed);
+                Float2 filter_sample =
+                    cycles_sampler::sample_2d(
+                        sobol_table,
+                        kernel_parameters.sobol_sequence_size,
+                        sample_index,
+                        rng_hash,
+                        UInt{
+                            tabulated_sobol::
+                                camera_filter_dimension});
+                filter_sample = select(
+                    filter_sample,
+                    make_float2(0.5f),
+                    sample_index == 0u);
+                Float3 lens_time_sample =
+                    cycles_sampler::sample_3d(
+                        sobol_table,
+                        kernel_parameters.sobol_sequence_size,
+                        sample_index,
+                        rng_hash,
+                        UInt{
+                            tabulated_sobol::
+                                camera_lens_time_dimension});
                 Float jitter_x =
                     sample_pixel_filter(
-                        random_float(state),
+                        filter_sample.x,
                         kernel_parameters.filter_width);
                 Float jitter_y =
                     sample_pixel_filter(
-                        random_float(state),
+                        filter_sample.y,
                         kernel_parameters.filter_width);
                 Float width =
                     cast<float>(kernel_parameters.full_width);
@@ -2832,9 +2877,9 @@ private:
                 }
                 if (camera_depth_of_field) {
                     Float lens_radius =
-                        sqrt(random_float(state));
+                        sqrt(lens_time_sample.y);
                     Float lens_angle =
-                        2.0f * pi * random_float(state);
+                        2.0f * pi * lens_time_sample.z;
                     Float2 lens_position =
                         make_float2(
                             cos(lens_angle),
@@ -2955,7 +3000,50 @@ private:
                 $for (
                     path_step,
                     kernel_parameters.max_path_steps) {
-                    static_cast<void>(path_step);
+                    const auto terminate_sample =
+                        cycles_sampler::sample_1d(
+                            sobol_table,
+                            kernel_parameters
+                                .sobol_sequence_size,
+                            sample_index,
+                            rng_hash,
+                            cycles_sampler::path_dimension(
+                                path_step,
+                                tabulated_sobol::
+                                    terminate_dimension));
+                    const auto light_sample =
+                        cycles_sampler::sample_3d(
+                            sobol_table,
+                            kernel_parameters
+                                .sobol_sequence_size,
+                            sample_index,
+                            rng_hash,
+                            cycles_sampler::path_dimension(
+                                path_step,
+                                tabulated_sobol::
+                                    light_dimension));
+                    const auto light_terminate_sample =
+                        cycles_sampler::sample_1d(
+                            sobol_table,
+                            kernel_parameters
+                                .sobol_sequence_size,
+                            sample_index,
+                            rng_hash,
+                            cycles_sampler::path_dimension(
+                                path_step,
+                                tabulated_sobol::
+                                    light_terminate_dimension));
+                    const auto bsdf_sample =
+                        cycles_sampler::sample_3d(
+                            sobol_table,
+                            kernel_parameters
+                                .sobol_sequence_size,
+                            sample_index,
+                            rng_hash,
+                            cycles_sampler::path_dimension(
+                                path_step,
+                                tabulated_sobol::
+                                    surface_bsdf_dimension));
                     Var<luisa::compute::SurfaceHit> hit =
                         scene->accel->intersect(
                             ray,
@@ -3589,7 +3677,7 @@ private:
                         $if (survival <= 0.0f) {
                             $break;
                         };
-                        $if (random_float(state) >= survival) {
+                        $if (terminate_sample >= survival) {
                             $break;
                         };
                         throughput /= survival;
@@ -3646,10 +3734,10 @@ private:
                         {
                             Float environment_z =
                                 1.0f -
-                                2.0f * random_float(state);
+                                2.0f * light_sample.x;
                             Float environment_phi =
                                 2.0f * pi *
-                                random_float(state);
+                                light_sample.y;
                             Float environment_radius = sqrt(max(
                                 1.0f -
                                     environment_z *
@@ -3696,7 +3784,7 @@ private:
                                 Float roulette_weight =
                                     sample_light_roulette(
                                         unshadowed_contribution,
-                                        random_float(state));
+                                        light_terminate_sample);
                                 Float3 contribution =
                                     clamp_contribution(
                                         throughput *
@@ -3745,7 +3833,7 @@ private:
                                 cross(sun_axis, sun_tangent);
                             Float cosine_theta =
                                 1.0f -
-                                random_float(state) *
+                                light_sample.x *
                                     (1.0f - cosine_max);
                             Float sine_theta = sqrt(max(
                                 1.0f -
@@ -3754,7 +3842,7 @@ private:
                                 0.0f));
                             Float phi =
                                 2.0f * pi *
-                                random_float(state);
+                                light_sample.y;
                             Float3 wi =
                                 sun_tangent *
                                     (cos(phi) * sine_theta) +
@@ -3794,7 +3882,7 @@ private:
                                 Float roulette_weight =
                                     sample_light_roulette(
                                         unshadowed_contribution,
-                                        random_float(state));
+                                        light_terminate_sample);
                                 Float3 contribution =
                                     clamp_contribution(
                                         throughput *
@@ -3849,7 +3937,7 @@ private:
                                     sun_axis, sun_tangent);
                             Float cosine_theta =
                                 1.0f -
-                                random_float(state) *
+                                light_sample.x *
                                     (1.0f - cosine_max);
                             Float sine_theta = sqrt(max(
                                 1.0f -
@@ -3858,7 +3946,7 @@ private:
                                 0.0f));
                             Float phi =
                                 2.0f * pi *
-                                random_float(state);
+                                light_sample.y;
                             Float3 wi =
                                 sun_tangent *
                                     (cos(phi) * sine_theta) +
@@ -3897,7 +3985,7 @@ private:
                                 Float roulette_weight =
                                     sample_light_roulette(
                                         unshadowed_contribution,
-                                        random_float(state));
+                                        light_terminate_sample);
                                 Float3 contribution =
                                     clamp_contribution(
                                         throughput *
@@ -3919,7 +4007,7 @@ private:
                         if (scene->emissive_triangle_count > 0u) {
                             UInt selected_emitter = min(
                                 cast<luisa::uint>(
-                                    random_float(state) *
+                                    light_sample.z *
                                     static_cast<float>(
                                         scene
                                             ->emissive_triangle_count)),
@@ -4057,9 +4145,9 @@ private:
                                  make_float4(lp2, 1.0f))
                                     .xyz();
                             Float root_u =
-                                sqrt(random_float(state));
+                                sqrt(light_sample.x);
                             Float second_u =
-                                random_float(state);
+                                light_sample.y;
                             Float2 light_barycentric =
                                 make_float2(
                                     root_u * (1.0f - second_u),
@@ -4322,7 +4410,7 @@ private:
                                     Float roulette_weight =
                                         sample_light_roulette(
                                             unshadowed_contribution,
-                                            random_float(state));
+                                            light_terminate_sample);
                                     Float3 contribution =
                                         clamp_contribution(
                                             throughput *
@@ -4366,9 +4454,9 @@ private:
                                  static_cast<std::uint32_t>(
                                      LightType::area)) {
                                 Float sample_x =
-                                    random_float(state);
+                                    light_sample.x;
                                 Float sample_y =
-                                    random_float(state);
+                                    light_sample.y;
                                 Bool ellipse =
                                     (light.flags &
                                      light_flag_ellipse) != 0u;
@@ -4518,7 +4606,7 @@ private:
                                         sun_tangent);
                                 Float cosine_theta =
                                     1.0f -
-                                    random_float(state) *
+                                    light_sample.x *
                                         (1.0f - cosine_max);
                                 Float sine_theta = sqrt(max(
                                     1.0f -
@@ -4527,7 +4615,7 @@ private:
                                     0.0f));
                                 Float phi =
                                     2.0f * pi *
-                                    random_float(state);
+                                    light_sample.y;
                                 Float3 cone_direction =
                                     sun_tangent *
                                         (cos(phi) *
@@ -4589,9 +4677,9 @@ private:
                                     distance2 > 1.0e-12f;
                                 $if (light.radius > 0.0f) {
                                     Float sample_x =
-                                        random_float(state);
+                                        light_sample.x;
                                     Float sample_y =
-                                        random_float(state);
+                                        light_sample.y;
                                     Bool sphere =
                                         (light.flags &
                                          light_flag_sphere) != 0u;
@@ -4995,7 +5083,7 @@ private:
                                     Float roulette_weight =
                                         sample_light_roulette(
                                             unshadowed_contribution,
-                                            random_float(state));
+                                            light_terminate_sample);
                                     Float3 contribution =
                                         clamp_contribution(
                                             throughput *
@@ -5020,10 +5108,8 @@ private:
                     auto surface_sample = sample_surface(
                         surface_tag,
                         point,
-                        random_float(state),
-                        make_float2(
-                            random_float(state),
-                            random_float(state)),
+                        bsdf_sample.z,
+                        bsdf_sample.xy(),
                         path_surface_query);
                     $if (!surface_sample.valid |
                          (surface_sample.evaluation.pdf <=
@@ -5437,6 +5523,21 @@ public:
         if (_cancelled.load() || samples.count == 0u) {
             return false;
         }
+        const auto sample_begin =
+            static_cast<std::uint64_t>(samples.first) +
+            static_cast<std::uint64_t>(samples.offset);
+        const auto sample_end =
+            sample_begin +
+            static_cast<std::uint64_t>(samples.count);
+        if (samples.total == 0u ||
+            sample_end >
+                static_cast<std::uint64_t>(samples.total) ||
+            (_total_aa_samples != 0u &&
+             _total_aa_samples != samples.total)) {
+            return false;
+        }
+        _total_aa_samples = samples.total;
+        prepare_sobol_table(samples.total);
         _stream
             << _render_shader(
                    _combined,
@@ -5444,9 +5545,9 @@ public:
                    _albedo,
                    _light_passes,
                    _sample_count,
-                   samples.first + samples.offset,
+                   static_cast<std::uint32_t>(sample_begin),
                    samples.count,
-                   _settings.seed,
+                   _sobol_table,
                    _kernel_parameters)
                    .dispatch(
                        static_cast<std::uint32_t>(

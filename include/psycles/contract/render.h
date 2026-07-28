@@ -116,6 +116,10 @@ struct SampleRange {
     std::uint32_t first{};
     std::uint32_t count{};
     std::uint32_t offset{};
+    // Total AA samples for the render, not the size of this progressive
+    // dispatch. Sampling tables and other whole-sequence state must be
+    // derived from this value so chunking does not change the random stream.
+    std::uint32_t total{};
 };
 
 struct PassTile {
