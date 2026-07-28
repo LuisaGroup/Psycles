@@ -10,8 +10,9 @@ Development continues on `refactor/path-tracer-modules` from
 `main@ad360032`. Every independently validated stage is recorded here and
 pushed before the next long-running compile or render:
 
-1. split `src/luisa/path_tracer.cpp` by stable responsibility without changing
-   rendering semantics, kernel argument ABI, or fallback-cache identity;
+1. [x] split `src/luisa/path_tracer.cpp` by stable responsibility without
+   changing rendering semantics, the kernel argument ABI, or automatic cache
+   behavior;
 2. implement Cycles' unified single-light distribution, world/emissive
    distributions, and Nishita conditional/marginal importance CDFs;
 3. expand official Cycles linear-pass validation to additional Blender demo
@@ -69,6 +70,23 @@ and Russian-roulette sampling use the fixed Cycles dimensions; no PCG call
 sites remain. Do not extend this work into a CPU renderer or additional
 CPU-only validation.
 
+Checkpoint 1d is the architecture-only production split published as
+`cba0428`. The public backend façade is 51 lines; common host utilities,
+sampling, lighting, surfaces, environment, geometry, the kernel, the render
+session, and the scene compiler now have separate private implementation
+boundaries. The production path-state machine remains one cohesive kernel.
+The nine explicit shader arguments, `SampleRange.total`, fixed Sobol lanes,
+and lowered argument metadata are unchanged.
+
+The split completed a full fallback build and the complete CTest gate 8/8.
+Across `emission_surface`, `diffuse_bsdf_matrix`, and `diffuse_surface`, all
+39 emitted Psycles PFM passes match their pre-refactor baselines byte for
+byte. The explicit callable boundaries produce a legitimate one-time
+structural-cache migration; the modular focused key is
+`kernel_4c0f6e0d82a53e90`, with the same
+`ARGUMENT_HASH cf9ee8fec3c444f6` and `ARGUMENT_COUNT 19` as the historical
+production-Sobol key.
+
 The production integration exposed a Luisa XIR
 `local_load_elimination` heap use-after-free. LuisaCompute `next@f42f3c6e`
 pre-creates all block/predecessor data-flow entries and forbids map insertion
@@ -91,11 +109,12 @@ status.
 | Complete coverage | 43/96 complete: 41 `cycles_verified` device nodes and 2 structural output adapters |
 | Remaining nodes | 12 partial and 41 pending; no implemented node is waiting for a probe, and 1 Cycles OSL-only node is tracked separately |
 | Automated gate | 5/5 clean core groups pass; final Luisa `f42f3c6e` completed a 245-step fallback rebuild with LLVM 22.1.8/Embree 4.3.0, the device fixture executes exact bit comparisons, and the complete fallback gate passes 8/8 |
+| Path-tracer architecture | Public façade reduced to 51 lines; nine private implementation translation units; full fallback build and 39/39 pre/post-refactor PFM byte matches |
 | Production Sobol probes | `emission_surface` and `diffuse_bsdf_matrix` selected linear passes are pixel-exact at 64×64/4 spp; `diffuse_surface` 64×64/16 spp Combined RMSE is `0.006317606`, mean-energy ratio is `0.999740158`, and invalid pixels are 0 |
 | Analytic lights | 11 Point/Spot/Area/Sun baselines, including shapes, spread, finite Sun disk, and light node trees |
 | Full-scene geometry/AOV | Negative-scale normal transforms and closure-weighted glossy normals are fixed |
 | Full-scene transport | At 640×480/64 spp, Lone Monk Combined RMSE is `0.26116`, Normal is `0.03696`, and DiffCol is `0.01175`; Combined mean energy is 95.75% of Cycles |
-| Cold/hot fallback JIT | The pre-Sobol Lone Monk baseline is `327.574 s` cold and `0.682609 s` hot; the focused production-Sobol kernel is `kernel_70ce93bbfda41afc`, passed 20/20 cold compiles after the XIR fix, and hot-loaded in about 9.498 ms |
+| Cold/hot fallback JIT | The pre-Sobol Lone Monk baseline is `327.574 s` cold and `0.682609 s` hot; the historical focused production-Sobol kernel `kernel_70ce93bbfda41afc` passed 20/20 cold compiles after the XIR fix; the modular focused key `kernel_4c0f6e0d82a53e90` cold-compiled in about 0.407 s and subsequently hot-loaded in about 8–11 ms |
 | Persistent fallback cache | Native object plus exact metadata implemented, 8/8 isolated assertions pass, and the full-scene cross-process run is bitwise equal across 13 passes |
 | Upstream integration | LuisaCompute PR [#253](https://github.com/LuisaGroup/LuisaCompute/pull/253) is merged as `98f0150e`; Psycles pins `next@f42f3c6e`, which includes the LLVM 22 shared-library export fix and the XIR local-load analysis storage fix |
 
@@ -124,6 +143,11 @@ remain structural. The cache key represents that structural program and its
 code-generation environment; it must not absorb frequently changing values.
 Each migration to a runtime argument needs two tests: changing the value must
 change the result, and it must not create a new shader cache entry.
+
+Changing private callable boundaries is itself a structural program change, so
+the architecture split correctly created a new automatic cache key even
+though rendered bits and the argument ABI stayed fixed. Never pin
+`ShaderOption.name` to an old key to hide such a migration.
 
 The existing per-material `GraphSurface` specialization still makes AST size
 grow with material topology. Shared callables are an intermediate reduction.
@@ -176,10 +200,12 @@ direct-light sampling.
 Before production Sobol integration, changing the render from 64×48/1 spp to
 640×480/64 spp retained the pre-Sobol Lone Monk key
 `kernel_bb7a6886f6f75b90` and completed shader setup in `0.789711 s`. The
-focused production-Sobol key is `kernel_70ce93bbfda41afc`; these differently
-scoped probes must not be compared as a performance regression. Structural
-modes such as projection type and static node modes remain deliberately
-outside the runtime argument block.
+historical monolithic production-Sobol key was
+`kernel_70ce93bbfda41afc`; the modular focused key is
+`kernel_4c0f6e0d82a53e90`. These differently scoped or structurally distinct
+probes must not be compared as a performance regression. Structural modes
+such as projection type, static node modes, and callable topology remain
+deliberately outside the runtime argument block.
 
 ### P1 — transport parity
 
@@ -187,8 +213,10 @@ outside the runtime argument block.
   fallback and lock the camera/light/BSDF results bit for bit.
 - [x] Integrate that stream into the production kernel using total AA samples
   and `path_step`, then validate focused official Cycles linear passes.
-- Split the 6,848-line production monolith by stable responsibility while
-  preserving its nine-argument ABI, Sobol dimensions, and rendered bits.
+- [x] Split the 6,848-line production monolith by stable responsibility while
+  preserving its nine-argument ABI, Sobol dimensions, and rendered bits;
+  validate the full fallback build, CTest 8/8, and 39/39 PFM regression
+  outputs.
 - Implement Cycles' unified single-light selection distribution and exact
   selection PDF.
 - Implement Cycles-compatible environment and emitter importance

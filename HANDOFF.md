@@ -15,6 +15,8 @@ The important published checkpoints are:
   fix and repair an XIR `local_load_elimination` heap use-after-free.
 - `35f04ae`: integrate the verified Sobol stream into the production path
   kernel while retaining its nine top-level arguments.
+- `cba0428`: split the production Luisa path tracer into private host/device
+  modules without changing its public backend API or rendered results.
 
 The Psycles submodule now pins LuisaCompute `f42f3c6e`. That commit is directly
 on `LuisaGroup/LuisaCompute:next`; no PR or force push was used.
@@ -39,8 +41,44 @@ gate 8/8.
   16-dimension stride. Light/BSDF component selection uses `z`; shape
   sampling uses `x/y`.
 - The old PCG generator has no remaining production call sites.
-- The focused production kernel cache identity is
-  `kernel_70ce93bbfda41afc`.
+
+### Path-tracer architecture
+
+`src/luisa/path_tracer.cpp` is now a 51-line public-backend façade. The
+runtime target compiles that façade with nine private translation units:
+
+| Module | Responsibility |
+|---|---|
+| `path_tracer_common.cpp` | Host conversions, packed callable values, pass helpers, and diagnostics |
+| `path_tracer_sampling.cpp` | Cycles-compatible pixel-filter callable |
+| `path_tracer_lighting.cpp` | MIS, contribution splitting, roulette, and emissive-triangle PDF callables |
+| `path_tracer_surfaces.cpp` | Strongly typed surface evaluate/emission/sample/AOV dispatch callables |
+| `path_tracer_environment.cpp` | World graph, environment-sun, and Nishita-sun callables |
+| `path_tracer_geometry.cpp` | Transparent shadow traversal and material lookup |
+| `path_tracer_kernel.cpp` | The single production path-state machine and shader compilation |
+| `path_tracer_session.cpp` | Sobol upload, progressive-range validation, dispatch, and pass readback |
+| `path_tracer_scene.cpp` | Scene/material/geometry/light compilation and GPU resource upload |
+| `path_tracer.cpp` | Backend construction and render-session façade |
+
+Private resource/session declarations live in `path_tracer_internal.h`;
+device ABI structs in `path_tracer_types.h`; buffer-backed graph services and
+callable signatures have their own private headers. The main path-state
+machine remains cohesive in `path_tracer_kernel.cpp`; this refactor did not
+invent a new public path-state ABI.
+
+The shader still has nine explicit top-level arguments. Fallback metadata
+retains `ARGUMENT_HASH cf9ee8fec3c444f6` and `ARGUMENT_COUNT 19`. Introducing
+explicit Luisa callable boundaries legitimately changed the structural cache
+key from the historical `kernel_70ce93bbfda41afc` to
+`kernel_4c0f6e0d82a53e90`; do not force the old name. The new key hot-loads in
+about 8–11 ms.
+
+As an architecture regression gate, all 13 PFM outputs from each of
+`emission_surface`, `diffuse_bsdf_matrix`, and `diffuse_surface` match the
+pre-refactor Psycles outputs byte for byte (39/39). A final repeated
+`emission_surface` run also matched all 13 passes byte for byte across
+processes. This is a refactor-equivalence result, separate from the
+Psycles-versus-Cycles accuracy measurements below.
 
 ### Cycles 4.5.10 comparisons
 
@@ -80,9 +118,6 @@ is globally clean: unrelated existing tests still contain sanitizer findings.
 
 ## Work that is deliberately still open
 
-- `src/luisa/path_tracer.cpp` is still a 6,848-line monolith. The next task is
-  an architecture-only split; no further rendering behavior should be mixed
-  into that refactor.
 - Analytic lights, emissive triangles, and the environment still have separate
   class-specific selection paths. Cycles' unified single-light distribution
   and its exact selection PDF are not implemented.
@@ -98,19 +133,15 @@ is globally clean: unrelated existing tests still contain sanitizer findings.
 
 1. Read this file, `DEVELOP.md`, and `BUILD.md`, then confirm the branch and
    submodule hashes before editing.
-2. Split `src/luisa/path_tracer.cpp` into private sampling, geometry,
-   environment, lights, kernel, render-session, and scene-compiler modules.
-   Preserve the nine-argument ABI, `SampleRange.total` contract, Sobol
-   dimensions, cache behavior, and rendered bits.
-3. Re-run the focused official Cycles probes after the split and upload
-   comparison/difference images.
-4. Implement Cycles' unified single-light selection distribution and exact
+2. Implement Cycles' unified single-light selection distribution and exact
    MIS selection density.
-5. Add world/emissive distributions, then the device-built Nishita
+3. Re-run the focused official Cycles linear-pass probes and upload viewable
+   comparison/difference images for that renderer change.
+4. Add world/emissive distributions, then the device-built Nishita
    conditional and marginal importance CDFs.
-6. Complete a per-event random-dimension trace for camera, light, BSDF,
+5. Complete a per-event random-dimension trace for camera, light, BSDF,
    transparency, and Russian roulette.
-7. Update these documents and push immediately after each passing boundary.
+6. Update these documents and push immediately after each passing boundary.
 
 Do not build a separate CPU renderer or CPU oracle. Cycles 4.5.10 is the sole
 rendering reference; acceptance is real Luisa execution plus official Cycles

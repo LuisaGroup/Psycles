@@ -117,6 +117,27 @@ Build with fallback backend (LLVM 22.1.8, Embree 4.3.0)
 fails if Luisa does not create `luisa-compute-backend-fallback`. Psycles never
 silently accepts a core-only build when fallback execution was requested.
 
+## Luisa path-tracer source layout
+
+The public backend entry point remains
+`src/luisa/path_tracer.cpp`. Its implementation is split across private
+translation units:
+
+| Source | Responsibility |
+|---|---|
+| `path_tracer_common.cpp` | Host conversions, packed callable values, pass helpers, diagnostics |
+| `path_tracer_sampling.cpp` | Pixel-filter callable |
+| `path_tracer_lighting.cpp` | MIS, contribution splitting, roulette, emissive-triangle PDFs |
+| `path_tracer_surfaces.cpp` | Surface evaluation/emission/sample/AOV dispatch |
+| `path_tracer_environment.cpp` | World graph, environment suns, Nishita sun |
+| `path_tracer_geometry.cpp` | Transparent shadow traversal and material lookup |
+| `path_tracer_kernel.cpp` | Production path-state machine and shader compilation |
+| `path_tracer_session.cpp` | Sobol resources, progressive dispatch, pass readback |
+| `path_tracer_scene.cpp` | Scene compiler and GPU resource upload |
+
+All of these sources are part of `psycles_luisa_runtime`; downstream users do
+not compile or include them individually.
+
 ## Render
 
 The small Luisa smoke test is:
@@ -174,12 +195,20 @@ passes. These figures measure cache behavior, not acceptable first-build
 latency: replacing per-material expanded AST with the shared device
 instruction executor remains an active development goal.
 
-Production Sobol intentionally changes the focused kernel identity to
-`kernel_70ce93bbfda41afc`. After repairing Luisa XIR local-load analysis, the
-same focused kernel compiled successfully from a cold cache 20/20 times; a
-subsequent hot load took about 9.498 ms, and its 13 cold/hot PFM outputs were
-byte-identical. Do not compare that small focused probe's timing with the
-full-scene Lone Monk numbers above.
+Production Sobol originally changed the focused monolithic kernel identity to
+`kernel_70ce93bbfda41afc`. After repairing Luisa XIR local-load analysis, that
+kernel compiled successfully from a cold cache 20/20 times; a subsequent hot
+load took about 9.498 ms, and its 13 cold/hot PFM outputs were byte-identical.
+
+The private-module split introduces explicit Luisa callable boundaries, which
+legitimately migrates the focused structural key once to
+`kernel_4c0f6e0d82a53e90`. The old and new metadata both report
+`ARGUMENT_HASH cf9ee8fec3c444f6` and `ARGUMENT_COUNT 19`; runtime seed, sample,
+camera, and resource bindings therefore remain outside the structural key.
+The modular focused kernel cold-compiled in about 0.407 s and then hot-loaded
+in about 8–11 ms. Do not assign the old key through `ShaderOption.name`, and
+do not compare these small focused timings with the full-scene Lone Monk
+numbers above.
 
 ## Validation
 
@@ -218,6 +247,13 @@ linear-pass probes. The current focused baselines are:
   RMSE/max error are all 0;
 - `diffuse_surface`, 64×64/16 spp: Combined RMSE `0.006317606`, mean-energy
   ratio `0.999740158`, and zero invalid pixels.
+
+The architecture-only module gate additionally compares every emitted Psycles
+PFM against the pre-refactor output. The current result is 13/13 byte matches
+for each of `emission_surface`, `diffuse_bsdf_matrix`, and `diffuse_surface`
+(39/39 total), plus 13/13 across repeated modular `emission_surface`
+processes. This proves refactor equivalence; it does not replace the
+Psycles-versus-Cycles metrics above.
 
 LuisaCompute also carries the upstream regression
 `local_load_elim_loop_fanout_keeps_analysis_storage_stable`. It is the narrow
