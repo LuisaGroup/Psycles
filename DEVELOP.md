@@ -255,6 +255,16 @@ deliberately outside the runtime argument block.
   outputs.
 - Implement Cycles' unified single-light selection distribution and exact
   selection PDF.
+  - [x] Checkpoint the production host-side Cycles 4.5 flat-distribution
+    builder and its exact upper-bound lookup. Emissive triangles are ordered
+    by scene/primitive order and weighted by world-space area; lamps are
+    uniform, with triangles and lamps each receiving 50% probability when
+    both classes exist. The focused test locks the CDF, per-emitter selection
+    PDFs, zero-area intervals, and boundary behavior.
+  - [ ] Populate that builder from the compiled scene, upload the distribution
+    buffer, and replace the current independent environment/triangle/all-lamp
+    NEE paths with one device-side selection. Until this item is complete,
+    the new host component does not change rendered pixels.
 - Implement Cycles-compatible environment and emitter importance
   distributions, including PDFs used by MIS and the Nishita
   conditional/marginal CDFs.

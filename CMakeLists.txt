@@ -28,6 +28,7 @@ add_library(psycles_core
     src/contract/scene.cpp
     src/contract/shader_graph.cpp
     src/io/image.cpp
+    src/sampling/light_distribution.cpp
     src/sampling/tabulated_sobol.cpp)
 add_library(Psycles::core ALIAS psycles_core)
 
@@ -298,6 +299,19 @@ if(PSYCLES_BUILD_TESTS)
     add_test(
         NAME psycles.tabulated_sobol
         COMMAND psycles_tabulated_sobol_tests)
+
+    add_executable(
+        psycles_light_distribution_tests
+        tests/test_light_distribution.cpp)
+    target_link_libraries(
+        psycles_light_distribution_tests
+        PRIVATE Psycles::core)
+    target_compile_features(
+        psycles_light_distribution_tests
+        PRIVATE cxx_std_20)
+    add_test(
+        NAME psycles.light_distribution
+        COMMAND psycles_light_distribution_tests)
 
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)
