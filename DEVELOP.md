@@ -10,21 +10,20 @@ Development continues on `refactor/path-tracer-modules` from
 `main@ad360032`. Every independently validated stage is recorded here and
 pushed before the next long-running compile or render:
 
-1. recover and integrate the unpublished Blender 4.5.10 tabulated-Sobol,
-   fixed-dimension light sampling, and Nishita-importance work;
-2. split `src/luisa/path_tracer.cpp` by stable responsibility without changing
+1. split `src/luisa/path_tracer.cpp` by stable responsibility without changing
    rendering semantics, kernel argument ABI, or fallback-cache identity;
+2. implement Cycles' unified single-light distribution, world/emissive
+   distributions, and Nishita conditional/marginal importance CDFs;
 3. expand official Cycles linear-pass validation to additional Blender demo
    scenes;
 4. replace per-material expanded DSL ASTs with a buffer-driven shared device
    instruction executor and remeasure cold/hot compilation.
 
-The prior prototype reported bitwise host/device Sobol fixtures and improved
-focused-probe RMSE, but that source state is not present in `main`. The
-tabulated-Sobol host and fallback-device fixtures have now been independently
-recovered and verified on this branch. Production-kernel integration and the
-historical render statistics remain separate gates rather than being inferred
-from chat history.
+The tabulated-Sobol host and fallback-device fixtures were independently
+recovered and verified on this branch, and the same stream is now integrated
+into the production path kernel. The production result is accepted only from
+official Blender 4.5.10 linear-pass probes; historical chat statistics are not
+treated as evidence.
 
 Checkpoint 0 removes the `PSYCLES_LUISA_SOURCE_DIR` override so the pinned
 submodule is the single normal source of LuisaCompute. Repository-wide option
@@ -58,9 +57,25 @@ fallback module with Ubuntu 24.04.3, GCC 13.3, CMake 3.27.7, Ninja 1.11.1,
 LLVM 22.1.8, and Embree 4.3.0. CMake also rejects
 `PSYCLES_ENABLE_LUISA_FALLBACK=ON` if Luisa silently disables the backend.
 The focused AST/host/device gate passes 3/3 and the complete fallback gate
-passes 8/8. This closes sampler lowering only; the production path kernel
-still uses the old generator. Do not extend this into a CPU renderer or
-additional CPU-only validation work.
+passes 8/8.
+
+Checkpoint 1c integrates that stream into the production kernel. It adds a
+whole-render `SampleRange.total` contract, derives the Sobol sequence size from
+that total rather than a progressive chunk, uploads the production
+`Buffer<float4>` table, and replaces the old scalar seed argument while
+retaining the nine-argument kernel ABI. Seed and sequence size are runtime
+parameters. Camera filter/lens, per-`path_step` light, light roulette, BSDF,
+and Russian-roulette sampling use the fixed Cycles dimensions; no PCG call
+sites remain. Do not extend this work into a CPU renderer or additional
+CPU-only validation.
+
+The production integration exposed a Luisa XIR
+`local_load_elimination` heap use-after-free. LuisaCompute `next@f42f3c6e`
+pre-creates all block/predecessor data-flow entries and forbids map insertion
+while a block result reference is live. The new loop/fanout fixture fails the
+old implementation under ASan and passes the fix. Production cold JIT changed
+from 6/20 crashes to 20/20 successes; a subsequent hot load took about
+9.498 ms and all 13 PFM outputs were byte-identical.
 
 Every transport, light-distribution, or environment-sampling boundary must be
 compared against the official Blender 4.5.10 Cycles linear passes. New
@@ -75,13 +90,14 @@ status.
 | Shader inventory | 96 Cycles-applicable nodes tracked from 105 Blender shader node types |
 | Complete coverage | 43/96 complete: 41 `cycles_verified` device nodes and 2 structural output adapters |
 | Remaining nodes | 12 partial and 41 pending; no implemented node is waiting for a probe, and 1 Cycles OSL-only node is tracked separately |
-| Automated gate | 5/5 clean core groups pass; LLVM 22.1.8/Embree 4.3.0 produce a real fallback module, the device fixture executes exact bit comparisons, and the complete fallback gate passes 8/8 |
+| Automated gate | 5/5 clean core groups pass; final Luisa `f42f3c6e` completed a 245-step fallback rebuild with LLVM 22.1.8/Embree 4.3.0, the device fixture executes exact bit comparisons, and the complete fallback gate passes 8/8 |
+| Production Sobol probes | `emission_surface` and `diffuse_bsdf_matrix` selected linear passes are pixel-exact at 64×64/4 spp; `diffuse_surface` 64×64/16 spp Combined RMSE is `0.006317606`, mean-energy ratio is `0.999740158`, and invalid pixels are 0 |
 | Analytic lights | 11 Point/Spot/Area/Sun baselines, including shapes, spread, finite Sun disk, and light node trees |
 | Full-scene geometry/AOV | Negative-scale normal transforms and closure-weighted glossy normals are fixed |
 | Full-scene transport | At 640×480/64 spp, Lone Monk Combined RMSE is `0.26116`, Normal is `0.03696`, and DiffCol is `0.01175`; Combined mean energy is 95.75% of Cycles |
-| Cold/hot fallback JIT | Frozen-runtime full-scene JIT is `327.574 s` cold and `0.682609 s` hot (479.9×); the 1.20 MB main object loads in 1.87 ms |
+| Cold/hot fallback JIT | The pre-Sobol Lone Monk baseline is `327.574 s` cold and `0.682609 s` hot; the focused production-Sobol kernel is `kernel_70ce93bbfda41afc`, passed 20/20 cold compiles after the XIR fix, and hot-loaded in about 9.498 ms |
 | Persistent fallback cache | Native object plus exact metadata implemented, 8/8 isolated assertions pass, and the full-scene cross-process run is bitwise equal across 13 passes |
-| Upstream integration | LuisaCompute PR [#253](https://github.com/LuisaGroup/LuisaCompute/pull/253) is merged as `98f0150e`; Psycles pins `9f0c3287`, which adds the LLVM 22 shared-library export fix on top of the tested PR head |
+| Upstream integration | LuisaCompute PR [#253](https://github.com/LuisaGroup/LuisaCompute/pull/253) is merged as `98f0150e`; Psycles pins `next@f42f3c6e`, which includes the LLVM 22 shared-library export fix and the XIR local-load analysis storage fix |
 
 The latest glossy-normal probe reduced Normal RMSE from `0.399218` to
 `0.00192210` (about 99.5%) and measures Combined relative RMSE `0.5273%`.
@@ -117,15 +133,14 @@ and most graph data change.
 
 ## Sampling parity
 
-Psycles is deterministic for a fixed Psycles seed, but its rendered random
-stream is not yet bitwise identical to Cycles. Checkpoint 1a restores the
-official Cycles 4.5 tabulated-Sobol host LUT and fixed dimension constants.
-Checkpoint 1b verifies their Luisa lowering on the real fallback device,
-including exact IEEE-754 bits for camera, first-path-step light/BSDF, and
-next-path-step light probes. The production path kernel still uses its earlier
-integer state/hash generator and has not yet adopted the table, fixed
-camera/light/BSDF/Russian-roulette dimensions, or the 16-dimension path-step
-stride.
+Psycles is deterministic for a fixed seed, and the production path kernel now
+uses the official Cycles 4.5 tabulated-Sobol LUT, pixel hashing, Owen
+scrambling, pattern shuffling, camera dimensions, per-`path_step`
+light/BSDF/Russian-roulette dimensions, and 16-dimension stride. Checkpoint 1b
+locks the Luisa lowering bit for bit on the real fallback device; checkpoint
+1c connects the same lowering to production. The integration removes the old
+PCG generator but does not by itself prove that every conditional Cycles event
+consumes an identical dimension.
 
 No “exact RNG” claim will be made from converged image statistics. The release
 gate is a trace probe that records, for fixed pixel/seed/sample indices:
@@ -137,7 +152,10 @@ gate is a trace probe that records, for fixed pixel/seed/sample indices:
 5. the final consumed dimension index.
 
 Every value and advancement decision must match the corresponding Cycles trace
-before the gate can turn green.
+before the full trace gate can turn green. Current official probes establish
+pixel-exact camera/emission and focused diffuse-matrix paths, while the
+16-spp diffuse sphere retains Combined RMSE `0.006317606` pending unified
+direct-light sampling.
 
 ## Roadmap
 
@@ -155,19 +173,27 @@ before the gate can turn green.
   AST-to-XIR cold, `327.574 s` total cold JIT, `0.682609 s` hot JIT, and
   `1.8655 ms` main-object load.
 
-Changing the render from 64×48/1 spp to 640×480/64 spp retained the exact same
-main cache key, `kernel_bb7a6886f6f75b90`, and completed shader setup in
-`0.789711 s`. Structural modes such as projection type and static node modes
-remain deliberately outside the runtime argument block.
+Before production Sobol integration, changing the render from 64×48/1 spp to
+640×480/64 spp retained the pre-Sobol Lone Monk key
+`kernel_bb7a6886f6f75b90` and completed shader setup in `0.789711 s`. The
+focused production-Sobol key is `kernel_70ce93bbfda41afc`; these differently
+scoped probes must not be compared as a performance regression. Structural
+modes such as projection type and static node modes remain deliberately
+outside the runtime argument block.
 
 ### P1 — transport parity
 
 - [x] Execute the tabulated-Sobol lowering on LLVM 22.1.8/Embree 4.3.0
   fallback and lock the camera/light/BSDF results bit for bit.
-- Integrate that stream into the production kernel using total AA samples and
-  `path_step`, then validate official Cycles linear passes.
+- [x] Integrate that stream into the production kernel using total AA samples
+  and `path_step`, then validate focused official Cycles linear passes.
+- Split the 6,848-line production monolith by stable responsibility while
+  preserving its nine-argument ABI, Sobol dimensions, and rendered bits.
+- Implement Cycles' unified single-light selection distribution and exact
+  selection PDF.
 - Implement Cycles-compatible environment and emitter importance
-  distributions, including PDFs used by MIS.
+  distributions, including PDFs used by MIS and the Nishita
+  conditional/marginal CDFs.
 - Close indirect-transmission and glossy-indirect energy gaps.
 - Complete the remaining Principled lobes and event labels.
 - Finish Bump/Normal modes and derivative behavior, then re-run full-scene

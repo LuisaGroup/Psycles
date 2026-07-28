@@ -3,6 +3,7 @@
 Psycles builds LuisaCompute as a CMake subdirectory. The repository pins the
 tested Luisa revision in `third_party/LuisaCompute`; a normal user build does
 not need a separate Luisa installation or a second configure step.
+The active branch pins LuisaCompute `next@f42f3c6e`.
 
 ## Prerequisites
 
@@ -12,9 +13,9 @@ not need a separate Luisa installation or a second configure step.
 - Ninja or another CMake generator
 - Python 3 for the versioned compatibility checks
 
-The host-only `fallback` backend additionally needs LLVM, Embree, and X11
-development packages discoverable by CMake. The active fallback validation
-baseline is:
+The host-only `fallback` backend additionally needs LLVM, Embree, X11, and
+libuuid development packages discoverable by CMake. The active fallback
+validation baseline is:
 
 | Component | Version |
 |---|---:|
@@ -33,7 +34,7 @@ the development packages required by Luisa's fallback backend:
 sudo apt-get update
 sudo apt-get install -y \
   cmake ninja-build wget gnupg lsb-release software-properties-common \
-  libembree-dev libx11-dev
+  libembree-dev libx11-dev uuid-dev
 wget https://apt.llvm.org/llvm.sh
 chmod +x llvm.sh
 sudo ./llvm.sh 22
@@ -134,6 +135,12 @@ The normalized Blender-scene renderer is:
 Its positional arguments are export directory, output path, backend, width,
 height, and samples per pixel.
 
+`SampleRange.total` is the total AA sample count for the entire render, not
+the current progressive chunk size. The production Sobol sequence is derived
+from `total`; every chunk must satisfy
+`first + offset + count <= total`, and one render session may not change
+`total`. Both CLIs above set `count == total == samples per pixel`.
+
 ## Fallback shader cache
 
 The fallback backend persists a native object and exact metadata for an
@@ -152,8 +159,8 @@ the runtime `.cache` directory (normally `build/bin/.cache`). Removing that
 directory forces a cold compile. Applications that supply a custom `BinaryIO`
 control cache storage themselves.
 
-The current Lone Monk fallback baseline uses the same cached main kernel for
-both 64×48/1 spp and 640×480/64 spp:
+The historical pre-Sobol Lone Monk fallback baseline uses the same cached main
+kernel, `kernel_bb7a6886f6f75b90`, for both 64×48/1 spp and 640×480/64 spp:
 
 | Frozen-runtime measurement | Time |
 |---|---:|
@@ -166,6 +173,13 @@ The cold and hot 64×48 runs are byte-identical across all 13 emitted linear
 passes. These figures measure cache behavior, not acceptable first-build
 latency: replacing per-material expanded AST with the shared device
 instruction executor remains an active development goal.
+
+Production Sobol intentionally changes the focused kernel identity to
+`kernel_70ce93bbfda41afc`. After repairing Luisa XIR local-load analysis, the
+same focused kernel compiled successfully from a cold cache 20/20 times; a
+subsequent hot load took about 9.498 ms, and its 13 cold/hot PFM outputs were
+byte-identical. Do not compare that small focused probe's timing with the
+full-scene Lone Monk numbers above.
 
 ## Validation
 
@@ -194,6 +208,21 @@ ctest --test-dir build \
   -R 'psycles\.(tabulated_sobol|luisa_ast|luisa_sobol_fallback)$' \
   --output-on-failure
 ```
+
+A production-Sobol change additionally requires official Blender 4.5.10
+linear-pass probes. The current focused baselines are:
+
+- `emission_surface`, 64×64/4 spp: Combined, Emit, and Normal RMSE/max error
+  are all 0;
+- `diffuse_bsdf_matrix`, 64×64/4 spp: Combined, DiffCol, DiffDir, and Normal
+  RMSE/max error are all 0;
+- `diffuse_surface`, 64×64/16 spp: Combined RMSE `0.006317606`, mean-energy
+  ratio `0.999740158`, and zero invalid pixels.
+
+LuisaCompute also carries the upstream regression
+`local_load_elim_loop_fanout_keeps_analysis_storage_stable`. It is the narrow
+ASan/UBSan gate for the XIR data-flow storage UAF; it is not evidence that the
+entire unrelated Luisa sanitizer suite is clean.
 
 A full compatibility claim additionally requires the focused official-Cycles
 linear-pass probes described in
