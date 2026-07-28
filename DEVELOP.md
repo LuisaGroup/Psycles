@@ -28,9 +28,11 @@ history as a passing gate.
 
 Checkpoint 0 removes the `PSYCLES_LUISA_SOURCE_DIR` override so the pinned
 submodule is the single normal source of LuisaCompute. Repository-wide option
-references and whitespace checks pass. A clean configure/build remains
-required on a worker with CMake and Ninja; the current handoff worker image
-does not provide either executable.
+references and whitespace checks pass. A clean GNU 13.3/CMake 3.27.7
+`PSYCLES_ENABLE_LUISA=OFF` configure and build also pass with the Unix
+Makefiles generator, followed by 4/4 core CTest groups. The existing
+Luisa/fallback 6/6 gate remains the required full-build check before any
+rendering change is published.
 
 ## Current checkpoint
 
