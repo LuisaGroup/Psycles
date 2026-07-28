@@ -15,7 +15,8 @@ TraceShadowCallable make_trace_shadow_callable(
                 scene->cycles_bsdf_table_buffer,
                 scene->texture_heap,
                 scene->heap,
-                scene->attribute_bindings,
+                scene->attribute_binding_slot,
+                scene->attribute_range_slot,
                 scene->nishita_texture_bindings,
                 scene->shader_color_space};
             Float3 transmittance = make_float3(1.0f);

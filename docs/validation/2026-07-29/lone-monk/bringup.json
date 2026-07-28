@@ -1,6 +1,6 @@
 {
   "schema": "psycles.full-scene-bringup.v2",
-  "status": "full_scene_blocked_after_reduced_material_first_pixel",
+  "status": "full_scene_ready_for_unmodified_vulkan_retry_after_column_marble_fix",
   "scene": {
     "name": "Lone Monk",
     "source": "/home/mike/Downloads/lone-monk_cycles_and_exposure-node_demo.blend",
@@ -128,6 +128,42 @@
       "raw_conditional_branches": 16611,
       "raw_indexed_branches": 13,
       "result": "interrupted at the documented three-minute diagnostic bound; no CFG or SPIR-V validation error observed"
+    },
+    {
+      "name": "vulkan-column-marble-controlled-after-attribute-repair",
+      "backend": "vk",
+      "width": 64,
+      "height": 48,
+      "samples": 1,
+      "environment": {
+        "LUISA_XIR_DISABLE_OPTIMIZATION": "1",
+        "LUISA_SPIRV_OPT_LEVEL": "0",
+        "LUISA_XIR_TRACE_PASSES": "1",
+        "LUISA_LOG_LEVEL": "verbose"
+      },
+      "geometries": 350,
+      "instances": 7543,
+      "renderer_materials": 4,
+      "scene_compile_seconds": 0.656495,
+      "jit_seconds": 12.3495,
+      "xir_restructure_seconds": 10.47494,
+      "render_seconds": 0.00485309,
+      "xir_blocks": 1360,
+      "xir_instructions": 203797,
+      "raw_conditional_branches": 406,
+      "raw_indexed_branches": 10,
+      "spirv_words": 432610,
+      "bindings": 26,
+      "first_pixel": true,
+      "outputs": [
+        "PPM",
+        "PFM passes",
+        "40-channel full-float multilayer OpenEXR"
+      ],
+      "nan_count": 0,
+      "inf_count": 0,
+      "result": "original unmodified column-marble graph passed XIR and SPIR-V validation and rendered",
+      "scope": "compiler and first-pixel diagnostic only; single original material plus diagnostic fallbacks"
     }
   ],
   "xir_repair": {
@@ -179,14 +215,22 @@
       },
       {
         "material": "column marble",
-        "result": "interrupted at the 45-second diagnostic bound",
-        "xir_blocks": 45900,
-        "xir_instructions": 1543437,
-        "raw_conditional_branches": 15266,
-        "raw_indexed_branches": 10,
+        "result_before_repair": "interrupted at the 45-second diagnostic bound",
+        "xir_blocks_before_repair": 45900,
+        "xir_instructions_before_repair": 1543437,
+        "raw_conditional_branches_before_repair": 15266,
+        "raw_indexed_branches_before_repair": 10,
         "node_count": 34,
         "link_count": 33,
-        "color_ramp_lookup_samples": 257
+        "color_ramp_lookup_samples": 257,
+        "result_after_repair": "rendered",
+        "xir_blocks_after_repair": 1360,
+        "xir_instructions_after_repair": 203797,
+        "raw_conditional_branches_after_repair": 406,
+        "raw_indexed_branches_after_repair": 10,
+        "jit_seconds_after_repair": 12.3495,
+        "spirv_words_after_repair": 432610,
+        "render_seconds_after_repair": 0.00485309
       },
       {
         "material": "copper pipe",
@@ -195,7 +239,51 @@
         "spirv_words": 321946
       }
     ],
-    "conclusion": "nonlinear host-side IR expansion is isolated to column marble lowering, not to the count of material dispatch entries"
+    "conclusion": "nonlinear host-side IR expansion was isolated to whole-scene attribute metadata being recorded as shader branches; the original column-marble graph now renders through a cardinality-bounded device lookup"
+  },
+  "attribute_lookup_repair": {
+    "invariant": "for a fixed shader program and fixed number of attribute lookup operations, recorded AST/XIR control-flow size is independent of scene attribute-binding cardinality",
+    "rejected_hypothesis": {
+      "name": "sampled-table cardinality",
+      "method": "reduce the Color Ramp, both RGB Curves, or all three tables from 257 samples to two while retaining graph topology",
+      "result": "all-table-reduced variant remained at 45900 blocks, 1543437 instructions, and 15266 raw conditionals"
+    },
+    "dependency_cuts": [
+      {
+        "name": "base color disconnected",
+        "values_retained": 32,
+        "xir_blocks": 900,
+        "xir_instructions": 137567,
+        "raw_conditional_branches": 266,
+        "jit_seconds": 4.79313
+      },
+      {
+        "name": "only base color dependency retained",
+        "values_retained": 63,
+        "xir_blocks": 45420,
+        "xir_instructions": 1500987,
+        "raw_conditional_branches": 15106,
+        "result": "timed out"
+      }
+    ],
+    "scene_attribute_bindings": {
+      "named_uv_layers": 367,
+      "color_attributes": 12,
+      "total": 379
+    },
+    "old_representation": "one host-recorded Luisa conditional per whole-scene attribute binding in every attribute-using callable",
+    "new_representation": "one device binding table plus one compact range per geometry, searched by one dynamic loop over only the current geometry",
+    "loop_exit": "found state in the loop predicate; no nested cross-construct break",
+    "raw_closure_graph_unchanged": true,
+    "cycles_material_prebake": false,
+    "regression": {
+      "name": "attribute_lookup_cfg_is_bounded",
+      "logical_binding_count": 512,
+      "measurement": "structured IfInst count after AST-to-XIR translation",
+      "maximum": 8,
+      "red_result": "old host-binding implementation returned test failure code 4",
+      "green_result": "device-table implementation passes"
+    }
   },
   "visual_checks": {
     "six_material_smoke": {
@@ -204,11 +292,22 @@
       "result": "finite and decodable; no full-frame NaN, Inf, or exposure explosion",
       "quality_claim": false,
       "reason": "one sample and a deliberately reduced material set"
+    },
+    "column_marble_smoke": {
+      "asset": "column-marble-vulkan-smoke.png",
+      "inspected_at_original_resolution": true,
+      "channels": 40,
+      "pixels_per_channel": 3072,
+      "nan_count": 0,
+      "inf_count": 0,
+      "result": "finite and decodable; sparse cyan point-like one-sample appearance with no full-frame corruption or exposure failure",
+      "quality_claim": false,
+      "reason": "one sample and a single-original-material controlled set"
     }
   },
   "triptychs": {
     "status": "pending_for_lone_monk",
-    "reason": "The unmodified Psycles material set has not produced a comparable linear EXR. A controlled reduced-material smoke image is not a Cycles quality reference.",
+    "reason": "The unmodified full Psycles material set has not yet produced a comparable linear EXR. Controlled reduced- or single-material smoke images are not Cycles quality references.",
     "required_panels": [
       "Cycles",
       "Psycles",

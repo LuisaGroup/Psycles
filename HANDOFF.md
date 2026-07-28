@@ -154,11 +154,9 @@ these focused probes.
    exact common source/binary revision. The packaged Blender 5.2 executable is
    older than the inspected 2026-07-28 source, so do not call it exact
    current-`main`.
-2. Fix the formally isolated `column marble` material-lowering explosion.
-   Its single raw graph currently creates 45,900 XIR blocks and 1,543,437
-   instructions before restructuring. Prove whether sampled-table or
-   dependency lowering violates a bounded-code-size invariant; add a red/green
-   regression and keep the raw closure graph intact.
+2. Re-run the unmodified 35-material Lone Monk export on Vulkan now that
+   `column marble` attribute lookup is bounded. Treat any remaining compiler
+   scaling issue as a separate invariant violation and add its regression.
 3. Render Lone Monk through both Cycles and Psycles on the same RX 9070 XT.
    Start at 480p; attempt 1080p if memory permits. Use the same frame, seed,
    samples, integrator, raw materials, and linear pass set. Record device
@@ -179,10 +177,16 @@ Vulkan initially exposed a greater-than-20-minute monolithic render-kernel
 cold JIT and HIP exposed a greater-than-10-minute HIPRT
 acceleration-structure build. The XIR batch/merge repair now renders a
 full-geometry, six-material controlled Vulkan input in a 22.5549-second JIT.
-An eleven-material trace and five single-material trials isolate the remaining
-Vulkan code-size blocker to the raw `column marble` graph. The reduced input
-is diagnostic only; do not call it a Lone Monk quality gate or manufacture a
-triptych from it.
+An eleven-material trace and five single-material trials isolated the next
+Vulkan code-size blocker to `column marble`. Sample-table and dependency cuts
+proved that the raw material graph was not itself pathological: the old
+attribute service expanded all 379 scene attribute bindings into every
+attribute-using callable. The renderer now uploads compact per-geometry ranges
+and searches them in one bounded Luisa loop. Its red/green XIR-count regression
+pins code size independently of scene attribute cardinality. The original
+single-material graph fell from 45,900 to 1,360 XIR blocks and rendered with a
+12.3495-second Vulkan JIT. This remains a diagnostic run; do not call it a Lone
+Monk quality gate or manufacture a triptych from it.
 
 ## Known limitations
 

@@ -20,6 +20,9 @@ multilayer OpenEXR output.
 - Psycles now writes one full-float multilayer OpenEXR with
   `ViewLayer.<pass>.<component>` channel names. The end-to-end comparison reads
   Cycles EXR and Psycles EXR directly.
+- The Lone Monk `column marble` blocker is repaired without changing its raw
+  closure graph: whole-scene attribute metadata is now device data rather than
+  host-recorded shader control flow.
 - The focused Cycles/Psycles images are visually coincident at normal display
   scale. The committed triptychs include the independently amplified absolute
   difference.
@@ -309,16 +312,44 @@ single-material trials isolated the nonlinear lowering to `column marble`.
 That material alone reaches 45,900 blocks, 1,543,437 instructions, and 15,266
 raw conditional branches; its graph includes a 257-sample Color Ramp, Bump,
 and two RGB Curves. The other four isolated materials compile and render in
-3.35–18.73 seconds. This moves the active Vulkan blocker from XIR batch
-complexity to host-side material graph expansion.
+3.35–18.73 seconds.
+
+Reducing the Color Ramp and both RGB Curve tables from 257 samples to two did
+not change the `column marble` XIR counts, disproving sampled-table cardinality
+as the cause. Disconnecting Base Color reduced the graph to 900 blocks and
+137,567 instructions, while retaining only the Base Color dependency kept
+45,420 blocks and 1,500,987 instructions. That path reaches Vertex Color.
+Lone Monk has 367 named UV layers plus 12 color attributes. The old attribute
+service recorded one `$if` for each of these 379 whole-scene bindings every
+time a material callable used an attribute.
+
+The formal code-size invariant is that, for a fixed shader and fixed number of
+attribute lookup operations, recorded AST/XIR control-flow size is independent
+of scene attribute-table cardinality. The repair uploads a flat binding table
+and one compact range per geometry. Luisa reads only the current geometry's
+range through bindless buffers and performs one device loop whose predicate
+contains a `found` state. No material node, link, lookup sample, or closure was
+removed or pre-baked.
+
+The regression records the real shader service and translates it to XIR. A
+512-binding old implementation failed the constant selection-count bound; the
+device-table implementation stays at or below eight structured selections.
+The original `column marble` graph now enters restructuring with 1,360 blocks,
+203,797 instructions, 406 raw conditionals, and 10 indexed branches. XIR
+restructuring completes in 10.47494 seconds, Vulkan JIT in 12.3495 seconds,
+and the 432,610-word shader renders 64×48/1 spp in 0.00485309 seconds.
+Psycles' complete 12-test gate passes with 32-way scheduling.
 
 The complete commands, stage timings, per-material results, test counts, and
 machine-readable measurements are in the
 [Lone Monk bring-up report](docs/validation/2026-07-29/lone-monk/bringup.json).
-No Lone Monk triptych is fabricated from the reduced-material smoke. The
-required Cycles / Psycles / amplified-linear-difference triptychs remain
-pending until the unmodified material set produces comparable EXRs. The
-already committed focused triptychs continue to test the comparison pipeline.
+The 40-channel diagnostic EXR contains no NaN or Inf values, and its
+[decoded preview](docs/validation/2026-07-29/lone-monk/column-marble-vulkan-smoke.png)
+was inspected at original resolution. No Lone Monk triptych is fabricated from
+this single-material smoke. The required Cycles / Psycles /
+amplified-linear-difference triptychs remain pending until the unmodified
+material set produces comparable EXRs. The already committed focused
+triptychs continue to test the comparison pipeline.
 
 ## Numeric comparison
 

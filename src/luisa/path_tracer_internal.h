@@ -142,13 +142,6 @@ struct MaterialBinding {
     std::uint32_t parameter_block{};
 };
 
-struct AttributeBinding {
-    std::uint64_t id{};
-    std::uint32_t geometry_index{};
-    std::uint32_t triangle_slot{};
-    std::uint32_t value_slot{};
-};
-
 struct NishitaTextureBinding {
     std::uint32_t parameter_block{};
     std::uint32_t sky_index{};
@@ -222,7 +215,10 @@ struct LuisaSceneData {
     Buffer<InstanceGpu> instance_buffer;
     Buffer<luisa::uint2> geometry_material_buffer;
     Buffer<luisa::uint2> override_material_buffer;
-    std::vector<AttributeBinding> attribute_bindings;
+    Buffer<AttributeBindingGpu> attribute_binding_buffer;
+    Buffer<AttributeRangeGpu> attribute_range_buffer;
+    std::uint32_t attribute_binding_slot{};
+    std::uint32_t attribute_range_slot{};
     Buffer<LightGpu> light_buffer;
     std::uint32_t light_count{};
     Buffer<EmissiveTriangleGpu> emissive_triangle_buffer;

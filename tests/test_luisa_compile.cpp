@@ -4,6 +4,11 @@
 #include <psycles/luisa/cycles_sampler.h>
 #include <psycles/luisa/graph_surface.h>
 
+#include "../src/luisa/path_tracer_shader_services.h"
+
+#include <luisa/xir/instructions/if.h>
+#include <luisa/xir/translators/ast2xir.h>
+
 #include <cstdint>
 #include <stdexcept>
 
@@ -142,6 +147,64 @@ public:
     return graph;
 }
 
+[[nodiscard]] bool attribute_lookup_cfg_is_bounded() {
+    constexpr auto logical_binding_count = 512u;
+    std::vector<
+        psycles::luisa_backend::detail::
+            NishitaTextureBinding>
+        nishita_textures;
+    contract::ShaderColorSpace shader_color_space;
+    Kernel1D kernel =
+        [nishita_textures =
+             std::move(nishita_textures),
+         shader_color_space,
+         logical_binding_count](
+            BufferFloat4 parameters,
+            BufferFloat cycles_bsdf_tables,
+            BindlessVar textures,
+            BindlessVar geometry_heap) noexcept {
+            psycles::luisa_backend::detail::
+                BufferShaderServices services{
+                    parameters,
+                    cycles_bsdf_tables,
+                    textures,
+                    geometry_heap,
+                    0u,
+                    1u,
+                    nishita_textures,
+                    shader_color_space};
+            SurfacePoint point{};
+            point.geometry_index = dispatch_x();
+            point.primitive_id = 0u;
+            point.barycentric = make_float2(0.25f);
+            auto value = services.attribute(
+                def<std::uint64_t>(
+                    logical_binding_count),
+                point);
+            device_assert(all(value >= 0.0f));
+        };
+    auto module = luisa::compute::xir::
+        ast_to_xir_translate(
+            kernel.function()->function(), {});
+    std::size_t structured_if_count = 0u;
+    for (auto *function : module->function_list()) {
+        if (auto *definition = function->definition()) {
+            definition->traverse_instructions(
+                [&](const luisa::compute::xir::
+                        Instruction *instruction) noexcept {
+                    structured_if_count +=
+                        instruction->isa<
+                            luisa::compute::xir::IfInst>()
+                            ? 1u :
+                            0u;
+                });
+        }
+    }
+    // Scene metadata belongs in device data. Its cardinality must not become
+    // one host-recorded branch per attribute in every material callable.
+    return structured_if_count <= 8u;
+}
+
 }// namespace
 
 int main() {
@@ -245,6 +308,9 @@ int main() {
         transparent_transparency_recordings != 1u) {
         return 3;
     }
+    if (!attribute_lookup_cfg_is_bounded()) {
+        return 4;
+    }
 
     Kernel1D sampler_kernel = [](
                                   BufferFloat4 table,
@@ -272,5 +338,5 @@ int main() {
                 rng_hash,
                 dimension));
     };
-    return sampler_kernel.function() ? 0 : 4;
+    return sampler_kernel.function() ? 0 : 5;
 }

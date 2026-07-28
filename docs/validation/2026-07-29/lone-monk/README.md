@@ -148,24 +148,98 @@ root. One-material-at-a-time variants then isolated the nonlinear growth:
 | `brick pavement` | JIT `7.89866 s`, 305,234 SPIR-V words, rendered |
 | `bush` | JIT `18.7265 s`, 365,391 SPIR-V words, rendered |
 | `church brick` | JIT `8.60974 s`, 345,257 SPIR-V words, rendered |
-| `column marble` | timed out at the 45-second diagnostic bound |
+| `column marble` | before repair: timed out; after repair: JIT `12.3495 s`, 432,610 SPIR-V words, rendered |
 | `copper pipe` | JIT `3.34863 s`, 321,946 SPIR-V words, rendered |
 
 `column marble` alone produces 45,900 blocks, 1,543,437 instructions, 15,266
 raw conditional branches, and 10 raw indexed branches before restructuring.
 It has 34 nodes / 33 links and includes Bump, Color Ramp, two RGB Curves,
 image textures, Mapping, Mix, Math, Normal Map, Object Info, Principled, and
-reroutes. Its exported Color Ramp contains 257 lookup samples. The next
-renderer task is to prove which sampled-table or dependency-lowering invariant
-causes host-side IR expansion and replace that expansion with a bounded Luisa
-DSL/JIT representation, with a regression. Reducing the source graph or
-pre-baking the closure is forbidden.
+reroutes. Its exported Color Ramp contains 257 lookup samples.
+
+### Column-marble root cause and bounded attribute lookup
+
+The sampled tables were eliminated as a hypothesis before changing the
+renderer. Variants retaining the same graph but reducing the Color Ramp, the
+two RGB Curves, or all three lookup tables from 257 samples to two still
+produced exactly 45,900 blocks, 1,543,437 instructions, and 15,266 raw
+conditionals. Dependency cuts then located the expansion:
+
+| Dependency-preserving diagnostic | Values retained | XIR result |
+|---|---:|---:|
+| Base Color disconnected | 32 | 900 blocks / 137,567 instructions / 266 raw conditionals; JIT `4.79313 s` |
+| Only Base Color dependency retained | 63 | 45,420 blocks / 1,500,987 instructions / 15,106 raw conditionals; timed out |
+
+The Base Color path reaches a Vertex Color node. Lone Monk contains 367 named
+UV layers and 12 color attributes, for 379 geometry-attribute bindings. The
+old `BufferShaderServices::attribute` iterated that host vector while recording
+each material callable and emitted one Luisa `$if` per whole-scene binding.
+The observed `15,266 / 379 = 40.28` conditionals per binding matches repeated
+callable recording. Scene metadata cardinality had incorrectly become shader
+control-flow cardinality.
+
+The repair is defined by this code-size invariant: for a fixed shader program
+and fixed number of attribute lookup operations, recorded AST/XIR control-flow
+size is independent of the number of scene attribute bindings. Attribute
+cardinality may affect uploaded data size and device runtime work, but not the
+host-recorded shader structure.
+
+Psycles now uploads:
+
+- one compact binding table containing `(attribute id, value-buffer slot)`;
+- one range per geometry containing `(offset, count, triangle-buffer slot)`.
+
+The shader reads only the current geometry's range through two bindless device
+buffers and searches it with one dynamic loop. A `found` state participates in
+the loop predicate, so the lookup has no cross-construct early `break`. The
+raw closure graph, its 257-sample tables, and all node dependencies are
+unchanged.
+
+The red/green regression records the real `BufferShaderServices::attribute`
+implementation, translates it AST-to-XIR, and counts structured selections.
+With 512 old host bindings the pre-repair test exceeded the constant bound and
+returned failure code 4. The device-table implementation remains at or below
+eight `IfInst` nodes for the same logical cardinality. This pins the
+cardinality invariant rather than the `column marble` node names or one scene
+size.
+
+The original unmodified `column marble` graph then completed:
+
+```bash
+env LUISA_XIR_DISABLE_OPTIMIZATION=1 \
+    LUISA_SPIRV_OPT_LEVEL=0 \
+    LUISA_XIR_TRACE_PASSES=1 \
+    LUISA_LOG_LEVEL=verbose \
+  build/bin/psycles_render_blender_scene \
+  /tmp/lone-monk-20260729/variants/material-column-marble \
+  /tmp/lone-monk-20260729/variants/material-column-marble-device-attributes-no-break.ppm \
+  vk 64 48 1
+```
+
+| Measurement | Before | After |
+|---|---:|---:|
+| XIR blocks | 45,900 | 1,360 |
+| XIR instructions | 1,543,437 | 203,797 |
+| Raw conditional branches | 15,266 | 406 |
+| Raw indexed branches | 10 | 10 |
+| XIR restructure | exceeded the diagnostic bound | `10.47494 s` |
+| Vulkan shader JIT | no completion | `12.3495 s` |
+| SPIR-V | no completion | 432,610 words / 26 bindings |
+| Render | no first pixel | `0.00485309 s` at 64×48 / 1 spp |
+
+The 40-channel full-float EXR has 3,072 finite values per channel and zero
+NaN/Inf values. The preview was inspected at original resolution:
+[column-marble Vulkan smoke](column-marble-vulkan-smoke.png). It shows the
+same sparse cyan point-like one-sample character as the earlier controlled
+smoke, without full-frame corruption or exposure failure. It is still a
+compiler/first-pixel diagnostic, not a Cycles quality comparison.
 
 ## Triptychs and visual acceptance
 
 There are intentionally no placeholder Lone Monk triptychs. The controlled
-material variant has no equivalent Cycles quality reference and cannot be
-presented as one. The required triptych for each linear pass is:
+material variants, including the repaired single-material run, have no
+equivalent Cycles quality reference and cannot be presented as one. The
+required triptych for each linear pass is:
 
 1. Cycles;
 2. Psycles using the same display transform and exposure;
