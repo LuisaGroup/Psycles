@@ -1,6 +1,6 @@
 {
-  "schema": "psycles.full-scene-bringup.v1",
-  "status": "blocked_before_first_pixel",
+  "schema": "psycles.full-scene-bringup.v2",
+  "status": "full_scene_blocked_after_reduced_material_first_pixel",
   "scene": {
     "name": "Lone Monk",
     "source": "/home/mike/Downloads/lone-monk_cycles_and_exposure-node_demo.blend",
@@ -79,10 +79,145 @@
       "first_pixel": false,
       "stage": "HIPRT acceleration-structure build",
       "result": "interrupted at the documented ten-minute diagnostic bound"
+    },
+    {
+      "name": "vulkan-six-material-controlled-after-xir-repair",
+      "backend": "vk",
+      "width": 64,
+      "height": 48,
+      "samples": 1,
+      "environment": {
+        "LUISA_XIR_DISABLE_OPTIMIZATION": "1",
+        "LUISA_SPIRV_OPT_LEVEL": "0"
+      },
+      "geometries": 350,
+      "instances": 7543,
+      "renderer_materials": 8,
+      "scene_compile_seconds": 0.648155,
+      "jit_seconds": 22.5549,
+      "render_seconds": 0.00485903,
+      "spirv_words": 497049,
+      "bindings": 26,
+      "first_pixel": true,
+      "outputs": [
+        "PPM",
+        "PFM passes",
+        "multilayer OpenEXR"
+      ],
+      "result": "passed SPIR-V validation and rendered",
+      "scope": "compiler and first-pixel diagnostic only; material set reduced"
+    },
+    {
+      "name": "vulkan-eleven-material-controlled-after-xir-repair",
+      "backend": "vk",
+      "width": 32,
+      "height": 24,
+      "samples": 1,
+      "environment": {
+        "LUISA_XIR_DISABLE_OPTIMIZATION": "1",
+        "LUISA_SPIRV_OPT_LEVEL": "0",
+        "LUISA_XIR_TRACE_PASSES": "1",
+        "LUISA_LOG_LEVEL": "verbose"
+      },
+      "elapsed_seconds_before_interrupt": 180,
+      "cpu_percent": 197,
+      "first_pixel": false,
+      "stage": "XIR module preflight",
+      "xir_blocks": 50020,
+      "xir_instructions": 2205924,
+      "raw_conditional_branches": 16611,
+      "raw_indexed_branches": 13,
+      "result": "interrupted at the documented three-minute diagnostic bound; no CFG or SPIR-V validation error observed"
     }
   ],
+  "xir_repair": {
+    "luisa_revision": "0e6f4376e",
+    "old_six_material_batch_seconds": 113.29,
+    "old_result": "SPIR-V validation failure caused by post-merge selection re-entry",
+    "postcondition": "for selection (H, M), an edge may not leave the M-dominated region and re-enter the H-dominated interior before M",
+    "monotonic_progress": "each successful batch rewrite strictly reduces raw conditional terminators and creates none",
+    "regressions": [
+      "restructure_if_batch_consumes_a_linear_diamond_chain",
+      "restructure_does_not_reenter_selection_after_its_merge"
+    ],
+    "focused_tests": {
+      "tests": 51,
+      "assertions": 1013,
+      "passed": true
+    },
+    "full_luisa_tests": {
+      "passed": 87,
+      "total": 88,
+      "known_unrelated_failure": "test_eastl_allocation"
+    },
+    "psycles_tests": {
+      "passed": 12,
+      "total": 12
+    },
+    "build_and_test_jobs": 32
+  },
+  "material_isolation": {
+    "invariant": "all variants retain 350 geometries, 7543 instances, world data, and images; only material programs and slots are reduced",
+    "results": [
+      {
+        "material": "brick pavement",
+        "result": "rendered",
+        "jit_seconds": 7.89866,
+        "spirv_words": 305234
+      },
+      {
+        "material": "bush",
+        "result": "rendered",
+        "jit_seconds": 18.7265,
+        "spirv_words": 365391
+      },
+      {
+        "material": "church brick",
+        "result": "rendered",
+        "jit_seconds": 8.60974,
+        "spirv_words": 345257
+      },
+      {
+        "material": "column marble",
+        "result": "interrupted at the 45-second diagnostic bound",
+        "xir_blocks": 45900,
+        "xir_instructions": 1543437,
+        "raw_conditional_branches": 15266,
+        "raw_indexed_branches": 10,
+        "node_count": 34,
+        "link_count": 33,
+        "color_ramp_lookup_samples": 257
+      },
+      {
+        "material": "copper pipe",
+        "result": "rendered",
+        "jit_seconds": 3.34863,
+        "spirv_words": 321946
+      }
+    ],
+    "conclusion": "nonlinear host-side IR expansion is isolated to column marble lowering, not to the count of material dispatch entries"
+  },
+  "visual_checks": {
+    "six_material_smoke": {
+      "asset": "six-materials-vulkan-smoke.png",
+      "inspected_at_original_resolution": true,
+      "result": "finite and decodable; no full-frame NaN, Inf, or exposure explosion",
+      "quality_claim": false,
+      "reason": "one sample and a deliberately reduced material set"
+    }
+  },
   "triptychs": {
-    "status": "pending",
-    "reason": "Neither Psycles backend reached a first pixel; fabricating a comparison image would be misleading."
+    "status": "pending_for_lone_monk",
+    "reason": "The unmodified Psycles material set has not produced a comparable linear EXR. A controlled reduced-material smoke image is not a Cycles quality reference.",
+    "required_panels": [
+      "Cycles",
+      "Psycles",
+      "amplified absolute linear difference"
+    ],
+    "pipeline_regressions": [
+      "../flat-light-vk/triptychs/combined.png",
+      "../transparent-mix-vk/triptychs/combined.png",
+      "../transparent-data-pass-vk/triptychs/combined.png"
+    ]
   }
 }
