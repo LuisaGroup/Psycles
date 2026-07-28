@@ -13,8 +13,30 @@ not need a separate Luisa installation or a second configure step.
 - Python 3 for the versioned compatibility checks
 
 The host-only `fallback` backend additionally needs LLVM and Embree development
-packages discoverable by CMake. The currently tested toolchain is LLVM 18.1.3
-and Embree 4.4.0. GPU backend prerequisites are inherited from LuisaCompute.
+packages discoverable by CMake. The active fallback validation baseline is:
+
+| Component | Version |
+|---|---:|
+| Ubuntu | 24.04 LTS (Noble) |
+| GCC | 13.3 |
+| CMake | 3.27.7 |
+| LLVM | 22.1.8 |
+| Embree | 4.3.0 |
+
+Install LLVM 22 from the
+[official LLVM Debian/Ubuntu repository](https://apt.llvm.org/), then install
+the development packages required by Luisa's fallback backend:
+
+```bash
+wget https://apt.llvm.org/llvm.sh
+chmod +x llvm.sh
+sudo ./llvm.sh 22
+sudo apt-get install llvm-22-dev libembree-dev
+```
+
+The repository disables Luisa's unused GUI component, so a headless fallback
+build does not require X11/GLFW development packages. GPU backend prerequisites
+are inherited from LuisaCompute.
 
 ## Clone and build
 
@@ -66,7 +88,15 @@ their package directories explicitly:
 ```bash
 cmake -S . -B build -G Ninja \
   -DLLVM_DIR=/path/to/llvm/lib/cmake/llvm \
-  -Dembree_DIR=/path/to/embree/lib/cmake/embree-4.4.0
+  -Dembree_DIR=/path/to/embree/lib/cmake/embree-4.3.0
+```
+
+With the Ubuntu packages above, the explicit equivalent is:
+
+```bash
+cmake -S . -B build -G Ninja \
+  -DLLVM_DIR=/usr/lib/llvm-22/lib/cmake/llvm \
+  -Dembree_DIR=/usr/lib/x86_64-linux-gnu/cmake/embree-4.3.0
 ```
 
 ## Render

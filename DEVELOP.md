@@ -43,6 +43,17 @@ from the authoritative Cycles algorithm; the clean core gate is now 5/5.
 Luisa device lowering and path-kernel integration are intentionally tracked as
 the next checkpoint rather than implied by this host-only result.
 
+Checkpoint 1b is staged for handoff but is not a passing gate. It adds a
+Luisa-native tabulated-Sobol lowering in
+`include/psycles/luisa/cycles_sampler.h`, extends the Luisa AST test to
+instantiate it, and disables Luisa's unused GUI dependency for headless
+builds. At the user's request, the first dependency build was stopped while
+Luisa XIR was at 95%; the sampler test executable was not linked or run.
+LLVM 22.1.8 and Embree 4.3.0 package metadata and CMake configs were verified,
+but fallback was not reconfigured before the stop. Resume with a real
+fallback device fixture; do not extend this into a CPU renderer or additional
+CPU-only validation work.
+
 ## Current checkpoint
 
 | Area | Verified state |
@@ -50,7 +61,7 @@ the next checkpoint rather than implied by this host-only result.
 | Shader inventory | 96 Cycles-applicable nodes tracked from 105 Blender shader node types |
 | Complete coverage | 43/96 complete: 41 `cycles_verified` device nodes and 2 structural output adapters |
 | Remaining nodes | 12 partial and 41 pending; no implemented node is waiting for a probe, and 1 Cycles OSL-only node is tracked separately |
-| Automated gate | 5/5 clean core CTest groups pass with the restored host Sobol fixture; the last pre-restoration Luisa/fallback build was 6/6 and must be rerun after device integration |
+| Automated gate | 5/5 clean core CTest groups pass at checkpoint 1a; checkpoint 1b is staged but unverified, and the last pre-restoration Luisa/fallback build was 6/6 |
 | Analytic lights | 11 Point/Spot/Area/Sun baselines, including shapes, spread, finite Sun disk, and light node trees |
 | Full-scene geometry/AOV | Negative-scale normal transforms and closure-weighted glossy normals are fixed |
 | Full-scene transport | At 640×480/64 spp, Lone Monk Combined RMSE is `0.26116`, Normal is `0.03696`, and DiffCol is `0.01175`; Combined mean energy is 95.75% of Cycles |
@@ -92,11 +103,13 @@ and most graph data change.
 
 ## Sampling parity
 
-Psycles is deterministic for a fixed Psycles seed, but its random stream is not
-yet bitwise identical to Cycles. The current integer state/hash generator does
-not reproduce the complete Cycles 4.5 Sobol/PMJ sampler, scrambling, or exact
-random-dimension advancement at camera, light, BSDF, transparency, and
-Russian-roulette events.
+Psycles is deterministic for a fixed Psycles seed, but its rendered random
+stream is not yet bitwise identical to Cycles. Checkpoint 1a restores the
+official Cycles 4.5 tabulated-Sobol host LUT and fixed dimension constants,
+and checkpoint 1b stages their Luisa lowering. The production path kernel
+still uses its earlier integer state/hash generator and has not yet adopted
+the table, fixed camera/light/BSDF/Russian-roulette dimensions, or the
+16-dimension bounce stride.
 
 No “exact RNG” claim will be made from converged image statistics. The release
 gate is a trace probe that records, for fixed pixel/seed/sample indices:
