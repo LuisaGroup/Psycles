@@ -1,7 +1,7 @@
 # Psycles validation record — 2026-07-29
 
 This record covers the renderer boundary on Psycles `main` and LuisaCompute
-`next@0e6f4376e`. It records the commands,
+`next@eb167454a`. It records the commands,
 numeric results, visual inspection, and known limitations for the AMD GPU
 bring-up, Cycles flat-light distribution, XIR control-flow repair, and
 multilayer OpenEXR output.
@@ -13,8 +13,10 @@ multilayer OpenEXR output.
   postconditions rather than optional best-effort features.
 - The complete Psycles gate passes 12/12 after a 32-job build.
 - Luisa's focused `restructure_cfg` gate passes 51/51 tests and 1013
-  assertions. The complete Luisa unit gate passes 87/88; the sole failure is
-  the pre-existing EASTL `fixed_vector` allocation contract described below.
+  assertions. All 21 structural SPIR-V tests pass, and the RX 9070 XT Vulkan
+  runtime gate passes 86/86 tests / 2029 assertions. The current complete
+  CTest gate passes 114/115; the sole failure is the pre-existing EASTL
+  `fixed_vector` allocation contract described below.
 - Vulkan and HIP both render the focused flat-light scene on the Radeon RX
   9070 XT. Vulkan also passes the two transparent-closure probes.
 - Psycles now writes one full-float multilayer OpenEXR with
@@ -23,6 +25,10 @@ multilayer OpenEXR output.
 - The Lone Monk `column marble` blocker is repaired without changing its raw
   closure graph: whole-scene attribute metadata is now device data rather than
   host-recorded shader control flow.
+- A module-wide SPIR-V argument-layout ordering defect exposed by outlined
+  read-only resource callables is repaired and covered by a red/green Vulkan
+  subview regression. The complete 35-material Lone Monk export now reaches a
+  strict-native Vulkan first pixel from an empty shader cache.
 - The focused Cycles/Psycles images are visually coincident at normal display
   scale. The committed triptychs include the independently amplified absolute
   difference.
@@ -52,9 +58,9 @@ closure topology and socket values for Luisa execution.
 
 | Item | Validated value |
 |---|---|
-| Psycles renderer implementation | `a10d686` on `main`; later `main` commits pin and document the Luisa repair |
+| Psycles renderer implementation | `b319a42` on `main`; this validation commit pins the later Luisa repair |
 | Psycles input boundary | `32d4217dc543b1778729f23a18f3f3143e001a24` |
-| LuisaCompute | `0e6f4376e` on published `next` |
+| LuisaCompute | `eb167454a` on published `next` |
 | Cycles source inspected | Blender `main@9353fed6d7cdc25b2aa03c30a155b044b313c8ec`, 2026-07-28 |
 | Cycles render executable | Blender 5.2.0 LTS, build hash `fbe6228777e7`, 2026-07-13 |
 | OS/kernel | Arch Linux, Linux `7.1.4-zen1-1-zen` |
@@ -144,6 +150,9 @@ The relevant published Luisa commits are:
 | `83a04feb8` | preserve CFG and SSA invariants during restructuring |
 | `f83725d27` | preserve executable semantics for update regions, re-entry, affine state, and disconnected edges |
 | `0e6f4376e` | make conditional batching monotonic, verify selection merge frontiers, and add opt-in pass tracing |
+| `5cf0c548d` | preserve declared loop merge boundaries |
+| `30602e640` | preserve uniquely rooted read-only resource callables instead of duplicating them into the kernel |
+| `eb167454a` | freeze the module argument layout before callable emission and add the nonzero-subview ABI regression |
 
 The focused and complete commands were:
 
@@ -152,12 +161,12 @@ The focused and complete commands were:
 ctest --test-dir build/luisa-tests --output-on-failure -j32
 ```
 
-The focused binary passes 51 tests / 1013 assertions. The complete suite
-passes 87/88. `test_eastl_allocation` fails eight assertions concerning
-EASTL `fixed_vector` max-size and move/overflow buffer ownership. It reproduces
-when run alone and is outside the XIR files changed by these commits; it is
-recorded as an existing dependency/toolchain baseline failure, not hidden or
-counted as passing.
+The focused binary passes 51 tests / 1013 assertions. With the current
+expanded build, the complete suite passes 114/115. `test_eastl_allocation`
+fails eight assertions concerning EASTL `fixed_vector` max-size and
+move/overflow buffer ownership. It reproduces when run alone and is outside
+the XIR/SPIR-V files changed by these commits; it is recorded as an existing
+dependency/toolchain baseline failure, not hidden or counted as passing.
 
 ## Vulkan reset diagnosis and formal specialization
 
@@ -340,16 +349,48 @@ restructuring completes in 10.47494 seconds, Vulkan JIT in 12.3495 seconds,
 and the 432,610-word shader renders 64×48/1 spp in 0.00485309 seconds.
 Psycles' complete 12-test gate passes with 32-way scheduling.
 
+Preserving uniquely rooted read-only resource callables then reduced the
+`column marble` module to about 238 thousand words and 1.31 seconds of JIT,
+but the first outlined result differed from the known-good pre-preservation
+Psycles output by RMS `0.0483804`, maximum `7.020724`, over 383 pixels.
+SPIR-V optimization level 2 preserved the error, as did exhaustive SPIR-V
+function inlining, placing the defect before the driver-call boundary.
+
+The cause was a module ABI initialization-order violation. SPIR-V callable
+post-order emits callees before the kernel, while the direct-buffer metadata
+offset had been initialized only inside kernel emission. An outlined
+read-only callable therefore loaded its buffer subview metadata from argument
+word zero. Luisa now freezes one validated kernel argument-layout plan before
+emitting any function and asserts that the kernel observes the same immutable
+layout. The regression uses a nonzero buffer subview, a scalar argument that
+moves the metadata trailer, and a real `OpFunctionCall`; it failed before the
+repair and now returns `{18, 29, 40, 51}`. The cold `column marble` result at
+`next@eb167454a` is pixel-exact with the known-good Psycles result, uses
+237,944 SPIR-V words, and JITs in 1.30926 seconds. That equivalence checks a
+compiler transformation only and is not a Cycles quality reference.
+
+The unmodified 35-material export was then run from an empty cache with
+optional XIR/SPIR-V optimization disabled and strict native Vulkan required.
+AST-to-XIR took 15.95796 seconds, destructuring 15.36656 seconds,
+restructuring 120.05845 seconds, and complete SPIR-V XIR legalization
+136.25386 seconds. The validated 2,611,188-word / 26-binding module reached a
+RADV pipeline and first pixel: scene compilation was 0.737443 seconds,
+main-kernel JIT 226.27 seconds, cold wall time 227.24 seconds, and 64×48/1 spp
+rendering 0.0114453 seconds. This is a measurable cold-start optimization
+target, not yet acceptable production compilation latency.
+
 The complete commands, stage timings, per-material results, test counts, and
 machine-readable measurements are in the
 [Lone Monk bring-up report](docs/validation/2026-07-29/lone-monk/bringup.json).
-The 40-channel diagnostic EXR contains no NaN or Inf values, and its
-[decoded preview](docs/validation/2026-07-29/lone-monk/column-marble-vulkan-smoke.png)
-was inspected at original resolution. No Lone Monk triptych is fabricated from
-this single-material smoke. The required Cycles / Psycles /
-amplified-linear-difference triptychs remain pending until the unmodified
-material set produces comparable EXRs. The already committed focused
-triptychs continue to test the comparison pipeline.
+The full-scene 40-channel EXR has 3,072 finite values and zero NaN/Inf values
+per channel. Its
+[decoded preview](docs/validation/2026-07-29/lone-monk/full-scene-vulkan-1spp.png)
+was inspected at original resolution: the central monk and architecture are
+recognizable through one-sample noise, without a full-frame clear color,
+exposure failure, or obvious stale-buffer pattern. The required Cycles /
+Psycles / amplified-linear-difference triptychs remain pending until matching
+current-Cycles and Psycles runs are completed at 480p or higher. Focused
+triptychs are not substituted for Lone Monk.
 
 ## Numeric comparison
 

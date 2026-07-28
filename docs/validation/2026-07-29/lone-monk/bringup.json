@@ -1,6 +1,6 @@
 {
   "schema": "psycles.full-scene-bringup.v2",
-  "status": "full_scene_ready_for_unmodified_vulkan_retry_after_column_marble_fix",
+  "status": "unmodified_full_scene_strict_native_vulkan_first_pixel_complete",
   "scene": {
     "name": "Lone Monk",
     "source": "/home/mike/Downloads/lone-monk_cycles_and_exposure-node_demo.blend",
@@ -164,10 +164,80 @@
       "inf_count": 0,
       "result": "original unmodified column-marble graph passed XIR and SPIR-V validation and rendered",
       "scope": "compiler and first-pixel diagnostic only; single original material plus diagnostic fallbacks"
+    },
+    {
+      "name": "vulkan-column-marble-cold-after-readonly-callable-abi-repair",
+      "backend": "vk",
+      "width": 64,
+      "height": 48,
+      "samples": 1,
+      "environment": {
+        "LUISA_XIR_DISABLE_OPTIMIZATION": "1",
+        "LUISA_SPIRV_OPT_LEVEL": "0",
+        "LUISA_XIR_TRACE_PASSES": "1",
+        "LUISA_LOG_LEVEL": "verbose",
+        "LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV": "1"
+      },
+      "geometries": 350,
+      "instances": 7543,
+      "renderer_materials": 4,
+      "scene_compile_seconds": 0.717657,
+      "jit_seconds": 1.30926,
+      "render_seconds": 0.00480292,
+      "spirv_words": 237944,
+      "bindings": 26,
+      "first_pixel": true,
+      "pixel_exact_to_known_good_pre_preservation_psycles_result": true,
+      "cycles_quality_reference": false,
+      "result": "outlined read-only resource callables preserved while kernel argument metadata semantics remained exact"
+    },
+    {
+      "name": "vulkan-unmodified-full-scene-cold-after-readonly-callable-abi-repair",
+      "backend": "vk",
+      "width": 64,
+      "height": 48,
+      "samples": 1,
+      "environment": {
+        "LUISA_XIR_DISABLE_OPTIMIZATION": "1",
+        "LUISA_SPIRV_OPT_LEVEL": "0",
+        "LUISA_XIR_TRACE_PASSES": "1",
+        "LUISA_LOG_LEVEL": "verbose",
+        "LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV": "1"
+      },
+      "cold_shader_cache": true,
+      "geometries": 350,
+      "instances": 7543,
+      "original_material_graphs": 35,
+      "renderer_materials": 37,
+      "images": 47,
+      "ast_to_xir_seconds": 15.95796,
+      "destructure_cfg_seconds": 15.36656,
+      "restructure_cfg_seconds": 120.05845,
+      "spirv_xir_legalization_seconds": 136.25386,
+      "scene_compile_seconds": 0.737443,
+      "jit_seconds": 226.27,
+      "wall_seconds": 227.24,
+      "render_seconds": 0.0114453,
+      "spirv_words": 2611188,
+      "bindings": 26,
+      "cold_cache_spirv_artifacts": 2,
+      "cold_cache_vk_artifacts": 2,
+      "first_pixel": true,
+      "outputs": [
+        "PPM",
+        "PFM passes",
+        "40-channel full-float multilayer OpenEXR"
+      ],
+      "pixels_per_channel": 3072,
+      "nan_count": 0,
+      "inf_count": 0,
+      "result": "strict-native SPIR-V validated, RADV pipeline created, and unmodified full scene rendered",
+      "scope": "compiler and first-pixel diagnostic only; not a Cycles quality comparison"
     }
   ],
   "xir_repair": {
-    "luisa_revision": "0e6f4376e",
+    "luisa_revision": "eb167454a",
+    "cfg_repair_revision": "0e6f4376e",
     "old_six_material_batch_seconds": 113.29,
     "old_result": "SPIR-V validation failure caused by post-merge selection re-entry",
     "postcondition": "for selection (H, M), an edge may not leave the M-dominated region and re-enter the H-dominated interior before M",
@@ -182,15 +252,75 @@
       "passed": true
     },
     "full_luisa_tests": {
-      "passed": 87,
-      "total": 88,
+      "passed": 114,
+      "total": 115,
       "known_unrelated_failure": "test_eastl_allocation"
+    },
+    "structural_spirv_tests": {
+      "passed": 21,
+      "total": 21
+    },
+    "vulkan_spirv_runtime_tests": {
+      "passed": 86,
+      "total": 86,
+      "assertions": 2029,
+      "device": "AMD Radeon RX 9070 XT (RADV GFX1201)"
     },
     "psycles_tests": {
       "passed": 12,
       "total": 12
     },
     "build_and_test_jobs": 32
+  },
+  "readonly_callable_abi_repair": {
+    "luisa_revision": "eb167454a",
+    "invariant": "the validated kernel argument layout is a module-wide ABI and must be frozen before post-order emission of any callable or kernel",
+    "root_cause": "direct-buffer metadata offset was initialized inside kernel emission even though outlined callees are emitted first and may load offset, size, or address metadata",
+    "diagnostics": [
+      {
+        "name": "spirv_optimization_level_2",
+        "spirv_words_before": 237940,
+        "spirv_words_after": 141703,
+        "result": "wrong pixels preserved"
+      },
+      {
+        "name": "exhaustive_spirv_function_inlining",
+        "spirv_words_after": 603537,
+        "result": "pixel-exact with the wrong outlined output; defect precedes the SPIR-V call boundary"
+      }
+    ],
+    "observed_semantic_regression": {
+      "mean_absolute_error": 0.000991478,
+      "rms_error": 0.0483804,
+      "maximum_absolute_error": 7.020724,
+      "affected_pixels": 383,
+      "total_pixels": 3072,
+      "reference_scope": "known-good pre-preservation Psycles compiler output only; not Cycles"
+    },
+    "repair": "compute and validate one SpirvKernelArgumentLayoutPlan before function emission, publish its metadata offset once, and assert the sole kernel consumes the same plan",
+    "regression": {
+      "name": "vk_user_compute_outlined_readonly_buffer_uses_frozen_kernel_argument_layout",
+      "nonzero_buffer_subview": true,
+      "metadata_trailer_word": 2,
+      "real_op_function_call": true,
+      "expected": [
+        18,
+        29,
+        40,
+        51
+      ],
+      "red_result": "callable read metadata from word zero and produced incorrect subview indexing",
+      "green_assertions": 3
+    },
+    "existing_readonly_callable_regression_assertions": 8,
+    "cold_column_marble_result": {
+      "spirv_words": 237944,
+      "jit_seconds": 1.30926,
+      "pixel_exact_to_known_good_pre_preservation_psycles_result": true,
+      "rms_difference_from_broken_output": 0.0483804,
+      "maximum_difference_from_broken_output": 7.020724,
+      "affected_pixels_from_broken_output": 383
+    }
   },
   "material_isolation": {
     "invariant": "all variants retain 350 geometries, 7543 instances, world data, and images; only material programs and slots are reduced",
@@ -303,11 +433,22 @@
       "result": "finite and decodable; sparse cyan point-like one-sample appearance with no full-frame corruption or exposure failure",
       "quality_claim": false,
       "reason": "one sample and a single-original-material controlled set"
+    },
+    "unmodified_full_scene_smoke": {
+      "asset": "full-scene-vulkan-1spp.png",
+      "inspected_at_original_resolution": true,
+      "channels": 40,
+      "pixels_per_channel": 3072,
+      "nan_count": 0,
+      "inf_count": 0,
+      "result": "central monk and architectural silhouette recognizable through one-sample noise; no full-frame corruption, constant clear color, exposure explosion, or obvious stale-buffer pattern",
+      "quality_claim": false,
+      "reason": "one sample and no matching Cycles render"
     }
   },
   "triptychs": {
     "status": "pending_for_lone_monk",
-    "reason": "The unmodified full Psycles material set has not yet produced a comparable linear EXR. Controlled reduced- or single-material smoke images are not Cycles quality references.",
+    "reason": "The unmodified Psycles material set now produces a linear EXR, but matching current-Cycles and Psycles 480p-or-higher renders have not yet completed. Controlled or one-sample smoke images are not Cycles quality references.",
     "required_panels": [
       "Cycles",
       "Psycles",

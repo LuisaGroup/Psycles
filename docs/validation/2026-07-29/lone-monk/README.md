@@ -86,11 +86,13 @@ red/green regressions pin it:
   It failed before the merge repair and now proves the no-post-merge-re-entry
   postcondition.
 
-The focused Luisa binary passes 51 tests / 1,013 assertions. The full Luisa
-suite passes 87/88 using 32-way scheduling; the sole failure remains the
-independently reproducible, pre-existing EASTL `fixed_vector` allocation
+The focused Luisa binary passes 51 tests / 1,013 assertions. At the current
+boundary, all 21 structural SPIR-V tests pass, the complete Vulkan SPIR-V
+runtime suite passes 86/86 tests / 2,029 assertions on the RX 9070 XT, and
+CTest passes 114/115 with 32-way scheduling. The sole CTest failure remains
+the independently reproducible, pre-existing EASTL `fixed_vector` allocation
 contract. Psycles passes 12/12 using a 32-job build and test schedule. The
-published Luisa boundary is `next@0e6f4376e`.
+published Luisa boundary is `next@eb167454a`.
 
 ## Result after the XIR repair
 
@@ -234,6 +236,109 @@ same sparse cyan point-like one-sample character as the earlier controlled
 smoke, without full-frame corruption or exposure failure. It is still a
 compiler/first-pixel diagnostic, not a Cycles quality comparison.
 
+## Read-only callable ABI repair
+
+Preserving uniquely rooted read-only resource callables removed the remaining
+material inlining explosion, but its first cold `column marble` result exposed
+a semantic regression. The outlined shader was finite and fast, yet differed
+from the previously correct Psycles XIR-inline result:
+
+| Diagnostic | Result |
+|---|---:|
+| Outlined shader | 237,940 SPIR-V words; JIT `1.309 s` |
+| Mean absolute difference | `0.000991478` |
+| RMS difference | `0.0483804` |
+| Maximum absolute difference | `7.020724` |
+| Affected pixels | 383 / 3,072 |
+
+This older Psycles image was used only to detect a compiler semantic change;
+it is not a substitute for Cycles and supports no rendering-quality claim.
+
+Two rejected hypotheses narrowed the boundary:
+
+1. SPIR-V optimization level 2 reduced the module from 237,940 to 141,703
+   words but preserved the wrong pixels.
+2. Exhaustive SPIR-V function inlining expanded it to 603,537 words and
+   remained pixel-exact with the wrong outlined result.
+
+Therefore the error existed before the driver-call boundary. SPIR-V emits
+used functions in post-order, so callables precede the kernel. Direct-buffer
+offset, size, and address loads in those callables used
+`_buffer_metadata_offset`, but that module-wide ABI value had previously been
+initialized only inside `_emit_kernel`. The callable therefore read metadata
+from argument-block word zero. XIR inlining had hidden the ordering defect by
+moving the same load into the later kernel emission.
+
+The formal repair freezes one validated `SpirvKernelArgumentLayoutPlan` before
+the first function is emitted. Every callable and the sole kernel now observe
+that immutable layout, and kernel emission asserts that the frozen metadata
+offset is unchanged. This is a module ABI initialization-order invariant, not
+a `column marble` or argument-count special case.
+
+The red/green Vulkan regression
+`vk_user_compute_outlined_readonly_buffer_uses_frozen_kernel_argument_layout`
+uses a nonzero direct-buffer subview, a scalar kernel argument that moves the
+metadata trailer to word two, and a real outlined callable. Before the repair
+it read word zero and failed; after the repair it returns
+`{18, 29, 40, 51}` and the dumped SPIR-V contains one `OpFunctionCall`.
+The existing unique-readonly-resource regression also passes. The focused
+runtime results are 3 and 8 assertions respectively; the complete runtime
+suite passes 2,029 assertions.
+
+A true cold `column marble` rerun after `next@eb167454a` produced 237,944
+SPIR-V words, compiled in `1.30926 s`, and was pixel-exact with the known-good
+pre-preservation Psycles output. It differs from the broken outlined image by
+the same RMS `0.0483804`, maximum `7.020724`, and 383 affected pixels, proving
+that the regression and repair exercise observable semantics.
+
+## Unmodified full-scene Vulkan result
+
+The complete export was then retried without removing or replacing any of its
+35 original material graphs. The run used a separate empty shader cache and
+restored the pre-existing cache afterward:
+
+```bash
+env LUISA_XIR_DISABLE_OPTIMIZATION=1 \
+    LUISA_SPIRV_OPT_LEVEL=0 \
+    LUISA_XIR_TRACE_PASSES=1 \
+    LUISA_LOG_LEVEL=verbose \
+    LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1 \
+  build/bin/psycles_render_blender_scene \
+  /tmp/lone-monk-20260729/export \
+  /tmp/lone-monk-20260729/lone-monk-full-35-material-abi-fix.ppm \
+  vk 64 48 1
+```
+
+| Measurement | Result |
+|---|---:|
+| Retained scene | 350 geometries / 7,543 instances / 35 raw material graphs / 47 images |
+| Runtime material programs | 37, including renderer-internal programs |
+| AST to XIR | `15.95796 s` |
+| Destructure CFG | `15.36656 s` |
+| Restructure CFG | `120.05845 s` |
+| Complete SPIR-V XIR legalization | `136.25386 s` |
+| SPIR-V emission and validation | 2,611,188 words / 26 bindings |
+| Scene compilation | `0.737443 s` |
+| Main-kernel JIT | `226.27 s` |
+| Cold wall time | `227.24 s` |
+| Render | `0.0114453 s` at 64×48 / 1 spp |
+| Cold-cache artifacts | two `.spv` and two `.vk` files |
+| Outputs | PPM, PFM passes, 40-channel full-float multilayer EXR |
+
+This is the first unmodified-material-set Vulkan first pixel. The previous
+default run had no main-shader cache artifact after 1,245.51 seconds; the
+strict-native cold run now validates SPIR-V and completes in 227.24 seconds.
+It is still too slow for production cold-start requirements, but the failure
+mode has changed from non-completion to a measurable optimization target.
+
+OpenImageIO reports 3,072 finite values and zero NaN/Inf values in every one
+of the 40 channels. The [full-scene one-sample preview](full-scene-vulkan-1spp.png)
+was inspected at its original 64×48 resolution. The central monk and
+architectural silhouette are recognizable through the one-sample noise, with
+no full-frame corruption, constant clear color, exposure explosion, or
+obvious stale-buffer pattern. This remains a compiler/first-pixel check; it
+does not establish agreement with Cycles.
+
 ## Triptychs and visual acceptance
 
 There are intentionally no placeholder Lone Monk triptychs. The controlled
@@ -259,6 +364,7 @@ checks:
 - [transparent-mix Combined triptych](../transparent-mix-vk/triptychs/combined.png);
 - [transparent-data Combined triptych](../transparent-data-pass-vk/triptychs/combined.png).
 
-Those focused images are not substituted for Lone Monk. Lone Monk triptychs
-remain pending until the unmodified material set produces comparable linear
-EXRs at 480p or higher; 1080p will be attempted if GPU memory permits.
+Those focused images are not substituted for Lone Monk. The unmodified
+Psycles material set now produces a linear EXR, but Lone Monk triptychs remain
+pending until current Cycles and Psycles are rendered with matching settings
+at 480p or higher. A 1080p run will be attempted if GPU memory permits.
