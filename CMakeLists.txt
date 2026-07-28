@@ -121,7 +121,16 @@ if(PSYCLES_ENABLE_LUISA)
         add_library(
             psycles_luisa_runtime
             src/adapter/blender_scene.cpp
-            src/luisa/path_tracer.cpp)
+            src/luisa/path_tracer.cpp
+            src/luisa/path_tracer_common.cpp
+            src/luisa/path_tracer_environment.cpp
+            src/luisa/path_tracer_geometry.cpp
+            src/luisa/path_tracer_kernel.cpp
+            src/luisa/path_tracer_lighting.cpp
+            src/luisa/path_tracer_sampling.cpp
+            src/luisa/path_tracer_scene.cpp
+            src/luisa/path_tracer_session.cpp
+            src/luisa/path_tracer_surfaces.cpp)
         add_library(
             Psycles::luisa_runtime
             ALIAS psycles_luisa_runtime)
