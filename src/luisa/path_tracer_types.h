@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 #include <luisa/core/basic_types.h>
 #include <luisa/dsl/sugar.h>
 
@@ -9,6 +11,19 @@ struct GeometryGpu {
     luisa::uint bindless_base{};
     luisa::uint material_offset{};
     luisa::uint material_count{};
+    luisa::uint padding{};
+};
+
+struct AttributeBindingGpu {
+    std::uint64_t id{};
+    luisa::uint value_slot{};
+    luisa::uint padding{};
+};
+
+struct AttributeRangeGpu {
+    luisa::uint offset{};
+    luisa::uint count{};
+    luisa::uint triangle_slot{};
     luisa::uint padding{};
 };
 
@@ -184,6 +199,17 @@ LUISA_STRUCT(
     bindless_base,
     material_offset,
     material_count,
+    padding) {};
+LUISA_STRUCT(
+    psycles::luisa_backend::detail::AttributeBindingGpu,
+    id,
+    value_slot,
+    padding) {};
+LUISA_STRUCT(
+    psycles::luisa_backend::detail::AttributeRangeGpu,
+    offset,
+    count,
+    triangle_slot,
     padding) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::InstanceGpu,

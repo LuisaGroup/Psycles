@@ -19,7 +19,8 @@ EnvironmentCallables make_environment_callables(
                 scene->cycles_bsdf_table_buffer,
                 scene->texture_heap,
                 scene->heap,
-                scene->attribute_bindings,
+                scene->attribute_binding_slot,
+                scene->attribute_range_slot,
                 scene->nishita_texture_bindings,
                 scene->shader_color_space};
             auto evaluate_world_graph =
@@ -179,7 +180,8 @@ EnvironmentCallables make_environment_callables(
                 scene->cycles_bsdf_table_buffer,
                 scene->texture_heap,
                 scene->heap,
-                scene->attribute_bindings,
+                scene->attribute_binding_slot,
+                scene->attribute_range_slot,
                 scene->nishita_texture_bindings,
                 scene->shader_color_space};
             const auto &sun =

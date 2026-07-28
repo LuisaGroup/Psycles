@@ -17,7 +17,8 @@ private:
     const CyclesBuffer &_cycles_bsdf_tables;
     const TextureHeap &_textures;
     const GeometryHeap &_geometry_heap;
-    const std::vector<AttributeBinding> &_attributes;
+    std::uint32_t _attribute_binding_slot{};
+    std::uint32_t _attribute_range_slot{};
     const std::vector<NishitaTextureBinding> &_nishita_textures;
     const contract::ShaderColorSpace &_shader_color_space;
 
@@ -27,7 +28,8 @@ public:
         const CyclesBuffer &cycles_bsdf_tables,
         const TextureHeap &textures,
         const GeometryHeap &geometry_heap,
-        const std::vector<AttributeBinding> &attributes,
+        std::uint32_t attribute_binding_slot,
+        std::uint32_t attribute_range_slot,
         const std::vector<NishitaTextureBinding>
             &nishita_textures,
         const contract::ShaderColorSpace
@@ -36,7 +38,10 @@ public:
           _cycles_bsdf_tables{cycles_bsdf_tables},
           _textures{textures},
           _geometry_heap{geometry_heap},
-          _attributes{attributes},
+          _attribute_binding_slot{
+              attribute_binding_slot},
+          _attribute_range_slot{
+              attribute_range_slot},
           _nishita_textures{nishita_textures},
           _shader_color_space{shader_color_space} {}
 
@@ -176,34 +181,55 @@ public:
         Expr<std::uint64_t> attribute_id,
         const SurfacePoint &point) const noexcept override {
         Float4 result = make_float4(0.0f);
-        for (const auto &binding : _attributes) {
-            $if ((attribute_id == binding.id) &
-                 (point.geometry_index ==
-                  binding.geometry_index)) {
-                Var<Triangle> triangle =
+        // Attribute cardinality is scene data, not shader structure. Look up
+        // only the current geometry's compact range so AST/XIR size remains
+        // constant as scenes add meshes, UV maps, or color attributes.
+        $if (point.geometry_index != ~0u) {
+            Var<AttributeRangeGpu> range =
+                _geometry_heap
+                    ->template buffer<AttributeRangeGpu>(
+                        _attribute_range_slot)
+                    .read(point.geometry_index);
+            UInt local_index = 0u;
+            Bool found = false;
+            $while ((local_index < range.count) & !found) {
+                Var<AttributeBindingGpu> binding =
                     _geometry_heap
-                        ->template buffer<Triangle>(
-                            binding.triangle_slot)
-                        .read(point.primitive_id);
-                auto v0 =
-                    _geometry_heap
-                        ->template buffer<luisa::float4>(
-                            binding.value_slot)
-                        .read(triangle.i0);
-                auto v1 =
-                    _geometry_heap
-                        ->template buffer<luisa::float4>(
-                            binding.value_slot)
-                        .read(triangle.i1);
-                auto v2 =
-                    _geometry_heap
-                        ->template buffer<luisa::float4>(
-                            binding.value_slot)
-                        .read(triangle.i2);
-                result = triangle_interpolate(
-                    point.barycentric, v0, v1, v2);
+                        ->template buffer<
+                            AttributeBindingGpu>(
+                            _attribute_binding_slot)
+                        .read(range.offset + local_index);
+                $if (attribute_id == binding.id) {
+                    Var<Triangle> triangle =
+                        _geometry_heap
+                            ->template buffer<Triangle>(
+                                range.triangle_slot)
+                            .read(point.primitive_id);
+                    auto v0 =
+                        _geometry_heap
+                            ->template buffer<
+                                luisa::float4>(
+                                binding.value_slot)
+                            .read(triangle.i0);
+                    auto v1 =
+                        _geometry_heap
+                            ->template buffer<
+                                luisa::float4>(
+                                binding.value_slot)
+                            .read(triangle.i1);
+                    auto v2 =
+                        _geometry_heap
+                            ->template buffer<
+                                luisa::float4>(
+                                binding.value_slot)
+                            .read(triangle.i2);
+                    result = triangle_interpolate(
+                        point.barycentric, v0, v1, v2);
+                    found = true;
+                };
+                local_index += 1u;
             };
-        }
+        };
         return result;
     }
 

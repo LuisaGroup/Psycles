@@ -364,11 +364,21 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     const auto fixed_geometry_slots =
         snapshot.geometries.size() *
         geometry_bindless_stride;
+    const auto attribute_binding_slot =
+        fixed_geometry_slots +
+        attribute_count;
+    const auto attribute_range_slot =
+        attribute_binding_slot + 1u;
     const auto bindless_slots =
         std::max<std::size_t>(
-            fixed_geometry_slots +
-                attribute_count,
+            attribute_range_slot + 1u,
             1u);
+    data->attribute_binding_slot =
+        static_cast<std::uint32_t>(
+            attribute_binding_slot);
+    data->attribute_range_slot =
+        static_cast<std::uint32_t>(
+            attribute_range_slot);
     data->heap =
         data->device.create_bindless_array(bindless_slots);
     data->geometries.reserve(snapshot.geometries.size());
@@ -377,6 +387,13 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     std::map<contract::GeometryId, std::uint32_t>
         geometry_indices;
     luisa::vector<GeometryGpu> geometry_gpu;
+    luisa::vector<AttributeBindingGpu>
+        attribute_bindings;
+    attribute_bindings.reserve(attribute_count);
+    luisa::vector<AttributeRangeGpu>
+        attribute_ranges;
+    attribute_ranges.reserve(
+        snapshot.geometries.size());
     luisa::vector<luisa::uint2> geometry_materials;
     auto next_attribute_slot =
         static_cast<std::uint32_t>(
@@ -934,6 +951,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         data->heap.emplace_on_update(
             bindless_base + 7u,
             resource.uv_tangents);
+        const auto attribute_offset =
+            static_cast<std::uint32_t>(
+                attribute_bindings.size());
         for (const auto &attribute :
              upload.attributes) {
             auto &attribute_resource =
@@ -944,15 +964,22 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 next_attribute_slot++;
             data->heap.emplace_on_update(
                 attribute_slot, attribute_resource);
-            data->attribute_bindings.emplace_back(
-                AttributeBinding{
+            attribute_bindings.emplace_back(
+                AttributeBindingGpu{
                     .id = attribute.id,
-                    .geometry_index = index,
-                    .triangle_slot = bindless_base,
-                    .value_slot = attribute_slot});
+                    .value_slot = attribute_slot,
+                    .padding = 0u});
             stream << attribute_resource.copy_from(
                 luisa::span{attribute.values});
         }
+        attribute_ranges.emplace_back(
+            AttributeRangeGpu{
+                .offset = attribute_offset,
+                .count =
+                    static_cast<std::uint32_t>(
+                        upload.attributes.size()),
+                .triangle_slot = bindless_base,
+                .padding = 0u});
         stream << resource.positions.copy_from(
                       luisa::span{upload.positions})
                << resource.normals.copy_from(
@@ -1379,6 +1406,14 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     if (geometry_gpu.empty()) {
         geometry_gpu.emplace_back(GeometryGpu{});
     }
+    if (attribute_bindings.empty()) {
+        attribute_bindings.emplace_back(
+            AttributeBindingGpu{});
+    }
+    if (attribute_ranges.empty()) {
+        attribute_ranges.emplace_back(
+            AttributeRangeGpu{});
+    }
     if (instances.empty()) {
         instances.emplace_back(InstanceGpu{});
     }
@@ -1386,6 +1421,20 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     data->geometry_buffer =
         data->device.create_buffer<GeometryGpu>(
             geometry_gpu.size());
+    data->attribute_binding_buffer =
+        data->device.create_buffer<
+            AttributeBindingGpu>(
+            attribute_bindings.size());
+    data->attribute_range_buffer =
+        data->device.create_buffer<
+            AttributeRangeGpu>(
+            attribute_ranges.size());
+    data->heap.emplace_on_update(
+        data->attribute_binding_slot,
+        data->attribute_binding_buffer);
+    data->heap.emplace_on_update(
+        data->attribute_range_slot,
+        data->attribute_range_buffer);
     data->instance_buffer =
         data->device.create_buffer<InstanceGpu>(
             instances.size());
@@ -1406,6 +1455,10 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             light_distribution_entries.size());
     stream << data->geometry_buffer.copy_from(
                   luisa::span{geometry_gpu})
+           << data->attribute_binding_buffer.copy_from(
+                  luisa::span{attribute_bindings})
+           << data->attribute_range_buffer.copy_from(
+                  luisa::span{attribute_ranges})
            << data->instance_buffer.copy_from(
                   luisa::span{instances})
            << data->geometry_material_buffer.copy_from(

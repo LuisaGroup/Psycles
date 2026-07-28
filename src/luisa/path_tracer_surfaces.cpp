@@ -22,7 +22,8 @@ SurfaceCallables make_surface_callables(
                 cycles_bsdf_tables,
                 textures,
                 geometry_heap,
-                scene->attribute_bindings,
+                scene->attribute_binding_slot,
+                scene->attribute_range_slot,
                 scene->nishita_texture_bindings,
                 scene->shader_color_space};
             auto point =
@@ -52,7 +53,8 @@ SurfaceCallables make_surface_callables(
                 cycles_bsdf_tables,
                 textures,
                 geometry_heap,
-                scene->attribute_bindings,
+                scene->attribute_binding_slot,
+                scene->attribute_range_slot,
                 scene->nishita_texture_bindings,
                 scene->shader_color_space};
             return scene->surfaces.emission(
@@ -78,7 +80,8 @@ SurfaceCallables make_surface_callables(
                 cycles_bsdf_tables,
                 textures,
                 geometry_heap,
-                scene->attribute_bindings,
+                scene->attribute_binding_slot,
+                scene->attribute_range_slot,
                 scene->nishita_texture_bindings,
                 scene->shader_color_space};
             auto query = SurfaceQuery{
@@ -106,7 +109,8 @@ SurfaceCallables make_surface_callables(
                 cycles_bsdf_tables,
                 textures,
                 geometry_heap,
-                scene->attribute_bindings,
+                scene->attribute_binding_slot,
+                scene->attribute_range_slot,
                 scene->nishita_texture_bindings,
                 scene->shader_color_space};
             return pack_surface_aov(
