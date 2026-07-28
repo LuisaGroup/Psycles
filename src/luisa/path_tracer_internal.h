@@ -134,6 +134,7 @@ constexpr auto shadow_visibility =
 constexpr std::uint32_t light_flag_normalize = 1u << 0u;
 constexpr std::uint32_t light_flag_ellipse = 1u << 1u;
 constexpr std::uint32_t light_flag_sphere = 1u << 2u;
+constexpr std::uint32_t light_flag_use_mis = 1u << 3u;
 
 
 struct MaterialBinding {
@@ -226,6 +227,11 @@ struct LuisaSceneData {
     std::uint32_t light_count{};
     Buffer<EmissiveTriangleGpu> emissive_triangle_buffer;
     std::uint32_t emissive_triangle_count{};
+    Buffer<LightDistributionGpu> light_distribution_buffer;
+    std::uint32_t light_distribution_count{};
+    float triangle_area_pdf{};
+    float light_selection_pdf{};
+    bool environment_in_light_distribution{};
     luisa::float3 background{};
     contract::ShaderColorSpace shader_color_space;
     Accel accel;

@@ -95,24 +95,6 @@ int main() {
             LightDistributionEmitterKind::environment,
         "environment identity mismatch");
 
-    require(
-        select_cycles_light_distribution(mixed, 0.0f) ==
-            0u,
-        "zero sample selected the wrong emitter");
-    require(
-        select_cycles_light_distribution(mixed, 0.125f) ==
-            1u,
-        "CDF boundary did not select the next emitter");
-    require(
-        select_cycles_light_distribution(
-            mixed, std::nextafter(1.0f, 0.0f)) ==
-            4u,
-        "largest representable sample missed the environment");
-    require(
-        select_cycles_light_distribution(mixed, 1.0f) ==
-            4u,
-        "rounded sample was not clamped to the final emitter");
-
     const float degenerate_areas[]{0.0f, 2.0f, -1.0f};
     const auto triangles_only =
         build_cycles_light_distribution(
@@ -132,11 +114,6 @@ int main() {
         triangles_only.entries[2u].selection_pdf,
         0.0f,
         "invalid triangle area received probability");
-    require(
-        select_cycles_light_distribution(
-            triangles_only, 0.0f) == 1u,
-        "upper-bound lookup did not skip a zero interval");
-
     const auto lights_only =
         build_cycles_light_distribution({}, 2u, false);
     require(lights_only.usable(), "lamp-only distribution is unusable");
@@ -154,10 +131,6 @@ int main() {
     require(
         !empty.usable(),
         "empty distribution unexpectedly became usable");
-    require(
-        !select_cycles_light_distribution(empty, 0.0f),
-        "empty distribution produced an emitter");
-
     std::cout << "Cycles flat light distribution tests passed.\n";
     return EXIT_SUCCESS;
 }

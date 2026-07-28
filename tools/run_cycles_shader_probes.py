@@ -37,6 +37,7 @@ _ALL_PROBES = (
     "diffuse_surface",
     "emission_surface",
     "fresnel_matrix",
+    "flat_light_distribution",
     "gamma_color",
     "gradient_matrix",
     "gradient_spherical",
@@ -147,12 +148,15 @@ def _main() -> int:
         bundle = probe_root / "export"
         preview = probe_root / f"{probe}-psycles.ppm"
         stem = preview.with_suffix("")
+        psycles_exr = stem.with_suffix(".exr")
         report = probe_root / f"{probe}-diff.json"
         try:
             _run(
                 [
                     blender,
                     "--background",
+                    "--python-exit-code",
+                    "1",
                     "--python",
                     str(create_script),
                     "--",
@@ -165,6 +169,8 @@ def _main() -> int:
                     blender,
                     str(blend),
                     "--background",
+                    "--python-exit-code",
+                    "1",
                     "--python",
                     str(golden_script),
                     "--",
@@ -179,6 +185,8 @@ def _main() -> int:
                     blender,
                     str(blend),
                     "--background",
+                    "--python-exit-code",
+                    "1",
                     "--python",
                     str(export_script),
                     "--",
@@ -200,24 +208,28 @@ def _main() -> int:
                 [
                     blender,
                     "--background",
+                    "--python-exit-code",
+                    "1",
                     "--python",
                     str(compare_script),
                     "--",
                     str(cycles),
                     str(report),
-                    f"Combined={stem}-combined.pfm",
-                    f"Normal={stem}-normal.pfm",
-                    f"DiffCol={stem}-albedo.pfm",
-                    f"GlossCol={stem}-glossy-color.pfm",
-                    f"TransCol={stem}-transmission-color.pfm",
-                    f"DiffDir={stem}-diffuse-direct.pfm",
-                    f"DiffInd={stem}-diffuse-indirect.pfm",
-                    f"GlossDir={stem}-glossy-direct.pfm",
-                    f"GlossInd={stem}-glossy-indirect.pfm",
-                    f"TransDir={stem}-transmission-direct.pfm",
-                    f"TransInd={stem}-transmission-indirect.pfm",
-                    f"Emit={stem}-emission.pfm",
-                    f"Env={stem}-environment.pfm",
+                    "--triptych-dir",
+                    str(probe_root / "triptychs"),
+                    f"Combined={psycles_exr}",
+                    f"Normal={psycles_exr}",
+                    f"DiffCol={psycles_exr}",
+                    f"GlossCol={psycles_exr}",
+                    f"TransCol={psycles_exr}",
+                    f"DiffDir={psycles_exr}",
+                    f"DiffInd={psycles_exr}",
+                    f"GlossDir={psycles_exr}",
+                    f"GlossInd={psycles_exr}",
+                    f"TransDir={psycles_exr}",
+                    f"TransInd={psycles_exr}",
+                    f"Emit={psycles_exr}",
+                    f"Env={psycles_exr}",
                 ]
             )
         except subprocess.CalledProcessError:

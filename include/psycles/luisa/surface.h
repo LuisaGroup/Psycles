@@ -11,6 +11,7 @@
 
 #include <psycles/contract/surface.h>
 
+#include <luisa/core/stl/vector.h>
 #include <luisa/dsl/polymorphic.h>
 #include <luisa/dsl/syntax.h>
 
@@ -326,10 +327,34 @@ public:
         const ShaderServices &services,
         const SurfacePoint &point) const noexcept {
         Float3 result = make_float3(0.0f);
-        _surfaces.dispatch(tag, [&](const Surface *surface) noexcept {
-            result = surface->transparent_extinction(
-                services, point);
-        });
+        // Transparency is a structural property of the original closure
+        // program. Restrict the JIT dispatch to programs which can actually
+        // produce a Transparent closure: opaque programs retain their raw
+        // closures for every other surface operation, but do not inflate the
+        // ray-query callback with unreachable shader code.
+        luisa::vector<luisa::uint> transparent_tags;
+        transparent_tags.reserve(_surfaces.size());
+        for (auto index = std::size_t{0u};
+             index < _surfaces.size();
+             ++index) {
+            if (_surfaces.impl(index)
+                    ->capabilities()
+                    .may_be_transparent) {
+                transparent_tags.emplace_back(
+                    static_cast<luisa::uint>(index));
+            }
+        }
+        if (!transparent_tags.empty()) {
+            _surfaces.dispatch_group_with_default(
+                tag,
+                transparent_tags,
+                [&](const Surface *surface) noexcept {
+                    result =
+                        surface->transparent_extinction(
+                            services, point);
+                },
+                []() noexcept {});
+        }
         return result;
     }
 

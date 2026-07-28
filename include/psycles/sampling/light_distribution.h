@@ -2,7 +2,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <optional>
 #include <span>
 #include <vector>
 
@@ -45,13 +44,5 @@ build_cycles_light_distribution(
     std::span<const float> emissive_triangle_areas,
     std::uint32_t analytic_light_count,
     bool include_environment);
-
-// Host equivalent of Cycles' upper-bound lookup. This is used by scene-side
-// validation and mirrors the device callable rather than serving as a
-// renderer or sampling oracle.
-[[nodiscard]] std::optional<std::uint32_t>
-select_cycles_light_distribution(
-    const CyclesLightDistribution &distribution,
-    float sample) noexcept;
 
 }// namespace psycles::sampling

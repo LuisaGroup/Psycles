@@ -1,9 +1,12 @@
 #include "path_tracer_internal.h"
 #include "path_tracer_environment.h"
 #include "path_tracer_geometry.h"
+#include "path_tracer_light_distribution.h"
 #include "path_tracer_lighting.h"
 #include "path_tracer_sampling.h"
 #include "path_tracer_surfaces.h"
+
+#include <psycles/sampling/light_distribution.h>
 
 namespace psycles::luisa_backend::detail {
 
@@ -219,6 +222,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         light_transport.split_nee_light;
     auto emissive_triangle_pdf_callable =
         make_emissive_triangle_pdf_callable(scene);
+    auto light_distribution_sample_callable =
+        make_light_distribution_sample_callable(scene);
 
     auto surface_callables =
         make_surface_callables(scene);
@@ -737,6 +742,9 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                             path_step,
                             tabulated_sobol::
                                 light_dimension));
+                Var<LightDistributionGpu> selected_light =
+                    light_distribution_sample_callable(
+                        light_sample.z);
                 const auto light_terminate_sample =
                     cycles_sampler::sample_1d(
                         sobol_table,
@@ -767,12 +775,20 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                 $if (hit->miss()) {
                     Bool competing =
                         (path_depth > 0u) & (!previous_delta);
+                    const auto environment_selection_pdf =
+                        scene
+                                ->environment_in_light_distribution
+                            ? scene->light_selection_pdf
+                            : 0.0f;
+                    const auto environment_pdf =
+                        environment_selection_pdf *
+                        uniform_sphere_pdf;
                     Float environment_weight =
                         forward_light_weight(
                             previous_bsdf_pdf,
-                            uniform_sphere_pdf,
+                            environment_pdf,
                             competing,
-                            true);
+                            environment_pdf > 0.0f);
                     Float3 environment_contribution =
                         clamp_contribution(
                         throughput *
@@ -810,9 +826,11 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                         Float sun_weight =
                             forward_light_weight(
                                 previous_bsdf_pdf,
-                                sun_pdf,
+                                sun_pdf *
+                                    environment_selection_pdf,
                                 competing,
-                                true);
+                                environment_selection_pdf >
+                                    0.0f);
                         Float3 sun_contribution =
                             clamp_contribution(
                             throughput *
@@ -852,9 +870,11 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                         Float sun_weight =
                             forward_light_weight(
                                 previous_bsdf_pdf,
-                                sun_pdf,
+                                sun_pdf *
+                                    environment_selection_pdf,
                                 competing,
-                                true);
+                                environment_selection_pdf >
+                                    0.0f);
                         Float3 nishita_sun_contribution =
                             clamp_contribution(
                                 throughput *
@@ -1446,6 +1466,11 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                 };
 
                 if (next_event_estimation) {
+                    $if (selected_light.kind ==
+                         static_cast<std::uint32_t>(
+                             sampling::
+                                 LightDistributionEmitterKind::
+                                     environment)) {
                     {
                         Float environment_z =
                             1.0f -
@@ -1487,15 +1512,17 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                     point,
                                     wi,
                                     path_surface_query);
+                            Float light_pdf =
+                                uniform_sphere_pdf *
+                                selected_light.selection_pdf;
                             Float mis_weight =
                                 nee_light_weight(
-                                    uniform_sphere_pdf,
+                                    light_pdf,
                                     evaluation.pdf);
                             Float3 unshadowed_contribution =
                                 evaluation.f *
                                 evaluate_environment_base(wi) *
-                                (mis_weight /
-                                 uniform_sphere_pdf);
+                                (mis_weight / light_pdf);
                             Float roulette_weight =
                                 sample_light_roulette(
                                     unshadowed_contribution,
@@ -1585,15 +1612,18 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                     point,
                                     wi,
                                     path_surface_query);
+                            Float light_pdf =
+                                sun_pdf *
+                                selected_light.selection_pdf;
                             auto mis_weight =
                                 nee_light_weight(
-                                    sun_pdf,
+                                    light_pdf,
                                     evaluation.pdf);
                             Float3 unshadowed_contribution =
                                 evaluation.f *
                                 evaluate_environment_sun(
                                     wi, sun) *
-                                (mis_weight / sun_pdf);
+                                (mis_weight / light_pdf);
                             Float roulette_weight =
                                 sample_light_roulette(
                                     unshadowed_contribution,
@@ -1689,14 +1719,17 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                     point,
                                     wi,
                                     path_surface_query);
+                            Float light_pdf =
+                                sun_pdf *
+                                selected_light.selection_pdf;
                             const auto mis_weight =
                                 nee_light_weight(
-                                    sun_pdf,
+                                    light_pdf,
                                     evaluation.pdf);
                             Float3 unshadowed_contribution =
                                 evaluation.f *
                                 evaluate_nishita_sun(wi) *
-                                (mis_weight / sun_pdf);
+                                (mis_weight / light_pdf);
                             Float roulette_weight =
                                 sample_light_roulette(
                                     unshadowed_contribution,
@@ -1719,17 +1752,15 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                 path_depth));
                         };
                     }
-                    if (scene->emissive_triangle_count > 0u) {
-                        UInt selected_emitter = min(
-                            cast<luisa::uint>(
-                                light_sample.z *
-                                static_cast<float>(
-                                    scene
-                                        ->emissive_triangle_count)),
-                            scene->emissive_triangle_count - 1u);
+                    };
+                    $if (selected_light.kind ==
+                         static_cast<std::uint32_t>(
+                             sampling::
+                                 LightDistributionEmitterKind::
+                                     emissive_triangle)) {
                         Var<EmissiveTriangleGpu> emitter =
                             scene->emissive_triangle_buffer->read(
-                                selected_emitter);
+                                selected_light.index);
                         Var<GeometryGpu> light_geometry =
                             scene->geometry_buffer->read(
                                 emitter.geometry_index);
@@ -2144,10 +2175,14 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                     path_depth));
                             };
                         };
-                    }
-                    for (std::uint32_t light_index = 0u;
-                         light_index < scene->light_count;
-                         ++light_index) {
+                    };
+                    $if (selected_light.kind ==
+                         static_cast<std::uint32_t>(
+                             sampling::
+                                 LightDistributionEmitterKind::
+                                     analytic_light)) {
+                        UInt light_index =
+                            selected_light.index;
                         Var<LightGpu> light =
                             scene->light_buffer->read(
                                 light_index);
@@ -2756,6 +2791,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                     -wi);
                         };
 
+                        light_pdf *=
+                            selected_light.selection_pdf;
                         $if (light_valid &
                              (light_pdf > 0.0f)) {
                             Float3 shadow_origin =
@@ -2817,7 +2854,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                     path_depth));
                             };
                         };
-                    }
+                    };
                 }
 
                 auto surface_sample = sample_surface(

@@ -34,9 +34,12 @@ def main() -> None:
     scene.render.resolution_x = 16
     scene.render.resolution_y = 16
     scene.render.resolution_percentage = 100
-    scene.render.image_settings.file_format = "OPEN_EXR_MULTILAYER"
-    scene.render.image_settings.color_mode = "RGBA"
-    scene.render.image_settings.color_depth = "32"
+    image_settings = scene.render.image_settings
+    if hasattr(image_settings, "media_type"):
+        image_settings.media_type = "MULTI_LAYER_IMAGE"
+    image_settings.file_format = "OPEN_EXR_MULTILAYER"
+    image_settings.color_mode = "RGBA"
+    image_settings.color_depth = "32"
     scene.render.film_transparent = False
     scene.render.filepath = str(output)
     scene.view_layers[0].use_pass_normal = True

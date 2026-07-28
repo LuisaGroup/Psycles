@@ -53,7 +53,15 @@ def _main() -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
 
     scene = bpy.context.scene
-    scene.render.engine = "BLENDER_EEVEE_NEXT"
+    render_engines = {
+        item.identifier
+        for item in scene.render.bl_rna.properties["engine"].enum_items
+    }
+    scene.render.engine = (
+        "BLENDER_EEVEE_NEXT"
+        if "BLENDER_EEVEE_NEXT" in render_engines
+        else "BLENDER_EEVEE"
+    )
     scene.render.engine = "CYCLES"
     scene.cycles.device = "CPU"
     scene.cycles.samples = samples
@@ -67,10 +75,13 @@ def _main() -> None:
     scene.render.use_compositing = False
     scene.render.use_sequencer = False
     scene.render.filepath = str(output)
-    scene.render.image_settings.file_format = "OPEN_EXR_MULTILAYER"
-    scene.render.image_settings.color_mode = "RGBA"
-    scene.render.image_settings.color_depth = "32"
-    scene.render.image_settings.exr_codec = "ZIP"
+    image_settings = scene.render.image_settings
+    if hasattr(image_settings, "media_type"):
+        image_settings.media_type = "MULTI_LAYER_IMAGE"
+    image_settings.file_format = "OPEN_EXR_MULTILAYER"
+    image_settings.color_mode = "RGBA"
+    image_settings.color_depth = "32"
+    image_settings.exr_codec = "ZIP"
 
     for view_layer in scene.view_layers:
         view_layer.use = True
@@ -88,7 +99,16 @@ def _main() -> None:
         view_layer.use_pass_emit = True
         view_layer.use_pass_environment = True
         view_layer.use_pass_z = True
-        view_layer.cycles.use_pass_debug_sample_count = True
+        if hasattr(
+            view_layer.cycles,
+            "use_pass_debug_sample_count",
+        ):
+            view_layer.cycles.use_pass_debug_sample_count = True
+        elif hasattr(
+            view_layer.cycles,
+            "pass_debug_sample_count",
+        ):
+            view_layer.cycles.pass_debug_sample_count = True
 
     begin = time.perf_counter()
     bpy.ops.render.render(write_still=True)

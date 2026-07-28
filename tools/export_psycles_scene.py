@@ -586,6 +586,7 @@ def _export_images(output: pathlib.Path) -> list[dict[str, Any]]:
 
 def _light(obj: Any) -> dict[str, Any]:
     light = obj.data
+    cycles = getattr(light, "cycles", None)
     use_temperature = bool(getattr(light, "use_temperature", False))
     temperature_color = (
         list(light.temperature_color)
@@ -615,6 +616,9 @@ def _light(obj: Any) -> dict[str, Any]:
         "angle": float(getattr(light, "angle", 0.0)),
         "use_soft_falloff": bool(
             getattr(light, "use_soft_falloff", False)
+        ),
+        "use_multiple_importance_sampling": bool(
+            getattr(cycles, "use_multiple_importance_sampling", True)
         ),
         "node_tree": (
             _tree(light.node_tree, light=True)
@@ -747,9 +751,13 @@ def _main() -> None:
 
     materials = []
     for material in sorted(bpy.data.materials, key=lambda item: item.name):
+        cycles = getattr(material, "cycles", None)
         materials.append(
             {
                 "name": material.name,
+                "emission_sampling": str(
+                    getattr(cycles, "emission_sampling", "AUTO")
+                ),
                 "surface_render_method": getattr(
                     material, "surface_render_method", None
                 ),
@@ -832,6 +840,20 @@ def _main() -> None:
             {
                 "name": scene.world.name,
                 "color": list(scene.world.color),
+                "sampling_method": str(
+                    getattr(
+                        getattr(scene.world, "cycles", None),
+                        "sampling_method",
+                        "AUTOMATIC",
+                    )
+                ),
+                "sample_map_resolution": int(
+                    getattr(
+                        getattr(scene.world, "cycles", None),
+                        "sample_map_resolution",
+                        1024,
+                    )
+                ),
                 "node_tree": (
                     _tree(scene.world.node_tree, world=True)
                     if scene.world.use_nodes

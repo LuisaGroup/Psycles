@@ -2,6 +2,8 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <span>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -55,5 +57,16 @@ struct PpmWriteOptions {
 [[nodiscard]] bool write_pfm(
     const PassImage &image,
     const std::filesystem::path &path);
+
+#if defined(PSYCLES_WITH_OPENIMAGEIO)
+// Writes every pass into one scanline-oriented, full-float OpenEXR part.
+// Channel names follow Cycles' <view-layer>.<pass>.<component> convention,
+// allowing the result to be compared or composited without per-pass files.
+[[nodiscard]] bool write_multilayer_exr(
+    std::span<const PassImage> images,
+    const std::filesystem::path &path,
+    std::string_view view_layer = "ViewLayer",
+    std::string *error = nullptr);
+#endif
 
 }// namespace psycles::io
