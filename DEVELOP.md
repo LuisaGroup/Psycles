@@ -112,10 +112,16 @@ geometries. `arch.005` through `arch.008` map to distinct geometry IDs
 262/263/264/265 with independently hashed vertex streams and evaluated widths
 8.8776/15.0709/15.0898/8.8762; 841 `grass_blade.002` instances still share
 geometry 340. A clean Release fallback build and all eight existing tests plus
-the Blender regression pass (9/9 with Blender 4.5.10 available). The fresh
-640x480, 64 spp, seed-0 Psycles render had not completed its first fallback JIT
-when this handoff was requested and produced no image, so visual acceptance of
-the repaired arches remains the immediate next gate.
+the Blender regression pass (9/9 with Blender 4.5.10 available). A fresh
+production fallback render compiled 350 geometries, 7,543 instances, and 37
+materials. Cold shader JIT took 3,947.13 seconds and 640x480/64 spp rendering
+took 61.20 seconds. The Combined preview using the scene's Filmic, Medium
+Contrast, -2 EV display settings and the separate linear Normal comparison
+both confirm one continuous foreground arch matching the Cycles structure.
+This accepts the geometry repair only: existing lighting/environment and pass
+semantics differences remain visible and are not hidden by the display
+transform. The unusually slow cold JIT is a separate full-scene performance
+issue.
 
 The production integration exposed a Luisa XIR
 `local_load_elimination` heap use-after-free. LuisaCompute `next@f42f3c6e`
