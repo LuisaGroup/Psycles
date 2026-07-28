@@ -220,6 +220,70 @@ exist. Selection and PDF lookup use one uploaded CDF and one Luisa upper-bound
 callable. Material emission-sampling metadata and world-sampling metadata are
 imported with the original material graphs.
 
+## Lone Monk full-scene bring-up
+
+The first complex-scene input is
+`lone-monk_cycles_and_exposure-node_demo.blend`, SHA-256
+`4250d4205d8d01cefd98c15e81021d6dead540b2923797378bf7b32e96e8b8f7`.
+Blender 5.2 reads scene `daylight`, frame 4, camera `cam.001`. Its original
+configuration is 1440×1080 at 4096 samples with adaptive sampling and
+denoising enabled. Differential runs will disable the latter two features and
+use one identical fixed sample count.
+
+The raw export command was:
+
+```bash
+/usr/bin/blender \
+  /home/mike/Downloads/lone-monk_cycles_and_exposure-node_demo.blend \
+  --background --python-exit-code 1 \
+  --python tools/export_psycles_scene.py -- \
+  /tmp/lone-monk-20260729/export
+```
+
+It completed in 24.85 seconds and produced 350 geometries, 7,543 evaluated
+instances, 35 original material graphs, and 47 images. `geometry.bin` is
+450,966,096 bytes and `scene.json` is 10,834,008 bytes. The largest material
+has 38 nodes. The set includes 32 Principled nodes and real combinations of
+Image Texture, Noise, Mapping, Mix, Color Ramp, Bump, Normal Map, Light Path,
+Transparent, Glossy, and Translucent nodes. Geometry/modifier/particle
+evaluation is permitted; material closure evaluation remains in Luisa and is
+not pre-baked by Blender or Cycles.
+
+The first 64×48/1 spp Vulkan smoke used the default optimization and persistent
+shader-cache settings. The auxiliary shader compiled, Vulkan selected
+`AMD Radeon RX 9070 XT (RADV GFX1201)`, and the scene allocated about 5.0 GiB
+VRAM. The main render kernel did not produce a cache entry or first pixel
+within 1,245.51 seconds and was deliberately interrupted at the documented
+20-minute bound. It consumed about 198% CPU and was sampled at 9,749,995,520
+bytes RSS.
+
+A diagnostic Vulkan run set:
+
+```bash
+LUISA_XIR_DISABLE_OPTIMIZATION=1
+LUISA_SPIRV_OPT_LEVEL=0
+```
+
+The auxiliary SPIR-V changed from 11,221 optimized words to 14,927
+unoptimized words, proving the switches took effect. The main kernel retained
+the same approximately two-thread, multi-gigabyte code-generation profile and
+did not reach a cache artifact or first pixel in 311.18 seconds. This narrows
+the dominant cost to the giant render-kernel code-generation boundary rather
+than an optional XIR or SPIR-V optimization pass alone.
+
+The equivalent HIP smoke selected the RX 9070 XT through HIP 7.2.53211.
+HIPRT then remained in acceleration-structure construction for 622.45 seconds
+at 100% observed GPU utilization and about 5.5 GiB VRAM, without reaching the
+main render-kernel JIT. It was interrupted at the documented ten-minute bound.
+HIP acceleration-structure construction and Vulkan monolithic-kernel JIT are
+therefore recorded as separate engineering issues.
+
+The complete structured measurements are in the
+[Lone Monk bring-up report](docs/validation/2026-07-29/lone-monk/bringup.json).
+No triptych is fabricated before Psycles produces pixels. This directory will
+receive the required Cycles / Psycles / amplified-difference images as soon as
+the backend reaches comparable EXR output.
+
 ## Numeric comparison
 
 All tables compare linear float channels. Relative RMSE is RMSE divided by the
