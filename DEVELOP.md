@@ -43,16 +43,23 @@ from the authoritative Cycles algorithm; the clean core gate is now 5/5.
 Luisa device lowering and path-kernel integration are intentionally tracked as
 the next checkpoint rather than implied by this host-only result.
 
-Checkpoint 1b is staged for handoff but is not a passing gate. It adds a
-Luisa-native tabulated-Sobol lowering in
+Checkpoint 1b is still not a passing sampling gate. It adds a Luisa-native
+tabulated-Sobol lowering in
 `include/psycles/luisa/cycles_sampler.h`, extends the Luisa AST test to
 instantiate it, and disables Luisa's unused GUI dependency for headless
-builds. At the user's request, the first dependency build was stopped while
-Luisa XIR was at 95%; the sampler test executable was not linked or run.
-LLVM 22.1.8 and Embree 4.3.0 package metadata and CMake configs were verified,
-but fallback was not reconfigured before the stop. Resume with a real
-fallback device fixture; do not extend this into a CPU renderer or additional
-CPU-only validation work.
+builds. The recovery environment now configures and builds a non-empty ELF
+fallback module with Ubuntu 24.04.3, GCC 13.3, CMake 3.27.7, Ninja 1.11.1,
+LLVM 22.1.8, and Embree 4.3.0. CMake also rejects
+`PSYCLES_ENABLE_LUISA_FALLBACK=ON` if Luisa silently disables the backend.
+The remaining checkpoint boundary is the real fallback device fixture and its
+IEEE-754 bit comparisons; the sampler executable has not yet run. Do not
+extend this into a CPU renderer or additional CPU-only validation work.
+
+Every transport, light-distribution, or environment-sampling boundary must be
+compared against the official Blender 4.5.10 Cycles linear passes. New
+meaningful render comparisons are uploaded as viewable images in addition to
+recording RMSE, energy ratios, invalid-pixel counts, and deterministic-cache
+status.
 
 ## Current checkpoint
 
@@ -61,13 +68,13 @@ CPU-only validation work.
 | Shader inventory | 96 Cycles-applicable nodes tracked from 105 Blender shader node types |
 | Complete coverage | 43/96 complete: 41 `cycles_verified` device nodes and 2 structural output adapters |
 | Remaining nodes | 12 partial and 41 pending; no implemented node is waiting for a probe, and 1 Cycles OSL-only node is tracked separately |
-| Automated gate | 5/5 clean core CTest groups pass at checkpoint 1a; checkpoint 1b is staged but unverified, and the last pre-restoration Luisa/fallback build was 6/6 |
+| Automated gate | 5/5 clean core CTest groups pass at checkpoint 1a; LLVM 22.1.8/Embree 4.3.0 now produce a real fallback module, but checkpoint 1b remains red until the device bit fixture runs |
 | Analytic lights | 11 Point/Spot/Area/Sun baselines, including shapes, spread, finite Sun disk, and light node trees |
 | Full-scene geometry/AOV | Negative-scale normal transforms and closure-weighted glossy normals are fixed |
 | Full-scene transport | At 640×480/64 spp, Lone Monk Combined RMSE is `0.26116`, Normal is `0.03696`, and DiffCol is `0.01175`; Combined mean energy is 95.75% of Cycles |
 | Cold/hot fallback JIT | Frozen-runtime full-scene JIT is `327.574 s` cold and `0.682609 s` hot (479.9×); the 1.20 MB main object loads in 1.87 ms |
 | Persistent fallback cache | Native object plus exact metadata implemented, 8/8 isolated assertions pass, and the full-scene cross-process run is bitwise equal across 13 passes |
-| Upstream integration | LuisaCompute PR [#253](https://github.com/LuisaGroup/LuisaCompute/pull/253) is merged as `98f0150e`; Psycles currently pins the tested PR head `6b6a63d` as its submodule |
+| Upstream integration | LuisaCompute PR [#253](https://github.com/LuisaGroup/LuisaCompute/pull/253) is merged as `98f0150e`; Psycles pins `9f0c3287`, which adds the LLVM 22 shared-library export fix on top of the tested PR head |
 
 The latest glossy-normal probe reduced Normal RMSE from `0.399218` to
 `0.00192210` (about 99.5%) and measures Combined relative RMSE `0.5273%`.

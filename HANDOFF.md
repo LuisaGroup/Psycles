@@ -29,7 +29,9 @@ The required order remains:
 
 The handoff commit after those checkpoints stages the Luisa sampler lowering,
 the corresponding AST instantiation, headless Luisa configuration, and this
-documentation. It is deliberately marked unverified.
+documentation. The fallback build prerequisite is now verified with LLVM
+22.1.8 and Embree 4.3.0, but the sampling checkpoint remains deliberately red
+until the real device bit fixture passes.
 
 ## Exact current boundary
 
@@ -41,25 +43,30 @@ documentation. It is deliberately marked unverified.
   old PCG-style state and still samples light classes separately.
 - No single-light distribution, world-area emissive CDF, Nishita importance
   CDF, or production kernel Sobol integration has landed yet.
-- The first Luisa dependency build was stopped at the user's request while
-  XIR compilation reported 95%. That is not a passing AST or fallback gate.
-- The next fallback environment is Ubuntu 24.04, LLVM 22.1.8, Embree 4.3.0,
-  GCC 13.3, and CMake 3.27.7. Installation and CMake paths are in `BUILD.md`.
+- The pinned Luisa submodule is `9f0c3287`; it respects LLVM's exported shared
+  library policy and avoids the LLVM 22 component-archive `try_compile`
+  failure.
+- Ubuntu 24.04.3, LLVM 22.1.8, Embree 4.3.0, GCC 13.3, CMake 3.27.7, and
+  Ninja 1.11.1 configure and link a non-empty ELF
+  `libluisa-backend-fallback.so`. Installation and CMake paths are in
+  `BUILD.md`.
+- Psycles now fails configuration when fallback is requested but Luisa does
+  not create the fallback target. A silent core-only downgrade is not
+  accepted.
 
 ## First actions in the next thread
 
-1. Install/verify LLVM 22 and Embree 4.3 as documented in `BUILD.md`.
-2. Configure with `PSYCLES_ENABLE_LUISA_FALLBACK=ON` and confirm CMake prints
-   the exact LLVM and Embree versions rather than silently disabling fallback.
-3. Finish and run `psycles_luisa_compile_tests`.
-4. Add a real fallback device fixture that uploads the 256-pattern table,
+1. Add a real fallback device fixture that uploads the 256-pattern table,
    executes camera, first-bounce light/BSDF, and next-bounce light lookups, and
    compares every output as IEEE-754 bits against
    `tests/test_tabulated_sobol.cpp`.
-5. Only after that fixture passes, bind the table resource and sequence size
+2. Finish and run `psycles_luisa_compile_tests` and the new runtime fixture.
+3. Only after that fixture passes, bind the table resource and sequence size
    in the production Luisa path kernel and replace the PCG calls with fixed
    dimensions.
-6. Update `DEVELOP.md` and push immediately after each passing boundary.
+4. Compare every transport/sampling boundary against official Blender 4.5.10
+   Cycles linear passes and upload new meaningful comparison images.
+5. Update `DEVELOP.md` and push immediately after each passing boundary.
 
 Do not spend time building a separate CPU renderer or expanding CPU-only
 gates. The host Sobol code remains solely LUT-generation infrastructure for

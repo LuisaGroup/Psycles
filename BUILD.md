@@ -12,14 +12,16 @@ not need a separate Luisa installation or a second configure step.
 - Ninja or another CMake generator
 - Python 3 for the versioned compatibility checks
 
-The host-only `fallback` backend additionally needs LLVM and Embree development
-packages discoverable by CMake. The active fallback validation baseline is:
+The host-only `fallback` backend additionally needs LLVM, Embree, and X11
+development packages discoverable by CMake. The active fallback validation
+baseline is:
 
 | Component | Version |
 |---|---:|
 | Ubuntu | 24.04 LTS (Noble) |
 | GCC | 13.3 |
 | CMake | 3.27.7 |
+| Ninja | 1.11.1 |
 | LLVM | 22.1.8 |
 | Embree | 4.3.0 |
 
@@ -28,15 +30,20 @@ Install LLVM 22 from the
 the development packages required by Luisa's fallback backend:
 
 ```bash
+sudo apt-get update
+sudo apt-get install -y \
+  cmake ninja-build wget gnupg lsb-release software-properties-common \
+  libembree-dev libx11-dev
 wget https://apt.llvm.org/llvm.sh
 chmod +x llvm.sh
 sudo ./llvm.sh 22
-sudo apt-get install llvm-22-dev libembree-dev
+sudo apt-get install -y llvm-22-dev
 ```
 
 The repository disables Luisa's unused GUI component, so a headless fallback
-build does not require X11/GLFW development packages. GPU backend prerequisites
-are inherited from LuisaCompute.
+build does not require GLFW. Luisa's fallback module still compiles its common
+Vulkan swapchain support on Linux and therefore requires the X11 development
+headers. GPU backend prerequisites are inherited from LuisaCompute.
 
 ## Clone and build
 
@@ -98,6 +105,16 @@ cmake -S . -B build -G Ninja \
   -DLLVM_DIR=/usr/lib/llvm-22/lib/cmake/llvm \
   -Dembree_DIR=/usr/lib/x86_64-linux-gnu/cmake/embree-4.3.0
 ```
+
+Configuration must print:
+
+```text
+Build with fallback backend (LLVM 22.1.8, Embree 4.3.0)
+```
+
+`PSYCLES_ENABLE_LUISA_FALLBACK=ON` is a strict postcondition: configuration
+fails if Luisa does not create `luisa-compute-backend-fallback`. Psycles never
+silently accepts a core-only build when fallback execution was requested.
 
 ## Render
 
@@ -171,7 +188,10 @@ official-Cycles linear-pass probes described in
   `git submodule update --init --recursive`.
 - `LLVM or Embree not found`: set `LLVM_DIR` and `embree_DIR`, or disable
   fallback with `-DPSYCLES_ENABLE_LUISA_FALLBACK=OFF` when another Luisa
-  backend is available.
+  backend is available. Do not treat a configure that omits the exact fallback
+  version line above as a passing fallback build.
+- `X11/Xlib.h` not found: install `libx11-dev`; disabling Luisa GUI does not
+  remove this fallback-module dependency.
 - A dependency changed but CMake retained old feature tests: re-run the CMake
   configure command before rebuilding.
 - A generated shared library is empty or is not reported as ELF/PE/Mach-O:

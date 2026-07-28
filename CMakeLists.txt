@@ -95,6 +95,16 @@ if(PSYCLES_ENABLE_LUISA)
             "configure with PSYCLES_ENABLE_LUISA=OFF for the contract core.")
     endif()
 
+    if(PSYCLES_ENABLE_LUISA_FALLBACK AND
+       NOT TARGET luisa-compute-backend-fallback)
+        message(FATAL_ERROR
+            "PSYCLES_ENABLE_LUISA_FALLBACK=ON requires a real Luisa fallback "
+            "backend, but LuisaCompute did not create "
+            "luisa-compute-backend-fallback. Install compatible LLVM and "
+            "Embree development packages, set LLVM_DIR and embree_DIR when "
+            "needed, and reconfigure.")
+    endif()
+
     if(TARGET luisa::compute)
         add_library(psycles_luisa INTERFACE)
         add_library(Psycles::luisa ALIAS psycles_luisa)
