@@ -12,6 +12,10 @@
 
 namespace psycles::luisa_backend::cycles_sampler {
 
+static_assert(
+    sampling::tabulated_sobol::pattern_count == 256u,
+    "The device Sobol shuffle specializes Cycles' 256-pattern table.");
+
 using luisa::compute::BufferFloat4;
 using luisa::compute::Float;
 using luisa::compute::Float2;
@@ -136,7 +140,7 @@ using luisa::compute::make_float3;
 }
 
 [[nodiscard]] inline Float4 sample_4d(
-    BufferFloat4 table,
+    const BufferFloat4 &table,
     UInt sequence_size,
     UInt sample,
     UInt rng_hash,
@@ -149,7 +153,7 @@ using luisa::compute::make_float3;
 }
 
 [[nodiscard]] inline Float sample_1d(
-    BufferFloat4 table,
+    const BufferFloat4 &table,
     UInt sequence_size,
     UInt sample,
     UInt rng_hash,
@@ -164,7 +168,7 @@ using luisa::compute::make_float3;
 }
 
 [[nodiscard]] inline Float2 sample_2d(
-    BufferFloat4 table,
+    const BufferFloat4 &table,
     UInt sequence_size,
     UInt sample,
     UInt rng_hash,
@@ -179,7 +183,7 @@ using luisa::compute::make_float3;
 }
 
 [[nodiscard]] inline Float3 sample_3d(
-    BufferFloat4 table,
+    const BufferFloat4 &table,
     UInt sequence_size,
     UInt sample,
     UInt rng_hash,

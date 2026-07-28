@@ -177,9 +177,26 @@ ctest --test-dir build --output-on-failure
 ```
 
 This includes Luisa AST construction, Blender import, core contracts, the
-versioned Cycles node inventory, integrator baselines, and analytic-light
-baselines. A full compatibility claim additionally requires the focused
-official-Cycles linear-pass probes described in
+real fallback-device tabulated-Sobol bit fixture, versioned Cycles node
+inventory, integrator baselines, and analytic-light baselines. The device
+fixture is registered only when the fallback target exists; it disables
+shader caching and fast math, dispatches runtime-uniform hash/sample/path-step
+inputs, and compares device-side bitcasts rather than host-converted floats.
+
+The focused sampling gate is:
+
+```bash
+cmake --build build --target \
+  psycles_tabulated_sobol_tests \
+  psycles_luisa_compile_tests \
+  psycles_luisa_sobol_fallback_tests
+ctest --test-dir build \
+  -R 'psycles\.(tabulated_sobol|luisa_ast|luisa_sobol_fallback)$' \
+  --output-on-failure
+```
+
+A full compatibility claim additionally requires the focused official-Cycles
+linear-pass probes described in
 `docs/cycles-compatibility.md`.
 
 ## Troubleshooting

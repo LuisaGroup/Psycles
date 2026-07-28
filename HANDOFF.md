@@ -9,13 +9,16 @@ from an older scratch clone.
 
 The required order remains:
 
-1. finish Blender 4.5.10 tabulated-Sobol device parity, fixed random
-   dimensions, single-light distribution, and Nishita importance sampling;
-2. publish a fully tested rendering checkpoint;
-3. split `src/luisa/path_tracer.cpp` by stable responsibility without changing
-   rendering semantics, kernel argument ABI, or fallback-cache identity;
-4. validate additional Blender demo scenes;
-5. replace expanded per-material DSL ASTs with a buffer-driven shared device
+1. integrate the verified Blender 4.5.10 tabulated-Sobol stream into the
+   production path kernel with its fixed random dimensions;
+2. establish the intentionally changed production-kernel cache identity, then
+   split `src/luisa/path_tracer.cpp` by stable responsibility without further
+   changing rendering semantics or its nine-argument kernel ABI;
+3. add the Cycles single-light distribution and Nishita importance CDF;
+4. publish each fully tested rendering checkpoint with official Cycles
+   linear-pass comparisons and viewable images;
+5. validate additional Blender demo scenes;
+6. replace expanded per-material DSL ASTs with a buffer-driven shared device
    instruction executor and remeasure cold/hot JIT.
 
 ## Published checkpoints
@@ -26,19 +29,29 @@ The required order remains:
 - `7ab57cf`: restore the official Blender 4.5.10 host tabulated-Sobol
   generator, fixed dimensions, whole-table IEEE-754 fingerprint, and 5/5
   clean core gate.
+- `74c2f45`: require a real fallback target and pin the Luisa LLVM 22
+  shared-library fix after building the LLVM 22.1.8/Embree 4.3.0 module.
 
-The handoff commit after those checkpoints stages the Luisa sampler lowering,
-the corresponding AST instantiation, headless Luisa configuration, and this
-documentation. The fallback build prerequisite is now verified with LLVM
-22.1.8 and Embree 4.3.0, but the sampling checkpoint remains deliberately red
-until the real device bit fixture passes.
+Checkpoint 1b is now green. The real fallback fixture loads the backend
+module, initializes Embree 4.3.0, compiles the Luisa sampler with cache and
+fast math disabled, dispatches it, and compares device-side `uint4` bitcasts.
+The complete fallback CTest gate passes 8/8.
 
 ## Exact current boundary
 
 - `include/psycles/luisa/cycles_sampler.h` contains the Luisa DSL lowering for
   pixel hashing, Owen scrambling, pattern shuffling, fixed dimensions, and
-  table lookup.
-- `tests/test_luisa_compile.cpp` instantiates that lowering in a Luisa kernel.
+  table lookup. Buffer variables are passed by const reference because Luisa
+  DSL variables are non-copyable.
+- `tests/test_luisa_compile.cpp` instantiates that lowering in a Luisa kernel,
+  while `tests/test_luisa_sobol_fallback.cpp` executes it on the fallback
+  device. Runtime uniforms prevent the hash, bounce, and scramble path from
+  collapsing into a compile-time-only fixture; sentinel output uploads catch
+  skipped dispatches.
+- The device fixture locks camera sample 0/dimension 0, first-path-step
+  light/BSDF dimensions 17/19, next-path-step light dimension 33, a
+  16-dimension stride, pixel hash `0x4bf378cb`, shuffled indices
+  38201/54017/10898/30843, and all 16 returned IEEE-754 lanes.
 - `src/luisa/path_tracer.cpp` is untouched by this recovery. It still uses the
   old PCG-style state and still samples light classes separately.
 - No single-light distribution, world-area emissive CDF, Nishita importance
@@ -56,17 +69,22 @@ until the real device bit fixture passes.
 
 ## First actions in the next thread
 
-1. Add a real fallback device fixture that uploads the 256-pattern table,
-   executes camera, first-bounce light/BSDF, and next-bounce light lookups, and
-   compares every output as IEEE-754 bits against
-   `tests/test_tabulated_sobol.cpp`.
-2. Finish and run `psycles_luisa_compile_tests` and the new runtime fixture.
-3. Only after that fixture passes, bind the table resource and sequence size
-   in the production Luisa path kernel and replace the PCG calls with fixed
-   dimensions.
-4. Compare every transport/sampling boundary against official Blender 4.5.10
+1. Add an explicit total-AA-sample-count contract. Derive the table sequence
+   size from that total, never from a progressive render chunk.
+2. Bind the table resource and sequence size in the production path kernel,
+   replacing PCG calls with the fixed camera and per-`path_step` dimensions.
+   Transparent events advance `path_step` even when regular bounce depth does
+   not.
+3. Record the resulting intentional kernel hash/cache identity, then move the
+   monolith into private sampling, geometry, environment, lights, kernel,
+   render-session, and scene-compiler modules while preserving the exact
+   nine-argument ABI and rendered bits.
+4. Implement Cycles' unified single-light selection density, then the
+   device-built Nishita conditional and marginal importance CDFs.
+5. Compare every transport/sampling boundary against official Blender 4.5.10
    Cycles linear passes and upload new meaningful comparison images.
-5. Update `DEVELOP.md` and push immediately after each passing boundary.
+6. Update all three handoff/build documents and push immediately after each
+   passing boundary.
 
 Do not spend time building a separate CPU renderer or expanding CPU-only
 gates. The host Sobol code remains solely LUT-generation infrastructure for

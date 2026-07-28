@@ -20,11 +20,11 @@ pushed before the next long-running compile or render:
    instruction executor and remeasure cold/hot compilation.
 
 The prior prototype reported bitwise host/device Sobol fixtures and improved
-focused-probe RMSE, but that source state is not present in `main`. Those
-results remain unverified for this branch until the implementation and its
-fixtures are recovered, rebuilt, and committed. The repository therefore
-continues to report RNG parity as incomplete below rather than treating chat
-history as a passing gate.
+focused-probe RMSE, but that source state is not present in `main`. The
+tabulated-Sobol host and fallback-device fixtures have now been independently
+recovered and verified on this branch. Production-kernel integration and the
+historical render statistics remain separate gates rather than being inferred
+from chat history.
 
 Checkpoint 0 removes the `PSYCLES_LUISA_SOURCE_DIR` override so the pinned
 submodule is the single normal source of LuisaCompute. Repository-wide option
@@ -32,7 +32,7 @@ references and whitespace checks pass. A clean GNU 13.3/CMake 3.27.7
 `PSYCLES_ENABLE_LUISA=OFF` configure and build also pass with the Unix
 Makefiles generator, followed by 4/4 core CTest groups. The existing
 Luisa/fallback 6/6 gate remains the required full-build check before any
-rendering change is published.
+rendering change is published; checkpoint 1b expands that gate to 8/8.
 
 Checkpoint 1a restores the Blender 4.5.10 tabulated-Sobol host contract as an
 independent `psycles::sampling` module. Its test locks the complete
@@ -43,17 +43,24 @@ from the authoritative Cycles algorithm; the clean core gate is now 5/5.
 Luisa device lowering and path-kernel integration are intentionally tracked as
 the next checkpoint rather than implied by this host-only result.
 
-Checkpoint 1b is still not a passing sampling gate. It adds a Luisa-native
+Checkpoint 1b is a passing device-sampling gate. It adds a Luisa-native
 tabulated-Sobol lowering in
 `include/psycles/luisa/cycles_sampler.h`, extends the Luisa AST test to
-instantiate it, and disables Luisa's unused GUI dependency for headless
-builds. The recovery environment now configures and builds a non-empty ELF
+instantiate it, and executes the lowering in
+`tests/test_luisa_sobol_fallback.cpp`. The fixture uploads the complete table,
+passes pixel/sample/path-step values as runtime uniforms, initializes outputs
+to sentinels, performs device-side float-to-uint bitcasts, and locks four
+camera/light/BSDF probes plus dimension/index metadata. Shader cache and fast
+math are disabled for this fixture.
+
+The recovery environment configures and builds a non-empty ELF
 fallback module with Ubuntu 24.04.3, GCC 13.3, CMake 3.27.7, Ninja 1.11.1,
 LLVM 22.1.8, and Embree 4.3.0. CMake also rejects
 `PSYCLES_ENABLE_LUISA_FALLBACK=ON` if Luisa silently disables the backend.
-The remaining checkpoint boundary is the real fallback device fixture and its
-IEEE-754 bit comparisons; the sampler executable has not yet run. Do not
-extend this into a CPU renderer or additional CPU-only validation work.
+The focused AST/host/device gate passes 3/3 and the complete fallback gate
+passes 8/8. This closes sampler lowering only; the production path kernel
+still uses the old generator. Do not extend this into a CPU renderer or
+additional CPU-only validation work.
 
 Every transport, light-distribution, or environment-sampling boundary must be
 compared against the official Blender 4.5.10 Cycles linear passes. New
@@ -68,7 +75,7 @@ status.
 | Shader inventory | 96 Cycles-applicable nodes tracked from 105 Blender shader node types |
 | Complete coverage | 43/96 complete: 41 `cycles_verified` device nodes and 2 structural output adapters |
 | Remaining nodes | 12 partial and 41 pending; no implemented node is waiting for a probe, and 1 Cycles OSL-only node is tracked separately |
-| Automated gate | 5/5 clean core CTest groups pass at checkpoint 1a; LLVM 22.1.8/Embree 4.3.0 now produce a real fallback module, but checkpoint 1b remains red until the device bit fixture runs |
+| Automated gate | 5/5 clean core groups pass; LLVM 22.1.8/Embree 4.3.0 produce a real fallback module, the device fixture executes exact bit comparisons, and the complete fallback gate passes 8/8 |
 | Analytic lights | 11 Point/Spot/Area/Sun baselines, including shapes, spread, finite Sun disk, and light node trees |
 | Full-scene geometry/AOV | Negative-scale normal transforms and closure-weighted glossy normals are fixed |
 | Full-scene transport | At 640×480/64 spp, Lone Monk Combined RMSE is `0.26116`, Normal is `0.03696`, and DiffCol is `0.01175`; Combined mean energy is 95.75% of Cycles |
@@ -112,11 +119,13 @@ and most graph data change.
 
 Psycles is deterministic for a fixed Psycles seed, but its rendered random
 stream is not yet bitwise identical to Cycles. Checkpoint 1a restores the
-official Cycles 4.5 tabulated-Sobol host LUT and fixed dimension constants,
-and checkpoint 1b stages their Luisa lowering. The production path kernel
-still uses its earlier integer state/hash generator and has not yet adopted
-the table, fixed camera/light/BSDF/Russian-roulette dimensions, or the
-16-dimension bounce stride.
+official Cycles 4.5 tabulated-Sobol host LUT and fixed dimension constants.
+Checkpoint 1b verifies their Luisa lowering on the real fallback device,
+including exact IEEE-754 bits for camera, first-path-step light/BSDF, and
+next-path-step light probes. The production path kernel still uses its earlier
+integer state/hash generator and has not yet adopted the table, fixed
+camera/light/BSDF/Russian-roulette dimensions, or the 16-dimension path-step
+stride.
 
 No “exact RNG” claim will be made from converged image statistics. The release
 gate is a trace probe that records, for fixed pixel/seed/sample indices:
@@ -153,6 +162,10 @@ remain deliberately outside the runtime argument block.
 
 ### P1 — transport parity
 
+- [x] Execute the tabulated-Sobol lowering on LLVM 22.1.8/Embree 4.3.0
+  fallback and lock the camera/light/BSDF results bit for bit.
+- Integrate that stream into the production kernel using total AA samples and
+  `path_step`, then validate official Cycles linear passes.
 - Implement Cycles-compatible environment and emitter importance
   distributions, including PDFs used by MIS.
 - Close indirect-transmission and glossy-indirect energy gaps.
