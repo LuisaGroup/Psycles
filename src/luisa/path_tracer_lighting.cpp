@@ -219,17 +219,26 @@ make_emissive_triangle_pdf_callable(
                Float3 p1,
                Float3 p2) noexcept {
         Bool found = false;
+        UInt emission_sampling =
+            static_cast<std::uint32_t>(
+                contract::EmissionSampling::none);
         $for (emissive_index,
               scene->emissive_triangle_count) {
             Var<EmissiveTriangleGpu> emitter =
                 scene->emissive_triangle_buffer->read(
                     emissive_index);
+            Bool matches =
+                (emitter.instance_index ==
+                 instance_index) &
+                (emitter.primitive_index ==
+                 primitive_index);
+            emission_sampling = select(
+                emission_sampling,
+                emitter.emission_sampling,
+                matches);
             found =
                 found |
-                ((emitter.instance_index ==
-                  instance_index) &
-                 (emitter.primitive_index ==
-                  primitive_index));
+                matches;
         };
         Float3 edge01 = p1 - p0;
         Float3 edge02 = p2 - p0;
@@ -247,17 +256,34 @@ make_emissive_triangle_pdf_callable(
         Float3 light_normal =
             unnormalized_normal /
             max(doubled_area, 1.0e-20f);
-        Float cosine =
-            abs(dot(light_normal, -wi));
+        Float signed_cosine =
+            dot(light_normal, -wi);
+        Float cosine = abs(signed_cosine);
+        Bool back_facing = signed_cosine < 0.0f;
+        Bool side_is_sampled =
+            (emission_sampling ==
+             static_cast<std::uint32_t>(
+                 contract::EmissionSampling::automatic)) |
+            (emission_sampling ==
+             static_cast<std::uint32_t>(
+                 contract::EmissionSampling::front_back)) |
+            ((emission_sampling ==
+              static_cast<std::uint32_t>(
+                  contract::EmissionSampling::front)) &
+             !back_facing) |
+            ((emission_sampling ==
+              static_cast<std::uint32_t>(
+                  contract::EmissionSampling::back)) &
+             back_facing);
         Float pdf =
             distance2 *
-            static_cast<float>(
-                scene->emissive_triangle_count) /
-            max(cosine * area, 1.0e-20f);
+            scene->triangle_area_pdf /
+            max(cosine, 1.0e-20f);
         return select(
             0.0f,
             pdf,
             found &
+                side_is_sampled &
                 (distance2 > 1.0e-12f) &
                 (cosine > 0.0f) &
                 (area > 0.0f));

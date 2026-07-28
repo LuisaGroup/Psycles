@@ -53,9 +53,22 @@ using InstanceId = Id<InstanceTag>;
 using CameraId = Id<CameraTag>;
 using LightId = Id<LightTag>;
 
+enum class EmissionSampling : std::uint8_t {
+    none,
+    automatic,
+    front,
+    back,
+    front_back
+};
+
 struct MaterialDesc {
     std::string name;
     ShaderGraph shader;
+    // This is the original Cycles material setting. It controls whether and
+    // from which side an emissive closure participates in light sampling; it
+    // never replaces or pre-evaluates the closure graph above.
+    EmissionSampling emission_sampling{
+        EmissionSampling::automatic};
 };
 
 enum class ImageColorSpace : std::uint8_t {
@@ -216,6 +229,7 @@ struct LightDesc {
     bool ellipse{};
     bool is_sphere{true};
     std::optional<MaterialId> shader;
+    bool use_mis{true};
 };
 
 struct EnvironmentSunDesc {
@@ -253,6 +267,12 @@ struct EnvironmentDesc {
     std::optional<NishitaSkyDesc> nishita;
 };
 
+enum class WorldSampling : std::uint8_t {
+    none,
+    automatic,
+    manual
+};
+
 // Cycles derives these transforms from the active OCIO configuration and
 // uploads them with film data. Shader nodes such as Blackbody and Wavelength
 // must use the same scene-linear working space as the rest of the graph.
@@ -277,6 +297,10 @@ struct SceneSnapshot {
     std::optional<MaterialId> world_shader;
     std::optional<EnvironmentDesc> environment;
     ShaderColorSpace shader_color_space;
+    // Preserve Cycles' world-light policy independently from the raw world
+    // closure graph and procedural environment resources.
+    WorldSampling world_sampling{WorldSampling::automatic};
+    std::uint32_t world_sample_map_resolution{1024u};
 };
 
 struct UpsertMaterial {

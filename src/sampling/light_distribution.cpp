@@ -1,6 +1,5 @@
 #include <psycles/sampling/light_distribution.h>
 
-#include <algorithm>
 #include <cmath>
 #include <limits>
 
@@ -136,39 +135,6 @@ CyclesLightDistribution build_cycles_light_distribution(
         result.entries.back().cumulative = 1.0f;
     }
     return result;
-}
-
-std::optional<std::uint32_t>
-select_cycles_light_distribution(
-    const CyclesLightDistribution &distribution,
-    float sample) noexcept {
-    if (!distribution.usable()) {
-        return std::nullopt;
-    }
-
-    std::uint32_t first = 0u;
-    std::uint32_t length =
-        distribution.emitter_count + 1u;
-    while (length > 0u) {
-        const auto half_length = length >> 1u;
-        const auto middle = first + half_length;
-        if (sample <
-            distribution.entries[middle].cumulative) {
-            length = half_length;
-        } else {
-            first = middle + 1u;
-            length =
-                length - half_length - 1u;
-        }
-    }
-    const auto index =
-        std::clamp<std::int64_t>(
-            static_cast<std::int64_t>(first) - 1,
-            0,
-            static_cast<std::int64_t>(
-                distribution.emitter_count) -
-                1);
-    return static_cast<std::uint32_t>(index);
 }
 
 }// namespace psycles::sampling

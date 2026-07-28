@@ -126,7 +126,7 @@ int main(int argc, char **argv) {
              .light_group = {},
              .channels = 3u},
             {.kind = psycles::contract::PassKind::albedo,
-             .name = "Albedo",
+             .name = "DiffCol",
              .light_group = {},
              .channels = 3u},
             {.kind =
@@ -280,6 +280,22 @@ int main(int argc, char **argv) {
         }
     }
 
+#if defined(PSYCLES_WITH_OPENIMAGEIO)
+    const auto exr_path =
+        std::filesystem::path{stem.string() + ".exr"};
+    std::string exr_error;
+    if (!psycles::io::write_multilayer_exr(
+            sink.images(),
+            exr_path,
+            "ViewLayer",
+            &exr_error)) {
+        std::cerr
+            << "error: could not write multilayer OpenEXR: "
+            << exr_error << '\n';
+        return EXIT_FAILURE;
+    }
+#endif
+
     std::cout
         << "Luisa/" << backend_name << " compiled "
         << imported.scene->geometries.size() << " geometries, "
@@ -293,6 +309,10 @@ int main(int argc, char **argv) {
         << output << '\n'
         << "Linear Combined: " << combined_path << '\n'
         << "Linear Normal:   " << normal_path << '\n'
-        << "Linear Albedo:   " << albedo_path << '\n';
+        << "Linear Albedo:   " << albedo_path << '\n'
+#if defined(PSYCLES_WITH_OPENIMAGEIO)
+        << "Multilayer EXR:  " << exr_path << '\n'
+#endif
+        ;
     return EXIT_SUCCESS;
 }

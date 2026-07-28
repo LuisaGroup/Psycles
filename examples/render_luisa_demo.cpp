@@ -377,7 +377,7 @@ int main(int argc, char **argv) {
              .light_group = {},
              .channels = 3u},
             {.kind = PassKind::albedo,
-             .name = "Albedo",
+             .name = "DiffCol",
              .light_group = {},
              .channels = 3u}}};
     auto session =
@@ -420,6 +420,21 @@ int main(int argc, char **argv) {
         !psycles::io::write_pfm(*albedo, albedo_linear)) {
         return EXIT_FAILURE;
     }
+#if defined(PSYCLES_WITH_OPENIMAGEIO)
+    const auto exr_path =
+        std::filesystem::path{stem.string() + ".exr"};
+    std::string exr_error;
+    if (!psycles::io::write_multilayer_exr(
+            sink.images(),
+            exr_path,
+            "ViewLayer",
+            &exr_error)) {
+        std::cerr
+            << "could not write multilayer OpenEXR: "
+            << exr_error << '\n';
+        return EXIT_FAILURE;
+    }
+#endif
     const auto seconds =
         std::chrono::duration<double>(
             std::chrono::steady_clock::now() - begin)
@@ -430,6 +445,10 @@ int main(int argc, char **argv) {
               << " s: " << output << '\n'
               << "Linear Combined: " << combined_linear << '\n'
               << "Linear Normal:   " << normal_linear << '\n'
-              << "Linear Albedo:   " << albedo_linear << '\n';
+              << "Linear Albedo:   " << albedo_linear << '\n'
+#if defined(PSYCLES_WITH_OPENIMAGEIO)
+              << "Multilayer EXR:  " << exr_path << '\n'
+#endif
+              ;
     return EXIT_SUCCESS;
 }

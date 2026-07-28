@@ -81,6 +81,49 @@ public:
     }
 };
 
+class CompileProbeSurface final : public Surface {
+
+private:
+    bool _transparent{};
+    std::size_t *_transparent_recordings{};
+
+public:
+    CompileProbeSurface(
+        bool transparent,
+        std::size_t *transparent_recordings) noexcept
+        : _transparent{transparent},
+          _transparent_recordings{transparent_recordings} {}
+
+    [[nodiscard]] SurfaceCapabilities capabilities()
+        const noexcept override {
+        return {.may_be_transparent = _transparent};
+    }
+
+    [[nodiscard]] SurfaceEvaluation evaluate(
+        const ShaderServices &,
+        const SurfacePoint &,
+        Expr<luisa::float3>,
+        const SurfaceQuery &) const noexcept override {
+        return SurfaceEvaluation::zero();
+    }
+
+    [[nodiscard]] SurfaceSample sample(
+        const ShaderServices &,
+        const SurfacePoint &,
+        Expr<float>,
+        Expr<luisa::float2>,
+        const SurfaceQuery &) const noexcept override {
+        return SurfaceSample::zero();
+    }
+
+    [[nodiscard]] Float3 transparent_extinction(
+        const ShaderServices &,
+        const SurfacePoint &) const noexcept override {
+        ++*_transparent_recordings;
+        return make_float3(_transparent ? 0.5f : 0.0f);
+    }
+};
+
 [[nodiscard]] ShaderGraph make_graph() {
     ShaderGraph graph;
     const auto geometry =
@@ -116,6 +159,15 @@ int main() {
     SurfaceDispatch surfaces;
     const auto surface_tag = surfaces.create<GraphSurface>(
         surface_program.program);
+    std::size_t opaque_transparency_recordings = 0u;
+    std::size_t transparent_transparency_recordings = 0u;
+    SurfaceDispatch transparency_surfaces;
+    static_cast<void>(
+        transparency_surfaces.create<CompileProbeSurface>(
+            false, &opaque_transparency_recordings));
+    static_cast<void>(
+        transparency_surfaces.create<CompileProbeSurface>(
+            true, &transparent_transparency_recordings));
 
     Kernel1D kernel = [&]() noexcept {
         ConstantShaderServices services;
@@ -180,9 +232,17 @@ int main() {
             point,
             make_float3(0.0f, 0.0f, 1.0f),
             query);
+        auto transparent =
+            transparency_surfaces.transparent_extinction(
+                dispatch_x() % 2u,
+                services,
+                point);
         device_assert(evaluation.pdf >= 0.0f);
+        device_assert(all(transparent >= 0.0f));
     };
-    if (!kernel.function()) {
+    if (!kernel.function() ||
+        opaque_transparency_recordings != 0u ||
+        transparent_transparency_recordings != 1u) {
         return 3;
     }
 

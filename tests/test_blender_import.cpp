@@ -14,6 +14,8 @@ namespace {
 
 using psycles::adapter::load_blender_scene_bundle;
 using psycles::contract::DirectLightSampling;
+using psycles::contract::EmissionSampling;
+using psycles::contract::WorldSampling;
 
 void expect(bool condition, const std::string &message) {
     if (!condition) {
@@ -67,13 +69,36 @@ void test_integrator_settings_round_trip() {
   "schema": "psycles.blender-scene.v1",
   "images": [],
   "node_groups": [],
-  "materials": [],
+  "materials": [
+    {
+      "name": "Raw Emissive",
+      "emission_sampling": "BACK",
+      "node_tree": null
+    }
+  ],
   "geometries": [],
   "instances": [],
-  "lights": [],
+  "lights": [
+    {
+      "name": "Key",
+      "type": "POINT",
+      "transform": [
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, 1, 0,
+        0, 0, 0, 1
+      ],
+      "color": [1, 1, 1],
+      "energy": 10,
+      "use_multiple_importance_sampling": false,
+      "node_tree": null
+    }
+  ],
   "world": {
     "name": "Nishita World",
     "color": [0.05, 0.05, 0.05],
+    "sampling_method": "MANUAL",
+    "sample_map_resolution": 2048,
     "node_tree": {
       "name": "World Nodes",
       "surface_root": {
@@ -316,6 +341,29 @@ void test_integrator_settings_round_trip() {
     expect(
         imported.scene->environment.has_value(),
         "Nishita world did not produce an environment");
+    expect(
+        imported.scene->world_sampling ==
+            WorldSampling::manual,
+        "world sampling method did not round-trip");
+    expect(
+        imported.scene->world_sample_map_resolution == 2048u,
+        "world sample-map resolution did not round-trip");
+    const auto imported_material =
+        imported.scene->materials.find(
+            psycles::contract::MaterialId{2u});
+    expect(
+        imported_material !=
+            imported.scene->materials.end() &&
+            imported_material->second.emission_sampling ==
+                EmissionSampling::back,
+        "material emission-sampling policy did not round-trip");
+    const auto imported_light =
+        imported.scene->lights.find(
+            psycles::contract::LightId{1u});
+    expect(
+        imported_light != imported.scene->lights.end() &&
+            !imported_light->second.use_mis,
+        "light MIS policy did not round-trip");
     expect(
         imported.scene->environment->nishita.has_value(),
         "Nishita world was not kept procedural");

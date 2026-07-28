@@ -4,6 +4,7 @@
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/luisa/cycles_bsdf_tables.h>
 #include <psycles/luisa/cycles_nishita.h>
+#include <psycles/sampling/light_distribution.h>
 
 #include "cycles_shader_tables_4_5_10.inl"
 
@@ -12,6 +13,99 @@
 namespace psycles::luisa_backend {
 
 using namespace detail;
+
+namespace {
+
+[[nodiscard]] Vec3f transform_point(
+    const Mat4f &transform,
+    Vec3f point) noexcept {
+    const auto &e = transform.elements;
+    return {
+        e[0u] * point.x + e[4u] * point.y +
+            e[8u] * point.z + e[12u],
+        e[1u] * point.x + e[5u] * point.y +
+            e[9u] * point.z + e[13u],
+        e[2u] * point.x + e[6u] * point.y +
+            e[10u] * point.z + e[14u]};
+}
+
+[[nodiscard]] float world_triangle_area(
+    const Mat4f &transform,
+    Vec3f p0,
+    Vec3f p1,
+    Vec3f p2) noexcept {
+    p0 = transform_point(transform, p0);
+    p1 = transform_point(transform, p1);
+    p2 = transform_point(transform, p2);
+    const Vec3f edge01{
+        p1.x - p0.x,
+        p1.y - p0.y,
+        p1.z - p0.z};
+    const Vec3f edge02{
+        p2.x - p0.x,
+        p2.y - p0.y,
+        p2.z - p0.z};
+    const Vec3f cross{
+        edge01.y * edge02.z - edge01.z * edge02.y,
+        edge01.z * edge02.x - edge01.x * edge02.z,
+        edge01.x * edge02.y - edge01.y * edge02.x};
+    return 0.5f * std::sqrt(
+        cross.x * cross.x +
+        cross.y * cross.y +
+        cross.z * cross.z);
+}
+
+[[nodiscard]] bool is_spatial_source(
+    compiler::ValueOperation operation) noexcept {
+    using compiler::ValueOperation;
+    switch (operation) {
+        case ValueOperation::surface_position:
+        case ValueOperation::shading_normal:
+        case ValueOperation::geometric_normal:
+        case ValueOperation::incoming:
+        case ValueOperation::tangent:
+        case ValueOperation::uv:
+        case ValueOperation::generated:
+        case ValueOperation::object_position:
+        case ValueOperation::object_location:
+        case ValueOperation::object_random:
+        case ValueOperation::particle_index:
+        case ValueOperation::particle_random:
+        case ValueOperation::back_facing:
+        case ValueOperation::random_per_island:
+        case ValueOperation::image_color:
+        case ValueOperation::image_alpha:
+        case ValueOperation::attribute_color:
+        case ValueOperation::attribute_alpha:
+        case ValueOperation::normal_map:
+        case ValueOperation::bump:
+        case ValueOperation::noise_factor:
+        case ValueOperation::noise_color:
+        case ValueOperation::white_noise_value:
+        case ValueOperation::white_noise_color:
+        case ValueOperation::checker_color:
+        case ValueOperation::checker_factor:
+        case ValueOperation::brick_color:
+        case ValueOperation::brick_factor:
+        case ValueOperation::gradient:
+        case ValueOperation::nishita_sky:
+            return true;
+        default:
+            return false;
+    }
+}
+
+[[nodiscard]] bool surface_is_spatially_varying(
+    const compiler::SurfaceProgram &program) noexcept {
+    return std::any_of(
+        program.value_instructions().begin(),
+        program.value_instructions().end(),
+        [](const compiler::ValueInstruction &instruction) {
+            return is_spatial_source(instruction.operation);
+        });
+}
+
+}// namespace
 
 contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     const SceneSnapshot &snapshot) {
@@ -895,10 +989,24 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     }
 
     std::map<contract::MaterialId, bool> material_may_emit;
+    std::map<
+        contract::MaterialId,
+        contract::EmissionSampling>
+        material_emission_sampling;
     for (const auto &[material_id, material] :
          data->materials.materials()) {
+        const auto source_material =
+            snapshot.materials.find(material_id);
+        const auto sampling =
+            source_material != snapshot.materials.end()
+                ? source_material->second.emission_sampling
+                : contract::EmissionSampling::automatic;
+        material_emission_sampling.emplace(
+            material_id, sampling);
         material_may_emit.emplace(
             material_id,
+            sampling !=
+                    contract::EmissionSampling::none &&
             std::any_of(
                 material.surface_program()
                     ->closure_instructions()
@@ -915,6 +1023,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     luisa::vector<InstanceGpu> instances;
     luisa::vector<luisa::uint2> override_materials;
     luisa::vector<EmissiveTriangleGpu> emissive_triangles;
+    std::vector<float> emissive_triangle_areas;
     data->accel = data->device.create_accel();
     for (const auto &[instance_id, instance] :
          snapshot.instances) {
@@ -1000,6 +1109,18 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                     !material_may_emit[*material_id]) {
                     continue;
                 }
+                const auto &triangle =
+                    geometry.triangles[primitive_index];
+                if (triangle[0u] >= geometry.positions.size() ||
+                    triangle[1u] >= geometry.positions.size() ||
+                    triangle[2u] >= geometry.positions.size()) {
+                    diagnose(
+                        result.diagnostics,
+                        "Instance '" + instance.name +
+                            "' has an emissive triangle with "
+                            "out-of-range vertex indices.");
+                    break;
+                }
                 const auto tag_iter =
                     data->material_bindings.find(*material_id);
                 if (tag_iter ==
@@ -1022,7 +1143,17 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                         .surface_tag =
                             tag_iter->second.surface_tag,
                         .parameter_block =
-                            tag_iter->second.parameter_block});
+                            tag_iter->second.parameter_block,
+                        .emission_sampling =
+                            static_cast<std::uint32_t>(
+                                material_emission_sampling
+                                    .at(*material_id))});
+                emissive_triangle_areas.emplace_back(
+                    world_triangle_area(
+                        instance.transform,
+                        geometry.positions[triangle[0u]],
+                        geometry.positions[triangle[1u]],
+                        geometry.positions[triangle[2u]]));
             }
         }
         const auto visibility =
@@ -1127,6 +1258,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         flags |= light.is_sphere
                      ? light_flag_sphere
                      : 0u;
+        flags |= light.use_mis
+                     ? light_flag_use_mis
+                     : 0u;
         MaterialBinding light_binding{
             .surface_tag = ~std::uint32_t{0u},
             .parameter_block = 0u};
@@ -1172,6 +1306,57 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     data->emissive_triangle_count =
         static_cast<std::uint32_t>(
             emissive_triangles.size());
+
+    bool world_is_spatially_varying = false;
+    if (snapshot.world_shader) {
+        if (const auto *world_material =
+                data->materials.find(*snapshot.world_shader)) {
+            world_is_spatially_varying =
+                surface_is_spatially_varying(
+                    *world_material->surface_program());
+        }
+    }
+    const auto include_environment =
+        data->world_surface.has_value() &&
+        (snapshot.world_sampling ==
+             contract::WorldSampling::manual ||
+         (snapshot.world_sampling ==
+              contract::WorldSampling::automatic &&
+          world_is_spatially_varying));
+    const auto light_distribution =
+        sampling::build_cycles_light_distribution(
+            emissive_triangle_areas,
+            data->light_count,
+            include_environment);
+    luisa::vector<LightDistributionGpu>
+        light_distribution_entries;
+    light_distribution_entries.reserve(
+        light_distribution.entries.size());
+    for (const auto &entry :
+         light_distribution.entries) {
+        light_distribution_entries.emplace_back(
+            LightDistributionGpu{
+                .cumulative = entry.cumulative,
+                .selection_pdf = entry.selection_pdf,
+                .kind = static_cast<std::uint32_t>(
+                    entry.kind),
+                .index = entry.index});
+    }
+    data->light_distribution_count =
+        light_distribution.usable()
+            ? light_distribution.emitter_count
+            : 0u;
+    data->triangle_area_pdf =
+        light_distribution.triangle_area_pdf;
+    data->light_selection_pdf =
+        light_distribution.light_selection_pdf;
+    data->environment_in_light_distribution =
+        include_environment &&
+        data->light_distribution_count > 0u;
+    if (light_distribution_entries.empty()) {
+        light_distribution_entries.emplace_back(
+            LightDistributionGpu{});
+    }
     if (lights.empty()) {
         lights.emplace_back(LightGpu{});
     }
@@ -1216,6 +1401,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     data->emissive_triangle_buffer =
         data->device.create_buffer<EmissiveTriangleGpu>(
             emissive_triangles.size());
+    data->light_distribution_buffer =
+        data->device.create_buffer<LightDistributionGpu>(
+            light_distribution_entries.size());
     stream << data->geometry_buffer.copy_from(
                   luisa::span{geometry_gpu})
            << data->instance_buffer.copy_from(
@@ -1228,6 +1416,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                   luisa::span{lights})
            << data->emissive_triangle_buffer.copy_from(
                   luisa::span{emissive_triangles})
+           << data->light_distribution_buffer.copy_from(
+                  luisa::span{light_distribution_entries})
            << data->texture_heap.update()
            << data->heap.update()
            << data->accel.build()

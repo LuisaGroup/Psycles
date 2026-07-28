@@ -7,9 +7,15 @@ project(Psycles
 
 option(PSYCLES_BUILD_TESTS "Build Psycles contract tests" ON)
 option(PSYCLES_BUILD_EXAMPLES "Build Psycles executable examples" ON)
+option(PSYCLES_ENABLE_OPENIMAGEIO
+    "Use OpenImageIO for Cycles-compatible multilayer OpenEXR output" ON)
 option(PSYCLES_ENABLE_LUISA "Build the LuisaCompute DSL interface when available" ON)
 option(PSYCLES_ENABLE_LUISA_FALLBACK
     "Build LuisaCompute's fallback backend for machines without a GPU backend" ON)
+option(PSYCLES_ENABLE_LUISA_HIP
+    "Build LuisaCompute's HIP backend" ON)
+option(PSYCLES_ENABLE_LUISA_VULKAN
+    "Build LuisaCompute's Vulkan backend" ON)
 option(PSYCLES_FETCH_LUISA_NEXT
     "Fetch LuisaCompute from its next branch when the bundled submodule is unavailable" OFF)
 set(PSYCLES_LUISA_SUBMODULE_DIR
@@ -38,6 +44,15 @@ target_include_directories(psycles_core
         $<INSTALL_INTERFACE:include>)
 target_compile_features(psycles_core PUBLIC cxx_std_20)
 
+if(PSYCLES_ENABLE_OPENIMAGEIO)
+    find_package(OpenImageIO CONFIG REQUIRED)
+    target_sources(psycles_core PRIVATE src/io/openexr.cpp)
+    target_compile_definitions(
+        psycles_core PUBLIC PSYCLES_WITH_OPENIMAGEIO=1)
+    target_link_libraries(
+        psycles_core PRIVATE OpenImageIO::OpenImageIO)
+endif()
+
 if(MSVC)
     target_compile_options(psycles_core PRIVATE /W4 /permissive-)
 else()
@@ -63,6 +78,10 @@ if(PSYCLES_ENABLE_LUISA)
         set(LUISA_COMPUTE_ENABLE_CPU OFF CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_ENABLE_FALLBACK
             ${PSYCLES_ENABLE_LUISA_FALLBACK} CACHE BOOL "" FORCE)
+        set(LUISA_COMPUTE_ENABLE_HIP
+            ${PSYCLES_ENABLE_LUISA_HIP} CACHE BOOL "" FORCE)
+        set(LUISA_COMPUTE_ENABLE_VULKAN
+            ${PSYCLES_ENABLE_LUISA_VULKAN} CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_ENABLE_CLANG_CXX OFF CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_ENABLE_GUI OFF CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -76,6 +95,10 @@ if(PSYCLES_ENABLE_LUISA)
         set(LUISA_COMPUTE_ENABLE_CPU OFF CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_ENABLE_FALLBACK
             ${PSYCLES_ENABLE_LUISA_FALLBACK} CACHE BOOL "" FORCE)
+        set(LUISA_COMPUTE_ENABLE_HIP
+            ${PSYCLES_ENABLE_LUISA_HIP} CACHE BOOL "" FORCE)
+        set(LUISA_COMPUTE_ENABLE_VULKAN
+            ${PSYCLES_ENABLE_LUISA_VULKAN} CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_ENABLE_CLANG_CXX OFF CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_ENABLE_GUI OFF CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -105,6 +128,24 @@ if(PSYCLES_ENABLE_LUISA)
             "Embree development packages, set LLVM_DIR and embree_DIR when "
             "needed, and reconfigure.")
     endif()
+    if(PSYCLES_ENABLE_LUISA_HIP AND
+       NOT TARGET luisa-compute-backend-hip)
+        message(FATAL_ERROR
+            "PSYCLES_ENABLE_LUISA_HIP=ON requires LuisaCompute's HIP "
+            "backend, but LuisaCompute did not create "
+            "luisa-compute-backend-hip. Install the HIP backend "
+            "prerequisites or configure with "
+            "PSYCLES_ENABLE_LUISA_HIP=OFF.")
+    endif()
+    if(PSYCLES_ENABLE_LUISA_VULKAN AND
+       NOT TARGET luisa-compute-backend-vk)
+        message(FATAL_ERROR
+            "PSYCLES_ENABLE_LUISA_VULKAN=ON requires LuisaCompute's "
+            "Vulkan backend, but LuisaCompute did not create "
+            "luisa-compute-backend-vk. Install the Vulkan SDK/runtime "
+            "prerequisites or configure with "
+            "PSYCLES_ENABLE_LUISA_VULKAN=OFF.")
+    endif()
 
     if(TARGET luisa::compute)
         add_library(psycles_luisa INTERFACE)
@@ -127,6 +168,7 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/path_tracer_environment.cpp
             src/luisa/path_tracer_geometry.cpp
             src/luisa/path_tracer_kernel.cpp
+            src/luisa/path_tracer_light_distribution.cpp
             src/luisa/path_tracer_lighting.cpp
             src/luisa/path_tracer_sampling.cpp
             src/luisa/path_tracer_scene.cpp
@@ -313,6 +355,23 @@ if(PSYCLES_BUILD_TESTS)
         NAME psycles.light_distribution
         COMMAND psycles_light_distribution_tests)
 
+    if(PSYCLES_ENABLE_OPENIMAGEIO)
+        add_executable(
+            psycles_openexr_tests
+            tests/test_openexr.cpp)
+        target_link_libraries(
+            psycles_openexr_tests
+            PRIVATE
+                Psycles::core
+                OpenImageIO::OpenImageIO)
+        target_compile_features(
+            psycles_openexr_tests
+            PRIVATE cxx_std_20)
+        add_test(
+            NAME psycles.openexr
+            COMMAND psycles_openexr_tests)
+    endif()
+
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)
         add_test(
@@ -349,5 +408,13 @@ if(PSYCLES_BUILD_TESTS)
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_geometry_cache.py"
                 --
                 "${CMAKE_CURRENT_SOURCE_DIR}/tools/export_psycles_scene.py")
+        add_test(
+            NAME psycles.blender_multilayer_exr_api
+            COMMAND
+                "${PSYCLES_BLENDER_EXECUTABLE}"
+                --background
+                --factory-startup
+                --python
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_multilayer_exr_api.py")
     endif()
 endif()

@@ -280,6 +280,75 @@ def _area_light_spread(scene: Any) -> None:
     data.spread = 0.73
 
 
+def _flat_light_distribution(scene: Any) -> None:
+    """Exercise Cycles' mixed triangle/lamp flat CDF on one receiver."""
+    world = scene.world
+    if world is not None:
+        world.cycles.sampling_method = "NONE"
+
+    receiver, tree, output = _material(
+        "Flat Distribution Receiver"
+    )
+    diffuse = tree.nodes.new("ShaderNodeBsdfDiffuse")
+    diffuse.name = "Diffuse"
+    _input(diffuse, "Color").default_value = (
+        0.52,
+        0.31,
+        0.17,
+        1.0,
+    )
+    _input(diffuse, "Roughness").default_value = 0.0
+    tree.links.new(
+        _output(diffuse, "BSDF"),
+        _input(output, "Surface"),
+    )
+    _plane(receiver)
+
+    for index, (x, size, color, strength) in enumerate(
+        (
+            (-2.2, 0.5, (1.0, 0.18, 0.06, 1.0), 8.0),
+            (2.2, 1.0, (0.08, 0.22, 1.0, 1.0), 3.0),
+        )
+    ):
+        material, emitter_tree, emitter_output = _material(
+            f"Flat Distribution Emitter {index}"
+        )
+        material.cycles.emission_sampling = "FRONT"
+        emission = emitter_tree.nodes.new("ShaderNodeEmission")
+        emission.name = "Emission"
+        _input(emission, "Color").default_value = color
+        _input(emission, "Strength").default_value = strength
+        emitter_tree.links.new(
+            _output(emission, "Emission"),
+            _input(emitter_output, "Surface"),
+        )
+        bpy.ops.mesh.primitive_plane_add(
+            size=size,
+            enter_editmode=False,
+            align="WORLD",
+            location=(x, 0.0, 3.0),
+            rotation=(3.141592653589793, 0.0, 0.0),
+        )
+        emitter = bpy.context.object
+        emitter.name = f"Flat Distribution Emitter {index}"
+        emitter.data.materials.append(material)
+
+    data = bpy.data.lights.new(
+        "Flat Distribution Point", type="POINT"
+    )
+    data.color = (0.19, 1.0, 0.27)
+    data.energy = 24.0
+    data.shadow_soft_size = 0.0
+    light = bpy.data.objects.new(data.name, data)
+    light.location = (0.0, 1.7, 2.4)
+    scene.collection.objects.link(light)
+
+    scene.cycles.max_bounces = 1
+    scene.cycles.diffuse_bounces = 0
+    scene.cycles.glossy_bounces = 0
+    scene.cycles.transmission_bounces = 0
+
+
 def _point_light(scene: Any) -> None:
     _analytic_light_probe(scene, "POINT")
 
@@ -4843,6 +4912,7 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "area_light": _area_light,
     "area_light_ellipse": _area_light_ellipse,
     "area_light_spread": _area_light_spread,
+    "flat_light_distribution": _flat_light_distribution,
     "background_world": _background_world,
     "blackbody_matrix": _blackbody_matrix,
     "bump_matrix": _bump_matrix,
@@ -4953,7 +5023,12 @@ def _main() -> None:
     scene.render.resolution_y = 64
     scene.render.resolution_percentage = 100
     scene.render.film_transparent = False
-    scene.render.image_settings.file_format = "OPEN_EXR_MULTILAYER"
+    image_settings = scene.render.image_settings
+    if hasattr(image_settings, "media_type"):
+        # Blender 5.2 separates the media category from the concrete file
+        # format; selecting the category makes OPEN_EXR_MULTILAYER writable.
+        image_settings.media_type = "MULTI_LAYER_IMAGE"
+    image_settings.file_format = "OPEN_EXR_MULTILAYER"
     scene.render.image_settings.color_depth = "32"
     scene.cycles.samples = 256
     scene.cycles.use_adaptive_sampling = False

@@ -34,6 +34,7 @@ using contract::CameraProjection;
 using contract::CameraSensorFit;
 using contract::EnvironmentDesc;
 using contract::EnvironmentSunDesc;
+using contract::EmissionSampling;
 using contract::GeometryId;
 using contract::ImageAlphaType;
 using contract::ImageColorSpace;
@@ -51,6 +52,7 @@ using contract::ShaderDomain;
 using contract::ShaderGraph;
 using contract::SocketValue;
 using contract::TriangleMeshDesc;
+using contract::WorldSampling;
 
 struct DocumentDeleter {
     void operator()(yyjson_doc *document) const noexcept {
@@ -3039,6 +3041,44 @@ template<typename T>
     return ImageAlphaType::straight;
 }
 
+[[nodiscard]] EmissionSampling emission_sampling(
+    std::string_view name) {
+    if (name == "NONE") {
+        return EmissionSampling::none;
+    }
+    if (name == "AUTO") {
+        return EmissionSampling::automatic;
+    }
+    if (name == "FRONT") {
+        return EmissionSampling::front;
+    }
+    if (name == "BACK") {
+        return EmissionSampling::back;
+    }
+    if (name == "FRONT_BACK") {
+        return EmissionSampling::front_back;
+    }
+    throw std::runtime_error(
+        "unsupported Cycles emission sampling method: " +
+        std::string{name});
+}
+
+[[nodiscard]] WorldSampling world_sampling(
+    std::string_view name) {
+    if (name == "NONE") {
+        return WorldSampling::none;
+    }
+    if (name == "AUTOMATIC") {
+        return WorldSampling::automatic;
+    }
+    if (name == "MANUAL") {
+        return WorldSampling::manual;
+    }
+    throw std::runtime_error(
+        "unsupported Cycles world sampling method: " +
+        std::string{name});
+}
+
 [[nodiscard]] std::vector<std::uint8_t> read_file(
     const std::filesystem::path &path) {
     std::ifstream stream{path, std::ios::binary | std::ios::ate};
@@ -3223,7 +3263,13 @@ BlenderSceneImport load_blender_scene_bundle(
                         image_color_spaces,
                         image_alpha_types,
                         node_groups,
-                        result.diagnostics)});
+                        result.diagnostics),
+                    .emission_sampling =
+                        emission_sampling(text(
+                            member(
+                                material,
+                                "emission_sampling"),
+                            "AUTO"))});
         }
 
         yyjson_arr_iter image_iterator =
@@ -3892,11 +3938,26 @@ BlenderSceneImport load_blender_scene_bundle(
                     .is_sphere = !boolean(
                         member(light, "use_soft_falloff"),
                         false),
-                    .shader = light_shader});
+                    .shader = light_shader,
+                    .use_mis = boolean(
+                        member(
+                            light,
+                            "use_multiple_importance_sampling"),
+                        true)});
         }
 
         auto *world = member(root, "world");
         if (world != nullptr && !yyjson_is_null(world)) {
+            scene.world_sampling = world_sampling(text(
+                member(world, "sampling_method"),
+                "AUTOMATIC"));
+            scene.world_sample_map_resolution =
+                static_cast<std::uint32_t>(
+                    unsigned_number(
+                        member(
+                            world,
+                            "sample_map_resolution"),
+                        1024u));
             Vec3f world_color =
                 float3(member(world, "color"), {0.05f, 0.05f, 0.05f});
             auto *tree = member(world, "node_tree");

@@ -1,0 +1,253 @@
+{
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.Depth.Z",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.Diffuse Direct.R",
+    "ViewLayer.Diffuse Direct.G",
+    "ViewLayer.Diffuse Direct.B",
+    "ViewLayer.Diffuse Indirect.R",
+    "ViewLayer.Diffuse Indirect.G",
+    "ViewLayer.Diffuse Indirect.B",
+    "ViewLayer.Diffuse Color.R",
+    "ViewLayer.Diffuse Color.G",
+    "ViewLayer.Diffuse Color.B",
+    "ViewLayer.Glossy Direct.R",
+    "ViewLayer.Glossy Direct.G",
+    "ViewLayer.Glossy Direct.B",
+    "ViewLayer.Glossy Indirect.R",
+    "ViewLayer.Glossy Indirect.G",
+    "ViewLayer.Glossy Indirect.B",
+    "ViewLayer.Glossy Color.R",
+    "ViewLayer.Glossy Color.G",
+    "ViewLayer.Glossy Color.B",
+    "ViewLayer.Transmission Direct.R",
+    "ViewLayer.Transmission Direct.G",
+    "ViewLayer.Transmission Direct.B",
+    "ViewLayer.Transmission Indirect.R",
+    "ViewLayer.Transmission Indirect.G",
+    "ViewLayer.Transmission Indirect.B",
+    "ViewLayer.Transmission Color.R",
+    "ViewLayer.Transmission Color.G",
+    "ViewLayer.Transmission Color.B",
+    "ViewLayer.Emission.R",
+    "ViewLayer.Emission.G",
+    "ViewLayer.Emission.B",
+    "ViewLayer.Environment.R",
+    "ViewLayer.Environment.G",
+    "ViewLayer.Environment.B",
+    "ViewLayer.Debug Sample Count.X"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        0.9999853372573853,
+        0.9999996423721313,
+        0.9999760985374451
+      ],
+      "cycles": "/tmp/psycles-exr-validation-20260729/transparent_data_pass/transparent_data_pass-cycles.exr",
+      "cycles_channel_mean": [
+        0.08442189544439316,
+        0.04459546506404877,
+        0.01739325374364853
+      ],
+      "cycles_luminance_mean": 0.05109849572181702,
+      "cycles_rms": 0.05603259429335594,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999920534521262,
+      "maximum_absolute_error": 0.001019991934299469,
+      "mean_absolute_error": 0.00011449897283455357,
+      "orientation_rmse": {
+        "flip_x": 0.000182385541847907,
+        "flip_xy": 0.0008681013132445514,
+        "flip_y": 0.0008673085831105709,
+        "identity": 0.0001799121528165415
+      },
+      "p95_pixel_rmse": 0.000348412140738219,
+      "p99_pixel_rmse": 0.0004817875160370022,
+      "psycles": "/tmp/psycles-exr-validation-20260729/transparent_data_pass/transparent_data_pass-psycles.exr",
+      "psycles_channel_mean": [
+        0.08442065864801407,
+        0.04459545016288757,
+        0.01739283837378025
+      ],
+      "psycles_luminance_mean": 0.051098089665174484,
+      "psycles_rms": 0.056031958444561096,
+      "relative_rmse": 0.0032108481694533026,
+      "rmse": 0.0001799121528165415,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1315.9985055617574,
+        "display_scale": 10.46558105153501,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles/docs/validation/2026-07-29/transparent-data-pass-vk/triptychs/combined.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "DiffCol": {
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "cycles": "/tmp/psycles-exr-validation-20260729/transparent_data_pass/transparent_data_pass-cycles.exr",
+      "cycles_channel_mean": [
+        0.45361119508743286,
+        0.15300890803337097,
+        0.048798587173223495
+      ],
+      "cycles_luminance_mean": 0.20938418805599213,
+      "cycles_rms": 0.27781468629837036,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/tmp/psycles-exr-validation-20260729/transparent_data_pass/transparent_data_pass-psycles.exr",
+      "psycles_channel_mean": [
+        0.45361119508743286,
+        0.15300890803337097,
+        0.048798587173223495
+      ],
+      "psycles_luminance_mean": 0.20938418805599213,
+      "psycles_rms": 0.27781469361390726,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.9841287251211,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles/docs/validation/2026-07-29/transparent-data-pass-vk/triptychs/diffcol.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "DiffDir": {
+      "channel_mean_ratio": [
+        0.9999831318855286,
+        0.9999738335609436,
+        0.9999775290489197
+      ],
+      "cycles": "/tmp/psycles-exr-validation-20260729/transparent_data_pass/transparent_data_pass-cycles.exr",
+      "cycles_channel_mean": [
+        0.18611490726470947,
+        0.29147201776504517,
+        0.35641154646873474
+      ],
+      "cycles_luminance_mean": 0.27376312017440796,
+      "cycles_rms": 0.2867372930049896,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999925974034739,
+      "maximum_absolute_error": 0.0066186487674713135,
+      "mean_absolute_error": 0.000754414068069309,
+      "orientation_rmse": {
+        "flip_x": 0.0011915673967450857,
+        "flip_xy": 0.005628977902233601,
+        "flip_y": 0.005623765289783478,
+        "identity": 0.0011754145380109549
+      },
+      "p95_pixel_rmse": 0.0022703721188008785,
+      "p99_pixel_rmse": 0.0031734418589621782,
+      "psycles": "/tmp/psycles-exr-validation-20260729/transparent_data_pass/transparent_data_pass-psycles.exr",
+      "psycles_channel_mean": [
+        0.18611176311969757,
+        0.2914643883705139,
+        0.35640352964401245
+      ],
+      "psycles_luminance_mean": 0.2737610936164856,
+      "psycles_rms": 0.28673310828572235,
+      "relative_rmse": 0.00409927333027623,
+      "rmse": 0.0011754145380109549,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 203.96238085087074,
+        "display_scale": 2.455466453830766,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles/docs/validation/2026-07-29/transparent-data-pass-vk/triptychs/diffdir.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "Normal": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "cycles": "/tmp/psycles-exr-validation-20260729/transparent_data_pass/transparent_data_pass-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "cycles_luminance_mean": 0.0722000002861023,
+      "cycles_rms": 0.5773502588272095,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/tmp/psycles-exr-validation-20260729/transparent_data_pass/transparent_data_pass-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "psycles_luminance_mean": 0.0722000002861023,
+      "psycles_rms": 0.5773502777928151,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "normal_xyz_to_rgb",
+        "path": "/home/mike/Projects/Psycles/docs/validation/2026-07-29/transparent-data-pass-vk/triptychs/normal.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    }
+  },
+  "schema": "psycles.cycles-differential.v1"
+}

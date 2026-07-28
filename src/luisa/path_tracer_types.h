@@ -46,6 +46,14 @@ struct EmissiveTriangleGpu {
     luisa::uint primitive_index{};
     luisa::uint surface_tag{};
     luisa::uint parameter_block{};
+    luisa::uint emission_sampling{};
+};
+
+struct LightDistributionGpu {
+    float cumulative{};
+    float selection_pdf{};
+    luisa::uint kind{};
+    luisa::uint index{};
 };
 
 struct SurfacePointCall {
@@ -209,7 +217,14 @@ LUISA_STRUCT(
     geometry_index,
     primitive_index,
     surface_tag,
-    parameter_block) {};
+    parameter_block,
+    emission_sampling) {};
+LUISA_STRUCT(
+    psycles::luisa_backend::detail::LightDistributionGpu,
+    cumulative,
+    selection_pdf,
+    kind,
+    index) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::SurfacePointCall,
     position,
