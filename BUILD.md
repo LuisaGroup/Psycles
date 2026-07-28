@@ -225,6 +225,11 @@ inventory, integrator baselines, and analytic-light baselines. The device
 fixture is registered only when the fallback target exists; it disables
 shader caching and fast math, dispatches runtime-uniform hash/sample/path-step
 inputs, and compares device-side bitcasts rather than host-converted floats.
+When Blender is discoverable, CTest also registers
+`psycles.blender_export_geometry_cache`. The fixture exports two unmodified
+objects sharing one Mesh datablock and two objects with object-specific Array
+modifiers. It requires the first pair to share one exported geometry and the
+modified pair to retain distinct evaluated topology.
 
 The focused sampling gate is:
 

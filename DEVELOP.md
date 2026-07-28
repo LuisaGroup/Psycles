@@ -6,9 +6,10 @@ does not mean “Cycles compatible”: compatibility requires an official Blende
 
 ## Active handoff checkpoint
 
-Development continues on `refactor/path-tracer-modules` from
-`main@ad360032`. Every independently validated stage is recorded here and
-pushed before the next long-running compile or render:
+The modular path-tracer work was merged by PR #1 at `main@2f49868`; this
+handoff continues directly on `main` with the Blender evaluated-geometry cache
+repair. Every independently validated stage is recorded here and pushed before
+the next long-running compile or render:
 
 1. [x] split `src/luisa/path_tracer.cpp` by stable responsibility without
    changing rendering semantics, the kernel argument ABI, or automatic cache
@@ -19,6 +20,13 @@ pushed before the next long-running compile or render:
    scenes;
 4. replace per-material expanded DSL ASTs with a buffer-driven shared device
    instruction executor and remeasure cold/hot compilation.
+
+The Git recovery boundary is important: the interrupted session's experimental
+unified-light, triangle/area-light sampling, and Nishita changes were not
+published and are not present in this tree. The repository contains the
+validated modular split, production Sobol work, and the exporter cache repair
+described below. Resume unified-light work from the unchecked P1 items and
+Cycles 4.5.10 source rather than assuming the chat-only experiment survived.
 
 The tabulated-Sobol host and fallback-device fixtures were independently
 recovered and verified on this branch, and the same stream is now integrated
@@ -87,6 +95,28 @@ structural-cache migration; the modular focused key is
 `ARGUMENT_HASH cf9ee8fec3c444f6` and `ARGUMENT_COUNT 19` as the historical
 production-Sobol key.
 
+The current Lone Monk 640x480 end-to-end diagnostic exposed an exporter
+geometry-cache regression. `arch.005` through `arch.008` share one source Mesh
+datablock but use object-specific Mirror modifier inputs; their evaluated
+render widths are approximately 8.88, 15.07, 15.09, and 8.88 scene units.
+Caching every evaluated geometry by the source datablock incorrectly mapped
+all four instances to the small `arch.005` mesh. The repair only shares
+unmodified render Mesh datablocks, including the effective material-slot
+signature, while modified and non-Mesh objects retain object-specific
+evaluated geometry. The Blender regression exports four objects as exactly
+three geometries: two unmodified instances share, while Array=2 and Array=4
+objects sharing one source Mesh retain distinct 4/8-triangle results.
+
+The repaired full Lone Monk export contains 7,543 instances and 350
+geometries. `arch.005` through `arch.008` map to distinct geometry IDs
+262/263/264/265 with independently hashed vertex streams and evaluated widths
+8.8776/15.0709/15.0898/8.8762; 841 `grass_blade.002` instances still share
+geometry 340. A clean Release fallback build and all eight existing tests plus
+the Blender regression pass (9/9 with Blender 4.5.10 available). The fresh
+640x480, 64 spp, seed-0 Psycles render had not completed its first fallback JIT
+when this handoff was requested and produced no image, so visual acceptance of
+the repaired arches remains the immediate next gate.
+
 The production integration exposed a Luisa XIR
 `local_load_elimination` heap use-after-free. LuisaCompute `next@f42f3c6e`
 pre-creates all block/predecessor data-flow entries and forbids map insertion
@@ -108,7 +138,7 @@ status.
 | Shader inventory | 96 Cycles-applicable nodes tracked from 105 Blender shader node types |
 | Complete coverage | 43/96 complete: 41 `cycles_verified` device nodes and 2 structural output adapters |
 | Remaining nodes | 12 partial and 41 pending; no implemented node is waiting for a probe, and 1 Cycles OSL-only node is tracked separately |
-| Automated gate | 5/5 clean core groups pass; final Luisa `f42f3c6e` completed a 245-step fallback rebuild with LLVM 22.1.8/Embree 4.3.0, the device fixture executes exact bit comparisons, and the complete fallback gate passes 8/8 |
+| Automated gate | 5/5 clean core groups pass; final Luisa `f42f3c6e` completed a 245-step fallback rebuild with LLVM 22.1.8/Embree 4.3.0, the device fixture executes exact bit comparisons, the complete fallback gate passes 8/8, and the optional Blender 4.5.10 exporter regression raises the full gate to 9/9 |
 | Path-tracer architecture | Public façade reduced to 51 lines; nine private implementation translation units; full fallback build and 39/39 pre/post-refactor PFM byte matches |
 | Production Sobol probes | `emission_surface` and `diffuse_bsdf_matrix` selected linear passes are pixel-exact at 64×64/4 spp; `diffuse_surface` 64×64/16 spp Combined RMSE is `0.006317606`, mean-energy ratio is `0.999740158`, and invalid pixels are 0 |
 | Analytic lights | 11 Point/Spot/Area/Sun baselines, including shapes, spread, finite Sun disk, and light node trees |

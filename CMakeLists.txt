@@ -322,4 +322,18 @@ if(PSYCLES_BUILD_TESTS)
                 "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_cycles_light_baselines.py"
                 "${CMAKE_CURRENT_SOURCE_DIR}/docs/cycles-light-probe-baselines-4.5.10.json")
     endif()
+
+    find_program(PSYCLES_BLENDER_EXECUTABLE NAMES blender)
+    if(PSYCLES_BLENDER_EXECUTABLE)
+        add_test(
+            NAME psycles.blender_export_geometry_cache
+            COMMAND
+                "${PSYCLES_BLENDER_EXECUTABLE}"
+                --background
+                --factory-startup
+                --python
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_geometry_cache.py"
+                --
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/export_psycles_scene.py")
+    endif()
 endif()
