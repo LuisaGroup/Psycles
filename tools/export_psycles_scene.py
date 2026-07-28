@@ -251,6 +251,25 @@ def _write_array(stream: Any, values: array.array[Any]) -> dict[str, int]:
     return {"offset": offset, "bytes": written}
 
 
+def _geometry_cache_key(obj: Any, scene: Any) -> tuple[Any, ...]:
+    # Reusing an evaluated mesh is only safe when Blender reports that the
+    # render geometry is identical to the source Mesh datablock. Modifier
+    # evaluation can depend on object-local settings and referenced objects:
+    # Lone Monk's arch.005--arch.008 share one Mesh datablock, but their Mirror
+    # modifiers produce four different render meshes.
+    if (
+        obj.type == "MESH"
+        and obj.data is not None
+        and not obj.is_modified(scene, "RENDER")
+    ):
+        material_slots = tuple(
+            slot.material.as_pointer() if slot.material is not None else 0
+            for slot in obj.material_slots
+        )
+        return ("mesh", obj.data.as_pointer(), material_slots)
+    return ("object", obj.as_pointer())
+
+
 def _geometry(
     obj: Any,
     depsgraph: Any,
@@ -630,7 +649,7 @@ def _main() -> None:
     depsgraph = bpy.context.evaluated_depsgraph_get()
 
     geometries: list[dict[str, Any]] = []
-    geometry_by_object: dict[str, int] = {}
+    geometry_by_source: dict[tuple[Any, ...], int] = {}
     instances: list[dict[str, Any]] = []
     with (output / "geometry.bin").open("wb") as stream:
         stream.write(b"PSYGEO1\0")
@@ -642,14 +661,14 @@ def _main() -> None:
                 continue
             if obj.type not in {"MESH", "CURVE", "SURFACE", "FONT", "META"}:
                 continue
-            key = original.name_full
-            geometry_index = geometry_by_object.get(key)
+            key = _geometry_cache_key(original, scene)
+            geometry_index = geometry_by_source.get(key)
             if geometry_index is None:
                 geometry_data = _geometry(original, depsgraph, stream)
                 if geometry_data is None:
                     continue
                 geometry_index = len(geometries)
-                geometry_by_object[key] = geometry_index
+                geometry_by_source[key] = geometry_index
                 geometries.append(geometry_data)
             instances.append(
                 {
