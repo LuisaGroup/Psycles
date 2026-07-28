@@ -6,7 +6,8 @@ Continue on `main`; do not restart from a historical refactor branch.
 
 - Psycles renderer implementation: `a10d686`, published to
   `LuisaGroup/Psycles:main`.
-- LuisaCompute pin: `f83725d27502f79e30aac50eba851e410912bfc5`,
+- LuisaCompute pin: `0e6f4376e`, including the linear/verifiable
+  conditional-batch repair,
   published directly to `LuisaGroup/LuisaCompute:next`.
 - Current Blender/Cycles source checkout:
   `/home/mike/Projects/blender-cycles`,
@@ -110,14 +111,19 @@ The published Luisa sequence is:
 - `6ead8e714`: make HIP/Vulkan/fallback backend resources work from a CMake
   subdirectory;
 - `83a04feb8`: preserve CFG and SSA invariants;
-- `f83725d27`: preserve executable semantics.
+- `f83725d27`: preserve executable semantics;
+- `0e6f4376e`: process a full stable if-candidate batch, reject post-merge
+  selection re-entry, and expose opt-in pass tracing.
 
 The final transformation uses dominance-constrained loop membership, treats
 nested break scopes atomically, preserves non-trivial update-region execution,
 node-splits selection re-entry, clones affine opaque ray-query storage, and
-ignores disconnected edges when judging executable constructs.
+ignores disconnected edges when judging executable constructs. Its batch
+progress measure is the strictly decreasing raw conditional count. Its
+selection postcondition forbids an edge from an `M`-dominated region back into
+the pre-`M`, `H`-dominated interior for selection `(H, M)`.
 
-`test_xir_pass_restructure_cfg` passes 49 tests / 1003 assertions. The complete
+`test_xir_pass_restructure_cfg` passes 51 tests / 1013 assertions. The complete
 Luisa gate passes 87/88. The sole failure is the independently reproducible
 pre-existing `test_eastl_allocation` set of eight `fixed_vector` assertions;
 do not hide it or attribute it to the XIR patch.
@@ -148,11 +154,15 @@ these focused probes.
    exact common source/binary revision. The packaged Blender 5.2 executable is
    older than the inspected 2026-07-28 source, so do not call it exact
    current-`main`.
-2. Obtain/open the official Lone Monk scene and render it through both Cycles
-   and Psycles on the same RX 9070 XT. Start at 480p; attempt 1080p if memory
-   permits. Use the same frame, seed, samples, integrator, raw materials, and
-   linear pass set.
-3. Record device selection, scene/export counts, cold and warm compilation,
+2. Fix the formally isolated `column marble` material-lowering explosion.
+   Its single raw graph currently creates 45,900 XIR blocks and 1,543,437
+   instructions before restructuring. Prove whether sampled-table or
+   dependency lowering violates a bounded-code-size invariant; add a red/green
+   regression and keep the raw closure graph intact.
+3. Render Lone Monk through both Cycles and Psycles on the same RX 9070 XT.
+   Start at 480p; attempt 1080p if memory permits. Use the same frame, seed,
+   samples, integrator, raw materials, and linear pass set. Record device
+   selection, scene/export counts, cold and warm compilation,
    render-only and wall time, peak memory, per-pass RMSE/energy/invalid pixels,
    and same-device speedup. Commit all reports and triptychs.
 4. Fix the first formal renderer mismatch exposed by that gate. Likely open
@@ -165,11 +175,14 @@ these focused probes.
 
 The scene is now present and its first backend bring-up is recorded in
 [the Lone Monk report](docs/validation/2026-07-29/lone-monk/bringup.json).
-Before any pixel comparison, Vulkan exposed a greater-than-20-minute
-monolithic render-kernel cold JIT and HIP exposed a greater-than-10-minute
-HIPRT acceleration-structure build. Treat these as the current first
-full-scene blockers. Do not skip to a smaller showcase scene and call the
-full-scene gate complete.
+Vulkan initially exposed a greater-than-20-minute monolithic render-kernel
+cold JIT and HIP exposed a greater-than-10-minute HIPRT
+acceleration-structure build. The XIR batch/merge repair now renders a
+full-geometry, six-material controlled Vulkan input in a 22.5549-second JIT.
+An eleven-material trace and five single-material trials isolate the remaining
+Vulkan code-size blocker to the raw `column marble` graph. The reduced input
+is diagnostic only; do not call it a Lone Monk quality gate or manufacture a
+triptych from it.
 
 ## Known limitations
 

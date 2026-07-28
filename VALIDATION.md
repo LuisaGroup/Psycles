@@ -1,7 +1,7 @@
 # Psycles validation record — 2026-07-29
 
-This record covers the renderer boundary published as Psycles
-`main@a10d686` and LuisaCompute `next@f83725d27`. It records the commands,
+This record covers the renderer boundary on Psycles `main` and LuisaCompute
+`next@0e6f4376e`. It records the commands,
 numeric results, visual inspection, and known limitations for the AMD GPU
 bring-up, Cycles flat-light distribution, XIR control-flow repair, and
 multilayer OpenEXR output.
@@ -12,7 +12,7 @@ multilayer OpenEXR output.
   together. All three requested backend targets are strict CMake
   postconditions rather than optional best-effort features.
 - The complete Psycles gate passes 12/12 after a 32-job build.
-- Luisa's focused `restructure_cfg` gate passes 49/49 tests and 1003
+- Luisa's focused `restructure_cfg` gate passes 51/51 tests and 1013
   assertions. The complete Luisa unit gate passes 87/88; the sole failure is
   the pre-existing EASTL `fixed_vector` allocation contract described below.
 - Vulkan and HIP both render the focused flat-light scene on the Radeon RX
@@ -49,9 +49,9 @@ closure topology and socket values for Luisa execution.
 
 | Item | Validated value |
 |---|---|
-| Psycles implementation | `a10d686` on `main` |
+| Psycles renderer implementation | `a10d686` on `main`; later `main` commits pin and document the Luisa repair |
 | Psycles input boundary | `32d4217dc543b1778729f23a18f3f3143e001a24` |
-| LuisaCompute | `f83725d27502f79e30aac50eba851e410912bfc5` on published `next` |
+| LuisaCompute | `0e6f4376e` on published `next` |
 | Cycles source inspected | Blender `main@9353fed6d7cdc25b2aa03c30a155b044b313c8ec`, 2026-07-28 |
 | Cycles render executable | Blender 5.2.0 LTS, build hash `fbe6228777e7`, 2026-07-13 |
 | OS/kernel | Arch Linux, Linux `7.1.4-zen1-1-zen` |
@@ -124,6 +124,14 @@ scene-specific pattern patches:
   to the new storage;
 - disconnected predecessors are excluded consistently from executable-CFG
   construct legality.
+- an if-restructuring batch processes its entire stable candidate snapshot.
+  Every successful rewrite strictly reduces the raw conditional count and
+  creates no raw conditional, so progress is monotonic rather than one
+  graph-wide walk per branch;
+- for every emitted selection `(H, M)`, no edge may leave the region dominated
+  by `M` and re-enter the `H`-dominated interior before `M`. Merge inference
+  ranks ordinary common joins first and an enclosing loop-boundary convergence
+  proxy second.
 
 The relevant published Luisa commits are:
 
@@ -132,6 +140,7 @@ The relevant published Luisa commits are:
 | `6ead8e714` | backend resource paths work when Luisa is built as a subdirectory |
 | `83a04feb8` | preserve CFG and SSA invariants during restructuring |
 | `f83725d27` | preserve executable semantics for update regions, re-entry, affine state, and disconnected edges |
+| `0e6f4376e` | make conditional batching monotonic, verify selection merge frontiers, and add opt-in pass tracing |
 
 The focused and complete commands were:
 
@@ -140,7 +149,7 @@ The focused and complete commands were:
 ctest --test-dir build/luisa-tests --output-on-failure -j32
 ```
 
-The focused binary passes 49 tests / 1003 assertions. The complete suite
+The focused binary passes 51 tests / 1013 assertions. The complete suite
 passes 87/88. `test_eastl_allocation` fails eight assertions concerning
 EASTL `fixed_vector` max-size and move/overflow buffer ownership. It reproduces
 when run alone and is outside the XIR files changed by these commits; it is
@@ -278,11 +287,38 @@ main render-kernel JIT. It was interrupted at the documented ten-minute bound.
 HIP acceleration-structure construction and Vulkan monolithic-kernel JIT are
 therefore recorded as separate engineering issues.
 
-The complete structured measurements are in the
+Opt-in XIR tracing then reduced the problem without changing geometry. A
+six-original-material controlled input retained all 350 geometries and 7,543
+instances. The old one-rewrite-per-batch implementation spent approximately
+113.29 seconds and still emitted an invalid selection: a merge-dominated path
+branched back into the selection interior. The invariant-based batch and merge
+repair passes its two red/green regressions and renders the same controlled
+input. Vulkan scene compilation took 0.648155 seconds, main-kernel JIT
+22.5549 seconds, and 64×48/1 spp rendering 0.00485903 seconds; the 497,049-word
+SPIR-V passed validation and Psycles wrote PPM, PFM passes, and multilayer EXR.
+
+The decoded image was inspected at original resolution. It contains finite
+image data without a full-frame NaN, Inf, or exposure failure, but its sparse
+one-sample appearance and reduced material set make it a compiler/first-pixel
+smoke only. The committed preview and inspection record are in the
+[Lone Monk investigation](docs/validation/2026-07-29/lone-monk/README.md).
+
+An eleven-material controlled input reached 50,020 blocks and 2,205,924
+instructions before restructuring and was interrupted at 180 seconds. Five
+single-material trials isolated the nonlinear lowering to `column marble`.
+That material alone reaches 45,900 blocks, 1,543,437 instructions, and 15,266
+raw conditional branches; its graph includes a 257-sample Color Ramp, Bump,
+and two RGB Curves. The other four isolated materials compile and render in
+3.35–18.73 seconds. This moves the active Vulkan blocker from XIR batch
+complexity to host-side material graph expansion.
+
+The complete commands, stage timings, per-material results, test counts, and
+machine-readable measurements are in the
 [Lone Monk bring-up report](docs/validation/2026-07-29/lone-monk/bringup.json).
-No triptych is fabricated before Psycles produces pixels. This directory will
-receive the required Cycles / Psycles / amplified-difference images as soon as
-the backend reaches comparable EXR output.
+No Lone Monk triptych is fabricated from the reduced-material smoke. The
+required Cycles / Psycles / amplified-linear-difference triptychs remain
+pending until the unmodified material set produces comparable EXRs. The
+already committed focused triptychs continue to test the comparison pipeline.
 
 ## Numeric comparison
 
