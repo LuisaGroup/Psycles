@@ -3,7 +3,7 @@
 Psycles builds LuisaCompute as a CMake subdirectory. The repository pins the
 tested Luisa revision in `third_party/LuisaCompute`; a normal user build does
 not need a separate Luisa installation or a second configure step.
-The active branch pins LuisaCompute `next@f42f3c6e`.
+The active branch pins LuisaCompute `next@f83725d27`.
 
 ## Prerequisites
 
@@ -12,10 +12,29 @@ The active branch pins LuisaCompute `next@f42f3c6e`.
 - A C++20 compiler
 - Ninja or another CMake generator
 - Python 3 for the versioned compatibility checks
+- OpenImageIO and OpenEXR development packages for multilayer EXR output
+
+Official Cycles differential probes additionally require Blender and the
+Python dependencies shipped by or expected by that Blender package. The
+comparison and triptych tools use OpenImageIO, NumPy, and Pillow instead of
+implementing image formats or resampling locally. On Arch Linux:
+
+```bash
+sudo pacman -S --needed \
+  blender python-cattrs python-numpy python-pillow \
+  openimageio openexr
+```
+
+On Debian/Ubuntu the equivalent external-Python package is
+`python3-cattrs`; Blender.org builds normally bundle their own Python
+environment. The probe tools support both Blender 4.5's direct multilayer EXR
+format selection and Blender 5.2's `MULTI_LAYER_IMAGE` media category.
+Psycles' C++ renderer links the system OpenImageIO package and writes
+full-float Cycles-compatible multilayer OpenEXR files.
 
 The host-only `fallback` backend additionally needs LLVM, Embree, X11, and
-libuuid development packages discoverable by CMake. The active fallback
-validation baseline is:
+libuuid development packages discoverable by CMake. The historical Ubuntu
+portability baseline is:
 
 | Component | Version |
 |---|---:|
@@ -52,8 +71,8 @@ headers. GPU backend prerequisites are inherited from LuisaCompute.
 git clone --recurse-submodules https://github.com/LuisaGroup/Psycles.git
 cd Psycles
 cmake -S . -B build -G Ninja
-cmake --build build
-ctest --test-dir build --output-on-failure
+cmake --build build --parallel 32
+ctest --test-dir build --output-on-failure -j32
 ```
 
 If the repository was cloned without submodules:
@@ -70,8 +89,11 @@ build.
 
 | Option | Default | Purpose |
 |---|---:|---|
+| `PSYCLES_ENABLE_OPENIMAGEIO` | `ON` | Write Cycles-compatible multilayer OpenEXR output |
 | `PSYCLES_ENABLE_LUISA` | `ON` | Build the Luisa DSL/runtime renderer |
 | `PSYCLES_ENABLE_LUISA_FALLBACK` | `ON` | Build the LLVM/Embree host backend |
+| `PSYCLES_ENABLE_LUISA_HIP` | `ON` | Build the AMD HIP backend |
+| `PSYCLES_ENABLE_LUISA_VULKAN` | `ON` | Build the Vulkan backend |
 | `PSYCLES_BUILD_TESTS` | `ON` | Build C++ tests and register compatibility gates |
 | `PSYCLES_BUILD_EXAMPLES` | `ON` | Build render and inspection CLIs |
 | `PSYCLES_FETCH_LUISA_NEXT` | `OFF` | Fetch `next` only when the initialized submodule is unavailable |
@@ -86,8 +108,8 @@ To build only the dependency-free scene, graph, and compiler contracts:
 
 ```bash
 cmake -S . -B build-core -G Ninja -DPSYCLES_ENABLE_LUISA=OFF
-cmake --build build-core
-ctest --test-dir build-core --output-on-failure
+cmake --build build-core --parallel 32
+ctest --test-dir build-core --output-on-failure -j32
 ```
 
 For a fallback build whose packages are outside the system prefix, provide
@@ -95,6 +117,10 @@ their package directories explicitly:
 
 ```bash
 cmake -S . -B build -G Ninja \
+  -DPSYCLES_ENABLE_LUISA_FALLBACK=ON \
+  -DPSYCLES_ENABLE_LUISA_HIP=ON \
+  -DPSYCLES_ENABLE_LUISA_VULKAN=ON \
+  -DPSYCLES_ENABLE_OPENIMAGEIO=ON \
   -DLLVM_DIR=/path/to/llvm/lib/cmake/llvm \
   -Dembree_DIR=/path/to/embree/lib/cmake/embree-4.3.0
 ```
@@ -110,12 +136,16 @@ cmake -S . -B build -G Ninja \
 Configuration must print:
 
 ```text
+Build with HIP backend: 7.2...
+Build with Vulkan backend
 Build with fallback backend (LLVM 22.1.8, Embree 4.3.0)
 ```
 
-`PSYCLES_ENABLE_LUISA_FALLBACK=ON` is a strict postcondition: configuration
-fails if Luisa does not create `luisa-compute-backend-fallback`. Psycles never
-silently accepts a core-only build when fallback execution was requested.
+The three backend options are strict postconditions. Configuration fails if
+Luisa does not create `luisa-compute-backend-fallback`,
+`luisa-compute-backend-hip`, or `luisa-compute-backend-vk` when the
+corresponding Psycles option is `ON`. Psycles never silently accepts a
+core-only or reduced-backend build when those execution paths were requested.
 
 ## Luisa path-tracer source layout
 
@@ -131,6 +161,7 @@ translation units:
 | `path_tracer_surfaces.cpp` | Surface evaluation/emission/sample/AOV dispatch |
 | `path_tracer_environment.cpp` | World graph, environment suns, Nishita sun |
 | `path_tracer_geometry.cpp` | Transparent shadow traversal and material lookup |
+| `path_tracer_light_distribution.cpp` | Luisa flat-distribution upper-bound selection |
 | `path_tracer_kernel.cpp` | Production path-state machine and shader compilation |
 | `path_tracer_session.cpp` | Sobol resources, progressive dispatch, pass readback |
 | `path_tracer_scene.cpp` | Scene compiler and GPU resource upload |
@@ -143,18 +174,24 @@ not compile or include them individually.
 The small Luisa smoke test is:
 
 ```bash
-./build/bin/psycles_luisa_render_demo output.ppm fallback 640 400 256
+./build/bin/psycles_luisa_render_demo output.ppm hip 640 400 256
 ```
 
 The normalized Blender-scene renderer is:
 
 ```bash
 ./build/bin/psycles_render_blender_scene \
-  /path/to/export-package output.ppm fallback 640 480 64
+  /path/to/export-package output.ppm vk 640 480 64
 ```
 
 Its positional arguments are export directory, output path, backend, width,
 height, and samples per pixel.
+
+When `PSYCLES_ENABLE_OPENIMAGEIO=ON`, both renderer CLIs also write
+`<output-stem>.exr`. The file is one scanline-oriented, full-float OpenEXR
+part whose dotted channel names follow
+`ViewLayer.<pass>.<component>`. Individual PFM passes remain available for
+legacy diagnostics, but the Cycles differential runner compares EXR to EXR.
 
 `SampleRange.total` is the total AA sample count for the entire render, not
 the current progressive chunk size. The production Sobol sequence is derived
@@ -215,8 +252,8 @@ numbers above.
 The normal release gate is:
 
 ```bash
-cmake --build build
-ctest --test-dir build --output-on-failure
+cmake --build build --parallel 32
+ctest --test-dir build --output-on-failure -j32
 ```
 
 This includes Luisa AST construction, Blender import, core contracts, the
@@ -226,25 +263,29 @@ fixture is registered only when the fallback target exists; it disables
 shader caching and fast math, dispatches runtime-uniform hash/sample/path-step
 inputs, and compares device-side bitcasts rather than host-converted floats.
 When Blender is discoverable, CTest also registers
-`psycles.blender_export_geometry_cache`. The fixture exports two unmodified
-objects sharing one Mesh datablock and two objects with object-specific Array
-modifiers. It requires the first pair to share one exported geometry and the
-modified pair to retain distinct evaluated topology.
+`psycles.blender_export_geometry_cache` and
+`psycles.blender_multilayer_exr_api`. The geometry fixture exports two
+unmodified objects sharing one Mesh datablock and two objects with
+object-specific Array modifiers. It requires the first pair to share one
+exported geometry and the modified pair to retain distinct evaluated
+topology. The EXR fixture locks the Blender 4.5/5.2 API used to request
+32-bit multilayer OpenEXR output.
 
 The focused sampling gate is:
 
 ```bash
-cmake --build build --target \
+cmake --build build --parallel 32 --target \
   psycles_tabulated_sobol_tests \
   psycles_luisa_compile_tests \
   psycles_luisa_sobol_fallback_tests
 ctest --test-dir build \
   -R 'psycles\.(tabulated_sobol|luisa_ast|luisa_sobol_fallback)$' \
-  --output-on-failure
+  --output-on-failure -j32
 ```
 
-A production-Sobol change additionally requires official Blender 4.5.10
-linear-pass probes. The current focused baselines are:
+A renderer or sampling change additionally requires an exact-revision Cycles
+linear-pass comparison and viewable triptychs. Historical Blender 4.5.10
+focused baselines are:
 
 - `emission_surface`, 64×64/4 spp: Combined, Emit, and Normal RMSE/max error
   are all 0;
@@ -269,6 +310,10 @@ A full compatibility claim additionally requires the focused official-Cycles
 linear-pass probes described in
 `docs/cycles-compatibility.md`.
 
+The exact 2026-07-29 AMD three-backend commands, XIR results, EXR metrics,
+GPU timings, visual inspection, committed reports, triptychs, and limitations
+are recorded in [VALIDATION.md](VALIDATION.md).
+
 ## Troubleshooting
 
 - `LuisaCompute submodule is not initialized`: run
@@ -277,6 +322,14 @@ linear-pass probes described in
   fallback with `-DPSYCLES_ENABLE_LUISA_FALLBACK=OFF` when another Luisa
   backend is available. Do not treat a configure that omits the exact fallback
   version line above as a passing fallback build.
+- `PSYCLES_ENABLE_LUISA_HIP=ON` or
+  `PSYCLES_ENABLE_LUISA_VULKAN=ON` reports a missing target: install the
+  backend prerequisites or explicitly disable only the backend that is not
+  part of the requested validation. Do not treat silent target omission as a
+  passing GPU build.
+- `OpenImageIOConfig.cmake` is missing: install the OpenImageIO development
+  package or set `OpenImageIO_DIR`. Disable `PSYCLES_ENABLE_OPENIMAGEIO` only
+  for a build that intentionally does not need the production EXR output.
 - `X11/Xlib.h` not found: install `libx11-dev`; disabling Luisa GUI does not
   remove this fallback-module dependency.
 - A dependency changed but CMake retained old feature tests: re-run the CMake
