@@ -53,7 +53,10 @@ def _main() -> None:
     modified_mesh = _mesh("Shared modified mesh")
     modified_two = _object("modified-two", modified_mesh)
     modified_four = _object("modified-four", modified_mesh)
-    modified_two.modifiers.new("Array", "ARRAY").count = 2
+    render_only_array = modified_two.modifiers.new("Array", "ARRAY")
+    render_only_array.count = 2
+    render_only_array.show_viewport = False
+    render_only_array.show_render = True
     modified_four.modifiers.new("Array", "ARRAY").count = 4
     bpy.context.view_layer.update()
 

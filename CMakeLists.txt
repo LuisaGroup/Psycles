@@ -445,6 +445,16 @@ if(PSYCLES_BUILD_TESTS)
                 --
                 "${CMAKE_CURRENT_SOURCE_DIR}/tools/export_psycles_scene.py")
         add_test(
+            NAME psycles.blender_export_particle_info
+            COMMAND
+                "${PSYCLES_BLENDER_EXECUTABLE}"
+                --background
+                --factory-startup
+                --python
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_particle_info.py"
+                --
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/export_psycles_scene.py")
+        add_test(
             NAME psycles.blender_multilayer_exr_api
             COMMAND
                 "${PSYCLES_BLENDER_EXECUTABLE}"

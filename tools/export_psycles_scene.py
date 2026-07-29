@@ -24,6 +24,7 @@ import pathlib
 import shutil
 import struct
 import sys
+import traceback
 from typing import Any
 
 import bmesh
@@ -161,6 +162,32 @@ def _cycles_uint_to_float(value: int) -> float:
 
 def _cycles_object_random_id(name: str) -> int:
     return _cycles_hash_uint2(_cycles_hash_string(name), 0)
+
+
+def _cycles_particle_index(object_instance: Any) -> int:
+    """Return the Particle Info index exposed by Cycles for a dupli.
+
+    Cycles' ``BlenderSync::sync_dupli_particle`` only creates particle data
+    for parent particles. Interpolated/simple child particles have a
+    dependency-graph persistent ID at or above ``ParticleSystem.totpart``;
+    Cycles rejects those IDs and leaves the object on particle-table entry
+    zero. The SVM Particle Info node then reads that entry's index, so child
+    particles use the same zero sentinel as non-particle objects.
+
+    ``ParticleSystem.particles`` is Blender's RNA view of the parent-particle
+    array and therefore supplies the same bound as ``totpart``. Keep this
+    boundary explicit instead of treating every dependency-graph ID as a
+    Cycles particle-table index.
+    """
+
+    particle_system = object_instance.particle_system
+    if particle_system is None:
+        return 0
+    persistent_index = int(object_instance.persistent_id[0])
+    parent_count = len(particle_system.particles)
+    if persistent_index < 0 or persistent_index >= parent_count:
+        return 0
+    return persistent_index & _UINT32_MASK
 
 
 def _column_major(matrix: Any) -> list[float]:
@@ -628,29 +655,17 @@ def _light(obj: Any) -> dict[str, Any]:
     }
 
 
-def _main() -> None:
-    args = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
-    if len(args) != 1:
-        raise SystemExit("expected one output directory after '--'")
-    output = pathlib.Path(args[0]).resolve()
-    output.mkdir(parents=True, exist_ok=True)
+def _export_scene(
+    output: pathlib.Path,
+    depsgraph: Any,
+    source_camera: Any | None,
+) -> None:
     scene = bpy.context.scene
-
-    # ``evaluated_depsgraph_get`` returns the viewport dependency graph when
-    # invoked from a background Python script.  Render-only objects are
-    # therefore absent when either the object or one of its collections has
-    # ``hide_viewport`` enabled, even if Cycles renders it because
-    # ``hide_render`` is disabled.  Build an equivalent render-visible
-    # dependency graph for export.  The loaded .blend is never saved, so these
-    # temporary visibility changes cannot modify the source scene.
-    for collection in bpy.data.collections:
-        collection.hide_viewport = collection.hide_render
-    for obj in scene.objects:
-        obj.hide_viewport = obj.hide_render
-        if not obj.hide_render:
-            obj.hide_set(False)
-    bpy.context.view_layer.update()
-    depsgraph = bpy.context.evaluated_depsgraph_get()
+    if depsgraph.mode != "RENDER":
+        raise RuntimeError(
+            "Psycles scene export requires Blender's RENDER dependency "
+            f"graph, received {depsgraph.mode!r}"
+        )
 
     geometries: list[dict[str, Any]] = []
     geometry_by_source: dict[tuple[Any, ...], int] = {}
@@ -681,16 +696,11 @@ def _main() -> None:
                     "transform": _column_major(object_instance.matrix_world),
                     "persistent_id": list(object_instance.persistent_id),
                     "is_instance": bool(object_instance.is_instance),
-                    # Cycles stores particle data for both parent and child
-                    # particles and exposes that data index through Particle
-                    # Info. Blender's dependency-graph persistent ID is the
-                    # corresponding particle index for particle duplis.
-                    "particle_index": int(
-                        object_instance.persistent_id[0]
-                        if object_instance.particle_system is not None
-                        else 0
-                    )
-                    & _UINT32_MASK,
+                    # Match Cycles' parent-only particle table. Child
+                    # particles deliberately retain the zero sentinel.
+                    "particle_index": _cycles_particle_index(
+                        object_instance
+                    ),
                     # Cycles uses the dependency-graph random id for duplis,
                     # and hash_uint2(hash_string(object name), 0) otherwise.
                     "random_id": int(
@@ -769,7 +779,7 @@ def _main() -> None:
             }
         )
 
-    camera = scene.camera
+    camera = source_camera
     camera_data = None
     if camera is not None:
         camera_data = {
@@ -884,6 +894,91 @@ def _main() -> None:
         f"instances, {len(materials)} materials, "
         f"{len(payload['images'])} images to {output}"
     )
+
+
+_EXPORT_OUTPUT: pathlib.Path | None = None
+_EXPORT_CAMERA: Any | None = None
+_EXPORT_COMPLETED = False
+_EXPORT_ERROR: BaseException | None = None
+
+
+class _PsyclesExportRenderEngine(bpy.types.RenderEngine):
+    """Obtain the same final-render dependency graph consumed by Cycles."""
+
+    bl_idname = "PSYCLES_SCENE_EXPORT"
+    bl_label = "Psycles Scene Export"
+    bl_use_preview = False
+
+    def render(self, depsgraph: Any) -> None:
+        global _EXPORT_COMPLETED, _EXPORT_ERROR
+        try:
+            if _EXPORT_OUTPUT is None:
+                raise RuntimeError("Psycles export output was not initialized")
+            _export_scene(
+                _EXPORT_OUTPUT,
+                depsgraph,
+                _EXPORT_CAMERA,
+            )
+            _EXPORT_COMPLETED = True
+        except BaseException as error:
+            _EXPORT_ERROR = error
+            traceback.print_exc()
+            raise
+
+
+def _main() -> None:
+    global _EXPORT_OUTPUT, _EXPORT_CAMERA
+    global _EXPORT_COMPLETED, _EXPORT_ERROR
+
+    args = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
+    if len(args) != 1:
+        raise SystemExit("expected one output directory after '--'")
+    output = pathlib.Path(args[0]).resolve()
+    output.mkdir(parents=True, exist_ok=True)
+
+    scene = bpy.context.scene
+    original_engine = scene.render.engine
+    original_camera = scene.camera
+    temporary_camera = None
+    _EXPORT_OUTPUT = output
+    _EXPORT_CAMERA = original_camera
+    _EXPORT_COMPLETED = False
+    _EXPORT_ERROR = None
+
+    # Blender's final-render operator requires a camera before it constructs
+    # the RENDER dependency graph. Preserve camera-less scene semantics in the
+    # payload by keeping the original camera separately and removing this
+    # temporary object immediately after export.
+    if original_camera is None:
+        camera_data = bpy.data.cameras.new(
+            "__Psycles Export Temporary Camera"
+        )
+        temporary_camera = bpy.data.objects.new(
+            "__Psycles Export Temporary Camera",
+            camera_data,
+        )
+        scene.collection.objects.link(temporary_camera)
+        scene.camera = temporary_camera
+
+    bpy.utils.register_class(_PsyclesExportRenderEngine)
+    try:
+        scene.render.engine = _PsyclesExportRenderEngine.bl_idname
+        bpy.ops.render.render()
+    finally:
+        scene.render.engine = original_engine
+        scene.camera = original_camera
+        if temporary_camera is not None:
+            camera_data = temporary_camera.data
+            bpy.data.objects.remove(temporary_camera, do_unlink=True)
+            bpy.data.cameras.remove(camera_data)
+        bpy.utils.unregister_class(_PsyclesExportRenderEngine)
+
+    if _EXPORT_ERROR is not None:
+        raise _EXPORT_ERROR
+    if not _EXPORT_COMPLETED:
+        raise RuntimeError(
+            "Blender did not invoke the Psycles final-render export engine"
+        )
 
 
 if __name__ == "__main__":
