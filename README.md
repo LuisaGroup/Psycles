@@ -36,13 +36,15 @@ Clone with submodules and build the default Luisa/fallback configuration:
 git clone --recurse-submodules https://github.com/LuisaGroup/Psycles.git
 cd Psycles
 cmake -S . -B build -G Ninja
-cmake --build build
-ctest --test-dir build --output-on-failure
+cmake --build build --parallel 32
+ctest --test-dir build --output-on-failure -j32
 ```
 
 Psycles uses the pinned `third_party/LuisaCompute` submodule as a CMake
 subdirectory so that normal builds and validation use the same tested Luisa
-revision.
+revision. The commands above use every hardware thread on the validated
+16-core/32-thread workstation; use the machine's hardware-thread count on
+another host.
 
 For a dependency-free contract-core build:
 
