@@ -526,9 +526,9 @@ absolute linear difference amplified independently by the reciprocal of its
 This baseline is a major correctness improvement, but it does **not** pass the
 1:1 Cycles quality gate. The indirect-pass energy gap, stochastic
 distribution/sampler differences, high-frequency normal/material residuals,
-and outliers still require investigation at higher samples. A 1440×1080 run
-and pixels from a locally built current Blender/Cycles revision remain
-pending.
+and outliers still require investigation at higher samples. The current
+Blender/Cycles source build below is complete; its 1440×1080 matched run
+remains pending at this checkpoint.
 
 ### Same-device timing
 
@@ -550,3 +550,72 @@ by dividing the Cycles Python-call elapsed time by Psycles render-only time is
 not reported as a speedup because those intervals have different boundaries.
 Peak VRAM was not sampled for this short matched run and remains an explicit
 missing measurement for the 1080p gate.
+
+## Current Blender/Cycles source build and HIP smoke
+
+The Blender source remote was refreshed on 2026-07-29 and frozen at clean
+`origin/main@4fe17ef6be5d46251fa5e7dbff9018efb1c719d5`, committed the same
+day. This is Blender 5.3.0 Alpha, not the packaged 5.2 binary used for the
+640×480 reference above.
+
+The checkout is `/home/mike/Projects/blender-cycles`. GNU `time` 1.10 and
+Git LFS 3.7.1 were installed from the system package manager. The official
+Linux dependency checkout was synchronized with
+`make_update.py --no-blender --architecture x86_64` and is pinned at
+`lib/linux_x64@ecbd06cf6d2a4aa6b00a61ffb479fc81b17aba08`. The first
+configure correctly rejected an LFS pointer in `release/datafiles/startup.blend`;
+`git lfs pull` followed by `git lfs fsck` repaired and verified the checkout.
+
+The exact release/headless configuration was:
+
+```bash
+cmake -S /home/mike/Projects/blender-cycles \
+  -B /home/mike/Projects/blender-build-4fe17ef6 -G Ninja \
+  -C build_files/cmake/config/blender_release.cmake \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DWITH_HEADLESS=ON \
+  -DWITH_CYCLES=ON \
+  -DWITH_CYCLES_DEVICE_HIP=ON \
+  -DWITH_CYCLES_HIP_BINARIES=ON \
+  -DCYCLES_HIP_BINARIES_ARCH=gfx1201 \
+  -DWITH_CYCLES_DEVICE_HIPRT=OFF \
+  -DWITH_CYCLES_DEVICE_OPTIX=OFF \
+  -DWITH_CYCLES_CUDA_BINARIES=OFF \
+  -DWITH_CYCLES_DEVICE_ONEAPI=OFF \
+  -DWITH_CYCLES_ONEAPI_BINARIES=OFF \
+  -DWITH_XR_OPENXR=OFF
+```
+
+The build was always invoked with `--parallel 32`. An initial timing wrapper
+failed before compilation because GNU `time` was not installed. After that
+dependency was added, the first long build was externally terminated with
+signal 15 at approximately task 3605/6465; there was no compiler error,
+kernel OOM report, or swap. Ninja retained the completed graph. The 2863-task
+incremental resume passed in 5:21.19 with 2176% average CPU, 3,350,892 KiB
+peak resident memory, and no swap. It produced a 7,290,920-byte
+`kernel_gfx1201.fatbin` and no unnecessary GPU-architecture fatbins.
+
+The raw build-tree executable then failed its expected pre-install runtime
+check because `libopenjph.so.0.25` and the Blender `5.3` data tree were not
+staged. The prefix was changed from `/usr/local` to the non-system
+`/home/mike/Projects/blender-install-4fe17ef6`; a 32-job refresh and
+`cmake --install` produced a self-contained 1.2 GiB installation.
+`blender --version` reports Release hash `4fe17ef6be5d`, built 2026-07-29.
+
+A 64×48/1 spp unmodified Lone Monk HIP smoke then selected exactly one
+device, `AMD Radeon RX 9070 XT`, and completed:
+
+| Measurement | Current source result |
+|---|---:|
+| Cycles internal render | `1.011486 s` |
+| Process elapsed | `2.359135 s` |
+| VRAM baseline | `4,067,905,536 B` |
+| Absolute VRAM peak | `6,000,680,960 B` |
+| Increase over baseline | `1,932,775,424 B` |
+| EXR | 64×48, 43 channels, 132,096/132,096 finite values |
+
+VRAM was sampled every 50 ms through
+`tools/measure_amd_vram.py`; the report also records the exact child command
+and exit status. This smoke proves that the locally built current-source HIP
+path and multilayer EXR are usable. It is not a quality comparison and has no
+triptych; triptychs belong to the matched high-sample gate.

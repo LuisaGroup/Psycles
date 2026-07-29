@@ -604,15 +604,33 @@ shader-size and backend health only.
 The focused Cycles metadata selected CPU execution, so only the Lone Monk row
 supports the same-device comparison.
 
+## Current-source Cycles build gate
+
+Blender/Cycles `main@4fe17ef6be5d46251fa5e7dbff9018efb1c719d5`
+was built locally as Blender 5.3.0 Alpha with Release, headless Cycles HIP,
+and a `gfx1201`-only AOT kernel. The official Linux dependency checkout is
+`ecbd06cf6d2a4aa6b00a61ffb479fc81b17aba08`; Git LFS integrity passes.
+The 32-job incremental resume completed 2863 tasks in 5:21.19 with no swap,
+and the installed binary selects only the RX 9070 XT for HIP.
+
+The first unmodified Lone Monk smoke at 64×48/1 spp completed in
+`1.011486 s` of Cycles render time. Its 43-channel multilayer EXR contains
+132,096 finite values and no NaN or Inf. At 50 ms sampling, whole-process
+VRAM rose from `4,067,905,536` to `6,000,680,960` bytes, an increase of
+`1,932,775,424` bytes. Full configuration, the initial missing-LFS failure,
+external signal-15 resume, non-system staging install, and smoke command are
+recorded in the
+[Lone Monk log](docs/validation/2026-07-29/lone-monk/README.md).
+
 ## Known limitations and next gate
 
 - Repeat Lone Monk at the original 1440×1080 aspect/resolution and a higher
   sample count. Record peak VRAM in addition to device selection, cold/warm
   setup, render-only time, pass metrics, and triptychs.
-- Build the clean current Cycles source checkout at
-  `4fe17ef6be5d46251fa5e7dbff9018efb1c719d5`, then move both source inspection
-  and pixels to that exact revision. The current 640×480 pixels are explicitly
-  from packaged Blender 5.2.0 LTS `fbe6228777e7`.
+- Move the quality-reference pixels to the completed current Cycles build.
+  The current 640×480 pixels are still explicitly from packaged Blender
+  5.2.0 LTS `fbe6228777e7`; the current-source 64×48 result is only a backend
+  smoke.
 - Diagnose the remaining diffuse/glossy indirect energy deficit and sampler /
   stochastic-distribution differences using Cycles alone as the oracle. Do
   not add a CPU reference sampler or renderer.

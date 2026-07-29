@@ -12,6 +12,10 @@ Continue on `main`; do not restart from a historical refactor branch.
 - Current Blender/Cycles source checkout:
   `/home/mike/Projects/blender-cycles`,
   clean `main@4fe17ef6be5d46251fa5e7dbff9018efb1c719d5`.
+- Current-source renderer:
+  `/home/mike/Projects/blender-install-4fe17ef6/blender`, Blender 5.3.0
+  Alpha Release with a `gfx1201`-only Cycles HIP kernel. Its unmodified
+  Lone Monk 64×48/1 spp backend smoke passes with a finite 43-channel EXR.
 - Lone Monk and focused reference-render executable: Blender 5.2.0 LTS hash
   `fbe6228777e7`, built 2026-07-15. These pixels are not described as current
   `main` pixels.
@@ -228,24 +232,21 @@ these focused probes.
 
 ## Exact next work
 
-1. Build the clean checked-out Blender/Cycles
-   `4fe17ef6be5d46251fa5e7dbff9018efb1c719d5` revision. Re-render the same
-   scene/settings on its HIP backend so source inspection and pixels have one
-   exact revision.
-2. Repeat Lone Monk at its original 1440×1080 aspect/resolution and a higher
+1. Repeat Lone Monk with the completed current-source Cycles HIP build at its
+   original 1440×1080 aspect/resolution and a higher
    fixed sample count. Poll and record peak VRAM for both renderers, retain
    cold/warm setup and render-only boundaries separately, regenerate every
    pass report and real triptych, and inspect them at original resolution.
-3. Diagnose the remaining diffuse/glossy indirect energy gap and stochastic
+2. Diagnose the remaining diffuse/glossy indirect energy gap and stochastic
    distribution difference from pass evidence and current Cycles semantics.
    Do not infer the cause from the likely-open list and do not add a CPU
    renderer/sampler. Any discovered defect gets a minimal Luisa-path
    regression before its fix.
-4. Correct the raw Sky Texture compiler contract for Blender 5.2
+3. Correct the raw Sky Texture compiler contract for Blender 5.2
    `MULTIPLE_SCATTERING` rather than silently treating it as the implemented
    single-scattering model. Add a current-Cycles fixture when implementing the
    missing equations and importance sampling.
-5. Continue the evidence-ranked gaps: environment-map importance CDFs,
+4. Continue the evidence-ranked gaps: environment-map importance CDFs,
    automatic emissive sampling classification, visible-light forward MIS,
    light trees, then additional complex Blender demo scenes. Preserve raw
    closure graphs and commit/push every passing boundary.
@@ -255,11 +256,14 @@ these focused probes.
 - The 640×480 Lone Monk result is a real full-scene baseline, but its Combined
   relative RMSE is 16.8% and the indirect passes remain low; it has not passed
   final quality acceptance.
-- The current reference pixels come from packaged Blender 5.2.0 LTS
-  `fbe6228777e7`, not the inspected current-source checkout.
+- The 640×480 quality-reference pixels still come from packaged Blender
+  5.2.0 LTS `fbe6228777e7`. The current-source `4fe17ef6` build passes a
+  64×48 HIP smoke, but its matched high-sample reference is not yet recorded.
 - Psycles render-only is currently about 1.546× slower than Cycles HIP on the
   same RX 9070 XT, and cold Vulkan shader setup is about 244.8 seconds.
-- Peak VRAM is missing from the matched run.
+- Peak VRAM is missing from the matched 640×480 run. The reusable 50 ms
+  sampler is now `tools/measure_amd_vram.py`; the current-source Cycles smoke
+  validated its absolute-peak and baseline-relative reporting.
 - The simple-world sampler supports Blender 5.2 `SINGLE_SCATTERING`, not the
   distinct `MULTIPLE_SCATTERING` model.
 - Environment-map importance CDFs and
