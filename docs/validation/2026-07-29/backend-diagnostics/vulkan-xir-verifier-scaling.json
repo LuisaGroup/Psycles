@@ -1,5 +1,5 @@
 {
-  "schema": "psycles.vulkan-xir-verifier-scaling.v2",
+  "schema": "psycles.vulkan-xir-verifier-scaling.v3",
   "date": "2026-07-29",
   "backend": "vk",
   "device": "AMD Radeon RX 9070 XT (RADV GFX1201)",
@@ -7,10 +7,12 @@
     "before": "2282ffd6b271ba404bc11536553d1636114c6899",
     "linear_verifier": "a7118069eb4ef0e75af5d0c8d954d8e6ad638f9a",
     "construct_entry_dominance_reuse": "8c7d1bf88",
+    "lazy_if_batch_post_dominance": "ad4fdcedd",
     "branch": "next",
     "commit_subjects": [
       "XIR: make verifier use-list checks linear",
-      "XIR: reuse construct-entry dominance analysis"
+      "XIR: reuse construct-entry dominance analysis",
+      "XIR: rebuild if-batch post-dominance lazily"
     ]
   },
   "input": {
@@ -34,10 +36,11 @@
   },
   "cache": {
     "psycles_shader_cache_enabled_during_measurement": false,
-    "radv_pipeline_cache_state": "warm in all three matched runs",
+    "radv_pipeline_cache_state": "warm in all four matched runs",
     "radv_pipeline_ready_seconds_before": 0.178,
     "radv_pipeline_ready_seconds_after_linear_verifier": 0.164,
     "radv_pipeline_ready_seconds_after_dominance_reuse": 0.165,
+    "radv_pipeline_ready_seconds_after_lazy_post_dominance": 0.168,
     "production_shader_cache_restored_after_measurement": true,
     "restoration_build_parallel_jobs": 32
   },
@@ -87,6 +90,21 @@
         "spirv_validation_seconds": 1.224
       }
     },
+    "after_lazy_post_dominance": {
+      "reported_shader_jit_seconds": 35.0676,
+      "process_wall_seconds": 35.92,
+      "peak_rss_kib": 1663920,
+      "scene_compilation_seconds": 0.653585,
+      "render_seconds": 0.00667843,
+      "stages": {
+        "ast_to_xir_seconds": 0.859348475,
+        "spirv_xir_legalization_seconds": 27.752333504,
+        "destructure_cfg_seconds": 0.81452,
+        "restructure_cfg_seconds": 26.094309,
+        "native_spirv_emission_boundary_seconds": 4.853,
+        "spirv_validation_seconds": 1.232
+      }
+    },
     "speedup_before_to_linear_verifier": {
       "reported_shader_jit": 4.708827308,
       "ast_to_xir": 18.749912509,
@@ -99,9 +117,16 @@
       "restructure_cfg": 1.133227493,
       "unique_construct_entry_enforcement": 334.137434124
     },
+    "speedup_dominance_reuse_to_lazy_post_dominance": {
+      "reported_shader_jit": 1.133325349,
+      "restructure_cfg": 1.179989169,
+      "if_batch": 1.869650009,
+      "post_dominator_call_count": 14.031914894,
+      "post_dominator_time": 23.945014176
+    },
     "speedup_before_to_final": {
-      "reported_shader_jit": 5.18284981,
-      "complete_process": 5.106403941
+      "reported_shader_jit": 5.873855068,
+      "complete_process": 5.771714922
     },
     "output_shape_unchanged": {
       "spirv_words": 2672528,
@@ -110,7 +135,8 @@
       "restructured_loop": 46,
       "restructured_switch": 8,
       "canonicalized_cfg": 14,
-      "construct_entry_dom_tree_final_committed_cfg": 11
+      "construct_entry_dom_tree_final_committed_cfg": 11,
+      "if_batch_post_dom_rebuild_final_committed_cfg": 31
     }
   },
   "restructure_cfg_trace": {
@@ -177,12 +203,36 @@
       "post_dominator_seconds": 4.653498,
       "post_dominator_calls": 5276
     },
+    "after_lazy_post_dominance": {
+      "module_transaction_preflight_seconds": 0.949488,
+      "preflight_verifier": {
+        "calls": 69,
+        "seconds": 3.02365
+      },
+      "post_transform_verifier": {
+        "calls": 46,
+        "seconds": 2.200184
+      },
+      "all_verifier_seconds": 5.223834,
+      "all_verifier_percent_of_restructure": 20.019017,
+      "definition_transforms_seconds": 23.062669,
+      "main_loop_iterations_seconds": 5.490212,
+      "if_batch_seconds_nested_in_main_loop": 5.32099,
+      "post_restructure_fixed_point_seconds": 11.591714,
+      "construct_entry_checks": 5070,
+      "committed_cfg_dominator_tree_builds": 11,
+      "committed_cfg_if_batch_post_dominator_rebuilds": 31,
+      "post_dominator_seconds": 0.194341,
+      "post_dominator_calls": 376
+    },
     "verifier_speedup": 19.42161295,
     "construct_entry_enforcement_speedup": 334.137434124,
+    "post_dominator_call_reduction": 14.031914894,
+    "post_dominator_time_speedup": 23.945014176,
     "remaining_primary_stage": {
       "name": "restructure_cfg",
-      "seconds": 30.791002,
-      "percent_of_reported_shader_jit": 77.475284
+      "seconds": 26.094309,
+      "percent_of_reported_shader_jit": 74.411448
     }
   },
   "formal_repair": {
@@ -199,6 +249,15 @@
     "invalidation": "every successful construct-entry edge rewrite",
     "validation_is_not_skipped": true
   },
+  "formal_lazy_post_dominance": {
+    "invariant": "Dominance is refreshed after every successful CFG rewrite. Post-dominance may be stale only while no post-dominance query is evaluated.",
+    "query_protocol": "Infer the merge from the current dominance tree first. If that fails, rebuild stale post-dominance immediately before reading the immediate post-dominator.",
+    "equivalence": "Every actual post-dominance query observes the same CFG version as the eager algorithm; only analysis results that no query consumes are omitted.",
+    "rejected_stronger_hypothesis": "Keeping the initial batch post-dominator snapshot for all candidates is not valid: newly inserted structural merge nodes can become the correct nearest merge.",
+    "rejected_hypothesis_regression": "restructure_roundtrips_loop_switch_nested_break_continue",
+    "rejected_hypothesis_observation": "The stale-snapshot experiment expanded the result to 67 blocks, violating the existing strict bound of fewer than 64. The bound was not weakened and the experiment was not committed.",
+    "validation_is_not_skipped": true
+  },
   "regression": {
     "test": "xir_verifier_use_list_membership_is_linear_in_fanout",
     "fanout_instructions": 8192,
@@ -212,12 +271,18 @@
     "unit_xir_tests_passed": 48,
     "unit_xir_tests_total": 48,
     "xir_verifier_assertions": 197,
-    "restructure_cfg_assertions": 1041,
+    "restructure_cfg_assertions": 1042,
     "dominance_operation_count_test": {
       "test": "restructure_construct_entry_dominance_is_linear_per_cfg_version",
       "structured_if_count": 256,
       "cfg_mutations": 0,
       "expected_dominator_tree_builds": 1
+    },
+    "lazy_post_dominance_operation_count_test": {
+      "test": "restructure_if_batch_consumes_a_linear_diamond_chain",
+      "diamonds": 64,
+      "main_iteration_limit": 1,
+      "expected_post_mutation_post_dominator_rebuilds": 0
     },
     "build_parallel_jobs": 32
   },
@@ -225,10 +290,11 @@
     "before_ppm_sha256": "5a29d7d24876e89969714331b08e5c6ca23932a729a58f43878bcddd364ed587",
     "after_linear_verifier_ppm_sha256": "5a29d7d24876e89969714331b08e5c6ca23932a729a58f43878bcddd364ed587",
     "after_dominance_reuse_ppm_sha256": "5a29d7d24876e89969714331b08e5c6ca23932a729a58f43878bcddd364ed587",
+    "after_lazy_post_dominance_ppm_sha256": "5a29d7d24876e89969714331b08e5c6ca23932a729a58f43878bcddd364ed587",
     "differing_pixels": 0,
     "maximum_channel_difference": 0,
     "triptych": "vulkan-xir-verifier/use-list-triptych.png",
-    "triptych_sha256": "38500c9e1e9d95a090a1ff7430a6bcc3157966d32beea3e335f8df67ea07cac8",
+    "triptych_sha256": "7526b85f6732118b97c2ec7da02d82e46460af08899d9abd5a145f7e0043fbde",
     "triptych_scale": "4x nearest-neighbor; absolute difference amplified 32x",
     "visually_inspected_at_original_triptych_resolution": true
   },

@@ -17,8 +17,10 @@ alignment boundary:
   the historical `474.38 s` to `3.72 s`;
 - generic XIR use-list verification is now linear in operand/use-list count in
   Luisa `next@a7118069e`, and CFG-version-scoped construct-entry dominance
-  reuse follows in `next@8c7d1bf88`; together they reduce a matched
-  strict-native Vulkan shader-cache miss from `205.982 s` to `39.743 s`;
+  reuse follows in `next@8c7d1bf88`; lazy, observation-equivalent if-batch
+  post-dominance rebuilding follows in `next@ad4fdcedd`; together they reduce
+  a matched strict-native Vulkan shader-cache miss from `205.982 s` to
+  `35.0676 s`;
 - the current strict-native Vulkan cold JIT is dominated by formal XIR CFG
   restructuring, not by CMake compilation, SPIR-V validation, or rendering.
 
@@ -517,7 +519,7 @@ SPIR-V validation would save about 0.5%, while improving
 the existing structured-CFG invariants and regressions; replacing it with
 scene-specific shortcuts would be invalid.
 
-### Linear verifier and CFG-version analysis reuse
+### Linear verifier and lazy CFG analysis reuse
 
 The fine-grained trace showed that the apparent CFG cost was mostly a generic
 verifier complexity defect. Every instruction operand asked whether its exact
@@ -542,24 +544,25 @@ It changes the work to `O(use-list entries + membership queries)` without
 skipping or weakening validation. Detached `Use` nodes and nodes linked into
 the wrong `Value` remain errors.
 
-Three strict-native shader-cache-miss runs used the same scene, executable,
+Four strict-native shader-cache-miss runs used the same scene, executable,
 environment, trace mode, and warm RADV pipeline cache. The Psycles shader
 cache was disabled for each measurement and then restored, followed by a
 32-job rebuild:
 
-| Stage | Before | Linear verifier | + dominance reuse | Before→final |
-|---|---:|---:|---:|---:|
-| Reported shader JIT | `205.982 s` | `43.7438 s` | `39.7430 s` | `5.183×` |
-| AST to XIR | `15.8589 s` | `0.8458 s` | `0.8661 s` | `18.311×` |
-| `destructure-cfg` | `16.0259 s` | `0.8228 s` | `0.7897 s` | `20.294×` |
-| `restructure-cfg` | `133.1675 s` | `34.8932 s` | `30.7910 s` | `4.325×` |
-| Native SPIR-V emission boundary | `38.517 s` | `4.805 s` | `4.848 s` | `7.945×` |
-| SPIR-V validation | `1.177 s` | `1.165 s` | `1.224 s` | `0.962×` |
-| Complete process | `207.32 s` | `44.62 s` | `40.60 s` | `5.106×` |
+| Stage | Before | Linear verifier | + dominance reuse | + lazy post-dom | Before→final |
+|---|---:|---:|---:|---:|---:|
+| Reported shader JIT | `205.982 s` | `43.7438 s` | `39.7430 s` | `35.0676 s` | `5.874×` |
+| AST to XIR | `15.8589 s` | `0.8458 s` | `0.8661 s` | `0.8593 s` | `18.455×` |
+| `destructure-cfg` | `16.0259 s` | `0.8228 s` | `0.7897 s` | `0.8145 s` | `19.675×` |
+| `restructure-cfg` | `133.1675 s` | `34.8932 s` | `30.7910 s` | `26.0943 s` | `5.103×` |
+| Native SPIR-V emission boundary | `38.517 s` | `4.805 s` | `4.848 s` | `4.853 s` | `7.937×` |
+| SPIR-V validation | `1.177 s` | `1.165 s` | `1.224 s` | `1.232 s` | `0.955×` |
+| Complete process | `207.32 s` | `44.62 s` | `40.60 s` | `35.92 s` | `5.772×` |
 
 The earlier `240.23 s` profile included a `36.023 s` cold RADV pipeline
-creation, while the three matched runs above spent only `0.178 s`, `0.164 s`,
-and `0.165 s` respectively between SPIR-V validation and pipeline readiness.
+creation, while the four matched runs above spent only `0.178 s`, `0.164 s`,
+`0.165 s`, and approximately `0.168 s` respectively between SPIR-V
+validation and pipeline readiness.
 It is retained as historical stage context, not mixed into the controlled
 speedup.
 
@@ -594,12 +597,44 @@ production input, committed-CFG dominance builds fell to 11 and
 
 The corresponding operation-count regression creates 256 valid structured
 ifs in one immutable CFG version and requires exactly one construct-entry
-dominator build. All 48 `unit_xir` tests passed in parallel, including 197
-verifier assertions and 1,041 `restructure_cfg` assertions; all affected
-targets were built with `--parallel 32`.
+dominator build.
 
-The matched original, linear-verifier, and dominance-reuse PPM files all have
-SHA-256
+The remaining if-batch trace then exposed an independent eager-analysis
+defect. After every successful if rewrite, the old implementation rebuilt
+both dominance and post-dominance even when the next candidate could infer
+its merge from dominance and never read post-dominance. Luisa
+`next@ad4fdcedd` implements the following query protocol:
+
+> Dominance is refreshed after every CFG mutation. Post-dominance may remain
+> stale only until a candidate actually needs it; immediately before that
+> query, it is rebuilt for the current CFG version.
+
+This is observation-equivalent to eager rebuilding: every post-dominance
+query sees exactly the CFG version it would have seen before, while analyses
+that no query consumes are omitted. A stronger-looking shortcut was tested
+and rejected. Holding the initial batch post-dominator snapshot caused
+`restructure_roundtrips_loop_switch_nested_break_continue` to grow to 67
+blocks, violating its existing strict bound of fewer than 64. Newly inserted
+structural merge nodes can become the correct nearest merge, so an old-node
+post-dominance argument is insufficient. The threshold was not weakened and
+that experiment was not committed.
+
+On the production shader, total post-dominator builds fell from 5,276 to 376
+(`14.032×` fewer) and their nested time fell from `4.653498 s` to
+`0.194341 s` (`23.945×`). The if batches fell from `9.948389 s` to
+`5.320990 s` (`1.870×`), `restructure-cfg` fell from `30.791002 s` to
+`26.094309 s`, and full JIT fell from `39.7430 s` to `35.0676 s`.
+The committed-CFG report records 31 lazy if-batch post-dominator rebuilds.
+
+The operation-count regression uses 64 chained diamonds under a one-iteration
+budget. All merges remain inferable from the refreshed dominance tree, so it
+requires exactly zero post-mutation post-dominator rebuilds. All 48
+`unit_xir` tests passed in parallel, including 197 verifier assertions and
+1,042 `restructure_cfg` assertions; all affected targets were built with
+`--parallel 32`.
+
+The matched original, intermediate, and final lazy-analysis PPM files all
+have SHA-256
 `5a29d7d24876e89969714331b08e5c6ca23932a729a58f43878bcddd364ed587`.
 The following real triptych was opened at its original 1536×428 resolution.
 The source panels use 4× nearest-neighbor display scaling, and the third panel
@@ -610,17 +645,18 @@ is the absolute byte difference amplified 32×:
 The difference panel is completely black (`max channel difference = 0`), and
 both rendered panels show the same church/roof structure. The triptych
 SHA-256 is
-`38500c9e1e9d95a090a1ff7430a6bcc3157966d32beea3e335f8df67ea07cac8`.
+`7526b85f6732118b97c2ec7da02d82e46460af08899d9abd5a145f7e0043fbde`.
 This 128×96/1 spp run is deliberately a compiler and structural-semantic
 regression, not a Cycles image-quality or render-throughput acceptance.
 
-After both repairs, `restructure-cfg` still takes `30.7910 s`, or 77.48% of
-the remaining `39.7430 s` JIT. Its stable large costs are the main
-restructuring iterations (`10.1210 s`, including `9.9484 s` in if batches),
-the post-restructure fixed point (`11.5765 s`), and 5,276 post-dominator
-computations (`4.6535 s`). Unique construct-entry enforcement is no longer a
-material cost. These timers are nested and must not be added as independent
-totals. They define the next invariant-preserving optimization boundary.
+After all three repairs, `restructure-cfg` still takes `26.0943 s`, or 74.41%
+of the remaining `35.0676 s` JIT. Its stable large costs are now the
+post-restructure fixed point (`11.5917 s`) and main restructuring iterations
+(`5.4902 s`, including `5.3210 s` in if batches). Unique construct-entry
+enforcement and post-dominator rebuilding are no longer material costs.
+These timers are nested and must not be added as independent totals. The
+post-restructure fixed point is the next invariant-preserving optimization
+boundary.
 
 The complete machine-readable before/after record is
 [vulkan-xir-verifier-scaling.json](vulkan-xir-verifier-scaling.json).
