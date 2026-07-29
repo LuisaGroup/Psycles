@@ -1,13 +1,20 @@
 # Lone Monk backend diagnostics — 2026-07-29
 
-This record separates two independent backend findings made after the Filter
-Glossy alignment boundary:
+This record separates three backend findings made after the Filter Glossy
+alignment boundary:
 
-- the current Luisa HIP result is faster than Psycles Vulkan by its reported
-  render timer, but is not a valid Cycles performance comparison because HIP
-  drops visible scene instances;
+- the historical full-scene Luisa HIP result is faster than Psycles Vulkan by
+  its reported render timer, but is not a valid Cycles performance comparison
+  because it dropped visible scene instances;
+- the GFX12 large-TLAS traversal defect responsible for that structural miss
+  is fixed and regression-tested in Luisa
+  `next@3dc93b4c632e423e2ff44e308a2ff4656332f78a`;
 - the current strict-native Vulkan cold JIT is dominated by formal XIR CFG
   restructuring, not by CMake compilation, SPIR-V validation, or rendering.
+
+The full HIP quality and performance result remains unaccepted: a separate
+cumulative HIPRT high-quality BLAS-build failure still prevents a clean
+350-geometry rerender with the traversal fix.
 
 Cycles remains the only rendering oracle. No CPU renderer, sampler, BSDF
 mirror, material baking, exposure fit, or image-space correction was used.
@@ -90,8 +97,8 @@ acceleration-structure build hints from the default high-quality mode to
 `PREFER_FAST_BUILD`. It changed 507 pixels relative to the default HIP result
 but did not restore the church/roof instances. The source was then restored
 and rebuilt with all 32 jobs. This rejects build-hint selection as a
-sufficient explanation and leaves instance transforms, large-TLAS input, and
-HIP ray-query traversal as the active boundaries.
+sufficient explanation and motivated separating instance transforms, TLAS
+cardinality, and traversal state in the next isolation.
 
 The first 12-instance isolation attempt then exposed an earlier HIPRT
 boundary while retaining all 350 BLAS inputs. Near the 288th high-quality
@@ -105,6 +112,101 @@ a sufficient explanation. This builder/lifetime failure and the full-scene
 missing-instance result may share a cause, but that relationship is not yet
 claimed. The next regression boundary is the smallest ordered mesh set that
 reproduces the HIPRT fault.
+
+## GFX12 large-TLAS traversal overflow
+
+The controlled invariant is independent of Lone Monk:
+
+> Adding instances whose visibility mask excludes every tested ray must not
+> change any previously visible hit.
+
+The regression builds one visible triangle twice. The baseline TLAS contains
+only that instance. The padded TLAS contains 1,024 overlapping instances,
+with instance 8 visible and every other instance assigned visibility mask
+zero. For the same ray and mask, the exact result must remain a surface hit:
+
+| Query form | Baseline | Padded |
+|---|---:|---:|
+| closest instance | `0` | `8` |
+| any hit | `true` | `true` |
+| committed ray-query instance | `0` | `8` |
+| committed hit type | `Surface` | `Surface` |
+
+Before the repair, the padded result could become a miss even though the
+baseline passed. Increasing the GFX12 LDS short stack merely moved the
+failure to a larger TLAS and was rejected as a solution.
+
+RDNA4's `ds_bvh_stack_push8_pop1_rtn` short stack is circular. Its raw
+overflow sentinel is `0xffffffff`, while normal terminal underflow is
+`0xfffffffe`. The previous HIP wrapper exposed both outcomes to traversal as
+the same `InvalidValue`, so overflow silently discarded unvisited BVH nodes.
+The repair preserves this distinction and follows two callback-safe policies:
+
+- closest-hit and unsuccessful any-hit traversal restart from the original
+  ray on a cold, out-of-line checked software stack; a witnessed any-hit is
+  already sufficient and need not restart;
+- resumable ray queries retain a software traversal stack in their persistent
+  state, because restarting after a candidate callback could replay observable
+  user code.
+
+Both software paths trap on their explicit capacity boundary rather than
+converting stack exhaustion into a miss. This is a traversal-state invariant,
+not a scene-, instance-, transform-, or node-index special case.
+
+The final 1,024-instance regression passed six HIP runs on the RX 9070 XT
+(five consecutive runs plus one after rebasing onto the latest Luisa
+`origin/next`), with 131 assertions per run. The same test passed Vulkan with
+131 assertions. The following HIP suites also passed:
+
+| Suite | Assertions |
+|---|---:|
+| accel build modes | `300` |
+| motion ray query | `145` |
+| static motion instance | `276` |
+| matrix motion instance | `80` |
+| SRT motion instance | `104` |
+| motion mesh | `470` |
+
+All affected targets were rebuilt with `cmake --build ... --parallel 32`.
+Exploratory overlapping-TLAS runs at 7,543 and 16,384 instances also passed
+before the diagnostic size override was removed from the committed
+regression.
+
+### Real-scene isolation and visual inspection
+
+The real-scene check retains the 12 Lone Monk church/roof geometries and all
+7,543 TLAS entries. The other 7,531 entries reference a valid geometry with
+visibility mask zero. This makes the large input observationally equivalent
+to the 12-instance compact control while retaining the production 37-program
+material kernel. The large-scene `scene.json` SHA-256 is
+`9738546aa71039ad9fda341a6ff0c5a92387896e436fcd95d44665f28743b100`.
+
+The production shader cache was disabled for exactly one post-repair render,
+then immediately restored and rebuilt with all 32 jobs. At 128×96/1 spp, the
+old large TLAS produced only the environment. The repaired large TLAS restores
+the same church and roof structure visible in the compact control. The real
+triptych below was opened and inspected at original nearest-neighbor scale:
+
+[![HIP GFX12 visibility-padding triptych](hip-tlas-overflow/visibility-padding-triptych.png)](hip-tlas-overflow/visibility-padding-triptych.png)
+
+The triptych SHA-256 is
+`c2516418af2a0e479178293139b4959603a70350b03ffdb87a4ea17b0c9c1ec5`.
+The repaired PPM and multilayer EXR SHA-256 values are
+`2194385806e16d383736e9f3d2254fca112bb24bd2451d483a36b5be72f7e9f0`
+and
+`1a44df0bbe50fcb69be4345e1de58809565df7869d5904c6e4193efa6d1783b2`.
+This low-spp isolation proves structural traversal correctness only; it is
+not a Cycles quality or speed acceptance result.
+
+The uncached command completed in `352.20 s` at 98% average CPU and
+2,626,968 KiB peak resident memory. Psycles reported `351.277 s` for shader
+JIT and `0.108312 s` for the tiny render. HIP LLVM code generation took
+`26.5791 s` and emitted 4,180,808 bytes; the timestamped interval from code
+emission to the completed LTO/module-load message was another `268.872 s`.
+Thus this production HIP cold JIT is also effectively single-core and needs
+separate performance work. The tiny 1-spp render timer is deliberately not
+compared with Cycles. The machine-readable record is
+[hip-gfx12-tlas-overflow.json](hip-gfx12-tlas-overflow.json).
 
 ## Strict-native Vulkan cold-JIT profile
 

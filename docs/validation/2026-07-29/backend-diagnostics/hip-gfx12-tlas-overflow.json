@@ -1,0 +1,72 @@
+{
+  "date": "2026-07-29",
+  "hardware": {
+    "gpu": "AMD Radeon RX 9070 XT",
+    "architecture": "gfx1201",
+    "hip_driver": "7.2.53211",
+    "hip_runtime": "7.2.53211"
+  },
+  "luisa": {
+    "branch": "next",
+    "commit": "3dc93b4c632e423e2ff44e308a2ff4656332f78a",
+    "subject": "HIP: make GFX12 BVH traversal overflow-safe"
+  },
+  "invariant": "Adding instances excluded by the tested visibility mask must not change any previously visible hit.",
+  "regression": {
+    "source": "src/tests/unit/runtime/test_accel_visibility.cpp",
+    "instance_count": 1024,
+    "visible_instance": 8,
+    "overlapping_transforms": true,
+    "expected": {
+      "baseline": {
+        "closest_instance": 0,
+        "any_hit": true,
+        "ray_query_instance": 0,
+        "ray_query_hit_type": "Surface"
+      },
+      "padded": {
+        "closest_instance": 8,
+        "any_hit": true,
+        "ray_query_instance": 8,
+        "ray_query_hit_type": "Surface"
+      }
+    },
+    "hip_runs_passed": 6,
+    "assertions_per_run": 131,
+    "vulkan_runs_passed": 1,
+    "exploratory_instance_counts_passed": [
+      7543,
+      16384
+    ]
+  },
+  "real_scene_isolation": {
+    "resolution": [
+      128,
+      96
+    ],
+    "samples": 1,
+    "geometry_count": 12,
+    "tlas_instance_count": 7543,
+    "visible_instance_count": 12,
+    "masked_instance_count": 7531,
+    "runtime_material_programs": 37,
+    "scene_json_sha256": "9738546aa71039ad9fda341a6ff0c5a92387896e436fcd95d44665f28743b100",
+    "fixed_ppm_sha256": "2194385806e16d383736e9f3d2254fca112bb24bd2451d483a36b5be72f7e9f0",
+    "fixed_exr_sha256": "1a44df0bbe50fcb69be4345e1de58809565df7869d5904c6e4193efa6d1783b2",
+    "triptych": "hip-tlas-overflow/visibility-padding-triptych.png",
+    "triptych_sha256": "c2516418af2a0e479178293139b4959603a70350b03ffdb87a4ea17b0c9c1ec5",
+    "visual_result": "The repaired large TLAS restores the church and roof structure visible in the compact control; the pre-repair large TLAS contains only the environment.",
+    "acceptance_scope": "Structural traversal isolation only; not a Cycles quality or performance result."
+  },
+  "uncached_timing_seconds": {
+    "complete_process": 352.2,
+    "reported_shader_jit": 351.277,
+    "hip_llvm_codegen": 26.5791,
+    "post_emission_lto_and_module_load_interval": 268.872,
+    "render": 0.108312
+  },
+  "generated_amdgpu_code_bytes": 4180808,
+  "average_cpu_percent": 98,
+  "maximum_resident_kib": 2626968,
+  "remaining_blocker": "A separate cumulative HIPRT high-quality BLAS build failure prevents a corrected full 350-geometry Lone Monk rerender."
+}
