@@ -1,0 +1,42 @@
+{
+  "adaptive_sampling": false,
+  "blender": "5.3.0 Alpha",
+  "camera": "cam.001",
+  "cycles_compute_device_type": "HIP",
+  "cycles_device": "GPU",
+  "cycles_enabled_devices": [
+    {
+      "id": "HIP_AMD Radeon RX 9070 XT_0000:03:00",
+      "name": "AMD Radeon RX 9070 XT",
+      "type": "HIP"
+    }
+  ],
+  "denoising": false,
+  "elapsed_seconds": 19.058782977983356,
+  "frame": 4,
+  "height": 1080,
+  "output": "/tmp/lone-monk-20260730/particle-child-fix/cycles-main-16d7a3a4-1440x1080-256.exr",
+  "passes": [
+    "Combined",
+    "Normal",
+    "DiffCol",
+    "DiffDir",
+    "DiffInd",
+    "GlossCol",
+    "GlossDir",
+    "GlossInd",
+    "TransCol",
+    "TransDir",
+    "TransInd",
+    "Emit",
+    "Env",
+    "Depth",
+    "Debug Sample Count"
+  ],
+  "samples": 256,
+  "schema": "psycles.cycles-golden.v1",
+  "seed": 0,
+  "source": "/home/mike/Downloads/lone-monk_cycles_and_exposure-node_demo.blend",
+  "transparent": false,
+  "width": 1440
+}
