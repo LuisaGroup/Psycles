@@ -3513,7 +3513,7 @@ BlenderSceneImport load_blender_scene_bundle(
         }
         result.transparent_background =
             boolean(member(render, "transparent"));
-        result.filter_width = std::max(
+        const auto requested_filter_width = std::max(
             number(member(render, "filter_width"), 1.0f),
             1.0e-5f);
         const auto pixel_filter_type =
@@ -3522,13 +3522,19 @@ BlenderSceneImport load_blender_scene_bundle(
             pixel_filter_type == "BOX") {
             result.pixel_filter =
                 contract::PixelFilter::box;
+            // Cycles defines BOX as one complete pixel regardless of the
+            // dormant Blender filter_width property. Normalize legacy or
+            // third-party bundles here as well as in the exporter.
+            result.filter_width = 1.0f;
         } else if (pixel_filter_type == "GAUSSIAN") {
             result.pixel_filter =
                 contract::PixelFilter::gaussian;
+            result.filter_width = requested_filter_width;
         } else if (
             pixel_filter_type == "BLACKMAN_HARRIS") {
             result.pixel_filter =
                 contract::PixelFilter::blackman_harris;
+            result.filter_width = requested_filter_width;
         } else {
             throw std::runtime_error(
                 "unsupported Cycles pixel filter: " +

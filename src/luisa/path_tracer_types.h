@@ -187,7 +187,6 @@ struct RenderKernelParameters {
     float camera_aperture_radius{};
     float camera_focal_distance{};
     float camera_aperture_ratio{};
-    float filter_width{};
     float pass_alpha_threshold{};
     luisa::float3 background{};
     luisa::float4x4 camera_transform{};
@@ -364,7 +363,6 @@ LUISA_STRUCT(
     camera_aperture_radius,
     camera_focal_distance,
     camera_aperture_ratio,
-    filter_width,
     pass_alpha_threshold,
     background,
     camera_transform) {};

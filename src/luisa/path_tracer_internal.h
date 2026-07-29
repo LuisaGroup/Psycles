@@ -287,6 +287,7 @@ using RenderShader = Shader1D<
     std::uint32_t,
     std::uint32_t,
     Buffer<luisa::float4>,
+    Buffer<float>,
     RenderKernelParameters>;
 
 class LuisaRenderSession final : public contract::RenderSession {
@@ -303,6 +304,7 @@ private:
     Buffer<luisa::float4> _light_passes;
     Buffer<luisa::uint> _sample_count;
     Buffer<luisa::float4> _sobol_table;
+    Buffer<float> _pixel_filter_table;
     std::uint32_t _sobol_sequence_size{};
     std::uint32_t _total_aa_samples{};
     RenderKernelParameters _kernel_parameters{};

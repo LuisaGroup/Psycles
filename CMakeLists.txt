@@ -35,6 +35,7 @@ add_library(psycles_core
     src/contract/shader_graph.cpp
     src/io/image.cpp
     src/sampling/light_distribution.cpp
+    src/sampling/pixel_filter.cpp
     src/sampling/tabulated_sobol.cpp)
 add_library(Psycles::core ALIAS psycles_core)
 
@@ -170,7 +171,6 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/path_tracer_kernel.cpp
             src/luisa/path_tracer_light_distribution.cpp
             src/luisa/path_tracer_lighting.cpp
-            src/luisa/path_tracer_sampling.cpp
             src/luisa/path_tracer_scene.cpp
             src/luisa/path_tracer_session.cpp
             src/luisa/path_tracer_surfaces.cpp)
@@ -235,6 +235,52 @@ if(PSYCLES_ENABLE_LUISA)
                 add_test(
                     NAME psycles.luisa_sobol_fallback
                     COMMAND psycles_luisa_sobol_fallback_tests)
+
+                add_executable(
+                    psycles_luisa_spherical_geometry_tests
+                    tests/test_luisa_spherical_geometry.cpp)
+                target_link_libraries(
+                    psycles_luisa_spherical_geometry_tests
+                    PRIVATE Psycles::luisa)
+                target_compile_features(
+                    psycles_luisa_spherical_geometry_tests
+                    PRIVATE cxx_std_20)
+                add_dependencies(
+                    psycles_luisa_spherical_geometry_tests
+                    luisa-compute-backend-fallback)
+                set_target_properties(
+                    psycles_luisa_spherical_geometry_tests
+                    PROPERTIES
+                        RUNTIME_OUTPUT_DIRECTORY
+                            "${CMAKE_BINARY_DIR}/bin")
+                add_test(
+                    NAME psycles.luisa_spherical_geometry_fallback
+                    COMMAND
+                        psycles_luisa_spherical_geometry_tests
+                        fallback)
+
+                add_executable(
+                    psycles_luisa_camera_sampling_tests
+                    tests/test_luisa_camera_sampling.cpp)
+                target_link_libraries(
+                    psycles_luisa_camera_sampling_tests
+                    PRIVATE Psycles::luisa)
+                target_compile_features(
+                    psycles_luisa_camera_sampling_tests
+                    PRIVATE cxx_std_20)
+                add_dependencies(
+                    psycles_luisa_camera_sampling_tests
+                    luisa-compute-backend-fallback)
+                set_target_properties(
+                    psycles_luisa_camera_sampling_tests
+                    PROPERTIES
+                        RUNTIME_OUTPUT_DIRECTORY
+                            "${CMAKE_BINARY_DIR}/bin")
+                add_test(
+                    NAME psycles.luisa_camera_sampling_fallback
+                    COMMAND
+                        psycles_luisa_camera_sampling_tests
+                        fallback)
             endif()
 
             add_executable(
@@ -373,6 +419,19 @@ if(PSYCLES_BUILD_TESTS)
         COMMAND psycles_tabulated_sobol_tests)
 
     add_executable(
+        psycles_pixel_filter_tests
+        tests/test_pixel_filter.cpp)
+    target_link_libraries(
+        psycles_pixel_filter_tests
+        PRIVATE Psycles::core)
+    target_compile_features(
+        psycles_pixel_filter_tests
+        PRIVATE cxx_std_20)
+    add_test(
+        NAME psycles.pixel_filter
+        COMMAND psycles_pixel_filter_tests)
+
+    add_executable(
         psycles_light_distribution_tests
         tests/test_light_distribution.cpp)
     target_link_libraries(
@@ -454,6 +513,32 @@ if(PSYCLES_BUILD_TESTS)
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_particle_info.py"
                 --
                 "${CMAKE_CURRENT_SOURCE_DIR}/tools/export_psycles_scene.py")
+        add_test(
+            NAME psycles.blender_export_render_settings
+            COMMAND
+                "${PSYCLES_BLENDER_EXECUTABLE}"
+                --background
+                --factory-startup
+                --python-exit-code
+                1
+                --python
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_render_settings.py"
+                --
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/export_psycles_scene.py"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/create_cycles_shader_probe.py")
+        add_test(
+            NAME psycles.blender_diagnostic_probes
+            COMMAND
+                "${PSYCLES_BLENDER_EXECUTABLE}"
+                --background
+                --factory-startup
+                --python-exit-code
+                1
+                --python
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_diagnostic_probes.py"
+                --
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/create_blender_shader_stage_probe.py"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/probe_cycles_world.py")
         add_test(
             NAME psycles.blender_multilayer_exr_api
             COMMAND

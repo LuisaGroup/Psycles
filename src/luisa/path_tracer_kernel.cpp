@@ -5,8 +5,11 @@
 #include "path_tracer_geometry.h"
 #include "path_tracer_light_distribution.h"
 #include "path_tracer_lighting.h"
-#include "path_tracer_sampling.h"
 #include "path_tracer_surfaces.h"
+
+#include <psycles/luisa/camera_sampling.h>
+#include <psycles/luisa/pixel_filter.h>
+#include <psycles/luisa/spherical_geometry.h>
 
 #include <psycles/sampling/light_distribution.h>
 
@@ -28,6 +31,20 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
             count * light_pass_buffer_count);
     _sample_count =
         _scene->device.create_buffer<luisa::uint>(count);
+    const auto generated_filter_table =
+        sampling::make_pixel_filter_table(
+            settings.pixel_filter,
+            settings.filter_width);
+    luisa::vector<float> filter_table;
+    filter_table.reserve(
+        generated_filter_table.size());
+    for (const auto value :
+         generated_filter_table) {
+        filter_table.emplace_back(value);
+    }
+    _pixel_filter_table =
+        _scene->device.create_buffer<float>(
+            filter_table.size());
 
     luisa::vector<luisa::float4> zeros_float(count);
     luisa::vector<luisa::float4> zeros_light_passes(
@@ -39,6 +56,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
             << _light_passes.copy_from(
                    luisa::span{zeros_light_passes})
             << _sample_count.copy_from(luisa::span{zeros_uint})
+            << _pixel_filter_table.copy_from(
+                   luisa::span{filter_table})
             << synchronize();
 
     auto scene = _scene;
@@ -150,15 +169,14 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         scene->camera.focal_distance;
     const auto camera_aperture_ratio =
         scene->camera.aperture_ratio;
+    const auto camera_aperture_blades = scene->camera.aperture_blades;
+    const auto camera_aperture_rotation =
+        scene->camera.aperture_rotation;
     const auto background = scene->background;
     const auto camera_depth_of_field =
         camera_projection == CameraProjection::perspective &&
         camera_aperture_radius > 0.0f &&
         camera_focal_distance > 0.0f;
-    const auto pixel_filter =
-        render_settings.pixel_filter;
-    const auto filter_width =
-        std::max(render_settings.filter_width, 1.0e-5f);
     const auto pass_alpha_threshold = std::clamp(
         render_settings.pass_alpha_threshold,
         0.0f,
@@ -207,14 +225,10 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
             camera_focal_distance,
         .camera_aperture_ratio =
             camera_aperture_ratio,
-        .filter_width = filter_width,
         .pass_alpha_threshold =
             pass_alpha_threshold,
         .background = background,
         .camera_transform = camera_transform};
-
-    auto sample_pixel_filter =
-        make_pixel_filter_callable(pixel_filter);
     auto light_transport =
         make_light_transport_callables(
             direct_light_sampling);
@@ -281,6 +295,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                           UInt sample_first,
                           UInt samples,
                           BufferFloat4 sobol_table,
+                          BufferFloat filter_table,
                           Var<RenderKernelParameters>
                               kernel_parameters) noexcept {
         UInt pixel = dispatch_x();
@@ -458,9 +473,12 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         $for (sample_offset, samples) {
             UInt sample_index =
                 sample_first + sample_offset;
+            UInt cycles_y = camera_sampling::cycles_pixel_y(
+                full_y,
+                kernel_parameters.full_height);
             UInt rng_hash = cycles_sampler::pixel_hash(
                 full_x,
-                full_y,
+                cycles_y,
                 kernel_parameters.seed);
             Float2 filter_sample =
                 cycles_sampler::sample_2d(
@@ -485,13 +503,13 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                         tabulated_sobol::
                             camera_lens_time_dimension});
             Float jitter_x =
-                sample_pixel_filter(
-                    filter_sample.x,
-                    kernel_parameters.filter_width);
-            Float jitter_y =
-                sample_pixel_filter(
-                    filter_sample.y,
-                    kernel_parameters.filter_width);
+                pixel_filter::sample(
+                    filter_table,
+                    filter_sample.x);
+            Float jitter_y = camera_sampling::output_filter_y(
+                pixel_filter::sample(
+                    filter_table,
+                    filter_sample.y));
             Float width =
                 cast<float>(kernel_parameters.full_width);
             Float height =
@@ -613,17 +631,13 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                          local_direction));
             }
             if (camera_depth_of_field) {
-                Float lens_radius =
-                    sqrt(lens_time_sample.y);
-                Float lens_angle =
-                    2.0f * pi * lens_time_sample.z;
                 Float2 lens_position =
-                    make_float2(
-                        cos(lens_angle),
-                        sin(lens_angle)) *
-                    (lens_radius *
-                     kernel_parameters
-                         .camera_aperture_radius);
+                    camera_sampling::sample_aperture(
+                        lens_time_sample.yz(),
+                        camera_aperture_blades,
+                        camera_aperture_rotation) *
+                    kernel_parameters
+                        .camera_aperture_radius;
                 lens_position.x /=
                     max(
                         kernel_parameters
@@ -834,10 +848,9 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                     for (const auto &sun :
                          scene->environment_suns) {
                         const auto solid_angle =
-                            2.0f * pi *
-                            (1.0f -
-                             std::cos(
-                                 sun.angular_radius));
+                            spherical_geometry::
+                                cap_solid_angle(
+                                    sun.angular_radius);
                         const auto sun_pdf =
                             1.0f /
                             std::max(
@@ -880,8 +893,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                             scene->nishita_environment
                                 ->angular_radius;
                         const auto solid_angle =
-                            2.0f * pi *
-                            (1.0f - std::cos(radius));
+                            spherical_geometry::
+                                cap_solid_angle(radius);
                         const auto sun_pdf =
                             1.0f /
                             std::max(
@@ -1577,11 +1590,13 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                     }
                     for (const auto &sun :
                          scene->environment_suns) {
-                        const auto cosine_max =
-                            std::cos(sun.angular_radius);
+                        const auto cap_height =
+                            spherical_geometry::
+                                unit_cap_height(
+                                    sun.angular_radius);
                         const auto solid_angle =
-                            2.0f * pi *
-                            (1.0f - cosine_max);
+                            spherical_geometry::two_pi *
+                            cap_height;
                         const auto sun_pdf =
                             1.0f /
                             std::max(
@@ -1605,8 +1620,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                             cross(sun_axis, sun_tangent);
                         Float cosine_theta =
                             1.0f -
-                            light_sample.x *
-                                (1.0f - cosine_max);
+                            light_sample.x * cap_height;
                         Float sine_theta = sqrt(max(
                             1.0f -
                                 cosine_theta *
@@ -1682,11 +1696,13 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                             0.0f) {
                         const auto &sun =
                             *scene->nishita_environment;
-                        const auto cosine_max =
-                            std::cos(sun.angular_radius);
+                        const auto cap_height =
+                            spherical_geometry::
+                                unit_cap_height(
+                                    sun.angular_radius);
                         const auto solid_angle =
-                            2.0f * pi *
-                            (1.0f - cosine_max);
+                            spherical_geometry::two_pi *
+                            cap_height;
                         const auto sun_pdf =
                             1.0f /
                             std::max(
@@ -1712,8 +1728,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                 sun_axis, sun_tangent);
                         Float cosine_theta =
                             1.0f -
-                            light_sample.x *
-                                (1.0f - cosine_max);
+                            light_sample.x * cap_height;
                         Float sine_theta = sqrt(max(
                             1.0f -
                                 cosine_theta *
@@ -1920,20 +1935,18 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                             (light_object_to_world *
                              make_float4(lp2, 1.0f))
                                 .xyz();
-                        Float root_u =
-                            sqrt(light_sample.x);
-                        Float second_u =
-                            light_sample.y;
+                        auto triangle_sample =
+                            spherical_geometry::
+                                sample_triangle(
+                                    hit_position,
+                                    lp0,
+                                    lp1,
+                                    lp2,
+                                    light_sample.xy());
                         Float2 light_barycentric =
-                            make_float2(
-                                root_u * (1.0f - second_u),
-                                root_u * second_u);
+                            triangle_sample.barycentric;
                         Float3 light_position =
-                            triangle_interpolate(
-                                light_barycentric,
-                                lp0,
-                                lp1,
-                                lp2);
+                            triangle_sample.position;
                         Float3
                             light_object_geometric_normal =
                                 safe_normalize(
@@ -1973,15 +1986,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                      0.0f))
                                     .xyz(),
                                 light_geometric_normal);
-                        Float3 light_offset =
-                            light_position - hit_position;
-                        Float light_distance2 =
-                            length_squared(light_offset);
-                        Float light_distance =
-                            sqrt(max(
-                                light_distance2, 1.0e-20f));
-                        Float3 wi =
-                            light_offset / light_distance;
+                        Float light_distance = triangle_sample.distance;
+                        Float3 wi = triangle_sample.direction;
                         Bool light_back_facing =
                             dot(
                                 light_geometric_normal,
@@ -2147,7 +2153,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                 lp0,
                                 lp1,
                                 lp2);
-                        $if ((light_pdf > 0.0f) &
+                        $if (triangle_sample.valid &
+                             (light_pdf > 0.0f) &
                              any(light_radiance > 0.0f)) {
                             Float3 shadow_origin =
                                 offset_ray_origin(
@@ -2362,8 +2369,12 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                 max(light.angle, 0.0f);
                             Bool finite_sun =
                                 half_angle > 0.0f;
+                            Float cap_height =
+                                spherical_geometry::
+                                    unit_cap_height(
+                                        half_angle);
                             Float cosine_max =
-                                cos(half_angle);
+                                1.0f - cap_height;
                             Float3 sun_axis = light.axis_z;
                             Float3 basis_reference = select(
                                 make_float3(
@@ -2386,8 +2397,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                     sun_tangent);
                             Float cosine_theta =
                                 1.0f -
-                                light_sample.x *
-                                    (1.0f - cosine_max);
+                                light_sample.x * cap_height;
                             Float sine_theta = sqrt(max(
                                 1.0f -
                                     cosine_theta *
@@ -2409,8 +2419,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                 cone_direction,
                                 finite_sun);
                             Float solid_angle =
-                                2.0f * pi *
-                                (1.0f - cosine_max);
+                                spherical_geometry::two_pi *
+                                cap_height;
                             light_pdf = select(
                                 1.0f,
                                 1.0f /

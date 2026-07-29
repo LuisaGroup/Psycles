@@ -28,6 +28,8 @@ _ALL_PROBES = (
     "brightness_contrast",
     "brick_texture",
     "brick_texture_constants",
+    "camera_blackman_harris_filter",
+    "camera_dof_disk",
     "checker_texture_matrix",
     "clamp",
     "color_ramp_alpha_modes",
@@ -62,6 +64,7 @@ _ALL_PROBES = (
     "mix_rgb_legacy_modes",
     "mix_shader_emission",
     "negative_scale_surface",
+    "nishita_diffuse_transport",
     "node_group_color",
     "noise_bump_object",
     "noise_color_3d",
@@ -94,6 +97,7 @@ _ALL_PROBES = (
     "transparent_data_pass",
     "translucent_bsdf_matrix",
     "translucent_surface",
+    "triangle_light_solid_angle",
     "value_emission",
     "vector_math_matrix",
     "wavelength_matrix",
@@ -117,12 +121,44 @@ _REPORT_PASSES = (
 )
 
 # These gates cover renderer defects that the canonical probe was introduced
-# to catch. They use pass energy rather than per-pixel RMSE so different
-# unbiased Sobol/direction mappings are not mistaken for transport bias.
+# to catch. Energy gates are appropriate when multiple unbiased direction
+# mappings are valid. A probe may additionally require a relative-RMSE gate
+# when its purpose is to preserve Cycles' exact sample mapping.
 _PROBE_RATIO_GATES = {
+    "camera_blackman_harris_filter": {
+        "Combined": (0.9995, 1.0005),
+    },
+    "camera_dof_disk": {
+        "Combined": (0.9995, 1.0005),
+    },
     "indirect_principled": {
         "DiffInd": (0.98, 1.02),
         "GlossInd": (0.98, 1.02),
+    },
+    "nishita_diffuse_transport": {
+        "Combined": (0.9995, 1.0005),
+        "DiffDir": (0.9995, 1.0005),
+    },
+    "triangle_light_solid_angle": {
+        "Combined": (0.995, 1.005),
+        "DiffDir": (0.995, 1.005),
+    },
+}
+
+_PROBE_RELATIVE_RMSE_GATES = {
+    "camera_blackman_harris_filter": {
+        "Combined": 0.0005,
+    },
+    "camera_dof_disk": {
+        "Combined": 0.0005,
+    },
+    "nishita_diffuse_transport": {
+        "Combined": 0.0005,
+        "DiffDir": 0.0005,
+    },
+    "triangle_light_solid_angle": {
+        "Combined": 0.005,
+        "DiffDir": 0.005,
     },
 }
 
@@ -219,12 +255,13 @@ def _probe_gate_failures(
     probe: str,
     report_payload: dict[str, object],
 ) -> list[str]:
-    gates = _PROBE_RATIO_GATES.get(probe, {})
+    ratio_gates = _PROBE_RATIO_GATES.get(probe, {})
+    rmse_gates = _PROBE_RELATIVE_RMSE_GATES.get(probe, {})
     passes = report_payload.get("passes")
     if not isinstance(passes, dict):
         return [f"{probe}: report has no pass dictionary"]
     failures: list[str] = []
-    for pass_name, (minimum, maximum) in gates.items():
+    for pass_name, (minimum, maximum) in ratio_gates.items():
         pass_report = passes.get(pass_name)
         if not isinstance(pass_report, dict):
             failures.append(f"{probe}: missing {pass_name}")
@@ -238,6 +275,22 @@ def _probe_gate_failures(
             failures.append(
                 f"{probe}: {pass_name} energy ratio {float(ratio):.6f} "
                 f"is outside [{minimum:.6f}, {maximum:.6f}]"
+            )
+    for pass_name, maximum in rmse_gates.items():
+        pass_report = passes.get(pass_name)
+        if not isinstance(pass_report, dict):
+            if pass_name not in ratio_gates:
+                failures.append(f"{probe}: missing {pass_name}")
+            continue
+        relative_rmse = pass_report.get("relative_rmse")
+        if not isinstance(relative_rmse, (float, int)):
+            failures.append(
+                f"{probe}: {pass_name} has no numeric relative RMSE"
+            )
+        elif float(relative_rmse) > maximum:
+            failures.append(
+                f"{probe}: {pass_name} relative RMSE "
+                f"{float(relative_rmse):.6f} exceeds {maximum:.6f}"
             )
     return failures
 

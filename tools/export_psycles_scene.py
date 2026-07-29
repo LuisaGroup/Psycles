@@ -806,6 +806,16 @@ def _export_scene(
             },
         }
 
+    pixel_filter_type = str(scene.cycles.pixel_filter_type)
+    # Cycles hard-codes a one-pixel support for BOX and does not synchronize
+    # the UI filter_width property in that mode. Export the effective render
+    # contract rather than a dormant property value.
+    filter_width = (
+        1.0
+        if pixel_filter_type == "BOX"
+        else float(scene.cycles.filter_width)
+    )
+
     payload = {
         "schema": "psycles.blender-scene.v1",
         "source": bpy.data.filepath,
@@ -817,8 +827,8 @@ def _export_scene(
             "height": scene.render.resolution_y,
             "percentage": scene.render.resolution_percentage,
             "transparent": scene.render.film_transparent,
-            "pixel_filter_type": scene.cycles.pixel_filter_type,
-            "filter_width": float(scene.cycles.filter_width),
+            "pixel_filter_type": pixel_filter_type,
+            "filter_width": filter_width,
             "pass_alpha_threshold": float(
                 bpy.context.view_layer.pass_alpha_threshold
             ),
