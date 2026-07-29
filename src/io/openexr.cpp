@@ -154,7 +154,13 @@ bool write_multilayer_exr(
         OIIO::TypeDesc::FLOAT};
     specification.channelnames = std::move(ordered_channel_names);
     specification.attribute("compression", "zip");
-    specification.attribute("oiio:ColorSpace", "scene_linear");
+    // Render-pass RGB values use the same scene-linear Rec.709 primaries as
+    // Cycles. "scene_linear" is an OCIO role, not a stable interchange
+    // identity: with Blender's current config OpenImageIO resolves it to
+    // lin_ap1_scene and would therefore mislabel unchanged Rec.709 values.
+    specification.attribute(
+        "oiio:ColorSpace",
+        "lin_rec709_scene");
     specification.attribute(
         "Software",
         "Psycles (LuisaCompute)");

@@ -9,6 +9,7 @@
 #include <iterator>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 
 namespace {
 
@@ -146,7 +147,7 @@ void test_integrator_settings_round_trip() {
             }
           ],
           "properties": {
-            "sky_type": "NISHITA",
+            "sky_type": "SINGLE_SCATTERING",
             "sun_elevation": 0.9250245094299316,
             "sun_rotation": 2.6179938316345215,
             "sun_size": 0.01745329238474369,
@@ -154,7 +155,7 @@ void test_integrator_settings_round_trip() {
             "sun_disc": true,
             "altitude": 123.0,
             "air_density": 0.9,
-            "dust_density": 1.1,
+            "aerosol_density": 1.1,
             "ozone_density": 1.2
           },
           "special": {},
@@ -456,6 +457,50 @@ void test_integrator_settings_round_trip() {
     std::string light_tree_scene{
         std::istreambuf_iterator<char>{source},
         std::istreambuf_iterator<char>{}};
+    auto legacy_nishita_scene = light_tree_scene;
+    constexpr std::string_view current_sky_type =
+        "\"sky_type\": \"SINGLE_SCATTERING\"";
+    constexpr std::string_view legacy_sky_type =
+        "\"sky_type\": \"NISHITA\"";
+    const auto sky_type_position =
+        legacy_nishita_scene.find(current_sky_type);
+    expect(
+        sky_type_position != std::string::npos,
+        "test scene has no current single-scattering sky type");
+    legacy_nishita_scene.replace(
+        sky_type_position,
+        current_sky_type.size(),
+        legacy_sky_type);
+    constexpr std::string_view current_aerosol =
+        "\"aerosol_density\": 1.1";
+    constexpr std::string_view legacy_dust =
+        "\"dust_density\": 1.1";
+    const auto aerosol_position =
+        legacy_nishita_scene.find(current_aerosol);
+    expect(
+        aerosol_position != std::string::npos,
+        "test scene has no current aerosol-density property");
+    legacy_nishita_scene.replace(
+        aerosol_position,
+        current_aerosol.size(),
+        legacy_dust);
+    {
+        std::ofstream scene{temporary.path() / "scene.json"};
+        scene << legacy_nishita_scene;
+    }
+    const auto legacy_imported =
+        load_blender_scene_bundle(temporary.path());
+    expect(
+        legacy_imported.ok() &&
+            legacy_imported.scene->environment.has_value() &&
+            legacy_imported.scene->environment->nishita.has_value(),
+        "legacy NISHITA world was not kept procedural");
+    expect_near(
+        legacy_imported.scene->environment->nishita
+            ->dust_density,
+        1.1f,
+        "legacy Nishita dust density mismatch");
+
     const auto setting =
         light_tree_scene.find("\"use_light_tree\": false");
     expect(

@@ -194,11 +194,19 @@ find_simple_world_nishita(yyjson_val *world) {
     node_iterator = yyjson_arr_iter_with(nodes);
     while (auto *node =
                yyjson_arr_iter_next(&node_iterator)) {
+        const auto sky_type = text(
+            member(member(node, "properties"), "sky_type"),
+            "NISHITA");
+        // Blender 5.2 split the procedural Nishita implementation into
+        // explicit single- and multiple-scattering modes. Psycles currently
+        // implements Cycles' single-scattering equations; NISHITA is the
+        // legacy spelling for the same supported procedural path.
+        const auto supported_single_scattering =
+            sky_type == "NISHITA" ||
+            sky_type == "SINGLE_SCATTERING";
         if (text(member(node, "name")) == sky_name &&
             text(member(node, "type")) == "TEX_SKY" &&
-            text(
-                member(member(node, "properties"), "sky_type"),
-                "NISHITA") == "NISHITA") {
+            supported_single_scattering) {
             sky = node;
             break;
         }
@@ -268,7 +276,11 @@ find_simple_world_nishita(yyjson_val *world) {
         .air_density =
             number(member(properties, "air_density"), 1.0f),
         .dust_density =
-            number(member(properties, "dust_density"), 1.0f),
+            number(
+                member(properties, "aerosol_density"),
+                number(
+                    member(properties, "dust_density"),
+                    1.0f)),
         .ozone_density =
             number(member(properties, "ozone_density"), 1.0f),
         .background_strength = number(
@@ -2524,7 +2536,12 @@ private:
                      std::tuple{
                          "AirDensity", "air_density", 1.0f},
                      std::tuple{
-                         "DustDensity", "dust_density", 1.0f},
+                         "DustDensity",
+                         "aerosol_density",
+                         node_property_number(
+                             node,
+                             "dust_density",
+                             1.0f)},
                      std::tuple{
                          "OzoneDensity",
                          "ozone_density",
