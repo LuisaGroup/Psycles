@@ -1,0 +1,181 @@
+{
+  "date": "2026-07-29",
+  "hardware": {
+    "gpu": "AMD Radeon RX 9070 XT",
+    "architecture": "gfx1201",
+    "hip_driver": "7.2.53211",
+    "hip_runtime": "7.2.53211"
+  },
+  "luisa": {
+    "branch": "next",
+    "commit": "b417e17efd8565946d1ee0e2a40cb1ae31d20635",
+    "subject": "HIP: reuse stream-owned RT build scratch"
+  },
+  "failure_boundary": {
+    "last_passing_ordered_geometry_count": 347,
+    "first_failing_ordered_geometry_count": 348,
+    "added_geometry": {
+      "name": "leaf.002",
+      "vertices": 6,
+      "triangles": 2,
+      "finite_positions": true,
+      "indices_in_range": true,
+      "duplicate_index_triangles": 0
+    },
+    "isolated_added_geometry_passes": true,
+    "duplicate_tiny_geometry_count_passed": 400
+  },
+  "invariant": "Temporary acceleration-structure scratch uses submitted to one stream are totally ordered and may reuse one stream-owned allocation whose lifetime covers all submitted uses.",
+  "controlled_experiments": [
+    {
+      "condition": "Synchronize after the complete command list",
+      "result": "fail"
+    },
+    {
+      "condition": "Synchronize immediately before each mesh build",
+      "result": "pass"
+    },
+    {
+      "condition": "Synchronize immediately after each temporary-buffer free",
+      "result": "pass"
+    },
+    {
+      "condition": "Reuse one stream-owned growable RT scratch allocation",
+      "result": "pass"
+    }
+  ],
+  "regression": {
+    "source": "src/tests/unit/runtime/test_hip_rt_scratch_reuse.cpp",
+    "synthetic_geometry": true,
+    "blas_count": 348,
+    "tlas_instance_count": 348,
+    "exact_ray_assertions": 348,
+    "old_backend": {
+      "geometries_created": 288,
+      "geometries_built": 287,
+      "exit": "SIGABRT",
+      "error": "Orochi error: invalid argument at hiprt/impl/Kernel.cpp:42",
+      "elapsed_seconds_to_failure": 1.38,
+      "maximum_resident_kib": 383520
+    },
+    "fixed_backend": {
+      "consecutive_runs_passed": 5,
+      "assertions_per_run": 348,
+      "timed_elapsed_seconds": 1.67,
+      "maximum_resident_kib": 479712
+    }
+  },
+  "real_scene_350_geometry_12_instance_isolation": {
+    "status": "pass",
+    "resolution": [
+      64,
+      48
+    ],
+    "samples": 1,
+    "reported_shader_jit_seconds": 342.837,
+    "reported_render_seconds": 0.00351008,
+    "complete_process_seconds": 345.96,
+    "maximum_resident_kib": 3043428,
+    "ppm_sha256": "7e78fb7aa941aa6f9fe9d17ea5ae4058733e54dac7d769e251cbea43f1ff0f5f",
+    "exr_sha256": "a7b143c5ae5705714e607e2b4c44ba830bc89d876a15cd536d9c44ae31175170",
+    "visual_result": "The repaired HIP result contains the same church and roof silhouette as the compact HIP and Vulkan controls.",
+    "acceptance_scope": "Structural BLAS-builder check only; not a Cycles quality or performance result."
+  },
+  "full_scene_structural_smoke": {
+    "status": "pass",
+    "scene_json_sha256": "008c20f1c2bd9392ad8bff430a15d79d0715f1a71e959135a79a351d4845c06b",
+    "geometry_count": 350,
+    "instance_count": 7543,
+    "runtime_material_programs": 37,
+    "resolution": [
+      960,
+      720
+    ],
+    "samples": 1,
+    "reported_scene_compile_seconds": 2.89075,
+    "reported_shader_jit_seconds": 470.854,
+    "reported_render_seconds": 0.14634,
+    "complete_process_seconds": 474.38,
+    "hip_llvm_codegen_seconds": 28.4741,
+    "post_emission_lto_and_module_load_interval_seconds": 394.166,
+    "generated_amdgpu_code_bytes": 5025984,
+    "average_cpu_percent": 99,
+    "maximum_resident_kib": 3464112,
+    "ppm_sha256": "7ad7fa45601eba224b3ae1af74ff194b1bcc0a8e75968448db87a4dc96f5b987",
+    "exr_sha256": "48ec65735eb84a73994d651ec0860c8af0c50402acbfaa14b60e4e4dd6be06fe",
+    "triptych": "hip-triptychs/full-structural-repair.png",
+    "triptych_sha256": "0eeb6cc4bf7dcdb59e75ce40b0e1a543ce8d3fe607a6c72028b887355c08e0ad",
+    "visual_result": "The fixed HIP image restores the upper church storey, roof, and side openings that were absent before the traversal repair; all major silhouette structure visible in Cycles is present.",
+    "acceptance_scope": "Combined structural smoke for the BLAS scratch and GFX12 TLAS repairs. The fixed panel is one sample and is not a numerical, quality, or speed comparison with the 256-spp Cycles reference."
+  },
+  "validation": {
+    "build_parallel_jobs": 32,
+    "suites": [
+      {
+        "name": "accel visibility",
+        "backend": "hip",
+        "assertions": 131
+      },
+      {
+        "name": "accel visibility",
+        "backend": "vk",
+        "assertions": 131
+      },
+      {
+        "name": "accel build modes",
+        "backend": "hip",
+        "assertions": 300
+      },
+      {
+        "name": "accel build modes",
+        "backend": "vk",
+        "assertions": 300
+      },
+      {
+        "name": "curve bounds",
+        "backend": "hip",
+        "assertions": 17
+      },
+      {
+        "name": "curve ray query",
+        "backend": "hip",
+        "assertions": 96
+      },
+      {
+        "name": "motion instance device operations",
+        "backend": "hip",
+        "assertions": 132
+      },
+      {
+        "name": "matrix motion instance",
+        "backend": "hip",
+        "assertions": 80
+      },
+      {
+        "name": "SRT motion instance",
+        "backend": "hip",
+        "assertions": 104
+      },
+      {
+        "name": "motion mesh",
+        "backend": "hip",
+        "assertions": 470
+      },
+      {
+        "name": "motion ray query",
+        "backend": "hip",
+        "assertions": 145
+      },
+      {
+        "name": "motion workgroup rows",
+        "backend": "hip",
+        "assertions": 40
+      },
+      {
+        "name": "static motion instance",
+        "backend": "hip",
+        "assertions": 276
+      }
+    ]
+  }
+}

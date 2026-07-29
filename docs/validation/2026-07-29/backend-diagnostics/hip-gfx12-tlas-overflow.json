@@ -68,5 +68,9 @@
   "generated_amdgpu_code_bytes": 4180808,
   "average_cpu_percent": 98,
   "maximum_resident_kib": 2626968,
-  "remaining_blocker": "A separate cumulative HIPRT high-quality BLAS build failure prevents a corrected full 350-geometry Lone Monk rerender."
+  "subsequent_resolution": {
+    "previous_remaining_blocker": "A separate cumulative HIPRT high-quality BLAS build failure prevented a corrected full 350-geometry Lone Monk rerender.",
+    "resolved_by_luisa_commit": "b417e17efd8565946d1ee0e2a40cb1ae31d20635",
+    "record": "hip-rt-scratch-reuse.json"
+  }
 }

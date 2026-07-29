@@ -9,12 +9,16 @@ alignment boundary:
 - the GFX12 large-TLAS traversal defect responsible for that structural miss
   is fixed and regression-tested in Luisa
   `next@3dc93b4c632e423e2ff44e308a2ff4656332f78a`;
+- the independent cumulative HIPRT high-quality BLAS-build failure is fixed by
+  stream-owned, ordered RT scratch reuse in Luisa
+  `next@b417e17ef`;
 - the current strict-native Vulkan cold JIT is dominated by formal XIR CFG
   restructuring, not by CMake compilation, SPIR-V validation, or rendering.
 
-The full HIP quality and performance result remains unaccepted: a separate
-cumulative HIPRT high-quality BLAS-build failure still prevents a clean
-350-geometry rerender with the traversal fix.
+The historical full HIP quality and performance result remains unaccepted
+because it predates both repairs. A corrected high-sample Cycles comparison
+still requires a fresh full-scene render; the two structural blockers no
+longer prevent that render.
 
 Cycles remains the only rendering oracle. No CPU renderer, sampler, BSDF
 mirror, material baking, exposure fit, or image-space correction was used.
@@ -112,6 +116,128 @@ a sufficient explanation. This builder/lifetime failure and the full-scene
 missing-instance result may share a cause, but that relationship is not yet
 claimed. The next regression boundary is the smallest ordered mesh set that
 reproduces the HIPRT fault.
+
+## HIPRT mixed-size BLAS scratch lifetime
+
+Prefix minimization made the failure deterministic:
+
+- the first 347 ordered Lone Monk geometries build successfully;
+- adding geometry 347, `leaf.002`, makes the 348-geometry prefix fail;
+- `leaf.002` itself contains only six finite vertices and two valid,
+  nondegenerate triangles, and succeeds when built alone;
+- all 348 meshes contain finite positions, in-range indices, no
+  duplicate-index triangles, and no coordinate above `1e6` in magnitude.
+
+This rejects a malformed or individually oversized final mesh. A second
+synthetic control built 400 copies of the same tiny mesh successfully, which
+also rejects a simple resource-count limit. The relevant variable is the
+ordered distribution of builder scratch sizes.
+
+The HIP backend previously allocated and freed a temporary buffer around
+every HIPRT BLAS/TLAS build with `hipMallocAsync` and `hipFreeAsync`. Three
+controlled scheduling experiments separated source-upload visibility from
+scratch lifetime:
+
+| Experiment | Result |
+|---|---|
+| synchronize only after the complete command list | fails |
+| synchronize immediately before each mesh build | passes |
+| synchronize immediately after each temporary-buffer free | passes |
+| replace per-build alloc/free with stream-owned scratch | passes |
+
+The third row is decisive: the following mesh's uploads can remain
+asynchronous, while observing the preceding scratch free removes the failure.
+The repair therefore follows the actual lifetime invariant:
+
+> Every temporary acceleration-structure scratch use on one stream is totally
+> ordered. Successive uses may alias one stream-owned allocation, whose
+> lifetime must cover all submitted uses.
+
+Each HIP stream now retains one power-of-two scratch allocation. BLAS, motion
+BLAS, procedural, curve, and TLAS builders reuse it in stream order. A larger
+request synchronizes that stream before replacing the old allocation; normal
+builds perform neither a transient allocation nor a transient free. Stream
+destruction drains submitted work before releasing the allocation. This
+removes the failing allocator interaction without a per-build global or host
+synchronization.
+
+The regression
+`src/tests/unit/runtime/test_hip_rt_scratch_reuse.cpp` uses fully synthetic
+geometry with the minimized production primitive-count distribution: 348
+mixed-size high-quality BLAS builds, followed by a TLAS and one exact ray per
+instance. It asserts the exact instance index for every ray.
+
+The same regression is red on the old backend: it creates 288 geometries,
+completes 287 builds, then aborts with HIPRT
+`oroModuleLaunchKernel: invalid argument`. With stream-owned scratch it
+completes all 348 builds and passed five consecutive runs with 348 assertions
+per run. A timed fixed run completed in `1.67 s` with 479,712 KiB peak
+resident memory. The corresponding old run aborted in `1.38 s`; its shorter
+time is only time-to-failure.
+
+The final backend also passed:
+
+| Suite | Backend | Assertions |
+|---|---|---:|
+| accel visibility | HIP and Vulkan | `131` each |
+| accel build modes | HIP and Vulkan | `300` each |
+| curve bounds | HIP | `17` |
+| curve ray query | HIP | `96` |
+| motion instance device operations | HIP | `132` |
+| matrix motion instance | HIP | `80` |
+| SRT motion instance | HIP | `104` |
+| motion mesh | HIP | `470` |
+| motion ray query | HIP | `145` |
+| motion workgroup rows | HIP | `40` |
+| static motion instance | HIP | `276` |
+
+All affected targets were rebuilt with 32 jobs. The real 350-geometry,
+12-instance church/roof isolation then completed on HIP instead of faulting.
+Its production kernel JIT took `342.837 s`, while the 64×48/1 spp render took
+`0.00351008 s`. The output PPM and multilayer EXR SHA-256 values are
+`7e78fb7aa941aa6f9fe9d17ea5ae4058733e54dac7d769e251cbea43f1ff0f5f`
+and
+`a7b143c5ae5705714e607e2b4c44ba830bc89d876a15cd536d9c44ae31175170`.
+Visual inspection shows the same church and roof silhouette as the compact
+HIP and Vulkan controls. This is a structural builder check, not a
+high-sample Cycles quality or performance acceptance.
+
+Finally, both repairs were exercised together on the complete export: 350
+geometries, 7,543 instances, 37 runtime material programs, and the original
+raw closure graphs. The 960×720/1 spp resolution preserves the 4:3 Cycles
+reference camera and exceeds 480p. The run returned zero and wrote both PPM
+and multilayer EXR output. The PPM and EXR SHA-256 values are
+`7ad7fa45601eba224b3ae1af74ff194b1bcc0a8e75968448db87a4dc96f5b987`
+and
+`48ec65735eb84a73994d651ec0860c8af0c50402acbfaa14b60e4e4dd6be06fe`.
+
+The following real triptych was opened and inspected at original panel
+resolution. The left panel is the 256-spp Cycles reference, the center panel
+is the historical 256-spp HIP result before the traversal repair, and the
+right panel is the corrected 1-spp structural smoke:
+
+[![Full-scene HIP structural repair triptych](hip-triptychs/full-structural-repair.png)](hip-triptychs/full-structural-repair.png)
+
+The repaired panel restores the upper church storey, its roof, and the side
+openings that were absent from the historical HIP image. All major silhouette
+structure visible in Cycles is present. The triptych SHA-256 is
+`0eeb6cc4bf7dcdb59e75ce40b0e1a543ce8d3fe607a6c72028b887355c08e0ad`.
+The right panel intentionally remains noisy at one sample, so this triptych
+is proof of combined BLAS/TLAS structural correctness, not image-quality
+equivalence.
+
+Scene compilation took `2.89075 s`, shader JIT took `470.854 s`, and the
+actual 960×720 render took `0.14634 s`; the complete process took `474.38 s`
+at 99% average CPU and 3,464,112 KiB peak resident memory. HIP LLVM codegen
+took `28.4741 s`, then the 5,025,984-byte module spent another `394.166 s`
+in post-emission LTO and module loading. No Cycles speed ratio is reported for
+this one-sample smoke. Inspection of the follow-up path found that the HIP
+backend currently ignores `ShaderOption::enable_cache` for unnamed AST
+shaders, explaining why every production process repeats this cold JIT; that
+cache defect is tracked as the next Luisa backend repair.
+
+The machine-readable record is
+[hip-rt-scratch-reuse.json](hip-rt-scratch-reuse.json).
 
 ## GFX12 large-TLAS traversal overflow
 
