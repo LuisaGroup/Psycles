@@ -26,13 +26,13 @@ only correctness oracle for Psycles rendering and sampling.
 
 ## Active handoff checkpoint
 
-Continue on `main`. The published renderer boundary is `e13a1c0`; it pins the
-published LuisaCompute `next@eb167454a`. The clean Blender/Cycles source
-checkout is `main@4fe17ef6` and its Blender 5.3.0 Alpha / `gfx1201` HIP build
-now passes a 64×48 full-scene smoke. The committed 640×480 Lone Monk and
-focused quality-reference pixels were rendered by Blender 5.2.0 LTS hash
-`fbe6228777e7`; they remain explicitly versioned until the pending current
-source 1440×1080 gate is committed.
+Continue on `main`. The published renderer boundary is `dcb96e3`; it pins the
+published LuisaCompute `next@d57720955`. The clean Blender/Cycles source
+checkout is `main@4fe17ef6`, and its Blender 5.3.0 Alpha / `gfx1201` HIP build
+produced the primary 1440×1080/256 spp Lone Monk reference. The current
+Cycles/Psycles report and all 13 real triptychs are committed. The older
+640×480 Blender 5.2.0 LTS result remains an explicitly versioned historical
+checkpoint.
 
 The active sequence is:
 
@@ -51,9 +51,10 @@ The active sequence is:
    Cycles HIP and Psycles Vulkan on the same RX 9070 XT, record every pass,
    inspect real triptychs, and fix the missing Blender 5.2
    `SINGLE_SCATTERING` sun-guiding contract with regressions;
-7. [ ] use the completed exact-current-Cycles HIP build to repeat Lone Monk
-   at 1440×1080 with higher samples and peak-memory collection; use the pass
-   evidence to resolve the remaining indirect-energy and sampler differences;
+7. [x] use the completed exact-current-Cycles HIP build to repeat Lone Monk
+   at 1440×1080/256 spp with peak-memory collection; repair Release Vulkan
+   error propagation and formally partition samples into watchdog-safe exact
+   batches; use the pass evidence to rank remaining differences;
 8. [ ] implement environment-map importance CDFs, remaining MIS paths, and
    formal automatic-emission classification exposed by the full-scene gate;
 9. [ ] replace per-material expanded DSL ASTs with a buffer-driven shared
@@ -171,7 +172,8 @@ render comparisons are committed as viewable triptychs in addition to
 recording RMSE, energy ratios, invalid-pixel counts, and
 deterministic-cache status.
 
-AMD full-scene runs use the same 50 ms sysfs sampler for both renderers:
+AMD full-scene runs use the same configurable sysfs sampler for both
+renderers (50 ms for current Cycles, 20 ms for current Psycles):
 
 ```bash
 python3 tools/measure_amd_vram.py \
@@ -185,6 +187,16 @@ and child exit status. Performance reports must retain both the absolute peak
 and baseline-relative increase; desktop VRAM already in use is not renderer
 memory.
 
+Long Luisa renders must also preserve bounded device progress. The current
+sample scheduler partitions `[first, first + count)` so adjacent nonempty
+batches meet exactly, every batch has at most
+`max_samples_per_dispatch` samples, and the final endpoint equals the
+requested endpoint. The default is 8. Each dispatch is independently
+synchronized, and the global sample index plus whole-sequence sample total
+are passed unchanged to the device sampler. Do not replace this invariant
+with scene-specific sample counts. Larger-image tiling must define the same
+kind of exact ordered cover over pixels and prove output equivalence.
+
 ## Current checkpoint
 
 | Area | Verified state |
@@ -192,27 +204,30 @@ memory.
 | Shader inventory | 96 Cycles-applicable nodes tracked from 105 Blender shader node types |
 | Complete coverage | 43/96 complete: 41 `cycles_verified` device nodes and 2 structural output adapters |
 | Remaining nodes | 12 partial and 41 pending; no implemented node is waiting for a probe, and 1 Cycles OSL-only node is tracked separately |
-| Automated gate | Release configuration builds fallback, HIP, and Vulkan with 32 jobs; Psycles passes 12/12; Luisa `restructure_cfg` passes 51 tests / 1013 assertions; 21/21 structural and 86/86 Vulkan-runtime SPIR-V tests pass; Luisa passes 114/115 overall with only the independently reproducible EASTL `fixed_vector` baseline failure |
-| Path-tracer architecture | Public façade plus private modules; unified flat-light CDF is uploaded once and selected through one Luisa upper-bound callable; opaque transparent-extinction dispatch is removed by semantic capability specialization |
+| Automated gate | Release configuration builds fallback, HIP, and Vulkan with 32 jobs; Psycles passes 13/13; Luisa `restructure_cfg` passes 51 tests / 1013 assertions; 21/21 structural and 86/86 Vulkan-runtime SPIR-V tests pass; Luisa passes 115/116 overall with only the independently reproducible EASTL `fixed_vector` baseline failure |
+| Path-tracer architecture | Public façade plus private modules; unified flat-light CDF is uploaded once and selected through one Luisa upper-bound callable; opaque transparent-extinction dispatch is removed by semantic capability specialization; sample intervals are exact ordered partitions with at most 8 spp per synchronized dispatch |
 | Production Sobol probes | Historical 4.5 emission/diffuse probes remain recorded; current 5.2 flat-light 64×64/256 spp Combined RMSE is `0.000256543`, luminance ratio `1.000089120`, invalid pixels 0, with DiffCol and Normal exact |
 | Analytic lights | 11 Point/Spot/Area/Sun baselines, including shapes, spread, finite Sun disk, and light node trees |
 | Transparent closure probes | `transparent_mix` Combined RMSE is `7.93035e-7`; `transparent_data_pass` Combined RMSE is `0.000179912`; selected data passes are exact and all invalid-pixel counts are 0 |
 | Image pipeline | Psycles writes full-float Cycles-compatible multilayer EXR; EXR readback locks channel names, exact float values, and `lin_rec709_scene` identity; the differential runner commits Cycles/Psycles/absolute-difference triptychs |
-| AMD backends | RX 9070 XT / gfx1201 passes focused HIP and Vulkan renders; final opaque Vulkan shader is 61,528 SPIR-V words and no longer resets RADV |
+| AMD backends | RX 9070 XT / gfx1201 passes focused HIP and Vulkan renders; Release Vulkan results are never discarded; the 1440×1080/256 spp render completes in 32 bounded dispatches without a timeout/reset |
 | Full-scene geometry/AOV | Negative-scale normal transforms and closure-weighted glossy normals are fixed |
-| Full-scene transport | Current packaged-Cycles same-RX-9070-XT 640×480/64 spp Lone Monk Combined RMSE is `0.262420535`, luminance ratio `1.0228698`, and invalid pixels 0 after restoring Blender 5.2 single-scattering sun guiding; diffuse/glossy indirect remain 8.8%/5.6% low |
+| Full-scene transport | Current Blender-main same-RX-9070-XT 1440×1080/256 spp Lone Monk Combined RMSE is `0.216918692`, relative RMSE `0.135484421`, luminance ratio `1.0224346`, and invalid pixels 0; diffuse/glossy indirect remain 8.63%/6.07% low |
 | Cold/hot fallback JIT | The pre-Sobol Lone Monk baseline is `327.574 s` cold and `0.682609 s` hot; the historical focused production-Sobol kernel `kernel_70ce93bbfda41afc` passed 20/20 cold compiles after the XIR fix; the modular focused key `kernel_4c0f6e0d82a53e90` cold-compiled in about 0.407 s and subsequently hot-loaded in about 8–11 ms |
 | Persistent fallback cache | Native object plus exact metadata implemented, 8/8 isolated assertions pass, and the full-scene cross-process run is bitwise equal across 13 passes |
-| Upstream integration | LuisaCompute PR [#253](https://github.com/LuisaGroup/LuisaCompute/pull/253) is merged as `98f0150e`; Psycles pins published `next@eb167454a`, including GPU subdirectory paths, formal XIR repairs, read-only callable preservation, and the frozen module argument-layout ABI |
+| Upstream integration | LuisaCompute PR [#253](https://github.com/LuisaGroup/LuisaCompute/pull/253) is merged as `98f0150e`; Psycles pins published `next@d57720955`, including GPU subdirectory paths, formal XIR repairs, read-only callable preservation, the frozen module argument-layout ABI, and build-independent Vulkan result checking |
 
 An earlier glossy-normal probe reduced Normal RMSE from `0.399218` to
 `0.00192210` (about 99.5%) and measures Combined relative RMSE `0.5273%`.
 The earlier 64×48/256 spp glossy-normal checkpoint measured Normal RMSE
 `0.02515`. That historical 640×480/64 spp component run measured 95.75% Combined,
 97.91% Diffuse Direct, 86.21% Diffuse Indirect, 95.15% Glossy Direct, and
-84.33% Glossy Indirect mean energy relative to Cycles. The current
-`e13a1c0` full-scene result measures 102.29% Combined, 102.40% Diffuse Direct,
+84.33% Glossy Indirect mean energy relative to Cycles. The historical
+`e13a1c0` 640×480 result measures 102.29% Combined, 102.40% Diffuse Direct,
 91.16% Diffuse Indirect, 101.54% Glossy Direct, and 94.42% Glossy Indirect.
+The current 1440×1080/256 spp result measures 102.24% Combined, 102.19%
+Diffuse Direct, 91.37% Diffuse Indirect, 101.53% Glossy Direct, and 93.93%
+Glossy Indirect.
 This keeps the remaining indirect-transport deficit separate from the
 repaired exposure/sun-sampling path and geometric-normal errors.
 
@@ -348,8 +363,12 @@ deliberately outside the runtime argument block.
 - Deduplicate texture/attribute services and material parameter layouts.
 - [x] Add focused HIP/Vulkan differential and timing runs on the RX 9070 XT.
 - [x] Add a packaged-Cycles same-device 640×480 full-scene performance run.
-- Build current Cycles and add the 1440×1080 full-scene run plus peak-memory
-  reporting.
+- [x] Build current Cycles and add the 1440×1080/256 spp full-scene run plus
+  peak-memory reporting. Current render-only throughput is `0.729514×`
+  Cycles; baseline-relative peak VRAM is 1,711,570,944 bytes for Psycles
+  versus 2,659,450,880 bytes for Cycles.
+- Add an exact pixel/tile partition before larger images if the fixed 8-spp
+  dispatch bound is not sufficient for a backend watchdog.
 - Evaluate scheduling or material clustering only after semantic gates remain
   green under the shared device IR.
 

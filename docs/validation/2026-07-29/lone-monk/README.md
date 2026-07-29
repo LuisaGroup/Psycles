@@ -89,10 +89,10 @@ red/green regressions pin it:
 The focused Luisa binary passes 51 tests / 1,013 assertions. At the current
 boundary, all 21 structural SPIR-V tests pass, the complete Vulkan SPIR-V
 runtime suite passes 86/86 tests / 2,029 assertions on the RX 9070 XT, and
-CTest passes 114/115 with 32-way scheduling. The sole CTest failure remains
+CTest passes 115/116 with 32-way scheduling. The sole CTest failure remains
 the independently reproducible, pre-existing EASTL `fixed_vector` allocation
-contract. Psycles passes 12/12 using a 32-job build and test schedule. The
-published Luisa boundary is `next@eb167454a`.
+contract. Psycles passes 13/13 using a 32-job build and test schedule. The
+published Luisa boundary is `next@d57720955`.
 
 ## Result after the XIR repair
 
@@ -285,7 +285,8 @@ The existing unique-readonly-resource regression also passes. The focused
 runtime results are 3 and 8 assertions respectively; the complete runtime
 suite passes 2,029 assertions.
 
-A true cold `column marble` rerun after `next@eb167454a` produced 237,944
+A true cold `column marble` rerun at the historical `next@eb167454a`
+boundary produced 237,944
 SPIR-V words, compiled in `1.30926 s`, and was pixel-exact with the known-good
 pre-preservation Psycles output. It differs from the broken outlined image by
 the same RMS `0.0483804`, maximum `7.020724`, and 383 affected pixels, proving
@@ -454,7 +455,8 @@ cmake --build build --parallel 32
 ctest --test-dir build --output-on-failure -j32
 ```
 
-Result: 12/12 tests passed in 0.42 seconds.
+At that 640×480 baseline boundary, 12/12 tests passed in 0.42 seconds. The
+later sample-partition regression raises the current gate to 13/13.
 
 ### Numeric result
 
@@ -527,8 +529,8 @@ This baseline is a major correctness improvement, but it does **not** pass the
 1:1 Cycles quality gate. The indirect-pass energy gap, stochastic
 distribution/sampler differences, high-frequency normal/material residuals,
 and outliers still require investigation at higher samples. The current
-Blender/Cycles source build below is complete; its 1440×1080 matched run
-remains pending at this checkpoint.
+Blender/Cycles source build and its 1440×1080 matched run are recorded below;
+that higher-sample gate confirms that the indirect-energy gap persists.
 
 ### Same-device timing
 
@@ -619,3 +621,274 @@ VRAM was sampled every 50 ms through
 and exit status. This smoke proves that the locally built current-source HIP
 path and multilayer EXR are usable. It is not a quality comparison and has no
 triptych; triptychs belong to the matched high-sample gate.
+
+## Current-source 1440×1080/256 spp differential
+
+The current-source quality gate uses Blender 5.3.0 Alpha
+`main@4fe17ef6be5d46251fa5e7dbff9018efb1c719d5` for both the Cycles pixels
+and the evaluated scene exported to Psycles. The source `.blend`, scene,
+frame, camera, seed, fixed sample count, and physical RX 9070 XT are shared.
+Adaptive sampling and denoising are disabled. The compositor and sequencer do
+not participate.
+
+### Current Blender re-export
+
+The `.blend` was re-exported with the locally built current Blender instead
+of reusing evaluated geometry from packaged Blender 5.2. This prevents a
+version-mismatched geometry evaluation from contaminating a renderer
+comparison. The new bundle is
+`/tmp/lone-monk-20260729/export-main-4fe17ef6`:
+
+| Export measurement | Result |
+|---|---:|
+| Export time | `24.59 s` |
+| Peak resident memory | `1,357,024 KiB` |
+| Geometries / instances | 350 / 7,543 |
+| Original material graphs / images | 35 / 47 |
+| `scene.json` | 10,834,010 B; SHA-256 `f472dc8b2466b5b11ed3709979ede0144792bc677f267e855e33bf77625f1150` |
+| `geometry.bin` | 450,966,096 B; SHA-256 `e5deb7b6e5b7b9d65f119811b7374000727096ce6e0ccda27fde5cbb5078c73c` |
+
+The old and new JSON material/world graph payloads differ only in the
+recorded Blender version. The image payloads are byte-identical. Evaluated
+geometry differs, as expected across Blender revisions, which is why this
+gate uses the current export. Blender still exports raw nodes, sockets,
+links, closure topology, and scene metadata; it never evaluates or bakes a
+Cycles material result.
+
+### Cycles HIP reference
+
+The reference was rendered through the reusable VRAM wrapper:
+
+```bash
+python tools/measure_amd_vram.py \
+  --output /tmp/lone-monk-20260729/quality-main-4fe17ef6-1440x1080-256/cycles-vram.json \
+  --interval 0.05 -- \
+  /home/mike/Projects/blender-install-4fe17ef6/blender \
+  /home/mike/Downloads/lone-monk_cycles_and_exposure-node_demo.blend \
+  --background --python tools/render_cycles_golden.py -- \
+  /tmp/lone-monk-20260729/quality-main-4fe17ef6-1440x1080-256/cycles.exr \
+  1440 1080 256 0 \
+  --cycles-device HIP \
+  --device-name "Radeon RX 9070 XT"
+```
+
+The metadata names exactly one enabled device,
+`HIP_AMD Radeon RX 9070 XT_0000:03:00`, and records
+`scene.cycles.device = GPU`. The 131,175,379-byte EXR has SHA-256
+`40e42dedad336882792f9064bb6eecdb65fa09a272c15286ef38fc96692481e3`.
+It contains 43 full-float channels and all 66,873,600 values are finite.
+
+### Failed monolithic Psycles dispatch
+
+The first 1440×1080/256 Psycles attempt submitted all 256 samples for every
+pixel in one Vulkan compute dispatch:
+
+```bash
+env LUISA_XIR_DISABLE_OPTIMIZATION=1 \
+    LUISA_SPIRV_OPT_LEVEL=0 \
+    LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1 \
+  build/bin/psycles_render_blender_scene \
+  /tmp/lone-monk-20260729/export-main-4fe17ef6 \
+  /tmp/lone-monk-20260729/quality-main-4fe17ef6-1440x1080-256/psycles-vulkan.ppm \
+  vk 1440 1080 256
+```
+
+RADV reported that the compute shader was cancelled because the context was
+guilty of a hard recovery. The kernel journal records a compute-ring timeout,
+the `psycles_render_` process as guilty, a device coredump, and a successful
+compute-queue reset. This is a bounded-progress failure: one monolithic
+dispatch exceeded the AMDGPU watchdog. It is not a shader-quality result.
+
+The process nevertheless returned zero and printed a false render time of
+`2.19935 s`. The output proved it was corrupt: 62,207,984 of 62,208,000 EXR
+values were zero, only four pixels contained nonzero Combined values, and the
+maximum reached 660,171. The observed VRAM range was
+4,070,383,616–5,777,596,416 bytes. These numbers are retained as failure
+evidence and are excluded from every performance or quality comparison.
+
+### Luisa Vulkan result contract
+
+The false success exposed an independent Luisa backend defect. In Release
+builds, `VK_CHECK_RESULT(f)` evaluated `f` and discarded its `VkResult`; a
+`VK_ERROR_DEVICE_LOST` from synchronization therefore looked successful to
+the caller.
+
+The repair in `LuisaCompute next@d57720955` defines one build-independent
+contract:
+
+1. every wrapped Vulkan expression is evaluated exactly once;
+2. `VK_SUCCESS` continues;
+3. every other result terminates with the expression, symbolic Vulkan error,
+   source file, and line.
+
+`test_vk_result_contract` explicitly defines `NDEBUG`, proves the success
+expression is evaluated once, and runs `VK_ERROR_DEVICE_LOST` in a child
+process that must terminate with `SIGABRT`. The old Release macro exited
+normally, so this is a red/green regression. The focused result is 2 tests /
+5 assertions. The complete Vulkan SPIR-V path remains 86/86 tests / 2,029
+assertions. Luisa CTest passes 115/116 with `-j32`; the sole failure is still
+the pre-existing EASTL `fixed_vector` allocation contract.
+
+The regression initially failed to link because its direct use of the Vulkan
+logging header also requires `VulkanTools.cpp` for symbolic error strings.
+Adding that real dependency to both CMake and xmake fixed the test
+infrastructure; no backend behavior was weakened to make the test pass.
+
+### Formally bounded sample dispatches
+
+Psycles now partitions every requested half-open sample interval
+`[first, first + count)` into batches `B`. The scheduler maintains these
+scene-independent invariants:
+
+```text
+B[0].first                  = first
+B[i + 1].first              = B[i].first + B[i].count
+0 < B[i].count              <= max_samples_per_dispatch
+B[last].first + B[last].count = first + count
+```
+
+Therefore the batches are an ordered exact cover: no sample is omitted,
+duplicated, overlapped, or reordered. Every batch receives the original total
+AA sample count and its global first index, so the Luisa device sampler keeps
+the same Sobol sequence. Each batch is submitted and synchronized separately,
+which bounds watchdog and device-error detection latency. The default maximum
+is 8 spp; zero and overflowing intervals are rejected.
+
+`psycles.sample_dispatch_partition` exhaustively checks all first/count/limit
+combinations from 0 through 16, the 32-bit endpoint, invalid zero limits,
+overflow rejection, exhaustion, minimal batch count, and the exact
+256-sample/8-spp decomposition into 32 batches. It is a host scheduling
+contract, not a CPU renderer or sampler. A real Vulkan check then rendered
+the current Lone Monk export at 64×48/16 spp as one 16-spp dispatch and as
+two 8-spp dispatches. Combined PFM was byte-identical and
+`oiiotool --diff` passed all channels of the two EXRs. The 32-job Release
+build and Psycles CTest pass 13/13. This boundary is published as
+Psycles `dcb96e3`.
+
+### Successful bounded Psycles Vulkan run
+
+The accepted run explicitly records the default limit:
+
+```bash
+python tools/measure_amd_vram.py \
+  --output /tmp/lone-monk-20260729/quality-main-4fe17ef6-1440x1080-256/psycles-vulkan-batched-vram.json \
+  --interval 0.02 -- \
+  env LUISA_XIR_DISABLE_OPTIMIZATION=1 \
+      LUISA_SPIRV_OPT_LEVEL=0 \
+      LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1 \
+  build/bin/psycles_render_blender_scene \
+  /tmp/lone-monk-20260729/export-main-4fe17ef6 \
+  /tmp/lone-monk-20260729/quality-main-4fe17ef6-1440x1080-256/psycles-vulkan-batched.ppm \
+  vk 1440 1080 256 8
+```
+
+The log names `AMD Radeon RX 9070 XT (RADV GFX1201)`, 350 geometries, 7,543
+instances, and 37 runtime material programs, including renderer-internal
+programs. Scene compilation took `0.66606 s`, warm shader JIT `2.2724 s`,
+and render-only `25.9918 s`. The wrapper elapsed time was `29.805725 s`.
+No timeout, reset, device loss, guilty context, or AMDGPU recovery appears in
+the kernel log for this interval.
+
+The 119,638,054-byte output has SHA-256
+`3c887c8ba7221a51951a641f6f63f6d78617341c9bdfe925ec7c1bfdf02cac35`.
+It contains 40 full-float channels, both color-space identifiers are
+`lin_rec709_scene`, and all 62,208,000 values are finite with zero NaN and
+zero Inf.
+
+### Same-device performance and VRAM
+
+| Measurement | Cycles 5.3 Alpha HIP | Psycles Vulkan |
+|---|---:|---:|
+| Render-only | `18.961390479 s` | `25.9918 s` |
+| Whole measured command | `19.439086148 s` | `29.805725258 s` |
+| Scene / shader setup reported separately | included in Cycles call | `0.66606 s` / `2.2724 s` |
+| VRAM pre-launch baseline | `4,105,527,296 B` | `4,082,360,320 B` |
+| Absolute VRAM peak | `6,764,978,176 B` | `5,793,931,264 B` |
+| Increase over baseline | `2,659,450,880 B` | `1,711,570,944 B` |
+
+At the comparable render-only boundary, Psycles has `0.729514×` Cycles
+throughput and is `1.370775×` slower. There is no speedup claim. Psycles uses
+947,879,936 fewer baseline-relative peak bytes (35.64% less) and its absolute
+peak is 971,046,912 bytes lower (14.35% less). These are process-window
+measurements, not allocator-attributed renderer memory; both absolute and
+baseline-relative values are retained in the raw
+[Cycles VRAM report](cycles-vram-1440x1080-256-main-4fe17ef6.json),
+[accepted Psycles VRAM report](psycles-vulkan-vram-1440x1080-256-main-4fe17ef6.json),
+and
+[failed monolithic-dispatch report](psycles-vulkan-monolithic-failed-vram-1440x1080-256-main-4fe17ef6.json).
+
+### Numeric pass results
+
+The complete machine-readable report is
+[report-1440x1080-256-main-4fe17ef6.json](report-1440x1080-256-main-4fe17ef6.json).
+Every compared pass contains 1,555,200 valid pixels and zero invalid pixels.
+
+| Pass | RMSE | Relative RMSE | Mean luminance ratio | Maximum absolute error |
+|---|---:|---:|---:|---:|
+| Combined | `0.216918692` | `0.135484421` | `1.022434553` | `10.4275970` |
+| Diffuse Color | `0.011697795` | `0.061507090` | `1.003732054` | `0.3189842` |
+| Normal | `0.029506562` | `0.053085719` | — | `1.3897462` |
+| Diffuse Direct | `1.680650711` | `0.183444668` | `1.021852371` | `149.0686340` |
+| Diffuse Indirect | `0.247345969` | `0.610184475` | `0.913661167` | `71.9946823` |
+| Glossy Color | `0.002655193` | `0.037487039` | `0.999494795` | `0.1132607` |
+| Glossy Direct | `0.557576835` | `0.128782547` | `1.015272347` | `138.3923950` |
+| Glossy Indirect | `0.190440401` | `0.499699873` | `0.939290990` | `34.4971428` |
+| Emission | `0.006447404` | `0.008803128` | `0.999618405` | `0.9512053` |
+| Environment | `0.000162833` | `0.105180146` | `0.991469411` | `0.1226361` |
+| Transmission Color / Direct / Indirect | `0` | `0` | both zero | `0` |
+
+Compared with the earlier 640×480/64 spp result, Combined RMSE decreases from
+`0.262420535` to `0.216918692`, relative RMSE from `0.168320400` to
+`0.135484421`, and MAE from `0.071394570` to `0.039865170`. Its luminance
+ratio remains high at `1.022434553`. Diffuse and glossy direct means are
+2.19% and 1.53% high, while diffuse and glossy indirect remain 8.63% and
+6.07% low. The higher-sample result therefore separates persistent transport
+energy differences from finite-sample noise; it is not a final 1:1 pass.
+
+### Real triptychs and visual inspection
+
+Every triptych contains the real current Cycles image, the real Psycles
+image under the same display mapping, and independently amplified absolute
+linear difference. All were generated at one source pixel per panel pixel
+and inspected at original resolution:
+
+- [Combined](triptychs-1440x1080-256-main-4fe17ef6/combined.png)
+- [Diffuse Color](triptychs-1440x1080-256-main-4fe17ef6/diffcol.png)
+- [Normal](triptychs-1440x1080-256-main-4fe17ef6/normal.png)
+- [Diffuse Direct](triptychs-1440x1080-256-main-4fe17ef6/diffdir.png)
+- [Diffuse Indirect](triptychs-1440x1080-256-main-4fe17ef6/diffind.png)
+- [Glossy Color](triptychs-1440x1080-256-main-4fe17ef6/glosscol.png)
+- [Glossy Direct](triptychs-1440x1080-256-main-4fe17ef6/glossdir.png)
+- [Glossy Indirect](triptychs-1440x1080-256-main-4fe17ef6/glossind.png)
+- [Emission](triptychs-1440x1080-256-main-4fe17ef6/emit.png)
+- [Environment](triptychs-1440x1080-256-main-4fe17ef6/env.png)
+- [Transmission Color](triptychs-1440x1080-256-main-4fe17ef6/transcol.png)
+- [Transmission Direct](triptychs-1440x1080-256-main-4fe17ef6/transdir.png)
+- [Transmission Indirect](triptychs-1440x1080-256-main-4fe17ef6/transind.png)
+
+The visual findings agree with the metrics:
+
+- camera, framing, instance/geometry silhouettes, architecture, principal
+  texture placement, and large-scale material assignment align; there is no
+  flip, displaced scene, missing object, full-frame corruption, or
+  watchdog-residue pattern;
+- Diffuse Color, Glossy Color, and Normal are close at ordinary viewing
+  scale. Their amplified residuals concentrate on visibility edges,
+  high-frequency bump/texture detail, foliage, books, and a few bright
+  surfaces rather than a material-slot permutation or normal-space rotation;
+- direct diffuse and glossy illumination appears on the same surfaces.
+  Psycles is subtly brighter and the amplified difference contains
+  high-variance highlights and edges;
+- diffuse and glossy indirect spatial structure aligns, but Psycles is
+  visibly and numerically darker overall. This is the primary persistent
+  algorithm-alignment target;
+- Emission is visually almost identical. Environment contains only sparse,
+  very low-energy pixels and has low absolute error;
+- all three transmission panels and differences are black because both
+  renderers produce exact zero for this frame.
+
+No exposure compensation, denoising, material pre-bake, pass recombination,
+or image-space fitting was applied. The next diagnosis must use these direct
+and indirect pass residuals plus current Cycles semantics to identify a
+Luisa-path implementation defect and add its regression before changing the
+renderer.

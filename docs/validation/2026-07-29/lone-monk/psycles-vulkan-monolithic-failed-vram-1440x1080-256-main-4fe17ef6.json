@@ -1,0 +1,28 @@
+{
+  "baseline_bytes": 4070383616,
+  "command": [
+    "env",
+    "LUISA_XIR_DISABLE_OPTIMIZATION=1",
+    "LUISA_SPIRV_OPT_LEVEL=0",
+    "LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1",
+    "/home/mike/Projects/Psycles/build/bin/psycles_render_blender_scene",
+    "/tmp/lone-monk-20260729/export-main-4fe17ef6",
+    "/tmp/lone-monk-20260729/quality-main-4fe17ef6-1440x1080-256/psycles-vulkan.ppm",
+    "vk",
+    "1440",
+    "1080",
+    "256"
+  ],
+  "device": "/sys/devices/pci0000:00/0000:00:01.1/0000:01:00.0/0000:02:00.0/0000:03:00.0",
+  "elapsed_seconds": 5.814694543951191,
+  "final_bytes": 4070547456,
+  "interrupted": false,
+  "peak_bytes": 5777596416,
+  "peak_elapsed_seconds": 5.2128198919817805,
+  "peak_increase_bytes": 1707212800,
+  "return_code": 0,
+  "sample_count": 119,
+  "sampling_interval_seconds": 0.05,
+  "schema": "psycles.amd-vram-measurement.v1",
+  "total_bytes": 17095983104
+}

@@ -1,0 +1,32 @@
+{
+  "baseline_bytes": 4105527296,
+  "command": [
+    "/home/mike/Projects/blender-install-4fe17ef6/blender",
+    "/home/mike/Downloads/lone-monk_cycles_and_exposure-node_demo.blend",
+    "--background",
+    "--python",
+    "/home/mike/Projects/Psycles/tools/render_cycles_golden.py",
+    "--",
+    "/tmp/lone-monk-20260729/quality-main-4fe17ef6-1440x1080-256/cycles.exr",
+    "1440",
+    "1080",
+    "256",
+    "0",
+    "--cycles-device",
+    "HIP",
+    "--device-name",
+    "Radeon RX 9070 XT"
+  ],
+  "device": "/sys/devices/pci0000:00/0000:00:01.1/0000:01:00.0/0000:02:00.0/0000:03:00.0",
+  "elapsed_seconds": 19.439086147933267,
+  "final_bytes": 4072714240,
+  "interrupted": false,
+  "peak_bytes": 6764978176,
+  "peak_elapsed_seconds": 1.3548584849340841,
+  "peak_increase_bytes": 2659450880,
+  "return_code": 0,
+  "sample_count": 391,
+  "sampling_interval_seconds": 0.05,
+  "schema": "psycles.amd-vram-measurement.v1",
+  "total_bytes": 17095983104
+}

@@ -1,6 +1,6 @@
 {
-  "schema": "psycles.full-scene-bringup.v3",
-  "status": "matched_640x480_cycles_hip_psycles_vulkan_baseline_complete",
+  "schema": "psycles.full-scene-bringup.v4",
+  "status": "matched_current_main_1440x1080_256spp_baseline_complete",
   "scene": {
     "name": "Lone Monk",
     "source": "/home/mike/Downloads/lone-monk_cycles_and_exposure-node_demo.blend",
@@ -13,13 +13,18 @@
     "original_samples": 4096
   },
   "export": {
-    "elapsed_seconds": 24.85,
+    "blender": "5.3.0 Alpha",
+    "blender_revision": "4fe17ef6be5d46251fa5e7dbff9018efb1c719d5",
+    "elapsed_seconds": 24.59,
+    "peak_resident_kib": 1357024,
     "geometries": 350,
     "instances": 7543,
     "materials": 35,
     "images": 47,
     "geometry_bytes": 450966096,
-    "scene_json_bytes": 10834008,
+    "scene_json_bytes": 10834010,
+    "scene_json_sha256": "f472dc8b2466b5b11ed3709979ede0144792bc677f267e855e33bf77625f1150",
+    "geometry_sha256": "e5deb7b6e5b7b9d65f119811b7374000727096ce6e0ccda27fde5cbb5078c73c",
     "material_node_count_max": 38,
     "principled_node_count": 32,
     "raw_closure_graphs": true,
@@ -233,6 +238,59 @@
       "inf_count": 0,
       "result": "strict-native SPIR-V validated, RADV pipeline created, and unmodified full scene rendered",
       "scope": "compiler and first-pixel diagnostic only; not a Cycles quality comparison"
+    },
+    {
+      "name": "vulkan-current-main-1440x1080-256-monolithic-watchdog-failure",
+      "backend": "vk",
+      "width": 1440,
+      "height": 1080,
+      "samples": 256,
+      "max_samples_per_dispatch": 256,
+      "environment": {
+        "LUISA_XIR_DISABLE_OPTIMIZATION": "1",
+        "LUISA_SPIRV_OPT_LEVEL": "0",
+        "LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV": "1"
+      },
+      "driver_result": "compute shader cancelled; guilty context hard recovery",
+      "kernel_result": "compute ring timeout, process coredump, compute queue reset",
+      "old_process_return_code": 0,
+      "old_reported_render_seconds": 2.19935,
+      "total_exr_values": 62208000,
+      "zero_exr_values": 62207984,
+      "nonzero_combined_pixels": 4,
+      "maximum_combined_value": 660171,
+      "vram_baseline_bytes": 4070383616,
+      "vram_peak_bytes": 5777596416,
+      "vram_peak_increase_bytes": 1707212800,
+      "result": "failed; corrupt output excluded from all quality and performance results",
+      "root_causes": [
+        "one monolithic dispatch exceeded the AMDGPU compute watchdog",
+        "Luisa Release VK_CHECK_RESULT discarded VK_ERROR_DEVICE_LOST"
+      ]
+    },
+    {
+      "name": "vulkan-current-main-1440x1080-256-bounded-dispatch",
+      "backend": "vk",
+      "width": 1440,
+      "height": 1080,
+      "samples": 256,
+      "max_samples_per_dispatch": 8,
+      "dispatch_count": 32,
+      "scene_compile_seconds": 0.66606,
+      "jit_seconds": 2.2724,
+      "render_seconds": 25.9918,
+      "process_elapsed_seconds": 29.805725257960148,
+      "vram_baseline_bytes": 4082360320,
+      "vram_peak_bytes": 5793931264,
+      "vram_peak_increase_bytes": 1711570944,
+      "channels": 40,
+      "values": 62208000,
+      "nan_count": 0,
+      "inf_count": 0,
+      "exr_bytes": 119638054,
+      "exr_sha256": "3c887c8ba7221a51951a641f6f63f6d78617341c9bdfe925ec7c1bfdf02cac35",
+      "kernel_timeout_or_reset": false,
+      "result": "passed; complete current-source quality and performance input"
     }
   ],
   "quality_baseline": {
@@ -424,8 +482,154 @@
     },
     "report": "report-640x480-64.json"
   },
+  "quality_baseline_current": {
+    "acceptance": "primary current-source full-scene baseline complete; final 1:1 quality gate not passed",
+    "psycles_revision": "dcb96e3",
+    "luisa_revision": "d57720955",
+    "cycles_oracle": {
+      "source_revision": "4fe17ef6be5d46251fa5e7dbff9018efb1c719d5",
+      "executable": "/home/mike/Projects/blender-install-4fe17ef6/blender",
+      "blender": "5.3.0 Alpha Release",
+      "backend": "HIP",
+      "device": "AMD Radeon RX 9070 XT",
+      "device_id": "HIP_AMD Radeon RX 9070 XT_0000:03:00",
+      "width": 1440,
+      "height": 1080,
+      "samples": 256,
+      "seed": 0,
+      "adaptive_sampling": false,
+      "denoising": false,
+      "render_seconds": 18.961390479002148,
+      "process_elapsed_seconds": 19.439086147933267,
+      "vram_baseline_bytes": 4105527296,
+      "vram_peak_bytes": 6764978176,
+      "vram_peak_increase_bytes": 2659450880,
+      "channels": 43,
+      "values": 66873600,
+      "nan_count": 0,
+      "inf_count": 0,
+      "exr_bytes": 131175379,
+      "exr_sha256": "40e42dedad336882792f9064bb6eecdb65fa09a272c15286ef38fc96692481e3"
+    },
+    "psycles": {
+      "backend": "vk",
+      "device": "AMD Radeon RX 9070 XT (RADV GFX1201)",
+      "strict_native_xir_spirv": true,
+      "width": 1440,
+      "height": 1080,
+      "samples": 256,
+      "max_samples_per_dispatch": 8,
+      "dispatch_count": 32,
+      "original_material_graphs": 35,
+      "cycles_material_prebake": false,
+      "scene_compile_seconds": 0.66606,
+      "jit_seconds": 2.2724,
+      "render_seconds": 25.9918,
+      "process_elapsed_seconds": 29.805725257960148,
+      "vram_baseline_bytes": 4082360320,
+      "vram_peak_bytes": 5793931264,
+      "vram_peak_increase_bytes": 1711570944,
+      "channels": 40,
+      "values": 62208000,
+      "nan_count": 0,
+      "inf_count": 0,
+      "exr_bytes": 119638054,
+      "exr_sha256": "3c887c8ba7221a51951a641f6f63f6d78617341c9bdfe925ec7c1bfdf02cac35",
+      "color_space": "lin_rec709_scene",
+      "kernel_timeout_or_reset": false
+    },
+    "same_device_performance": {
+      "comparison_boundary": "render-only",
+      "cycles_seconds": 18.961390479002148,
+      "psycles_seconds": 25.9918,
+      "psycles_throughput_relative_to_cycles": 0.729514327,
+      "psycles_slowdown": 1.370774998,
+      "speedup_claim": false,
+      "vram_peak_saving_bytes": 971046912,
+      "vram_peak_saving_percent": 14.354029,
+      "vram_peak_increase_saving_bytes": 947879936,
+      "vram_peak_increase_saving_percent": 35.641942
+    },
+    "passes": {
+      "Combined": {
+        "rmse": 0.2169186919927597,
+        "relative_rmse": 0.1354844212851709,
+        "luminance_mean_ratio": 1.022434552996589,
+        "maximum_absolute_error": 10.427597045898438
+      },
+      "DiffCol": {
+        "rmse": 0.011697795242071152,
+        "relative_rmse": 0.061507089732766335,
+        "luminance_mean_ratio": 1.0037320540264263,
+        "maximum_absolute_error": 0.31898415088653564
+      },
+      "DiffDir": {
+        "rmse": 1.6806507110595703,
+        "relative_rmse": 0.18344466758831923,
+        "luminance_mean_ratio": 1.0218523710443983,
+        "maximum_absolute_error": 149.06863403320312
+      },
+      "DiffInd": {
+        "rmse": 0.247345969080925,
+        "relative_rmse": 0.6101844753072261,
+        "luminance_mean_ratio": 0.9136611671574729,
+        "maximum_absolute_error": 71.99468231201172
+      },
+      "GlossCol": {
+        "rmse": 0.0026551925111562014,
+        "relative_rmse": 0.03748703859638419,
+        "luminance_mean_ratio": 0.999494794668367,
+        "maximum_absolute_error": 0.1132606565952301
+      },
+      "GlossDir": {
+        "rmse": 0.5575768351554871,
+        "relative_rmse": 0.12878254687203325,
+        "luminance_mean_ratio": 1.0152723465735043,
+        "maximum_absolute_error": 138.39239501953125
+      },
+      "GlossInd": {
+        "rmse": 0.19044040143489838,
+        "relative_rmse": 0.4996998728878007,
+        "luminance_mean_ratio": 0.9392909901054469,
+        "maximum_absolute_error": 34.49714279174805
+      },
+      "Emit": {
+        "rmse": 0.006447404157370329,
+        "relative_rmse": 0.00880312804167935,
+        "luminance_mean_ratio": 0.9996184051993003,
+        "maximum_absolute_error": 0.9512052536010742
+      },
+      "Env": {
+        "rmse": 0.0001628334284760058,
+        "relative_rmse": 0.10518014637541577,
+        "luminance_mean_ratio": 0.9914694114068205,
+        "maximum_absolute_error": 0.12263607978820801
+      },
+      "Normal": {
+        "rmse": 0.029506562277674675,
+        "relative_rmse": 0.05308571857590627,
+        "maximum_absolute_error": 1.3897461891174316
+      },
+      "TransCol": {
+        "rmse": 0.0,
+        "relative_rmse": 0.0,
+        "maximum_absolute_error": 0.0
+      },
+      "TransDir": {
+        "rmse": 0.0,
+        "relative_rmse": 0.0,
+        "maximum_absolute_error": 0.0
+      },
+      "TransInd": {
+        "rmse": 0.0,
+        "relative_rmse": 0.0,
+        "maximum_absolute_error": 0.0
+      }
+    },
+    "report": "report-1440x1080-256-main-4fe17ef6.json"
+  },
   "xir_repair": {
-    "luisa_revision": "eb167454a",
+    "luisa_revision": "d57720955",
     "cfg_repair_revision": "0e6f4376e",
     "old_six_material_batch_seconds": 113.29,
     "old_result": "SPIR-V validation failure caused by post-merge selection re-entry",
@@ -441,8 +645,8 @@
       "passed": true
     },
     "full_luisa_tests": {
-      "passed": 114,
-      "total": 115,
+      "passed": 115,
+      "total": 116,
       "known_unrelated_failure": "test_eastl_allocation"
     },
     "structural_spirv_tests": {
@@ -456,13 +660,13 @@
       "device": "AMD Radeon RX 9070 XT (RADV GFX1201)"
     },
     "psycles_tests": {
-      "passed": 12,
-      "total": 12
+      "passed": 13,
+      "total": 13
     },
     "build_and_test_jobs": 32
   },
   "readonly_callable_abi_repair": {
-    "luisa_revision": "eb167454a",
+    "luisa_revision": "d57720955",
     "invariant": "the validated kernel argument layout is a module-wide ABI and must be frozen before post-order emission of any callable or kernel",
     "root_cause": "direct-buffer metadata offset was initialized inside kernel emission even though outlined callees are emitted first and may load offset, size, or address metadata",
     "diagnostics": [
@@ -509,6 +713,66 @@
       "rms_difference_from_broken_output": 0.0483804,
       "maximum_difference_from_broken_output": 7.020724,
       "affected_pixels_from_broken_output": 383
+    }
+  },
+  "vulkan_result_contract_repair": {
+    "luisa_revision": "d57720955",
+    "root_cause": "Release VK_CHECK_RESULT evaluated Vulkan calls and discarded every VkResult, including VK_ERROR_DEVICE_LOST",
+    "invariant": "each wrapped Vulkan expression is evaluated exactly once; VK_SUCCESS continues; every other result terminates with symbolic error and source location in every build configuration",
+    "regression": {
+      "name": "test_vk_result_contract",
+      "forces_ndebug": true,
+      "success_expression_evaluations": 1,
+      "device_loss_expected_signal": "SIGABRT",
+      "tests": 2,
+      "assertions": 5
+    },
+    "complete_vulkan_spirv_runtime": {
+      "passed": 86,
+      "total": 86,
+      "assertions": 2029
+    },
+    "complete_luisa_ctest": {
+      "passed": 115,
+      "total": 116,
+      "known_unrelated_failure": "test_eastl_allocation"
+    }
+  },
+  "sample_dispatch_partition": {
+    "psycles_revision": "dcb96e3",
+    "default_max_samples_per_dispatch": 8,
+    "invariants": [
+      "first batch begins at requested first",
+      "every next batch begins at the previous exclusive endpoint",
+      "every batch is nonempty and no larger than the limit",
+      "the final exclusive endpoint equals requested first plus count"
+    ],
+    "consequence": "ordered exact cover with no sample omission, duplication, overlap, or reordering; global sample indices and total AA sample count remain unchanged",
+    "regression": {
+      "name": "psycles.sample_dispatch_partition",
+      "exhaustive_small_first_count_limit_max": 16,
+      "checks_uint32_endpoint": true,
+      "checks_zero_limit_rejection": true,
+      "checks_overflow_rejection": true,
+      "quality_sample_count": 256,
+      "quality_dispatch_count": 32
+    },
+    "device_equivalence": {
+      "scene": "current Blender main Lone Monk export",
+      "width": 64,
+      "height": 48,
+      "samples": 16,
+      "compared_limits": [
+        16,
+        8
+      ],
+      "combined_pfm_byte_identical": true,
+      "multilayer_exr_pixel_diff": "PASS"
+    },
+    "psycles_ctest": {
+      "passed": 13,
+      "total": 13,
+      "jobs": 32
     }
   },
   "material_isolation": {
@@ -655,10 +919,38 @@
       "indirect": "spatial structure aligns, but Psycles remains visibly darker; diffuse and glossy indirect luminance ratios are 0.912 and 0.944",
       "acceptance": false,
       "reason": "indirect energy, stochastic distribution, high-frequency residuals, and outliers have not converged to a 1:1 Cycles result"
+    },
+    "matched_current_1440x1080_quality": {
+      "inspected_at_original_resolution": true,
+      "passes_inspected": [
+        "Combined",
+        "DiffCol",
+        "Normal",
+        "DiffDir",
+        "DiffInd",
+        "GlossCol",
+        "GlossDir",
+        "GlossInd",
+        "Emit",
+        "Env",
+        "TransCol"
+      ],
+      "numerically_verified_identical_black_passes": [
+        "TransCol",
+        "TransDir",
+        "TransInd"
+      ],
+      "combined": "camera, framing, silhouettes, architecture, principal texture placement, and large-scale material assignment align; no flip, missing object, full-frame corruption, or watchdog residue",
+      "material_and_normal": "Diffuse Color, Glossy Color, and Normal align at ordinary viewing scale; amplified residuals concentrate on visibility edges, high-frequency bump and texture detail, foliage, books, and bright surfaces",
+      "direct": "the same surfaces receive diffuse and glossy direct light; Psycles is subtly brighter and residuals include high-variance highlights and edges",
+      "indirect": "spatial structure aligns, but Psycles remains visibly darker; diffuse and glossy indirect luminance ratios are 0.914 and 0.939",
+      "emission_and_environment": "Emission is almost identical; Environment is sparse and has low absolute error",
+      "acceptance": false,
+      "reason": "persistent indirect-energy and stochastic differences prevent final 1:1 quality acceptance"
     }
   },
   "triptychs": {
-    "status": "matched_640x480_baseline_complete",
+    "status": "matched_current_1440x1080_256spp_baseline_complete",
     "quality_acceptance": false,
     "reason": "Real Cycles HIP and Psycles Vulkan panels are committed and inspected, but remaining indirect-energy and stochastic differences prevent final quality acceptance.",
     "required_panels": [
@@ -667,21 +959,22 @@
       "amplified absolute linear difference"
     ],
     "difference_percentile": 99.5,
-    "directory": "triptychs-640x480-64",
+    "directory": "triptychs-1440x1080-256-main-4fe17ef6",
+    "historical_directory": "triptychs-640x480-64",
     "assets": [
-      "triptychs-640x480-64/combined.png",
-      "triptychs-640x480-64/diffcol.png",
-      "triptychs-640x480-64/diffdir.png",
-      "triptychs-640x480-64/diffind.png",
-      "triptychs-640x480-64/emit.png",
-      "triptychs-640x480-64/env.png",
-      "triptychs-640x480-64/glosscol.png",
-      "triptychs-640x480-64/glossdir.png",
-      "triptychs-640x480-64/glossind.png",
-      "triptychs-640x480-64/normal.png",
-      "triptychs-640x480-64/transcol.png",
-      "triptychs-640x480-64/transdir.png",
-      "triptychs-640x480-64/transind.png"
+      "triptychs-1440x1080-256-main-4fe17ef6/combined.png",
+      "triptychs-1440x1080-256-main-4fe17ef6/diffcol.png",
+      "triptychs-1440x1080-256-main-4fe17ef6/diffdir.png",
+      "triptychs-1440x1080-256-main-4fe17ef6/diffind.png",
+      "triptychs-1440x1080-256-main-4fe17ef6/emit.png",
+      "triptychs-1440x1080-256-main-4fe17ef6/env.png",
+      "triptychs-1440x1080-256-main-4fe17ef6/glosscol.png",
+      "triptychs-1440x1080-256-main-4fe17ef6/glossdir.png",
+      "triptychs-1440x1080-256-main-4fe17ef6/glossind.png",
+      "triptychs-1440x1080-256-main-4fe17ef6/normal.png",
+      "triptychs-1440x1080-256-main-4fe17ef6/transcol.png",
+      "triptychs-1440x1080-256-main-4fe17ef6/transdir.png",
+      "triptychs-1440x1080-256-main-4fe17ef6/transind.png"
     ],
     "pipeline_regressions": [
       "../flat-light-vk/triptychs/combined.png",
