@@ -1,0 +1,104 @@
+{
+  "schema": "psycles.backend-validation.v1",
+  "date": "2026-07-29",
+  "backend": "hip",
+  "device": "AMD Radeon RX 9070 XT",
+  "resolution": [1440, 1080],
+  "samples": 256,
+  "samples_per_dispatch": 8,
+  "scene": {
+    "name": "Lone Monk",
+    "blender_cycles_revision": "4fe17ef6be5d46251fa5e7dbff9018efb1c719d5",
+    "scene_json_sha256": "008c20f1c2bd9392ad8bff430a15d79d0715f1a71e959135a79a351d4845c06b",
+    "geometries": 350,
+    "instances": 7543,
+    "exported_material_graphs": 35,
+    "runtime_material_programs": 37,
+    "images": 47,
+    "material_transport": "original Blender closure graphs; no pre-baking"
+  },
+  "revisions": {
+    "psycles": "37c2454578b982e8b07b2e5e8efb2a431f6508f5",
+    "luisa_compute": "4e8a506eb5c49599f45e6293040e097a0986aeb3",
+    "luisa_branch": "next"
+  },
+  "cache": {
+    "production_cache_enabled": true,
+    "main_shader_cache_hit": true,
+    "reported_shader_jit_seconds": 0.222646,
+    "classification": "hot final-code-object cache; not cold compilation"
+  },
+  "timing_seconds": {
+    "scene_compilation": 2.97419,
+    "shader_jit": 0.222646,
+    "render_only": 37.3944,
+    "whole_monitored_command": 41.53422499401495,
+    "cycles_render_only": 18.961390479002148,
+    "matched_psycles_vulkan_render_only": 27.4415
+  },
+  "performance": {
+    "hip_over_cycles_time_ratio": 1.972133850,
+    "hip_vs_cycles_slower_percent": 97.213385,
+    "hip_cycles_throughput_ratio": 0.507064974,
+    "hip_over_matched_vulkan_time_ratio": 1.362695188,
+    "hip_vs_matched_vulkan_slower_percent": 36.269519
+  },
+  "vram_bytes": {
+    "baseline": 4320952320,
+    "absolute_peak": 6393876480,
+    "increase_over_baseline": 2072924160,
+    "cycles_baseline": 4105527296,
+    "cycles_absolute_peak": 6764978176,
+    "cycles_increase_over_baseline": 2659450880,
+    "absolute_saving_vs_cycles": 371101696,
+    "baseline_relative_saving_vs_cycles": 586526720
+  },
+  "outputs": {
+    "exr": {
+      "bytes": 119760327,
+      "sha256": "37df823d47599b082d5544b3ee653348fad6ac1fcb555f8d56878882d1ed9eb3"
+    },
+    "ppm_sha256": "27e564c1c7f7a569daca38ac3a850194e5fd19ee5202305b0017768727cfb7cf",
+    "cycles_exr_sha256": "40e42dedad336882792f9064bb6eecdb65fa09a272c15286ef38fc96692481e3",
+    "cycles_report_sha256": "80c382ae88507184519c545579793aa78451d41091bf12370e37ee4edebcfc21",
+    "vulkan_report_sha256": "41c4219e6d4ce4071490bbdd3cff25c48aac66833dd2e93a62e41b5dbe8631d1",
+    "vram_report_sha256": "2041995f2b30d1bc7d336fcf1dc1379513a7144aaa0de53f8679434e3864989b"
+  },
+  "quality": {
+    "finite_pixels_per_pass": 1555200,
+    "invalid_pixels_per_pass": 0,
+    "cycles": {
+      "combined_rmse": 0.21854783594608307,
+      "combined_relative_rmse": 0.1365019621143108,
+      "combined_luminance_ratio": 1.0320459949304064
+    },
+    "matched_vulkan": {
+      "combined_rmse": 0.008346707560122013,
+      "combined_relative_rmse": 0.005097826313888415,
+      "combined_luminance_ratio": 0.9989801979665255
+    }
+  },
+  "visual_inspection": {
+    "opened_at_original_resolution": true,
+    "triptych_panel_source_resolution": [1440, 1080],
+    "passes": [
+      "Combined",
+      "Normal",
+      "DiffCol",
+      "DiffDir",
+      "DiffInd",
+      "GlossCol",
+      "GlossDir",
+      "GlossInd",
+      "Emit"
+    ],
+    "result": "same scene structure and pass-local content; no missing geometry, displaced surface region, coherent material block, or EXR pass-packing defect; remaining differences are noise-like and high-energy-edge differences"
+  },
+  "acceptance": {
+    "hip_backend_structural_repair": true,
+    "hip_vulkan_execution_consistency": true,
+    "cycles_feature_complete": false,
+    "cycles_image_parity_complete": false,
+    "cycles_performance_parity": false
+  }
+}

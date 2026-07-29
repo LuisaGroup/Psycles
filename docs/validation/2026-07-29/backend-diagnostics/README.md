@@ -15,6 +15,10 @@ alignment boundary:
 - unnamed HIP shaders now use a validated final-code-object cache in Luisa
   `next@2282ffd6b`, reducing the complete 960×720 Lone Monk warm process from
   the historical `474.38 s` to `3.72 s`;
+- the repaired HIP backend now completes the full 1440×1080/256 spp scene:
+  all 350 geometries and 7,543 instances are present, the Combined
+  Cycles-relative RMSE is `0.218548`, and the corrected HIP image differs
+  from the matched Psycles Vulkan image by only `0.008347` RMSE;
 - generic XIR use-list verification is now linear in operand/use-list count in
   Luisa `next@a7118069e`, and CFG-version-scoped construct-entry dominance
   reuse follows in `next@8c7d1bf88`; lazy, observation-equivalent if-batch
@@ -27,9 +31,11 @@ alignment boundary:
   restructuring, not by CMake compilation, SPIR-V validation, or rendering.
 
 The historical full HIP quality and performance result remains unaccepted
-because it predates both repairs. A corrected high-sample Cycles comparison
-still requires a fresh full-scene render; the two structural blockers no
-longer prevent that render.
+because it predates both repairs. It is retained below as the red
+before-image. The corrected high-sample run is now complete and accepted as
+evidence that the HIP backend executes the current Psycles renderer
+consistently with Vulkan. This is not a claim that Psycles as a whole has
+reached complete Cycles feature or image parity.
 
 Cycles remains the only rendering oracle. No CPU renderer, sampler, BSDF
 mirror, material baking, exposure fit, or image-space correction was used.
@@ -37,7 +43,113 @@ The compared scene is the current Blender/Cycles
 `main@4fe17ef6be5d46251fa5e7dbff9018efb1c719d5` Lone Monk export with 350
 geometries, 7,543 instances, 35 original raw material graphs, and 47 images.
 
-## HIP timing is nominal, not accepted
+## Corrected full-scene HIP validation
+
+The post-repair run used the complete Filter Glossy export and the production
+shader cache:
+
+```bash
+python tools/measure_amd_vram.py \
+  --output psycles-hip-vram.json \
+  --interval 0.05 -- \
+  build/bin/psycles_render_blender_scene \
+  export-filter-glossy-main-4fe17ef6 \
+  psycles-hip.ppm \
+  hip 1440 1080 256 8
+```
+
+The process returned zero and loaded 350 geometries, 7,543 instances, 37
+runtime material programs, and the original Blender closure graphs. No
+Cycles pre-bake, fitted exposure, CPU reference renderer, image correction,
+or backend-specific material replacement was used. Both production HIP
+shaders were loaded from their validated final-code-object cache; therefore
+the reported `0.222646 s` shader JIT is a hot cache measurement, not a HIP
+cold compile.
+
+| Measurement | Cycles HIP | Psycles Vulkan | Corrected Psycles HIP |
+|---|---:|---:|---:|
+| Render-only | `18.961390479 s` | `27.4415 s` | `37.3944 s` |
+| Whole monitored command | `19.439086148 s` | `31.390447589 s` | `41.534224994 s` |
+| Scene compilation | included | `0.666024 s` | `2.97419 s` |
+| Hot shader JIT | included | `2.36934 s` | `0.222646 s` |
+| VRAM baseline | `4,105,527,296 B` | `3,679,817,728 B` | `4,320,952,320 B` |
+| Absolute VRAM peak | `6,764,978,176 B` | `5,547,220,992 B` | `6,393,876,480 B` |
+| Increase over baseline | `2,659,450,880 B` | `1,867,403,264 B` | `2,072,924,160 B` |
+
+At the render-only boundary, corrected Psycles HIP has `0.507065×` Cycles
+throughput and takes `1.972134×` as long, so it is 97.21% slower. Relative
+to the matched Psycles Vulkan run it takes `1.362695×` as long, or 36.27%
+longer. There is no speedup claim. HIP uses 586,526,720 fewer
+baseline-relative peak bytes than Cycles (22.05% less) and its absolute peak
+is 371,101,696 bytes lower (5.49% less). These are whole-process sampling
+windows, not allocator-attributed measurements.
+
+The 119,760,327-byte multilayer EXR has SHA-256
+`37df823d47599b082d5544b3ee653348fad6ac1fcb555f8d56878882d1ed9eb3`;
+the display PPM has SHA-256
+`27e564c1c7f7a569daca38ac3a850194e5fd19ee5202305b0017768727cfb7cf`.
+The Cycles reference EXR remains
+`40e42dedad336882792f9064bb6eecdb65fa09a272c15286ef38fc96692481e3`.
+All 13 requested passes contain 1,555,200 finite pixels and zero invalid
+pixels:
+
+| Pass | HIP/Cycles luminance | RMSE | Relative RMSE |
+|---|---:|---:|---:|
+| Combined | `1.032046×` | `0.218548` | `0.136502` |
+| Diffuse Color | `1.003715×` | `0.0116999` | `0.0615180` |
+| Diffuse Direct | `1.021566×` | `1.67866` | `0.183228` |
+| Diffuse Indirect | `1.024928×` | `0.258432` | `0.637533` |
+| Glossy Color | `0.999439×` | `0.00260669` | `0.0368023` |
+| Glossy Direct | `1.015375×` | `0.557011` | `0.128652` |
+| Glossy Indirect | `1.006925×` | `0.189951` | `0.498415` |
+| Emission | `0.999617×` | `0.00644733` | `0.00880303` |
+| Environment | `0.990106×` | `0.000165805` | `0.107100` |
+| Normal | signed | `0.0294726` | `0.0530246` |
+| Transmission Color / Direct / Indirect | both exactly zero | `0` | `0` |
+
+The complete comparison is
+[hip-corrected-cycles-report-1440x1080-256.json](hip-corrected-cycles-report-1440x1080-256.json);
+the raw memory measurement is
+[hip-corrected-vram-1440x1080-256.json](hip-corrected-vram-1440x1080-256.json).
+A direct comparison against the matched Vulkan EXR is retained in
+[hip-corrected-vulkan-report-1440x1080-256.json](hip-corrected-vulkan-report-1440x1080-256.json).
+The latter has Combined RMSE `0.00834671`, relative RMSE `0.00509783`,
+and HIP/Vulkan luminance ratio `0.998980`. Diffuse and glossy color,
+emission, normal, and direct-light pass means agree to within 0.14%; the
+larger indirect pixel errors have the spatial form of differing Monte Carlo
+paths rather than missing scene structure.
+
+### Corrected original-resolution visual inspection
+
+The following real 4336×1150 triptychs were generated with one source pixel
+per panel pixel and opened at original resolution:
+
+- [Combined](hip-corrected-triptychs/combined.png)
+- [Normal](hip-corrected-triptychs/normal.png)
+- [Diffuse Color](hip-corrected-triptychs/diffcol.png)
+- [Diffuse Direct](hip-corrected-triptychs/diffdir.png)
+- [Diffuse Indirect](hip-corrected-triptychs/diffind.png)
+- [Glossy Color](hip-corrected-triptychs/glosscol.png)
+- [Glossy Direct](hip-corrected-triptychs/glossdir.png)
+- [Glossy Indirect](hip-corrected-triptychs/glossind.png)
+- [Emission](hip-corrected-triptychs/emit.png)
+
+The Cycles and HIP panels contain the same church storey, roof, arches,
+columns, books, furniture, vegetation, and emissive sky opening. Normal and
+both material-color passes show no missing or displaced surface region.
+Direct-pass differences follow sample noise and high-energy edges. Indirect
+differences are noisy rather than coherent silhouettes, while the two source
+panels retain matching illumination structure. Emission is confined to the
+same sky opening. No backend-specific structural, material-block, or
+pass-packing defect was found by visual inspection.
+
+The raw renderer log is
+[hip-corrected-render-1440x1080-256.log](hip-corrected-render-1440x1080-256.log),
+and the bounded checksums, provenance, inspection set, and performance ratios
+are collected in
+[hip-corrected-1440x1080-256.json](hip-corrected-1440x1080-256.json).
+
+## Historical HIP timing is nominal, not accepted
 
 The full 1440×1080/256 spp HIP attempt used the same bounded 8-spp dispatch
 contract as the accepted Vulkan result:
