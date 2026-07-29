@@ -1,0 +1,213 @@
+{
+  "date": "2026-07-29",
+  "hardware": {
+    "gpu": "AMD Radeon RX 9070 XT",
+    "architecture": "gfx1201",
+    "hip_driver": "7.2.53211",
+    "hip_runtime": "7.2.53211"
+  },
+  "luisa": {
+    "branch": "next",
+    "commits": [
+      {
+        "commit": "11d85458a",
+        "subject": "HIP: cache unnamed LLVM shaders"
+      },
+      {
+        "commit": "2282ffd6b",
+        "subject": "HIP: cache final AMD code objects"
+      }
+    ]
+  },
+  "cache_contract": {
+    "index": "A 64-bit hash of the canonical cache identity is used only as the BinaryIO key.",
+    "acceptance": "A hit is accepted only after byte-for-byte identity comparison, artifact framing and payload-hash validation, and independent shader-metadata validation.",
+    "identity_fields": [
+      "cache codegen revision",
+      "HIP package version",
+      "LLVM version",
+      "HIP build version and git hash",
+      "HIP driver and runtime versions",
+      "HIPRT version and source hash",
+      "kernel AST hash",
+      "AMDGPU architecture",
+      "wave size",
+      "maximum register count",
+      "LLVM optimization level",
+      "fast-math and debug-info options",
+      "effective XIR early-return, normalize-CFG, and restructure-CFG switches",
+      "autodiff requirement",
+      "native include bytes"
+    ],
+    "payload": "Owned final AMDGPU code object plus HIP shader metadata",
+    "bound_resources": "Reconstructed from the current Function on every load; device handles are never persisted in the cache.",
+    "failure_policy": "Missing, stale, colliding, oversized, truncated, corrupt, or metadata-incompatible entries are rejected and replaced by a fresh compile.",
+    "named_aot_compatibility": "Named AOT packages retain the existing version-1/version-2 LLVM-bitcode ABI."
+  },
+  "regression": {
+    "source": "src/tests/unit/runtime/test_hip_shader_cache.cpp",
+    "old_backend": {
+      "status": "red",
+      "failed_assertions": 12,
+      "observation": "All computed values were correct, but enable_cache caused zero cache reads and zero cache writes, and every device repeated code generation."
+    },
+    "fixed_backend": {
+      "status": "pass",
+      "consecutive_runs": 5,
+      "assertions_per_run": 27,
+      "coverage": [
+        "cold write",
+        "cross-device hot hit",
+        "cache-disabled zero I/O",
+        "fast-math key separation",
+        "payload corruption rejection and repair",
+        "cross-device bound-resource reconstruction"
+      ]
+    }
+  },
+  "lone_monk": {
+    "scene_json_sha256": "008c20f1c2bd9392ad8bff430a15d79d0715f1a71e959135a79a351d4845c06b",
+    "geometry_count": 350,
+    "instance_count": 7543,
+    "runtime_material_programs": 37,
+    "resolution": [
+      960,
+      720
+    ],
+    "samples": 1,
+    "historical_uncached": {
+      "luisa_commit": "b417e17efd8565946d1ee0e2a40cb1ae31d20635",
+      "reported_scene_compile_seconds": 2.89075,
+      "reported_shader_jit_seconds": 470.854,
+      "reported_render_seconds": 0.14634,
+      "complete_process_seconds": 474.38,
+      "maximum_resident_kib": 3464112
+    },
+    "repaired_cold": {
+      "reported_scene_compile_seconds": 3.01963,
+      "reported_shader_jit_seconds": 75.9298,
+      "reported_render_seconds": 0.20948,
+      "complete_process_seconds": 80.24,
+      "maximum_resident_kib": 2574044,
+      "hip_llvm_codegen_seconds": 28.11896681,
+      "generated_llvm_bitcode_bytes": 5025984,
+      "code_object_link_seconds": 0.967089786,
+      "code_object_bytes": 6220856,
+      "cache_artifact_bytes": 6222143,
+      "code_object_load_seconds": 0.00429448,
+      "ppm_sha256": "7ad7fa45601eba224b3ae1af74ff194b1bcc0a8e75968448db87a4dc96f5b987",
+      "exr_sha256": "414f266949950753c094284ea2cadf47295ec33545f60fa48368818458ba887f"
+    },
+    "repaired_warm": {
+      "reported_scene_compile_seconds": 2.89772,
+      "reported_shader_jit_seconds": 0.195888,
+      "reported_render_seconds": 0.150765,
+      "complete_process_seconds": 3.72,
+      "maximum_resident_kib": 1781976,
+      "code_object_load_seconds": 0.003034702,
+      "cold_to_warm_process_speedup": 21.569892,
+      "historical_to_warm_process_speedup": 127.521505,
+      "historical_to_warm_jit_speedup": 2403.689864
+    },
+    "selected_exact_ppm_pair": {
+      "cold_ppm_sha256": "7ad7fa45601eba224b3ae1af74ff194b1bcc0a8e75968448db87a4dc96f5b987",
+      "warm_repeat_2_ppm_sha256": "7ad7fa45601eba224b3ae1af74ff194b1bcc0a8e75968448db87a4dc96f5b987",
+      "differing_ppm_pixels": 0,
+      "triptych": "hip-triptychs/hip-code-object-cache.png",
+      "triptych_sha256": "672cd95f04298850186f79aa93506aee5bc0c9563bdecd1ac7d601cab145a38d"
+    },
+    "repeatability_audit": {
+      "identical_warm_code_object_runs": 5,
+      "reported_shader_jit_seconds_range": [
+        0.19334,
+        0.198625
+      ],
+      "complete_process_seconds_range": [
+        3.63,
+        3.71
+      ],
+      "ppm_pixels_different_from_cold_range": [
+        0,
+        2
+      ],
+      "maximum_fraction_of_ppm_pixels_different": 0.00000289352,
+      "varying_pixel_coordinates": [
+        [
+          891,
+          283
+        ],
+        [
+          539,
+          484
+        ],
+        [
+          523,
+          485
+        ]
+      ],
+      "maximum_exr_pixels_over_1e-6": 2,
+      "maximum_exr_absolute_error": 16.571731567382812,
+      "interpretation": "Identical hot code-object loads vary at zero to two isolated high-energy/boundary pixels, and one hot run is byte-identical to the cold PPM. This is tracked as pre-existing scene/HIPRT/path repeatability, not attributed to cache semantics."
+    },
+    "visual_result": "Cold and selected warm panels preserve the complete church, roof, side wings, and openings. Their PPM byte-difference panel remains black even after 32x amplification.",
+    "acceptance_scope": "Shader-cache correctness and startup-performance validation only. One sample is not a Cycles quality or render-throughput comparison."
+  },
+  "validation": {
+    "build_parallel_jobs": 32,
+    "suite_passes": 2,
+    "suites": [
+      {
+        "name": "HIP shader cache",
+        "assertions": 27
+      },
+      {
+        "name": "curve ray query",
+        "assertions": 96
+      },
+      {
+        "name": "motion instance device operations",
+        "assertions": 132
+      },
+      {
+        "name": "matrix motion instance",
+        "assertions": 80
+      },
+      {
+        "name": "SRT motion instance",
+        "assertions": 104
+      },
+      {
+        "name": "motion mesh",
+        "assertions": 470
+      },
+      {
+        "name": "motion ray query",
+        "assertions": 145
+      },
+      {
+        "name": "motion workgroup rows",
+        "assertions": 40
+      },
+      {
+        "name": "static motion instance",
+        "assertions": 276
+      },
+      {
+        "name": "ray-query pipeline",
+        "assertions": 154
+      },
+      {
+        "name": "signed texture I/O",
+        "assertions": 8
+      },
+      {
+        "name": "mixed-size RT scratch",
+        "assertions": 348
+      },
+      {
+        "name": "wave-size and named AOT",
+        "assertions": 6
+      }
+    ]
+  }
+}

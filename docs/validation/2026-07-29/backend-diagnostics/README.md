@@ -12,6 +12,9 @@ alignment boundary:
 - the independent cumulative HIPRT high-quality BLAS-build failure is fixed by
   stream-owned, ordered RT scratch reuse in Luisa
   `next@b417e17ef`;
+- unnamed HIP shaders now use a validated final-code-object cache in Luisa
+  `next@2282ffd6b`, reducing the complete 960×720 Lone Monk warm process from
+  the historical `474.38 s` to `3.72 s`;
 - the current strict-native Vulkan cold JIT is dominated by formal XIR CFG
   restructuring, not by CMake compilation, SPIR-V validation, or rendering.
 
@@ -231,13 +234,128 @@ actual 960×720 render took `0.14634 s`; the complete process took `474.38 s`
 at 99% average CPU and 3,464,112 KiB peak resident memory. HIP LLVM codegen
 took `28.4741 s`, then the 5,025,984-byte module spent another `394.166 s`
 in post-emission LTO and module loading. No Cycles speed ratio is reported for
-this one-sample smoke. Inspection of the follow-up path found that the HIP
-backend currently ignores `ShaderOption::enable_cache` for unnamed AST
-shaders, explaining why every production process repeats this cold JIT; that
-cache defect is tracked as the next Luisa backend repair.
+this one-sample smoke. Follow-up inspection found that the HIP backend ignored
+`ShaderOption::enable_cache` for unnamed AST shaders, explaining why every
+production process repeated the cold JIT. The next section records the
+completed repair.
 
 The machine-readable record is
 [hip-rt-scratch-reuse.json](hip-rt-scratch-reuse.json).
+
+## HIP unnamed shader code-object cache
+
+The cache defect was first made red without Lone Monk. A `MemoryBinaryIO`
+regression compiled the same exact kernel on independent HIP devices. The old
+backend returned correct arithmetic values but performed zero cache reads and
+zero cache writes; 12 assertions failed because every device repeated
+AST→XIR→LLVM generation.
+
+The repair treats a cache key as an index, not proof of identity. A canonical
+identity encodes the kernel AST hash, AMDGPU architecture, selected wave size,
+LLVM/HIP/HIPRT versions, driver/runtime versions, codegen revision,
+register/fast-math/debug options, effective XIR switches, autodiff state, and
+the full native-include bytes. The 64-bit hash of this identity names the
+`BinaryIO` entry, but a hit is accepted only after all of the following:
+
+1. byte-for-byte comparison of the complete stored identity;
+2. versioned artifact framing and payload-hash validation;
+3. independent comparison of argument types/usages, block size, curve bases,
+   RT requirements, stack ABI, debug/register options, architecture, and wave
+   size.
+
+Thus a hash collision can at worst cause a recompile, never a false hit.
+Missing, stale, truncated, corrupt, oversized, or metadata-incompatible
+entries are recompiled and replaced.
+
+The persisted payload is the final owned AMDGPU code object, not an
+intermediate LLVM module. On a miss, HIP LLVM emits bitcode, hipRTC links it
+once, and the backend copies the result out of the temporary link state before
+destroying that state. Module loading and later cache writes use the owned
+bytes. On a hit, shader creation occurs before AST translation and directly
+loads the final object. Named AOT packages retain their existing version-1/2
+LLVM-bitcode ABI. Bound resources are also deliberately excluded from the
+persisted payload: each hit reconstructs current buffer, texture, bindless,
+and acceleration-structure handles from the current `Function`.
+
+The regression
+`src/tests/unit/runtime/test_hip_shader_cache.cpp` now has 27 assertions. It
+covers a cold write, a cross-device hot hit, cache-disabled zero I/O,
+fast-math key separation, corruption of the code-object payload followed by
+safe repair, and cross-device reconstruction of a captured buffer handle. It
+passed five consecutive runs. The cache and final-code-object path also passed
+two complete runs of the affected HIP suite:
+
+| Suite | Assertions |
+|---|---:|
+| shader cache | `27` |
+| curve ray query | `96` |
+| motion instance device operations | `132` |
+| matrix motion instance | `80` |
+| SRT motion instance | `104` |
+| motion mesh | `470` |
+| motion ray query | `145` |
+| motion workgroup rows | `40` |
+| static motion instance | `276` |
+| ray-query pipeline | `154` |
+| signed texture I/O | `8` |
+| mixed-size RT scratch | `348` |
+| wave-size and named AOT | `6` |
+
+All targets were built with `--parallel 32`.
+
+### Full Lone Monk cold/warm validation
+
+The exact repaired full scene was rendered twice at 960×720/1 spp: 350
+geometries, 7,543 instances, 37 runtime material programs, and the original
+raw Blender closure graphs. The first run populated an empty HIP cache; the
+second was a new process and hit both HIP entries before AST translation.
+
+| Metric | Historical uncached | Repaired cold | Repaired warm |
+|---|---:|---:|---:|
+| scene compilation | `2.89075 s` | `3.01963 s` | `2.89772 s` |
+| shader JIT | `470.854 s` | `75.9298 s` | `0.195888 s` |
+| render-only | `0.14634 s` | `0.20948 s` | `0.150765 s` |
+| complete process | `474.38 s` | `80.24 s` | `3.72 s` |
+| peak resident memory | `3,464,112 KiB` | `2,574,044 KiB` | `1,781,976 KiB` |
+
+The repaired cold path generated 5,025,984 bytes of LLVM bitcode, linked a
+6,220,856-byte code object in `0.967090 s`, wrote a 6,222,143-byte validated
+artifact, and loaded it in `0.004294 s`. The warm process loaded the same RT
+object in `0.003035 s`, with no AST, XIR, LLVM, or hipRTC-link stage. This is
+`21.57×` faster than the repaired cold process and `127.52×` faster than the
+historical process; its JIT timer is `2403.69×` faster than the historical
+JIT. These are shader-startup measurements, not Cycles render-throughput
+claims.
+
+The cold PPM SHA-256 remained
+`7ad7fa45601eba224b3ae1af74ff194b1bcc0a8e75968448db87a4dc96f5b987`,
+identical to the previous structural smoke. One of five additional warm
+processes produced the same byte-identical PPM. The following real triptych
+uses that cold/warm pair; its third panel is the absolute PPM byte difference
+amplified 32×:
+
+[![HIP cold/warm code-object-cache triptych](hip-triptychs/hip-code-object-cache.png)](hip-triptychs/hip-code-object-cache.png)
+
+The difference panel is black: zero of 691,200 tone-mapped pixels differ. The
+triptych SHA-256 is
+`672cd95f04298850186f79aa93506aee5bc0c9563bdecd1ac7d601cab145a38d`.
+It was opened at original resolution. Both panels preserve the complete
+church, roof, side wings, and openings, with no visible cache-path regression.
+
+Repeatability was audited rather than hidden. Five identical warm
+code-object loads reported `0.19334–0.198625 s` shader JIT and
+`3.63–3.71 s` complete process time, but zero to two isolated PPM pixels
+varied from the cold run. The only observed coordinates were `(891,283)`,
+`(539,484)`, and `(523,485)`. Across the multilayer EXR comparisons, at most
+two pixels exceeded `1e-6`; the largest channel error was `16.5717` at an
+isolated high-energy path. Since identical hot-cache runs vary among
+themselves and one hot PPM exactly matches cold output, this is tracked as a
+pre-existing HIPRT/path repeatability issue rather than a cold-vs-cache code
+semantic difference. It does not affect the structural visual conclusion,
+but exact full-scene determinism is not claimed.
+
+The machine-readable record is
+[hip-shader-code-object-cache.json](hip-shader-code-object-cache.json).
 
 ## GFX12 large-TLAS traversal overflow
 
