@@ -7,6 +7,7 @@
 #include "path_tracer_lighting.h"
 #include "path_tracer_surfaces.h"
 
+#include <psycles/luisa/background_sampling.h>
 #include <psycles/luisa/camera_sampling.h>
 #include <psycles/luisa/pixel_filter.h>
 #include <psycles/luisa/spherical_geometry.h>
@@ -446,25 +447,22 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                 static_cast<std::uint32_t>(
                     contract::TransportMode::radiance),
             .glossy_filter_roughness = 0.0f};
-        auto evaluate_environment_base =
-            [&](Float3 direction) noexcept {
-                return environment_base_callable(
-                    direction,
-                    kernel_parameters.background);
-            };
-        auto evaluate_environment_sun =
+        auto evaluate_environment =
             [&](Float3 direction,
-                const contract::EnvironmentSunDesc
-                    &sun) noexcept {
-                const auto sun_index =
-                    static_cast<std::size_t>(
-                        &sun -
-                        scene->environment_suns.data());
-                return environment_sun_callables
-                    [sun_index](direction);
+                UInt visibility) noexcept {
+                Float3 result =
+                    environment_base_callable(
+                        direction,
+                        kernel_parameters.background,
+                        visibility);
+                for (const auto &sun :
+                     environment_sun_callables) {
+                    result += sun(direction);
+                }
+                result +=
+                    nishita_sun_callable(direction);
+                return result;
             };
-        auto evaluate_nishita_sun =
-            nishita_sun_callable;
         auto trace_shadow =
             trace_shadow_callable;
         auto emissive_triangle_pdf =
@@ -813,9 +811,26 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                 ->environment_in_light_distribution
                             ? scene->light_selection_pdf
                             : 0.0f;
-                    const auto environment_pdf =
+                    Float background_pdf =
+                        background_sampling::pdf(
+                            scene
+                                ->background_conditional_cdf,
+                            scene
+                                ->background_marginal_cdf,
+                            scene->background_map_width,
+                            scene->background_map_height,
+                            scene->background_map_weight,
+                            scene
+                                ->background_guided_sun_weight,
+                            make_float3(
+                                scene
+                                    ->background_guided_sun_axis),
+                            scene
+                                ->background_guided_sun_radius,
+                            ray->direction());
+                    Float environment_pdf =
                         environment_selection_pdf *
-                        uniform_sphere_pdf;
+                        background_pdf;
                     Float environment_weight =
                         forward_light_weight(
                             previous_bsdf_pdf,
@@ -824,11 +839,12 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                             environment_pdf > 0.0f);
                     Float3 environment_contribution =
                         clamp_contribution(
-                        throughput *
-                        evaluate_environment_base(
-                            ray->direction()) *
-                            environment_weight,
-                        path_depth);
+                            throughput *
+                                evaluate_environment(
+                                    ray->direction(),
+                                    ray_visibility) *
+                                environment_weight,
+                            path_depth);
                     radiance += environment_contribution;
                     auto directly_visible_environment =
                         path_depth == 0u;
@@ -845,90 +861,6 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                         path_diffuse_weight,
                         path_glossy_weight,
                         path_depth == 1u));
-                    for (const auto &sun :
-                         scene->environment_suns) {
-                        const auto solid_angle =
-                            spherical_geometry::
-                                cap_solid_angle(
-                                    sun.angular_radius);
-                        const auto sun_pdf =
-                            1.0f /
-                            std::max(
-                                solid_angle, 1.0e-20f);
-                        Float sun_weight =
-                            forward_light_weight(
-                                previous_bsdf_pdf,
-                                sun_pdf *
-                                    environment_selection_pdf,
-                                competing,
-                                environment_selection_pdf >
-                                    0.0f);
-                        Float3 sun_contribution =
-                            clamp_contribution(
-                            throughput *
-                            evaluate_environment_sun(
-                                ray->direction(), sun) *
-                                sun_weight,
-                            path_depth);
-                        radiance += sun_contribution;
-                        sample_environment += select(
-                            make_float3(0.0f),
-                            sun_contribution,
-                            directly_visible_environment);
-                        accumulate_light_pass(
-                            split_scattered_light(
-                            select(
-                                sun_contribution,
-                                make_float3(0.0f),
-                                directly_visible_environment),
-                            path_diffuse_weight,
-                            path_glossy_weight,
-                            path_depth == 1u));
-                    }
-                    if (scene->nishita_environment &&
-                        scene->nishita_environment
-                                ->angular_radius >
-                            0.0f) {
-                        const auto radius =
-                            scene->nishita_environment
-                                ->angular_radius;
-                        const auto solid_angle =
-                            spherical_geometry::
-                                cap_solid_angle(radius);
-                        const auto sun_pdf =
-                            1.0f /
-                            std::max(
-                                solid_angle, 1.0e-20f);
-                        Float sun_weight =
-                            forward_light_weight(
-                                previous_bsdf_pdf,
-                                sun_pdf *
-                                    environment_selection_pdf,
-                                competing,
-                                environment_selection_pdf >
-                                    0.0f);
-                        Float3 nishita_sun_contribution =
-                            clamp_contribution(
-                                throughput *
-                                    evaluate_nishita_sun(
-                                        ray->direction()) *
-                                    sun_weight,
-                                path_depth);
-                        radiance += nishita_sun_contribution;
-                        sample_environment += select(
-                            make_float3(0.0f),
-                            nishita_sun_contribution,
-                            directly_visible_environment);
-                        accumulate_light_pass(
-                            split_scattered_light(
-                            select(
-                                nishita_sun_contribution,
-                                make_float3(0.0f),
-                                directly_visible_environment),
-                            path_diffuse_weight,
-                            path_glossy_weight,
-                            path_depth == 1u));
-                    }
                     $break;
                 };
 
@@ -1514,289 +1446,90 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                              sampling::
                                  LightDistributionEmitterKind::
                                      environment)) {
-                    {
-                        Float environment_z =
-                            1.0f -
-                            2.0f * light_sample.x;
-                        Float environment_phi =
-                            2.0f * pi *
-                            light_sample.y;
-                        Float environment_radius = sqrt(max(
-                            1.0f -
-                                environment_z *
-                                    environment_z,
-                            0.0f));
-                        Float3 wi = make_float3(
-                            environment_radius *
-                                cos(environment_phi),
-                            environment_radius *
-                                sin(environment_phi),
-                            environment_z);
-                        Float3 shadow_origin =
-                            offset_ray_origin(
-                                hit_position,
-                                geometric_normal,
-                                wi);
-                        Var<luisa::compute::Ray>
-                            environment_shadow_ray =
-                                make_ray(
-                                    shadow_origin,
-                                    wi,
-                                    0.0f,
-                                    ray_maximum);
-                        Float3 shadow_transmittance =
-                            trace_shadow(
-                                environment_shadow_ray);
-                        $if (any(
-                            shadow_transmittance > 0.0f)) {
-                            auto evaluation =
-                                evaluate_surface(
-                                    surface_tag,
-                                    point,
-                                    wi,
-                                    path_surface_query);
-                            Float light_pdf =
-                                uniform_sphere_pdf *
-                                selected_light.selection_pdf;
-                            Float mis_weight =
-                                nee_light_weight(
-                                    light_pdf,
-                                    evaluation.pdf);
-                            Float3 unshadowed_contribution =
-                                evaluation.f *
-                                evaluate_environment_base(wi) *
-                                (mis_weight / light_pdf);
-                            Float roulette_weight =
-                                sample_light_roulette(
-                                    unshadowed_contribution,
-                                    light_terminate_sample);
-                            Float3 contribution =
-                                clamp_contribution(
-                                    throughput *
-                                        unshadowed_contribution *
-                                        shadow_transmittance *
-                                        roulette_weight,
-                                    path_depth);
-                            radiance += contribution;
-                            accumulate_light_pass(
-                                split_nee_light(
-                                contribution,
-                                evaluation.f,
-                                evaluation.diffuse_f,
-                                path_diffuse_weight,
-                                path_glossy_weight,
-                                path_depth));
-                        };
-                    }
-                    for (const auto &sun :
-                         scene->environment_suns) {
-                        const auto cap_height =
-                            spherical_geometry::
-                                unit_cap_height(
-                                    sun.angular_radius);
-                        const auto solid_angle =
-                            spherical_geometry::two_pi *
-                            cap_height;
-                        const auto sun_pdf =
-                            1.0f /
-                            std::max(
-                                solid_angle, 1.0e-20f);
-                        Float3 sun_axis = safe_normalize(
-                            to_luisa(sun.direction),
-                            make_float3(
-                                0.0f, 0.0f, 1.0f));
-                        Float3 basis_reference = select(
-                            make_float3(
-                                0.0f, 0.0f, 1.0f),
-                            make_float3(
-                                0.0f, 1.0f, 0.0f),
-                            abs(sun_axis.z) > 0.999f);
-                        Float3 sun_tangent = safe_normalize(
-                            cross(
-                                basis_reference, sun_axis),
-                            make_float3(
-                                1.0f, 0.0f, 0.0f));
-                        Float3 sun_bitangent =
-                            cross(sun_axis, sun_tangent);
-                        Float cosine_theta =
-                            1.0f -
-                            light_sample.x * cap_height;
-                        Float sine_theta = sqrt(max(
-                            1.0f -
-                                cosine_theta *
-                                    cosine_theta,
-                            0.0f));
-                        Float phi =
-                            2.0f * pi *
-                            light_sample.y;
-                        Float3 wi =
-                            sun_tangent *
-                                (cos(phi) * sine_theta) +
-                            sun_bitangent *
-                                (sin(phi) * sine_theta) +
-                            sun_axis * cosine_theta;
-                        Float3 shadow_origin =
-                            offset_ray_origin(
-                                hit_position,
-                                geometric_normal,
-                                wi);
-                        Var<luisa::compute::Ray>
-                            sun_shadow_ray = make_ray(
-                                shadow_origin,
-                                wi,
-                                0.0f,
-                                ray_maximum);
-                        Float3 shadow_transmittance =
-                            trace_shadow(sun_shadow_ray);
-                        $if (any(
-                            shadow_transmittance > 0.0f)) {
-                            auto evaluation =
-                                evaluate_surface(
-                                    surface_tag,
-                                    point,
-                                    wi,
-                                    path_surface_query);
-                            Float light_pdf =
-                                sun_pdf *
-                                selected_light.selection_pdf;
-                            auto mis_weight =
-                                nee_light_weight(
-                                    light_pdf,
-                                    evaluation.pdf);
-                            Float3 unshadowed_contribution =
-                                evaluation.f *
-                                evaluate_environment_sun(
-                                    wi, sun) *
-                                (mis_weight / light_pdf);
-                            Float roulette_weight =
-                                sample_light_roulette(
-                                    unshadowed_contribution,
-                                    light_terminate_sample);
-                            Float3 contribution =
-                                clamp_contribution(
-                                    throughput *
-                                        unshadowed_contribution *
-                                        shadow_transmittance *
-                                        roulette_weight,
-                                    path_depth);
-                            radiance += contribution;
-                            accumulate_light_pass(
-                                split_nee_light(
-                                contribution,
-                                evaluation.f,
-                                evaluation.diffuse_f,
-                                path_diffuse_weight,
-                                path_glossy_weight,
-                                path_depth));
-                        };
-                    }
-                    if (scene->nishita_environment &&
-                        scene->nishita_environment
-                                ->angular_radius >
-                            0.0f) {
-                        const auto &sun =
-                            *scene->nishita_environment;
-                        const auto cap_height =
-                            spherical_geometry::
-                                unit_cap_height(
-                                    sun.angular_radius);
-                        const auto solid_angle =
-                            spherical_geometry::two_pi *
-                            cap_height;
-                        const auto sun_pdf =
-                            1.0f /
-                            std::max(
-                                solid_angle, 1.0e-20f);
-                        Float3 sun_axis =
-                            make_float3(
-                                sun.sun_direction);
-                        Float3 basis_reference = select(
-                            make_float3(
-                                0.0f, 0.0f, 1.0f),
-                            make_float3(
-                                0.0f, 1.0f, 0.0f),
-                            abs(sun_axis.z) > 0.999f);
-                        Float3 sun_tangent =
-                            safe_normalize(
-                                cross(
-                                    basis_reference,
-                                    sun_axis),
+                        const auto background_sample =
+                            background_sampling::sample(
+                                scene
+                                    ->background_conditional_cdf,
+                                scene
+                                    ->background_marginal_cdf,
+                                scene
+                                    ->background_map_width,
+                                scene
+                                    ->background_map_height,
+                                scene
+                                    ->background_map_weight,
+                                scene
+                                    ->background_guided_sun_weight,
                                 make_float3(
-                                    1.0f, 0.0f, 0.0f));
-                        Float3 sun_bitangent =
-                            cross(
-                                sun_axis, sun_tangent);
-                        Float cosine_theta =
-                            1.0f -
-                            light_sample.x * cap_height;
-                        Float sine_theta = sqrt(max(
-                            1.0f -
-                                cosine_theta *
-                                    cosine_theta,
-                            0.0f));
-                        Float phi =
-                            2.0f * pi *
-                            light_sample.y;
+                                    scene
+                                        ->background_guided_sun_axis),
+                                scene
+                                    ->background_guided_sun_radius,
+                                light_sample.xy());
                         Float3 wi =
-                            sun_tangent *
-                                (cos(phi) * sine_theta) +
-                            sun_bitangent *
-                                (sin(phi) * sine_theta) +
-                            sun_axis * cosine_theta;
-                        Float3 shadow_origin =
-                            offset_ray_origin(
-                                hit_position,
-                                geometric_normal,
-                                wi);
-                        Var<luisa::compute::Ray>
-                            sun_shadow_ray = make_ray(
-                                shadow_origin,
-                                wi,
-                                0.0f,
-                                ray_maximum);
-                        Float3 shadow_transmittance =
-                            trace_shadow(sun_shadow_ray);
-                        $if (any(
-                            shadow_transmittance > 0.0f)) {
-                            auto evaluation =
-                                evaluate_surface(
-                                    surface_tag,
-                                    point,
-                                    wi,
-                                    path_surface_query);
-                            Float light_pdf =
-                                sun_pdf *
-                                selected_light.selection_pdf;
-                            const auto mis_weight =
-                                nee_light_weight(
-                                    light_pdf,
-                                    evaluation.pdf);
-                            Float3 unshadowed_contribution =
-                                evaluation.f *
-                                evaluate_nishita_sun(wi) *
-                                (mis_weight / light_pdf);
-                            Float roulette_weight =
-                                sample_light_roulette(
-                                    unshadowed_contribution,
-                                    light_terminate_sample);
-                            Float3 contribution =
-                                clamp_contribution(
-                                    throughput *
-                                        unshadowed_contribution *
-                                        shadow_transmittance *
-                                        roulette_weight,
-                                    path_depth);
-                            radiance += contribution;
-                            accumulate_light_pass(
-                                split_nee_light(
-                                contribution,
-                                evaluation.f,
-                                evaluation.diffuse_f,
-                                path_diffuse_weight,
-                                path_glossy_weight,
-                                path_depth));
+                            background_sample.direction;
+                        Float light_pdf =
+                            background_sample.pdf *
+                            selected_light.selection_pdf;
+                        $if (light_pdf > 0.0f) {
+                            Float3 shadow_origin =
+                                offset_ray_origin(
+                                    hit_position,
+                                    geometric_normal,
+                                    wi);
+                            Var<luisa::compute::Ray>
+                                environment_shadow_ray =
+                                    make_ray(
+                                        shadow_origin,
+                                        wi,
+                                        0.0f,
+                                        ray_maximum);
+                            Float3 shadow_transmittance =
+                                trace_shadow(
+                                    environment_shadow_ray);
+                            $if (any(
+                                shadow_transmittance >
+                                0.0f)) {
+                                auto evaluation =
+                                    evaluate_surface(
+                                        surface_tag,
+                                        point,
+                                        wi,
+                                        path_surface_query);
+                                Float mis_weight =
+                                    nee_light_weight(
+                                        light_pdf,
+                                        evaluation.pdf);
+                                Float3
+                                    unshadowed_contribution =
+                                        evaluation.f *
+                                        evaluate_environment(
+                                            wi,
+                                            ray_visibility) *
+                                        (mis_weight /
+                                         light_pdf);
+                                Float roulette_weight =
+                                    sample_light_roulette(
+                                        unshadowed_contribution,
+                                        light_terminate_sample);
+                                Float3 contribution =
+                                    clamp_contribution(
+                                        throughput *
+                                            unshadowed_contribution *
+                                            shadow_transmittance *
+                                            roulette_weight,
+                                        path_depth);
+                                radiance += contribution;
+                                accumulate_light_pass(
+                                    split_nee_light(
+                                    contribution,
+                                    evaluation.f,
+                                    evaluation.diffuse_f,
+                                    path_diffuse_weight,
+                                    path_glossy_weight,
+                                    path_depth));
+                            };
                         };
-                    }
                     };
                     $if (selected_light.kind ==
                          static_cast<std::uint32_t>(
