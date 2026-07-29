@@ -1,0 +1,170 @@
+{
+  "schema": "psycles.vulkan-xir-verifier-scaling.v1",
+  "date": "2026-07-29",
+  "backend": "vk",
+  "device": "AMD Radeon RX 9070 XT (RADV GFX1201)",
+  "luisa": {
+    "before": "2282ffd6b271ba404bc11536553d1636114c6899",
+    "after": "a7118069e",
+    "branch": "next",
+    "commit_subject": "XIR: make verifier use-list checks linear"
+  },
+  "input": {
+    "scene": "Lone Monk church/roof instance isolation",
+    "scene_json_sha256": "21ad3042c3e06eb2ccdc4294ef550cd1ca5efe5965eae7946f5ac461f7d95ce1",
+    "geometries": 350,
+    "instances": 12,
+    "raw_material_graphs": 35,
+    "runtime_material_programs": 37,
+    "images": 47,
+    "width": 128,
+    "height": 96,
+    "samples": 1
+  },
+  "environment": {
+    "LUISA_XIR_DISABLE_OPTIMIZATION": "1",
+    "LUISA_SPIRV_OPT_LEVEL": "0",
+    "LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV": "1",
+    "LUISA_XIR_TRACE_PASSES": "1",
+    "LUISA_LOG_LEVEL": "verbose"
+  },
+  "cache": {
+    "psycles_shader_cache_enabled_during_measurement": false,
+    "radv_pipeline_cache_state": "warm in both matched runs",
+    "radv_pipeline_ready_seconds_before": 0.178,
+    "radv_pipeline_ready_seconds_after": 0.164,
+    "production_shader_cache_restored_after_measurement": true,
+    "restoration_build_parallel_jobs": 32
+  },
+  "matched_shader_cache_miss_runs": {
+    "before": {
+      "reported_shader_jit_seconds": 205.982,
+      "process_wall_seconds": 207.32,
+      "peak_rss_kib": 1654460,
+      "scene_compilation_seconds": 1.04966,
+      "render_seconds": 0.00705168,
+      "stages": {
+        "ast_to_xir_seconds": 15.858924043,
+        "spirv_xir_legalization_seconds": 150.050704855,
+        "destructure_cfg_seconds": 16.02591,
+        "restructure_cfg_seconds": 133.167538,
+        "native_spirv_emission_boundary_seconds": 38.517,
+        "spirv_validation_seconds": 1.177
+      }
+    },
+    "after": {
+      "reported_shader_jit_seconds": 43.7438,
+      "process_wall_seconds": 44.62,
+      "peak_rss_kib": 1653852,
+      "scene_compilation_seconds": 0.671467,
+      "render_seconds": 0.00726586,
+      "stages": {
+        "ast_to_xir_seconds": 0.845813229,
+        "spirv_xir_legalization_seconds": 36.56465285,
+        "destructure_cfg_seconds": 0.8228,
+        "restructure_cfg_seconds": 34.89321,
+        "native_spirv_emission_boundary_seconds": 4.805,
+        "spirv_validation_seconds": 1.165
+      }
+    },
+    "speedup": {
+      "reported_shader_jit": 4.708827308,
+      "ast_to_xir": 18.749912509,
+      "destructure_cfg": 19.477284881,
+      "restructure_cfg": 3.816431277,
+      "native_spirv_emission_boundary": 8.016024974
+    },
+    "output_shape_unchanged": {
+      "spirv_words": 2672528,
+      "spirv_bindings": 26,
+      "restructured_if": 2483,
+      "restructured_loop": 46,
+      "restructured_switch": 8,
+      "canonicalized_cfg": 14
+    }
+  },
+  "restructure_cfg_trace": {
+    "timings_are_nested": true,
+    "before": {
+      "module_transaction_preflight_seconds": 19.067613,
+      "preflight_verifier": {
+        "calls": 69,
+        "seconds": 61.248973
+      },
+      "post_transform_verifier": {
+        "calls": 46,
+        "seconds": 42.325712
+      },
+      "all_verifier_seconds": 103.574685,
+      "all_verifier_percent_of_restructure": 77.777728,
+      "definition_transforms_seconds": 112.026906,
+      "main_loop_iterations_seconds": 10.195535,
+      "if_batch_seconds_nested_in_main_loop": 10.023435,
+      "post_restructure_fixed_point_seconds": 11.579567,
+      "unique_construct_entry_enforcement_seconds": 4.043448,
+      "post_dominator_seconds": 4.695958,
+      "post_dominator_calls": 5276
+    },
+    "after": {
+      "module_transaction_preflight_seconds": 0.934903,
+      "preflight_verifier": {
+        "calls": 69,
+        "seconds": 3.074495
+      },
+      "post_transform_verifier": {
+        "calls": 46,
+        "seconds": 2.258465
+      },
+      "all_verifier_seconds": 5.33296,
+      "all_verifier_percent_of_restructure": 15.283661,
+      "definition_transforms_seconds": 31.868655,
+      "main_loop_iterations_seconds": 10.178288,
+      "if_batch_seconds_nested_in_main_loop": 10.007242,
+      "post_restructure_fixed_point_seconds": 11.530062,
+      "unique_construct_entry_enforcement_seconds": 4.057765,
+      "post_dominator_seconds": 4.673754,
+      "post_dominator_calls": 5276
+    },
+    "verifier_speedup": 19.42161295,
+    "remaining_primary_stage": {
+      "name": "restructure_cfg",
+      "seconds": 34.89321,
+      "percent_of_reported_shader_jit": 79.767213
+    }
+  },
+  "formal_repair": {
+    "old_predicate": "For every operand, linearly scan the referenced Value's complete use-list for the exact Use pointer.",
+    "old_high_fanout_complexity": "sum over Values of degree(Value)^2",
+    "new_predicate": "Materialize owner(Use) = Value once per referenced intrusive use-list, then require owner(operand_use) == operand_value.",
+    "new_complexity": "O(use-list entries + membership queries)",
+    "validation_is_not_skipped": true,
+    "detached_and_wrong_owner_uses_remain_rejected": true
+  },
+  "regression": {
+    "test": "xir_verifier_use_list_membership_is_linear_in_fanout",
+    "fanout_instructions": 8192,
+    "membership_queries": 16386,
+    "distinct_use_lists_scanned": 2,
+    "use_list_entries_scanned": 16386,
+    "semantic_corruptions_checked": [
+      "detached operand Use",
+      "operand Use linked into a different Value's already-materialized use-list"
+    ],
+    "unit_xir_tests_passed": 48,
+    "unit_xir_tests_total": 48,
+    "xir_verifier_assertions": 197,
+    "restructure_cfg_assertions": 1037,
+    "build_parallel_jobs": 32
+  },
+  "semantic_output_check": {
+    "before_ppm_sha256": "5a29d7d24876e89969714331b08e5c6ca23932a729a58f43878bcddd364ed587",
+    "after_ppm_sha256": "5a29d7d24876e89969714331b08e5c6ca23932a729a58f43878bcddd364ed587",
+    "differing_pixels": 0,
+    "maximum_channel_difference": 0,
+    "triptych": "vulkan-xir-verifier/use-list-triptych.png",
+    "triptych_sha256": "74c65f415d50e890e25e7e3ae2686ff7425896fcdf2b3bfaeb6e4efaca08fcb0",
+    "triptych_scale": "4x nearest-neighbor; absolute difference amplified 32x",
+    "visually_inspected_at_original_triptych_resolution": true
+  },
+  "scope": "This 128x96/1 spp run is a compiler and structural semantic regression only. It is not a Cycles image-quality or render-throughput acceptance result."
+}

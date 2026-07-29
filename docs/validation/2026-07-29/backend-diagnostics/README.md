@@ -15,6 +15,9 @@ alignment boundary:
 - unnamed HIP shaders now use a validated final-code-object cache in Luisa
   `next@2282ffd6b`, reducing the complete 960×720 Lone Monk warm process from
   the historical `474.38 s` to `3.72 s`;
+- generic XIR use-list verification is now linear in operand/use-list count in
+  Luisa `next@a7118069e`, reducing a matched strict-native Vulkan
+  shader-cache miss from `205.982 s` to `43.7438 s`;
 - the current strict-native Vulkan cold JIT is dominated by formal XIR CFG
   restructuring, not by CMake compilation, SPIR-V validation, or rendering.
 
@@ -512,3 +515,90 @@ SPIR-V validation would save about 0.5%, while improving
 `restructure-cfg` addresses about 55% of cold JIT. Any repair must preserve
 the existing structured-CFG invariants and regressions; replacing it with
 scene-specific shortcuts would be invalid.
+
+### Linear use-list verifier repair
+
+The fine-grained trace showed that the apparent CFG cost was mostly a generic
+verifier complexity defect. Every instruction operand asked whether its exact
+`Use` node was linked into the referenced `Value`'s use-list, and the old
+predicate answered by linearly scanning that complete list. For a value with
+degree `d`, its `d` operands therefore performed `d²` pointer comparisons.
+Shared constants and other high-fanout values made the total cost
+`Σ degree(value)²`; the same verifier also ran during AST-to-XIR translation,
+CFG destructuring, and native SPIR-V emission.
+
+The repair in Luisa `next@a7118069e` materializes the exact ownership relation
+once per referenced intrusive use-list:
+
+```text
+owner(use) = value  iff  use is linked in value.use_list
+```
+
+An operand is valid exactly when `owner(operand_use) == operand_value`.
+Because an intrusive `Use` node has at most one list owner and verification
+does not mutate use-lists, this is equivalent to the old membership predicate.
+It changes the work to `O(use-list entries + membership queries)` without
+skipping or weakening validation. Detached `Use` nodes and nodes linked into
+the wrong `Value` remain errors.
+
+Two strict-native shader-cache-miss runs used the same scene, executable,
+environment, trace mode, and warm RADV pipeline cache. The Psycles shader
+cache was disabled for each measurement and then restored, followed by a
+32-job rebuild:
+
+| Stage | Before | After | Speedup |
+|---|---:|---:|---:|
+| Reported shader JIT | `205.982 s` | `43.7438 s` | `4.709×` |
+| AST to XIR | `15.8589 s` | `0.8458 s` | `18.750×` |
+| `destructure-cfg` | `16.0259 s` | `0.8228 s` | `19.477×` |
+| `restructure-cfg` | `133.1675 s` | `34.8932 s` | `3.816×` |
+| Native SPIR-V emission boundary | `38.517 s` | `4.805 s` | `8.016×` |
+| SPIR-V validation | `1.177 s` | `1.165 s` | `1.010×` |
+| Complete process | `207.32 s` | `44.62 s` | `4.646×` |
+
+The earlier `240.23 s` profile included a `36.023 s` cold RADV pipeline
+creation, while the matched before/after runs above spent only `0.178 s` and
+`0.164 s` respectively between SPIR-V validation and pipeline readiness. It
+is retained as historical stage context, not mixed into the controlled
+speedup.
+
+Inside `restructure-cfg`, 69 preflight verifier calls and 46 post-transform
+calls fell from a combined `103.574685 s` to `5.332960 s`, a `19.422×`
+speedup. They previously consumed 77.78% of the pass. Output structure did not
+change: both runs emitted 2,483 selections, 46 loops, eight switches, 14
+canonicalizations, 2,672,528 SPIR-V words, and 26 bindings.
+
+The operation-count regression creates 8,192 arithmetic instructions sharing
+one constant. It requires 16,386 exact membership queries, two distinct
+use-list scans, and exactly 16,386 scanned entries, then separately corrupts
+one operand by detaching its `Use` and by linking it into a different,
+already-materialized owner's list. Both corruptions must still be rejected.
+All 48 `unit_xir` tests passed in parallel, including 197 verifier assertions
+and 1,037 `restructure_cfg` assertions; all affected targets were built with
+`--parallel 32`.
+
+The matched before and after PPM files both have SHA-256
+`5a29d7d24876e89969714331b08e5c6ca23932a729a58f43878bcddd364ed587`.
+The following real triptych was opened at its original 1536×428 resolution.
+The source panels use 4× nearest-neighbor display scaling, and the third panel
+is the absolute byte difference amplified 32×:
+
+[![Vulkan XIR verifier before/after triptych](vulkan-xir-verifier/use-list-triptych.png)](vulkan-xir-verifier/use-list-triptych.png)
+
+The difference panel is completely black (`max channel difference = 0`), and
+both rendered panels show the same church/roof structure. The triptych
+SHA-256 is
+`74c65f415d50e890e25e7e3ae2686ff7425896fcdf2b3bfaeb6e4efaca08fcb0`.
+This 128×96/1 spp run is deliberately a compiler and structural-semantic
+regression, not a Cycles image-quality or render-throughput acceptance.
+
+After the repair, `restructure-cfg` still takes `34.8932 s`, or 79.77% of the
+remaining `43.7438 s` JIT. Its stable large costs are the main restructuring
+iterations (`10.1783 s`, including `10.0072 s` in if batches), the
+post-restructure fixed point (`11.5301 s`), unique construct-entry enforcement
+(`4.0578 s`), and 5,276 post-dominator computations (`4.6738 s`). These
+timers are nested and must not be added as independent totals. They define
+the next invariant-preserving optimization boundary.
+
+The complete machine-readable before/after record is
+[vulkan-xir-verifier-scaling.json](vulkan-xir-verifier-scaling.json).
