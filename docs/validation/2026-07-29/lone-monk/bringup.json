@@ -1,6 +1,6 @@
 {
-  "schema": "psycles.full-scene-bringup.v2",
-  "status": "unmodified_full_scene_strict_native_vulkan_first_pixel_complete",
+  "schema": "psycles.full-scene-bringup.v3",
+  "status": "matched_640x480_cycles_hip_psycles_vulkan_baseline_complete",
   "scene": {
     "name": "Lone Monk",
     "source": "/home/mike/Downloads/lone-monk_cycles_and_exposure-node_demo.blend",
@@ -235,6 +235,194 @@
       "scope": "compiler and first-pixel diagnostic only; not a Cycles quality comparison"
     }
   ],
+  "quality_baseline": {
+    "acceptance": "major correctness improvement; final 1:1 Cycles quality gate not passed",
+    "cycles_oracle": {
+      "source_checkout": "/home/mike/Projects/blender-cycles",
+      "source_revision_inspected": "4fe17ef6be5d46251fa5e7dbff9018efb1c719d5",
+      "source_checkout_clean": true,
+      "pixel_executable": "Blender 5.2.0 LTS",
+      "pixel_executable_hash": "fbe6228777e7",
+      "pixel_executable_build_date": "2026-07-15",
+      "backend": "HIP",
+      "device": "AMD Radeon RX 9070 XT",
+      "device_id": "HIP_AMD Radeon RX 9070 XT_0000:03:00",
+      "scene_cycles_device": "GPU",
+      "width": 640,
+      "height": 480,
+      "samples": 64,
+      "seed": 0,
+      "adaptive_sampling": false,
+      "denoising": false,
+      "channels": 43,
+      "pixels_per_channel": 307200,
+      "nan_count": 0,
+      "inf_count": 0,
+      "python_render_elapsed_seconds": 1.8564117850037292,
+      "internal_render_seconds": 0.96,
+      "synchronization_seconds": 0.67,
+      "internal_total_seconds": 1.63,
+      "color_space": "lin_rec709_scene"
+    },
+    "psycles": {
+      "backend": "vk",
+      "device": "AMD Radeon RX 9070 XT (RADV GFX1201)",
+      "strict_native_xir_spirv": true,
+      "environment": {
+        "LUISA_XIR_DISABLE_OPTIMIZATION": "1",
+        "LUISA_SPIRV_OPT_LEVEL": "0",
+        "LUISA_XIR_TRACE_PASSES": "1",
+        "LUISA_LOG_LEVEL": "verbose",
+        "LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV": "1"
+      },
+      "width": 640,
+      "height": 480,
+      "samples": 64,
+      "original_material_graphs": 35,
+      "cycles_material_prebake": false,
+      "channels": 40,
+      "pixels_per_channel": 307200,
+      "nan_count": 0,
+      "inf_count": 0,
+      "cold_scene_compile_seconds": 0.75263,
+      "cold_jit_seconds": 244.088,
+      "cold_render_seconds": 1.48367,
+      "warm_scene_compile_seconds": 0.659837,
+      "warm_jit_seconds": 2.14923,
+      "warm_render_seconds": 1.48413,
+      "spirv_words": 2670183,
+      "bindings": 26,
+      "color_space": "lin_rec709_scene",
+      "pixel_exact_after_metadata_only_rerender": true
+    },
+    "same_device_performance": {
+      "comparison_boundary": "render-only",
+      "cycles_seconds": 0.96,
+      "psycles_seconds": 1.48413,
+      "psycles_throughput_relative_to_cycles": 0.646844,
+      "psycles_slowdown": 1.54597,
+      "speedup_claim": false,
+      "rejected_ratio": {
+        "value": 1.25084,
+        "reason": "Cycles Python-call elapsed and Psycles render-only time have different interval boundaries"
+      },
+      "peak_vram_recorded": false
+    },
+    "blender_5_2_single_scattering_repair": {
+      "root_cause": "current Blender exports SINGLE_SCATTERING and aerosol_density; the simple-world recognizer accepted only legacy NISHITA and dust_density, so raw background evaluation survived but the environment light distribution lost explicit sun sampling",
+      "formal_mapping": {
+        "supported_current_type": "SINGLE_SCATTERING",
+        "supported_legacy_type": "NISHITA",
+        "current_density_property": "aerosol_density",
+        "legacy_density_property": "dust_density",
+        "multiple_scattering_claimed": false
+      },
+      "cycles_source_evidence": "current Cycles separates NODE_SKY_SINGLE_SCATTERING and NODE_SKY_MULTIPLE_SCATTERING and sun-guides one eligible untransformed sky node",
+      "raw_closure_graph_unchanged": true,
+      "cycles_material_prebake": false,
+      "regressions": [
+        "current SINGLE_SCATTERING plus aerosol_density imports as a procedural environment",
+        "legacy NISHITA plus dust_density imports as the same supported procedural path"
+      ],
+      "combined_before": {
+        "rmse": 22.190855,
+        "relative_rmse": 14.23354,
+        "luminance_mean_ratio": 0.8197728,
+        "maximum_absolute_error": 4505.7529
+      },
+      "combined_after": {
+        "rmse": 0.26242053508758545,
+        "relative_rmse": 0.16832039968527995,
+        "luminance_mean_ratio": 1.0228698424665064,
+        "maximum_absolute_error": 10.245851516723633
+      }
+    },
+    "openexr_color_identity_repair": {
+      "root_cause": "scene_linear is an OCIO role and resolved to lin_ap1_scene even though Psycles render-pass values are scene-linear Rec.709",
+      "repair": "write the stable lin_rec709_scene interchange identity",
+      "regression": "reopen generated EXR and assert oiio:ColorSpace, colorInteropID, channel names, and exact float values",
+      "cycles_oiio_color_space": "lin_rec709_scene",
+      "psycles_oiio_color_space_before": "lin_ap1_scene",
+      "psycles_oiio_color_space_after": "lin_rec709_scene"
+    },
+    "passes": {
+      "Combined": {
+        "rmse": 0.26242053508758545,
+        "relative_rmse": 0.16832039968527995,
+        "luminance_mean_ratio": 1.0228698424665064,
+        "maximum_absolute_error": 10.245851516723633
+      },
+      "DiffCol": {
+        "rmse": 0.011069954372942448,
+        "relative_rmse": 0.05873531858301289,
+        "luminance_mean_ratio": 1.0036870491765117,
+        "maximum_absolute_error": 0.2792418599128723
+      },
+      "DiffDir": {
+        "rmse": 2.925199270248413,
+        "relative_rmse": 0.3209686349392646,
+        "luminance_mean_ratio": 1.0240113029495286,
+        "maximum_absolute_error": 144.32452392578125
+      },
+      "DiffInd": {
+        "rmse": 0.5727856755256653,
+        "relative_rmse": 0.9470059000698399,
+        "luminance_mean_ratio": 0.9115969804733789,
+        "maximum_absolute_error": 339.220458984375
+      },
+      "GlossCol": {
+        "rmse": 0.0033411725889891386,
+        "relative_rmse": 0.048003153265549,
+        "luminance_mean_ratio": 0.9994940606828999,
+        "maximum_absolute_error": 0.0905044823884964
+      },
+      "GlossDir": {
+        "rmse": 0.8363087773323059,
+        "relative_rmse": 0.20425918910155924,
+        "luminance_mean_ratio": 1.0154053635007085,
+        "maximum_absolute_error": 97.11079406738281
+      },
+      "GlossInd": {
+        "rmse": 0.38144609332084656,
+        "relative_rmse": 0.8477872012366803,
+        "luminance_mean_ratio": 0.9441791456678909,
+        "maximum_absolute_error": 14.612364768981934
+      },
+      "Emit": {
+        "rmse": 0.014200922101736069,
+        "relative_rmse": 0.019708405448690774,
+        "luminance_mean_ratio": 0.9995498003869946,
+        "maximum_absolute_error": 1.1871109008789062
+      },
+      "Env": {
+        "rmse": 0.00047667973558418453,
+        "relative_rmse": 0.6093965346538706,
+        "luminance_mean_ratio": 1.453993888393253,
+        "maximum_absolute_error": 0.27797186374664307
+      },
+      "Normal": {
+        "rmse": 0.030848974362015724,
+        "relative_rmse": 0.056770774546733724,
+        "maximum_absolute_error": 1.2065118551254272
+      },
+      "TransCol": {
+        "rmse": 0.0,
+        "relative_rmse": 0.0,
+        "maximum_absolute_error": 0.0
+      },
+      "TransDir": {
+        "rmse": 0.0,
+        "relative_rmse": 0.0,
+        "maximum_absolute_error": 0.0
+      },
+      "TransInd": {
+        "rmse": 0.0,
+        "relative_rmse": 0.0,
+        "maximum_absolute_error": 0.0
+      }
+    },
+    "report": "report-640x480-64.json"
+  },
   "xir_repair": {
     "luisa_revision": "eb167454a",
     "cfg_repair_revision": "0e6f4376e",
@@ -444,15 +632,55 @@
       "result": "central monk and architectural silhouette recognizable through one-sample noise; no full-frame corruption, constant clear color, exposure explosion, or obvious stale-buffer pattern",
       "quality_claim": false,
       "reason": "one sample and no matching Cycles render"
+    },
+    "matched_640x480_quality": {
+      "inspected_at_original_resolution": true,
+      "panels": [
+        "Cycles",
+        "Psycles with the same display mapping",
+        "absolute linear difference amplified by its 99.5th-percentile reciprocal"
+      ],
+      "passes_inspected": [
+        "Combined",
+        "DiffCol",
+        "Normal",
+        "DiffDir",
+        "DiffInd",
+        "GlossInd"
+      ],
+      "combined": "silhouette, camera, architecture, principal colors, and sun/shadow placement align; the former global missing-direct-light failure is absent; residuals contain sampling noise plus coherent edge/detail error",
+      "material_and_normal": "texture placement, material slots, large-scale normals, and bump structure align; residuals concentrate on high-frequency detail and visibility edges",
+      "direct": "same regions receive the sun contribution; mean luminance is within 2.4 percent",
+      "indirect": "spatial structure aligns, but Psycles remains visibly darker; diffuse and glossy indirect luminance ratios are 0.912 and 0.944",
+      "acceptance": false,
+      "reason": "indirect energy, stochastic distribution, high-frequency residuals, and outliers have not converged to a 1:1 Cycles result"
     }
   },
   "triptychs": {
-    "status": "pending_for_lone_monk",
-    "reason": "The unmodified Psycles material set now produces a linear EXR, but matching current-Cycles and Psycles 480p-or-higher renders have not yet completed. Controlled or one-sample smoke images are not Cycles quality references.",
+    "status": "matched_640x480_baseline_complete",
+    "quality_acceptance": false,
+    "reason": "Real Cycles HIP and Psycles Vulkan panels are committed and inspected, but remaining indirect-energy and stochastic differences prevent final quality acceptance.",
     "required_panels": [
       "Cycles",
       "Psycles",
       "amplified absolute linear difference"
+    ],
+    "difference_percentile": 99.5,
+    "directory": "triptychs-640x480-64",
+    "assets": [
+      "triptychs-640x480-64/combined.png",
+      "triptychs-640x480-64/diffcol.png",
+      "triptychs-640x480-64/diffdir.png",
+      "triptychs-640x480-64/diffind.png",
+      "triptychs-640x480-64/emit.png",
+      "triptychs-640x480-64/env.png",
+      "triptychs-640x480-64/glosscol.png",
+      "triptychs-640x480-64/glossdir.png",
+      "triptychs-640x480-64/glossind.png",
+      "triptychs-640x480-64/normal.png",
+      "triptychs-640x480-64/transcol.png",
+      "triptychs-640x480-64/transdir.png",
+      "triptychs-640x480-64/transind.png"
     ],
     "pipeline_regressions": [
       "../flat-light-vk/triptychs/combined.png",

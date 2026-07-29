@@ -1,9 +1,9 @@
 # Psycles validation record — 2026-07-29
 
 This record covers the renderer boundary on Psycles `main` and LuisaCompute
-`next@eb167454a`. It records the commands,
-numeric results, visual inspection, and known limitations for the AMD GPU
-bring-up, Cycles flat-light distribution, XIR control-flow repair, and
+`next@eb167454a`. It records the commands, numeric results, real triptychs,
+original-resolution visual inspection, and known limitations for the AMD GPU
+bring-up, Cycles differential rendering, XIR control-flow repair, and
 multilayer OpenEXR output.
 
 ## Verdict
@@ -21,7 +21,8 @@ multilayer OpenEXR output.
   9070 XT. Vulkan also passes the two transparent-closure probes.
 - Psycles now writes one full-float multilayer OpenEXR with
   `ViewLayer.<pass>.<component>` channel names. The end-to-end comparison reads
-  Cycles EXR and Psycles EXR directly.
+  Cycles EXR and Psycles EXR directly. Both files identify their RGB values as
+  `lin_rec709_scene`.
 - The Lone Monk `column marble` blocker is repaired without changing its raw
   closure graph: whole-scene attribute metadata is now device data rather than
   host-recorded shader control flow.
@@ -29,14 +30,21 @@ multilayer OpenEXR output.
   read-only resource callables is repaired and covered by a red/green Vulkan
   subview regression. The complete 35-material Lone Monk export now reaches a
   strict-native Vulkan first pixel from an empty shader cache.
+- The first matched Lone Monk quality baseline is complete at 640×480,
+  64 fixed spp, seed zero. Cycles HIP and Psycles Vulkan both selected the
+  RX 9070 XT. Blender 5.2 single-scattering-sky compatibility restored sun
+  importance sampling and reduced Combined RMSE from `22.190855` to
+  `0.262420535`.
 - The focused Cycles/Psycles images are visually coincident at normal display
-  scale. The committed triptychs include the independently amplified absolute
-  difference.
+  scale. The committed focused and Lone Monk triptychs include independently
+  amplified absolute differences and were inspected at original resolution.
 
-This is not a claim of complete Cycles compatibility. The focused probes are
-64×64 at 256 spp. A current-Cycles Lone Monk run at 480p or 1080p and a
-same-device Cycles/Psycles performance comparison remain the next full-scene
-gate.
+This is not a claim of complete Cycles compatibility. Lone Monk's Combined
+relative RMSE remains `0.1683`; diffuse and glossy indirect mean luminance
+remain about 8.8% and 5.6% low. Psycles render-only throughput is currently
+`0.6468×` Cycles on the same GPU, and cold JIT takes about 244 seconds. A
+1440×1080 higher-sample run and pixels from a locally built current
+Blender/Cycles revision remain the next full-scene gate.
 
 ## Reference policy
 
@@ -58,11 +66,11 @@ closure topology and socket values for Luisa execution.
 
 | Item | Validated value |
 |---|---|
-| Psycles renderer implementation | `b319a42` on `main`; this validation commit pins the later Luisa repair |
+| Psycles renderer implementation | `main`; the commit containing this record includes the Blender 5.2 sky and Rec.709 EXR fixes |
 | Psycles input boundary | `32d4217dc543b1778729f23a18f3f3143e001a24` |
 | LuisaCompute | `eb167454a` on published `next` |
-| Cycles source inspected | Blender `main@9353fed6d7cdc25b2aa03c30a155b044b313c8ec`, 2026-07-28 |
-| Cycles render executable | Blender 5.2.0 LTS, build hash `fbe6228777e7`, 2026-07-13 |
+| Cycles source inspected | clean Blender `main@4fe17ef6be5d46251fa5e7dbff9018efb1c719d5`, fetched 2026-07-29 |
+| Cycles render executable | Blender 5.2.0 LTS, build hash `fbe6228777e7`, built 2026-07-15 |
 | OS/kernel | Arch Linux, Linux `7.1.4-zen1-1-zen` |
 | CPU/build concurrency | Ryzen 9 9950X3D, 16 cores / 32 threads; build and CTest use 32 jobs |
 | GPU | AMD Radeon RX 9070 XT, Navi 48 / `gfx1201` |
@@ -100,10 +108,13 @@ Luisa backend flags as `ON`. CMake reported the HIP 7.2.53211, Vulkan, and
 LLVM 22.1.8 / Embree 4.4.1 fallback backends. The final Psycles result was
 12/12 tests passing in 0.42 seconds.
 
-The new `psycles.openexr` regression writes Combined RGBA and Normal XYZ,
-reopens the file through OpenImageIO, checks the seven Cycles-compatible
-channel names, and compares every float value exactly. The Blender 4.5/5.2
-multilayer-EXR API compatibility regression is also part of the 12-test gate.
+The `psycles.openexr` regression writes Combined RGBA and Normal XYZ, reopens
+the file through OpenImageIO, checks the seven Cycles-compatible channel
+names, verifies `oiio:ColorSpace` and `colorInteropID` are both
+`lin_rec709_scene`, and compares every float value exactly. This prevents the
+unstable `scene_linear` OCIO role from relabeling Rec.709 pixels as ACEScg.
+The Blender 4.5/5.2 multilayer-EXR API compatibility regression is also part
+of the 12-test gate.
 
 ## Luisa XIR repair
 
@@ -387,15 +398,81 @@ per channel. Its
 [decoded preview](docs/validation/2026-07-29/lone-monk/full-scene-vulkan-1spp.png)
 was inspected at original resolution: the central monk and architecture are
 recognizable through one-sample noise, without a full-frame clear color,
-exposure failure, or obvious stale-buffer pattern. The required Cycles /
-Psycles / amplified-linear-difference triptychs remain pending until matching
-current-Cycles and Psycles runs are completed at 480p or higher. Focused
-triptychs are not substituted for Lone Monk.
+exposure failure, or obvious stale-buffer pattern.
+
+The first 640×480/64 spp comparison then used the installed Blender 5.2.0 LTS
+Cycles binary in HIP mode and Psycles in strict-native Vulkan mode on the same
+RX 9070 XT. Adaptive sampling and denoising were disabled, seed zero was
+fixed, and all 35 original raw material graphs were retained.
+
+The initial result had Combined RMS `22.190855`, a `0.819773` luminance ratio,
+and dark/noisy direct illumination, while Diffuse Color and Normal already
+aligned. The scene contains no analytic light and uses a procedural Sky
+Texture. Blender 5.2 exports its supported mode as `SINGLE_SCATTERING` and
+uses `aerosol_density`; the importer recognized only legacy `NISHITA` and
+`dust_density`. Background-ray evaluation still used the raw graph, but the
+environment-light descriptor lost explicit sun sampling and fell back to
+uniform-sphere sampling.
+
+The versioned importer contract now maps current `SINGLE_SCATTERING` and
+legacy `NISHITA` to Psycles' implemented single-scattering path, prefers
+`aerosol_density`, and retains `dust_density` as a legacy fallback. It does
+not claim simple-world support for Blender's distinct
+`MULTIPLE_SCATTERING` mode. The regression imports both current and legacy
+spellings and asserts procedural transfer and density. No closure or
+environment was pre-baked.
+
+After the repair, Combined RMS is `0.262420535`, relative RMS `0.168320400`,
+luminance ratio `1.0228698`, and maximum error `10.245852`. All 40 Psycles
+channels contain 307,200 finite values and no NaN/Inf. The complete
+[numeric report](docs/validation/2026-07-29/lone-monk/report-640x480-64.json),
+[Combined triptych](docs/validation/2026-07-29/lone-monk/triptychs-640x480-64/combined.png),
+and the other real pass triptychs are committed with the
+[full process and visual record](docs/validation/2026-07-29/lone-monk/README.md).
+This is a measured convergence baseline, not a final 1:1 quality pass.
 
 ## Numeric comparison
 
 All tables compare linear float channels. Relative RMSE is RMSE divided by the
 Cycles RMS for that pass.
+
+### Lone Monk 640×480/64 spp
+
+| Pass | RMSE | Relative RMSE | Luminance ratio | Maximum error | Invalid pixels |
+|---|---:|---:|---:|---:|---:|
+| Combined | `0.262420535` | `16.832040%` | `1.0228698` | `10.245852` | 0 |
+| Diffuse Color | `0.011069954` | `5.873532%` | `1.0036870` | `0.279242` | 0 |
+| Diffuse Direct | `2.92519927` | `32.096863%` | `1.0240113` | `144.32452` | 0 |
+| Diffuse Indirect | `0.572785676` | `94.700590%` | `0.9115970` | `339.22046` | 0 |
+| Glossy Color | `0.003341173` | `4.800315%` | `0.9994941` | `0.090504` | 0 |
+| Glossy Direct | `0.836308777` | `20.425919%` | `1.0154054` | `97.110794` | 0 |
+| Glossy Indirect | `0.381446093` | `84.778720%` | `0.9441791` | `14.612365` | 0 |
+| Emission | `0.014200922` | `1.970841%` | `0.9995498` | `1.187111` | 0 |
+| Environment | `0.000476680` | `60.939653%` | `1.4539939` | `0.277972` | 0 |
+| Normal | `0.030848974` | `5.677077%` | n/a | `1.206512` | 0 |
+| Transmission Color / Direct / Indirect | `0` | `0` | `0` | `0` | 0 |
+
+The indirect relative errors are noise-sensitive, but their mean-energy gaps
+are also systematic at this sample count: diffuse indirect is approximately
+8.8% low and glossy indirect approximately 5.6% low. Environment has high
+relative error only because its absolute reference energy is tiny.
+
+Machine-readable result:
+[Lone Monk report](docs/validation/2026-07-29/lone-monk/report-640x480-64.json).
+
+Real triptychs:
+[Combined](docs/validation/2026-07-29/lone-monk/triptychs-640x480-64/combined.png),
+[Diffuse Color](docs/validation/2026-07-29/lone-monk/triptychs-640x480-64/diffcol.png),
+[Diffuse Direct](docs/validation/2026-07-29/lone-monk/triptychs-640x480-64/diffdir.png),
+[Diffuse Indirect](docs/validation/2026-07-29/lone-monk/triptychs-640x480-64/diffind.png),
+[Glossy Color](docs/validation/2026-07-29/lone-monk/triptychs-640x480-64/glosscol.png),
+[Glossy Direct](docs/validation/2026-07-29/lone-monk/triptychs-640x480-64/glossdir.png),
+[Glossy Indirect](docs/validation/2026-07-29/lone-monk/triptychs-640x480-64/glossind.png),
+[Emission](docs/validation/2026-07-29/lone-monk/triptychs-640x480-64/emit.png),
+[Environment](docs/validation/2026-07-29/lone-monk/triptychs-640x480-64/env.png),
+and [Normal](docs/validation/2026-07-29/lone-monk/triptychs-640x480-64/normal.png).
+The three transmission triptychs are retained beside them and are exactly
+black in all panels.
 
 ### Flat light distribution
 
@@ -462,6 +539,20 @@ third panel deliberately makes very small errors visible.
 
 The inspection result is:
 
+- Lone Monk Combined aligns in silhouette, camera, architecture, principal
+  colors, and sun/shadow placement after the single-scattering-sky repair.
+  The former missing-direct-light/exposure failure is absent. Psycles is
+  slightly brighter and the amplified panel contains both radiance-correlated
+  sampling noise and coherent edge/detail residuals;
+- Lone Monk Diffuse Color aligns brick, marble, wood, foliage, books, and
+  texture placement, while Normal aligns large-scale orientation and
+  mapped/bump structure. Their amplified residuals concentrate on
+  high-frequency detail and visibility edges, not a frame flip, normal-space
+  rotation, or material-slot permutation;
+- Lone Monk direct-pass illuminated regions align and have mean luminance
+  within 2.4%. Diffuse and Glossy Indirect preserve the same spatial
+  structure but are visibly darker, matching the measured 0.912 and 0.944
+  luminance ratios. This prevents a final visual-acceptance verdict;
 - flat-light Combined and DiffDir are visually coincident. The amplified
   difference is per-pixel sampling noise whose amplitude follows scene
   radiance; it has no geometry-edge displacement, missing light region, or
@@ -480,10 +571,26 @@ top-left scanline order; legacy PFM support applies its fixed format-defined
 vertical conversion. The reports retain identity and flipped-orientation
 diagnostics as a guard against accidental format changes.
 
-## Focused GPU timings
+## GPU timings
 
-These are small 64×64/256 spp probes and are useful for shader-size and
-backend health only.
+The Lone Monk row is the first same-physical-device, 480p-or-higher
+measurement:
+
+| Measurement | Cycles 5.2 HIP | Psycles Vulkan |
+|---|---:|---:|
+| Lone Monk 640×480/64 spp render-only | `0.96 s` | `1.48413 s` |
+| Synchronization | `0.67 s` | included in dispatch completion |
+| Reported total / warm setup | `1.63 s` total | `0.659837 s` scene + `2.14923 s` JIT |
+| Python golden elapsed / cold setup | `1.85641 s` | `0.75263 s` scene + `244.088 s` JIT |
+
+On render-only intervals, Psycles throughput is `0.6468×` Cycles, or about
+`1.546×` slower. There is no same-device speedup yet. The Cycles Python-call
+elapsed divided by Psycles render-only time would yield `1.25×`, but those
+intervals have different boundaries and that ratio is explicitly rejected as
+a speedup. Peak VRAM was not sampled for this short run.
+
+The remaining rows are small 64×64/256 spp probes and are useful for
+shader-size and backend health only.
 
 | Backend/probe | Scene compile | Shader JIT | Render |
 |---|---:|---:|---:|
@@ -494,19 +601,24 @@ backend health only.
 | Vulkan transparent mix, hot | `0.013557 s` | `0.036953 s` | `0.012637 s` |
 | Vulkan transparent data, hot | `0.019546 s` | `0.019263 s` | `0.013890 s` |
 
-The focused Cycles metadata selected CPU execution, so these figures do not
-support a same-device speedup claim. The next full-scene measurement must run
-Cycles and Psycles on the same RX 9070 XT, report cold and warm setup
-separately, use at least 480p, and attempt 1080p when GPU memory permits.
+The focused Cycles metadata selected CPU execution, so only the Lone Monk row
+supports the same-device comparison.
 
 ## Known limitations and next gate
 
-- Render and compare Lone Monk with current Cycles and Psycles on the same AMD
-  GPU at 480p or 1080p. Record device selection, samples, total wall time,
-  render-only time, peak memory, pass metrics, and triptychs.
-- Build the 2026-07-28 Cycles source checkout, or move both source inspection
-  and pixels to another exact common revision. Do not silently mix a newer
-  source claim with the packaged 5.2.0 LTS binary.
+- Repeat Lone Monk at the original 1440×1080 aspect/resolution and a higher
+  sample count. Record peak VRAM in addition to device selection, cold/warm
+  setup, render-only time, pass metrics, and triptychs.
+- Build the clean current Cycles source checkout at
+  `4fe17ef6be5d46251fa5e7dbff9018efb1c719d5`, then move both source inspection
+  and pixels to that exact revision. The current 640×480 pixels are explicitly
+  from packaged Blender 5.2.0 LTS `fbe6228777e7`.
+- Diagnose the remaining diffuse/glossy indirect energy deficit and sampler /
+  stochastic-distribution differences using Cycles alone as the oracle. Do
+  not add a CPU reference sampler or renderer.
+- Blender 5.2 `MULTIPLE_SCATTERING` sky is distinct from the implemented
+  single-scattering equations and is not yet supported by the simple-world
+  importance sampler.
 - The flat distribution is implemented, but Cycles light trees are not.
 - Environment map importance CDFs and the imported
   `world_sample_map_resolution` are not yet connected to sampling.

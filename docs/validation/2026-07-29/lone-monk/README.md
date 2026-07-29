@@ -341,30 +341,212 @@ does not establish agreement with Cycles.
 
 ## Triptychs and visual acceptance
 
-There are intentionally no placeholder Lone Monk triptychs. The controlled
-material variants, including the repaired single-material run, have no
-equivalent Cycles quality reference and cannot be presented as one. The
-required triptych for each linear pass is:
+The first real full-scene differential baseline is 640×480 at 64 fixed
+samples, seed zero. This preserves the scene's 4:3 aspect ratio and satisfies
+the minimum 480p gate. Adaptive sampling, denoising, the compositor, and the
+sequencer were disabled on the Cycles side. Psycles consumed the same
+unmodified export: 350 geometries, 7,543 instances, 35 original raw material
+graphs, and 47 images. No material or closure was evaluated or baked by
+Blender/Cycles.
 
-1. Cycles;
-2. Psycles using the same display transform and exposure;
-3. independently amplified absolute linear difference, with the multiplier
-   printed in the panel title.
+The local source reference was fetched and fast-forwarded before inspection:
+`/home/mike/Projects/blender-cycles` is clean at Blender
+`main@4fe17ef6be5d46251fa5e7dbff9018efb1c719d5`. The pixels below were produced
+by the installed Blender 5.2.0 LTS binary, build hash `fbe6228777e7`, because
+the current source checkout has not yet been built. Source-inspection and
+pixel revisions are deliberately reported separately.
 
-The accompanying JSON must record RMSE, relative RMSE, energy or luminance
-ratio, maximum error, invalid pixels, device inventory, cold/warm setup time,
-render-only time, peak memory, and same-device speedup. Images must be
-inspected at original resolution for silhouette, geometry-edge, missing-light,
-texture-coordinate, normal, systematic shading, and color/exposure errors.
+The Cycles command was:
 
-The triptych pipeline itself is already covered by committed Cycles/Psycles
-checks:
+```bash
+/usr/bin/blender \
+  /home/mike/Downloads/lone-monk_cycles_and_exposure-node_demo.blend \
+  --background --python-exit-code 1 \
+  --python tools/render_cycles_golden.py -- \
+  /tmp/lone-monk-20260729/quality-640x480-64/cycles.exr \
+  640 480 64 0 \
+  --cycles-device HIP \
+  --device-name "Radeon RX 9070 XT"
+```
 
-- [flat-light Combined triptych](../flat-light-vk/triptychs/combined.png);
-- [transparent-mix Combined triptych](../transparent-mix-vk/triptychs/combined.png);
-- [transparent-data Combined triptych](../transparent-data-pass-vk/triptychs/combined.png).
+The golden metadata proves that the only enabled Cycles device was
+`HIP_AMD Radeon RX 9070 XT_0000:03:00`, `scene.cycles.device` was `GPU`, and
+adaptive sampling and denoising were both false. Cycles wrote 43 full-float
+channels. Every channel contains 307,200 finite values and no NaN or Inf.
 
-Those focused images are not substituted for Lone Monk. The unmodified
-Psycles material set now produces a linear EXR, but Lone Monk triptychs remain
-pending until current Cycles and Psycles are rendered with matching settings
-at 480p or higher. A 1080p run will be attempted if GPU memory permits.
+The corresponding strict-native Psycles command was:
+
+```bash
+env LUISA_XIR_DISABLE_OPTIMIZATION=1 \
+    LUISA_SPIRV_OPT_LEVEL=0 \
+    LUISA_XIR_TRACE_PASSES=1 \
+    LUISA_LOG_LEVEL=verbose \
+    LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1 \
+  build/bin/psycles_render_blender_scene \
+  /tmp/lone-monk-20260729/export \
+  /tmp/lone-monk-20260729/quality-640x480-64/psycles-sun-guiding-rec709.ppm \
+  vk 640 480 64
+```
+
+The Vulkan log names `AMD Radeon RX 9070 XT (RADV GFX1201)`. Psycles wrote 40
+full-float channels; every channel likewise contains 307,200 finite values
+and no NaN or Inf. The final EXR reports both `oiio:ColorSpace` and
+`colorInteropID` as `lin_rec709_scene`, matching the Cycles EXR. Re-rendering
+after changing only this metadata was pixel-exact to the pre-metadata-fix
+Psycles EXR.
+
+### Blender 5.2 single-scattering sky diagnosis
+
+The first matched render exposed a systematic failure rather than merely
+different random noise:
+
+| Combined measurement | Before | After |
+|---|---:|---:|
+| RMSE | `22.190855` | `0.262420535` |
+| Relative RMSE | `14.23354` | `0.168320400` |
+| Mean-luminance ratio | `0.8197728` | `1.0228698` |
+| Maximum absolute error | `4505.7529` | `10.245852` |
+
+The material-color and normal passes already aligned closely, while Combined
+and direct-light passes were much darker and contained fireflies. The scene
+has no analytic lights; it is lit by one procedural sky. Blender 5.2 exports
+that node as `sky_type = SINGLE_SCATTERING` and its aerosol control as
+`aerosol_density`. Psycles' simple-world recognizer accepted only the legacy
+`NISHITA` spelling and read only `dust_density`.
+
+The raw world graph still evaluated the sky for background rays, so the camera
+saw a plausible sky. However, failure to construct the procedural environment
+descriptor meant that the light distribution had no explicit sun to sample.
+Uniform-sphere environment samples almost never hit the small sun disc. This
+explains the pass-local signature: material colors and normals were stable,
+but direct illumination was dark and high-variance.
+
+Current Cycles source defines distinct
+`NODE_SKY_SINGLE_SCATTERING` and `NODE_SKY_MULTIPLE_SCATTERING` modes and
+sun-guides a single eligible, untransformed sky node. Psycles currently
+implements the single-scattering equations only. The compatibility mapping is
+therefore explicit and bounded:
+
+- current `SINGLE_SCATTERING` and legacy `NISHITA` select the supported
+  procedural single-scattering path;
+- current `aerosol_density` is preferred, with legacy `dust_density` as a
+  compatibility fallback;
+- `MULTIPLE_SCATTERING` is not claimed or silently mapped by the simple-world
+  recognizer.
+
+The importer regression now exercises both the current enum/property pair and
+the legacy pair, checks that each stays procedural, and checks the transferred
+aerosol/dust value. This is a versioned scene-contract mapping, not a
+Lone-Monk-specific material replacement.
+
+The EXR inspection then found a separate interchange error:
+`oiio:ColorSpace = scene_linear` is an OCIO role and resolved to
+`lin_ap1_scene` with the installed Blender configuration, even though Psycles
+pass values are linear Rec.709. The writer now emits the stable
+`lin_rec709_scene` identity. Its regression reopens the file and asserts both
+the OIIO color-space attribute and the derived OpenEXR `colorInteropID`, in
+addition to exact channel names and float values.
+
+The repair plus both regressions pass the complete project gate:
+
+```bash
+cmake --build build --parallel 32
+ctest --test-dir build --output-on-failure -j32
+```
+
+Result: 12/12 tests passed in 0.42 seconds.
+
+### Numeric result
+
+All metrics compare raw linear EXR channels. Relative RMSE is RMSE divided by
+the Cycles RMS for that pass. The complete machine-readable result, including
+mean vectors, percentiles, invalid counts, orientation guards, and triptych
+display scales, is
+[report-640x480-64.json](report-640x480-64.json).
+
+| Pass | RMSE | Relative RMSE | Luminance ratio | Maximum error | Invalid pixels |
+|---|---:|---:|---:|---:|---:|
+| Combined | `0.262420535` | `0.168320400` | `1.0228698` | `10.245852` | 0 |
+| Diffuse Color | `0.011069954` | `0.058735319` | `1.0036870` | `0.279242` | 0 |
+| Diffuse Direct | `2.92519927` | `0.320968635` | `1.0240113` | `144.32452` | 0 |
+| Diffuse Indirect | `0.572785676` | `0.947005900` | `0.9115970` | `339.22046` | 0 |
+| Glossy Color | `0.003341173` | `0.048003153` | `0.9994941` | `0.090504` | 0 |
+| Glossy Direct | `0.836308777` | `0.204259189` | `1.0154054` | `97.110794` | 0 |
+| Glossy Indirect | `0.381446093` | `0.847787201` | `0.9441791` | `14.612365` | 0 |
+| Emission | `0.014200922` | `0.019708405` | `0.9995498` | `1.187111` | 0 |
+| Environment | `0.000476680` | `0.609396535` | `1.4539939` | `0.277972` | 0 |
+| Normal | `0.030848974` | `0.056770775` | n/a | `1.206512` | 0 |
+| Transmission Color | `0` | `0` | `0` | `0` | 0 |
+| Transmission Direct | `0` | `0` | `0` | `0` | 0 |
+| Transmission Indirect | `0` | `0` | `0` | `0` | 0 |
+
+The Environment relative error is large only because its Cycles RMS is
+approximately `7.82e-4`; its absolute RMSE is `4.77e-4`. Conversely, the
+indirect diffuse and glossy luminance ratios are materially low by about
+8.8% and 5.6% respectively and remain real convergence targets.
+
+### Original-resolution visual inspection
+
+Every panel below was opened and inspected at its committed 640×480 panel
+resolution. Cycles and Psycles share one diagnostic linear-to-sRGB mapping and
+one exposure scale. Normal uses `normal * 0.5 + 0.5`. The third panel is
+absolute linear difference amplified independently by the reciprocal of its
+99.5th percentile; the multiplier is printed above the panel.
+
+- [Combined](triptychs-640x480-64/combined.png): silhouette, camera,
+  architecture, principal colors, and the sun/shadow pattern align. There is
+  no longer a missing-light or global-exposure failure. Psycles remains
+  slightly brighter and the amplified panel shows radiance-correlated sampling
+  noise plus coherent edge/detail residuals.
+- [Diffuse Color](triptychs-640x480-64/diffcol.png): brick, marble, wood,
+  foliage, books, and texture-coordinate placement align closely. Amplified
+  residuals concentrate on edges, foliage, bump detail, and a few bright
+  surfaces rather than showing a material-slot permutation.
+- [Normal](triptychs-640x480-64/normal.png): large-scale orientation,
+  geometry silhouettes, and mapped/bump detail align. Residuals are strongest
+  on high-frequency texture and visibility edges; there is no frame flip or
+  global normal-space rotation.
+- [Diffuse Direct](triptychs-640x480-64/diffdir.png) and
+  [Glossy Direct](triptychs-640x480-64/glossdir.png): the formerly absent
+  direct sun contribution is present in the same illuminated regions. The
+  remaining error is dominated by independent sample noise and edge detail,
+  with mean luminance within 2.4% and 1.6%.
+- [Diffuse Indirect](triptychs-640x480-64/diffind.png) and
+  [Glossy Indirect](triptychs-640x480-64/glossind.png): spatial structure is
+  recognizable and aligned, but Psycles is visibly somewhat darker overall,
+  consistent with the measured 0.912 and 0.944 luminance ratios.
+- [Emission](triptychs-640x480-64/emit.png) and
+  [Environment](triptychs-640x480-64/env.png) have low absolute error.
+  [Glossy Color](triptychs-640x480-64/glosscol.png) also aligns closely.
+- [Transmission Color](triptychs-640x480-64/transcol.png),
+  [Transmission Direct](triptychs-640x480-64/transdir.png), and
+  [Transmission Indirect](triptychs-640x480-64/transind.png) are exactly zero
+  in both renderers for this frame.
+
+This baseline is a major correctness improvement, but it does **not** pass the
+1:1 Cycles quality gate. The indirect-pass energy gap, stochastic
+distribution/sampler differences, high-frequency normal/material residuals,
+and outliers still require investigation at higher samples. A 1440×1080 run
+and pixels from a locally built current Blender/Cycles revision remain
+pending.
+
+### Same-device timing
+
+Both renderers selected the same physical RX 9070 XT, through HIP for Cycles
+and RADV Vulkan for Psycles:
+
+| Measurement | Cycles 5.2 HIP | Psycles Vulkan |
+|---|---:|---:|
+| Internal render-only | `0.96 s` | `1.48413 s` |
+| Synchronization | `0.67 s` | reported inside dispatch completion |
+| Renderer-reported total / setup | `1.63 s` total | `0.659837 s` scene + `2.14923 s` warm JIT |
+| Golden-script elapsed / cold setup | `1.85641 s` | `244.841 s` scene + cold JIT |
+
+On the only directly comparable render-only numbers, the current Psycles
+baseline has `0.6468×` Cycles throughput, i.e. it is approximately `1.546×`
+slower; there is no speedup claim. The 244-second cold monolithic-kernel JIT
+is also far outside a production target. The apparent `1.25×` ratio obtained
+by dividing the Cycles Python-call elapsed time by Psycles render-only time is
+not reported as a speedup because those intervals have different boundaries.
+Peak VRAM was not sampled for this short matched run and remains an explicit
+missing measurement for the 1080p gate.

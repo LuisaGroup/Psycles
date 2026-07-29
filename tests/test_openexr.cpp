@@ -86,6 +86,14 @@ int main() {
     require(
         specification.channelnames == expected_names,
         "generated EXR channel names are not Cycles-compatible");
+    require(
+        specification.get_string_attribute(
+            "oiio:ColorSpace") == "lin_rec709_scene",
+        "generated EXR does not identify Cycles' scene-linear Rec.709 space");
+    require(
+        specification.get_string_attribute(
+            "colorInteropID") == "lin_rec709_scene",
+        "OpenEXR color interoperability metadata does not match Cycles");
 
     std::vector<float> actual(2u * 2u * 7u);
     require(
