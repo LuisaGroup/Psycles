@@ -66,7 +66,7 @@ closure topology and socket values for Luisa execution.
 
 | Item | Validated value |
 |---|---|
-| Psycles renderer implementation | `main`; the commit containing this record includes the Blender 5.2 sky and Rec.709 EXR fixes |
+| Psycles renderer implementation | `e13a1c0` on published `main` |
 | Psycles input boundary | `32d4217dc543b1778729f23a18f3f3143e001a24` |
 | LuisaCompute | `eb167454a` on published `next` |
 | Cycles source inspected | clean Blender `main@4fe17ef6be5d46251fa5e7dbff9018efb1c719d5`, fetched 2026-07-29 |
