@@ -237,6 +237,7 @@
   ],
   "quality_baseline": {
     "acceptance": "major correctness improvement; final 1:1 Cycles quality gate not passed",
+    "psycles_revision": "e13a1c0",
     "cycles_oracle": {
       "source_checkout": "/home/mike/Projects/blender-cycles",
       "source_revision_inspected": "4fe17ef6be5d46251fa5e7dbff9018efb1c719d5",
