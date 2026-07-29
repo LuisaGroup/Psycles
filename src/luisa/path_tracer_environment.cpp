@@ -13,7 +13,8 @@ EnvironmentCallables make_environment_callables(
     EnvironmentBaseCallable base =
         [scene, surface_emission](
             Float3 direction,
-            Float3 background) noexcept {
+            Float3 background,
+            UInt ray_visibility) noexcept {
             BufferShaderServices services{
                 scene->parameter_buffer,
                 scene->cycles_bsdf_table_buffer,
@@ -72,7 +73,7 @@ EnvironmentCallables make_environment_callables(
                             .particle_index = 0u,
                             .random_per_island = 0.0f,
                             .ray_visibility =
-                                camera_visibility,
+                                ray_visibility,
                             .ray_events = 0u,
                             .ray_depth = 0u,
                             .diffuse_depth = 0u,

@@ -118,7 +118,6 @@ using luisa::compute::transpose;
 using luisa::compute::triangle_interpolate;
 
 constexpr auto pi = 3.14159265358979323846f;
-constexpr auto uniform_sphere_pdf = 1.0f / (4.0f * pi);
 constexpr auto ray_maximum = 1.0e30f;
 constexpr std::uint32_t geometry_bindless_stride = 8u;
 constexpr auto camera_visibility =
@@ -208,6 +207,15 @@ struct LuisaSceneData {
     std::vector<contract::EnvironmentSunDesc> environment_suns;
     std::optional<NishitaEnvironmentRuntime>
         nishita_environment;
+    Buffer<luisa::float2> background_conditional_cdf;
+    Buffer<luisa::float2> background_marginal_cdf;
+    std::uint32_t background_map_width{1u};
+    std::uint32_t background_map_height{1u};
+    float background_map_weight{};
+    float background_guided_sun_weight{};
+    luisa::float3 background_guided_sun_axis{
+        0.0f, 0.0f, 1.0f};
+    float background_guided_sun_radius{};
     std::vector<NishitaTextureBinding>
         nishita_texture_bindings;
     BindlessArray heap;

@@ -6,7 +6,10 @@
 namespace psycles::luisa_backend::detail {
 
 using EnvironmentBaseCallable =
-    Callable<luisa::float3(luisa::float3, luisa::float3)>;
+    Callable<luisa::float3(
+        luisa::float3,
+        luisa::float3,
+        luisa::uint)>;
 using EnvironmentSunCallable =
     Callable<luisa::float3(luisa::float3)>;
 

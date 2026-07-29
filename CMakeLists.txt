@@ -34,6 +34,7 @@ add_library(psycles_core
     src/contract/scene.cpp
     src/contract/shader_graph.cpp
     src/io/image.cpp
+    src/sampling/background_distribution.cpp
     src/sampling/light_distribution.cpp
     src/sampling/pixel_filter.cpp
     src/sampling/tabulated_sobol.cpp)
@@ -281,6 +282,29 @@ if(PSYCLES_ENABLE_LUISA)
                     COMMAND
                         psycles_luisa_camera_sampling_tests
                         fallback)
+
+                add_executable(
+                    psycles_luisa_background_sampling_tests
+                    tests/test_luisa_background_sampling.cpp)
+                target_link_libraries(
+                    psycles_luisa_background_sampling_tests
+                    PRIVATE Psycles::luisa)
+                target_compile_features(
+                    psycles_luisa_background_sampling_tests
+                    PRIVATE cxx_std_20)
+                add_dependencies(
+                    psycles_luisa_background_sampling_tests
+                    luisa-compute-backend-fallback)
+                set_target_properties(
+                    psycles_luisa_background_sampling_tests
+                    PROPERTIES
+                        RUNTIME_OUTPUT_DIRECTORY
+                            "${CMAKE_BINARY_DIR}/bin")
+                add_test(
+                    NAME psycles.luisa_background_sampling_fallback
+                    COMMAND
+                        psycles_luisa_background_sampling_tests
+                        fallback)
             endif()
 
             add_executable(
@@ -430,6 +454,19 @@ if(PSYCLES_BUILD_TESTS)
     add_test(
         NAME psycles.pixel_filter
         COMMAND psycles_pixel_filter_tests)
+
+    add_executable(
+        psycles_background_distribution_tests
+        tests/test_background_distribution.cpp)
+    target_link_libraries(
+        psycles_background_distribution_tests
+        PRIVATE Psycles::core)
+    target_compile_features(
+        psycles_background_distribution_tests
+        PRIVATE cxx_std_20)
+    add_test(
+        NAME psycles.background_distribution
+        COMMAND psycles_background_distribution_tests)
 
     add_executable(
         psycles_light_distribution_tests
