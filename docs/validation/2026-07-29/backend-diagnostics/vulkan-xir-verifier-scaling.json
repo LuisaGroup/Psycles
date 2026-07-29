@@ -1,5 +1,5 @@
 {
-  "schema": "psycles.vulkan-xir-verifier-scaling.v3",
+  "schema": "psycles.vulkan-xir-verifier-scaling.v4",
   "date": "2026-07-29",
   "backend": "vk",
   "device": "AMD Radeon RX 9070 XT (RADV GFX1201)",
@@ -8,11 +8,13 @@
     "linear_verifier": "a7118069eb4ef0e75af5d0c8d954d8e6ad638f9a",
     "construct_entry_dominance_reuse": "8c7d1bf88",
     "lazy_if_batch_post_dominance": "ad4fdcedd",
+    "loop_boundary_selection_relation": "a73f7da96",
     "branch": "next",
     "commit_subjects": [
       "XIR: make verifier use-list checks linear",
       "XIR: reuse construct-entry dominance analysis",
-      "XIR: rebuild if-batch post-dominance lazily"
+      "XIR: rebuild if-batch post-dominance lazily",
+      "XIR: materialize loop-boundary selection relation"
     ]
   },
   "input": {
@@ -36,11 +38,12 @@
   },
   "cache": {
     "psycles_shader_cache_enabled_during_measurement": false,
-    "radv_pipeline_cache_state": "warm in all four matched runs",
+    "radv_pipeline_cache_state": "warm in all five matched runs",
     "radv_pipeline_ready_seconds_before": 0.178,
     "radv_pipeline_ready_seconds_after_linear_verifier": 0.164,
     "radv_pipeline_ready_seconds_after_dominance_reuse": 0.165,
     "radv_pipeline_ready_seconds_after_lazy_post_dominance": 0.168,
+    "radv_pipeline_ready_seconds_after_selection_relation": 0.162,
     "production_shader_cache_restored_after_measurement": true,
     "restoration_build_parallel_jobs": 32
   },
@@ -105,6 +108,21 @@
         "spirv_validation_seconds": 1.232
       }
     },
+    "after_selection_relation": {
+      "reported_shader_jit_seconds": 29.8203,
+      "process_wall_seconds": 30.66,
+      "peak_rss_kib": 1651968,
+      "scene_compilation_seconds": 0.649934,
+      "render_seconds": 0.00667374,
+      "stages": {
+        "ast_to_xir_seconds": 0.84673263,
+        "spirv_xir_legalization_seconds": 22.621892491,
+        "destructure_cfg_seconds": 0.8161,
+        "restructure_cfg_seconds": 20.94327,
+        "native_spirv_emission_boundary_seconds": 4.801,
+        "spirv_validation_seconds": 1.189
+      }
+    },
     "speedup_before_to_linear_verifier": {
       "reported_shader_jit": 4.708827308,
       "ast_to_xir": 18.749912509,
@@ -124,9 +142,21 @@
       "post_dominator_call_count": 14.031914894,
       "post_dominator_time": 23.945014176
     },
+    "speedup_lazy_post_dominance_to_selection_relation": {
+      "reported_shader_jit": 1.175964025,
+      "restructure_cfg": 1.245951993,
+      "post_restructure_fixed_point": 1.845836375
+    },
+    "instrumented_phase_control": {
+      "before_jit_seconds": 35.0935,
+      "after_jit_seconds": 29.8203,
+      "before_drain_selection_exits_seconds": 9.548347,
+      "after_drain_selection_exits_seconds": 4.121415,
+      "drain_selection_exits_speedup": 2.316764267
+    },
     "speedup_before_to_final": {
-      "reported_shader_jit": 5.873855068,
-      "complete_process": 5.771714922
+      "reported_shader_jit": 6.907442246,
+      "complete_process": 6.761904762
     },
     "output_shape_unchanged": {
       "spirv_words": 2672528,
@@ -136,7 +166,9 @@
       "restructured_switch": 8,
       "canonicalized_cfg": 14,
       "construct_entry_dom_tree_final_committed_cfg": 11,
-      "if_batch_post_dom_rebuild_final_committed_cfg": 31
+      "if_batch_post_dom_rebuild_final_committed_cfg": 31,
+      "selection_exit_boundary_analysis_final_committed_cfg": 45,
+      "selection_exit_site_query_final_committed_cfg": 8855
     }
   },
   "restructure_cfg_trace": {
@@ -225,14 +257,40 @@
       "post_dominator_seconds": 0.194341,
       "post_dominator_calls": 376
     },
+    "after_selection_relation": {
+      "module_transaction_preflight_seconds": 0.934831,
+      "preflight_verifier": {
+        "calls": 69,
+        "seconds": 3.035963
+      },
+      "post_transform_verifier": {
+        "calls": 46,
+        "seconds": 2.239393
+      },
+      "all_verifier_seconds": 5.275356,
+      "all_verifier_percent_of_restructure": 25.188789,
+      "definition_transforms_seconds": 17.926496,
+      "main_loop_iterations_seconds": 5.533077,
+      "if_batch_seconds_nested_in_main_loop": 5.363403,
+      "post_restructure_fixed_point_seconds": 6.279925,
+      "drain_selection_exits_seconds_nested_in_post_fixed_point": 4.121415,
+      "selection_exit_boundary_analyses": 45,
+      "selection_exit_site_queries": 8855,
+      "construct_entry_checks": 5070,
+      "committed_cfg_dominator_tree_builds": 11,
+      "committed_cfg_if_batch_post_dominator_rebuilds": 31,
+      "post_dominator_seconds": 0.195132,
+      "post_dominator_calls": 376
+    },
     "verifier_speedup": 19.42161295,
     "construct_entry_enforcement_speedup": 334.137434124,
     "post_dominator_call_reduction": 14.031914894,
     "post_dominator_time_speedup": 23.945014176,
+    "selection_exit_drain_speedup": 2.316764267,
     "remaining_primary_stage": {
       "name": "restructure_cfg",
-      "seconds": 26.094309,
-      "percent_of_reported_shader_jit": 74.411448
+      "seconds": 20.94327,
+      "percent_of_reported_shader_jit": 70.231587
     }
   },
   "formal_repair": {
@@ -258,6 +316,16 @@
     "rejected_hypothesis_observation": "The stale-snapshot experiment expanded the result to 67 blocks, violating the existing strict bound of fewer than 64. The bound was not weakened and the experiment was not committed.",
     "validation_is_not_skipped": true
   },
+  "formal_loop_boundary_selection_relation": {
+    "old_predicate": "For every selection site, traverse every structured loop region to decide whether the site is a loop-boundary-only IfInst.",
+    "relation": "boundary(entry) iff there exists a structured loop whose region reaches entry and whose break/continue boundary classification accepts entry's IfInst.",
+    "materialization": "For one immutable CFG version, walk each loop region once and insert every accepted entry into an exact membership set.",
+    "equivalence": "The old predicate and the materialized set evaluate the same existential relation. No selection-exit rewrite occurs until all membership queries used to choose that rewrite have completed.",
+    "invalidation": "Every successful selection-exit CFG rewrite ends the scan; the next scan rematerializes the relation from the new CFG.",
+    "old_scan_complexity": "O(selection sites * structured loop-region traversal)",
+    "new_scan_complexity": "O(structured loop-region traversal + selection membership queries)",
+    "validation_is_not_skipped": true
+  },
   "regression": {
     "test": "xir_verifier_use_list_membership_is_linear_in_fanout",
     "fanout_instructions": 8192,
@@ -271,12 +339,19 @@
     "unit_xir_tests_passed": 48,
     "unit_xir_tests_total": 48,
     "xir_verifier_assertions": 197,
-    "restructure_cfg_assertions": 1042,
+    "restructure_cfg_assertions": 1044,
     "dominance_operation_count_test": {
       "test": "restructure_construct_entry_dominance_is_linear_per_cfg_version",
       "structured_if_count": 256,
       "cfg_mutations": 0,
       "expected_dominator_tree_builds": 1
+    },
+    "selection_relation_operation_count_test": {
+      "test": "restructure_construct_entry_dominance_is_linear_per_cfg_version",
+      "structured_if_count": 256,
+      "cfg_mutations": 0,
+      "expected_boundary_relation_materializations": 1,
+      "expected_selection_site_queries": 256
     },
     "lazy_post_dominance_operation_count_test": {
       "test": "restructure_if_batch_consumes_a_linear_diamond_chain",
@@ -291,10 +366,11 @@
     "after_linear_verifier_ppm_sha256": "5a29d7d24876e89969714331b08e5c6ca23932a729a58f43878bcddd364ed587",
     "after_dominance_reuse_ppm_sha256": "5a29d7d24876e89969714331b08e5c6ca23932a729a58f43878bcddd364ed587",
     "after_lazy_post_dominance_ppm_sha256": "5a29d7d24876e89969714331b08e5c6ca23932a729a58f43878bcddd364ed587",
+    "after_selection_relation_ppm_sha256": "5a29d7d24876e89969714331b08e5c6ca23932a729a58f43878bcddd364ed587",
     "differing_pixels": 0,
     "maximum_channel_difference": 0,
     "triptych": "vulkan-xir-verifier/use-list-triptych.png",
-    "triptych_sha256": "7526b85f6732118b97c2ec7da02d82e46460af08899d9abd5a145f7e0043fbde",
+    "triptych_sha256": "a547529633afa51cec740b3374cfe0d013214dece4f956050c7d7f002b39f642",
     "triptych_scale": "4x nearest-neighbor; absolute difference amplified 32x",
     "visually_inspected_at_original_triptych_resolution": true
   },

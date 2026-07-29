@@ -18,9 +18,10 @@ alignment boundary:
 - generic XIR use-list verification is now linear in operand/use-list count in
   Luisa `next@a7118069e`, and CFG-version-scoped construct-entry dominance
   reuse follows in `next@8c7d1bf88`; lazy, observation-equivalent if-batch
-  post-dominance rebuilding follows in `next@ad4fdcedd`; together they reduce
-  a matched strict-native Vulkan shader-cache miss from `205.982 s` to
-  `35.0676 s`;
+  post-dominance rebuilding follows in `next@ad4fdcedd`; exact loop-boundary
+  selection-relation materialization follows in `next@a73f7da96`; together
+  they reduce a matched strict-native Vulkan shader-cache miss from
+  `205.982 s` to `29.8203 s`;
 - the current strict-native Vulkan cold JIT is dominated by formal XIR CFG
   restructuring, not by CMake compilation, SPIR-V validation, or rendering.
 
@@ -544,25 +545,25 @@ It changes the work to `O(use-list entries + membership queries)` without
 skipping or weakening validation. Detached `Use` nodes and nodes linked into
 the wrong `Value` remain errors.
 
-Four strict-native shader-cache-miss runs used the same scene, executable,
+Five strict-native shader-cache-miss runs used the same scene, executable,
 environment, trace mode, and warm RADV pipeline cache. The Psycles shader
 cache was disabled for each measurement and then restored, followed by a
 32-job rebuild:
 
-| Stage | Before | Linear verifier | + dominance reuse | + lazy post-dom | Before→final |
-|---|---:|---:|---:|---:|---:|
-| Reported shader JIT | `205.982 s` | `43.7438 s` | `39.7430 s` | `35.0676 s` | `5.874×` |
-| AST to XIR | `15.8589 s` | `0.8458 s` | `0.8661 s` | `0.8593 s` | `18.455×` |
-| `destructure-cfg` | `16.0259 s` | `0.8228 s` | `0.7897 s` | `0.8145 s` | `19.675×` |
-| `restructure-cfg` | `133.1675 s` | `34.8932 s` | `30.7910 s` | `26.0943 s` | `5.103×` |
-| Native SPIR-V emission boundary | `38.517 s` | `4.805 s` | `4.848 s` | `4.853 s` | `7.937×` |
-| SPIR-V validation | `1.177 s` | `1.165 s` | `1.224 s` | `1.232 s` | `0.955×` |
-| Complete process | `207.32 s` | `44.62 s` | `40.60 s` | `35.92 s` | `5.772×` |
+| Stage | Before | Linear verifier | + dom reuse | + lazy post-dom | + selection relation | Before→final |
+|---|---:|---:|---:|---:|---:|---:|
+| Reported shader JIT | `205.982 s` | `43.7438 s` | `39.7430 s` | `35.0676 s` | `29.8203 s` | `6.907×` |
+| AST to XIR | `15.8589 s` | `0.8458 s` | `0.8661 s` | `0.8593 s` | `0.8467 s` | `18.730×` |
+| `destructure-cfg` | `16.0259 s` | `0.8228 s` | `0.7897 s` | `0.8145 s` | `0.8161 s` | `19.637×` |
+| `restructure-cfg` | `133.1675 s` | `34.8932 s` | `30.7910 s` | `26.0943 s` | `20.9433 s` | `6.359×` |
+| Native SPIR-V emission boundary | `38.517 s` | `4.805 s` | `4.848 s` | `4.853 s` | `4.801 s` | `8.023×` |
+| SPIR-V validation | `1.177 s` | `1.165 s` | `1.224 s` | `1.232 s` | `1.189 s` | `0.990×` |
+| Complete process | `207.32 s` | `44.62 s` | `40.60 s` | `35.92 s` | `30.66 s` | `6.762×` |
 
 The earlier `240.23 s` profile included a `36.023 s` cold RADV pipeline
-creation, while the four matched runs above spent only `0.178 s`, `0.164 s`,
-`0.165 s`, and approximately `0.168 s` respectively between SPIR-V
-validation and pipeline readiness.
+creation, while the five matched runs above spent only `0.178 s`, `0.164 s`,
+`0.165 s`, approximately `0.168 s`, and `0.162 s` respectively between
+SPIR-V validation and pipeline readiness.
 It is retained as historical stage context, not mixed into the controlled
 speedup.
 
@@ -630,10 +631,41 @@ The operation-count regression uses 64 chained diamonds under a one-iteration
 budget. All merges remain inferable from the refreshed dominance tree, so it
 requires exactly zero post-mutation post-dominator rebuilds. All 48
 `unit_xir` tests passed in parallel, including 197 verifier assertions and
-1,042 `restructure_cfg` assertions; all affected targets were built with
-`--parallel 32`.
+1,042 `restructure_cfg` assertions.
 
-The matched original, intermediate, and final lazy-analysis PPM files all
+Fine-grained timing of the remaining post fixed point then localized
+`9.548347 s` of its `11.545715 s` to `drain_selection_exits`. For every
+selection site, that phase recomputed the same predicate by traversing every
+structured loop region:
+
+```text
+boundary(entry) iff
+    exists loop:
+        entry is structurally reachable inside loop
+        and entry's IfInst is a break/continue boundary selection for loop
+```
+
+Luisa `next@a73f7da96` materializes this exact existential relation once per
+observed CFG version. It walks each loop region once, inserts every accepted
+entry into a set, then answers all selection-site queries by exact membership.
+No rewrite occurs while those queries run. A successful rewrite ends the
+scan, and the next scan rematerializes the relation from the new CFG. The old
+and new predicates are therefore equivalent; work changes from
+`O(selection sites × loop-region traversal)` to
+`O(loop-region traversal + selection membership queries)`.
+
+The production committed CFG performed 8,855 selection-site queries with 45
+relation materializations. In matched phase-instrumented runs,
+`drain_selection_exits` fell from `9.548347 s` to `4.121415 s` (`2.317×`),
+the post fixed point fell from `11.545715 s` to `6.279925 s` (`1.839×`),
+`restructure-cfg` fell from `26.066859 s` to `20.943270 s`, and full JIT fell
+from `35.0935 s` to `29.8203 s`. The existing 256-structured-if immutable-CFG
+regression now additionally requires exactly one boundary-relation
+materialization and exactly 256 site queries. All 48 `unit_xir` tests pass,
+with 1,044 `restructure_cfg` assertions. All affected targets were built with
+`--parallel 32`, and the production shader cache was restored afterward.
+
+The matched original, intermediate, and final cached-relation PPM files all
 have SHA-256
 `5a29d7d24876e89969714331b08e5c6ca23932a729a58f43878bcddd364ed587`.
 The following real triptych was opened at its original 1536×428 resolution.
@@ -645,18 +677,18 @@ is the absolute byte difference amplified 32×:
 The difference panel is completely black (`max channel difference = 0`), and
 both rendered panels show the same church/roof structure. The triptych
 SHA-256 is
-`7526b85f6732118b97c2ec7da02d82e46460af08899d9abd5a145f7e0043fbde`.
+`a547529633afa51cec740b3374cfe0d013214dece4f956050c7d7f002b39f642`.
 This 128×96/1 spp run is deliberately a compiler and structural-semantic
 regression, not a Cycles image-quality or render-throughput acceptance.
 
-After all three repairs, `restructure-cfg` still takes `26.0943 s`, or 74.41%
-of the remaining `35.0676 s` JIT. Its stable large costs are now the
-post-restructure fixed point (`11.5917 s`) and main restructuring iterations
-(`5.4902 s`, including `5.3210 s` in if batches). Unique construct-entry
-enforcement and post-dominator rebuilding are no longer material costs.
-These timers are nested and must not be added as independent totals. The
-post-restructure fixed point is the next invariant-preserving optimization
-boundary.
+After all four repairs, `restructure-cfg` still takes `20.9433 s`, or 70.23%
+of the remaining `29.8203 s` JIT. Its stable large costs are now the post
+fixed point (`6.2799 s`, including `4.1214 s` in selection-exit draining),
+main restructuring iterations (`5.5331 s`, including `5.3634 s` in if
+batches), verification (`5.2754 s` across nested pre/post calls), and the
+final selection-reentry count (`1.2692 s`). These timers are nested and must
+not be added as independent totals. Selection-exit draining and if-batch
+candidate work remain the next invariant-preserving optimization boundaries.
 
 The complete machine-readable before/after record is
 [vulkan-xir-verifier-scaling.json](vulkan-xir-verifier-scaling.json).
