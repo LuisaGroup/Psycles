@@ -137,6 +137,43 @@ def _main() -> None:
             "EMISSION diagnostic became an importance-sampled mesh light"
         )
 
+    original_material = bpy.data.materials.new(
+        "Original Closure Material"
+    )
+    original_material.use_nodes = True
+    original_tree = original_material.node_tree
+    original_output = next(
+        node
+        for node in original_tree.nodes
+        if node.type == "OUTPUT_MATERIAL"
+    )
+    original_principled = next(
+        node
+        for node in original_tree.nodes
+        if node.type == "BSDF_PRINCIPLED"
+    )
+    original_link = original_output.inputs["Surface"].links[0]
+
+    isolated_other = bpy.data.materials.new("Isolated Other Material")
+    isolated_other.use_nodes = True
+    stage["_isolate_surface"](
+        original_material,
+        original_principled.outputs["BSDF"],
+        "ORIGINAL",
+    )
+    preserved_link = original_output.inputs["Surface"].links[0]
+    if (
+        preserved_link.from_node != original_link.from_node
+        or preserved_link.from_socket != original_link.from_socket
+    ):
+        raise AssertionError(
+            "ORIGINAL diagnostic replaced the selected raw closure"
+        )
+    if _surface_source(isolated_other.node_tree).type != "EMISSION":
+        raise AssertionError(
+            "ORIGINAL diagnostic did not black out other materials"
+        )
+
     scene = bpy.context.scene
     scene.render.use_compositing = True
     scene.render.use_sequencer = True
