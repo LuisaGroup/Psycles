@@ -374,6 +374,7 @@ def _cycles_settings(scene: Any) -> dict[str, Any]:
         "transparent_max_bounces",
         "sample_clamp_direct",
         "sample_clamp_indirect",
+        "blur_glossy",
         "caustics_reflective",
         "caustics_refractive",
         "direct_light_sampling_type",

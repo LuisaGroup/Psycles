@@ -844,6 +844,10 @@ def _indirect_diffuse(scene: Any) -> None:
 def _indirect_principled(scene: Any) -> None:
     """Exercise multiple bounces through mixed diffuse/glossy closures."""
     _world(scene, (0.64, 0.78, 1.0, 1.0), 0.7)
+    # Pin the path-dependent Cycles closure filter. It is applied only after a
+    # low-PDF prior bounce, so this probe distinguishes closure setup state
+    # from the effective microfacet alpha used for subsequent evaluation.
+    scene.cycles.blur_glossy = 1.0
 
     floor, floor_tree, floor_output = _material(
         "Indirect Principled Floor"

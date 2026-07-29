@@ -269,6 +269,16 @@ if(PSYCLES_ENABLE_LUISA)
             add_test(
                 NAME psycles.cycles_integrator_limits
                 COMMAND psycles_cycles_integrator_limits_tests)
+
+            add_executable(
+                psycles_cycles_filter_glossy_tests
+                tests/test_cycles_filter_glossy.cpp)
+            target_compile_features(
+                psycles_cycles_filter_glossy_tests
+                PRIVATE cxx_std_20)
+            add_test(
+                NAME psycles.cycles_filter_glossy
+                COMMAND psycles_cycles_filter_glossy_tests)
         endif()
 
         if(PSYCLES_BUILD_EXAMPLES)

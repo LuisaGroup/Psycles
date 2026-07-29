@@ -78,6 +78,34 @@ class ShaderProbeRunnerContract(unittest.TestCase):
             list(self.runner._REPORT_PASSES),
         )
 
+    def test_indirect_principled_gate_rejects_missing_filter(self) -> None:
+        report = {
+            "passes": {
+                "DiffInd": {"luminance_mean_ratio": 1.0592059},
+                "GlossInd": {"luminance_mean_ratio": 1.0457756},
+            }
+        }
+        failures = self.runner._probe_gate_failures(
+            "indirect_principled", report
+        )
+        self.assertEqual(len(failures), 2)
+
+    def test_indirect_principled_gate_accepts_aligned_transport(
+        self,
+    ) -> None:
+        report = {
+            "passes": {
+                "DiffInd": {"luminance_mean_ratio": 0.9998682},
+                "GlossInd": {"luminance_mean_ratio": 1.0001890},
+            }
+        }
+        self.assertEqual(
+            self.runner._probe_gate_failures(
+                "indirect_principled", report
+            ),
+            [],
+        )
+
 
 if __name__ == "__main__":
     # unittest would otherwise treat the runner path as a test selector.

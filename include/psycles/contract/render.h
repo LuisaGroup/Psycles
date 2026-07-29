@@ -89,6 +89,10 @@ struct PathIntegratorSettings {
     std::uint32_t transparent_max_bounces{8u};
     float sample_clamp_direct{};
     float sample_clamp_indirect{};
+    // Blender exposes this as `blur_glossy`; Cycles stores the same scene
+    // value as Integrator::filter_glossy and converts it to a reciprocal
+    // device threshold during scene synchronization. Zero disables filtering.
+    float filter_glossy{};
     // Cycles uses film exposure when converting the UI light-sampling
     // threshold into the device-side shadow-ray roulette threshold.
     float film_exposure{1.0f};

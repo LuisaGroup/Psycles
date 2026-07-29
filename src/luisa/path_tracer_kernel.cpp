@@ -1,4 +1,5 @@
 #include "path_tracer_internal.h"
+#include "cycles_filter_glossy.h"
 #include "cycles_integrator_limits.h"
 #include "path_tracer_environment.h"
 #include "path_tracer_geometry.h"
@@ -81,6 +82,9 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         integrator.sample_clamp_indirect > 0.0f
             ? integrator.sample_clamp_indirect * 3.0f
             : 0.0f;
+    const auto filter_glossy =
+        cycles_filter_glossy_device_scale(
+            integrator.filter_glossy);
     const auto light_inv_rr_threshold =
         !integrator.use_light_tree &&
                 integrator.light_sampling_threshold > 0.0f
@@ -185,6 +189,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
             render_settings.transparent_background ? 1u : 0u,
         .sample_clamp_direct = sample_clamp_direct,
         .sample_clamp_indirect = sample_clamp_indirect,
+        .filter_glossy = filter_glossy,
         .light_inv_rr_threshold =
             light_inv_rr_threshold,
         .camera_horizontal_tangent =
@@ -365,7 +370,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                         pack_surface_point(point),
                         outgoing,
                         query.lobe_mask,
-                        query.transport_mode));
+                        query.transport_mode,
+                        query.glossy_filter_roughness));
             };
         auto surface_emission =
             [&](UInt surface_tag,
@@ -397,7 +403,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                         u_lobe,
                         u_direction,
                         query.lobe_mask,
-                        query.transport_mode));
+                        query.transport_mode,
+                        query.glossy_filter_roughness));
             };
         auto surface_aov =
             [&](UInt surface_tag,
@@ -422,7 +429,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                     contract::event_transparent),
             .transport_mode =
                 static_cast<std::uint32_t>(
-                    contract::TransportMode::radiance)};
+                    contract::TransportMode::radiance),
+            .glossy_filter_roughness = 0.0f};
         auto evaluate_environment_base =
             [&](Float3 direction) noexcept {
                 return environment_base_callable(
@@ -696,6 +704,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                     0u);
             Bool primary_recorded = false;
             Float previous_bsdf_pdf = 0.0f;
+            Float minimum_bsdf_pdf =
+                std::numeric_limits<float>::max();
             Bool previous_delta = true;
             Float3 path_diffuse_weight =
                 make_float3(0.0f);
@@ -1331,7 +1341,21 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                 SurfaceQuery path_surface_query{
                     .lobe_mask = path_lobe_mask,
                     .transport_mode =
-                        surface_query.transport_mode};
+                        surface_query.transport_mode,
+                    .glossy_filter_roughness = 0.0f};
+                auto blur_pdf =
+                    kernel_parameters.filter_glossy *
+                    minimum_bsdf_pdf;
+                auto filter_glossy_enabled =
+                    kernel_parameters.filter_glossy <
+                    std::numeric_limits<float>::max();
+                path_surface_query.glossy_filter_roughness =
+                    select(
+                        0.0f,
+                        sqrt(max(1.0f - blur_pdf, 0.0f)) *
+                            0.5f,
+                        filter_glossy_enabled &
+                            (blur_pdf < 1.0f));
 
                 Float3 emitted = surface_emission(
                     surface_tag,
@@ -2989,6 +3013,12 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                 previous_bsdf_pdf = select(
                     surface_sample.evaluation.pdf,
                     previous_bsdf_pdf,
+                    transparent);
+                minimum_bsdf_pdf = select(
+                    min(
+                        minimum_bsdf_pdf,
+                        surface_sample.evaluation.pdf),
+                    minimum_bsdf_pdf,
                     transparent);
                 previous_delta = select(
                     singular,

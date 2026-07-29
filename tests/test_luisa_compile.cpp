@@ -288,7 +288,8 @@ int main() {
             .lobe_mask = ~std::uint32_t{0u},
             .transport_mode =
                 static_cast<std::uint32_t>(
-                    TransportMode::radiance)};
+                    TransportMode::radiance),
+            .glossy_filter_roughness = 0.0f};
         auto evaluation = surfaces.evaluate(
             UInt{surface_tag},
             services,
