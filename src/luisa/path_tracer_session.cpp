@@ -1,4 +1,5 @@
 #include "path_tracer_internal.h"
+#include "sample_dispatch_partition.h"
 
 namespace psycles::luisa_backend::detail {
 
@@ -227,22 +228,34 @@ bool LuisaRenderSession::render_samples(
     }
     _total_aa_samples = samples.total;
     prepare_sobol_table(samples.total);
-    _stream
-        << _render_shader(
-               _combined,
-               _normal,
-               _albedo,
-               _light_passes,
-               _sample_count,
-               static_cast<std::uint32_t>(sample_begin),
-               samples.count,
-               _sobol_table,
-               _kernel_parameters)
-               .dispatch(
-                   static_cast<std::uint32_t>(
-                       std::max<std::size_t>(
-                           pixel_count(), 1u)))
-        << synchronize();
+    auto dispatches = SampleDispatchPartition::make(
+        static_cast<std::uint32_t>(sample_begin),
+        samples.count,
+        _options.max_samples_per_dispatch);
+    if (!dispatches) {
+        return false;
+    }
+    const auto dispatch_size =
+        static_cast<std::uint32_t>(
+            std::max<std::size_t>(pixel_count(), 1u));
+    while (const auto batch = dispatches->next()) {
+        if (_cancelled.load()) {
+            return false;
+        }
+        _stream
+            << _render_shader(
+                   _combined,
+                   _normal,
+                   _albedo,
+                   _light_passes,
+                   _sample_count,
+                   batch->first,
+                   batch->count,
+                   _sobol_table,
+                   _kernel_parameters)
+                   .dispatch(dispatch_size)
+            << synchronize();
+    }
     if (_cancelled.load()) {
         return false;
     }
