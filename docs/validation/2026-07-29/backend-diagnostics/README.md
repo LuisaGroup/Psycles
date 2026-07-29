@@ -25,8 +25,9 @@ alignment boundary:
   post-dominance rebuilding follows in `next@ad4fdcedd`; exact loop-boundary
   selection-relation materialization follows in `next@a73f7da96`, and exact
   enclosing-loop-exit relation materialization follows in
-  `next@4e8a506eb`; together they reduce a matched strict-native Vulkan
-  shader-cache miss from `205.982 s` to `26.4000 s`;
+  `next@4e8a506eb`; boundary-only transactional verification follows in
+  `next@ee10fb4d1`; together they reduce a strict-native Vulkan shader-cache
+  miss from `205.982 s` to `23.6284 s`;
 - the current strict-native Vulkan cold JIT is dominated by formal XIR CFG
   restructuring, not by CMake compilation, SPIR-V validation, or rendering.
 
@@ -807,6 +808,70 @@ from `29.8203 s` to `26.4000 s`. The output remains byte-identical. All 48
 `unit_xir` tests pass with 1,045 `restructure_cfg` assertions; the production
 cache was again restored with a 32-job build.
 
+### Transaction-boundary verification
+
+The next profile showed that `restructure-cfg` still invoked the complete XIR
+verifier at definition granularity: 69 preflight calls and 46 post-transform
+calls, totaling `6.010957 s`. Those calls covered the module preflight,
+transactional shadow transform, and deterministic replay even though the
+public module pass has only two validity boundaries.
+
+Luisa `next@ee10fb4d1` now makes those boundaries explicit:
+
+1. Before creating shadows or transform-owned constants, one verifier
+   invocation covers the complete CFG-transform input domain. Body-bearing
+   definitions and malformed bodyless kernels are included; legal bodyless
+   callable declarations are outside a CFG pass.
+2. Before commit, one verifier invocation covers the complete set of
+   transformed shadow definitions and requires no Phi nodes, unique merge
+   blocks, and canonical break/continue targets.
+
+The late check remains atomic because it runs on shadows. A successful shadow
+result is then replayed deterministically onto the original definitions. The
+replay is graph-isomorphic to the verified output; any divergence is an
+internal assertion failure rather than a partially committed recoverable
+state. Transform-specific Phi, construct, irreducibility, raw-branch,
+iteration-budget, and selection-reentry checks remain active.
+
+Per-definition full verification is diagnostic-only. Setting
+`LUISA_XIR_VERIFY_INTERMEDIATE=1` explicitly restores it; it is off for every
+other value. The default production trace records `boundary_verifier: 2`,
+zero intermediate calls, and no `preflight_verify_function` or
+`post_verify_function` timer.
+
+Two adjacent strict-native cold runs used the same scene, executable options,
+warm RADV pipeline state, and disabled Psycles shader cache:
+
+| Measurement | Before (`4e8a506eb`) | Boundary-only (`ee10fb4d1`) | Change |
+|---|---:|---:|---:|
+| Complete verifier work | `6.010957 s` / 115 calls | `1.778217 s` / 2 boundaries | `3.380×` faster |
+| `restructure-cfg` | `18.54330 s` | `14.05706 s` | `24.19%` less |
+| SPIR-V XIR legalization | `20.37712 s` | `15.78924 s` | `22.51%` less |
+| Reported shader JIT | `28.2414 s` | `23.6284 s` | `16.33%` less |
+| Complete process | `29.06 s` | `24.48 s` | `15.76%` less |
+| Peak RSS | `1,653,100 KiB` | `1,783,772 KiB` | `7.90%` more |
+
+The memory increase is reported rather than hidden; the bounded verifier keeps
+its exact use-list ownership relation across the complete output set. A second
+post-change cold run reported `23.2145 s` JIT, `14.10958 s`
+`restructure-cfg`, two boundary calls, and zero intermediate calls.
+
+All 48 `unit_xir` tests pass. The focused suites contain 1,060
+`restructure_cfg`, 200 verifier, and 1,930 general pass assertions. New
+regressions cover the default two-boundary contract, environment-variable
+opt-in, bounded shadow-set verification, and declaration-domain semantics.
+All affected targets and the restored production-cache binary were built with
+32 jobs.
+
+The before, measured, and confirmation PPM files are byte-identical with
+SHA-256
+`5a29d7d24876e89969714331b08e5c6ca23932a729a58f43878bcddd364ed587`;
+their Combined PFM SHA-256 is
+`27021d6b361241bace421a3fc1c903d00f415c6f47fee88cae3e46656478ee07`.
+The existing original-resolution compiler-regression triptych below therefore
+remains an exact visual check. The complete machine-readable record is
+[vulkan-xir-boundary-verification.json](vulkan-xir-boundary-verification.json).
+
 The matched original, intermediate, and final cached-relation PPM files all
 have SHA-256
 `5a29d7d24876e89969714331b08e5c6ca23932a729a58f43878bcddd364ed587`.
@@ -823,14 +888,14 @@ SHA-256 is
 This 128×96/1 spp run is deliberately a compiler and structural-semantic
 regression, not a Cycles image-quality or render-throughput acceptance.
 
-After all five repairs, `restructure-cfg` still takes `17.4074 s`, or 65.94%
-of the remaining `26.4000 s` JIT. Its stable large costs are now main
-restructuring iterations (`4.9776 s`, including `4.8078 s` in if batches),
-verification (`5.2027 s` across nested pre/post calls), the post fixed point
-(`3.3884 s`, including `1.2490 s` in selection-exit draining), and the final
-selection-reentry count (`1.2638 s`). These timers are nested and must not be
-added as independent totals. If-batch candidate work is the largest remaining
-transform-specific optimization boundary.
+After boundary-only verification, `restructure-cfg` takes `14.0571 s` of the
+captured `23.6284 s` JIT. Its largest stable transform-specific cost is the
+main restructuring loop (`4.9949 s`, including `4.8252 s` in if batches),
+followed by the post fixed point (`3.4331 s`) and final selection-reentry
+count (`1.2958 s`). The two complete boundary verifications total
+`1.7782 s`. These timers are nested and must not be added as independent
+totals. If-batch candidate work remains the largest transform-specific
+optimization boundary.
 
 The complete machine-readable before/after record is
 [vulkan-xir-verifier-scaling.json](vulkan-xir-verifier-scaling.json).

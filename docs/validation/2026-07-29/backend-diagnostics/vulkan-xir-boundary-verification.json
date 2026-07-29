@@ -1,0 +1,179 @@
+{
+  "schema": "psycles.vulkan-xir-boundary-verification.v1",
+  "date": "2026-07-30",
+  "backend": "vk",
+  "device": "AMD Radeon RX 9070 XT (RADV GFX1201)",
+  "luisa": {
+    "branch": "next",
+    "before": "4e8a506eb5c49599f45e6293040e097a0986aeb3",
+    "after": "ee10fb4d1a2a7edbd31aa403af5aeda41e36ee9d",
+    "commit_subject": "XIR: verify restructure pass only at boundaries"
+  },
+  "input": {
+    "scene": "Lone Monk church/roof instance isolation",
+    "scene_json_sha256": "21ad3042c3e06eb2ccdc4294ef550cd1ca5efe5965eae7946f5ac461f7d95ce1",
+    "geometries": 350,
+    "instances": 12,
+    "raw_material_graphs": 35,
+    "runtime_material_programs": 37,
+    "images": 47,
+    "width": 128,
+    "height": 96,
+    "samples": 1
+  },
+  "environment": {
+    "LUISA_XIR_DISABLE_OPTIMIZATION": "1",
+    "LUISA_SPIRV_OPT_LEVEL": "0",
+    "LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV": "1",
+    "LUISA_XIR_TRACE_PASSES": "1",
+    "LUISA_XIR_VERIFY_INTERMEDIATE": "unset",
+    "LUISA_LOG_LEVEL": "verbose"
+  },
+  "cache": {
+    "psycles_shader_cache_enabled_during_measurement": false,
+    "production_shader_cache_restored_after_measurement": true,
+    "restoration_build_parallel_jobs": 32
+  },
+  "adjacent_cold_runs": {
+    "before": {
+      "reported_shader_jit_seconds": 28.2414,
+      "process_wall_seconds": 29.06,
+      "peak_rss_kib": 1653100,
+      "scene_compilation_seconds": 0.636075,
+      "render_seconds": 0.00554035,
+      "stages": {
+        "ast_to_xir_seconds": 0.955598305,
+        "spirv_xir_legalization_seconds": 20.377120201,
+        "destructure_cfg_seconds": 0.91888,
+        "restructure_cfg_seconds": 18.54330,
+        "native_spirv_emission_boundary_seconds": 5.174,
+        "spirv_validation_seconds": 1.348
+      },
+      "restructure_verification": {
+        "preflight_calls": 69,
+        "preflight_seconds": 3.426528,
+        "post_transform_calls": 46,
+        "post_transform_seconds": 2.584429,
+        "total_calls": 115,
+        "total_seconds": 6.010957
+      },
+      "restructure_nested_timers": {
+        "definition_transform_calls": 46,
+        "definition_transform_seconds": 15.360855,
+        "main_iteration_calls": 156,
+        "main_iteration_seconds": 5.095873,
+        "if_batch_calls": 64,
+        "if_batch_seconds": 4.922428,
+        "post_fixed_point_calls": 46,
+        "post_fixed_point_seconds": 3.466591,
+        "post_selection_reentry_calls": 46,
+        "post_selection_reentry_seconds": 1.285619
+      }
+    },
+    "after": {
+      "reported_shader_jit_seconds": 23.6284,
+      "process_wall_seconds": 24.48,
+      "peak_rss_kib": 1783772,
+      "scene_compilation_seconds": 0.631364,
+      "render_seconds": 0.00589724,
+      "stages": {
+        "ast_to_xir_seconds": 0.884490182,
+        "spirv_xir_legalization_seconds": 15.789241492,
+        "destructure_cfg_seconds": 0.84037,
+        "restructure_cfg_seconds": 14.05706,
+        "native_spirv_emission_boundary_seconds": 5.233,
+        "spirv_validation_seconds": 1.344
+      },
+      "restructure_verification": {
+        "boundary_calls": 2,
+        "input_boundary_seconds": 0.756713,
+        "output_boundary_seconds": 1.021504,
+        "total_seconds": 1.778217,
+        "intermediate_calls": 0,
+        "preflight_function_timer_occurrences": 0,
+        "post_transform_function_timer_occurrences": 0
+      },
+      "restructure_nested_timers": {
+        "definition_transform_calls": 46,
+        "definition_transform_seconds": 10.139956,
+        "main_iteration_calls": 156,
+        "main_iteration_seconds": 4.994907,
+        "if_batch_calls": 64,
+        "if_batch_seconds": 4.825186,
+        "post_fixed_point_calls": 46,
+        "post_fixed_point_seconds": 3.433147,
+        "post_selection_reentry_calls": 46,
+        "post_selection_reentry_seconds": 1.295839
+      }
+    },
+    "after_confirmation": {
+      "reported_shader_jit_seconds": 23.2145,
+      "process_wall_seconds": 24.06,
+      "peak_rss_kib": 1751640,
+      "spirv_xir_legalization_seconds": 15.840333695,
+      "restructure_cfg_seconds": 14.10958,
+      "boundary_verifier_calls": 2,
+      "intermediate_verifier_calls": 0
+    },
+    "direct_change": {
+      "reported_shader_jit_speedup": 1.195231162,
+      "reported_shader_jit_time_reduction_percent": 16.334176068,
+      "process_speedup": 1.187091503,
+      "process_time_reduction_percent": 15.760495526,
+      "spirv_xir_legalization_speedup": 1.290569925,
+      "spirv_xir_legalization_time_reduction_percent": 22.514853246,
+      "restructure_cfg_speedup": 1.319144971,
+      "restructure_cfg_time_reduction_percent": 24.193320499,
+      "restructure_verification_speedup": 3.380328160,
+      "restructure_verification_time_reduction_percent": 70.417073355,
+      "peak_rss_ratio": 1.079046640,
+      "peak_rss_increase_percent": 7.904663965,
+      "peak_rss_delta_kib": 130672
+    }
+  },
+  "formal_contract": {
+    "input_boundary": "One verifier invocation covers the complete CFG-transform domain before shadows or transform-owned constants are created. Body-bearing definitions and malformed bodyless kernels are included; declaration-like bodyless callables are outside the CFG pass domain.",
+    "output_boundary": "One verifier invocation covers the complete set of transformed shadow definitions before commit and requires no Phi nodes, unique merge blocks, and canonical break/continue targets.",
+    "atomicity": "All late validation occurs on shadow definitions. Failure discards every shadow and rolls back transform-owned constants.",
+    "certificate_transfer": "The committed replay is deterministic and graph-isomorphic to the verified shadow output. Divergence is an internal assertion failure, so the output certificate transfers without per-definition replay verification.",
+    "transform_specific_checks_preserved": [
+      "Phi and malformed structured-construct preflight",
+      "irreducible-region rejection",
+      "unstructured-branch accounting",
+      "iteration-budget accounting",
+      "post-merge selection-reentry rejection"
+    ],
+    "intermediate_diagnostics": "Set LUISA_XIR_VERIFY_INTERMEDIATE=1 to restore per-definition preflight and post-transform full-verifier invocations. No other value enables them."
+  },
+  "regression": {
+    "default_boundary_test": "restructure_verifies_only_complete_pass_boundaries_by_default",
+    "environment_opt_in_test": "restructure_intermediate_verification_is_explicitly_opt_in",
+    "bounded_verifier_test": "xir_verifier_checks_one_bounded_function_set",
+    "declaration_domain_test": "xir_pass_bodyless_callable_entry_points_are_total_noops",
+    "unit_xir_tests_passed": 48,
+    "unit_xir_tests_total": 48,
+    "restructure_cfg_tests": 56,
+    "restructure_cfg_assertions": 1060,
+    "xir_verifier_tests": 44,
+    "xir_verifier_assertions": 200,
+    "xir_passes_tests": 350,
+    "xir_passes_assertions": 1930,
+    "build_parallel_jobs": 32
+  },
+  "semantic_output_check": {
+    "before_ppm_sha256": "5a29d7d24876e89969714331b08e5c6ca23932a729a58f43878bcddd364ed587",
+    "after_ppm_sha256": "5a29d7d24876e89969714331b08e5c6ca23932a729a58f43878bcddd364ed587",
+    "after_confirmation_ppm_sha256": "5a29d7d24876e89969714331b08e5c6ca23932a729a58f43878bcddd364ed587",
+    "before_combined_pfm_sha256": "27021d6b361241bace421a3fc1c903d00f415c6f47fee88cae3e46656478ee07",
+    "after_combined_pfm_sha256": "27021d6b361241bace421a3fc1c903d00f415c6f47fee88cae3e46656478ee07",
+    "differing_display_pixels": 0,
+    "maximum_display_channel_difference": 0,
+    "existing_visual_regression_triptych": "vulkan-xir-verifier/use-list-triptych.png",
+    "visually_inspected": true
+  },
+  "captured_profile": {
+    "sha256": "b362258f1fc6e705aab91402fba610c6951676f1beda19ccbcec04277ea9f023",
+    "bytes": 1478898
+  },
+  "scope": "This 128x96/1 spp run is a compiler and structural semantic regression only. It is not a Cycles image-quality or render-throughput acceptance result."
+}
