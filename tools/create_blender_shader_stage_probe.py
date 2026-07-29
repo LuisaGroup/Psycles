@@ -10,10 +10,12 @@ By default, the selected value output is connected to an Emission closure
 while all other surface materials and the world emit black. ``--closure
 DIFFUSE --world PRESERVE`` instead keeps the original world and feeds the
 selected value into a Lambertian closure, which isolates BSDF and shadow
-transport after a value-stage probe has aligned. The source file is never
-saved. This is intended only to locate the first divergent evaluation stage
-between Cycles and Psycles; production scene export continues to preserve the
-original closure graphs.
+transport after a value-stage probe has aligned. ``--closure ORIGINAL`` keeps
+the selected material's raw closure graph and replaces only the other
+materials with black emission, isolating one production material without
+baking it. The source file is never saved. This is intended only to locate the
+first divergent evaluation stage between Cycles and Psycles; production scene
+export continues to preserve the original closure graphs.
 """
 
 from __future__ import annotations
@@ -37,7 +39,7 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("socket")
     parser.add_argument(
         "--closure",
-        choices=("EMISSION", "DIFFUSE"),
+        choices=("EMISSION", "DIFFUSE", "ORIGINAL"),
         default="EMISSION",
     )
     parser.add_argument(
@@ -142,6 +144,21 @@ def _black_world() -> None:
     tree.links.new(background.outputs["Background"], surface)
 
 
+def _isolate_surface(
+    selected_material: Any,
+    source_socket: Any,
+    closure: str,
+) -> None:
+    for candidate in bpy.data.materials:
+        if closure == "ORIGINAL" and candidate == selected_material:
+            continue
+        _replace_surface(
+            candidate,
+            source_socket if candidate == selected_material else None,
+            "EMISSION" if closure == "ORIGINAL" else closure,
+        )
+
+
 def _main() -> None:
     arguments = _arguments()
     material = bpy.data.materials.get(arguments.material)
@@ -159,12 +176,7 @@ def _main() -> None:
         node.outputs, arguments.socket
     )
 
-    for candidate in bpy.data.materials:
-        _replace_surface(
-            candidate,
-            source if candidate == material else None,
-            arguments.closure,
-        )
+    _isolate_surface(material, source, arguments.closure)
     if arguments.world == "BLACK":
         _black_world()
 
