@@ -46,6 +46,7 @@ _ALL_PROBES = (
     "image_texture_sampling_modes",
     "image_texture_projection_modes",
     "indirect_diffuse",
+    "indirect_principled",
     "integrator_clamp_direct",
     "invert_color_matrix",
     "legacy_separate_combine_matrix",
@@ -98,6 +99,22 @@ _ALL_PROBES = (
     "white_noise_dimensions",
 )
 
+_REPORT_PASSES = (
+    "Combined",
+    "Normal",
+    "DiffCol",
+    "GlossCol",
+    "TransCol",
+    "DiffDir",
+    "DiffInd",
+    "GlossDir",
+    "GlossInd",
+    "TransDir",
+    "TransInd",
+    "Emit",
+    "Env",
+)
+
 
 def _arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
@@ -127,6 +144,64 @@ def _arguments() -> argparse.Namespace:
 def _run(command: list[str]) -> None:
     print("+", " ".join(command), flush=True)
     subprocess.run(command, check=True)
+
+
+def _cycles_golden_command(
+    blender: str,
+    blend: pathlib.Path,
+    golden_script: pathlib.Path,
+    cycles: pathlib.Path,
+    *,
+    width: int,
+    height: int,
+    samples: int,
+    device: str,
+    device_name: str,
+) -> list[str]:
+    # Do not pass a seed override. The canonical probe .blend and the
+    # exported Psycles scene must consume the same scene-owned seed.
+    return [
+        blender,
+        str(blend),
+        "--background",
+        "--python-exit-code",
+        "1",
+        "--python",
+        str(golden_script),
+        "--",
+        str(cycles),
+        str(width),
+        str(height),
+        str(samples),
+        "--cycles-device",
+        device,
+        "--device-name",
+        device_name,
+    ]
+
+
+def _comparison_command(
+    python: str,
+    compare_script: pathlib.Path,
+    cycles: pathlib.Path,
+    report: pathlib.Path,
+    triptych_dir: pathlib.Path,
+    psycles_exr: pathlib.Path,
+) -> list[str]:
+    # Comparison is a standalone Python/OIIO/Pillow tool. It must not inherit
+    # Blender's private Python environment, which need not contain Pillow.
+    return [
+        python,
+        str(compare_script),
+        str(cycles),
+        str(report),
+        "--triptych-dir",
+        str(triptych_dir),
+        *(
+            f"{pass_name}={psycles_exr}"
+            for pass_name in _REPORT_PASSES
+        ),
+    ]
 
 
 def _main() -> int:
@@ -167,25 +242,17 @@ def _main() -> int:
                 ]
             )
             _run(
-                [
+                _cycles_golden_command(
                     blender,
-                    str(blend),
-                    "--background",
-                    "--python-exit-code",
-                    "1",
-                    "--python",
-                    str(golden_script),
-                    "--",
-                    str(cycles),
-                    str(arguments.width),
-                    str(arguments.height),
-                    str(arguments.samples),
-                    "0",
-                    "--cycles-device",
-                    arguments.cycles_device,
-                    "--device-name",
-                    arguments.cycles_device_name,
-                ]
+                    blend,
+                    golden_script,
+                    cycles,
+                    width=arguments.width,
+                    height=arguments.height,
+                    samples=arguments.samples,
+                    device=arguments.cycles_device,
+                    device_name=arguments.cycles_device_name,
+                )
             )
             _run(
                 [
@@ -212,32 +279,14 @@ def _main() -> int:
                 ]
             )
             _run(
-                [
-                    blender,
-                    "--background",
-                    "--python-exit-code",
-                    "1",
-                    "--python",
-                    str(compare_script),
-                    "--",
-                    str(cycles),
-                    str(report),
-                    "--triptych-dir",
-                    str(probe_root / "triptychs"),
-                    f"Combined={psycles_exr}",
-                    f"Normal={psycles_exr}",
-                    f"DiffCol={psycles_exr}",
-                    f"GlossCol={psycles_exr}",
-                    f"TransCol={psycles_exr}",
-                    f"DiffDir={psycles_exr}",
-                    f"DiffInd={psycles_exr}",
-                    f"GlossDir={psycles_exr}",
-                    f"GlossInd={psycles_exr}",
-                    f"TransDir={psycles_exr}",
-                    f"TransInd={psycles_exr}",
-                    f"Emit={psycles_exr}",
-                    f"Env={psycles_exr}",
-                ]
+                _comparison_command(
+                    sys.executable,
+                    compare_script,
+                    cycles,
+                    report,
+                    probe_root / "triptychs",
+                    psycles_exr,
+                )
             )
         except subprocess.CalledProcessError:
             failures.append(probe)

@@ -259,6 +259,16 @@ if(PSYCLES_ENABLE_LUISA)
             add_test(
                 NAME psycles.sample_dispatch_partition
                 COMMAND psycles_sample_dispatch_partition_tests)
+
+            add_executable(
+                psycles_cycles_integrator_limits_tests
+                tests/test_cycles_integrator_limits.cpp)
+            target_compile_features(
+                psycles_cycles_integrator_limits_tests
+                PRIVATE cxx_std_20)
+            add_test(
+                NAME psycles.cycles_integrator_limits
+                COMMAND psycles_cycles_integrator_limits_tests)
         endif()
 
         if(PSYCLES_BUILD_EXAMPLES)
@@ -404,6 +414,12 @@ if(PSYCLES_BUILD_TESTS)
                 "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_cycles_light_baselines.py"
                 "${CMAKE_CURRENT_SOURCE_DIR}/docs/cycles-light-probe-baselines-4.5.10.json")
+        add_test(
+            NAME psycles.shader_probe_runner_contract
+            COMMAND
+                "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_shader_probe_runner.py"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/run_cycles_shader_probes.py")
     endif()
 
     find_program(PSYCLES_BLENDER_EXECUTABLE NAMES blender)

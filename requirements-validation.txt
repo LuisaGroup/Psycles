@@ -1,0 +1,4 @@
+# Standalone Cycles/Psycles differential reports and real triptychs.
+numpy>=2.0
+OpenImageIO>=3.0
+Pillow>=11.0

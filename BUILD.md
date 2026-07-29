@@ -3,7 +3,7 @@
 Psycles builds LuisaCompute as a CMake subdirectory. The repository pins the
 tested Luisa revision in `third_party/LuisaCompute`; a normal user build does
 not need a separate Luisa installation or a second configure step.
-The active branch pins LuisaCompute `next@f83725d27`.
+The active branch pins LuisaCompute `next@d57720955`.
 
 ## Prerequisites
 
@@ -14,10 +14,18 @@ The active branch pins LuisaCompute `next@f83725d27`.
 - Python 3 for the versioned compatibility checks
 - OpenImageIO and OpenEXR development packages for multilayer EXR output
 
-Official Cycles differential probes additionally require Blender and the
-Python dependencies shipped by or expected by that Blender package. The
-comparison and triptych tools use OpenImageIO, NumPy, and Pillow instead of
-implementing image formats or resampling locally. On Arch Linux:
+Official Cycles differential probes additionally require Blender. The
+comparison and triptych tools deliberately run in the host Python environment
+and use the mature OpenImageIO, NumPy, and Pillow packages declared in
+`requirements-validation.txt`; they do not depend on Blender's private Python
+environment and do not reimplement image formats or resampling locally.
+Install those packages with:
+
+```bash
+python -m pip install -r requirements-validation.txt
+```
+
+On Arch Linux, the equivalent distribution packages are:
 
 ```bash
 sudo pacman -S --needed \
@@ -26,9 +34,8 @@ sudo pacman -S --needed \
 ```
 
 On Debian/Ubuntu the equivalent external-Python package is
-`python3-cattrs`; Blender.org builds normally bundle their own Python
-environment. The probe tools support both Blender 4.5's direct multilayer EXR
-format selection and Blender 5.2's `MULTI_LAYER_IMAGE` media category.
+`python3-cattrs`. The probe tools support both Blender 4.5's direct multilayer
+EXR format selection and Blender 5.2's `MULTI_LAYER_IMAGE` media category.
 Psycles' C++ renderer links the system OpenImageIO package and writes
 full-float Cycles-compatible multilayer OpenEXR files.
 
