@@ -39,7 +39,8 @@ int main(int argc, char **argv) {
         std::cerr
             << "usage: psycles_render_blender_scene "
                "<export-directory> <output.ppm> "
-               "[backend=fallback] [width] [height] [samples]\n";
+               "[backend=fallback] [width] [height] [samples] "
+               "[max-samples-per-dispatch=8]\n";
         return EXIT_FAILURE;
     }
     const auto bundle = std::filesystem::path{argv[1]};
@@ -65,6 +66,7 @@ int main(int argc, char **argv) {
     auto width = imported.width;
     auto height = imported.height;
     auto samples = imported.samples;
+    auto max_samples_per_dispatch = std::uint32_t{8u};
     if (argc > 4) {
         auto value = parse_unsigned<std::uint32_t>(argv[4]);
         if (!value || *value == 0u) {
@@ -86,12 +88,21 @@ int main(int argc, char **argv) {
         }
         samples = *value;
     }
+    if (argc > 7) {
+        auto value = parse_unsigned<std::uint32_t>(argv[7]);
+        if (!value || *value == 0u) {
+            return EXIT_FAILURE;
+        }
+        max_samples_per_dispatch = *value;
+    }
 
     luisa::compute::Context context{argv[0]};
     auto device = context.create_device(backend_name);
     psycles::luisa_backend::LuisaPathTracerBackend renderer{
         std::move(device),
-        {.next_event_estimation = true}};
+        {.next_event_estimation = true,
+         .max_samples_per_dispatch =
+             max_samples_per_dispatch}};
     const auto compile_begin = std::chrono::steady_clock::now();
     auto compilation = renderer.compile_scene(*imported.scene);
     if (!compilation.ok()) {

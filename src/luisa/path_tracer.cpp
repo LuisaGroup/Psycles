@@ -17,7 +17,8 @@ LuisaPathTracerBackend::create_session(
     const auto &compiled =
         static_cast<const LuisaCompiledScene &>(scene);
     if (settings.full_extent.width == 0u ||
-        settings.full_extent.height == 0u) {
+        settings.full_extent.height == 0u ||
+        _options.max_samples_per_dispatch == 0u) {
         return nullptr;
     }
     if (settings.integrator.use_light_tree) {

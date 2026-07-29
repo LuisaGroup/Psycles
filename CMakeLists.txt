@@ -249,6 +249,16 @@ if(PSYCLES_ENABLE_LUISA)
             add_test(
                 NAME psycles.blender_import
                 COMMAND psycles_blender_import_tests)
+
+            add_executable(
+                psycles_sample_dispatch_partition_tests
+                tests/test_sample_dispatch_partition.cpp)
+            target_compile_features(
+                psycles_sample_dispatch_partition_tests
+                PRIVATE cxx_std_20)
+            add_test(
+                NAME psycles.sample_dispatch_partition
+                COMMAND psycles_sample_dispatch_partition_tests)
         endif()
 
         if(PSYCLES_BUILD_EXAMPLES)

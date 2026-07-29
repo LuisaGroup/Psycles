@@ -14,6 +14,10 @@ namespace psycles::luisa_backend {
 
 struct LuisaPathTracerOptions {
     bool next_event_estimation{true};
+    // Each batch is submitted and synchronized independently. Keeping this
+    // finite bounds GPU progress and error-detection latency without changing
+    // the device sampler's global sample indices. Zero is invalid.
+    std::uint32_t max_samples_per_dispatch{8u};
 };
 
 class LuisaPathTracerBackend final : public contract::RendererBackend {
