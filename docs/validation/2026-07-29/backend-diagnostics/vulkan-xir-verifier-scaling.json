@@ -1,13 +1,17 @@
 {
-  "schema": "psycles.vulkan-xir-verifier-scaling.v1",
+  "schema": "psycles.vulkan-xir-verifier-scaling.v2",
   "date": "2026-07-29",
   "backend": "vk",
   "device": "AMD Radeon RX 9070 XT (RADV GFX1201)",
   "luisa": {
     "before": "2282ffd6b271ba404bc11536553d1636114c6899",
-    "after": "a7118069e",
+    "linear_verifier": "a7118069eb4ef0e75af5d0c8d954d8e6ad638f9a",
+    "construct_entry_dominance_reuse": "8c7d1bf88",
     "branch": "next",
-    "commit_subject": "XIR: make verifier use-list checks linear"
+    "commit_subjects": [
+      "XIR: make verifier use-list checks linear",
+      "XIR: reuse construct-entry dominance analysis"
+    ]
   },
   "input": {
     "scene": "Lone Monk church/roof instance isolation",
@@ -30,9 +34,10 @@
   },
   "cache": {
     "psycles_shader_cache_enabled_during_measurement": false,
-    "radv_pipeline_cache_state": "warm in both matched runs",
+    "radv_pipeline_cache_state": "warm in all three matched runs",
     "radv_pipeline_ready_seconds_before": 0.178,
-    "radv_pipeline_ready_seconds_after": 0.164,
+    "radv_pipeline_ready_seconds_after_linear_verifier": 0.164,
+    "radv_pipeline_ready_seconds_after_dominance_reuse": 0.165,
     "production_shader_cache_restored_after_measurement": true,
     "restoration_build_parallel_jobs": 32
   },
@@ -52,7 +57,7 @@
         "spirv_validation_seconds": 1.177
       }
     },
-    "after": {
+    "after_linear_verifier": {
       "reported_shader_jit_seconds": 43.7438,
       "process_wall_seconds": 44.62,
       "peak_rss_kib": 1653852,
@@ -67,12 +72,36 @@
         "spirv_validation_seconds": 1.165
       }
     },
-    "speedup": {
+    "after_dominance_reuse": {
+      "reported_shader_jit_seconds": 39.743,
+      "process_wall_seconds": 40.6,
+      "peak_rss_kib": 1652264,
+      "scene_compilation_seconds": 0.656992,
+      "render_seconds": 0.00760068,
+      "stages": {
+        "ast_to_xir_seconds": 0.866067704,
+        "spirv_xir_legalization_seconds": 32.438357531,
+        "destructure_cfg_seconds": 0.78968,
+        "restructure_cfg_seconds": 30.791002,
+        "native_spirv_emission_boundary_seconds": 4.848,
+        "spirv_validation_seconds": 1.224
+      }
+    },
+    "speedup_before_to_linear_verifier": {
       "reported_shader_jit": 4.708827308,
       "ast_to_xir": 18.749912509,
       "destructure_cfg": 19.477284881,
       "restructure_cfg": 3.816431277,
       "native_spirv_emission_boundary": 8.016024974
+    },
+    "speedup_linear_verifier_to_dominance_reuse": {
+      "reported_shader_jit": 1.100666784,
+      "restructure_cfg": 1.133227493,
+      "unique_construct_entry_enforcement": 334.137434124
+    },
+    "speedup_before_to_final": {
+      "reported_shader_jit": 5.18284981,
+      "complete_process": 5.106403941
     },
     "output_shape_unchanged": {
       "spirv_words": 2672528,
@@ -80,7 +109,8 @@
       "restructured_if": 2483,
       "restructured_loop": 46,
       "restructured_switch": 8,
-      "canonicalized_cfg": 14
+      "canonicalized_cfg": 14,
+      "construct_entry_dom_tree_final_committed_cfg": 11
     }
   },
   "restructure_cfg_trace": {
@@ -105,7 +135,7 @@
       "post_dominator_seconds": 4.695958,
       "post_dominator_calls": 5276
     },
-    "after": {
+    "after_linear_verifier": {
       "module_transaction_preflight_seconds": 0.934903,
       "preflight_verifier": {
         "calls": 69,
@@ -125,11 +155,34 @@
       "post_dominator_seconds": 4.673754,
       "post_dominator_calls": 5276
     },
+    "after_dominance_reuse": {
+      "module_transaction_preflight_seconds": 0.947076,
+      "preflight_verifier": {
+        "calls": 69,
+        "seconds": 3.049404
+      },
+      "post_transform_verifier": {
+        "calls": 46,
+        "seconds": 2.227919
+      },
+      "all_verifier_seconds": 5.277323,
+      "all_verifier_percent_of_restructure": 17.139173,
+      "definition_transforms_seconds": 27.747187,
+      "main_loop_iterations_seconds": 10.120971,
+      "if_batch_seconds_nested_in_main_loop": 9.948389,
+      "post_restructure_fixed_point_seconds": 11.576452,
+      "unique_construct_entry_enforcement_seconds": 0.012144,
+      "construct_entry_checks": 5070,
+      "committed_cfg_dominator_tree_builds": 11,
+      "post_dominator_seconds": 4.653498,
+      "post_dominator_calls": 5276
+    },
     "verifier_speedup": 19.42161295,
+    "construct_entry_enforcement_speedup": 334.137434124,
     "remaining_primary_stage": {
       "name": "restructure_cfg",
-      "seconds": 34.89321,
-      "percent_of_reported_shader_jit": 79.767213
+      "seconds": 30.791002,
+      "percent_of_reported_shader_jit": 77.475284
     }
   },
   "formal_repair": {
@@ -139,6 +192,12 @@
     "new_complexity": "O(use-list entries + membership queries)",
     "validation_is_not_skipped": true,
     "detached_and_wrong_owner_uses_remain_rejected": true
+  },
+  "formal_dominance_reuse": {
+    "invariant": "A cached dominator tree is valid exactly while no CFG mutation has occurred since it was built.",
+    "reuse_scope": "all structured constructs and fixed-point rescans of one unchanged FunctionDefinition CFG version",
+    "invalidation": "every successful construct-entry edge rewrite",
+    "validation_is_not_skipped": true
   },
   "regression": {
     "test": "xir_verifier_use_list_membership_is_linear_in_fanout",
@@ -153,16 +212,23 @@
     "unit_xir_tests_passed": 48,
     "unit_xir_tests_total": 48,
     "xir_verifier_assertions": 197,
-    "restructure_cfg_assertions": 1037,
+    "restructure_cfg_assertions": 1041,
+    "dominance_operation_count_test": {
+      "test": "restructure_construct_entry_dominance_is_linear_per_cfg_version",
+      "structured_if_count": 256,
+      "cfg_mutations": 0,
+      "expected_dominator_tree_builds": 1
+    },
     "build_parallel_jobs": 32
   },
   "semantic_output_check": {
     "before_ppm_sha256": "5a29d7d24876e89969714331b08e5c6ca23932a729a58f43878bcddd364ed587",
-    "after_ppm_sha256": "5a29d7d24876e89969714331b08e5c6ca23932a729a58f43878bcddd364ed587",
+    "after_linear_verifier_ppm_sha256": "5a29d7d24876e89969714331b08e5c6ca23932a729a58f43878bcddd364ed587",
+    "after_dominance_reuse_ppm_sha256": "5a29d7d24876e89969714331b08e5c6ca23932a729a58f43878bcddd364ed587",
     "differing_pixels": 0,
     "maximum_channel_difference": 0,
     "triptych": "vulkan-xir-verifier/use-list-triptych.png",
-    "triptych_sha256": "74c65f415d50e890e25e7e3ae2686ff7425896fcdf2b3bfaeb6e4efaca08fcb0",
+    "triptych_sha256": "38500c9e1e9d95a090a1ff7430a6bcc3157966d32beea3e335f8df67ea07cac8",
     "triptych_scale": "4x nearest-neighbor; absolute difference amplified 32x",
     "visually_inspected_at_original_triptych_resolution": true
   },
