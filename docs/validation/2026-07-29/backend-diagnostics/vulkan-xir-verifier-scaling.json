@@ -1,5 +1,5 @@
 {
-  "schema": "psycles.vulkan-xir-verifier-scaling.v4",
+  "schema": "psycles.vulkan-xir-verifier-scaling.v5",
   "date": "2026-07-29",
   "backend": "vk",
   "device": "AMD Radeon RX 9070 XT (RADV GFX1201)",
@@ -9,12 +9,14 @@
     "construct_entry_dominance_reuse": "8c7d1bf88",
     "lazy_if_batch_post_dominance": "ad4fdcedd",
     "loop_boundary_selection_relation": "a73f7da96",
+    "enclosing_loop_exit_relation": "4e8a506eb",
     "branch": "next",
     "commit_subjects": [
       "XIR: make verifier use-list checks linear",
       "XIR: reuse construct-entry dominance analysis",
       "XIR: rebuild if-batch post-dominance lazily",
-      "XIR: materialize loop-boundary selection relation"
+      "XIR: materialize loop-boundary selection relation",
+      "XIR: materialize enclosing loop exit relation"
     ]
   },
   "input": {
@@ -38,12 +40,13 @@
   },
   "cache": {
     "psycles_shader_cache_enabled_during_measurement": false,
-    "radv_pipeline_cache_state": "warm in all five matched runs",
+    "radv_pipeline_cache_state": "warm in all six matched runs",
     "radv_pipeline_ready_seconds_before": 0.178,
     "radv_pipeline_ready_seconds_after_linear_verifier": 0.164,
     "radv_pipeline_ready_seconds_after_dominance_reuse": 0.165,
     "radv_pipeline_ready_seconds_after_lazy_post_dominance": 0.168,
     "radv_pipeline_ready_seconds_after_selection_relation": 0.162,
+    "radv_pipeline_ready_seconds_after_enclosing_loop_exit_relation": 0.163,
     "production_shader_cache_restored_after_measurement": true,
     "restoration_build_parallel_jobs": 32
   },
@@ -123,6 +126,21 @@
         "spirv_validation_seconds": 1.189
       }
     },
+    "after_enclosing_loop_exit_relation": {
+      "reported_shader_jit_seconds": 26.4,
+      "process_wall_seconds": 27.24,
+      "peak_rss_kib": 1683728,
+      "scene_compilation_seconds": 0.646491,
+      "render_seconds": 0.00735482,
+      "stages": {
+        "ast_to_xir_seconds": 0.865812648,
+        "spirv_xir_legalization_seconds": 19.074880786,
+        "destructure_cfg_seconds": 0.80118,
+        "restructure_cfg_seconds": 17.407391,
+        "native_spirv_emission_boundary_seconds": 4.897,
+        "spirv_validation_seconds": 1.197
+      }
+    },
     "speedup_before_to_linear_verifier": {
       "reported_shader_jit": 4.708827308,
       "ast_to_xir": 18.749912509,
@@ -154,9 +172,15 @@
       "after_drain_selection_exits_seconds": 4.121415,
       "drain_selection_exits_speedup": 2.316764267
     },
+    "speedup_selection_relation_to_enclosing_loop_exit_relation": {
+      "reported_shader_jit": 1.129556818,
+      "restructure_cfg": 1.203125155,
+      "post_restructure_fixed_point": 1.853375308,
+      "drain_selection_exits": 3.299679352
+    },
     "speedup_before_to_final": {
-      "reported_shader_jit": 6.907442246,
-      "complete_process": 6.761904762
+      "reported_shader_jit": 7.802348485,
+      "complete_process": 7.610866373
     },
     "output_shape_unchanged": {
       "spirv_words": 2672528,
@@ -168,7 +192,8 @@
       "construct_entry_dom_tree_final_committed_cfg": 11,
       "if_batch_post_dom_rebuild_final_committed_cfg": 31,
       "selection_exit_boundary_analysis_final_committed_cfg": 45,
-      "selection_exit_site_query_final_committed_cfg": 8855
+      "selection_exit_site_query_final_committed_cfg": 8855,
+      "selection_exit_enclosing_loop_query_final_committed_cfg": 8836
     }
   },
   "restructure_cfg_trace": {
@@ -282,15 +307,42 @@
       "post_dominator_seconds": 0.195132,
       "post_dominator_calls": 376
     },
+    "after_enclosing_loop_exit_relation": {
+      "module_transaction_preflight_seconds": 0.928914,
+      "preflight_verifier": {
+        "calls": 69,
+        "seconds": 3.009174
+      },
+      "post_transform_verifier": {
+        "calls": 46,
+        "seconds": 2.19351
+      },
+      "all_verifier_seconds": 5.202684,
+      "all_verifier_percent_of_restructure": 29.887787,
+      "definition_transforms_seconds": 14.399908,
+      "main_loop_iterations_seconds": 4.977636,
+      "if_batch_seconds_nested_in_main_loop": 4.807783,
+      "post_restructure_fixed_point_seconds": 3.388372,
+      "drain_selection_exits_seconds_nested_in_post_fixed_point": 1.249035,
+      "selection_exit_boundary_analyses": 45,
+      "selection_exit_site_queries": 8855,
+      "selection_exit_enclosing_loop_queries": 8836,
+      "construct_entry_checks": 5070,
+      "committed_cfg_dominator_tree_builds": 11,
+      "committed_cfg_if_batch_post_dominator_rebuilds": 31,
+      "post_dominator_seconds": 0.193622,
+      "post_dominator_calls": 376
+    },
     "verifier_speedup": 19.42161295,
     "construct_entry_enforcement_speedup": 334.137434124,
     "post_dominator_call_reduction": 14.031914894,
     "post_dominator_time_speedup": 23.945014176,
     "selection_exit_drain_speedup": 2.316764267,
+    "enclosing_loop_exit_relation_drain_speedup": 3.299679352,
     "remaining_primary_stage": {
       "name": "restructure_cfg",
-      "seconds": 20.94327,
-      "percent_of_reported_shader_jit": 70.231587
+      "seconds": 17.407391,
+      "percent_of_reported_shader_jit": 65.937087
     }
   },
   "formal_repair": {
@@ -326,6 +378,16 @@
     "new_scan_complexity": "O(structured loop-region traversal + selection membership queries)",
     "validation_is_not_skipped": true
   },
+  "formal_enclosing_loop_exit_relation": {
+    "old_query": "For every selection site h, traverse every function block, rediscover structured loops L, and union boundaries(L) when header(L) dominates h.",
+    "relation": "enclosingExits(h) = union of boundaries(L) over exactly the structured loops L for which header(L) dominates h in the current DomTree.",
+    "materialization": "Extract structured-loop descriptors once, then materialize enclosingExits for every dominated block in one immutable CFG and DomTree version.",
+    "equivalence": "The materialized map applies the same dominance predicate and inserts the same non-null loop prepare, update/body, and merge blocks as the old per-site query.",
+    "invalidation": "Every successful selection-exit rewrite ends the scan; dominance and both selection-exit relations are rebuilt before the new CFG is queried.",
+    "old_scan_complexity": "O(selection sites * function blocks)",
+    "new_scan_complexity": "O(function blocks * structured loops + selection membership queries)",
+    "validation_is_not_skipped": true
+  },
   "regression": {
     "test": "xir_verifier_use_list_membership_is_linear_in_fanout",
     "fanout_instructions": 8192,
@@ -339,7 +401,7 @@
     "unit_xir_tests_passed": 48,
     "unit_xir_tests_total": 48,
     "xir_verifier_assertions": 197,
-    "restructure_cfg_assertions": 1044,
+    "restructure_cfg_assertions": 1045,
     "dominance_operation_count_test": {
       "test": "restructure_construct_entry_dominance_is_linear_per_cfg_version",
       "structured_if_count": 256,
@@ -351,7 +413,8 @@
       "structured_if_count": 256,
       "cfg_mutations": 0,
       "expected_boundary_relation_materializations": 1,
-      "expected_selection_site_queries": 256
+      "expected_selection_site_queries": 256,
+      "expected_enclosing_loop_exit_queries": 256
     },
     "lazy_post_dominance_operation_count_test": {
       "test": "restructure_if_batch_consumes_a_linear_diamond_chain",
@@ -367,6 +430,7 @@
     "after_dominance_reuse_ppm_sha256": "5a29d7d24876e89969714331b08e5c6ca23932a729a58f43878bcddd364ed587",
     "after_lazy_post_dominance_ppm_sha256": "5a29d7d24876e89969714331b08e5c6ca23932a729a58f43878bcddd364ed587",
     "after_selection_relation_ppm_sha256": "5a29d7d24876e89969714331b08e5c6ca23932a729a58f43878bcddd364ed587",
+    "after_enclosing_loop_exit_relation_ppm_sha256": "5a29d7d24876e89969714331b08e5c6ca23932a729a58f43878bcddd364ed587",
     "differing_pixels": 0,
     "maximum_channel_difference": 0,
     "triptych": "vulkan-xir-verifier/use-list-triptych.png",
