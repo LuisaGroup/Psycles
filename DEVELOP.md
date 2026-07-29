@@ -28,10 +28,11 @@ only correctness oracle for Psycles rendering and sampling.
 
 Continue on `main`. The published renderer boundary is `e13a1c0`; it pins the
 published LuisaCompute `next@eb167454a`. The clean Blender/Cycles source
-checkout is `main@4fe17ef6`; the committed Lone Monk and focused reference
-pixels were rendered by Blender 5.2.0 LTS hash `fbe6228777e7`. Source
-inspection and pixel revisions are recorded separately until current Cycles
-is built locally.
+checkout is `main@4fe17ef6` and its Blender 5.3.0 Alpha / `gfx1201` HIP build
+now passes a 64×48 full-scene smoke. The committed 640×480 Lone Monk and
+focused quality-reference pixels were rendered by Blender 5.2.0 LTS hash
+`fbe6228777e7`; they remain explicitly versioned until the pending current
+source 1440×1080 gate is committed.
 
 The active sequence is:
 
@@ -50,8 +51,8 @@ The active sequence is:
    Cycles HIP and Psycles Vulkan on the same RX 9070 XT, record every pass,
    inspect real triptychs, and fix the missing Blender 5.2
    `SINGLE_SCATTERING` sun-guiding contract with regressions;
-7. [ ] build the exact current-Cycles source revision and repeat Lone Monk at
-   1440×1080 with higher samples and peak-memory collection; use the pass
+7. [ ] use the completed exact-current-Cycles HIP build to repeat Lone Monk
+   at 1440×1080 with higher samples and peak-memory collection; use the pass
    evidence to resolve the remaining indirect-energy and sampler differences;
 8. [ ] implement environment-map importance CDFs, remaining MIS paths, and
    formal automatic-emission classification exposed by the full-scene gate;
@@ -73,14 +74,14 @@ Makefiles generator, followed by 4/4 core CTest groups. The existing
 Luisa/fallback 6/6 gate remains the required full-build check before any
 rendering change is published; checkpoint 1b expands that gate to 8/8.
 
-Checkpoint 1a restores the Blender 4.5.10 tabulated-Sobol host contract as an
-independent `psycles::sampling` module. Its test locks the complete
-256-pattern × 256-sample × float4 table with an IEEE-754 FNV-1a fingerprint,
-plus pixel hash, camera, first-bounce light/BSDF, next-bounce light, and
-16-dimension bounce-stride fixtures. The fixture was independently regenerated
-from the authoritative Cycles algorithm; the clean core gate is now 5/5.
-Luisa device lowering and path-kernel integration are intentionally tracked as
-the next checkpoint rather than implied by this host-only result.
+Checkpoint 1a historically introduced the tabulated-Sobol resource contract.
+The current host module retains only sequence sizing and construction of the
+256-pattern × float4 lookup table required for device upload; its test locks
+that immutable table with an IEEE-754 FNV-1a fingerprint. The old host
+pixel-hash, dimension, shuffle, and sample-lookup mirror has been deleted, so
+there is no CPU sampling oracle. Camera, bounce, light, BSDF, and shuffle
+semantics are exercised only through the Luisa device regression in checkpoint
+1b and compared with exact-revision Cycles renders.
 
 Checkpoint 1b is a passing device-sampling gate. It adds a Luisa-native
 tabulated-Sobol lowering in
@@ -169,6 +170,20 @@ compared against an exact-revision current Cycles render. New meaningful
 render comparisons are committed as viewable triptychs in addition to
 recording RMSE, energy ratios, invalid-pixel counts, and
 deterministic-cache status.
+
+AMD full-scene runs use the same 50 ms sysfs sampler for both renderers:
+
+```bash
+python3 tools/measure_amd_vram.py \
+  --output /tmp/render-vram.json --interval 0.05 -- \
+  <renderer> <arguments...>
+```
+
+The report records the command, DRM device, machine-wide pre-launch baseline,
+absolute peak, increase over baseline, final usage, duration, sample count,
+and child exit status. Performance reports must retain both the absolute peak
+and baseline-relative increase; desktop VRAM already in use is not renderer
+memory.
 
 ## Current checkpoint
 

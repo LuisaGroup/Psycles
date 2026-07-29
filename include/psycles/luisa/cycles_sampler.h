@@ -25,9 +25,10 @@ using luisa::compute::UInt;
 using luisa::compute::make_float2;
 using luisa::compute::make_float3;
 
-// Luisa DSL lowering of Blender 4.5.10 Cycles' default
-// TABULATED_SOBOL path for scrambling_distance == 1.0. The host table
-// generator and constants live in psycles::sampling::tabulated_sobol.
+// Luisa DSL lowering of Cycles' TABULATED_SOBOL path for
+// scrambling_distance == 1.0, verified through Blender main@4fe17ef6.
+// The host side only builds the immutable lookup table; hashing, shuffling,
+// dimension selection, and lookup remain device-side Luisa operations.
 
 [[nodiscard]] inline UInt reverse_bits(UInt value) noexcept {
     value =

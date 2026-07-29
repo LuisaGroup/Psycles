@@ -2,10 +2,8 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  *
- * Derived from Blender 4.5.10 Cycles:
+ * Derived from Blender Cycles:
  *   intern/cycles/scene/tabulated_sobol.cpp
- *   intern/cycles/kernel/sample/tabulated_sobol.h
- *   intern/cycles/kernel/sample/util.h
  *   intern/cycles/util/hash.h
  */
 
@@ -15,6 +13,7 @@
 #include <array>
 #include <bit>
 #include <limits>
+#include <span>
 #include <stdexcept>
 
 namespace psycles::sampling::tabulated_sobol {
@@ -63,19 +62,6 @@ inline constexpr XorTable xors{{
     }},
 }};
 
-[[nodiscard]] std::uint32_t reverse_bits(
-    std::uint32_t value) noexcept {
-    value = ((value >> 1u) & 0x55555555u) |
-            ((value & 0x55555555u) << 1u);
-    value = ((value >> 2u) & 0x33333333u) |
-            ((value & 0x33333333u) << 2u);
-    value = ((value >> 4u) & 0x0f0f0f0fu) |
-            ((value & 0x0f0f0f0fu) << 4u);
-    value = ((value >> 8u) & 0x00ff00ffu) |
-            ((value & 0x00ff00ffu) << 8u);
-    return (value >> 16u) | (value << 16u);
-}
-
 [[nodiscard]] std::uint32_t hash_hp_uint(
     std::uint32_t value) noexcept {
     value ^= value >> 16u;
@@ -102,68 +88,6 @@ inline constexpr XorTable xors{{
 [[nodiscard]] float hash_hp_float(
     std::uint32_t value) noexcept {
     return uint_to_float_exclusive(hash_hp_uint(value));
-}
-
-[[nodiscard]] std::uint32_t hash_wang_seeded_uint(
-    std::uint32_t value,
-    std::uint32_t seed) noexcept {
-    value = (value ^ 61u) ^ seed;
-    value += value << 3u;
-    value ^= value >> 4u;
-    value *= 0x27d4eb2du;
-    return value;
-}
-
-[[nodiscard]] std::uint32_t reversed_bit_owen(
-    std::uint32_t value,
-    std::uint32_t seed) noexcept {
-    value ^= value * 0x3d20adeau;
-    value += seed;
-    value *= (seed >> 16u) | 1u;
-    value ^= value * 0x05526c56u;
-    value ^= value * 0x53a22864u;
-    return value;
-}
-
-[[nodiscard]] std::uint32_t nested_uniform_scramble(
-    std::uint32_t value,
-    std::uint32_t seed) noexcept {
-    return reverse_bits(reversed_bit_owen(reverse_bits(value), seed));
-}
-
-[[nodiscard]] std::uint32_t hash_shuffle_uint(
-    std::uint32_t value,
-    std::uint32_t length,
-    std::uint32_t seed) noexcept {
-    value %= length;
-    const auto mask =
-        (std::uint32_t{1u}
-         << (32u - static_cast<std::uint32_t>(
-                        std::countl_zero(length - 1u)))) -
-        1u;
-
-    do {
-        value ^= seed;
-        value *= 0xe170893du;
-        value ^= seed >> 16u;
-        value ^= (value & mask) >> 4u;
-        value ^= seed >> 8u;
-        value *= 0x0929eb3fu;
-        value ^= seed >> 23u;
-        value ^= (value & mask) >> 1u;
-        value *= 1u | seed >> 27u;
-        value *= 0x6935fa69u;
-        value ^= (value & mask) >> 11u;
-        value *= 0x74dcb303u;
-        value ^= (value & mask) >> 2u;
-        value *= 0x9e501cc3u;
-        value ^= (value & mask) >> 2u;
-        value *= 0xc860a3dfu;
-        value &= mask;
-        value ^= value >> 5u;
-    } while (value >= length);
-
-    return value;
 }
 
 void generate_sequence(
@@ -248,24 +172,6 @@ std::uint32_t sequence_size_for_samples(
         max_sequence_size);
 }
 
-std::uint32_t pixel_hash(
-    std::uint32_t x,
-    std::uint32_t y,
-    std::uint32_t seed) noexcept {
-    const auto qx = 1103515245u * ((x >> 1u) ^ y);
-    const auto qy = 1103515245u * ((y >> 1u) ^ x);
-    const auto hash = 1103515245u * (qx ^ (qy >> 3u));
-    return hash ^ seed;
-}
-
-std::uint32_t path_dimension(
-    std::uint32_t bounce,
-    std::uint32_t bounce_dimension) noexcept {
-    return first_bounce_offset +
-           bounce * bounce_dimension_count +
-           bounce_dimension;
-}
-
 std::vector<Sample4> generate_table(
     std::uint32_t sequence_size) {
     if (!is_valid_sequence_size(sequence_size)) {
@@ -290,50 +196,6 @@ std::vector<Sample4> generate_table(
             pattern);
     }
     return table;
-}
-
-std::uint32_t shuffled_sample_index(
-    std::uint32_t sample,
-    std::uint32_t dimension,
-    std::uint32_t seed,
-    std::uint32_t sequence_size) {
-    if (!is_valid_sequence_size(sequence_size)) {
-        throw std::invalid_argument{
-            "invalid tabulated Sobol sequence size"};
-    }
-
-    const auto pattern =
-        hash_shuffle_uint(dimension, pattern_count, seed);
-    const auto sample_mask = sequence_size - 1u;
-    const auto shuffled = nested_uniform_scramble(
-        sample,
-        hash_wang_seeded_uint(dimension, seed));
-    sample =
-        (sample & ~sample_mask) |
-        (shuffled & sample_mask);
-    return ((pattern * sequence_size) + sample) %
-           (sequence_size * pattern_count);
-}
-
-Sample4 sample_4d(
-    std::span<const Sample4> table,
-    std::uint32_t sequence_size,
-    std::uint32_t sample,
-    std::uint32_t rng_hash,
-    std::uint32_t dimension) {
-    const auto expected_size =
-        static_cast<std::size_t>(sequence_size) *
-        pattern_count;
-    if (table.size() != expected_size) {
-        throw std::invalid_argument{
-            "tabulated Sobol table has an unexpected size"};
-    }
-    const auto index = shuffled_sample_index(
-        sample,
-        dimension,
-        rng_hash,
-        sequence_size);
-    return table[index];
 }
 
 }// namespace psycles::sampling::tabulated_sobol

@@ -2,14 +2,13 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <span>
 #include <vector>
 
 namespace psycles::sampling::tabulated_sobol {
 
-// Blender 4.5.10 Cycles sampling constants from
-// intern/cycles/kernel/types.h. Keeping these values in one host/device
-// contract prevents control-flow changes from shifting later random samples.
+// Cycles sampling constants, verified through Blender main@4fe17ef6.
+// Keeping these values in one host/device contract prevents control-flow
+// changes from shifting later random samples.
 inline constexpr std::uint32_t min_sequence_size = 256u;
 inline constexpr std::uint32_t max_sequence_size = 8192u;
 inline constexpr std::uint32_t pattern_count = 256u;
@@ -46,31 +45,7 @@ static_assert(sizeof(Sample4) == sizeof(float) * component_count);
 [[nodiscard]] std::uint32_t sequence_size_for_samples(
     std::uint32_t sample_count) noexcept;
 
-[[nodiscard]] std::uint32_t pixel_hash(
-    std::uint32_t x,
-    std::uint32_t y,
-    std::uint32_t seed) noexcept;
-
-[[nodiscard]] std::uint32_t path_dimension(
-    std::uint32_t bounce,
-    std::uint32_t bounce_dimension) noexcept;
-
 [[nodiscard]] std::vector<Sample4> generate_table(
     std::uint32_t sequence_size);
-
-[[nodiscard]] std::uint32_t shuffled_sample_index(
-    std::uint32_t sample,
-    std::uint32_t dimension,
-    std::uint32_t seed,
-    std::uint32_t sequence_size);
-
-// Lookup for Cycles' default scrambling_distance == 1.0 path. The returned
-// four components are the same table row used by its 1D/2D/3D/4D helpers.
-[[nodiscard]] Sample4 sample_4d(
-    std::span<const Sample4> table,
-    std::uint32_t sequence_size,
-    std::uint32_t sample,
-    std::uint32_t rng_hash,
-    std::uint32_t dimension);
 
 }// namespace psycles::sampling::tabulated_sobol
