@@ -1,12 +1,15 @@
 """Compare Psycles linear passes against a Cycles multilayer EXR.
 
-Run with Blender's Python so OpenImageIO and NumPy are available:
+Run with a Python environment containing the packages declared in
+``requirements-validation.txt``:
 
-    blender --background --python compare_cycles.py -- \
+    python compare_cycles.py \
       cycles.exr report.json --triptych-dir triptychs \
       Combined=psycles.exr \
       Normal=psycles.exr \
       DiffCol=psycles.exr
+
+The historical Blender ``--python ... --`` form remains accepted.
 """
 
 from __future__ import annotations
@@ -361,7 +364,11 @@ def _write_triptych(
 
 
 def _main() -> None:
-    args = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
+    args = (
+        sys.argv[sys.argv.index("--") + 1 :]
+        if "--" in sys.argv
+        else sys.argv[1:]
+    )
     if len(args) < 3:
         raise SystemExit(
             "expected: cycles.exr report.json "

@@ -841,6 +841,75 @@ def _indirect_diffuse(scene: Any) -> None:
     scene.cycles.transmission_bounces = 0
 
 
+def _indirect_principled(scene: Any) -> None:
+    """Exercise multiple bounces through mixed diffuse/glossy closures."""
+    _world(scene, (0.64, 0.78, 1.0, 1.0), 0.7)
+
+    floor, floor_tree, floor_output = _material(
+        "Indirect Principled Floor"
+    )
+    floor_bsdf = floor_tree.nodes.new(
+        "ShaderNodeBsdfPrincipled"
+    )
+    floor_bsdf.name = "Floor Principled"
+    floor_bsdf.distribution = "GGX"
+    _input(floor_bsdf, "Base Color").default_value = (
+        0.62,
+        0.41,
+        0.23,
+        1.0,
+    )
+    _input(floor_bsdf, "Metallic").default_value = 0.15
+    _input(floor_bsdf, "Roughness").default_value = 0.35
+    _input(floor_bsdf, "Diffuse Roughness").default_value = 0.0
+    _input(floor_bsdf, "IOR").default_value = 1.45
+    _input(floor_bsdf, "Specular IOR Level").default_value = 0.5
+    floor_tree.links.new(
+        _output(floor_bsdf, "BSDF"),
+        _input(floor_output, "Surface"),
+    )
+    _plane(floor)
+
+    wall, wall_tree, wall_output = _material(
+        "Indirect Principled Wall"
+    )
+    wall_bsdf = wall_tree.nodes.new(
+        "ShaderNodeBsdfPrincipled"
+    )
+    wall_bsdf.name = "Wall Principled"
+    wall_bsdf.distribution = "GGX"
+    _input(wall_bsdf, "Base Color").default_value = (
+        0.18,
+        0.72,
+        0.27,
+        1.0,
+    )
+    _input(wall_bsdf, "Metallic").default_value = 0.05
+    _input(wall_bsdf, "Roughness").default_value = 0.52
+    _input(wall_bsdf, "Diffuse Roughness").default_value = 0.0
+    _input(wall_bsdf, "IOR").default_value = 1.45
+    _input(wall_bsdf, "Specular IOR Level").default_value = 0.5
+    wall_tree.links.new(
+        _output(wall_bsdf, "BSDF"),
+        _input(wall_output, "Surface"),
+    )
+    bpy.ops.mesh.primitive_plane_add(
+        size=8.0,
+        enter_editmode=False,
+        align="WORLD",
+        location=(0.0, 1.1, 2.0),
+        rotation=(1.5707963267948966, 0.0, 0.0),
+    )
+    wall_object = bpy.context.object
+    wall_object.name = "Indirect Principled Bounce Wall"
+    wall_object.data.materials.append(wall)
+
+    scene.cycles.max_bounces = 4
+    scene.cycles.diffuse_bounces = 3
+    scene.cycles.glossy_bounces = 3
+    scene.cycles.transmission_bounces = 0
+
+
 def _translucent_surface(scene: Any) -> None:
     """Exercise Cycles' diffuse-transmission hemisphere and event labels."""
     _world(scene, (0.31, 0.56, 0.82, 1.0), 1.0)
@@ -4939,6 +5008,7 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "image_texture_sampling_modes": _image_texture_sampling_modes,
     "image_texture_projection_modes": _image_texture_projection_modes,
     "indirect_diffuse": _indirect_diffuse,
+    "indirect_principled": _indirect_principled,
     "integrator_clamp_direct": _integrator_clamp_direct,
     "invert_color_matrix": _invert_color_matrix,
     "legacy_separate_combine_matrix": (

@@ -1,4 +1,5 @@
 #include "path_tracer_internal.h"
+#include "cycles_integrator_limits.h"
 #include "path_tracer_environment.h"
 #include "path_tracer_geometry.h"
 #include "path_tracer_light_distribution.h"
@@ -43,18 +44,32 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
     const auto render_settings = _settings;
     const auto render_window = _window;
     const auto integrator = render_settings.integrator;
-    const auto max_bounces = integrator.max_bounces;
-    const auto min_bounces = integrator.min_bounces;
+    const auto bounce_limits =
+        cycles_kernel_bounce_limits({
+            .maximum = integrator.max_bounces,
+            .minimum = integrator.min_bounces,
+            .maximum_diffuse =
+                integrator.diffuse_bounces,
+            .maximum_glossy =
+                integrator.glossy_bounces,
+            .maximum_transmission =
+                integrator.transmission_bounces,
+            .transparent_minimum =
+                integrator.transparent_min_bounces,
+            .transparent_maximum =
+                integrator.transparent_max_bounces});
+    const auto max_bounces = bounce_limits.maximum;
+    const auto min_bounces = bounce_limits.minimum;
     const auto max_diffuse_bounces =
-        integrator.diffuse_bounces;
+        bounce_limits.maximum_diffuse;
     const auto max_glossy_bounces =
-        integrator.glossy_bounces;
+        bounce_limits.maximum_glossy;
     const auto max_transmission_bounces =
-        integrator.transmission_bounces;
+        bounce_limits.maximum_transmission;
     const auto transparent_min_bounces =
-        integrator.transparent_min_bounces;
+        bounce_limits.transparent_minimum;
     const auto transparent_max_bounces =
-        integrator.transparent_max_bounces;
+        bounce_limits.transparent_maximum;
     // Blender exposes clamp per RGB channel. Cycles' device kernel
     // compares the sum of absolute RGB components, so scene sync
     // multiplies non-zero UI values by three.
@@ -76,14 +91,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         integrator.reflective_caustics;
     const auto refractive_caustics =
         integrator.refractive_caustics;
-    const auto max_path_steps = static_cast<std::uint32_t>(
-        std::min<std::uint64_t>(
-            static_cast<std::uint64_t>(
-                std::max(max_bounces, 1u)) +
-                static_cast<std::uint64_t>(std::max(
-                    transparent_max_bounces, 1u)) +
-                1u,
-            1024u));
+    const auto max_path_steps =
+        bounce_limits.maximum_path_steps;
     const auto next_event_estimation =
         _options.next_event_estimation &&
         integrator.direct_light_sampling !=
@@ -1387,18 +1396,15 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                     (ray_events &
                      static_cast<std::uint32_t>(
                          contract::event_transparent)) != 0u;
-                // Cycles scene sync stores both UI minimum-bounce
-                // settings as value + 1. A depth of zero is the camera
-                // segment, so roulette starts only after that extra
-                // guaranteed bounce.
+                // Kernel parameters already contain Cycles' scene-sync
+                // representation: opaque minimums include the first
+                // direct-light bounce.
                 Bool use_roulette = select(
                     path_depth >
-                        kernel_parameters.min_bounces +
-                            1u,
+                        kernel_parameters.min_bounces,
                     transparent_depth >
                         kernel_parameters
-                                .transparent_min_bounces +
-                            1u,
+                            .transparent_min_bounces,
                     arrived_through_transparency);
                 $if (use_roulette) {
                     Float survival = min(
