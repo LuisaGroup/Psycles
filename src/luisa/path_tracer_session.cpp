@@ -252,6 +252,7 @@ bool LuisaRenderSession::render_samples(
                    batch->first,
                    batch->count,
                    _sobol_table,
+                   _pixel_filter_table,
                    _kernel_parameters)
                    .dispatch(dispatch_size)
             << synchronize();

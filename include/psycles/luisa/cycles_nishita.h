@@ -8,6 +8,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include <psycles/luisa/spherical_geometry.h>
+
 #include <psycles/luisa/surface.h>
 
 #include <luisa/dsl/sugar.h>
@@ -501,8 +503,7 @@ template<typename Texture>
     const auto clamped_altitude =
         clamp(altitude, 1.0f, 59999.0f);
     const auto half_angular = angular_diameter * 0.5f;
-    const auto solid_angle =
-        two_pi * (1.0f - cos(half_angular));
+    const auto solid_angle = spherical_geometry::cap_solid_angle(half_angular);
     const auto bottom =
         max(sun_elevation - half_angular, 0.0f);
     const auto top =

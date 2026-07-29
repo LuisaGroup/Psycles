@@ -16,6 +16,7 @@ namespace {
 using psycles::adapter::load_blender_scene_bundle;
 using psycles::contract::DirectLightSampling;
 using psycles::contract::EmissionSampling;
+using psycles::contract::PixelFilter;
 using psycles::contract::WorldSampling;
 
 void expect(bool condition, const std::string &message) {
@@ -317,6 +318,13 @@ void test_integrator_settings_round_trip() {
         0.375f,
         "pass alpha threshold did not round-trip");
     expect(
+        imported.pixel_filter == PixelFilter::gaussian,
+        "Gaussian pixel filter did not round-trip");
+    expect_near(
+        imported.filter_width,
+        2.25f,
+        "Gaussian filter width did not round-trip");
+    expect(
         imported.color_management.display_device == "Display P3",
         "display device did not round-trip");
     expect(
@@ -462,6 +470,49 @@ void test_integrator_settings_round_trip() {
     std::string light_tree_scene{
         std::istreambuf_iterator<char>{source},
         std::istreambuf_iterator<char>{}};
+    auto box_filter_scene = light_tree_scene;
+    constexpr std::string_view gaussian_filter =
+        "\"pixel_filter_type\": \"GAUSSIAN\"";
+    constexpr std::string_view box_filter =
+        "\"pixel_filter_type\": \"BOX\"";
+    const auto filter_position =
+        box_filter_scene.find(gaussian_filter);
+    expect(
+        filter_position != std::string::npos,
+        "test scene has no Gaussian pixel filter");
+    box_filter_scene.replace(
+        filter_position,
+        gaussian_filter.size(),
+        box_filter);
+    constexpr std::string_view gaussian_width =
+        "\"filter_width\": 2.25";
+    constexpr std::string_view dormant_box_width =
+        "\"filter_width\": 0.01";
+    const auto filter_width_position =
+        box_filter_scene.find(gaussian_width);
+    expect(
+        filter_width_position != std::string::npos,
+        "test scene has no Gaussian filter width");
+    box_filter_scene.replace(
+        filter_width_position,
+        gaussian_width.size(),
+        dormant_box_width);
+    {
+        std::ofstream scene{
+            temporary.path() / "scene.json"};
+        scene << box_filter_scene;
+    }
+    const auto box_imported =
+        load_blender_scene_bundle(temporary.path());
+    expect(
+        box_imported.ok() &&
+            box_imported.pixel_filter == PixelFilter::box,
+        "BOX pixel filter did not import");
+    expect_near(
+        box_imported.filter_width,
+        1.0f,
+        "BOX filter did not normalize to one pixel");
+
     auto legacy_nishita_scene = light_tree_scene;
     constexpr std::string_view current_sky_type =
         "\"sky_type\": \"SINGLE_SCATTERING\"";

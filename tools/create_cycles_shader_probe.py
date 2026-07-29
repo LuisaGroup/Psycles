@@ -349,6 +349,169 @@ def _flat_light_distribution(scene: Any) -> None:
     scene.cycles.transmission_bounces = 0
 
 
+def _triangle_light_solid_angle(scene: Any) -> None:
+    """Exercise Cycles' near-triangle solid-angle sampling branch."""
+    world = scene.world
+    if world is not None:
+        world.cycles.sampling_method = "NONE"
+
+    receiver, tree, output = _material(
+        "Solid Angle Triangle Receiver"
+    )
+    diffuse = tree.nodes.new("ShaderNodeBsdfDiffuse")
+    diffuse.name = "Diffuse"
+    _input(diffuse, "Color").default_value = (
+        0.37,
+        0.58,
+        0.21,
+        1.0,
+    )
+    _input(diffuse, "Roughness").default_value = 0.0
+    tree.links.new(
+        _output(diffuse, "BSDF"),
+        _input(output, "Surface"),
+    )
+    _plane(receiver)
+
+    emitter_material, emitter_tree, emitter_output = _material(
+        "Solid Angle Triangle Emitter"
+    )
+    emitter_material.cycles.emission_sampling = "FRONT"
+    emission = emitter_tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Emission"
+    _input(emission, "Color").default_value = (
+        0.83,
+        0.29,
+        0.11,
+        1.0,
+    )
+    _input(emission, "Strength").default_value = 7.0
+    emitter_tree.links.new(
+        _output(emission, "Emission"),
+        _input(emitter_output, "Surface"),
+    )
+    # This vertical triangle remains outside the orthographic camera frame,
+    # but it subtends a large solid angle at every visible receiver point.
+    # The winding gives it a -Y front face, toward the receiver.
+    mesh = bpy.data.meshes.new("Solid Angle Triangle Mesh")
+    mesh.from_pydata(
+        (
+            (-3.0, 1.4, 0.2),
+            (3.0, 1.4, 0.2),
+            (0.0, 1.4, 3.0),
+        ),
+        (),
+        ((0, 1, 2),),
+    )
+    emitter = bpy.data.objects.new(
+        "Solid Angle Triangle Emitter", mesh
+    )
+    emitter.data.materials.append(emitter_material)
+    scene.collection.objects.link(emitter)
+
+    scene.cycles.max_bounces = 1
+    scene.cycles.diffuse_bounces = 0
+    scene.cycles.glossy_bounces = 0
+    scene.cycles.transmission_bounces = 0
+
+
+def _camera_emission_silhouettes(
+    scene: Any,
+    name: str,
+    row_depths: tuple[tuple[float, float], ...],
+) -> None:
+    material, tree, output = _material(f"{name} Emitter")
+    material.cycles.emission_sampling = "NONE"
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Emission"
+    _input(emission, "Color").default_value = (
+        0.71,
+        0.29,
+        0.13,
+        1.0,
+    )
+    _input(emission, "Strength").default_value = 1.0
+    tree.links.new(
+        _output(emission, "Emission"),
+        _input(output, "Surface"),
+    )
+
+    vertices: list[tuple[float, float, float]] = []
+    faces: list[tuple[int, int, int, int]] = []
+    for row, (y, z) in enumerate(row_depths):
+        for column in range(15):
+            center_x = -0.84 + 0.12 * column
+            half_width = 0.010 + 0.002 * ((row + column) % 3)
+            half_height = 0.07 + 0.01 * (column % 2)
+            first = len(vertices)
+            vertices.extend(
+                (
+                    (center_x - half_width, y - half_height, z),
+                    (center_x + half_width, y - half_height, z),
+                    (center_x + half_width, y + half_height, z),
+                    (center_x - half_width, y + half_height, z),
+                )
+            )
+            faces.append(
+                (first, first + 1, first + 2, first + 3)
+            )
+    mesh = bpy.data.meshes.new(f"{name} Silhouettes Mesh")
+    mesh.from_pydata(vertices, (), faces)
+    silhouettes = bpy.data.objects.new(
+        f"{name} Silhouettes", mesh
+    )
+    silhouettes.data.materials.append(material)
+    scene.collection.objects.link(silhouettes)
+
+    scene.cycles.max_bounces = 0
+    scene.cycles.diffuse_bounces = 0
+    scene.cycles.glossy_bounces = 0
+    scene.cycles.transmission_bounces = 0
+
+
+def _camera_dof_disk(scene: Any) -> None:
+    """Exercise the Sobol-preserving concentric disk-aperture map."""
+    # Camera coverage is a sample-correspondence test, not a convergence
+    # comparison. Cycles 5.3 resolves AUTOMATIC to BLUE_NOISE_PURE for final
+    # renders, while Lone Monk explicitly uses TABULATED_SOBOL. Pin the probe
+    # to the latter so Cycles and Psycles consume the same (time, lens_x,
+    # lens_y) triples.
+    scene.cycles.sampling_pattern = "TABULATED_SOBOL"
+    camera = scene.camera
+    camera.data.type = "PERSP"
+    camera.data.lens = 50.0
+    camera.data.dof.use_dof = True
+    camera.data.dof.focus_distance = 3.0
+    camera.data.dof.aperture_fstop = 0.7
+    camera.data.dof.aperture_blades = 0
+    camera.data.dof.aperture_ratio = 1.0
+    # Cycles' BOX filter has a fixed effective width of one pixel; the UI
+    # filter_width property is dormant for this filter type.
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 1.0
+    _camera_emission_silhouettes(
+        scene,
+        "Disk DOF",
+        ((0.36, 1.0), (0.0, 0.0), (-0.36, -2.0)),
+    )
+
+
+def _camera_blackman_harris_filter(scene: Any) -> None:
+    """Exercise the Cycles Blackman-Harris inverse-CDF film table."""
+    scene.cycles.sampling_pattern = "TABULATED_SOBOL"
+    camera = scene.camera
+    camera.data.type = "PERSP"
+    camera.data.lens = 50.0
+    camera.data.dof.use_dof = False
+    scene.cycles.pixel_filter_type = "BLACKMAN_HARRIS"
+    scene.cycles.filter_width = 1.5
+    _camera_emission_silhouettes(
+        scene,
+        "Blackman-Harris Film",
+        ((0.36, 0.0), (0.0, 0.0), (-0.36, 0.0)),
+    )
+
+
 def _point_light(scene: Any) -> None:
     _analytic_light_probe(scene, "POINT")
 
@@ -912,6 +1075,67 @@ def _indirect_principled(scene: Any) -> None:
     scene.cycles.diffuse_bounces = 3
     scene.cycles.glossy_bounces = 3
     scene.cycles.transmission_bounces = 0
+
+
+def _nishita_diffuse_transport(scene: Any) -> None:
+    """Measure the integrated Nishita sky and solar-disc transport."""
+    world = bpy.data.worlds.new("Nishita Transport World")
+    world.use_nodes = True
+    tree = world.node_tree
+    tree.nodes.clear()
+    sky = tree.nodes.new("ShaderNodeTexSky")
+    sky.name = "Nishita Sky"
+    sky.sky_type = "SINGLE_SCATTERING"
+    sky.sun_disc = True
+    sky.sun_elevation = 0.9250245094299316
+    sky.sun_rotation = 2.6179938316345215
+    sky.sun_size = 0.01745329238474369
+    sky.sun_intensity = 1.0
+    sky.altitude = 0.0
+    sky.air_density = 1.0
+    sky.aerosol_density = 1.0
+    sky.ozone_density = 1.0
+    background = tree.nodes.new("ShaderNodeBackground")
+    background.name = "Background"
+    _input(background, "Strength").default_value = 1.0
+    output = tree.nodes.new("ShaderNodeOutputWorld")
+    output.name = "World Output"
+    tree.links.new(
+        _output(sky, "Color"),
+        _input(background, "Color"),
+    )
+    tree.links.new(
+        _output(background, "Background"),
+        _input(output, "Surface"),
+    )
+    scene.world = world
+
+    material, material_tree, material_output = _material(
+        "Nishita Diffuse Receiver"
+    )
+    diffuse = material_tree.nodes.new("ShaderNodeBsdfDiffuse")
+    diffuse.name = "Diffuse Receiver"
+    _input(diffuse, "Color").default_value = (
+        0.62,
+        0.41,
+        0.23,
+        1.0,
+    )
+    _input(diffuse, "Roughness").default_value = 0.0
+    material_tree.links.new(
+        _output(diffuse, "BSDF"),
+        _input(material_output, "Surface"),
+    )
+    _plane(material)
+
+    scene.cycles.max_bounces = 1
+    scene.cycles.diffuse_bounces = 1
+    scene.cycles.glossy_bounces = 0
+    scene.cycles.transmission_bounces = 0
+    scene.cycles.use_light_tree = False
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 1.0
+    scene.cycles.sampling_pattern = "TABULATED_SOBOL"
 
 
 def _translucent_surface(scene: Any) -> None:
@@ -4985,7 +5209,10 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "area_light": _area_light,
     "area_light_ellipse": _area_light_ellipse,
     "area_light_spread": _area_light_spread,
+    "camera_blackman_harris_filter": _camera_blackman_harris_filter,
+    "camera_dof_disk": _camera_dof_disk,
     "flat_light_distribution": _flat_light_distribution,
+    "triangle_light_solid_angle": _triangle_light_solid_angle,
     "background_world": _background_world,
     "blackbody_matrix": _blackbody_matrix,
     "bump_matrix": _bump_matrix,
@@ -5029,6 +5256,7 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "mix_rgb_legacy_modes": _mix_rgb_legacy_modes,
     "mix_shader_emission": _mix_shader_emission,
     "negative_scale_surface": _negative_scale_surface,
+    "nishita_diffuse_transport": _nishita_diffuse_transport,
     "node_group_color": _node_group_color,
     "noise_bump_object": _noise_bump_object,
     "noise_color_3d": _noise_color_3d,

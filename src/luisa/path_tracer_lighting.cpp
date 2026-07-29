@@ -1,5 +1,7 @@
 #include "path_tracer_lighting.h"
 
+#include <psycles/luisa/spherical_geometry.h>
+
 namespace psycles::luisa_backend::detail {
 
 LightTransportCallables make_light_transport_callables(
@@ -248,17 +250,21 @@ make_emissive_triangle_pdf_callable(
             length_squared(unnormalized_normal),
             0.0f));
         Float area = 0.5f * doubled_area;
+        auto directional_pdf =
+            spherical_geometry::triangle_directional_pdf(
+                reference_position,
+                light_position,
+                p0,
+                p1,
+                p2);
         Float3 offset =
             light_position - reference_position;
-        Float distance2 = length_squared(offset);
-        Float3 wi = offset / sqrt(max(
-            distance2, 1.0e-20f));
+        Float3 wi = offset / sqrt(max(length_squared(offset), 1.0e-20f));
         Float3 light_normal =
             unnormalized_normal /
             max(doubled_area, 1.0e-20f);
         Float signed_cosine =
             dot(light_normal, -wi);
-        Float cosine = abs(signed_cosine);
         Bool back_facing = signed_cosine < 0.0f;
         Bool side_is_sampled =
             (emission_sampling ==
@@ -276,16 +282,14 @@ make_emissive_triangle_pdf_callable(
                   contract::EmissionSampling::back)) &
              back_facing);
         Float pdf =
-            distance2 *
-            scene->triangle_area_pdf /
-            max(cosine, 1.0e-20f);
+            directional_pdf.value *
+            area *
+            scene->triangle_area_pdf;
         return select(
             0.0f,
             pdf,
             found &
-                side_is_sampled &
-                (distance2 > 1.0e-12f) &
-                (cosine > 0.0f) &
+                side_is_sampled & directional_pdf.valid &
                 (area > 0.0f));
     };
 }

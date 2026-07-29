@@ -106,6 +106,91 @@ class ShaderProbeRunnerContract(unittest.TestCase):
             [],
         )
 
+    def test_triangle_solid_angle_gate_requires_sample_alignment(
+        self,
+    ) -> None:
+        report = {
+            "passes": {
+                "Combined": {
+                    "luminance_mean_ratio": 1.0000037,
+                    "relative_rmse": 0.0014594,
+                },
+                "DiffDir": {
+                    "luminance_mean_ratio": 1.0000038,
+                    "relative_rmse": 0.0014594,
+                },
+            }
+        }
+        self.assertEqual(
+            self.runner._probe_gate_failures(
+                "triangle_light_solid_angle", report
+            ),
+            [],
+        )
+        report["passes"]["Combined"]["relative_rmse"] = 0.006
+        failures = self.runner._probe_gate_failures(
+            "triangle_light_solid_angle", report
+        )
+        self.assertEqual(len(failures), 1)
+        self.assertIn("relative RMSE", failures[0])
+
+    def test_camera_gates_require_exact_cycles_sample_mapping(
+        self,
+    ) -> None:
+        for probe, aligned_ratio, aligned_rmse in (
+            ("camera_dof_disk", 0.9999951, 0.0001319),
+            ("camera_blackman_harris_filter", 1.0000035, 0.0000728),
+        ):
+            report = {
+                "passes": {
+                    "Combined": {
+                        "luminance_mean_ratio": aligned_ratio,
+                        "relative_rmse": aligned_rmse,
+                    }
+                }
+            }
+            self.assertEqual(
+                self.runner._probe_gate_failures(probe, report),
+                [],
+            )
+            # The former continuous inverse-CDF approximation still converged
+            # to the right energy, but did not reproduce Cycles' finite 1024
+            # entry lookup table and therefore missed exact edge coverage.
+            report["passes"]["Combined"]["relative_rmse"] = 0.001
+            failures = self.runner._probe_gate_failures(
+                probe, report
+            )
+            self.assertEqual(len(failures), 1)
+            self.assertIn("relative RMSE", failures[0])
+
+    def test_nishita_transport_gate_rejects_world_energy_drift(
+        self,
+    ) -> None:
+        report = {
+            "passes": {
+                "Combined": {
+                    "luminance_mean_ratio": 0.9999106,
+                    "relative_rmse": 0.0001402,
+                },
+                "DiffDir": {
+                    "luminance_mean_ratio": 0.9999054,
+                    "relative_rmse": 0.0001528,
+                },
+            }
+        }
+        self.assertEqual(
+            self.runner._probe_gate_failures(
+                "nishita_diffuse_transport", report
+            ),
+            [],
+        )
+        report["passes"]["DiffDir"]["luminance_mean_ratio"] = 1.001
+        failures = self.runner._probe_gate_failures(
+            "nishita_diffuse_transport", report
+        )
+        self.assertEqual(len(failures), 1)
+        self.assertIn("energy ratio", failures[0])
+
 
 if __name__ == "__main__":
     # unittest would otherwise treat the runner path as a test selector.
