@@ -1,0 +1,25 @@
+{
+  "baseline_bytes": 4103680000,
+  "command": [
+    "build/bin/psycles_render_blender_scene",
+    "/tmp/lone-monk-20260729/export-filter-glossy-main-4fe17ef6",
+    "/tmp/lone-monk-20260729/filter-glossy-fix/psycles-hip-1440x1080-256.ppm",
+    "hip",
+    "1440",
+    "1080",
+    "256",
+    "8"
+  ],
+  "device": "/sys/devices/pci0000:00/0000:00:01.1/0000:01:00.0/0000:02:00.0/0000:03:00.0",
+  "elapsed_seconds": 104.52457391109783,
+  "final_bytes": 4091899904,
+  "interrupted": false,
+  "peak_bytes": 6267981824,
+  "peak_elapsed_seconds": 46.72066361410543,
+  "peak_increase_bytes": 2164301824,
+  "return_code": 0,
+  "sample_count": 2089,
+  "sampling_interval_seconds": 0.05,
+  "schema": "psycles.amd-vram-measurement.v1",
+  "total_bytes": 17095983104
+}

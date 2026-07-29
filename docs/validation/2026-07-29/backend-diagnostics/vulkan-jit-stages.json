@@ -1,0 +1,118 @@
+{
+  "schema": "psycles.vulkan-jit-profile.v1",
+  "date": "2026-07-29",
+  "backend": "vk",
+  "device": "AMD Radeon RX 9070 XT (RADV GFX1201)",
+  "input": {
+    "scene": "Lone Monk church/roof instance isolation",
+    "scene_json_sha256": "21ad3042c3e06eb2ccdc4294ef550cd1ca5efe5965eae7946f5ac461f7d95ce1",
+    "geometries": 350,
+    "instances": 12,
+    "raw_material_graphs": 35,
+    "runtime_material_programs": 37,
+    "images": 47,
+    "width": 128,
+    "height": 96,
+    "samples": 1
+  },
+  "environment": {
+    "LUISA_XIR_DISABLE_OPTIMIZATION": "1",
+    "LUISA_SPIRV_OPT_LEVEL": "0",
+    "LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV": "1",
+    "LUISA_XIR_TRACE_PASSES": "1",
+    "LUISA_LOG_LEVEL": "verbose"
+  },
+  "cache": {
+    "shader_cache_enabled_during_measurement": false,
+    "production_setting_restored_after_measurement": true,
+    "restoration_build_parallel_jobs": 32
+  },
+  "reported_shader_jit_seconds": 240.23,
+  "process_wall_seconds": 241.13,
+  "peak_rss_kib": 3471716,
+  "spirv_words": 2672528,
+  "spirv_bindings": 26,
+  "stages": [
+    {
+      "name": "ast_to_xir",
+      "seconds": 16.114038358,
+      "jit_percent": 6.707754
+    },
+    {
+      "name": "spirv_xir_legalization",
+      "seconds": 148.551458773,
+      "jit_percent": 61.837181,
+      "children": [
+        {
+          "name": "destructure_cfg",
+          "seconds": 15.68198,
+          "jit_percent": 6.527902
+        },
+        {
+          "name": "restructure_cfg",
+          "seconds": 132.00289,
+          "jit_percent": 54.948545
+        }
+      ]
+    },
+    {
+      "name": "native_spirv_emission",
+      "seconds": 37.974,
+      "jit_percent": 15.807351,
+      "boundary": "legalization complete to optimization-skipped log"
+    },
+    {
+      "name": "spirv_validation",
+      "seconds": 1.197,
+      "jit_percent": 0.498272,
+      "boundary": "optimization-skipped to compilation-success log"
+    },
+    {
+      "name": "result_property_handoff",
+      "seconds": 0.161,
+      "jit_percent": 0.067019,
+      "boundary": "compilation-success to final property log"
+    },
+    {
+      "name": "radv_compute_pipeline_creation",
+      "seconds": 36.023,
+      "jit_percent": 14.995213,
+      "boundary": "final property log to compute-shader-created log"
+    },
+    {
+      "name": "other_timestamp_gap",
+      "seconds": 0.209502869,
+      "jit_percent": 0.087209
+    }
+  ],
+  "large_definition_input": {
+    "blocks": 1654,
+    "instructions": 208018,
+    "raw_conditional_terminators": 534,
+    "raw_indexed_terminators": 1
+  },
+  "destructure_cfg_counters": {
+    "destructured_if": 2262,
+    "destructured_switch": 5,
+    "destructured_loop": 10,
+    "destructured_simple_loop": 33,
+    "destructured_break": 39
+  },
+  "reg2mem_pre_restructure": {
+    "seconds": 0.07478,
+    "hoisted_alloca": 361084
+  },
+  "restructure_cfg_counters": {
+    "restructured_loop": 46,
+    "restructured_if": 2483,
+    "restructured_switch": 8,
+    "canonicalized_cfg": 14
+  },
+  "mem2reg_post_restructure": {
+    "seconds": 0.41325,
+    "promoted_alloca": 359804,
+    "removed_store": 385544,
+    "removed_load": 498575,
+    "inserted_phi": 2820
+  }
+}

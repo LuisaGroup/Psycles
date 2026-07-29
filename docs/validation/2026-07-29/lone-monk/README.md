@@ -909,3 +909,14 @@ remains `1.033100×`, so another structured shading difference remains.
 Numeric reports, commands, hashes, performance, regression policy, and real
 probe/full-scene triptychs are in the
 [Filter Glossy validation record](../filter-glossy/README.md).
+
+## Backend diagnostics follow-up
+
+The next same-scene run found that Psycles HIP reports a nominal
+`24.8549 s` render time but drops the upper central church/roof geometry.
+That timer is therefore excluded from performance claims. A traced,
+strict-native Vulkan cold compile also isolates `restructure-cfg` as 132.00
+of 240.23 JIT seconds. The exact timing breakdown, invalid HIP pass metrics,
+VRAM measurement, build-hint ablation, and inspected HIP/Cycles triptychs are
+in the
+[backend diagnostics record](../backend-diagnostics/README.md).
