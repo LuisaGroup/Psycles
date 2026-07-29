@@ -16,7 +16,8 @@ SurfaceCallables make_surface_callables(
             Var<SurfacePointCall> packed_point,
             Float3 outgoing,
             UInt lobe_mask,
-            UInt transport_mode) noexcept {
+            UInt transport_mode,
+            Float glossy_filter_roughness) noexcept {
             BufferShaderServices services{
                 parameters,
                 cycles_bsdf_tables,
@@ -30,7 +31,9 @@ SurfaceCallables make_surface_callables(
                 unpack_surface_point(packed_point);
             auto query = SurfaceQuery{
                 .lobe_mask = lobe_mask,
-                .transport_mode = transport_mode};
+                .transport_mode = transport_mode,
+                .glossy_filter_roughness =
+                    glossy_filter_roughness};
             return pack_surface_evaluation(
                 scene->surfaces.evaluate(
                     surface_tag,
@@ -74,7 +77,8 @@ SurfaceCallables make_surface_callables(
             Float u_lobe,
             Float2 u_direction,
             UInt lobe_mask,
-            UInt transport_mode) noexcept {
+            UInt transport_mode,
+            Float glossy_filter_roughness) noexcept {
             BufferShaderServices services{
                 parameters,
                 cycles_bsdf_tables,
@@ -86,7 +90,9 @@ SurfaceCallables make_surface_callables(
                 scene->shader_color_space};
             auto query = SurfaceQuery{
                 .lobe_mask = lobe_mask,
-                .transport_mode = transport_mode};
+                .transport_mode = transport_mode,
+                .glossy_filter_roughness =
+                    glossy_filter_roughness};
             return pack_surface_sample(
                 scene->surfaces.sample(
                     surface_tag,

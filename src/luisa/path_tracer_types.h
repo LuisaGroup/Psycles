@@ -175,6 +175,7 @@ struct RenderKernelParameters {
     luisa::uint transparent_background{};
     float sample_clamp_direct{};
     float sample_clamp_indirect{};
+    float filter_glossy{};
     float light_inv_rr_threshold{};
     float camera_horizontal_tangent{};
     float camera_vertical_tangent{};
@@ -351,6 +352,7 @@ LUISA_STRUCT(
     transparent_background,
     sample_clamp_direct,
     sample_clamp_indirect,
+    filter_glossy,
     light_inv_rr_threshold,
     camera_horizontal_tangent,
     camera_vertical_tangent,

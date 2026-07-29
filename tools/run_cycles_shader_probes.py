@@ -9,6 +9,7 @@ linear pass differential report.
 from __future__ import annotations
 
 import argparse
+import json
 import pathlib
 import subprocess
 import sys
@@ -115,6 +116,16 @@ _REPORT_PASSES = (
     "Env",
 )
 
+# These gates cover renderer defects that the canonical probe was introduced
+# to catch. They use pass energy rather than per-pixel RMSE so different
+# unbiased Sobol/direction mappings are not mistaken for transport bias.
+_PROBE_RATIO_GATES = {
+    "indirect_principled": {
+        "DiffInd": (0.98, 1.02),
+        "GlossInd": (0.98, 1.02),
+    },
+}
+
 
 def _arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
@@ -204,6 +215,33 @@ def _comparison_command(
     ]
 
 
+def _probe_gate_failures(
+    probe: str,
+    report_payload: dict[str, object],
+) -> list[str]:
+    gates = _PROBE_RATIO_GATES.get(probe, {})
+    passes = report_payload.get("passes")
+    if not isinstance(passes, dict):
+        return [f"{probe}: report has no pass dictionary"]
+    failures: list[str] = []
+    for pass_name, (minimum, maximum) in gates.items():
+        pass_report = passes.get(pass_name)
+        if not isinstance(pass_report, dict):
+            failures.append(f"{probe}: missing {pass_name}")
+            continue
+        ratio = pass_report.get("luminance_mean_ratio")
+        if not isinstance(ratio, (float, int)):
+            failures.append(
+                f"{probe}: {pass_name} has no numeric energy ratio"
+            )
+        elif not minimum <= float(ratio) <= maximum:
+            failures.append(
+                f"{probe}: {pass_name} energy ratio {float(ratio):.6f} "
+                f"is outside [{minimum:.6f}, {maximum:.6f}]"
+            )
+    return failures
+
+
 def _main() -> int:
     arguments = _arguments()
     root = pathlib.Path(__file__).resolve().parent.parent
@@ -288,6 +326,14 @@ def _main() -> int:
                     psycles_exr,
                 )
             )
+            gate_failures = _probe_gate_failures(
+                probe,
+                json.loads(report.read_text(encoding="utf-8")),
+            )
+            if gate_failures:
+                failures.append(probe)
+                for failure in gate_failures:
+                    print(f"probe gate failed: {failure}", file=sys.stderr)
         except subprocess.CalledProcessError:
             failures.append(probe)
             print(f"probe failed: {probe}", file=sys.stderr)

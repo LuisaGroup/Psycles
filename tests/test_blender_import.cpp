@@ -260,6 +260,7 @@ void test_integrator_settings_round_trip() {
       "transparent_max_bounces": 9,
       "sample_clamp_direct": 1.25,
       "sample_clamp_indirect": 2.5,
+      "blur_glossy": 0.75,
       "film_exposure": 0.75,
       "light_sampling_threshold": 0.125,
       "caustics_reflective": false,
@@ -433,6 +434,10 @@ void test_integrator_settings_round_trip() {
         integrator.sample_clamp_indirect,
         2.5f,
         "indirect clamp mismatch");
+    expect_near(
+        integrator.filter_glossy,
+        0.75f,
+        "filter glossy mismatch");
     expect_near(
         integrator.film_exposure,
         0.75f,

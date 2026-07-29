@@ -3445,6 +3445,11 @@ BlenderSceneImport load_blender_scene_bundle(
                 member(cycles, "sample_clamp_indirect"),
                 result.integrator.sample_clamp_indirect),
             0.0f);
+        result.integrator.filter_glossy = std::max(
+            number(
+                member(cycles, "blur_glossy"),
+                result.integrator.filter_glossy),
+            0.0f);
         result.integrator.film_exposure = std::max(
             number(
                 member(cycles, "film_exposure"),

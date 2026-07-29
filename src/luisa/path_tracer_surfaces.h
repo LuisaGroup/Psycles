@@ -13,7 +13,8 @@ using SurfaceEvaluateCallable = Callable<SurfaceEvaluationCall(
     SurfacePointCall,
     luisa::float3,
     luisa::uint,
-    luisa::uint)>;
+    luisa::uint,
+    float)>;
 using SurfaceEmissionCallable = Callable<luisa::float3(
     Buffer<luisa::float4>,
     Buffer<float>,
@@ -32,7 +33,8 @@ using SurfaceSampleCallable = Callable<SurfaceSampleCall(
     float,
     luisa::float2,
     luisa::uint,
-    luisa::uint)>;
+    luisa::uint,
+    float)>;
 using SurfaceAovCallable = Callable<SurfaceAovCall(
     Buffer<luisa::float4>,
     Buffer<float>,

@@ -817,6 +817,20 @@ private:
                max(pi * denominator * denominator, 1.0e-20f);
     }
 
+    [[nodiscard]] static Float microfacet_alpha(
+        const TracedClosure &closure,
+        Float glossy_filter_roughness) noexcept {
+        // Cycles applies bsdf_microfacet_blur after closure setup. Keep the
+        // original closure roughness for sample weights, layering, and energy
+        // compensation; only evaluation and sampling see this widened alpha.
+        auto setup_alpha =
+            clamp(closure.roughness, 0.0f, 1.0f);
+        setup_alpha *= setup_alpha;
+        return max(
+            max(setup_alpha, glossy_filter_roughness),
+            1.0e-3f);
+    }
+
     [[nodiscard]] static Float smith_g1(
         Float n_dot_v,
         Float alpha) noexcept {
@@ -853,7 +867,8 @@ private:
         const TracedClosure &closure,
         Float3 incoming,
         Float3 outgoing,
-        Float3 glossy_normal) noexcept {
+        Float3 glossy_normal,
+        Float glossy_filter_roughness) noexcept {
         auto n_dot_v =
             max(dot(glossy_normal, incoming), 0.0f);
         auto n_dot_l =
@@ -865,9 +880,8 @@ private:
             max(dot(glossy_normal, half_vector), 0.0f);
         auto v_dot_h =
             max(dot(incoming, half_vector), 0.0f);
-        auto alpha = max(
-            closure.roughness * closure.roughness,
-            1.0e-3f);
+        auto alpha = microfacet_alpha(
+            closure, glossy_filter_roughness);
         auto distribution =
             ggx_distribution(n_dot_h, alpha);
         auto lambda_v =
@@ -926,7 +940,8 @@ private:
         const TracedClosure &closure,
         Float3 incoming,
         Float3 outgoing,
-        Float3 glossy_normal) noexcept {
+        Float3 glossy_normal,
+        Float glossy_filter_roughness) noexcept {
         auto half_vector = safe_normalize(
             incoming + outgoing,
             glossy_normal);
@@ -934,9 +949,8 @@ private:
             max(dot(glossy_normal, half_vector), 0.0f);
         auto v_dot_h =
             max(dot(incoming, half_vector), 0.0f);
-        auto alpha = max(
-            closure.roughness * closure.roughness,
-            1.0e-3f);
+        auto alpha = microfacet_alpha(
+            closure, glossy_filter_roughness);
         auto n_dot_v =
             max(dot(glossy_normal, incoming), 0.0f);
         auto n_dot_l =
@@ -958,10 +972,10 @@ private:
         const TracedClosure &closure,
         Float3 incoming,
         Float2 random,
-        Float3 glossy_normal) noexcept {
-        auto alpha = max(
-            closure.roughness * closure.roughness,
-            1.0e-3f);
+        Float3 glossy_normal,
+        Float glossy_filter_roughness) noexcept {
+        auto alpha = microfacet_alpha(
+            closure, glossy_filter_roughness);
         auto normal = safe_normalize(
             glossy_normal,
             make_float3(0.0f, 0.0f, 1.0f));
@@ -3812,7 +3826,8 @@ public:
                     closure,
                     incoming,
                     outgoing,
-                    glossy_normal);
+                    glossy_normal,
+                    query.glossy_filter_roughness);
                 auto translucent_allowed =
                     diffuse_enabled &
                     transmission_enabled &
@@ -3857,7 +3872,8 @@ public:
                             closure,
                             incoming,
                             outgoing,
-                            glossy_normal);
+                            glossy_normal,
+                            query.glossy_filter_roughness);
                     selection_color =
                         state.diffuse_sample_weight +
                         state.glossy_sample_weight;
@@ -3872,7 +3888,8 @@ public:
                             closure,
                             incoming,
                             outgoing,
-                            glossy_normal);
+                            glossy_normal,
+                            query.glossy_filter_roughness);
                     selection_color =
                         closure.weight *
                         max(
@@ -4244,7 +4261,8 @@ public:
                     closure,
                     incoming,
                     remapped_random,
-                    glossy_normal);
+                    glossy_normal,
+                    query.glossy_filter_roughness);
                 auto transparent_direction = -point.incoming;
                 auto sample_glossy =
                     local_glossy_enabled &

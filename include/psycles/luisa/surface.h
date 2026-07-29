@@ -105,6 +105,9 @@ struct SurfacePoint {
 struct SurfaceQuery {
     UInt lobe_mask;
     UInt transport_mode;
+    // Cycles Filter Glossy widens microfacet alpha after closure setup. Zero
+    // leaves the material closure unchanged.
+    Float glossy_filter_roughness;
 };
 
 struct SurfaceEvaluation {

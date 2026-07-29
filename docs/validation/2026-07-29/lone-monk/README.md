@@ -892,3 +892,20 @@ or image-space fitting was applied. The next diagnosis must use these direct
 and indirect pass residuals plus current Cycles semantics to identify a
 Luisa-path implementation defect and add its regression before changing the
 renderer.
+
+## Filter Glossy follow-up
+
+The subsequent bounce-limit repair removed a compensating transport deficit
+and exposed the missing path-dependent Filter Glossy setting. Psycles now
+exports the source scene's raw `blur_glossy = 10.0`, tracks the minimum
+non-transparent BSDF PDF in Luisa path state, and widens only the post-setup
+effective microfacet alpha exactly where Cycles does.
+
+The canonical 128×128/4096 `indirect_principled` probe closes Diffuse
+Indirect to `0.999868×` and Glossy Indirect to `1.000189×` Cycles. The updated
+Lone Monk 1440×1080/256 result improves Diffuse Indirect from `1.039160×` to
+`1.033018×` and Glossy Indirect from `1.020865×` to `1.012505×`; Combined
+remains `1.033100×`, so another structured shading difference remains.
+Numeric reports, commands, hashes, performance, regression policy, and real
+probe/full-scene triptychs are in the
+[Filter Glossy validation record](../filter-glossy/README.md).
