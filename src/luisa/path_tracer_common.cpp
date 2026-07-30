@@ -143,6 +143,7 @@ pack_surface_evaluation(
     result.wi = sample.wi;
     result.eta = sample.eta;
     result.roughness = sample.roughness;
+    result.runtime_flags = sample.runtime_flags;
     result.valid = select(0u, 1u, sample.valid);
     return result;
 }
@@ -159,6 +160,7 @@ pack_surface_evaluation(
         .wi = sample.wi,
         .eta = sample.eta,
         .roughness = sample.roughness,
+        .runtime_flags = sample.runtime_flags,
         .valid = sample.valid != 0u};
 }
 
@@ -167,6 +169,7 @@ pack_surface_closure_trace(
     const SurfaceClosureTrace &trace) noexcept {
     Var<SurfaceClosureTraceCall> result;
     result.count = trace.count;
+    result.runtime_flags = trace.runtime_flags;
     result.index = trace.index;
     result.type = trace.type;
     result.sample_weight = trace.sample_weight;
@@ -181,6 +184,7 @@ unpack_surface_closure_trace(
     const Var<SurfaceClosureTraceCall> &trace) noexcept {
     return {
         .count = trace.count,
+        .runtime_flags = trace.runtime_flags,
         .index = trace.index,
         .type = trace.type,
         .sample_weight = trace.sample_weight,
@@ -203,6 +207,8 @@ pack_surface_sample_trace(
     result.wi = trace.sample.wi;
     result.eta = trace.sample.eta;
     result.roughness = trace.sample.roughness;
+    result.runtime_flags =
+        trace.sample.runtime_flags;
     result.valid =
         select(0u, 1u, trace.sample.valid);
     result.closure_index = trace.closure_index;
@@ -232,6 +238,7 @@ unpack_surface_sample_trace(
             .wi = trace.wi,
             .eta = trace.eta,
             .roughness = trace.roughness,
+            .runtime_flags = trace.runtime_flags,
             .valid = trace.valid != 0u},
         .closure_index = trace.closure_index,
         .closure_type = trace.closure_type,

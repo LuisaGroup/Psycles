@@ -112,8 +112,10 @@ private:
     }
 
     [[nodiscard]] static Float sample_weight(Float3 value) noexcept {
-        return (abs(value.x) + abs(value.y) + abs(value.z)) /
-               3.0f;
+        // Cycles stores fabsf(average(weight)) in ShaderClosure. Ordinary
+        // BSDF allocation has already clamped negative spectral components;
+        // transparent closure setup applies the absolute value directly.
+        return abs((value.x + value.y + value.z) / 3.0f);
     }
 
     [[nodiscard]] static Float3 bsdf_allocated_weight(
@@ -774,7 +776,76 @@ private:
         if (!is_scattering_operation(closure.operation)) {
             return false;
         }
-        return closure_sample_weight(closure) > 0.0f;
+        return closure_sample_weight(closure) >=
+               cycles_closure::closure_weight_cutoff;
+    }
+
+    [[nodiscard]] static UInt cycles_runtime_flags(
+        const TracedClosure &closure,
+        Float glossy_filter_roughness = 0.0f) noexcept {
+        UInt flags = 0u;
+        switch (closure.operation) {
+            case compiler::ClosureOperation::diffuse:
+                flags =
+                    cycles_closure::runtime_bsdf |
+                    cycles_closure::runtime_bsdf_has_eval;
+                break;
+            case compiler::ClosureOperation::translucent:
+                flags =
+                    cycles_closure::runtime_bsdf |
+                    cycles_closure::runtime_bsdf_has_eval |
+                    cycles_closure::
+                        runtime_bsdf_has_transmission;
+                break;
+            case compiler::ClosureOperation::glossy: {
+                auto alpha =
+                    clamp(closure.roughness, 0.0f, 1.0f);
+                alpha *= alpha;
+                alpha = max(
+                    alpha,
+                    glossy_filter_roughness);
+                flags =
+                    cycles_closure::runtime_bsdf |
+                    select(
+                        0u,
+                        cycles_closure::
+                            runtime_bsdf_has_eval,
+                        alpha * alpha >
+                            cycles_closure::
+                                microfacet_singular_alpha_product);
+                break;
+            }
+            case compiler::ClosureOperation::transparent:
+                flags =
+                    cycles_closure::runtime_bsdf |
+                    cycles_closure::runtime_transparent;
+                break;
+            case compiler::ClosureOperation::principled:
+                // The aggregate closure is deliberately incomplete until
+                // physical Principled expansion. Its currently implemented
+                // reflective lobes are evaluable BSDFs.
+                flags =
+                    cycles_closure::runtime_bsdf |
+                    cycles_closure::runtime_bsdf_has_eval;
+                break;
+            case compiler::ClosureOperation::emission:
+                return cycles_closure::runtime_emission;
+            case compiler::ClosureOperation::null_closure:
+            case compiler::ClosureOperation::add:
+            case compiler::ClosureOperation::mix:
+                return 0u;
+        }
+        flags |= select(
+            0u,
+            cycles_closure::runtime_bsdf_has_eval,
+            glossy_filter_roughness *
+                    glossy_filter_roughness >
+                cycles_closure::
+                    microfacet_singular_alpha_product);
+        return select(
+            0u,
+            flags,
+            closure_allocated(closure));
     }
 
     [[nodiscard]] static UInt cycles_closure_type(
@@ -4201,9 +4272,15 @@ public:
         }
         auto values = trace_values(services, point);
         UInt closure_count = 0u;
+        UInt runtime_flags = select(
+            0u,
+            cycles_closure::runtime_backfacing,
+            point.back_facing);
         for_each_closure(
             values,
             [&](const TracedClosure &closure) noexcept {
+                runtime_flags |=
+                    cycles_runtime_flags(closure);
                 auto allocated =
                     closure_allocated(closure);
                 auto match =
@@ -4230,6 +4307,7 @@ public:
                     select(0u, 1u, allocated);
             });
         result.count = closure_count;
+        result.runtime_flags = runtime_flags;
         return result;
     }
 
@@ -4254,6 +4332,10 @@ private:
             point.shading_normal);
         Float total_weight = 0.0f;
         UInt closure_count = 0u;
+        UInt surface_runtime_flags = select(
+            0u,
+            cycles_closure::runtime_backfacing,
+            point.back_facing);
         auto diffuse_enabled =
             (query.lobe_mask &
              static_cast<std::uint32_t>(event_diffuse)) != 0u;
@@ -4269,6 +4351,10 @@ private:
         for_each_closure(
             values,
             [&](const TracedClosure &closure) noexcept {
+                surface_runtime_flags |=
+                    cycles_runtime_flags(
+                        closure,
+                        query.glossy_filter_roughness);
                 const auto selection =
                     closure_selection_state(
                         services,
@@ -4282,6 +4368,8 @@ private:
                     1u,
                     closure_allocated(closure));
             });
+        result.runtime_flags =
+            surface_runtime_flags;
 
         auto random_lobe = clamp(
             Float{u_lobe_expression}, 0.0f, 0.99999994f);
