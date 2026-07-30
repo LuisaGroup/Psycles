@@ -85,6 +85,9 @@ def _emitter(
     settings.size_random = 0.0
     settings.emit_from = "VERT"
     settings.use_modifier_stack = True
+    # Cycles keeps evaluating the particle instances but rejects the
+    # emitter's own mesh through OB_VISIBLE_SELF in the render graph.
+    emitter.show_instancer_for_render = False
     if children:
         settings.child_type = "INTERPOLATED"
         settings.child_percent = _VIEWPORT_CHILDREN
@@ -217,6 +220,18 @@ def _main() -> None:
         scene = json.loads(
             (output / "scene.json").read_text(encoding="utf-8")
         )
+        exported_names = {
+            instance["name"] for instance in scene["instances"]
+        }
+        for emitter_name in (
+            "Parent Particle Emitter",
+            "Child Particle Emitter",
+        ):
+            if emitter_name in exported_names:
+                raise AssertionError(
+                    "render-disabled particle emitter self geometry "
+                    f"was exported: {emitter_name}"
+                )
         if scene["camera"] is not None:
             raise AssertionError(
                 "the temporary render-graph camera leaked into the export"
