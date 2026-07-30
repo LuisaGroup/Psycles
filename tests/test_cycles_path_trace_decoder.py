@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import pathlib
 import sys
 import tempfile
@@ -21,6 +22,59 @@ if str(TOOLS) not in sys.path:
     sys.path.insert(0, str(TOOLS))
 
 import cycles_path_trace_schema as schema
+
+
+class PsyclesRawPathTraceDecoderTests(unittest.TestCase):
+    def test_raw_rgba_slots_use_the_shared_schema(self) -> None:
+        import decode_cycles_path_trace as decoder
+
+        slots = [[0.0, 0.0, 0.0, 0.0] for _ in schema.SLOTS]
+        slots[0] = [
+            float(schema.SCHEMA_VERSION),
+            17.0,
+            23.0,
+            1.0,
+        ]
+        slots[1] = [0.0, 0x4321, 0x8765, 1.0]
+        slots[2] = [0.5, 0.5, 0.0, 1.0]
+        slots[3] = [0.125, 0.25, 0.75, 1.0]
+
+        with tempfile.TemporaryDirectory(
+            prefix="psycles-raw-path-trace-decoder-"
+        ) as temporary:
+            path = pathlib.Path(temporary) / "trace.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "schema": "psycles.cycles-path-trace-raw",
+                        "trace_schema_version": schema.SCHEMA_VERSION,
+                        "pixel_x": 17,
+                        "pixel_y": 23,
+                        "sample": 0,
+                        "slots": slots,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            trace = decoder.decode_raw_trace(path)
+
+        self.assertEqual(
+            trace["global"]["rng"]["rng_pixel"],
+            0x87654321,
+        )
+        self.assertEqual(
+            trace["global"]["lens_time"]["time"],
+            0.125,
+        )
+        self.assertEqual(
+            trace["global"]["lens_time"]["lens_u"],
+            0.25,
+        )
+        self.assertEqual(
+            trace["global"]["lens_time"]["lens_v"],
+            0.75,
+        )
+        self.assertFalse(trace["events"][0]["written"])
 
 
 @unittest.skipIf(

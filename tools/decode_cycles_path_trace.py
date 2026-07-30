@@ -126,8 +126,10 @@ def _combine_u32(
     return int(low) | (int(high) << 16)
 
 
-def decode_trace(path: pathlib.Path) -> dict[str, Any]:
-    values = _read_trace_pixel(path)
+def _decode_values(
+    values: dict[int, tuple[float, ...]],
+    source: pathlib.Path,
+) -> dict[str, Any]:
     globals_: dict[str, Any] = {}
     events: list[dict[str, Any]] = [
         {"index": event, "slots": {}, "closures": []}
@@ -224,15 +226,48 @@ def decode_trace(path: pathlib.Path) -> dict[str, Any]:
     return {
         "schema": SCHEMA_NAME,
         "version": SCHEMA_VERSION,
-        "source": str(path.resolve()),
+        "source": str(source.resolve()),
         "global": globals_,
         "events": events,
     }
 
 
+def decode_trace(path: pathlib.Path) -> dict[str, Any]:
+    return _decode_values(_read_trace_pixel(path), path)
+
+
+def decode_raw_trace(path: pathlib.Path) -> dict[str, Any]:
+    document = json.loads(path.read_text(encoding="utf-8"))
+    if document.get("schema") != "psycles.cycles-path-trace-raw":
+        raise RuntimeError(f"{path} is not a raw Psycles path trace")
+    if document.get("trace_schema_version") != SCHEMA_VERSION:
+        raise RuntimeError(
+            "raw path trace schema version is "
+            f"{document.get('trace_schema_version')}, expected "
+            f"{SCHEMA_VERSION}"
+        )
+    raw_slots = document.get("slots")
+    if not isinstance(raw_slots, list) or len(raw_slots) != AOV_COUNT:
+        raise RuntimeError(
+            f"raw path trace must contain exactly {AOV_COUNT} slots"
+        )
+    values: dict[int, tuple[float, ...]] = {}
+    for index, raw_slot in enumerate(raw_slots):
+        if not isinstance(raw_slot, list) or len(raw_slot) != 4:
+            raise RuntimeError(
+                f"raw path trace slot {index} is not RGBA"
+            )
+        values[index] = tuple(float(value) for value in raw_slot)
+    return _decode_values(values, path)
+
+
 def _main() -> None:
     arguments = _arguments()
-    result = decode_trace(arguments.input)
+    result = (
+        decode_trace(arguments.input)
+        if arguments.input.suffix.casefold() == ".exr"
+        else decode_raw_trace(arguments.input)
+    )
     serialized = json.dumps(result, indent=2, sort_keys=True) + "\n"
     if arguments.output is None:
         print(serialized, end="")

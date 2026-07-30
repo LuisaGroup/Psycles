@@ -4,13 +4,42 @@
 #error "Include <psycles/luisa/path_tracer.h> through a Psycles Luisa target."
 #endif
 
+#include <array>
 #include <cstdint>
+#include <memory>
+#include <optional>
 
 #include <psycles/contract/render.h>
+#include <psycles/luisa/path_trace_schema.h>
 
 #include <luisa/runtime/device.h>
 
 namespace psycles::luisa_backend {
+
+struct LuisaPathTrace {
+    using Slot = std::array<float, 4u>;
+
+    std::uint32_t pixel_x{};
+    // Cycles film convention: zero is the lower row of the full image.
+    std::uint32_t pixel_y{};
+    std::uint32_t sample{};
+    std::array<Slot, path_trace_schema::slot_count> slots{};
+};
+
+class LuisaPathTraceSink {
+
+public:
+    virtual ~LuisaPathTraceSink() noexcept = default;
+    virtual void write(const LuisaPathTrace &trace) = 0;
+};
+
+struct LuisaPathTraceRequest {
+    std::uint32_t pixel_x{};
+    // Cycles film convention: zero is the lower row of the full image.
+    std::uint32_t pixel_y{};
+    std::uint32_t sample{};
+    std::shared_ptr<LuisaPathTraceSink> sink;
+};
 
 struct LuisaPathTracerOptions {
     bool next_event_estimation{true};
@@ -18,6 +47,9 @@ struct LuisaPathTracerOptions {
     // finite bounds GPU progress and error-detection latency without changing
     // the device sampler's global sample indices. Zero is invalid.
     std::uint32_t max_samples_per_dispatch{8u};
+    // Diagnostic-only, observational trace. The kernel writes this fixed
+    // schema only for the requested full-film pixel and absolute sample.
+    std::optional<LuisaPathTraceRequest> path_trace;
 };
 
 class LuisaPathTracerBackend final : public contract::RendererBackend {

@@ -19,6 +19,13 @@ CPU and HIP kernels.
 - the field-by-field comparator;
 - the Luisa fallback/HIP/Vulkan trace implementation.
 
+The Luisa device-side indices are generated into
+`include/psycles/luisa/path_trace_schema.h`. A regression compares the
+committed header byte-for-byte with the Python generator, so a schema edit
+cannot silently leave the JIT kernel on an older layout. The raw 3D random
+order is the Cycles order `(u, v, selection)`; `PRNG_LENS_TIME` is
+`(time, lens_u, lens_v)`.
+
 Schema version 1 contains 296 RGB records:
 
 - 8 camera/global slots;
@@ -83,6 +90,30 @@ python tools/compare_cycles_path_traces.py \
   /var/tmp/psycles-trace/cpu-vs-hip.json
 ```
 
+The normal Psycles scene renderer can optionally capture the same indexed
+buffer. Its trailing arguments are output JSON, full-film Cycles `x/y`, and
+absolute sample:
+
+```bash
+TMPDIR=/var/tmp/psycles-compiler-tmp \
+  build/bin/psycles_render_blender_scene \
+  build/diagnostics/minimal-point/export \
+  /var/tmp/psycles-trace/fallback.ppm \
+  fallback 32 32 1 1 \
+  /var/tmp/psycles-trace/fallback.raw.json 17 16 0
+
+python tools/compare_cycles_path_traces.py \
+  /var/tmp/psycles-trace/cpu.exr \
+  /var/tmp/psycles-trace/fallback.raw.json \
+  /var/tmp/psycles-trace/cpu-vs-fallback.json
+```
+
+The renderer serializes the fixed RGBA slot array with the existing yyjson
+dependency. `decode_cycles_path_trace.py` accepts either the Cycles multipart
+EXR or this raw Psycles JSON. Trace capture is observational: it targets one
+full-film pixel/sample and does not alter sample dispatch partitioning or
+request another random value.
+
 Blender 5.3 writes each AOV as a separate OpenEXR multipart subimage. The
 decoder enumerates every subimage and also accepts older single-part,
 multi-channel files. `tests/test_cycles_path_trace_decoder.py` locks the
@@ -115,3 +146,14 @@ The point-light CPU/HIP checkpoint is recorded under
 `docs/validation/2026-07-30/cycles-path-trace/`. All 43 discrete fields and 16
 random fields match exactly. The 84 continuous fields pass their float32
 bounds; maximum absolute error is `4.76837158203125e-7`.
+
+The first Luisa checkpoint is recorded under
+`docs/validation/2026-07-30/luisa-path-trace/`. The initial differential run
+found that Psycles represented camera clipping as nonzero ray `tmin/tmax`,
+while Cycles advances `ray.P` to the near plane, starts at zero, and stores
+`far - near` (with perspective direction-cosine scaling). After correcting
+that contract, every currently populated continuous field passes with maximum
+absolute error `4.76837158203125e-7`, and all 13 currently populated random
+fields are exact. The remaining failures are deliberately visible unpopulated
+light, raw-closure, BSDF, and post-bounce records plus the Cycles shader ID;
+they are the next implementation gates, not tolerated differences.

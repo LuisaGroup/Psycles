@@ -21,6 +21,24 @@ LuisaPathTracerBackend::create_session(
         _options.max_samples_per_dispatch == 0u) {
         return nullptr;
     }
+    if (const auto &trace = _options.path_trace) {
+        if (!trace->sink ||
+            trace->pixel_x >= settings.full_extent.width ||
+            trace->pixel_y >= settings.full_extent.height) {
+            return nullptr;
+        }
+        const auto window = effective_window(settings);
+        const auto raster_y =
+            settings.full_extent.height - 1u -
+            trace->pixel_y;
+        if (
+            trace->pixel_x < window.x ||
+            trace->pixel_x >= window.x + window.width ||
+            raster_y < window.y ||
+            raster_y >= window.y + window.height) {
+            return nullptr;
+        }
+    }
     if (settings.integrator.use_light_tree) {
         return nullptr;
     }
