@@ -74,6 +74,17 @@ def _main() -> None:
         str(probe_creator),
         run_name="psycles_test_cycles_shader_probes",
     )
+    runner = runpy.run_path(
+        str(probe_creator.with_name("run_cycles_shader_probes.py")),
+        run_name="psycles_test_cycles_shader_probe_runner",
+    )
+    registered_probes = tuple(sorted(probes["_PROBES"]))
+    expected_probes = tuple(sorted(runner["_ALL_PROBES"]))
+    if registered_probes != expected_probes:
+        raise AssertionError(
+            "shader-probe registry differs from the canonical runner: "
+            f"registered={registered_probes}, expected={expected_probes}"
+        )
     golden = runpy.run_path(
         str(exporter.with_name("render_cycles_golden.py")),
         run_name="psycles_test_cycles_golden",
@@ -101,7 +112,7 @@ def _main() -> None:
         )
 
     scene.cycles.sampling_pattern = "AUTOMATIC"
-    probes["_camera_dof_disk"](scene)
+    probes["_PROBES"]["camera_dof_disk"](scene)
     if (
         scene.cycles.sampling_pattern != "TABULATED_SOBOL"
         or scene.cycles.pixel_filter_type != "BOX"
@@ -113,7 +124,7 @@ def _main() -> None:
         )
 
     scene.cycles.sampling_pattern = "AUTOMATIC"
-    probes["_camera_blackman_harris_filter"](scene)
+    probes["_PROBES"]["camera_blackman_harris_filter"](scene)
     if (
         scene.cycles.sampling_pattern != "TABULATED_SOBOL"
         or scene.cycles.pixel_filter_type != "BLACKMAN_HARRIS"
