@@ -464,6 +464,19 @@ if(PSYCLES_ENABLE_LUISA)
             add_test(
                 NAME psycles.cycles_filter_glossy
                 COMMAND psycles_cycles_filter_glossy_tests)
+
+            add_executable(
+                psycles_cycles_shader_identity_tests
+                tests/test_cycles_shader_identity.cpp)
+            target_link_libraries(
+                psycles_cycles_shader_identity_tests
+                PRIVATE Psycles::core)
+            target_compile_features(
+                psycles_cycles_shader_identity_tests
+                PRIVATE cxx_std_20)
+            add_test(
+                NAME psycles.cycles_shader_identity
+                COMMAND psycles_cycles_shader_identity_tests)
         endif()
 
         if(PSYCLES_BUILD_EXAMPLES)
@@ -699,6 +712,18 @@ if(PSYCLES_BUILD_TESTS)
                 --
                 "${CMAKE_CURRENT_SOURCE_DIR}/tools/export_psycles_scene.py"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tools/create_cycles_shader_probe.py")
+        add_test(
+            NAME psycles.blender_export_cycles_identity
+            COMMAND
+                "${PSYCLES_BLENDER_EXECUTABLE}"
+                --background
+                --factory-startup
+                --python-exit-code
+                1
+                --python
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_cycles_identity.py"
+                --
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/export_psycles_scene.py")
         add_test(
             NAME psycles.blender_diagnostic_probes
             COMMAND

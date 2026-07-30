@@ -260,7 +260,8 @@ TraceShadowCallable make_trace_shadow_callable(
                                                 1.0f,
                                                 0.0f,
                                                 0.0f)));
-                                UInt2 material_binding =
+                                Var<MaterialBindingGpu>
+                                    material_binding =
                                     scene
                                         ->geometry_material_buffer
                                         ->read(
@@ -283,7 +284,8 @@ TraceShadowCallable make_trace_shadow_callable(
                                                 material_slot);
                                 };
                                 UInt surface_tag =
-                                    material_binding.x;
+                                    material_binding
+                                        .surface_tag;
                                 SurfacePoint point{
                                     .position = position,
                                     .object_position =
@@ -373,7 +375,8 @@ TraceShadowCallable make_trace_shadow_callable(
                                     .instance_id = hit->inst,
                                     .primitive_id = hit->prim,
                                     .parameter_block =
-                                        material_binding.y,
+                                        material_binding
+                                            .parameter_block,
                                     .object_random =
                                         instance.object_random,
                                     .particle_index =

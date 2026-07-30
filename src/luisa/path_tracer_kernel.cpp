@@ -1,6 +1,7 @@
 #include "path_tracer_internal.h"
 #include "cycles_filter_glossy.h"
 #include "cycles_integrator_limits.h"
+#include "cycles_shader_identity.h"
 #include "path_tracer_environment.h"
 #include "path_tracer_geometry.h"
 #include "path_tracer_light_distribution.h"
@@ -1429,7 +1430,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                     (uv1 - uv0) * barycentric_dy.x +
                     (uv2 - uv0) * barycentric_dy.y;
 
-                UInt2 material_binding =
+                Var<MaterialBindingGpu> material_binding =
                     scene->geometry_material_buffer->read(
                         geometry.material_offset +
                         min(
@@ -1445,7 +1446,22 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                             instance.override_offset +
                             material_slot);
                 };
-                UInt surface_tag = material_binding.x;
+                UInt surface_tag =
+                    material_binding.surface_tag;
+                UInt cycles_surface_shader =
+                    material_binding.cycles_shader_index |
+                    cycles_shader_identity::cast_shadow |
+                    select(
+                        0u,
+                        cycles_shader_identity::
+                            smooth_normal,
+                        triangle_smooth);
+                UInt cycles_object_index = select(
+                    hit->inst,
+                    instance.cycles_object_index,
+                    instance.cycles_object_index !=
+                        cycles_shader_identity::
+                            invalid_index);
 
                 SurfacePoint point{
                     .position = hit_position,
@@ -1516,7 +1532,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                     .instance_id = hit->inst,
                     .primitive_id = hit->prim,
                     .parameter_block =
-                        material_binding.y,
+                        material_binding.parameter_block,
                     .object_random =
                         instance.object_random,
                     .particle_index =
@@ -1548,12 +1564,12 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                 };
                 auto make_surface_shadow_origin =
                     [&](Float3 direction) noexcept {
-                        // Cycles' direct-light shadow rays use the
-                        // shadow-terminator construction directly. They do
-                        // not apply integrate_surface_ray_offset(): exact
-                        // source identity is handled by the ray query.
+                        // Compose Cycles' shadow-terminator displacement
+                        // with its exact neighboring-triangle certificate.
+                        // The latter is still required when ray-query self
+                        // exclusion handles the source primitive itself.
                         return surface_ray::
-                            shadow_terminator_origin(
+                            surface_shadow_origin(
                                 hit_position,
                                 shadow_shading_normal,
                                 geometric_normal,
@@ -1562,6 +1578,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                     .shadow_terminator_geometry_offset,
                                 triangle_smooth,
                                 object_to_world,
+                                world_to_object,
                                 hit->bary,
                                 p0,
                                 p1,
@@ -1788,7 +1805,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                         path_trace_schema::
                             EventSlot::isect_id,
                         make_float3(
-                            cast<float>(hit->inst),
+                            cast<float>(
+                                cycles_object_index),
                             cast<float>(hit->prim),
                             1.0f));
                     trace_write_event(
@@ -1796,7 +1814,9 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                         path_trace_schema::
                             EventSlot::surface_meta,
                         make_float3(
-                            trace_uint32(surface_tag).xy(),
+                            trace_uint32(
+                                cycles_surface_shader)
+                                .xy(),
                             cast<float>(
                                 closure_summary.count)));
                     trace_write_event(
@@ -3132,6 +3152,26 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                                 .emitter_id),
                                         cast<float>(
                                             light_index)));
+                                trace_write_event(
+                                    path_step,
+                                    path_trace_schema::
+                                        EventSlot::light_id,
+                                    make_float3(
+                                        cast<float>(
+                                            light
+                                                .cycles_object_index),
+                                        cast<float>(
+                                            light
+                                                .cycles_light_group),
+                                        0.0f));
+                                trace_write_event(
+                                    path_step,
+                                    path_trace_schema::
+                                        EventSlot::
+                                            light_shader,
+                                    trace_uint32(
+                                        light
+                                            .cycles_shader_id));
                                 trace_write_event(
                                     path_step,
                                     path_trace_schema::

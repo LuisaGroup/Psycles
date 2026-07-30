@@ -69,6 +69,11 @@ struct MaterialDesc {
     // never replaces or pre-evaluates the closure graph above.
     EmissionSampling emission_sampling{
         EmissionSampling::automatic};
+    // Index in Cycles' Scene::shaders vector, before per-hit shader flags
+    // such as SHADER_CAST_SHADOW and SHADER_SMOOTH_NORMAL are applied.
+    // This source identity is optional for programmatically built scenes;
+    // Blender bundles exported for differential validation always carry it.
+    std::optional<std::uint32_t> cycles_shader_index;
 };
 
 enum class ImageColorSpace : std::uint8_t {
@@ -176,6 +181,11 @@ struct InstanceDesc {
     // instance because objects sharing a mesh may author different values.
     float shadow_terminator_geometry_offset{};
     std::uint32_t visibility_mask{all_ray_visibility};
+    // Stable indices produced by BlenderSync/ObjectManager and Film's
+    // light-group map. They are source-scene identities, not Psycles map or
+    // TLAS indices.
+    std::optional<std::uint32_t> cycles_object_index;
+    std::int32_t cycles_light_group{-1};
 };
 
 enum class CameraProjection : std::uint8_t {
@@ -237,6 +247,12 @@ struct LightDesc {
     bool is_sphere{true};
     std::optional<MaterialId> shader;
     bool use_mis{true};
+    bool cast_shadow{true};
+    std::uint32_t visibility_mask{all_ray_visibility};
+    bool is_shadow_catcher{};
+    std::optional<std::uint32_t> cycles_shader_index;
+    std::optional<std::uint32_t> cycles_object_index;
+    std::int32_t cycles_light_group{-1};
 };
 
 struct EnvironmentSunDesc {

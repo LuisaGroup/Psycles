@@ -75,6 +75,9 @@ void test_integrator_settings_round_trip() {
     {
       "name": "Raw Emissive",
       "emission_sampling": "BACK",
+      "cycles_sync": {
+        "shader_index": 6
+      },
       "node_tree": null
     }
   ],
@@ -93,6 +96,21 @@ void test_integrator_settings_round_trip() {
       "color": [1, 1, 1],
       "energy": 10,
       "use_multiple_importance_sampling": false,
+      "cast_shadow": false,
+      "visibility": {
+        "camera": false,
+        "diffuse": true,
+        "glossy": false,
+        "transmission": true,
+        "shadow": true,
+        "volume_scatter": false
+      },
+      "is_shadow_catcher": true,
+      "cycles_sync": {
+        "shader_index": 5,
+        "object_index": 9,
+        "light_group": 2
+      },
       "node_tree": null
     }
   ],
@@ -101,6 +119,9 @@ void test_integrator_settings_round_trip() {
     "color": [0.05, 0.05, 0.05],
     "sampling_method": "MANUAL",
     "sample_map_resolution": 2048,
+    "cycles_sync": {
+      "shader_index": 3
+    },
     "node_tree": {
       "name": "World Nodes",
       "surface_root": {
@@ -365,15 +386,39 @@ void test_integrator_settings_round_trip() {
         imported_material !=
             imported.scene->materials.end() &&
             imported_material->second.emission_sampling ==
-                EmissionSampling::back,
+                EmissionSampling::back &&
+            imported_material->second.cycles_shader_index ==
+                std::optional<std::uint32_t>{6u},
         "material emission-sampling policy did not round-trip");
     const auto imported_light =
         imported.scene->lights.find(
             psycles::contract::LightId{1u});
     expect(
         imported_light != imported.scene->lights.end() &&
-            !imported_light->second.use_mis,
-        "light MIS policy did not round-trip");
+            !imported_light->second.use_mis &&
+            !imported_light->second.cast_shadow &&
+            imported_light->second.is_shadow_catcher &&
+            imported_light->second.cycles_shader_index ==
+                std::optional<std::uint32_t>{5u} &&
+            imported_light->second.cycles_object_index ==
+                std::optional<std::uint32_t>{9u} &&
+            imported_light->second.cycles_light_group == 2 &&
+            imported_light->second.visibility_mask ==
+                (psycles::contract::visibility_bit(
+                     psycles::contract::RayVisibility::diffuse) |
+                 psycles::contract::visibility_bit(
+                     psycles::contract::RayVisibility::transmission) |
+                 psycles::contract::visibility_bit(
+                     psycles::contract::RayVisibility::shadow)),
+        "light Cycles identity or shader policy did not round-trip");
+    const auto imported_world =
+        imported.scene->materials.find(
+            psycles::contract::MaterialId{3u});
+    expect(
+        imported_world != imported.scene->materials.end() &&
+            imported_world->second.cycles_shader_index ==
+                std::optional<std::uint32_t>{3u},
+        "world shader identity did not round-trip");
     expect(
         imported.scene->environment->nishita.has_value(),
         "Nishita world was not kept procedural");
