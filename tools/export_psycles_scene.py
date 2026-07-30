@@ -679,6 +679,13 @@ def _export_scene(
         stream.write(b"PSYGEO1\0")
         stream.write(struct.pack("<II", 1, 0))
         for object_instance in depsgraph.object_instances:
+            # Match Cycles' OB_VISIBLE_SELF gate exactly. A particle emitter
+            # or collection instancer remains present in the render
+            # dependency graph even when its own geometry is disabled; its
+            # generated instances are separate iterator entries with their
+            # own show_self value and must remain exportable.
+            if not object_instance.show_self:
+                continue
             obj = object_instance.object
             original = obj.original if obj.original is not None else obj
             if original.hide_render:
