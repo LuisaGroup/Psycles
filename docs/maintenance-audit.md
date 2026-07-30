@@ -108,8 +108,9 @@ visitors and the traced/untraced sampling choice use the same host-stage
 boundary.
 
 All nine non-generated `GraphSurface` `.inl` files have been deleted. The
-source-size regression now rejects every new hand-written `.inl`; the eight
-path-kernel fragments are an explicit shrinking debt list, while the
+source-size regression rejects every new hand-written `.inl`. At this
+checkpoint the eight path-kernel fragments remained an explicit shrinking
+debt list; they were deleted by the typed path-pipeline checkpoint below. The
 versioned Cycles BSDF table remains classified as generated declarative data.
 
 The compiled architecture passed the 32-worker full build and all 42 tests.
@@ -136,15 +137,15 @@ remaining
 over-limit debt files. `surface_program.cpp` has therefore been removed from
 the size-gate allowlist.
 
-The stateful path kernel is now partitioned without introducing new Luisa
-`Callable` boundaries. `path_tracer_kernel.cpp` decreased from 3,789 to 341
-lines. Eight included implementation phases cover sample setup, closest-event
-and forward-light handling, shading-point reconstruction, surface
-emission/data passes, environment NEE, emissive-mesh NEE, analytic-light NEE,
-and BSDF continuation/film writes. The largest phase is 595 lines. Keeping
-these phases in one DSL kernel is intentional: variables remain in their
-original lexical scopes and expression construction, closure selection, and
-Cycles RNG-dimension consumption retain their exact order.
+The first stateful path-kernel checkpoint partitioned the source without
+introducing new Luisa `Callable` boundaries.
+`path_tracer_kernel.cpp` decreased from 3,789 to 341 lines. Eight included
+implementation phases covered sample setup, closest-event and forward-light
+handling, shading-point reconstruction, surface emission/data passes,
+environment NEE, emissive-mesh NEE, analytic-light NEE, and BSDF
+continuation/film writes. The largest phase was 595 lines. This preserved the
+original lexical scopes and established an equivalence baseline, but textual
+inclusion was not the target component architecture.
 
 Every phase body compares byte-for-byte with its pre-split source range. The
 32-worker full build and all 42 tests pass, and another three-backend render
@@ -154,6 +155,50 @@ source locations invalidated the shader cache key once; cold JIT timings were
 the earlier cold Vulkan trace. The current scan covers 167 files and 60,239
 lines, leaving only two over-limit files. `path_tracer_kernel.cpp` is no
 longer allowlisted by the size gate.
+
+The path kernel is now a real host-stage component pipeline in ordinary
+headers and translation units. `PathKernelPipeline` owns the Luisa path-loop
+scope and invokes virtual closest-event, geometry, shading, and scattering
+stages while the kernel AST is recorded. Its direct-light stage owns an
+ordered registry of environment, emissive-mesh, and analytic-light
+components. Typed invocation, sample, bounce, geometry, and shading contexts
+make cross-stage lifetime explicit. Sample setup, path execution, per-sample
+accumulation, and final film writes each own their balanced lexical scope.
+There are no new device `Callable` boundaries and no device-side virtual
+dispatch.
+
+All eight path-kernel `.inl` files have been deleted. The only remaining
+first-party `.inl` is the generated Cycles 4.5.10 BSDF table. The session
+initializer is 300 lines, the internal interface is 341 lines, and the largest
+implementation is the 620-line setup/film module. The complete source gate
+now covers 187 first-party files and 61,412 lines; every hand-written file is
+below 2,000 lines and the hand-written `.inl` debt set is empty.
+
+The checkpoint passed the 32-worker full build and all 42 CTest contracts.
+The 64×64, 256 spp camera/material fixture was rendered through fallback,
+HIP, and Vulkan. All 13 linear passes on all three backends (39 PFM files)
+are byte-identical to the pre-component baseline, including Combined
+SHA-256
+`4ac47cfe7d528e14da89e116f1dffd3b8dbf6536f8ff0817d87ef66a4f3409b0`.
+Observed JIT times after the source move were 0.199 s for fallback, 0.571 s
+for HIP, and 1.166 s for Vulkan; render times were 0.0176 s, 0.00668 s, and
+0.0178 s respectively. A trace-enabled 32×32 point-light render also produced
+a raw indexed path-trace JSON file byte-identical to the pre-component
+baseline, covering the diagnostic-only closure, light, state, and
+post-scatter records that the ordinary image fixture does not enable.
+
+The exact historical Lone Monk bundle was then rerendered at 640×480 and
+64 spp through fallback. It compiled 348 geometries, 87,541 instances, and all
+37 raw material graphs; all 13 linear passes are byte-identical to the
+pre-component baseline. Scene compilation took 1.176 s, cold JIT compilation
+took 17.610 s, and rendering took 5.721 s. The Combined image was opened at
+native resolution and checked across the grass band, courtyard architecture,
+roof highlights, dark foreground arches, and cast-shadow structure. No visual
+change is present, as required by the byte comparison. Because the current
+Psycles panel is identical, the existing Cycles-HIP/Psycles-fallback/absolute
+difference triptych remains the visual record:
+
+![Lone Monk Cycles HIP, Psycles fallback, and absolute difference](validation/2026-07-30/lone-monk-five-way/triptychs/psycles-fallback-vs-cycles-hip-combined.png)
 
 The first Blender-adapter checkpoint separated the pipeline stages. Binary
 geometry and public scene assembly remain in `blender_scene.cpp`, which

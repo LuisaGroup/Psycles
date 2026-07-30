@@ -18,16 +18,7 @@ DEBT_BUDGETS: dict[str, int] = {}
 # files are being replaced with typed host-stage AST builders in ordinary
 # translation units; the allowlist prevents a new .inl from becoming the
 # easiest way to evade that boundary.
-HANDWRITTEN_INL_DEBT = {
-    "src/luisa/detail/path_tracer_kernel_closest_event.inl",
-    "src/luisa/detail/path_tracer_kernel_nee_analytic.inl",
-    "src/luisa/detail/path_tracer_kernel_nee_emissive_mesh.inl",
-    "src/luisa/detail/path_tracer_kernel_nee_environment.inl",
-    "src/luisa/detail/path_tracer_kernel_sample_setup.inl",
-    "src/luisa/detail/path_tracer_kernel_scatter_film.inl",
-    "src/luisa/detail/path_tracer_kernel_surface_geometry.inl",
-    "src/luisa/detail/path_tracer_kernel_surface_shading.inl",
-}
+HANDWRITTEN_INL_DEBT: set[str] = set()
 
 GENERATED_INL = {
     "src/luisa/cycles_shader_tables_4_5_10.inl",

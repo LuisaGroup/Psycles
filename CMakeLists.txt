@@ -206,6 +206,15 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/path_tracer_common.cpp
             src/luisa/path_tracer_environment.cpp
             src/luisa/path_tracer_geometry.cpp
+            src/luisa/path_kernel_closest_event.cpp
+            src/luisa/path_kernel_nee_analytic.cpp
+            src/luisa/path_kernel_nee_emissive_mesh.cpp
+            src/luisa/path_kernel_nee_environment.cpp
+            src/luisa/path_kernel_pipeline.cpp
+            src/luisa/path_kernel_setup.cpp
+            src/luisa/path_kernel_surface_geometry.cpp
+            src/luisa/path_kernel_surface_scatter.cpp
+            src/luisa/path_kernel_surface_shading.cpp
             src/luisa/path_tracer_kernel.cpp
             src/luisa/path_tracer_light_distribution.cpp
             src/luisa/path_tracer_lighting.cpp
