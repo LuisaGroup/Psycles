@@ -143,6 +143,14 @@ renders it through Luisa. The comparator reports per-pass RMSE, relative error,
 high-percentile error, invalid pixels, and an error image. Small node probes
 isolate formula or socket differences before a full-scene failure is accepted.
 
+Image residuals are localized with the versioned
+[per-path trace](cycles-path-trace.md). Diagnostic-only Cycles instrumentation
+observes existing CPU/HIP kernel state without consuming RNG dimensions or
+changing transport branches. Psycles emits the same indexed schema from Luisa
+fallback/HIP/Vulkan. Random values and discrete transitions are exact gates;
+continuous values and accelerator-specific triangle-edge ties use documented
+numeric and topological equivalence rules.
+
 The Luisa `fallback` backend is useful on hosts without a supported GPU, but it
 is still the Luisa AST/JIT implementation. It must not be confused with an
 independently written CPU renderer.

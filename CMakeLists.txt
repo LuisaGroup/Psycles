@@ -555,6 +555,21 @@ if(PSYCLES_BUILD_TESTS)
                 "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_scene_benchmark_runner.py"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tools/run_scene_benchmark.py")
+        add_test(
+            NAME psycles.cycles_path_trace_schema
+            COMMAND
+                "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cycles_path_trace_schema.py")
+        add_test(
+            NAME psycles.cycles_path_trace_comparison
+            COMMAND
+                "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cycles_path_trace_comparison.py")
+        add_test(
+            NAME psycles.cycles_path_trace_decoder
+            COMMAND
+                "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cycles_path_trace_decoder.py")
     endif()
 
     find_program(PSYCLES_BLENDER_EXECUTABLE NAMES blender)

@@ -76,6 +76,12 @@ Psycles-Luisa fallback/HIP/Vulkan at matched scene settings. It records
 render-only and process timings, EXR hashes, numeric pass comparisons, and
 device-labeled triptychs.
 
+When a pass comparison diverges, the
+[per-path Cycles oracle](docs/cycles-path-trace.md) compares RNG dimensions,
+raw closures, light/BSDF sampling, PDFs, and path-state transitions at the
+first mismatching event. Discrete state and random samples are exact gates;
+continuous fields have explicit float32 bounds.
+
 ## Current vertical slice
 
 The implemented slice can:
