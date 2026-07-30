@@ -394,6 +394,17 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 "contains a non-default mask outside that range.");
         }
     }
+    for (const auto &[id, material] : snapshot.materials) {
+        if (material.shader.root(
+                contract::ShaderDomain::volume)) {
+            diagnose(
+                result.diagnostics,
+                "Material " + std::to_string(id.value) +
+                    " ('" + material.name +
+                    "') has a Volume closure graph, but the Luisa "
+                    "volume-stack integrator is not enabled yet.");
+        }
+    }
     if (!result.diagnostics.empty()) {
         return result;
     }

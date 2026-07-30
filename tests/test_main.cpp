@@ -220,6 +220,132 @@ void test_closure_tree_is_preserved() {
         "emission feature was not preserved through the closure tree");
 }
 
+void test_volume_closure_tree_is_preserved() {
+    ShaderGraph graph;
+    const auto surface =
+        graph.add_node(node_type::diffuse_bsdf, "Surface");
+    const auto absorption =
+        graph.add_node(
+            node_type::volume_absorption,
+            "Absorption");
+    const auto scatter =
+        graph.add_node(node_type::volume_scatter, "Scatter");
+    const auto coefficients =
+        graph.add_node(
+            node_type::volume_coefficients,
+            "Coefficients");
+    const auto principled =
+        graph.add_node(
+            node_type::principled_volume,
+            "Principled Volume");
+    const auto additive =
+        graph.add_node(node_type::add_volume, "Add Volumes");
+    const auto mixed =
+        graph.add_node(node_type::mix_volume, "Mix Volumes");
+    const auto root =
+        graph.add_node(node_type::add_volume, "Volume Root");
+
+    expect(
+        graph.set_input(
+            absorption,
+            "Density",
+            SocketValue::floating(0.25f)),
+        "failed to set absorption density");
+    expect(
+        graph.set_property(
+            scatter,
+            "Phase",
+            SocketValue::string("DRAINE")),
+        "failed to set Draine phase");
+    expect(
+        graph.set_property(
+            coefficients,
+            "Phase",
+            SocketValue::string("MIE")),
+        "failed to set Mie phase");
+    expect(
+        graph.connect(
+            {.node = absorption, .socket = "Volume"},
+            additive,
+            "A") &&
+            graph.connect(
+                {.node = scatter, .socket = "Volume"},
+                additive,
+                "B") &&
+            graph.connect(
+                {.node = coefficients, .socket = "Volume"},
+                mixed,
+                "A") &&
+            graph.connect(
+                {.node = principled, .socket = "Volume"},
+                mixed,
+                "B") &&
+            graph.set_input(
+                mixed,
+                "Factor",
+                SocketValue::floating(0.375f)) &&
+            graph.connect(
+                {.node = additive, .socket = "Volume"},
+                root,
+                "A") &&
+            graph.connect(
+                {.node = mixed, .socket = "Volume"},
+                root,
+                "B"),
+        "failed to preserve the volume closure tree");
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = surface, .socket = "Closure"});
+    graph.set_root(
+        ShaderDomain::volume,
+        OutputRef{.node = root, .socket = "Volume"});
+
+    ShaderCompiler compiler{make_core_node_registry()};
+    const auto shader = compiler.compile(graph);
+    expect(shader.ok(), "volume graph failed to compile");
+    expect(
+        (shader.program->analysis().required_features &
+         feature_bit(ShaderFeature::volume)) != 0u,
+        "volume feature was not discovered");
+
+    const auto program =
+        compile_surface_program(*shader.program);
+    expect(program.ok(), "volume graph failed to lower");
+    expect(
+        program.program->volume_root().valid(),
+        "lowered volume root is missing");
+    expect(
+        program.program->volume_instructions().size() == 7u,
+        "volume closure tree was flattened or lost");
+    const auto has_phase =
+        [&](VolumeOperation operation, VolumePhase phase) {
+            return std::ranges::any_of(
+                program.program->volume_instructions(),
+                [=](const VolumeInstruction &instruction) {
+                    return instruction.operation == operation &&
+                           instruction.phase == phase;
+                });
+        };
+    expect(
+        has_phase(
+            VolumeOperation::scatter,
+            VolumePhase::draine),
+        "Draine phase was not preserved structurally");
+    expect(
+        has_phase(
+            VolumeOperation::coefficients,
+            VolumePhase::mie),
+        "Mie phase was not preserved structurally");
+    const auto &root_instruction =
+        program.program->volume_instructions()
+            [program.program->volume_root().value];
+    expect(
+        root_instruction.operation == VolumeOperation::add &&
+            root_instruction.a.valid() &&
+            root_instruction.b.valid(),
+        "volume root composition is not explicit");
+}
+
 void test_combine_color_lowers_to_surface_program() {
     ShaderGraph graph;
     const auto combine =
@@ -1079,6 +1205,7 @@ int main() {
         test_shader_graph_and_invalidation();
         test_image_texture_modes_are_structural();
         test_closure_tree_is_preserved();
+        test_volume_closure_tree_is_preserved();
         test_combine_color_lowers_to_surface_program();
         test_cycles_color_value_nodes_lower_to_surface_program();
         test_spectral_color_nodes_lower_to_surface_program();

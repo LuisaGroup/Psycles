@@ -177,10 +177,10 @@ public:
                wy[3u] * cubic_row(y + 2);
     }
 
-    [[nodiscard]] Float4 attribute(
+    [[nodiscard]] ShaderAttribute attribute(
         Expr<std::uint64_t> attribute_id,
         const SurfacePoint &point) const noexcept override {
-        Float4 result = make_float4(0.0f);
+        auto result = ShaderAttribute::missing();
         // Attribute cardinality is scene data, not shader structure. Look up
         // only the current geometry's compact range so AST/XIR size remains
         // constant as scenes add meshes, UV maps, or color attributes.
@@ -223,12 +223,13 @@ public:
                                 luisa::float4>(
                                 binding.value_slot)
                             .read(triangle.i2);
-                    result = triangle_interpolate(
+                    result.value = triangle_interpolate(
                         point.barycentric, v0, v1, v2);
                     found = true;
                 };
                 local_index += 1u;
             };
+            result.found = found;
         };
         return result;
     }

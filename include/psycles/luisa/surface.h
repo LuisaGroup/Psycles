@@ -46,6 +46,7 @@ struct SurfaceCapabilities {
     bool may_emit{false};
     bool may_be_transparent{false};
     bool may_have_subsurface{false};
+    bool may_have_volume{false};
 };
 
 struct SurfacePoint {
@@ -108,6 +109,45 @@ struct SurfaceQuery {
     // Cycles Filter Glossy widens microfacet alpha after closure setup. Zero
     // leaves the material closure unchanged.
     Float glossy_filter_roughness;
+};
+
+struct ShaderAttribute {
+    Float4 value;
+    Bool found;
+
+    [[nodiscard]] static ShaderAttribute missing() noexcept {
+        return {
+            .value = make_float4(0.0f),
+            .found = false};
+    }
+};
+
+// Cycles evaluates a volume graph in two distinct contexts. Shadow and
+// extinction-only queries suppress emission, while full volume shading keeps
+// it. Object-space grids additionally scale coefficients by the instance's
+// volume-density correction.
+struct VolumeQuery {
+    Float object_density;
+    Bool evaluate_emission;
+};
+
+struct VolumeCoefficients {
+    Float3 sigma_t;
+    Float3 sigma_s;
+    Float3 emission;
+    Bool has_extinction;
+    Bool has_scatter;
+    Bool has_emission;
+
+    [[nodiscard]] static VolumeCoefficients zero() noexcept {
+        return {
+            .sigma_t = make_float3(0.0f),
+            .sigma_s = make_float3(0.0f),
+            .emission = make_float3(0.0f),
+            .has_extinction = false,
+            .has_scatter = false,
+            .has_emission = false};
+    }
 };
 
 struct SurfaceEvaluation {
@@ -222,7 +262,7 @@ public:
         std::uint32_t interpolation,
         std::uint32_t extension) const noexcept = 0;
 
-    [[nodiscard]] virtual Float4 attribute(
+    [[nodiscard]] virtual ShaderAttribute attribute(
         Expr<std::uint64_t> attribute_id,
         const SurfacePoint &point) const noexcept = 0;
 
@@ -317,6 +357,13 @@ public:
         const ShaderServices &,
         const SurfacePoint &) const noexcept {
         return make_float3(0.0f);
+    }
+
+    [[nodiscard]] virtual VolumeCoefficients volume_coefficients(
+        const ShaderServices &,
+        const SurfacePoint &,
+        const VolumeQuery &) const noexcept {
+        return VolumeCoefficients::zero();
     }
 
     // Final Cycles sd->N after shader bump evaluation. This is distinct from
@@ -484,6 +531,37 @@ public:
         return result;
     }
 
+    [[nodiscard]] VolumeCoefficients volume_coefficients(
+        Expr<std::uint32_t> tag,
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        const VolumeQuery &query) const noexcept {
+        auto result = VolumeCoefficients::zero();
+        luisa::vector<luisa::uint> volume_tags;
+        volume_tags.reserve(_surfaces.size());
+        for (auto index = std::size_t{0u};
+             index < _surfaces.size();
+             ++index) {
+            if (_surfaces.impl(index)
+                    ->capabilities()
+                    .may_have_volume) {
+                volume_tags.emplace_back(
+                    static_cast<luisa::uint>(index));
+            }
+        }
+        if (!volume_tags.empty()) {
+            _surfaces.dispatch_group_with_default(
+                tag,
+                volume_tags,
+                [&](const Surface *surface) noexcept {
+                    result = surface->volume_coefficients(
+                        services, point, query);
+                },
+                []() noexcept {});
+        }
+        return result;
+    }
+
     [[nodiscard]] Float3 shading_normal(
         Expr<std::uint32_t> tag,
         const ShaderServices &services,
@@ -517,6 +595,9 @@ public:
 
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::SurfacePoint)
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::SurfaceQuery)
+LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::ShaderAttribute)
+LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::VolumeQuery)
+LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::VolumeCoefficients)
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::SurfaceEvaluation)
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::SurfaceSample)
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::SurfaceClosureTrace)

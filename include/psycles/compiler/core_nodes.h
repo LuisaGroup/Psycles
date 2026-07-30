@@ -73,6 +73,16 @@ inline constexpr auto transparent_bsdf = "psycles.closure.transparent";
 inline constexpr auto null_closure = "psycles.closure.null";
 inline constexpr auto add_closure = "psycles.closure.add";
 inline constexpr auto mix_closure = "psycles.closure.mix";
+inline constexpr auto volume_absorption =
+    "psycles.volume.absorption";
+inline constexpr auto volume_scatter = "psycles.volume.scatter";
+inline constexpr auto volume_coefficients =
+    "psycles.volume.coefficients";
+inline constexpr auto principled_volume =
+    "psycles.volume.principled";
+inline constexpr auto null_volume = "psycles.volume.null";
+inline constexpr auto add_volume = "psycles.volume.add";
+inline constexpr auto mix_volume = "psycles.volume.mix";
 }// namespace node_type
 
 [[nodiscard]] contract::NodeRegistry make_core_node_registry();

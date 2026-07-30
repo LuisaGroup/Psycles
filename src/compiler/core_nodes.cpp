@@ -993,6 +993,177 @@ NodeRegistry make_core_node_registry() {
         .properties = {},
         .required_features = feature_bit(ShaderFeature::surface)}));
 
+    static_cast<void>(registry.register_schema(NodeSchema{
+        .type = node_type::volume_absorption,
+        .inputs = {
+            input(
+                "Color",
+                SocketType::color,
+                SocketValue::color({0.8f, 0.8f, 0.8f})),
+            input(
+                "Density",
+                SocketType::floating,
+                SocketValue::floating(1.0f))},
+        .outputs = {output("Volume", SocketType::volume_closure)},
+        .properties = {},
+        .required_features = feature_bit(ShaderFeature::volume)}));
+
+    static_cast<void>(registry.register_schema(NodeSchema{
+        .type = node_type::volume_scatter,
+        .inputs = {
+            input(
+                "Color",
+                SocketType::color,
+                SocketValue::color({0.8f, 0.8f, 0.8f})),
+            input(
+                "Density",
+                SocketType::floating,
+                SocketValue::floating(1.0f)),
+            input(
+                "Anisotropy",
+                SocketType::floating,
+                SocketValue::floating(0.0f)),
+            input(
+                "IOR",
+                SocketType::floating,
+                SocketValue::floating(1.33f)),
+            input(
+                "Backscatter",
+                SocketType::floating,
+                SocketValue::floating(0.1f)),
+            input(
+                "Alpha",
+                SocketType::floating,
+                SocketValue::floating(0.5f)),
+            input(
+                "Diameter",
+                SocketType::floating,
+                SocketValue::floating(20.0f))},
+        .outputs = {output("Volume", SocketType::volume_closure)},
+        .properties = {
+            property(
+                "Phase",
+                SocketType::string,
+                SocketValue::string("HENYEY_GREENSTEIN"))},
+        .required_features = feature_bit(ShaderFeature::volume)}));
+
+    static_cast<void>(registry.register_schema(NodeSchema{
+        .type = node_type::volume_coefficients,
+        .inputs = {
+            input(
+                "ScatterCoefficients",
+                SocketType::vector,
+                SocketValue::vector({1.0f, 1.0f, 1.0f})),
+            input(
+                "AbsorptionCoefficients",
+                SocketType::vector,
+                SocketValue::vector({1.0f, 1.0f, 1.0f})),
+            input(
+                "Anisotropy",
+                SocketType::floating,
+                SocketValue::floating(0.0f)),
+            input(
+                "IOR",
+                SocketType::floating,
+                SocketValue::floating(1.33f)),
+            input(
+                "Backscatter",
+                SocketType::floating,
+                SocketValue::floating(0.1f)),
+            input(
+                "Alpha",
+                SocketType::floating,
+                SocketValue::floating(0.5f)),
+            input(
+                "Diameter",
+                SocketType::floating,
+                SocketValue::floating(20.0f)),
+            input(
+                "EmissionCoefficients",
+                SocketType::vector,
+                SocketValue::vector({0.0f, 0.0f, 0.0f}))},
+        .outputs = {output("Volume", SocketType::volume_closure)},
+        .properties = {
+            property(
+                "Phase",
+                SocketType::string,
+                SocketValue::string("HENYEY_GREENSTEIN"))},
+        .required_features = feature_bit(ShaderFeature::volume)}));
+
+    static_cast<void>(registry.register_schema(NodeSchema{
+        .type = node_type::principled_volume,
+        .inputs = {
+            input(
+                "Color",
+                SocketType::color,
+                SocketValue::color({0.5f, 0.5f, 0.5f})),
+            input(
+                "Density",
+                SocketType::floating,
+                SocketValue::floating(1.0f)),
+            input(
+                "Anisotropy",
+                SocketType::floating,
+                SocketValue::floating(0.0f)),
+            input(
+                "AbsorptionColor",
+                SocketType::color,
+                SocketValue::color({0.0f, 0.0f, 0.0f})),
+            input(
+                "EmissionStrength",
+                SocketType::floating,
+                SocketValue::floating(0.0f)),
+            input(
+                "EmissionColor",
+                SocketType::color,
+                SocketValue::color({1.0f, 1.0f, 1.0f})),
+            input(
+                "BlackbodyIntensity",
+                SocketType::floating,
+                SocketValue::floating(0.0f)),
+            input(
+                "BlackbodyTint",
+                SocketType::color,
+                SocketValue::color({1.0f, 1.0f, 1.0f})),
+            input(
+                "Temperature",
+                SocketType::floating,
+                SocketValue::floating(1000.0f))},
+        .outputs = {output("Volume", SocketType::volume_closure)},
+        .properties = {},
+        .required_features =
+            feature_bit(ShaderFeature::volume) |
+            feature_bit(ShaderFeature::emission)}));
+
+    static_cast<void>(registry.register_schema(NodeSchema{
+        .type = node_type::null_volume,
+        .inputs = {},
+        .outputs = {output("Volume", SocketType::volume_closure)},
+        .properties = {},
+        .required_features = feature_bit(ShaderFeature::volume)}));
+
+    static_cast<void>(registry.register_schema(NodeSchema{
+        .type = node_type::add_volume,
+        .inputs = {
+            required_input("A", SocketType::volume_closure),
+            required_input("B", SocketType::volume_closure)},
+        .outputs = {output("Volume", SocketType::volume_closure)},
+        .properties = {},
+        .required_features = feature_bit(ShaderFeature::volume)}));
+
+    static_cast<void>(registry.register_schema(NodeSchema{
+        .type = node_type::mix_volume,
+        .inputs = {
+            input(
+                "Factor",
+                SocketType::floating,
+                SocketValue::floating(0.5f)),
+            required_input("A", SocketType::volume_closure),
+            required_input("B", SocketType::volume_closure)},
+        .outputs = {output("Volume", SocketType::volume_closure)},
+        .properties = {},
+        .required_features = feature_bit(ShaderFeature::volume)}));
+
     return registry;
 }
 

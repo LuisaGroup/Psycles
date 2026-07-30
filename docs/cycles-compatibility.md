@@ -12,12 +12,12 @@ Shader data follows this path:
 
 1. Blender exports the original node trees, links, socket defaults, static
    node properties, image identities, and evaluated scene geometry.
-2. The Blender adapter walks the active Surface root recursively. It inserts
-   explicit Cycles socket conversions and emits a single topologically ordered
-   typed-value instruction stream. Volume and Displacement roots remain
+2. The Blender adapter walks the active Surface and Volume roots recursively.
+   It inserts explicit Cycles socket conversions and emits a single
+   topologically ordered typed-value instruction stream. Displacement remains
    release-gated work.
-3. Closure-producing nodes remain an Add/Mix tree. They are not flattened into
-   a fixed-size closure array.
+3. Surface- and volume-closure-producing nodes remain typed Add/Mix trees.
+   Neither domain is flattened into a fixed-size closure array.
 4. Shader node groups are recursively expanded through their exported Group
    Input/Output interfaces. Group instance names have no semantic role;
    missing and recursive groups produce explicit diagnostics.
@@ -65,6 +65,21 @@ exactly zero for Alpha; Normal and DiffCol are exactly zero. A spatial
 Generated-coordinate probe additionally exercises dynamic indexing and measures
 Combined RMSE `6.36e-4`, with the residual attributable to film sampling.
 `VALTORGB` is therefore `cycles_verified`.
+
+Volume graph preservation and coefficient evaluation now have a separate
+non-rendering compatibility boundary. The Blender adapter retains raw
+Absorption, Scatter, Volume Coefficients, and Principled Volume nodes,
+including Add/Mix topology and phase choice. `SurfaceProgram` lowers these to
+a typed volume-closure tree, and `GraphSurface` evaluates `sigma_t`, `sigma_s`,
+and emission as Luisa expressions. The formulas are pinned to Cycles main
+`2bad74a8`, including volume-only negative closure-weight clamping, object
+density scaling, Principled `sqrt(Absorption Color)`, implicit density and
+temperature attribute presence, and emission suppression for shadow or
+extinction-only evaluation. The same coefficient fixture passes on Luisa
+fallback, HIP, and Vulkan. This is an internal semantic checkpoint, not a
+render-compatibility claim: phase sampling, volume-stack tracking, free-flight
+integration, heterogeneous grids, and volume direct lighting remain open, so
+the four Blender volume nodes remain unverified in the public node matrix.
 
 Mapping now implements Cycles' four device formulas directly in Luisa:
 Point applies scale, Euler rotation, and translation; Texture applies inverse
@@ -304,8 +319,11 @@ Blender direct clamp 2; both Cycles and Luisa/fallback produce linear RGB
 Adaptive sampling and denoising are exported and diagnosed but are not part of
 the path-integrator estimator. Psycles renders fixed-count, un-denoised linear
 passes; authoritative Cycles differential renders disable both. A connected
-Volume or Displacement root and an enabled Cycles light tree are hard import
-errors rather than silently ignored settings.
+Displacement root and an enabled Cycles light tree remain hard scene
+capability errors rather than silently ignored settings. A connected Volume
+root is preserved through Blender import and material compilation, then
+explicitly rejected by scene compilation until the Luisa volume-stack
+integrator is enabled.
 
 The following integrator work remains explicit and is not considered Cycles
 compatible yet:
