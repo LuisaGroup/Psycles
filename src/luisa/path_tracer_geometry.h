@@ -11,6 +11,7 @@ using TraceShadowCallable =
         luisa::uint,
         luisa::uint,
         luisa::uint,
+        luisa::uint,
         ShaderEvaluationStateCall)>;
 
 [[nodiscard]] TraceShadowCallable make_trace_shadow_callable(

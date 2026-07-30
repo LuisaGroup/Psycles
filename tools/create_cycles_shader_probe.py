@@ -590,6 +590,105 @@ def _point_light_light_path(scene: Any) -> None:
     )
 
 
+def _shadow_depth_transparency_material(
+    name: str,
+    base: float,
+    slope: float,
+) -> Any:
+    material, tree, output = _material(name)
+    light_path = tree.nodes.new("ShaderNodeLightPath")
+    light_path.name = "Ordered Shadow Depth"
+    multiply = tree.nodes.new("ShaderNodeMath")
+    multiply.operation = "MULTIPLY"
+    multiply.inputs[1].default_value = slope
+    tree.links.new(
+        _output(light_path, "Transparent Depth"),
+        multiply.inputs[0],
+    )
+    add = tree.nodes.new("ShaderNodeMath")
+    add.operation = "ADD"
+    add.inputs[1].default_value = base
+    tree.links.new(
+        _output(multiply, "Value"),
+        add.inputs[0],
+    )
+    transparent = tree.nodes.new("ShaderNodeBsdfTransparent")
+    transparent.name = "Depth-dependent Transparent BSDF"
+    tree.links.new(
+        _output(add, "Value"),
+        _input(transparent, "Color"),
+    )
+    tree.links.new(
+        _output(transparent, "BSDF"),
+        _input(output, "Surface"),
+    )
+    return material
+
+
+def _vertical_shadow_layer(
+    scene: Any,
+    name: str,
+    x: float,
+    material: Any,
+) -> None:
+    # Vertical YZ quads are invisible to the orthographic -Z camera but
+    # intersect receiver-to-light shadow rays. This isolates transparent
+    # shadow ordering from camera-path transparent bounces.
+    mesh = bpy.data.meshes.new(f"{name} Mesh")
+    mesh.from_pydata(
+        (
+            (x, -4.0, 0.01),
+            (x, 4.0, 0.01),
+            (x, 4.0, 1.39),
+            (x, -4.0, 1.39),
+        ),
+        (),
+        ((0, 1, 2, 3),),
+    )
+    layer = bpy.data.objects.new(name, mesh)
+    layer.data.materials.append(material)
+    scene.collection.objects.link(layer)
+
+
+def _point_light_shadow_light_path(scene: Any) -> None:
+    data = _analytic_light_probe(scene, "POINT")
+    data.shadow_soft_size = 0.0
+    data.use_soft_falloff = False
+
+    # Create the far layer first so dependency-graph/acceleration insertion
+    # order is the opposite of required ray-distance shading order.
+    far = _shadow_depth_transparency_material(
+        "Far Ordered Shadow Layer",
+        0.85,
+        -0.25,
+    )
+    near = _shadow_depth_transparency_material(
+        "Near Ordered Shadow Layer",
+        0.20,
+        0.35,
+    )
+    _vertical_shadow_layer(
+        scene,
+        "Far Ordered Shadow Layer",
+        0.24,
+        far,
+    )
+    _vertical_shadow_layer(
+        scene,
+        "Near Ordered Shadow Layer",
+        0.08,
+        near,
+    )
+    scene.cycles.transparent_max_bounces = 8
+
+
+def _point_light_shadow_limit(scene: Any) -> None:
+    _point_light_shadow_light_path(scene)
+    # The nearer layer consumes the only allowed transparent intersection;
+    # Cycles therefore treats the farther layer as opaque.
+    scene.cycles.transparent_max_bounces = 1
+
+
 def _point_light_soft_disk(scene: Any) -> None:
     data = _analytic_light_probe(scene, "POINT")
     data.shadow_soft_size = 0.19
@@ -5337,6 +5436,8 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "point_light": _point_light,
     "point_light_light_path": _point_light_light_path,
     "point_light_nodes": _point_light_nodes,
+    "point_light_shadow_light_path": _point_light_shadow_light_path,
+    "point_light_shadow_limit": _point_light_shadow_limit,
     "point_light_soft_disk": _point_light_soft_disk,
     "point_light_soft_sphere": _point_light_soft_sphere,
     "principled_bump_glossy": _principled_bump_glossy,

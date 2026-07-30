@@ -38,6 +38,37 @@ int main(int argc, char **argv) {
         device.create_buffer<luisa::float4>(4u);
     auto neighboring_triangles_buffer =
         device.create_buffer<luisa::float4>(2u);
+    auto ordered_hits_buffer =
+        device.create_buffer<luisa::float4>(2u);
+
+    const std::array shadow_vertices{
+        // Deliberately store the farther primitive first.
+        make_float3(-1.0f, -1.0f, 2.0f),
+        make_float3(1.0f, -1.0f, 2.0f),
+        make_float3(0.0f, 1.0f, 2.0f),
+        make_float3(-1.0f, -1.0f, 1.0f),
+        make_float3(1.0f, -1.0f, 1.0f),
+        make_float3(0.0f, 1.0f, 1.0f)};
+    const std::array shadow_triangles{
+        Triangle{0u, 1u, 2u},
+        Triangle{3u, 4u, 5u}};
+    auto shadow_vertices_buffer =
+        device.create_buffer<luisa::float3>(
+            shadow_vertices.size());
+    auto shadow_triangles_buffer =
+        device.create_buffer<Triangle>(
+            shadow_triangles.size());
+    auto shadow_mesh = device.create_mesh(
+        shadow_vertices_buffer,
+        shadow_triangles_buffer);
+    auto shadow_accel = device.create_accel();
+    // Force any-hit callbacks on hardware RT backends; opaque instances
+    // intentionally bypass candidate filtering.
+    shadow_accel.emplace_back(
+        shadow_mesh,
+        make_float4x4(1.0f),
+        0xffu,
+        false);
 
     Kernel1D evaluate =
         [](BufferFloat4 results,
@@ -206,12 +237,99 @@ int main(int argc, char **argv) {
             };
         };
     auto shader = device.compile(evaluate);
+    Kernel1D evaluate_ordered_hits =
+        [](BufferFloat4 output,
+           AccelVar accel) noexcept {
+            auto ray = make_ray(
+                make_float3(0.0f, 0.0f, 0.0f),
+                make_float3(0.0f, 0.0f, 1.0f),
+                0.0f,
+                10.0f);
+            const auto first =
+                surface_ray::
+                    closest_shadow_intersection(
+                        accel,
+                        ray,
+                        surface_ray::invalid_primitive,
+                        surface_ray::invalid_primitive,
+                        surface_ray::invalid_primitive,
+                        surface_ray::invalid_primitive,
+                        0xffu);
+            ray->set_t_min(
+                surface_ray::intersection_t_offset(
+                    first->committed_ray_t));
+            const auto second =
+                surface_ray::
+                    closest_shadow_intersection(
+                        accel,
+                        ray,
+                        surface_ray::invalid_primitive,
+                        surface_ray::invalid_primitive,
+                        surface_ray::invalid_primitive,
+                        surface_ray::invalid_primitive,
+                        0xffu);
+            ray->set_t_min(
+                surface_ray::intersection_t_offset(
+                    second->committed_ray_t));
+            const auto third =
+                surface_ray::
+                    closest_shadow_intersection(
+                        accel,
+                        ray,
+                        surface_ray::invalid_primitive,
+                        surface_ray::invalid_primitive,
+                        surface_ray::invalid_primitive,
+                        surface_ray::invalid_primitive,
+                        0xffu);
+
+            const auto exclusion_ray = make_ray(
+                make_float3(0.0f, 0.0f, 0.0f),
+                make_float3(0.0f, 0.0f, 1.0f),
+                0.0f,
+                10.0f);
+            const auto excluded_near =
+                surface_ray::
+                    closest_shadow_intersection(
+                        accel,
+                        exclusion_ray,
+                        0u,
+                        1u,
+                        surface_ray::invalid_primitive,
+                        surface_ray::invalid_primitive,
+                        0xffu);
+            output.write(
+                0u,
+                make_float4(
+                    first->committed_ray_t,
+                    cast<float>(first->prim),
+                    second->committed_ray_t,
+                    cast<float>(second->prim)));
+            output.write(
+                1u,
+                make_float4(
+                    select(
+                        0.0f,
+                        1.0f,
+                        third->miss()),
+                    excluded_near->committed_ray_t,
+                    cast<float>(excluded_near->prim),
+                    cast<float>(excluded_near->inst)));
+        };
+    auto ordered_hits_shader =
+        device.compile(evaluate_ordered_hits);
     std::array<luisa::float4, 4u> results{};
     std::array<float, 3u> offsets{};
     std::array<luisa::float4, 4u> terminators{};
     std::array<luisa::float4, 2u>
         neighboring_triangles{};
-    stream << shader(
+    std::array<luisa::float4, 2u> ordered_hits{};
+    stream << shadow_vertices_buffer.copy_from(
+                  luisa::span{shadow_vertices})
+           << shadow_triangles_buffer.copy_from(
+                  luisa::span{shadow_triangles})
+           << shadow_mesh.build()
+           << shadow_accel.build()
+           << shader(
                   results_buffer,
                   offsets_buffer,
                   terminators_buffer,
@@ -223,6 +341,12 @@ int main(int argc, char **argv) {
                   luisa::span{terminators})
            << neighboring_triangles_buffer.copy_to(
                   luisa::span{neighboring_triangles})
+           << ordered_hits_shader(
+                  ordered_hits_buffer,
+                  shadow_accel)
+                  .dispatch(1u)
+           << ordered_hits_buffer.copy_to(
+                  luisa::span{ordered_hits})
            << synchronize();
 
     for (auto index = 0u; index < 2u; ++index) {
@@ -257,6 +381,26 @@ int main(int argc, char **argv) {
                 << results[index].w << "}\n";
             return EXIT_FAILURE;
         }
+    }
+    const auto order = ordered_hits[0u];
+    const auto exclusion = ordered_hits[1u];
+    if (!equal_bits(order.x, 1.0f) ||
+        order.y != 1.0f ||
+        !equal_bits(order.z, 2.0f) ||
+        order.w != 0.0f ||
+        exclusion.x != 1.0f ||
+        !equal_bits(exclusion.y, 2.0f) ||
+        exclusion.z != 0.0f ||
+        exclusion.w != 0.0f) {
+        std::cerr
+            << "closest-to-farthest shadow iterator mismatch on "
+            << backend << ": order={" << order.x << ", "
+            << order.y << ", " << order.z << ", "
+            << order.w << "}, exclusion={"
+            << exclusion.x << ", " << exclusion.y << ", "
+            << exclusion.z << ", " << exclusion.w
+            << "}\n";
+        return EXIT_FAILURE;
     }
     const std::array expected_offsets{
         std::numeric_limits<float>::min(),

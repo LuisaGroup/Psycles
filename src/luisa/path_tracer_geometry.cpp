@@ -6,16 +6,20 @@
 
 namespace psycles::luisa_backend::detail {
 
-TraceShadowCallable make_trace_shadow_callable(
+using EvaluateShadowSurfaceCallable =
+    Callable<luisa::float3(
+        luisa::compute::Ray,
+        luisa::compute::CommittedHit,
+        ShaderEvaluationStateCall)>;
+
+[[nodiscard]] static EvaluateShadowSurfaceCallable
+make_evaluate_shadow_surface_callable(
     const std::shared_ptr<LuisaSceneData> &scene,
     const SafeNormalizeCallable &safe_normalize) noexcept {
-    TraceShadowCallable trace_shadow =
+    EvaluateShadowSurfaceCallable evaluate_shadow_surface =
         [scene, safe_normalize](
-            Var<luisa::compute::Ray> shadow_ray,
-            UInt source_instance,
-            UInt source_primitive,
-            UInt light_instance,
-            UInt light_primitive,
+            Var<luisa::compute::Ray> candidate_ray,
+            Var<luisa::compute::CommittedHit> hit,
             Var<ShaderEvaluationStateCall>
                 shader_state_call) noexcept {
             const auto shader_state =
@@ -30,27 +34,6 @@ TraceShadowCallable make_trace_shadow_callable(
                 scene->attribute_range_slot,
                 scene->nishita_texture_bindings,
                 scene->shader_color_space};
-            Float3 transmittance = make_float3(1.0f);
-            UInt shadow_transparent_depth =
-                shader_state.transparent_depth;
-            auto committed =
-                scene->accel
-                    ->traverse(
-                        shadow_ray,
-                        {.visibility_mask =
-                             shadow_visibility})
-                    .on_surface_candidate(
-                        [&](luisa::compute::SurfaceCandidate
-                                &candidate) noexcept {
-                            auto hit = candidate.hit();
-                            $if (!surface_ray::
-                                      excluded_shadow_primitive(
-                                          hit->inst,
-                                          hit->prim,
-                                          source_instance,
-                                          source_primitive,
-                                          light_instance,
-                                          light_primitive)) {
                                 Var<InstanceGpu> instance =
                                     scene->instance_buffer->read(
                                         hit->inst);
@@ -185,8 +168,6 @@ TraceShadowCallable make_trace_shadow_callable(
                                      make_float4(p2, 1.0f))
                                         .xyz();
                                 static_cast<void>(wp2);
-                                auto candidate_ray =
-                                    candidate.ray();
                                 Float3 object_geometric_normal =
                                     safe_normalize(
                                         cross(
@@ -406,45 +387,103 @@ TraceShadowCallable make_trace_shadow_callable(
                                     apply_shader_state(
                                         point,
                                         shader_state);
-                                point.transparent_depth =
-                                    shadow_transparent_depth;
-                                auto transparent =
-                                    clamp(
-                                        scene->surfaces
-                                            .transparent_extinction(
-                                                surface_tag,
-                                                services,
-                                                point),
-                                        make_float3(0.0f),
-                                        make_float3(1.0f));
-                                auto carries_light =
-                                    max(
-                                        transparent.x,
-                                        max(
-                                            transparent.y,
-                                            transparent.z)) >
-                                    0.0f;
-                                transmittance *= select(
-                                    make_float3(1.0f),
-                                    transparent,
-                                    carries_light);
-                                $if (!carries_light) {
-                                    candidate.commit();
-                                };
-                                $if (carries_light) {
-                                    shadow_transparent_depth +=
-                                        1u;
-                                };
-                            };
-                        })
-                    .on_procedural_candidate(
-                        [](luisa::compute::
-                               ProceduralCandidate &) noexcept {})
-                    .trace();
-            return select(
+            return clamp(
+                scene->surfaces.transparent_extinction(
+                    surface_tag,
+                    services,
+                    point),
                 make_float3(0.0f),
-                transmittance,
-                committed->miss());
+                make_float3(1.0f));
+        };
+    return evaluate_shadow_surface;
+}
+
+TraceShadowCallable make_trace_shadow_callable(
+    const std::shared_ptr<LuisaSceneData> &scene,
+    const SafeNormalizeCallable &safe_normalize) noexcept {
+    const auto evaluate_shadow_surface =
+        make_evaluate_shadow_surface_callable(
+            scene, safe_normalize);
+    TraceShadowCallable trace_shadow =
+        [scene, evaluate_shadow_surface](
+            Var<luisa::compute::Ray> shadow_ray,
+            UInt source_instance,
+            UInt source_primitive,
+            UInt light_instance,
+            UInt light_primitive,
+            UInt transparent_maximum,
+            Var<ShaderEvaluationStateCall>
+                shader_state_call) noexcept {
+            const auto initial_shader_state =
+                unpack_shader_evaluation_state(
+                    shader_state_call);
+            Float3 transmittance = make_float3(1.0f);
+            UInt transparent_depth =
+                initial_shader_state.transparent_depth;
+            Bool active = true;
+
+            // Candidate callbacks have no traversal-order contract. Cycles
+            // shades transparent shadow hits after sorting by t, so iterate
+            // the order-independent closest-hit reduction and advance tmin
+            // by the same one-ULP offset as transparent continuation.
+            $while (active) {
+                const auto committed =
+                    surface_ray::
+                        closest_shadow_intersection(
+                            scene->accel,
+                            shadow_ray,
+                            source_instance,
+                            source_primitive,
+                            light_instance,
+                            light_primitive,
+                            shadow_visibility);
+                $if (committed->miss()) {
+                    active = false;
+                }
+                $else {
+                    // Cycles makes the next transparent intersection
+                    // opaque once transparent_max_bounce is exhausted.
+                    $if (transparent_depth >=
+                         transparent_maximum) {
+                        transmittance = make_float3(0.0f);
+                        active = false;
+                    }
+                    $else {
+                        auto shader_state =
+                            initial_shader_state;
+                        shader_state.transparent_depth =
+                            transparent_depth;
+                        const auto transparent =
+                            evaluate_shadow_surface(
+                                shadow_ray,
+                                committed,
+                                pack_shader_evaluation_state(
+                                    shader_state));
+                        const auto carries_light =
+                            max(
+                                transparent.x,
+                                max(
+                                    transparent.y,
+                                    transparent.z)) >
+                            0.0f;
+                        $if (carries_light) {
+                            transmittance *= transparent;
+                            transparent_depth += 1u;
+                            shadow_ray->set_t_min(
+                                surface_ray::
+                                    intersection_t_offset(
+                                        committed
+                                            ->committed_ray_t));
+                        }
+                        $else {
+                            transmittance =
+                                make_float3(0.0f);
+                            active = false;
+                        };
+                    };
+                };
+            };
+            return transmittance;
         };
     return trace_shadow;
 }

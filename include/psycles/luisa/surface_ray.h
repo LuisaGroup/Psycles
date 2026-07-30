@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <limits>
 
+#include <luisa/dsl/rtx/accel.h>
 #include <luisa/dsl/rtx/ray.h>
 #include <luisa/dsl/sugar.h>
 
@@ -328,22 +329,22 @@ shadow_terminator_origin(
 
 [[nodiscard]] inline luisa::compute::Bool
 same_primitive(
-    luisa::compute::UInt instance,
-    luisa::compute::UInt primitive,
-    luisa::compute::UInt other_instance,
-    luisa::compute::UInt other_primitive) noexcept {
+    luisa::compute::Expr<luisa::uint> instance,
+    luisa::compute::Expr<luisa::uint> primitive,
+    luisa::compute::Expr<luisa::uint> other_instance,
+    luisa::compute::Expr<luisa::uint> other_primitive) noexcept {
     return (instance == other_instance) &
            (primitive == other_primitive);
 }
 
 [[nodiscard]] inline luisa::compute::Bool
 excluded_shadow_primitive(
-    luisa::compute::UInt instance,
-    luisa::compute::UInt primitive,
-    luisa::compute::UInt source_instance,
-    luisa::compute::UInt source_primitive,
-    luisa::compute::UInt light_instance,
-    luisa::compute::UInt light_primitive) noexcept {
+    luisa::compute::Expr<luisa::uint> instance,
+    luisa::compute::Expr<luisa::uint> primitive,
+    luisa::compute::Expr<luisa::uint> source_instance,
+    luisa::compute::Expr<luisa::uint> source_primitive,
+    luisa::compute::Expr<luisa::uint> light_instance,
+    luisa::compute::Expr<luisa::uint> light_primitive) noexcept {
     const auto source = same_primitive(
         instance,
         primitive,
@@ -355,6 +356,44 @@ excluded_shadow_primitive(
         light_instance,
         light_primitive);
     return source | light;
+}
+
+// Return the closest eligible shadow intersection. Ray-query candidate
+// callbacks have no traversal-order contract; committing every eligible
+// candidate lets the acceleration backend perform only the order-independent
+// minimum-t reduction. Callers can iterate closest-to-farthest by advancing
+// tmin with intersection_t_offset after each committed hit.
+template<typename Accel>
+[[nodiscard]] inline auto
+closest_shadow_intersection(
+    Accel &&accel,
+    luisa::compute::Expr<luisa::compute::Ray> ray,
+    luisa::compute::Expr<luisa::uint> source_instance,
+    luisa::compute::Expr<luisa::uint> source_primitive,
+    luisa::compute::Expr<luisa::uint> light_instance,
+    luisa::compute::Expr<luisa::uint> light_primitive,
+    luisa::compute::Expr<luisa::uint> visibility_mask) noexcept {
+    return accel
+        ->traverse(
+            ray,
+            {.visibility_mask = visibility_mask})
+        .on_surface_candidate(
+            [&](luisa::compute::SurfaceCandidate
+                    &candidate) noexcept {
+                const auto hit = candidate.hit();
+                $if (!excluded_shadow_primitive(
+                    hit->inst,
+                    hit->prim,
+                    source_instance,
+                    source_primitive,
+                    light_instance,
+                    light_primitive)) {
+                    candidate.commit();
+                };
+            })
+        .on_procedural_candidate(
+            [](luisa::compute::ProceduralCandidate &) noexcept {})
+        .trace();
 }
 
 } // namespace psycles::luisa_backend::surface_ray

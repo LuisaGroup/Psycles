@@ -670,11 +670,112 @@ brightness. Only backend float32 noise is visible after the extreme
 amplification. The triptych SHA-256 is
 `9035e30ae4769f8044b830d920b48359fd29a6ac33f076ec3ae63990e72633b9`.
 
-This checkpoint establishes the evaluation context and the first transparent
-shadow counter value. It deliberately does not yet claim ordered Light Path
-semantics across multiple transparent shadow intersections: Cycles sorts
-recorded intersections by ray distance before shading, whereas a Luisa
-ray-query candidate callback has no traversal-order guarantee. The next
-shadow gate must use an explicit closest-to-farthest iterator and a
-multi-layer regression; relying on callback order would be an invalid
-case-by-case approximation.
+## Ordered transparent-shadow checkpoint
+
+Transparent shadow closures are now evaluated in ray-distance order. The
+implementation does not infer an order from ray-query callbacks: every
+eligible candidate is committed, leaving the acceleration structure to
+perform the order-independent minimum-\(t\) reduction. After shading that
+closest hit, the next query starts at Cycles' one-ULP
+`intersection_t_offset(t)`. Thus, for strictly increasing intersection
+distances, each loop iteration removes exactly the current minimum and the
+sequence is monotonically closest-to-farthest regardless of acceleration
+insertion or traversal order.
+
+Each hit evaluates the original exported Blender closure graph with the
+current transparent depth. No Cycles closure value, opacity, or other
+pre-baked result is passed to Psycles. The transparent maximum is checked
+before evaluating the next layer, matching Cycles: after the permitted count
+has been consumed, another intersection is opaque.
+
+The device regression deliberately stores the far primitive first at
+`t = 2` and the near primitive second at `t = 1`. It requires the iterator to
+return `(near, far, miss)` and separately verifies that excluding the near
+source primitive returns the far hit. The test passes on fallback, HIP, and
+Vulkan.
+
+The end-to-end `point_light_shadow_light_path` probe makes the two raw
+Transparent BSDF closures depend on Light Path `Transparent Depth`:
+
+- near transmission: `0.20 + 0.35 * depth`;
+- far transmission: `0.85 - 0.25 * depth`.
+
+The correct near-first product is therefore
+`(0.20 + 0.35 * 0) * (0.85 - 0.25 * 1) = 0.12`. A traversal-order
+implementation that shades the deliberately first-created far layer first
+would instead produce
+`(0.85 - 0.25 * 0) * (0.20 + 0.35 * 1) = 0.4675`, so the gate cannot pass by
+commuting two constant transparencies. The companion
+`point_light_shadow_limit` probe sets the transparent maximum to one: the
+near layer consumes the only permitted intersection and the far layer must
+block the shadow.
+
+Both probes were rendered at 64×64 and 64 samples with Blender 5.3.0 Alpha
+`16d7a3a413e7`, Cycles CPU as the sole oracle, and the same scene on all three
+Luisa backends.
+
+Ordered Light Path results:
+
+| Luisa backend | Combined relative RMSE | Direct-diffuse relative RMSE | Maximum absolute error | Luminance ratio |
+| --- | ---: | ---: | ---: | ---: |
+| fallback | `3.3138e-7` | `3.3224e-7` | `9.6858e-8` | `0.9999997621` |
+| HIP | `4.1930e-7` | `4.1933e-7` | `1.1921e-7` | `0.9999998414` |
+| Vulkan | `4.7124e-7` | `4.8049e-7` | `1.3411e-7` | `0.9999997621` |
+
+The machine-readable ordered reports are
+[fallback](cycles-cpu-vs-psycles-fallback-ordered-shadow-image.json),
+[HIP](cycles-cpu-vs-psycles-hip-ordered-shadow-image.json), and
+[Vulkan](cycles-cpu-vs-psycles-vk-ordered-shadow-image.json).
+
+Transparent-limit results:
+
+| Luisa backend | Combined relative RMSE | Direct-diffuse relative RMSE | Maximum absolute error | Luminance ratio |
+| --- | ---: | ---: | ---: | ---: |
+| fallback | `3.3207e-7` | `3.3297e-7` | `9.6858e-8` | `0.9999998256` |
+| HIP | `4.1923e-7` | `4.1943e-7` | `1.1921e-7` | `0.9999998256` |
+| Vulkan | `4.7214e-7` | `4.8164e-7` | `1.3411e-7` | `0.9999996512` |
+
+The machine-readable limit reports are
+[fallback](cycles-cpu-vs-psycles-fallback-shadow-limit-image.json),
+[HIP](cycles-cpu-vs-psycles-hip-shadow-limit-image.json), and
+[Vulkan](cycles-cpu-vs-psycles-vk-shadow-limit-image.json). The runner
+enforces `5e-6` relative-RMSE gates for both Combined and Diffuse Direct in
+addition to energy-ratio gates.
+
+Left to right below: Cycles CPU, Psycles HIP, and the amplified absolute
+difference for the ordered probe.
+
+![Cycles CPU, Psycles HIP, and ordered transparent-shadow difference](ordered-shadow-cycles-cpu-vs-psycles-hip.png)
+
+The original-size render panels were inspected directly. The double-layer
+dark band, transition edge, bright region, footprint, and color are visually
+indistinguishable; residual backend float32 noise appears only under extreme
+difference amplification. The triptych SHA-256 is
+`7d239ba2c9989bcdb0dbf010c39e17805e0cde7f21e3ae0c299077189da9b45b`.
+
+The transparent-limit comparison likewise shows the Cycles and Psycles
+blocked band and lit region as visually indistinguishable.
+
+![Cycles CPU, Psycles HIP, and transparent-limit difference](shadow-limit-cycles-cpu-vs-psycles-hip.png)
+
+Its triptych SHA-256 is
+`660c61ddfec81c9f09a6769bf24946e708d7dd5bf3d969f2c0dabf39c66a0e4e`.
+
+This work also exposed a real Luisa fallback defect rather than a Psycles
+callback misuse. Opaque instance flags were truncated while being stored in a
+one-bit field, XIR's byte-sized Boolean argument did not match the embedded
+C++ Boolean ABI, and the filter initially had no lifetime-safe way to read
+top-level instance opacity when an acceleration build and dispatch were
+queued on the same stream. Luisa `next` commits `f15a85944` and `30b1f3659`
+fix the flag/ABI handling and query the top-level Embree instance geometry at
+filter execution time. The same-stream regression passes all 139 assertions
+on fallback, HIP, and Vulkan and requires opaque instances to bypass candidate
+callbacks. Psycles' transparent instances remain explicitly non-opaque, so
+their closure-evaluation callbacks are intentional.
+
+The complete Psycles 32-thread build and all `36/36` CTest tests pass with the
+fixed Luisa revision. This checkpoint proves ordered non-coincident
+transparent layers. Exactly coincident equal-\(t\) surfaces still require an
+explicit Cycles-compatible tie rule before claiming that degenerate case;
+the current one-ULP progress rule intentionally makes no unstated
+callback-order promise.
