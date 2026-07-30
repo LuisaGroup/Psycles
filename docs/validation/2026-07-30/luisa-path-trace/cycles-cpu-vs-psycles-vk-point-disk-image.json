@@ -1,0 +1,102 @@
+{
+  "actual_label": "Psycles vk",
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.Depth.Z",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.Diffuse Direct.R",
+    "ViewLayer.Diffuse Direct.G",
+    "ViewLayer.Diffuse Direct.B",
+    "ViewLayer.Diffuse Indirect.R",
+    "ViewLayer.Diffuse Indirect.G",
+    "ViewLayer.Diffuse Indirect.B",
+    "ViewLayer.Diffuse Color.R",
+    "ViewLayer.Diffuse Color.G",
+    "ViewLayer.Diffuse Color.B",
+    "ViewLayer.Glossy Direct.R",
+    "ViewLayer.Glossy Direct.G",
+    "ViewLayer.Glossy Direct.B",
+    "ViewLayer.Glossy Indirect.R",
+    "ViewLayer.Glossy Indirect.G",
+    "ViewLayer.Glossy Indirect.B",
+    "ViewLayer.Glossy Color.R",
+    "ViewLayer.Glossy Color.G",
+    "ViewLayer.Glossy Color.B",
+    "ViewLayer.Transmission Direct.R",
+    "ViewLayer.Transmission Direct.G",
+    "ViewLayer.Transmission Direct.B",
+    "ViewLayer.Transmission Indirect.R",
+    "ViewLayer.Transmission Indirect.G",
+    "ViewLayer.Transmission Indirect.B",
+    "ViewLayer.Transmission Color.R",
+    "ViewLayer.Transmission Color.G",
+    "ViewLayer.Transmission Color.B",
+    "ViewLayer.Emission.R",
+    "ViewLayer.Emission.G",
+    "ViewLayer.Emission.B",
+    "ViewLayer.Environment.R",
+    "ViewLayer.Environment.G",
+    "ViewLayer.Environment.B",
+    "ViewLayer.Debug Sample Count.X"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        1.0,
+        0.9999999403953552,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-finite-lights/point_light_soft_disk/cycles-cpu.exr",
+      "cycles_channel_mean": [
+        0.06346381455659866,
+        0.08393590152263641,
+        0.06539725512266159
+      ],
+      "cycles_luminance_mean": 0.07824508845806122,
+      "cycles_rms": 0.07545433193445206,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 1.4901161193847656e-07,
+      "mean_absolute_error": 2.814219079994018e-08,
+      "orientation_rmse": {
+        "flip_x": 0.030588116496801376,
+        "flip_xy": 0.03480992466211319,
+        "flip_y": 0.018323557451367378,
+        "identity": 3.6388122737207595e-08
+      },
+      "p95_pixel_rmse": 7.011725244865374e-08,
+      "p99_pixel_rmse": 9.295825265098756e-08,
+      "psycles": "/var/tmp/psycles-finite-lights/point_light_soft_disk/post-vk.exr",
+      "psycles_channel_mean": [
+        0.06346381455659866,
+        0.08393589407205582,
+        0.06539725512266159
+      ],
+      "psycles_luminance_mean": 0.07824508845806122,
+      "psycles_rms": 0.07545432774337,
+      "relative_rmse": 4.822535937210116e-07,
+      "rmse": 3.6388122737207595e-08,
+      "shape": [
+        32,
+        32,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 8248272.54518542,
+        "display_scale": 6.611628953029919,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-finite-lights/point_light_soft_disk/post-vk-triptych/combined.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 1024
+    }
+  },
+  "reference_label": "Cycles CPU",
+  "schema": "psycles.cycles-differential.v1"
+}

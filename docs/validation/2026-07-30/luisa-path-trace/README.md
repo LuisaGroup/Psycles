@@ -470,3 +470,118 @@ yet claim analytic-light completeness: finite-radius point and spot
 intersection, distant-light background evaluation, and Cycles'
 narrow-spread clamped area construction remain the next light-transport
 gates.
+
+## Finite point and spot light checkpoint
+
+Finite point and spot lights now use one shared Cycles-compatible geometric
+contract for both next-event estimation and the complementary BSDF-forward
+technique. This replaces the earlier collection of independently implemented
+polar cone, polar disk, and spot attenuation branches.
+
+The shared Luisa DSL model preserves:
+
+- Cycles' concentric square-to-disk map and fixed algebraic orthonormal frame;
+- the cancellation-resistant `sin²(theta) -> 1 - cos(theta)` sphere-cap
+  conversion and concentric uniform-cone remap;
+- the exact outside-sphere law-of-cosines solve and final remap to the authored
+  sphere radius;
+- uniform-sphere sampling for transmissive closures inside a sphere and
+  cosine-hemisphere sampling for non-transmissive closures;
+- the oriented-disk point-light model, including its area-to-solid-angle
+  Jacobian;
+- the spot light's larger of geometric and transformed spread cones, with an
+  explicit sphere intersection when the spread cone is sampled;
+- one-sided spot forward intersections, matching sphere/disk support,
+  conditional PDFs, and attenuation;
+- Cycles lamp UVs and the complete inverse object transform. Non-uniform lamp
+  scale is no longer discarded when evaluating spot profiles or raw light
+  shader coordinates.
+
+The path state now also retains Cycles' previous MIS-origin normal across
+transparent events. Forward point/spot PDFs use that normal and
+`PATH_RAY_MIS_HAD_TRANSMISSION` for the inside-sphere measure. Finite point and
+spot lights advertise a competing BSDF technique only when their radius and
+use-MIS state make that technique real.
+
+No light closure is baked. The original exported light shader graph is still
+evaluated at the sampled or intersected lamp point. Lamp `dPdu/dPdv` are zero,
+as in current Cycles' `shader_setup_from_sample` for non-triangle lamps, and
+object positions/normals use the reconstructed full linear transform.
+
+The device regression locks three actual sample-0 records from current Cycles
+CPU `ff404d072bb4` at pixel `(17, 16)`:
+
+| Case | Direction | Position | Conditional PDF | `eval_fac` |
+| --- | --- | --- | ---: | ---: |
+| sphere point, `r=0.19` | `(0.240160823, -0.098551609, 0.965717554)` | `(0.415699244, -0.093841061, 1.256756544)` | `18.356777191` | `0.701670170` |
+| disk point, `r=0.19` | `(0.229965344, -0.092087224, 0.968832254)` | `(0.437025368, -0.099281602, 1.406554103)` | `18.659315109` | `0.701670170` |
+| sphere spot, `r=0.13` | `(0.222732574, -0.120983765, 0.967343390)` | `(0.403462440, -0.128706709, 1.304231167)` | `39.302562714` | `1.498833895` |
+
+For every case the regression also fires a forward ray along the sampled
+direction and checks support, hit position, normal, distance, PDF, and
+validity. It passes on fallback, HIP, and Vulkan. This makes the MIS
+reciprocity a tested invariant rather than two visually similar code paths.
+
+The earlier full-frame errors were not sampling noise: using the same Sobol
+dimensions with the wrong deterministic map produced RMSEs of `0.0033271`,
+`0.0036397`, and `0.0185550` for sphere point, disk point, and spot
+respectively. After the shared implementation, the pinned one-sample 32×32
+Cycles CPU comparisons are:
+
+| Light | Luisa backend | Combined RMSE | Mean absolute error | Maximum absolute error | Luminance ratio |
+| --- | --- | ---: | ---: | ---: | ---: |
+| sphere point | fallback | `7.6590e-8` | `1.6065e-8` | `9.2387e-7` | `1.0000000000` |
+| sphere point | HIP | `9.5770e-8` | `2.3548e-8` | `8.9407e-7` | `1.0000000939` |
+| sphere point | Vulkan | `2.5136e-7` | `1.0458e-7` | `9.3877e-7` | `1.0000011262` |
+| disk point | fallback | `2.5648e-8` | `1.9447e-8` | `1.0431e-7` | `1.0000000000` |
+| disk point | HIP | `3.5464e-8` | `2.7611e-8` | `1.4156e-7` | `1.0000000952` |
+| disk point | Vulkan | `3.6388e-8` | `2.8142e-8` | `1.4901e-7` | `1.0000000000` |
+| sphere spot | fallback | `1.1121e-7` | `2.7197e-8` | `1.8328e-6` | `0.9999996092` |
+| sphere spot | HIP | `1.5201e-7` | `3.8808e-8` | `1.8701e-6` | `0.9999998046` |
+| sphere spot | Vulkan | `3.3009e-7` | `9.3769e-8` | `1.9521e-6` | `1.0000013678` |
+
+All nine machine-readable image reports are stored beside this document under
+names of the form
+`cycles-cpu-vs-psycles-<backend>-<light>-image.json`.
+
+Left to right in each image: Cycles CPU, Psycles HIP, and absolute difference
+under the automatically selected extreme amplification.
+
+![Cycles CPU, Psycles HIP, and finite sphere-point difference](point-sphere-cycles-cpu-vs-psycles-hip.png)
+
+![Cycles CPU, Psycles HIP, and finite disk-point difference](point-disk-cycles-cpu-vs-psycles-hip.png)
+
+![Cycles CPU, Psycles HIP, and finite sphere-spot difference](spot-sphere-cycles-cpu-vs-psycles-hip.png)
+
+All three triptychs were opened at original resolution. The reference and HIP
+panels are visually indistinguishable in footprint, color, brightness,
+falloff, and individual one-sample placement. The difference panels become
+visible only after amplification by approximately `1.24e6`, `8.63e6`, and
+`9.23e5`. Their SHA-256 values are respectively
+`2c0af92389e272b936e52db1f157e162a9e575f489dfcd723f972991125e3989`,
+`aa762526e8bc0dd8b033b53d28eb0e6db487c6d5080b7cb302c3004bea8f386f`,
+and
+`1e867318f3a8513c52a8bd3033af5961f54dfa3e2eaf317d1752a2ede6f84806`.
+
+The strict per-path comparator passes all `43` exact, `16` random-exact, `84`
+float32, and `3` topology fields for sphere/disk point on all three Luisa
+backends, and for the spot on HIP and Vulkan. Fallback spot has two
+float32-only failures in the remapped sphere normal, with maximum absolute
+error `2.8610e-6`; its direction, position, distance, PDF, evaluation factor,
+random dimensions, topology, and every discrete field pass. This is a
+cross-device trigonometric/cancellation rounding residual, not a changed
+sampling branch, and the full-frame fallback RMSE remains `1.1121e-7`. The
+reports are stored as `cpu-vs-<backend>-<light>-path.json`; the tolerance was
+not weakened or waived to hide the two fields.
+
+On the first cold sphere diagnostic, fallback JIT took `0.312 s`, HIP JIT
+`0.943 s` (including `0.339 s` LLVM code generation and `0.478 s` device
+bitcode linking), and Vulkan JIT `0.717 s`. Vulkan optimized the production
+program from `91,931` to `84,611` SPIR-V words. The corresponding 32×32 render
+times were `2.51 ms`, `2.80 ms`, and `3.15 ms`; these remain compiler
+diagnostics rather than complex-scene performance claims.
+
+This closes finite point/spot NEE and forward MIS for surface paths. It does
+not close distant-light forward/background semantics, narrow-spread area
+clamping, the light tree, volume direct lighting, or the remaining material
+and Light Path state gates.

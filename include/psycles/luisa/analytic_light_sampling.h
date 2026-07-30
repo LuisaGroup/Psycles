@@ -32,6 +32,42 @@ struct RectangleSolidAngleContext {
     luisa::compute::Float pdf;
 };
 
+struct LightLinearTransform {
+    luisa::compute::Float3 column_x;
+    luisa::compute::Float3 column_y;
+    luisa::compute::Float3 column_z;
+    luisa::compute::Float3 inverse_row_x;
+    luisa::compute::Float3 inverse_row_y;
+    luisa::compute::Float3 inverse_row_z;
+    luisa::compute::Bool valid;
+};
+
+struct RayPrimitiveIntersection {
+    luisa::compute::Bool valid;
+    luisa::compute::Float distance;
+    luisa::compute::Float3 position;
+};
+
+struct FiniteLightGeometrySample {
+    luisa::compute::Bool valid;
+    luisa::compute::Float3 direction;
+    luisa::compute::Float3 position;
+    luisa::compute::Float3 normal;
+    luisa::compute::Float distance;
+    luisa::compute::Float conditional_pdf;
+};
+
+struct FiniteLightSample {
+    luisa::compute::Bool valid;
+    luisa::compute::Float3 direction;
+    luisa::compute::Float3 position;
+    luisa::compute::Float3 normal;
+    luisa::compute::Float2 uv;
+    luisa::compute::Float distance;
+    luisa::compute::Float conditional_pdf;
+    luisa::compute::Float evaluation_factor;
+};
+
 [[nodiscard]] inline luisa::compute::Float
 safe_divide(
     luisa::compute::Float numerator,
@@ -40,6 +76,491 @@ safe_divide(
         0.0f,
         numerator / denominator,
         denominator != 0.0f);
+}
+
+[[nodiscard]] inline luisa::compute::Float3
+safe_normalize(
+    luisa::compute::Float3 value,
+    luisa::compute::Float3 fallback) noexcept {
+    using namespace luisa::compute;
+    const auto magnitude_squared = dot(value, value);
+    return select(
+        fallback,
+        value /
+            sqrt(max(magnitude_squared, 1.0e-30f)),
+        magnitude_squared > 0.0f);
+}
+
+// A lamp shader and a spot profile use Cycles' complete object transform,
+// including non-uniform scale. Store normalized columns plus their lengths in
+// LightGpu, then reconstruct the inverse exactly through the adjugate instead
+// of treating the normalized frame as an inverse transform.
+[[nodiscard]] inline LightLinearTransform
+light_linear_transform(
+    luisa::compute::Float3 axis_x,
+    luisa::compute::Float3 axis_y,
+    luisa::compute::Float3 axis_z,
+    luisa::compute::Float3 axis_scale) noexcept {
+    using namespace luisa::compute;
+    const auto column_x = axis_x * axis_scale.x;
+    const auto column_y = axis_y * axis_scale.y;
+    const auto column_z = axis_z * axis_scale.z;
+    const auto adjugate_x = cross(column_y, column_z);
+    const auto determinant = dot(column_x, adjugate_x);
+    const auto valid = abs(determinant) > 1.0e-20f;
+    const auto inverse_determinant =
+        1.0f /
+        select(1.0f, determinant, valid);
+    return {
+        .column_x = column_x,
+        .column_y = column_y,
+        .column_z = column_z,
+        .inverse_row_x =
+            adjugate_x * inverse_determinant,
+        .inverse_row_y =
+            cross(column_z, column_x) *
+            inverse_determinant,
+        .inverse_row_z =
+            cross(column_x, column_y) *
+            inverse_determinant,
+        .valid = valid};
+}
+
+[[nodiscard]] inline luisa::compute::Float3
+world_to_light_direction(
+    luisa::compute::Float3 direction,
+    const LightLinearTransform &transform) noexcept {
+    using namespace luisa::compute;
+    return make_float3(
+        dot(transform.inverse_row_x, direction),
+        dot(transform.inverse_row_y, direction),
+        dot(transform.inverse_row_z, direction));
+}
+
+[[nodiscard]] inline luisa::compute::Float3
+world_to_light_normal(
+    luisa::compute::Float3 normal,
+    const LightLinearTransform &transform) noexcept {
+    using namespace luisa::compute;
+    return safe_normalize(
+        make_float3(
+            dot(transform.column_x, normal),
+            dot(transform.column_y, normal),
+            dot(transform.column_z, normal)),
+        normal);
+}
+
+// Exact open-interval Cycles sphere intersection. Keeping this primitive
+// shared between NEE's constrained spot-cone branch and forward light hits
+// makes their support mathematically identical.
+[[nodiscard]] inline RayPrimitiveIntersection
+intersect_sphere(
+    luisa::compute::Float3 ray_origin,
+    luisa::compute::Float3 ray_direction,
+    luisa::compute::Float ray_minimum,
+    luisa::compute::Float ray_maximum,
+    luisa::compute::Float3 center,
+    luisa::compute::Float radius) noexcept {
+    using namespace luisa::compute;
+    const auto center_offset = center - ray_origin;
+    const auto radius_squared = radius * radius;
+    const auto center_distance_squared =
+        dot(center_offset, center_offset);
+    const auto projected_distance =
+        dot(center_offset, ray_direction);
+    const auto perpendicular =
+        center_offset -
+        projected_distance * ray_direction;
+    const auto perpendicular_squared =
+        dot(perpendicular, perpendicular);
+    const auto distance =
+        projected_distance -
+        copysign(
+            sqrt(max(
+                radius_squared -
+                    perpendicular_squared,
+                0.0f)),
+            center_distance_squared -
+                radius_squared);
+    const auto valid =
+        !((center_distance_squared >
+           radius_squared) &
+          (projected_distance < 0.0f)) &
+        (perpendicular_squared <=
+         radius_squared) &
+        (distance > ray_minimum) &
+        (distance < ray_maximum);
+    return {
+        .valid = valid,
+        .distance = distance,
+        .position =
+            ray_origin +
+            ray_direction * distance};
+}
+
+[[nodiscard]] inline RayPrimitiveIntersection
+intersect_disk(
+    luisa::compute::Float3 ray_origin,
+    luisa::compute::Float3 ray_direction,
+    luisa::compute::Float ray_minimum,
+    luisa::compute::Float ray_maximum,
+    luisa::compute::Float3 center,
+    luisa::compute::Float3 normal,
+    luisa::compute::Float radius) noexcept {
+    using namespace luisa::compute;
+    const auto center_offset = ray_origin - center;
+    const auto plane_distance =
+        dot(center_offset, normal);
+    const auto cosine =
+        dot(normal, -ray_direction);
+    const auto distance =
+        safe_divide(plane_distance, cosine);
+    const auto position =
+        ray_origin +
+        distance * ray_direction;
+    const auto radial_offset =
+        position - center;
+    const auto valid =
+        (plane_distance * cosine > 0.0f) &
+        (distance >= 0.0f) &
+        (dot(radial_offset, radial_offset) <
+         radius * radius) &
+        (distance > ray_minimum) &
+        (distance < ray_maximum);
+    return {
+        .valid = valid,
+        .distance = distance,
+        .position = position};
+}
+
+[[nodiscard]] inline luisa::compute::Float
+point_disk_pdf(
+    luisa::compute::Float distance_squared,
+    luisa::compute::Float light_cosine,
+    luisa::compute::Float radius) noexcept;
+
+[[nodiscard]] inline luisa::compute::Float
+sphere_light_pdf(
+    luisa::compute::Float center_distance_squared,
+    luisa::compute::Float radius_squared,
+    luisa::compute::Float3 shading_normal,
+    luisa::compute::Float3 direction,
+    luisa::compute::Bool had_transmission,
+    luisa::compute::Float outside_one_minus_cosine) noexcept {
+    using namespace luisa::compute;
+    const auto outside_pdf =
+        cycles_sample_mapping::inverse_two_pi /
+        max(outside_one_minus_cosine, 1.0e-30f);
+    const auto inside_pdf = select(
+        cycles_sample_mapping::
+            cosine_hemisphere_pdf(
+                shading_normal,
+                direction),
+        0.5f *
+            cycles_sample_mapping::
+                inverse_two_pi,
+        had_transmission);
+    return select(
+        inside_pdf,
+        outside_pdf,
+        center_distance_squared >
+            radius_squared);
+}
+
+[[nodiscard]] inline luisa::compute::Float3
+spot_light_to_local(
+    luisa::compute::Float3 ray,
+    const LightLinearTransform &transform) noexcept {
+    using namespace luisa::compute;
+    auto local = safe_normalize(
+        world_to_light_direction(
+            ray, transform),
+        make_float3(0.0f, 0.0f, -1.0f));
+    local.z = -local.z;
+    return local;
+}
+
+[[nodiscard]] inline luisa::compute::Float
+spot_light_attenuation(
+    luisa::compute::Float3 local_ray,
+    luisa::compute::Float spot_angle,
+    luisa::compute::Float spot_smooth) noexcept {
+    using namespace luisa::compute;
+    const auto cosine_half_angle =
+        cos(0.5f * spot_angle);
+    const auto blend_width =
+        (1.0f - cosine_half_angle) *
+        spot_smooth;
+    const auto linear = clamp(
+        safe_divide(
+            local_ray.z -
+                cosine_half_angle,
+            blend_width),
+        0.0f,
+        1.0f);
+    const auto smooth =
+        linear * linear *
+        (3.0f - 2.0f * linear);
+    const auto hard = select(
+        0.0f,
+        1.0f,
+        local_ray.z >=
+            cosine_half_angle);
+    return select(
+        hard,
+        smooth,
+        blend_width > 0.0f);
+}
+
+[[nodiscard]] inline luisa::compute::Float
+spot_one_minus_cosine_larger_spread(
+    luisa::compute::Float spot_angle,
+    luisa::compute::Float3 axis_scale) noexcept {
+    using namespace luisa::compute;
+    const auto tangent =
+        tan(0.5f * spot_angle);
+    const auto transverse_scale_squared =
+        max(
+            axis_scale.x * axis_scale.x,
+            axis_scale.y * axis_scale.y);
+    const auto axial_scale_squared =
+        axis_scale.z * axis_scale.z;
+    const auto cosine =
+        rsqrt(
+            1.0f +
+            tangent * tangent *
+                transverse_scale_squared /
+                max(
+                    axial_scale_squared,
+                    1.0e-30f));
+    return 1.0f - cosine;
+}
+
+[[nodiscard]] inline luisa::compute::Float2
+spot_light_uv(
+    luisa::compute::Float3 local_ray,
+    luisa::compute::Float spot_angle) noexcept {
+    using namespace luisa::compute;
+    const auto half_cotangent =
+        0.5f /
+        tan(0.5f * spot_angle);
+    const auto factor =
+        half_cotangent / local_ray.z;
+    return make_float2(
+        local_ray.y * factor + 0.5f,
+        -(local_ray.x + local_ray.y) *
+            factor);
+}
+
+[[nodiscard]] inline luisa::compute::Float2
+point_light_uv(
+    luisa::compute::Float3 normal,
+    const LightLinearTransform &transform) noexcept {
+    using namespace luisa::compute;
+    const auto local =
+        world_to_light_direction(
+            normal, transform);
+    const auto magnitude_squared =
+        dot(local, local);
+    const auto has_azimuth =
+        (local.x != 0.0f) |
+        (local.y != 0.0f);
+    const auto u = select(
+        0.0f,
+        0.5f -
+            atan2(local.x, local.y) *
+                cycles_sample_mapping::
+                    inverse_two_pi,
+        has_azimuth);
+    const auto v = select(
+        0.0f,
+        1.0f -
+            acos(clamp(
+                local.z /
+                    sqrt(max(
+                        magnitude_squared,
+                        1.0e-30f)),
+                -1.0f,
+                1.0f)) *
+                inverse_pi,
+        magnitude_squared > 0.0f);
+    return make_float2(v, 1.0f - u - v);
+}
+
+[[nodiscard]] inline FiniteLightGeometrySample
+sample_sphere_geometry(
+    luisa::compute::Float3 reference,
+    luisa::compute::Float3 shading_normal,
+    luisa::compute::Bool has_transmission,
+    luisa::compute::Float3 center,
+    luisa::compute::Float radius,
+    luisa::compute::Float3 outside_axis,
+    luisa::compute::Float outside_one_minus_cosine,
+    luisa::compute::Bool intersect_sampled_ray,
+    luisa::compute::Float2 random) noexcept {
+    using namespace luisa::compute;
+
+    const auto radius_squared =
+        radius * radius;
+    auto light_normal =
+        reference - center;
+    const auto center_distance_squared =
+        dot(light_normal, light_normal);
+    const auto center_distance =
+        sqrt(max(
+            center_distance_squared,
+            1.0e-30f));
+    light_normal /= center_distance;
+    const auto outside =
+        center_distance_squared >
+        radius_squared;
+
+    Float3 direction =
+        make_float3(0.0f);
+    Float cosine = 1.0f;
+    Float conditional_pdf = 0.0f;
+    Float distance = 0.0f;
+    Float3 position = reference;
+    Bool distance_known = false;
+    Bool valid =
+        (radius > 0.0f) &
+        (center_distance_squared > 0.0f);
+
+    $if (outside) {
+        const auto cone =
+            cycles_sample_mapping::
+                sample_uniform_cone(
+                    outside_axis,
+                    outside_one_minus_cosine,
+                    random);
+        direction = cone.direction;
+        cosine = cone.cosine;
+        conditional_pdf = cone.pdf;
+        $if (intersect_sampled_ray) {
+            const auto intersection =
+                intersect_sphere(
+                    reference,
+                    direction,
+                    0.0f,
+                    1.0e30f,
+                    center,
+                    radius);
+            valid &= intersection.valid;
+            distance = intersection.distance;
+            position = intersection.position;
+            distance_known =
+                intersection.valid;
+        };
+    }
+    $else {
+        $if (has_transmission) {
+            direction =
+                cycles_sample_mapping::
+                    sample_uniform_sphere(random);
+            conditional_pdf =
+                0.5f *
+                cycles_sample_mapping::
+                    inverse_two_pi;
+        }
+        $else {
+            const auto hemisphere =
+                cycles_sample_mapping::
+                    sample_cosine_hemisphere(
+                        shading_normal,
+                        random);
+            direction = hemisphere.direction;
+            conditional_pdf = hemisphere.pdf;
+        };
+        cosine =
+            -dot(direction, light_normal);
+    };
+
+    $if (!distance_known) {
+        distance =
+            center_distance * cosine -
+            copysign(
+                sqrt(max(
+                    radius_squared -
+                        center_distance_squared +
+                        center_distance_squared *
+                            cosine * cosine,
+                    0.0f)),
+                center_distance_squared -
+                    radius_squared);
+        position =
+            reference +
+            direction * distance;
+    };
+
+    const auto normal = safe_normalize(
+        position - center,
+        -direction);
+    position =
+        normal * radius + center;
+    return {
+        .valid = valid,
+        .direction = direction,
+        .position = position,
+        .normal = normal,
+        .distance = distance,
+        .conditional_pdf =
+            conditional_pdf};
+}
+
+[[nodiscard]] inline FiniteLightGeometrySample
+sample_disk_geometry(
+    luisa::compute::Float3 reference,
+    luisa::compute::Float3 center,
+    luisa::compute::Float radius,
+    luisa::compute::Float2 random) noexcept {
+    using namespace luisa::compute;
+
+    auto light_normal =
+        reference - center;
+    const auto center_distance_squared =
+        dot(light_normal, light_normal);
+    const auto center_distance =
+        sqrt(max(
+            center_distance_squared,
+            1.0e-30f));
+    light_normal /= center_distance;
+    const auto basis =
+        cycles_sample_mapping::
+            make_orthonormals(light_normal);
+    const auto disk =
+        cycles_sample_mapping::
+            sample_uniform_disk(random);
+    const auto position =
+        center +
+        radius *
+            (disk.x * basis.tangent +
+             disk.y * basis.bitangent);
+    const auto offset = position - reference;
+    const auto distance_squared =
+        dot(offset, offset);
+    const auto distance =
+        sqrt(max(
+            distance_squared,
+            1.0e-30f));
+    const auto direction =
+        offset / distance;
+    const auto cosine =
+        dot(light_normal, -direction);
+    const auto conditional_pdf =
+        point_disk_pdf(
+            distance_squared,
+            cosine,
+            radius);
+    return {
+        .valid =
+            (center_distance_squared > 0.0f) &
+            (cosine > 0.0f),
+        .direction = direction,
+        .position = position,
+        .normal = -direction,
+        .distance = distance,
+        .conditional_pdf =
+            conditional_pdf};
 }
 
 [[nodiscard]] inline RectangleSolidAngleContext
@@ -305,8 +826,11 @@ point_disk_pdf(luisa::compute::Float distance_squared,
                 radius_squared * pi,
                 1.0e-20f),
         radius_squared > 0.0f);
-    return inverse_area * distance_squared /
-           luisa::compute::max(light_cosine, 1.0e-20f);
+    return luisa::compute::select(
+        0.0f,
+        inverse_area * distance_squared /
+            light_cosine,
+        light_cosine > 0.0f);
 }
 
 // Cycles converts point-light power to radiance/intensity using
@@ -330,6 +854,215 @@ point_eval_factor(luisa::compute::Float radius,
             luisa::compute::max(area, 1.0e-20f),
         normalize_power);
     return inverse_area * inverse_pi;
+}
+
+[[nodiscard]] inline FiniteLightSample
+sample_point_light(
+    luisa::compute::Float3 reference,
+    luisa::compute::Float3 shading_normal,
+    luisa::compute::Bool has_transmission,
+    luisa::compute::Float3 center,
+    luisa::compute::Float radius,
+    luisa::compute::Bool sphere,
+    luisa::compute::Float3 axis_x,
+    luisa::compute::Float3 axis_y,
+    luisa::compute::Float3 axis_z,
+    luisa::compute::Float3 axis_scale,
+    luisa::compute::Float2 random,
+    luisa::compute::Bool normalize_power) noexcept {
+    using namespace luisa::compute;
+
+    const auto center_offset =
+        reference - center;
+    const auto center_distance_squared =
+        dot(center_offset, center_offset);
+    const auto radius_squared =
+        radius * radius;
+    const auto light_normal = safe_normalize(
+        center_offset,
+        make_float3(0.0f, 0.0f, -1.0f));
+    const auto sphere_cap =
+        cycles_sample_mapping::
+            sin_squared_to_one_minus_cosine(
+                radius_squared /
+                max(
+                    center_distance_squared,
+                    1.0e-30f));
+    FiniteLightGeometrySample geometry{
+        .valid = false,
+        .direction = make_float3(0.0f),
+        .position = center,
+        .normal = make_float3(0.0f),
+        .distance = 0.0f,
+        .conditional_pdf = 0.0f};
+    const auto finite_sphere =
+        sphere & (radius > 0.0f);
+    $if (finite_sphere) {
+        geometry = sample_sphere_geometry(
+            reference,
+            shading_normal,
+            has_transmission,
+            center,
+            radius,
+            -light_normal,
+            sphere_cap,
+            false,
+            random);
+    }
+    $else {
+        geometry = sample_disk_geometry(
+            reference,
+            center,
+            radius,
+            random);
+    };
+    const auto transform =
+        light_linear_transform(
+            axis_x,
+            axis_y,
+            axis_z,
+            axis_scale);
+    return {
+        .valid = geometry.valid,
+        .direction = geometry.direction,
+        .position = geometry.position,
+        .normal = geometry.normal,
+        .uv = point_light_uv(
+            geometry.normal,
+            transform),
+        .distance = geometry.distance,
+        .conditional_pdf =
+            geometry.conditional_pdf,
+        .evaluation_factor =
+            point_eval_factor(
+                radius,
+                normalize_power)};
+}
+
+[[nodiscard]] inline FiniteLightSample
+sample_spot_light(
+    luisa::compute::Float3 reference,
+    luisa::compute::Float3 shading_normal,
+    luisa::compute::Bool has_transmission,
+    luisa::compute::Float3 center,
+    luisa::compute::Float radius,
+    luisa::compute::Bool sphere,
+    luisa::compute::Float3 axis_x,
+    luisa::compute::Float3 axis_y,
+    luisa::compute::Float3 axis_z,
+    luisa::compute::Float3 axis_scale,
+    luisa::compute::Float spot_angle,
+    luisa::compute::Float spot_smooth,
+    luisa::compute::Float2 random,
+    luisa::compute::Bool normalize_power) noexcept {
+    using namespace luisa::compute;
+
+    const auto center_offset =
+        reference - center;
+    const auto center_distance_squared =
+        dot(center_offset, center_offset);
+    const auto radius_squared =
+        radius * radius;
+    const auto light_normal = safe_normalize(
+        center_offset,
+        make_float3(0.0f, 0.0f, -1.0f));
+    const auto sphere_cap =
+        cycles_sample_mapping::
+            sin_squared_to_one_minus_cosine(
+                radius_squared /
+                max(
+                    center_distance_squared,
+                    1.0e-30f));
+    const auto spot_cap =
+        spot_one_minus_cosine_larger_spread(
+            spot_angle,
+            axis_scale);
+    // Cycles selects the light's visible cap only when it is strictly
+    // narrower. Equality belongs to the spread-cone branch.
+    const auto sample_spread_cone =
+        (center_distance_squared >
+         radius_squared) &
+        !(sphere_cap < spot_cap);
+    const auto outside_axis = select(
+        -light_normal,
+        axis_z,
+        sample_spread_cone);
+    const auto outside_cap = select(
+        sphere_cap,
+        spot_cap,
+        sample_spread_cone);
+
+    FiniteLightGeometrySample geometry{
+        .valid = false,
+        .direction = make_float3(0.0f),
+        .position = center,
+        .normal = make_float3(0.0f),
+        .distance = 0.0f,
+        .conditional_pdf = 0.0f};
+    const auto finite_sphere =
+        sphere & (radius > 0.0f);
+    $if (finite_sphere) {
+        geometry = sample_sphere_geometry(
+            reference,
+            shading_normal,
+            has_transmission,
+            center,
+            radius,
+            outside_axis,
+            outside_cap,
+            sample_spread_cone,
+            random);
+    }
+    $else {
+        geometry = sample_disk_geometry(
+            reference,
+            center,
+            radius,
+            random);
+    };
+
+    const auto transform =
+        light_linear_transform(
+            axis_x,
+            axis_y,
+            axis_z,
+            axis_scale);
+    const auto local_ray =
+        spot_light_to_local(
+            -geometry.direction,
+            transform);
+    const auto attenuation =
+        spot_light_attenuation(
+            local_ray,
+            spot_angle,
+            spot_smooth);
+    const auto use_attenuation =
+        !finite_sphere |
+        (center_distance_squared >
+         radius_squared);
+    const auto evaluation_factor =
+        point_eval_factor(
+            radius,
+            normalize_power) *
+        select(
+            1.0f,
+            attenuation,
+            use_attenuation);
+    return {
+        .valid =
+            geometry.valid &
+            (evaluation_factor != 0.0f),
+        .direction = geometry.direction,
+        .position = geometry.position,
+        .normal = geometry.normal,
+        .uv = spot_light_uv(
+            local_ray,
+            spot_angle),
+        .distance = geometry.distance,
+        .conditional_pdf =
+            geometry.conditional_pdf,
+        .evaluation_factor =
+            evaluation_factor};
 }
 
 // A finite point/spot can be intersected by the competing forward-BSDF

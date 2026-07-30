@@ -51,6 +51,7 @@ struct LightGpu {
     luisa::float3 axis_x{};
     luisa::float3 axis_y{};
     luisa::float3 axis_z{};
+    luisa::float3 axis_scale{1.0f, 1.0f, 1.0f};
     luisa::float3 color{};
     float power{};
     float radius{};
@@ -291,6 +292,7 @@ LUISA_STRUCT(
     axis_x,
     axis_y,
     axis_z,
+    axis_scale,
     color,
     power,
     radius,

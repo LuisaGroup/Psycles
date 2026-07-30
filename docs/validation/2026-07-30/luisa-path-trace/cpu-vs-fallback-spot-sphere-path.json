@@ -1,0 +1,37 @@
+{
+  "absolute_tolerance": 1e-06,
+  "actual": "/var/tmp/psycles-finite-lights/spot_light_soft/post-trace-fallback.raw.json",
+  "checked": {
+    "exact": 43,
+    "float32": 84,
+    "random_exact": 16,
+    "topology": 3
+  },
+  "failure_count": 2,
+  "failures": [
+    {
+      "absolute_error": 2.86102294921875e-06,
+      "actual": 0.25740620493888855,
+      "bound": 1.5148124098777772e-06,
+      "field": "events[0].light_ng.x",
+      "policy": "float32",
+      "reference": 0.25740334391593933
+    },
+    {
+      "absolute_error": 2.6226043701171875e-06,
+      "actual": -0.7366805672645569,
+      "bound": 2.473366379737854e-06,
+      "field": "events[0].light_ng.z",
+      "policy": "float32",
+      "reference": -0.736683189868927
+    }
+  ],
+  "max_absolute_error": 2.86102294921875e-06,
+  "max_error_field": "events[0].light_ng.x",
+  "max_relative_error": 1.3856940941717706e-05,
+  "passed": false,
+  "reference": "/var/tmp/psycles-finite-lights/spot_light_soft/cycles-p17.exr",
+  "relative_tolerance": 2e-06,
+  "schema": "psycles.cycles-path-trace-comparison.v1",
+  "topology_equivalent": []
+}
