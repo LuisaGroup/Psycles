@@ -31,6 +31,26 @@ inline constexpr std::uint32_t label_diffuse = 4u;
 inline constexpr std::uint32_t label_glossy = 8u;
 inline constexpr std::uint32_t label_singular = 16u;
 inline constexpr std::uint32_t label_transparent = 32u;
+inline constexpr std::uint32_t label_volume_scatter = 64u;
+inline constexpr std::uint32_t label_transmit_transparent = 128u;
+inline constexpr std::uint32_t label_subsurface_scatter = 256u;
+inline constexpr std::uint32_t label_ray_portal = 512u;
+
+inline constexpr std::uint32_t runtime_backfacing = 1u << 0u;
+inline constexpr std::uint32_t runtime_emission = 1u << 1u;
+inline constexpr std::uint32_t runtime_bsdf = 1u << 2u;
+inline constexpr std::uint32_t runtime_bsdf_has_eval = 1u << 3u;
+inline constexpr std::uint32_t runtime_bssrdf = 1u << 4u;
+inline constexpr std::uint32_t runtime_holdout = 1u << 5u;
+inline constexpr std::uint32_t runtime_extinction = 1u << 6u;
+inline constexpr std::uint32_t runtime_scatter = 1u << 7u;
+inline constexpr std::uint32_t runtime_is_volume_shader_eval = 1u << 8u;
+inline constexpr std::uint32_t runtime_transparent = 1u << 9u;
+inline constexpr std::uint32_t runtime_bsdf_has_transmission = 1u << 10u;
+inline constexpr std::uint32_t runtime_ray_portal = 1u << 11u;
+
+inline constexpr auto closure_weight_cutoff = 1.0e-5f;
+inline constexpr auto microfacet_singular_alpha_product = 2.0e-10f;
 
 // Convert the renderer-independent surface-event contract back to the exact
 // Cycles ClosureLabel bit layout. Keeping this mapping explicit prevents

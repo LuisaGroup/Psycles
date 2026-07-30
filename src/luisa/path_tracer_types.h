@@ -142,11 +142,13 @@ struct SurfaceSampleCall {
     luisa::float3 wi{};
     float eta{};
     luisa::float2 roughness{};
+    luisa::uint runtime_flags{};
     luisa::uint valid{};
 };
 
 struct SurfaceClosureTraceCall {
     luisa::uint count{};
+    luisa::uint runtime_flags{};
     luisa::uint index{};
     luisa::uint type{};
     float sample_weight{};
@@ -164,6 +166,7 @@ struct SurfaceSampleTraceCall {
     luisa::float3 wi{};
     float eta{};
     luisa::float2 roughness{};
+    luisa::uint runtime_flags{};
     luisa::uint valid{};
     luisa::uint closure_index{};
     luisa::uint closure_type{};
@@ -359,10 +362,12 @@ LUISA_STRUCT(
     wi,
     eta,
     roughness,
+    runtime_flags,
     valid) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::SurfaceClosureTraceCall,
     count,
+    runtime_flags,
     index,
     type,
     sample_weight,
@@ -379,6 +384,7 @@ LUISA_STRUCT(
     wi,
     eta,
     roughness,
+    runtime_flags,
     valid,
     closure_index,
     closure_type,

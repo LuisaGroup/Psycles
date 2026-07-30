@@ -167,3 +167,34 @@ localizes the new cost to deliberately expanded trace instrumentation rather
 than the production sampler. HIP's fresh non-trace kernel compiled in
 `0.71 s`. Non-trace HIP and Vulkan EXRs remain identical to the preceding
 checkpoint under `oiiotool --diff`.
+
+## Formal post-bounce state checkpoint
+
+Post-bounce state is advanced by one Luisa DSL state-transition function whose
+inputs and outputs follow the Cycles path-state ABI. It owns bounce counters,
+absolute RNG offset, path flags, path visibility, lobe-specific limits, and
+transparent-path preservation as one invariant. The renderer maps the
+resulting Cycles visibility to the scene contract instead of maintaining a
+second, independently updated state machine.
+
+The dedicated device regression covers diffuse, transparent, and singular
+glossy transitions on fallback, HIP, and Vulkan. It also locks the Cycles
+closure allocation cutoff: a diffuse weight below `1e-5` is not allocated and
+one at the boundary is allocated.
+
+The point-path comparison now passes all of:
+
+- post depth `(bounce=1, transparent=0, rng_offset=32)`;
+- throughput `(0.62, 0.41, 0.23)`;
+- secondary ray position and normalized direction;
+- exact path flag `266513` and visibility `4`;
+- MIS PDF, minimum PDF, and continuation probability;
+- exact surface runtime flag `12`.
+
+The strict Cycles CPU failure count drops from 12 to 4. Those four gates are
+the source surface shader ID halves, light object/group identity, and light
+shader identity; they remain unwritten rather than inferred. Cross-backend
+fallback/HIP and fallback/Vulkan traces pass with zero failures and maximum
+absolute difference `2.384185791015625e-7`. The full suite passes 33/33 with
+32-way scheduling. The fallback, HIP, and Vulkan multilayer EXRs are unchanged
+from the preceding closure checkpoint under `oiiotool --diff`.

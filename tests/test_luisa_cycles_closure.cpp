@@ -26,11 +26,14 @@ class OracleShaderServices final : public ShaderServices {
 
 private:
     std::uint32_t _color_parameter{};
+    luisa::float3 _color{};
 
 public:
     explicit OracleShaderServices(
-        std::uint32_t color_parameter) noexcept
-        : _color_parameter{color_parameter} {}
+        std::uint32_t color_parameter,
+        luisa::float3 color) noexcept
+        : _color_parameter{color_parameter},
+          _color{color} {}
 
     [[nodiscard]] Float4 texture_2d(
         Expr<std::uint32_t>,
@@ -59,7 +62,7 @@ public:
         Expr<std::uint32_t> slot) const noexcept override {
         return select(
             make_float3(0.0f),
-            make_float3(0.62f, 0.41f, 0.23f),
+            make_float3(_color),
             slot == _color_parameter);
     }
 
@@ -230,7 +233,8 @@ int main(int argc, char **argv) {
     Kernel1D evaluate =
         [&](BufferFloat4 output) noexcept {
             OracleShaderServices services{
-                color_parameter};
+                color_parameter,
+                {0.62f, 0.41f, 0.23f}};
             const auto point = make_surface_point();
             const auto query = SurfaceQuery{
                 .lobe_mask = ~std::uint32_t{0u},
@@ -317,14 +321,41 @@ int main(int argc, char **argv) {
                     sample.sample.roughness,
                     sample.sample.eta,
                     0.0f));
+            OracleShaderServices below_cutoff_services{
+                color_parameter,
+                {0.5e-5f, 0.5e-5f, 0.5e-5f}};
+            OracleShaderServices boundary_services{
+                color_parameter,
+                {1.0e-5f, 1.0e-5f, 1.0e-5f}};
+            const auto below_cutoff =
+                surfaces.closure_trace(
+                    UInt{surface_tag},
+                    below_cutoff_services,
+                    point,
+                    0u);
+            const auto at_boundary =
+                surfaces.closure_trace(
+                    UInt{surface_tag},
+                    boundary_services,
+                    point,
+                    0u);
+            output.write(
+                10u,
+                make_float4(
+                    cast<float>(
+                        closure.runtime_flags),
+                    cast<float>(
+                        sample.sample.runtime_flags),
+                    cast<float>(below_cutoff.count),
+                    cast<float>(at_boundary.count)));
         };
 
     Context context{argv[0]};
     auto device = context.create_device(backend);
     auto stream = device.create_stream();
-    auto output = device.create_buffer<luisa::float4>(10u);
+    auto output = device.create_buffer<luisa::float4>(11u);
     auto kernel = device.compile(evaluate);
-    std::array<luisa::float4, 10u> actual{};
+    std::array<luisa::float4, 11u> actual{};
     stream << kernel(output).dispatch(1u)
            << output.copy_to(luisa::span{actual})
            << synchronize();
@@ -352,7 +383,8 @@ int main(int argc, char **argv) {
             0.100102216f,
             0.056154907f,
             0.0f},
-        luisa::float4{1.0f, 1.0f, 1.0f, 0.0f}};
+        luisa::float4{1.0f, 1.0f, 1.0f, 0.0f},
+        luisa::float4{12.0f, 12.0f, 0.0f, 1.0f}};
     for (std::size_t index = 0u;
          index < expected.size();
          ++index) {

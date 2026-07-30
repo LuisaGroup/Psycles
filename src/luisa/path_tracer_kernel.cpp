@@ -11,6 +11,7 @@
 #include <psycles/luisa/background_sampling.h>
 #include <psycles/luisa/camera_sampling.h>
 #include <psycles/luisa/cycles_closure.h>
+#include <psycles/luisa/cycles_path_state.h>
 #include <psycles/luisa/pixel_filter.h>
 #include <psycles/luisa/spherical_geometry.h>
 #include <psycles/luisa/surface_ray.h>
@@ -941,8 +942,14 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
             UInt path_depth = 0u;
             // By the time Cycles records a surface event, its primary data
             // pass has marked PATH_RAY_SINGLE_PASS_DONE.
+            const auto initial_cycles_path_state =
+                cycles_path_state::initial_state();
             UInt path_flags =
-                (1u << 7u) | (1u << 8u) | (1u << 9u);
+                initial_cycles_path_state.flag;
+            UInt cycles_path_visibility =
+                initial_cycles_path_state.visibility;
+            UInt cycles_rng_offset =
+                initial_cycles_path_state.rng_offset;
             Bool terminate_after_transparent = false;
             Bool terminate_on_next_surface = false;
             auto accumulate_light_pass =
@@ -1706,33 +1713,15 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                     throughput /= survival;
                 };
 
+                UInt cycles_surface_runtime_flags = 0u;
                 if (path_trace_enabled) {
                     const auto closure_summary =
                         trace_surface_closure(
                             surface_tag,
                             point,
                             0u);
-                    UInt cycles_visibility = 0u;
-                    cycles_visibility |= select(
-                        0u,
-                        1u << 0u,
-                        (ray_visibility &
-                         camera_visibility) != 0u);
-                    cycles_visibility |= select(
-                        0u,
-                        1u << 1u,
-                        (ray_visibility &
-                         transmission_visibility) != 0u);
-                    cycles_visibility |= select(
-                        0u,
-                        1u << 2u,
-                        (ray_visibility &
-                         diffuse_visibility) != 0u);
-                    cycles_visibility |= select(
-                        0u,
-                        1u << 3u,
-                        (ray_visibility &
-                         glossy_visibility) != 0u);
+                    cycles_surface_runtime_flags =
+                        closure_summary.runtime_flags;
                     trace_write_event(
                         path_step,
                         path_trace_schema::
@@ -1740,9 +1729,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                         make_float3(
                             cast<float>(path_step),
                             cast<float>(
-                                (path_step + 1u) *
-                                tabulated_sobol::
-                                    bounce_dimension_count),
+                                cycles_rng_offset),
                             cast<float>(path_depth)));
                     trace_write_event(
                         path_step,
@@ -1759,7 +1746,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                         make_float3(
                             cast<float>(transmission_depth),
                             trace_uint32(
-                                cycles_visibility)
+                                cycles_path_visibility)
                                 .xy()));
                     trace_write_event(
                         path_step,
@@ -1812,6 +1799,15 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                             trace_uint32(surface_tag).xy(),
                             cast<float>(
                                 closure_summary.count)));
+                    trace_write_event(
+                        path_step,
+                        path_trace_schema::
+                            EventSlot::surface_flags,
+                        make_float3(
+                            trace_uint32(
+                                cycles_surface_runtime_flags)
+                                .xy(),
+                            0.0f));
                     trace_write_event(
                         path_step,
                         path_trace_schema::
@@ -3373,6 +3369,19 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                         bsdf_sample.xy(),
                         path_surface_query);
                 }
+                cycles_surface_runtime_flags =
+                    surface_sample.runtime_flags;
+                if (path_trace_enabled) {
+                    trace_write_event(
+                        path_step,
+                        path_trace_schema::
+                            EventSlot::surface_flags,
+                        make_float3(
+                            trace_uint32(
+                                cycles_surface_runtime_flags)
+                                .xy(),
+                            0.0f));
+                }
                 $if (!surface_sample.valid |
                      (surface_sample.evaluation.pdf <=
                       0.0f)) {
@@ -3383,32 +3392,13 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                     (surface_sample.evaluation.events &
                      static_cast<std::uint32_t>(
                          contract::event_transparent)) != 0u;
-                Bool transmission =
-                    (surface_sample.evaluation.events &
-                     static_cast<std::uint32_t>(
-                         contract::event_transmission)) != 0u;
-                Bool glossy =
-                    (surface_sample.evaluation.events &
-                     static_cast<std::uint32_t>(
-                         contract::event_glossy)) != 0u;
-                Bool diffuse =
-                    (surface_sample.evaluation.events &
-                     static_cast<std::uint32_t>(
-                         contract::event_diffuse)) != 0u;
                 Bool singular =
                     (surface_sample.evaluation.events &
                      static_cast<std::uint32_t>(
                          contract::event_singular)) != 0u;
-                Bool reflection =
-                    (surface_sample.evaluation.events &
-                     static_cast<std::uint32_t>(
-                         contract::event_reflection)) != 0u;
-                Bool diffuse_reflection =
-                    diffuse & reflection & (!transparent);
-                Bool glossy_reflection =
-                    glossy & reflection & (!transparent);
-                Bool material_transmission =
-                    transmission & (!transparent);
+                const auto cycles_label =
+                    cycles_closure::label_from_events(
+                        surface_sample.evaluation.events);
 
                 auto sampled_diffuse_weight =
                     light_component_ratio(
@@ -3439,54 +3429,78 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                     $break;
                 };
 
-                UInt scattered_visibility = select(
-                    diffuse_visibility,
-                    glossy_visibility,
-                    glossy);
-                scattered_visibility = select(
-                    scattered_visibility,
-                    transmission_visibility,
-                    transmission);
-                ray_visibility = select(
-                    scattered_visibility,
-                    ray_visibility,
-                    transparent);
                 ray_events = select(
                     surface_sample.evaluation.events,
                     ray_events |
                         surface_sample.evaluation.events,
                     transparent);
-                diffuse_depth += select(
-                    0u, 1u, diffuse_reflection);
-                glossy_depth += select(
-                    0u, 1u, glossy_reflection);
-                transmission_depth += select(
-                    0u, 1u, material_transmission);
-                transparent_depth += select(
-                    0u, 1u, transparent);
-                path_depth += select(
-                    0u, 1u, !transparent);
-                terminate_on_next_surface |=
-                    transparent &
-                    (transparent_depth >=
-                     kernel_parameters
-                         .transparent_max_bounces);
-                terminate_after_transparent |=
-                    (!transparent) &
-                    ((path_depth >=
-                      kernel_parameters.max_bounces) |
-                     (diffuse_reflection &
-                      (diffuse_depth >=
-                       kernel_parameters
-                           .max_diffuse_bounces)) |
-                     (glossy_reflection &
-                      (glossy_depth >=
-                       kernel_parameters
-                           .max_glossy_bounces)) |
-                     (material_transmission &
-                      (transmission_depth >=
-                       kernel_parameters
-                           .max_transmission_bounces)));
+                const auto next_cycles_path_state =
+                    cycles_path_state::next_surface(
+                        {
+                            .flag = path_flags,
+                            .visibility =
+                                cycles_path_visibility,
+                            .bounce = path_depth,
+                            .diffuse_bounce =
+                                diffuse_depth,
+                            .glossy_bounce =
+                                glossy_depth,
+                            .transmission_bounce =
+                                transmission_depth,
+                            .transparent_bounce =
+                                transparent_depth,
+                            .rng_offset =
+                                cycles_rng_offset},
+                        cycles_label,
+                        cycles_surface_runtime_flags,
+                        {
+                            .maximum =
+                                kernel_parameters
+                                    .max_bounces,
+                            .maximum_diffuse =
+                                kernel_parameters
+                                    .max_diffuse_bounces,
+                            .maximum_glossy =
+                                kernel_parameters
+                                    .max_glossy_bounces,
+                            .maximum_transmission =
+                                kernel_parameters
+                                    .max_transmission_bounces,
+                            .maximum_transparent =
+                                kernel_parameters
+                                    .transparent_max_bounces});
+                path_flags =
+                    next_cycles_path_state.flag;
+                cycles_path_visibility =
+                    next_cycles_path_state.visibility;
+                path_depth =
+                    next_cycles_path_state.bounce;
+                diffuse_depth =
+                    next_cycles_path_state.diffuse_bounce;
+                glossy_depth =
+                    next_cycles_path_state.glossy_bounce;
+                transmission_depth =
+                    next_cycles_path_state
+                        .transmission_bounce;
+                transparent_depth =
+                    next_cycles_path_state
+                        .transparent_bounce;
+                cycles_rng_offset =
+                    next_cycles_path_state.rng_offset;
+                ray_visibility =
+                    cycles_path_state::
+                        contract_visibility(
+                            cycles_path_visibility);
+                terminate_on_next_surface =
+                    (path_flags &
+                     cycles_path_state::
+                         flag_terminate_on_next_surface) !=
+                    0u;
+                terminate_after_transparent =
+                    (path_flags &
+                     cycles_path_state::
+                         flag_terminate_after_transparent) !=
+                    0u;
                 // Cycles does not update forward-MIS state for a
                 // transparent bounce. The next emitter remains paired
                 // with the most recent non-transparent BSDF technique.
@@ -3508,13 +3522,15 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                 // advances only tmin to the next representable float after
                 // the committed distance. A regular surface bounce starts a
                 // new ray and uses the conditional triangle-origin policy.
+                const auto normalized_surface_direction =
+                    normalize(surface_sample.wi);
                 Float3 next_origin = select(
                     make_surface_ray_origin(
-                        surface_sample.wi),
+                        normalized_surface_direction),
                     ray->origin(),
                     transparent);
                 Float3 next_direction = select(
-                    surface_sample.wi,
+                    normalized_surface_direction,
                     ray->direction(),
                     transparent);
                 Float next_minimum = select(
@@ -3534,6 +3550,57 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                     next_direction,
                     next_minimum,
                     next_maximum);
+                if (path_trace_enabled) {
+                    trace_write_event(
+                        path_step,
+                        path_trace_schema::
+                            EventSlot::post_depth,
+                        make_float3(
+                            cast<float>(path_depth),
+                            cast<float>(
+                                transparent_depth),
+                            cast<float>(
+                                cycles_rng_offset)));
+                    trace_write_event(
+                        path_step,
+                        path_trace_schema::
+                            EventSlot::post_throughput,
+                        throughput);
+                    trace_write_event(
+                        path_step,
+                        path_trace_schema::
+                            EventSlot::post_ray_p,
+                        ray->origin());
+                    trace_write_event(
+                        path_step,
+                        path_trace_schema::
+                            EventSlot::post_ray_d,
+                        ray->direction());
+                    trace_write_event(
+                        path_step,
+                        path_trace_schema::
+                            EventSlot::post_flags,
+                        make_float3(
+                            trace_uint32(path_flags).xy(),
+                            0.0f));
+                    trace_write_event(
+                        path_step,
+                        path_trace_schema::
+                            EventSlot::post_mis,
+                        make_float3(
+                            previous_bsdf_pdf,
+                            minimum_bsdf_pdf,
+                            continuation_probability));
+                    trace_write_event(
+                        path_step,
+                        path_trace_schema::
+                            EventSlot::post_visibility,
+                        make_float3(
+                            trace_uint32(
+                                cycles_path_visibility)
+                                .xy(),
+                            0.0f));
+                }
             };
 
             radiance = select(

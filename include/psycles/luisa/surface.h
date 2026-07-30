@@ -132,6 +132,7 @@ struct SurfaceSample {
     Float3 wi;
     Float eta;
     Float2 roughness;
+    UInt runtime_flags;
     Bool valid;
 
     [[nodiscard]] static SurfaceSample zero() noexcept {
@@ -140,6 +141,7 @@ struct SurfaceSample {
             .wi = make_float3(0.0f, 0.0f, 1.0f),
             .eta = 1.0f,
             .roughness = make_float2(0.0f),
+            .runtime_flags = 0u,
             .valid = false};
     }
 };
@@ -149,6 +151,7 @@ struct SurfaceSample {
 // trace without returning a backend-specific aggregate array.
 struct SurfaceClosureTrace {
     UInt count;
+    UInt runtime_flags;
     UInt index;
     UInt type;
     Float sample_weight;
@@ -160,6 +163,7 @@ struct SurfaceClosureTrace {
         Expr<std::uint32_t> requested_index = 0u) noexcept {
         return {
             .count = 0u,
+            .runtime_flags = 0u,
             .index = requested_index,
             .type = 0u,
             .sample_weight = 0.0f,

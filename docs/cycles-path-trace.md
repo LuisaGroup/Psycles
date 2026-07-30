@@ -206,3 +206,39 @@ fallback, HIP, and Vulkan. All 32 project tests pass. Aggregated Principled is
 intentionally exposed with the Cycles virtual closure identity until it is
 expanded into the same physical closure list as Cycles; complex materials
 therefore cannot falsely pass this gate.
+
+The post-bounce gate is now driven by a single Cycles path-state transition,
+not by independent trace-field assignments. Given the previous flags,
+visibility, counters, closure label, runtime flags, and scene-synchronized
+bounce limits, the Luisa DSL transition advances:
+
+- regular and transparent bounce counters;
+- the absolute Sobol RNG offset;
+- Cycles `PathRayFlag` and `PathRayVisibilityFlag` bit layouts;
+- diffuse, glossy, singular, transmission, and transparent termination
+  semantics.
+
+The production path consumes the same transition to derive its object
+visibility mask. Secondary BSDF directions are normalized at the same point
+as Cycles, before the conditional triangle-origin construction. Surface
+runtime flags are accumulated from the actual post-shader closure inventory.
+Closure allocation now also uses Cycles' exact `1e-5` cutoff and
+`fabs(average(weight))` sample weight; the device regression covers values
+below and at the allocation boundary.
+
+On the point-path oracle, `post_depth`, throughput, ray origin/direction,
+flags, MIS state, runtime flags, and post visibility all pass against Cycles
+CPU. In particular:
+
+```text
+post bounce / transparent / rng = (1, 0, 32)
+post path flag                 = 266513
+post visibility                = 4
+surface runtime flag           = 12
+mis ray / minimum pdf          = (0.244151756, 0.244151756)
+```
+
+The strict failure count falls from 12 to 4. The only remaining point-probe
+gates are Blender/Cycles synchronization identities: surface shader ID,
+light object/group ID, and light shader ID. Fallback versus HIP and fallback
+versus Vulkan both pass with zero failures, and all 33 project tests pass.
