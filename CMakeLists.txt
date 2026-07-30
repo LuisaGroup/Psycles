@@ -31,6 +31,11 @@ add_library(psycles_core
     src/compiler/material_library.cpp
     src/compiler/shader_program.cpp
     src/compiler/surface_program.cpp
+    src/compiler/surface_program_builder.cpp
+    src/compiler/surface_program_lower_closures.cpp
+    src/compiler/surface_program_lower_context.cpp
+    src/compiler/surface_program_lower_textures.cpp
+    src/compiler/surface_program_lower_values.cpp
     src/contract/scene.cpp
     src/contract/shader_graph.cpp
     src/io/image.cpp
