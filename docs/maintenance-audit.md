@@ -128,6 +128,45 @@ the earlier cold Vulkan trace. The current scan covers 167 files and 60,239
 lines, leaving only two over-limit files. `path_tracer_kernel.cpp` is no
 longer allowlisted by the size gate.
 
+The Blender adapter is now separated by pipeline stage. Binary geometry and
+public scene assembly remain in `blender_scene.cpp`, which decreased from
+4,440 to 1,184 lines. JSON value decoding is a 348-line translation unit, and
+node-tree normalization is a 1,159-line translation unit. The normalizer's
+large natural-output dispatcher is partitioned in its original lexical
+context into input/context, color/value, procedural, and closure families;
+the largest family is 669 lines. This keeps group recursion and diagnostic
+state private while giving each node family an explicit maintenance boundary.
+
+All four family bodies compare byte-for-byte with their pre-split source
+ranges. The split passed the 32-worker full build and all 42 tests. The
+64×64, 256 spp fallback/HIP/Vulkan material fixture again produced 39 linear
+pass files byte-identical to the preceding baseline. The complete scan now
+covers 174 files and 60,394 lines, and only the probe generator remains in the
+temporary debt budget. `blender_scene.cpp` is no longer allowlisted by the
+size gate.
+
+The same binary also completed a 640×480, 64 spp Lone Monk smoke test on all
+three Luisa backends, loading 348 geometries, 87,541 instances, and 37 raw
+material graphs. The images were inspected at full resolution and the HIP/
+Vulkan structure remains visually consistent; their Combined relative RMSE
+is 0.0201 at this low sample count. The old five-way images are not a valid
+byte baseline for this refactor because they predate the intervening RNG,
+Light Path, transparent-shadow, and volume-closure fixes.
+
+An immediate same-binary repeat was byte-identical for all 13 fallback passes
+and all 13 Vulkan passes. HIP repeated exactly for five passes; eight passes
+contained sparse differences (99% of Combined pixels were identical),
+with Combined RMSE 0.000565 and relative RMSE 0.000363. Because this occurs
+between two executions of the same binary, it is recorded as a separate
+HIP/HIPRT determinism finding rather than attributed to the source split.
+
+This cold run also isolated complex-shader compilation costs. Fallback JIT
+took 18.4 s. HIP JIT took 217.0 s: AMDGPU code generation took 19.1 s, while
+linking the HIP LLVM bitcode into the code object took 194.3 s. Vulkan JIT
+took 135.7 s. Warm-cache JIT times were 0.278 s, 0.273 s, and 1.157 s for
+fallback, HIP, and Vulkan respectively. Render-only times were 5.43 s,
+2.37 s, and 2.08 s.
+
 ## Target boundaries
 
 The path tracer is split by renderer semantics:

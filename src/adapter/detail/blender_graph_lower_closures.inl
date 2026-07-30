@@ -1,0 +1,338 @@
+// Surface closures, volume closures, and closure composition lowering.
+// Included by blender_graph_normalizer.cpp inside lower_natural_output.
+
+        if (type == "BSDF_PRINCIPLED") {
+            const auto id = _graph.add_node(
+                compiler::node_type::principled_bsdf,
+                node_name);
+            static_cast<void>(_graph.set_property(
+                id,
+                "Distribution",
+                SocketValue::string(node_property_text(
+                    node, "distribution", "GGX"))));
+            static_cast<void>(bind(
+                id,
+                "BaseColor",
+                node,
+                "Base Color",
+                SocketType::color));
+            static_cast<void>(bind(
+                id,
+                "Metallic",
+                node,
+                "Metallic",
+                SocketType::floating));
+            static_cast<void>(bind(
+                id,
+                "Roughness",
+                node,
+                "Roughness",
+                SocketType::floating));
+            static_cast<void>(bind(
+                id,
+                "DiffuseRoughness",
+                node,
+                "Diffuse Roughness",
+                SocketType::floating));
+            static_cast<void>(bind(
+                id, "IOR", node, "IOR", SocketType::floating));
+            static_cast<void>(bind(
+                id,
+                "SpecularIORLevel",
+                node,
+                "Specular IOR Level",
+                SocketType::floating));
+            static_cast<void>(bind(
+                id,
+                "SpecularTint",
+                node,
+                "Specular Tint",
+                SocketType::color));
+            static_cast<void>(bind(
+                id, "Normal", node, "Normal", SocketType::normal));
+            return finish({
+                .ref = {.node = id, .socket = "Closure"},
+                .type = SocketType::closure});
+        }
+        if (type == "BSDF_DIFFUSE") {
+            const auto id = _graph.add_node(
+                compiler::node_type::diffuse_bsdf,
+                node_name);
+            static_cast<void>(bind(
+                id, "Color", node, "Color", SocketType::color));
+            static_cast<void>(bind(
+                id,
+                "Roughness",
+                node,
+                "Roughness",
+                SocketType::floating));
+            static_cast<void>(bind(
+                id, "Normal", node, "Normal", SocketType::normal));
+            return finish({
+                .ref = {.node = id, .socket = "Closure"},
+                .type = SocketType::closure});
+        }
+        if (type == "BSDF_TRANSLUCENT") {
+            const auto id = _graph.add_node(
+                compiler::node_type::translucent_bsdf,
+                node_name);
+            static_cast<void>(bind(
+                id, "Color", node, "Color", SocketType::color));
+            static_cast<void>(bind(
+                id, "Normal", node, "Normal", SocketType::normal));
+            return finish({
+                .ref = {.node = id, .socket = "Closure"},
+                .type = SocketType::closure});
+        }
+        if (type == "BSDF_GLOSSY") {
+            const auto id = _graph.add_node(
+                compiler::node_type::glossy_bsdf,
+                node_name);
+            static_cast<void>(bind(
+                id, "Color", node, "Color", SocketType::color));
+            static_cast<void>(bind(
+                id,
+                "Roughness",
+                node,
+                "Roughness",
+                SocketType::floating));
+            if (raw_input(node, "Normal") != nullptr) {
+                static_cast<void>(bind(
+                    id,
+                    "Normal",
+                    node,
+                    "Normal",
+                    SocketType::normal));
+            } else {
+                static_cast<void>(_graph.connect(
+                    geometry_output(
+                        "Normal", SocketType::normal)
+                        .ref,
+                    id,
+                    "Normal"));
+            }
+            return finish({
+                .ref = {.node = id, .socket = "Closure"},
+                .type = SocketType::closure});
+        }
+        if (type == "EMISSION" || type == "BACKGROUND") {
+            const auto id = _graph.add_node(
+                compiler::node_type::emission,
+                node_name);
+            static_cast<void>(bind(
+                id, "Color", node, "Color", SocketType::color));
+            static_cast<void>(bind(
+                id,
+                "Strength",
+                node,
+                "Strength",
+                SocketType::floating));
+            return finish({
+                .ref = {.node = id, .socket = "Closure"},
+                .type = SocketType::closure});
+        }
+        if (type == "BSDF_TRANSPARENT") {
+            const auto id = _graph.add_node(
+                compiler::node_type::transparent_bsdf,
+                node_name);
+            static_cast<void>(bind(
+                id, "Color", node, "Color", SocketType::color));
+            return finish({
+                .ref = {.node = id, .socket = "Closure"},
+                .type = SocketType::closure});
+        }
+        if (type == "VOLUME_ABSORPTION") {
+            const auto id = _graph.add_node(
+                compiler::node_type::volume_absorption,
+                node_name);
+            static_cast<void>(bind(
+                id,
+                "Color",
+                node,
+                "Color",
+                SocketType::color));
+            static_cast<void>(bind(
+                id,
+                "Density",
+                node,
+                "Density",
+                SocketType::floating));
+            return finish({
+                .ref = {.node = id, .socket = "Volume"},
+                .type = SocketType::volume_closure});
+        }
+        if (type == "VOLUME_SCATTER") {
+            const auto id = _graph.add_node(
+                compiler::node_type::volume_scatter,
+                node_name);
+            static_cast<void>(_graph.set_property(
+                id,
+                "Phase",
+                SocketValue::string(node_property_text(
+                    node,
+                    "phase",
+                    "HENYEY_GREENSTEIN"))));
+            static_cast<void>(bind(
+                id,
+                "Color",
+                node,
+                "Color",
+                SocketType::color));
+            static_cast<void>(bind(
+                id,
+                "Density",
+                node,
+                "Density",
+                SocketType::floating));
+            for (const auto &[target, source] : {
+                     std::pair{"Anisotropy", "Anisotropy"},
+                     std::pair{"IOR", "IOR"},
+                     std::pair{"Backscatter", "Backscatter"},
+                     std::pair{"Alpha", "Alpha"},
+                     std::pair{"Diameter", "Diameter"}}) {
+                static_cast<void>(bind(
+                    id,
+                    target,
+                    node,
+                    source,
+                    SocketType::floating));
+            }
+            return finish({
+                .ref = {.node = id, .socket = "Volume"},
+                .type = SocketType::volume_closure});
+        }
+        if (type == "VOLUME_COEFFICIENTS") {
+            const auto id = _graph.add_node(
+                compiler::node_type::volume_coefficients,
+                node_name);
+            static_cast<void>(_graph.set_property(
+                id,
+                "Phase",
+                SocketValue::string(node_property_text(
+                    node,
+                    "phase",
+                    "HENYEY_GREENSTEIN"))));
+            for (const auto &[target, source] : {
+                     std::pair{
+                         "ScatterCoefficients",
+                         "Scatter Coefficients"},
+                     std::pair{
+                         "AbsorptionCoefficients",
+                         "Absorption Coefficients"},
+                     std::pair{
+                         "EmissionCoefficients",
+                         "Emission Coefficients"}}) {
+                static_cast<void>(bind(
+                    id,
+                    target,
+                    node,
+                    source,
+                    SocketType::vector));
+            }
+            for (const auto &[target, source] : {
+                     std::pair{"Anisotropy", "Anisotropy"},
+                     std::pair{"IOR", "IOR"},
+                     std::pair{"Backscatter", "Backscatter"},
+                     std::pair{"Alpha", "Alpha"},
+                     std::pair{"Diameter", "Diameter"}}) {
+                static_cast<void>(bind(
+                    id,
+                    target,
+                    node,
+                    source,
+                    SocketType::floating));
+            }
+            return finish({
+                .ref = {.node = id, .socket = "Volume"},
+                .type = SocketType::volume_closure});
+        }
+        if (type == "PRINCIPLED_VOLUME") {
+            const auto id = _graph.add_node(
+                compiler::node_type::principled_volume,
+                node_name);
+            for (const auto &[target, source] : {
+                     std::pair{"Color", "Color"},
+                     std::pair{
+                         "AbsorptionColor",
+                         "Absorption Color"},
+                     std::pair{
+                         "EmissionColor",
+                         "Emission Color"},
+                     std::pair{
+                         "BlackbodyTint",
+                         "Blackbody Tint"}}) {
+                static_cast<void>(bind(
+                    id,
+                    target,
+                    node,
+                    source,
+                    SocketType::color));
+            }
+            for (const auto &[target, source] : {
+                     std::pair{"Density", "Density"},
+                     std::pair{"Anisotropy", "Anisotropy"},
+                     std::pair{
+                         "EmissionStrength",
+                         "Emission Strength"},
+                     std::pair{
+                         "BlackbodyIntensity",
+                         "Blackbody Intensity"},
+                     std::pair{"Temperature", "Temperature"}}) {
+                static_cast<void>(bind(
+                    id,
+                    target,
+                    node,
+                    source,
+                    SocketType::floating));
+            }
+            return finish({
+                .ref = {.node = id, .socket = "Volume"},
+                .type = SocketType::volume_closure});
+        }
+        if (type == "MIX_SHADER" ||
+            type == "ADD_SHADER") {
+            const auto volume =
+                requested == SocketType::volume_closure;
+            const auto id = _graph.add_node(
+                type == "MIX_SHADER"
+                    ? volume
+                          ? compiler::node_type::mix_volume
+                          : compiler::node_type::mix_closure
+                    : volume
+                          ? compiler::node_type::add_volume
+                          : compiler::node_type::add_closure,
+                node_name);
+            if (type == "MIX_SHADER") {
+                static_cast<void>(bind(
+                    id,
+                    "Factor",
+                    node,
+                    "Fac",
+                    SocketType::floating));
+            }
+            static_cast<void>(bind(
+                id,
+                "A",
+                node,
+                "Shader",
+                volume
+                    ? SocketType::volume_closure
+                    : SocketType::closure));
+            static_cast<void>(bind(
+                id,
+                "B",
+                node,
+                "Shader_001",
+                volume
+                    ? SocketType::volume_closure
+                    : SocketType::closure));
+            return finish({
+                .ref = {
+                    .node = id,
+                    .socket =
+                        volume ? "Volume" : "Closure"},
+                .type =
+                    volume
+                        ? SocketType::volume_closure
+                        : SocketType::closure});
+        }
