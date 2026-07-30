@@ -14,7 +14,6 @@ LINE_LIMIT = 2_000
 # as soon as its semantic decomposition brings it under LINE_LIMIT.
 DEBT_BUDGETS = {
     "src/adapter/blender_scene.cpp": 4_440,
-    "src/luisa/path_tracer_kernel.cpp": 3_789,
     "tools/create_cycles_shader_probe.py": 5_518,
 }
 

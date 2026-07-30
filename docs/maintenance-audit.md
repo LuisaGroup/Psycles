@@ -104,9 +104,29 @@ diagnostic and an unsupported-node diagnostic.
 The split passed the 32-worker full build and all 42 CTest contracts. The same
 fallback/HIP/Vulkan fixture again produced 39 linear pass files that are
 byte-identical to the pre-split baselines, including the Combined hash above.
-The current scan covers 159 files and 60,210 lines, with three remaining
+At that checkpoint the scan covered 159 files and 60,210 lines, with three
+remaining
 over-limit debt files. `surface_program.cpp` has therefore been removed from
 the size-gate allowlist.
+
+The stateful path kernel is now partitioned without introducing new Luisa
+`Callable` boundaries. `path_tracer_kernel.cpp` decreased from 3,789 to 341
+lines. Eight included implementation phases cover sample setup, closest-event
+and forward-light handling, shading-point reconstruction, surface
+emission/data passes, environment NEE, emissive-mesh NEE, analytic-light NEE,
+and BSDF continuation/film writes. The largest phase is 595 lines. Keeping
+these phases in one DSL kernel is intentional: variables remain in their
+original lexical scopes and expression construction, closure selection, and
+Cycles RNG-dimension consumption retain their exact order.
+
+Every phase body compares byte-for-byte with its pre-split source range. The
+32-worker full build and all 42 tests pass, and another three-backend render
+made all 39 linear passes byte-identical to the preceding baseline. Moving
+source locations invalidated the shader cache key once; cold JIT timings were
+0.203 s for fallback, 0.388 s for HIP, and 0.799 s for Vulkan, consistent with
+the earlier cold Vulkan trace. The current scan covers 167 files and 60,239
+lines, leaving only two over-limit files. `path_tracer_kernel.cpp` is no
+longer allowlisted by the size gate.
 
 ## Target boundaries
 
