@@ -30,6 +30,7 @@ import sys
 from typing import Any
 
 import bpy
+from mathutils import Vector
 
 
 def _arguments() -> argparse.Namespace:
@@ -78,6 +79,22 @@ def _arguments() -> argparse.Namespace:
             "keep selected-material surfaces camera-visible but remove "
             "their shadow-ray visibility"
         ),
+    )
+    parser.add_argument(
+        "--sun-direction",
+        nargs=3,
+        type=float,
+        metavar=("X", "Y", "Z"),
+        help=(
+            "replace the world and all authored lights with one sharp Sun; "
+            "the vector points from the shaded point toward the light"
+        ),
+    )
+    parser.add_argument(
+        "--sun-energy",
+        type=float,
+        default=1.0,
+        help="energy of the diagnostic Sun (default: 1)",
     )
     return parser.parse_args(argv)
 
@@ -181,6 +198,37 @@ def _black_world() -> None:
     tree.links.new(background.outputs["Background"], surface)
 
 
+def _replace_world_with_sun(
+    direction_values: tuple[float, float, float],
+    energy: float,
+) -> Any:
+    direction = Vector(direction_values)
+    if direction.length_squared <= 1.0e-20:
+        raise ValueError("--sun-direction must be non-zero")
+    if energy < 0.0:
+        raise ValueError("--sun-energy must be non-negative")
+    direction.normalize()
+
+    for obj in tuple(bpy.data.objects):
+        if obj.type == "LIGHT":
+            bpy.data.objects.remove(obj, do_unlink=True)
+    _black_world()
+
+    data = bpy.data.lights.new(
+        "__Psycles Shader Stage Probe Sun",
+        type="SUN",
+    )
+    data.energy = energy
+    data.angle = 0.0
+    data.use_shadow = True
+    light = bpy.data.objects.new(data.name, data)
+    # A Blender Sun emits along local -Z, so its direction from a shaded
+    # point toward the light is local +Z.
+    light.rotation_euler = direction.to_track_quat("Z", "Y").to_euler()
+    bpy.context.scene.collection.objects.link(light)
+    return light
+
+
 def _isolate_surface(
     selected_material: Any,
     source_socket: Any,
@@ -271,7 +319,12 @@ def _main() -> None:
         arguments.closure,
         preserved_materials,
     )
-    if arguments.world == "BLACK":
+    if arguments.sun_direction is not None:
+        _replace_world_with_sun(
+            tuple(arguments.sun_direction),
+            arguments.sun_energy,
+        )
+    elif arguments.world == "BLACK":
         _black_world()
 
     output = arguments.output.resolve()
@@ -283,7 +336,8 @@ def _main() -> None:
         f"{arguments.socket!r} through {arguments.closure}, "
         f"preserved={[item.name for item in preserved_materials]}, "
         f"selected_shadow={not arguments.disable_selected_shadow}, "
-        f"world={arguments.world}: {output}"
+        f"world={arguments.world}, "
+        f"sun_direction={arguments.sun_direction}: {output}"
     )
 
 

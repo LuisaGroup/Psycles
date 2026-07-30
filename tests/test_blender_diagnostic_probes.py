@@ -9,6 +9,7 @@ import tempfile
 from typing import Any
 
 import bpy
+from mathutils import Vector
 
 
 def _load(path: pathlib.Path) -> dict[str, Any]:
@@ -207,6 +208,48 @@ def _main() -> None:
     if shadow_object.visible_shadow:
         raise AssertionError(
             "selected-material shadow visibility was not disabled"
+        )
+
+    old_light_data = bpy.data.lights.new(
+        "Authored Diagnostic Light", type="POINT"
+    )
+    old_light = bpy.data.objects.new(
+        "Authored Diagnostic Light", old_light_data
+    )
+    bpy.context.scene.collection.objects.link(old_light)
+    sun = stage["_replace_world_with_sun"]((0.3, -0.4, 0.5), 2.5)
+    remaining_lights = [
+        obj for obj in bpy.data.objects if obj.type == "LIGHT"
+    ]
+    if remaining_lights != [sun] or sun.data.type != "SUN":
+        raise AssertionError(
+            "directional diagnostic did not replace authored lights"
+        )
+    if abs(sun.data.energy - 2.5) > 1.0e-6 or sun.data.angle != 0.0:
+        raise AssertionError(
+            "directional diagnostic Sun settings were not preserved"
+        )
+    bpy.context.view_layer.update()
+    expected_direction = Vector((0.3, -0.4, 0.5)).normalized()
+    actual_direction = (
+        sun.matrix_world.to_3x3() @ Vector((0.0, 0.0, 1.0))
+    ).normalized()
+    if (actual_direction - expected_direction).length > 1.0e-6:
+        raise AssertionError(
+            "directional diagnostic Sun points in the wrong direction"
+        )
+    world_output = next(
+        node
+        for node in bpy.context.scene.world.node_tree.nodes
+        if node.type == "OUTPUT_WORLD"
+    )
+    world_source = world_output.inputs["Surface"].links[0].from_node
+    if (
+        world_source.type != "BACKGROUND"
+        or world_source.inputs["Strength"].default_value != 0.0
+    ):
+        raise AssertionError(
+            "directional diagnostic did not black out the world"
         )
 
     original_material = bpy.data.materials.new(
