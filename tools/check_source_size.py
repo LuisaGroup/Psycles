@@ -19,10 +19,6 @@ DEBT_BUDGETS: dict[str, int] = {}
 # translation units; the allowlist prevents a new .inl from becoming the
 # easiest way to evade that boundary.
 HANDWRITTEN_INL_DEBT = {
-    "src/adapter/detail/blender_graph_lower_closures.inl",
-    "src/adapter/detail/blender_graph_lower_inputs.inl",
-    "src/adapter/detail/blender_graph_lower_procedural.inl",
-    "src/adapter/detail/blender_graph_lower_values.inl",
     "src/luisa/detail/path_tracer_kernel_closest_event.inl",
     "src/luisa/detail/path_tracer_kernel_nee_analytic.inl",
     "src/luisa/detail/path_tracer_kernel_nee_emissive_mesh.inl",

@@ -193,6 +193,11 @@ if(PSYCLES_ENABLE_LUISA)
 
         add_library(
             psycles_luisa_runtime
+            src/adapter/blender_graph_lower_closures.cpp
+            src/adapter/blender_graph_lower_inputs.cpp
+            src/adapter/blender_graph_lower_procedural.cpp
+            src/adapter/blender_graph_lower_values.cpp
+            src/adapter/blender_graph_lowering_components.cpp
             src/adapter/blender_graph_normalizer.cpp
             src/adapter/blender_scene.cpp
             src/adapter/blender_scene_json.cpp

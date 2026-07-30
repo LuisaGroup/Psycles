@@ -108,10 +108,9 @@ visitors and the traced/untraced sampling choice use the same host-stage
 boundary.
 
 All nine non-generated `GraphSurface` `.inl` files have been deleted. The
-source-size regression now rejects every new hand-written `.inl`; the four
-Blender normalizer and eight path-kernel fragments are an explicit shrinking
-debt list, while the versioned Cycles BSDF table remains classified as
-generated declarative data.
+source-size regression now rejects every new hand-written `.inl`; the eight
+path-kernel fragments are an explicit shrinking debt list, while the
+versioned Cycles BSDF table remains classified as generated declarative data.
 
 The compiled architecture passed the 32-worker full build and all 42 tests.
 The 64×64, 256 spp fixture was rerun through fallback, HIP, and Vulkan; all 13
@@ -156,14 +155,13 @@ the earlier cold Vulkan trace. The current scan covers 167 files and 60,239
 lines, leaving only two over-limit files. `path_tracer_kernel.cpp` is no
 longer allowlisted by the size gate.
 
-The Blender adapter is now separated by pipeline stage. Binary geometry and
-public scene assembly remain in `blender_scene.cpp`, which decreased from
-4,440 to 1,184 lines. JSON value decoding is a 348-line translation unit, and
-node-tree normalization is a 1,159-line translation unit. The normalizer's
-large natural-output dispatcher is partitioned in its original lexical
-context into input/context, color/value, procedural, and closure families;
-the largest family is 669 lines. This keeps group recursion and diagnostic
-state private while giving each node family an explicit maintenance boundary.
+The first Blender-adapter checkpoint separated the pipeline stages. Binary
+geometry and public scene assembly remain in `blender_scene.cpp`, which
+decreased from 4,440 to 1,184 lines, and JSON decoding is a 348-line
+translation unit. The natural-output dispatcher was initially partitioned as
+four textual family fragments in its original lexical context. As with the
+first `GraphSurface` split, this established a low-risk equivalence baseline
+but was not the final component boundary.
 
 All four family bodies compare byte-for-byte with their pre-split source
 ranges. The split passed the 32-worker full build and all 42 tests. The
@@ -172,6 +170,36 @@ pass files byte-identical to the preceding baseline. The complete scan now
 covers 174 files and 60,394 lines, and only the probe generator remains in the
 temporary debt budget. `blender_scene.cpp` is no longer allowlisted by the
 size gate.
+
+The normalizer now delegates to real `BlenderNodeLoweringComponent` host
+objects for input/context, color/value, procedural, and closure nodes. A typed
+context interface owns graph mutation, socket binding, images, properties,
+tables, and diagnostics. The normalizer retains only recursion, memoization,
+group-context restoration, and ordered component dispatch. Its `finish`
+callback still removes the active recursion marker at exactly the original
+successful-lowering points. Components translate the exported raw Cycles
+graph; they do not bake values, materials, or closures through Blender or
+Cycles.
+
+All four old adapter `.inl` files have been deleted. The largest family
+translation unit is 702 lines and the central normalizer is 1,182 lines. The
+32-worker build and all 42 tests pass. Re-rendering the 64×64, 256 spp fixture
+through fallback, HIP, and Vulkan again made all 39 linear pass files
+byte-identical to the immediately preceding compiled-`GraphSurface` baseline.
+The complete gate now covers 185 first-party files and 61,639 lines with no
+file over the limit.
+
+The component path also normalized and compiled all 37 raw material graphs in
+the current Lone Monk bundle; its only diagnostics were the already-known
+adaptive-sampling and denoising configuration notices. The first render check
+used a newer exported scene whose JSON differs from the historical smoke
+baseline, so it was not treated as a source-regression comparison. Repeating
+with the exact baseline bundle
+`psycles-lone-monk-five-way-20260730/export` produced all 13 fallback passes
+byte-for-byte unchanged at 640×480 and 64 spp. Scene compilation took 1.184 s,
+warm JIT loading 0.274 s, and rendering 5.438 s. The Combined image was opened
+at full resolution; camera, architecture, foliage/grass, material regions,
+and shadow structure are unchanged, as required by the byte comparison.
 
 The same binary also completed a 640×480, 64 spp Lone Monk smoke test on all
 three Luisa backends, loading 348 geometries, 87,541 instances, and 37 raw

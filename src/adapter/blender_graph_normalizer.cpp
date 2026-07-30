@@ -1,4 +1,4 @@
-#include "blender_scene_internal.h"
+#include "blender_graph_lowering_component.h"
 
 #include <psycles/compiler/core_nodes.h>
 
@@ -21,18 +21,6 @@ using contract::ShaderDomain;
 using contract::ShaderGraph;
 using contract::SocketValue;
 
-struct TypedOutput {
-    contract::OutputRef ref;
-    contract::SocketType type{contract::SocketType::floating};
-};
-
-struct RawOutputKey {
-    std::string node;
-    std::string socket;
-
-    auto operator<=>(const RawOutputKey &) const noexcept = default;
-};
-
 struct LoweredOutputKey {
     RawOutputKey raw;
     contract::SocketType requested{
@@ -41,7 +29,8 @@ struct LoweredOutputKey {
     auto operator<=>(const LoweredOutputKey &) const noexcept = default;
 };
 
-class BlenderGraphNormalizer {
+class BlenderGraphNormalizer final
+    : public BlenderNodeLoweringContext {
 
 private:
     using RawNodeMap =
@@ -65,6 +54,9 @@ private:
     const NodeGroupMap &_node_groups;
     std::vector<BlenderSceneDiagnostic> &_diagnostics;
     ShaderGraph _graph;
+    std::vector<
+        std::unique_ptr<BlenderNodeLoweringComponent>>
+        _lowering_components;
     RawNodeMap _raw_nodes;
     RawLinkMap _links;
     LoweredOutputMap _outputs;
@@ -77,7 +69,28 @@ private:
     std::optional<contract::NodeId> _geometry;
 
 private:
-    void warn_once(std::string key, std::string message) {
+    [[nodiscard]] ShaderGraph &graph() noexcept override {
+        return _graph;
+    }
+
+    [[nodiscard]] const ImageIdMap &image_ids()
+        const noexcept override {
+        return _image_ids;
+    }
+
+    [[nodiscard]] const ImageColorSpaceMap &image_color_spaces()
+        const noexcept override {
+        return _image_color_spaces;
+    }
+
+    [[nodiscard]] const ImageAlphaTypeMap &image_alpha_types()
+        const noexcept override {
+        return _image_alpha_types;
+    }
+
+    void warn_once(
+        std::string key,
+        std::string message) override {
         if (_warned.emplace(std::move(key)).second) {
             _diagnostics.emplace_back(BlenderSceneDiagnostic{
                 .severity =
@@ -96,7 +109,7 @@ private:
 
     [[nodiscard]] yyjson_val *raw_input(
         yyjson_val *node,
-        std::string_view identifier) const noexcept {
+        std::string_view identifier) const noexcept override {
         return find_socket(node, "inputs", identifier);
     }
 
@@ -173,7 +186,7 @@ private:
 
     [[nodiscard]] std::optional<RawOutputKey> input_source(
         yyjson_val *node,
-        std::string_view identifier) const {
+        std::string_view identifier) const override {
         const auto key = RawOutputKey{
             .node = text(member(node, "name")),
             .socket = std::string{identifier}};
@@ -185,7 +198,7 @@ private:
 
     [[nodiscard]] bool output_is_linked(
         yyjson_val *node,
-        std::string_view identifier) const {
+        std::string_view identifier) const override {
         const auto key = RawOutputKey{
             .node = text(member(node, "name")),
             .socket = std::string{identifier}};
@@ -200,7 +213,7 @@ private:
     [[nodiscard]] std::string node_property_text(
         yyjson_val *node,
         const char *name,
-        std::string fallback = {}) const {
+        std::string fallback = {}) const override {
         return text(
             member(member(node, "properties"), name),
             std::move(fallback));
@@ -209,7 +222,7 @@ private:
     [[nodiscard]] float node_property_number(
         yyjson_val *node,
         const char *name,
-        float fallback = 0.0f) const noexcept {
+        float fallback = 0.0f) const noexcept override {
         return number(
             member(member(node, "properties"), name),
             fallback);
@@ -218,7 +231,7 @@ private:
     [[nodiscard]] bool node_property_bool(
         yyjson_val *node,
         const char *name,
-        bool fallback = false) const noexcept {
+        bool fallback = false) const noexcept override {
         auto *value = member(member(node, "properties"), name);
         return value != nullptr && yyjson_is_bool(value)
                    ? yyjson_get_bool(value)
@@ -259,7 +272,8 @@ private:
         }
     }
 
-    [[nodiscard]] TypedOutput default_image_coordinates() {
+    [[nodiscard]] TypedOutput
+    default_image_coordinates() override {
         if (!_default_image_coordinates) {
             _default_image_coordinates =
                 _graph.add_node(
@@ -273,7 +287,8 @@ private:
             .type = contract::SocketType::vector};
     }
 
-    [[nodiscard]] TypedOutput default_generated_coordinates() {
+    [[nodiscard]] TypedOutput
+    default_generated_coordinates() override {
         if (!_default_generated_coordinates) {
             _default_generated_coordinates =
                 _graph.add_node(
@@ -289,7 +304,7 @@ private:
 
     [[nodiscard]] TypedOutput geometry_output(
         std::string socket,
-        contract::SocketType type) {
+        contract::SocketType type) override {
         if (!_geometry) {
             _geometry = _graph.add_node(
                 compiler::node_type::geometry,
@@ -304,7 +319,7 @@ private:
 
     [[nodiscard]] TypedOutput conversion(
         TypedOutput source,
-        contract::SocketType target) {
+        contract::SocketType target) override {
         using contract::SocketType;
         if (source.type == target) {
             return source;
@@ -466,7 +481,7 @@ private:
         std::string target_socket,
         yyjson_val *raw_destination,
         std::string_view raw_input_name,
-        contract::SocketType target_type) {
+        contract::SocketType target_type) override {
         if (auto source =
                 input_source(
                     raw_destination, raw_input_name)) {
@@ -570,7 +585,7 @@ private:
     }
 
     [[nodiscard]] std::string color_ramp_table(
-        yyjson_val *node) const {
+        yyjson_val *node) const override {
         auto *ramp = member(
             member(node, "special"), "color_ramp");
         auto *samples = member(ramp, "samples");
@@ -621,7 +636,7 @@ private:
     }
 
     [[nodiscard]] std::string rgb_curve_table(
-        yyjson_val *node) const {
+        yyjson_val *node) const override {
         auto *mapping = member(
             member(node, "special"), "curve_mapping");
         auto *samples = member(mapping, "samples");
@@ -719,7 +734,7 @@ private:
     [[nodiscard]] TypedOutput constant_from_output(
         yyjson_val *node,
         std::string_view socket,
-        contract::SocketType type) {
+        contract::SocketType type) override {
         return constant_from_socket(
             raw_output(node, socket),
             text(member(node, "name")),
@@ -828,15 +843,26 @@ private:
             return constant_from_output(
                 node, socket, SocketType::color);
         }
-        auto finish = [&](TypedOutput output) {
-            _building.erase(node_name);
-            return output;
-        };
+        const std::function<TypedOutput(TypedOutput)> finish =
+            [&](TypedOutput output) {
+                _building.erase(node_name);
+                return output;
+            };
 
-#include "detail/blender_graph_lower_inputs.inl"
-#include "detail/blender_graph_lower_values.inl"
-#include "detail/blender_graph_lower_procedural.inl"
-#include "detail/blender_graph_lower_closures.inl"
+        const auto request = BlenderNodeLoweringRequest{
+            .node_name = node_name,
+            .socket = socket,
+            .requested = requested,
+            .node = node,
+            .type = type,
+            .finish = finish};
+        for (const auto &component :
+             _lowering_components) {
+            if (auto output =
+                    component->lower(*this, request)) {
+                return *std::move(output);
+            }
+        }
         auto *output = raw_output(node, socket);
         const auto socket_type =
             text(member(output, "type"));
@@ -1052,7 +1078,9 @@ public:
           _image_color_spaces{image_color_spaces},
           _image_alpha_types{image_alpha_types},
           _node_groups{node_groups},
-          _diagnostics{diagnostics} {
+          _diagnostics{diagnostics},
+          _lowering_components{
+              make_blender_node_lowering_components()} {
         load_tree_context(_tree);
     }
 
