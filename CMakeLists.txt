@@ -169,7 +169,9 @@ if(PSYCLES_ENABLE_LUISA)
 
         add_library(
             psycles_luisa_runtime
+            src/adapter/blender_graph_normalizer.cpp
             src/adapter/blender_scene.cpp
+            src/adapter/blender_scene_json.cpp
             src/luisa/path_tracer.cpp
             src/luisa/path_tracer_camera.cpp
             src/luisa/path_tracer_common.cpp
