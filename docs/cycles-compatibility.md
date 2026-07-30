@@ -29,6 +29,13 @@ Shader data follows this path:
 7. `Polymorphic<Surface>` performs device-side material dispatch. The same
    generated program runs on Luisa `fallback` and GPU backends.
 
+Image transport preserves Blender datablock ownership. Packed payloads are
+copied exactly, external `//` paths are resolved relative to the owning linked
+library (not blindly relative to the main file), and `GENERATED` datablocks are
+encoded from their pixel buffers without mutating the source scene. Both
+linked-library and generated-image paths have Blender-side regressions and
+were exercised by the official Classroom asset.
+
 Unknown nodes, modes, sockets, or properties produce named coverage
 diagnostics and keep the release gate red. Missing material slots use an
 explicit magenta coverage material; an unconnected Cycles Surface follows the
