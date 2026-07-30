@@ -39,6 +39,14 @@ produces a coverage diagnostic instead of silently changing its meaning.
 Operation-dependent nodes use a canonical variant, for example
 `("math", "multiply")`.
 
+The Blender JSON bridge uses ordered `BlenderNodeLoweringComponent` objects
+for input/context, value, procedural, and closure families. Components receive
+a typed graph-mutation context; node-group recursion, output memoization, and
+diagnostic ownership stay in the normalizer. This is a host-side extensibility
+boundary only. Components forward raw socket topology, defaults, properties,
+and closure composition into `ShaderGraph`; invoking Blender or Cycles to
+pre-bake a material is forbidden.
+
 ### ShaderGraph
 
 `contract::ShaderGraph` is a typed DAG with three independent roots:
