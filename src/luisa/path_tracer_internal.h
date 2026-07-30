@@ -119,7 +119,7 @@ using luisa::compute::triangle_interpolate;
 
 constexpr auto pi = 3.14159265358979323846f;
 constexpr auto ray_maximum = 1.0e30f;
-constexpr std::uint32_t geometry_bindless_stride = 8u;
+constexpr std::uint32_t geometry_bindless_stride = 9u;
 constexpr auto camera_visibility =
     contract::visibility_bit(RayVisibility::camera);
 constexpr auto diffuse_visibility =
@@ -159,6 +159,7 @@ struct GeometryResource {
     Buffer<Triangle> triangles;
     Buffer<luisa::uint> triangle_material_slots;
     Buffer<float> triangle_random_per_island;
+    Buffer<luisa::uint> triangle_smooth;
     std::vector<Buffer<luisa::float4>> attributes;
     Mesh mesh;
 };
@@ -177,6 +178,7 @@ struct GeometryUpload {
     luisa::vector<Triangle> triangles;
     luisa::vector<luisa::uint> triangle_material_slots;
     luisa::vector<float> triangle_random_per_island;
+    luisa::vector<luisa::uint> triangle_smooth;
     std::vector<AttributeUpload> attributes;
 };
 

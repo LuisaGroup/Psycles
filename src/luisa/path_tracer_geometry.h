@@ -5,7 +5,12 @@
 namespace psycles::luisa_backend::detail {
 
 using TraceShadowCallable =
-    Callable<luisa::float3(luisa::compute::Ray)>;
+    Callable<luisa::float3(
+        luisa::compute::Ray,
+        luisa::uint,
+        luisa::uint,
+        luisa::uint,
+        luisa::uint)>;
 
 [[nodiscard]] TraceShadowCallable make_trace_shadow_callable(
     const std::shared_ptr<LuisaSceneData> &scene,

@@ -11,6 +11,7 @@
 #include <psycles/luisa/camera_sampling.h>
 #include <psycles/luisa/pixel_filter.h>
 #include <psycles/luisa/spherical_geometry.h>
+#include <psycles/luisa/surface_ray.h>
 
 #include <psycles/sampling/light_distribution.h>
 
@@ -264,6 +265,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         surface_callables.sample;
     auto shared_surface_aov =
         surface_callables.aov;
+    auto shared_surface_shading_normal =
+        surface_callables.shading_normal;
     auto environment_callables =
         make_environment_callables(
             scene,
@@ -285,6 +288,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                           &shared_surface_emission,
                           &shared_surface_sample,
                           &shared_surface_aov,
+                          &shared_surface_shading_normal,
                           &light_component_ratio,
                           &split_scattered_light,
                           &split_nee_light](
@@ -433,6 +437,17 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                         scene->heap,
                         surface_tag,
                         pack_surface_point(point)));
+            };
+        auto surface_shading_normal =
+            [&](UInt surface_tag,
+                const SurfacePoint &point) noexcept {
+                return shared_surface_shading_normal(
+                    scene->parameter_buffer,
+                    scene->cycles_bsdf_table_buffer,
+                    scene->texture_heap,
+                    scene->heap,
+                    surface_tag,
+                    pack_surface_point(point));
             };
         SurfaceQuery surface_query{
             .lobe_mask =
@@ -684,6 +699,10 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                 ray_direction,
                 kernel_parameters.camera_near,
                 kernel_parameters.camera_far);
+            UInt ray_source_instance =
+                surface_ray::invalid_primitive;
+            UInt ray_source_primitive =
+                surface_ray::invalid_primitive;
             UInt ray_visibility = camera_visibility;
 
             Float3 radiance = make_float3(0.0f);
@@ -798,11 +817,38 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                             path_step,
                             tabulated_sobol::
                                 surface_bsdf_dimension));
-                Var<luisa::compute::SurfaceHit> hit =
-                    scene->accel->intersect(
-                        ray,
-                        {.visibility_mask =
-                             ray_visibility});
+                // Match Cycles' RaySelfPrimitives contract: the previous
+                // committed primitive is rejected by identity during
+                // traversal. This is independent of origin offset and remains
+                // active for both transparent and non-transparent bounces.
+                Var<luisa::compute::CommittedHit> hit =
+                    scene->accel
+                        ->traverse(
+                            ray,
+                            {.visibility_mask =
+                                 ray_visibility})
+                        .on_surface_candidate(
+                            [&](luisa::compute::
+                                    SurfaceCandidate
+                                        &candidate) noexcept {
+                                auto candidate_hit =
+                                    candidate.hit();
+                                $if (!surface_ray::
+                                          same_primitive(
+                                              candidate_hit
+                                                  ->inst,
+                                              candidate_hit
+                                                  ->prim,
+                                              ray_source_instance,
+                                              ray_source_primitive)) {
+                                    candidate.commit();
+                                };
+                            })
+                        .on_procedural_candidate(
+                            [](luisa::compute::
+                                   ProceduralCandidate &) noexcept {
+                            })
+                        .trace();
                 $if (hit->miss()) {
                     Bool competing =
                         (path_depth > 0u) & (!previous_delta);
@@ -959,6 +1005,11 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                         ->buffer<luisa::uint>(
                             geometry.bindless_base + 4u)
                         .read(hit->prim);
+                Bool triangle_smooth =
+                    scene->heap
+                        ->buffer<luisa::uint>(
+                            geometry.bindless_base + 8u)
+                        .read(hit->prim) != 0u;
 
                 auto object_to_world =
                     scene->accel
@@ -1021,9 +1072,41 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                     -shading_normal,
                     dot(shading_normal, geometric_normal) <
                         0.0f);
+                // Reconstruct static-triangle shading points from the
+                // committed barycentrics. This is both more accurate than
+                // origin + t * direction at large world coordinates and
+                // provides the same geometric point used by Cycles before
+                // spawning secondary and shadow rays.
+                Float3 object_shading_position =
+                    p0 +
+                    hit->bary.x * (p1 - p0) +
+                    hit->bary.y * (p2 - p0);
                 Float3 hit_position =
-                    ray->origin() +
-                    ray->direction() * hit->committed_ray_t;
+                    (object_to_world *
+                     make_float4(
+                         object_shading_position,
+                         1.0f))
+                        .xyz();
+                Float3 object_hit_position =
+                    (world_to_object *
+                     make_float4(hit_position, 1.0f))
+                        .xyz();
+                auto make_surface_ray_origin =
+                    [&](Float3 direction) noexcept {
+                        Float3 object_direction =
+                            (world_to_object *
+                             make_float4(direction, 0.0f))
+                                .xyz();
+                        return surface_ray::
+                            origin_with_explicit_self_exclusion(
+                                hit_position,
+                                geometric_normal,
+                                object_hit_position,
+                                object_direction,
+                                p0,
+                                p1,
+                                p2);
+                    };
                 Float3 tangent = safe_normalize(
                     (object_to_world *
                      make_float4(
@@ -1164,8 +1247,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                 SurfacePoint point{
                     .position = hit_position,
                     .object_position =
-                        triangle_interpolate(
-                            hit->bary, p0, p1, p2),
+                        object_shading_position,
                     .object_location =
                         (object_to_world *
                          make_float4(
@@ -1251,6 +1333,40 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                         hit->committed_ray_t,
                     .time = 0.0f,
                     .back_facing = back_facing};
+                Float3 shadow_shading_normal =
+                    shading_normal;
+                $if (triangle_smooth &
+                     (instance
+                          .shadow_terminator_geometry_offset >
+                      0.0f)) {
+                    shadow_shading_normal =
+                        surface_shading_normal(
+                            surface_tag, point);
+                };
+                auto make_surface_shadow_origin =
+                    [&](Float3 direction) noexcept {
+                        // Cycles' direct-light shadow rays use the
+                        // shadow-terminator construction directly. They do
+                        // not apply integrate_surface_ray_offset(): exact
+                        // source identity is handled by the ray query.
+                        return surface_ray::
+                            shadow_terminator_origin(
+                                hit_position,
+                                shadow_shading_normal,
+                                geometric_normal,
+                                direction,
+                                instance
+                                    .shadow_terminator_geometry_offset,
+                                triangle_smooth,
+                                object_to_world,
+                                hit->bary,
+                                p0,
+                                p1,
+                                p2,
+                                n0,
+                                n1,
+                                n2);
+                    };
                 UInt path_lobe_mask =
                     surface_query.lobe_mask;
                 Bool previous_ray_was_diffuse =
@@ -1472,21 +1588,33 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                             background_sample.pdf *
                             selected_light.selection_pdf;
                         $if (light_pdf > 0.0f) {
-                            Float3 shadow_origin =
-                                offset_ray_origin(
-                                    hit_position,
-                                    geometric_normal,
+                            const auto shadow =
+                                make_surface_shadow_origin(
                                     wi);
                             Var<luisa::compute::Ray>
                                 environment_shadow_ray =
                                     make_ray(
-                                        shadow_origin,
+                                        shadow.position,
                                         wi,
                                         0.0f,
                                         ray_maximum);
                             Float3 shadow_transmittance =
                                 trace_shadow(
-                                    environment_shadow_ray);
+                                    environment_shadow_ray,
+                                    select(
+                                        surface_ray::
+                                            invalid_primitive,
+                                        hit->inst,
+                                        shadow.skip_self),
+                                    select(
+                                        surface_ray::
+                                            invalid_primitive,
+                                        hit->prim,
+                                        shadow.skip_self),
+                                    surface_ray::
+                                        invalid_primitive,
+                                    surface_ray::
+                                        invalid_primitive);
                             $if (any(
                                 shadow_transmittance >
                                 0.0f)) {
@@ -1889,24 +2017,42 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                         $if (triangle_sample.valid &
                              (light_pdf > 0.0f) &
                              any(light_radiance > 0.0f)) {
-                            Float3 shadow_origin =
-                                offset_ray_origin(
-                                    hit_position,
-                                    geometric_normal,
+                            const auto shadow =
+                                make_surface_shadow_origin(
                                     wi);
+                            const auto shadow_offset =
+                                light_position -
+                                shadow.position;
+                            const auto shadow_distance =
+                                sqrt(max(
+                                    length_squared(
+                                        shadow_offset),
+                                    1.0e-20f));
+                            const auto shadow_direction =
+                                shadow_offset /
+                                shadow_distance;
                             Var<luisa::compute::Ray>
                                 mesh_light_shadow_ray =
                                     make_ray(
-                                        shadow_origin,
-                                        wi,
+                                        shadow.position,
+                                        shadow_direction,
                                         0.0f,
-                                        max(
-                                            light_distance -
-                                                1.0e-4f,
-                                            0.0f));
+                                        shadow_distance);
                             Float3 shadow_transmittance =
                                 trace_shadow(
-                                    mesh_light_shadow_ray);
+                                    mesh_light_shadow_ray,
+                                    select(
+                                        surface_ray::
+                                            invalid_primitive,
+                                        hit->inst,
+                                        shadow.skip_self),
+                                    select(
+                                        surface_ray::
+                                            invalid_primitive,
+                                        hit->prim,
+                                        shadow.skip_self),
+                                    emitter.instance_index,
+                                    emitter.primitive_index);
                             $if (any(
                                 shadow_transmittance > 0.0f)) {
                                 auto evaluation =
@@ -2568,22 +2714,57 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                             selected_light.selection_pdf;
                         $if (light_valid &
                              (light_pdf > 0.0f)) {
-                            Float3 shadow_origin =
-                                offset_ray_origin(
-                                    hit_position,
-                                    geometric_normal,
+                            const auto shadow =
+                                make_surface_shadow_origin(
                                     wi);
+                            const auto finite_offset =
+                                light_position -
+                                shadow.position;
+                            const auto finite_distance =
+                                sqrt(max(
+                                    length_squared(
+                                        finite_offset),
+                                    1.0e-20f));
+                            const auto finite_direction =
+                                finite_offset /
+                                finite_distance;
+                            const auto distant =
+                                light.type ==
+                                static_cast<std::uint32_t>(
+                                    LightType::distant);
+                            const auto shadow_direction =
+                                select(
+                                    finite_direction,
+                                    wi,
+                                    distant);
+                            const auto shadow_maximum =
+                                select(
+                                    finite_distance,
+                                    ray_maximum,
+                                    distant);
                             Var<luisa::compute::Ray>
                                 shadow_ray = make_ray(
-                                    shadow_origin,
-                                    wi,
+                                    shadow.position,
+                                    shadow_direction,
                                     0.0f,
-                                    max(
-                                        light_distance -
-                                            1.0e-4f,
-                                        0.0f));
+                                    shadow_maximum);
                             Float3 shadow_transmittance =
-                                trace_shadow(shadow_ray);
+                                trace_shadow(
+                                    shadow_ray,
+                                    select(
+                                        surface_ray::
+                                            invalid_primitive,
+                                        hit->inst,
+                                        shadow.skip_self),
+                                    select(
+                                        surface_ray::
+                                            invalid_primitive,
+                                        hit->prim,
+                                        shadow.skip_self),
+                                    surface_ray::
+                                        invalid_primitive,
+                                    surface_ray::
+                                        invalid_primitive);
                             $if (any(
                                 shadow_transmittance > 0.0f)) {
                                 auto evaluation =
@@ -2767,20 +2948,36 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                     singular,
                     previous_delta,
                     transparent);
+                // A transparent Cycles bounce keeps the complete ray line and
+                // advances only tmin to the next representable float after
+                // the committed distance. A regular surface bounce starts a
+                // new ray and uses the conditional triangle-origin policy.
                 Float3 next_origin = select(
-                    offset_ray_origin(
-                        hit_position,
-                        geometric_normal,
+                    make_surface_ray_origin(
                         surface_sample.wi),
-                    hit_position +
-                        ray->direction() * 1.0e-4f,
+                    ray->origin(),
                     transparent);
+                Float3 next_direction = select(
+                    surface_sample.wi,
+                    ray->direction(),
+                    transparent);
+                Float next_minimum = select(
+                    0.0f,
+                    surface_ray::intersection_t_offset(
+                        hit->committed_ray_t),
+                    transparent);
+                Float next_maximum = select(
+                    ray_maximum,
+                    ray->t_max(),
+                    transparent);
+                ray_source_instance = hit->inst;
+                ray_source_primitive = hit->prim;
                 ray_dP = differential_radius;
                 ray = make_ray(
                     next_origin,
-                    surface_sample.wi,
-                    0.0f,
-                    ray_maximum);
+                    next_direction,
+                    next_minimum,
+                    next_maximum);
             };
 
             radiance = select(

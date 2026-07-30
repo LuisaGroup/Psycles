@@ -4399,6 +4399,15 @@ public:
         return result;
     }
 
+    [[nodiscard]] Float3 shading_normal(
+        const ShaderServices &services,
+        const SurfacePoint &point) const noexcept override {
+        if (!_program) {
+            return point.shading_normal;
+        }
+        return trace_values(services, point).shading_normal;
+    }
+
     [[nodiscard]] SurfaceAov aov(
         const ShaderServices &services,
         const SurfacePoint &point) const noexcept override {

@@ -240,6 +240,15 @@ public:
         return make_float3(0.0f);
     }
 
+    // Final Cycles sd->N after shader bump evaluation. This is distinct from
+    // closure-specific Normal inputs and is consumed by shadow-terminator
+    // geometry offset.
+    [[nodiscard]] virtual Float3 shading_normal(
+        const ShaderServices &,
+        const SurfacePoint &point) const noexcept {
+        return point.shading_normal;
+    }
+
     [[nodiscard]] virtual SurfaceAov aov(
         const ShaderServices &,
         const SurfacePoint &point) const noexcept {
@@ -358,6 +367,17 @@ public:
                 },
                 []() noexcept {});
         }
+        return result;
+    }
+
+    [[nodiscard]] Float3 shading_normal(
+        Expr<std::uint32_t> tag,
+        const ShaderServices &services,
+        const SurfacePoint &point) const noexcept {
+        Float3 result = point.shading_normal;
+        _surfaces.dispatch(tag, [&](const Surface *surface) noexcept {
+            result = surface->shading_normal(services, point);
+        });
         return result;
     }
 

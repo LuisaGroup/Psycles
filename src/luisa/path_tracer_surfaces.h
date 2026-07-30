@@ -42,12 +42,20 @@ using SurfaceAovCallable = Callable<SurfaceAovCall(
     BindlessArray,
     luisa::uint,
     SurfacePointCall)>;
+using SurfaceShadingNormalCallable = Callable<luisa::float3(
+    Buffer<luisa::float4>,
+    Buffer<float>,
+    BindlessArray,
+    BindlessArray,
+    luisa::uint,
+    SurfacePointCall)>;
 
 struct SurfaceCallables {
     SurfaceEvaluateCallable evaluate;
     SurfaceEmissionCallable emission;
     SurfaceSampleCallable sample;
     SurfaceAovCallable aov;
+    SurfaceShadingNormalCallable shading_normal;
 };
 
 [[nodiscard]] SurfaceCallables make_surface_callables(

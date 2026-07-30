@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import math
 import pathlib
 import runpy
+import struct
 import sys
 import tempfile
 
@@ -47,8 +49,12 @@ def _main() -> None:
     _clear_scene()
 
     shared_mesh = _mesh("Shared unmodified mesh")
-    _object("shared-a", shared_mesh)
-    _object("shared-b", shared_mesh)
+    for polygon in shared_mesh.polygons:
+        polygon.use_smooth = True
+    shared_a_object = _object("shared-a", shared_mesh)
+    shared_b_object = _object("shared-b", shared_mesh)
+    shared_a_object.cycles.shadow_terminator_geometry_offset = 0.125
+    shared_b_object.cycles.shadow_terminator_geometry_offset = 0.375
 
     modified_mesh = _mesh("Shared modified mesh")
     modified_two = _object("modified-two", modified_mesh)
@@ -78,6 +84,10 @@ def _main() -> None:
             instance["name"]: int(instance["geometry"])
             for instance in scene["instances"]
         }
+        instance_by_name = {
+            instance["name"]: instance
+            for instance in scene["instances"]
+        }
 
         shared_a = geometry_by_instance["shared-a"]
         shared_b = geometry_by_instance["shared-b"]
@@ -89,6 +99,21 @@ def _main() -> None:
                 "unmodified objects sharing one Mesh datablock were not "
                 "deduplicated"
             )
+        for name, expected in (
+            ("shared-a", 0.125),
+            ("shared-b", 0.375),
+        ):
+            actual = float(
+                instance_by_name[name][
+                    "shadow_terminator_geometry_offset"
+                ]
+            )
+            if not math.isclose(actual, expected, abs_tol=1.0e-7):
+                raise AssertionError(
+                    "instance-specific Cycles shadow-terminator offset "
+                    f"did not round-trip: {name}={actual}, "
+                    f"expected {expected}"
+                )
         if modified_two_index == modified_four_index:
             raise AssertionError(
                 "object-specific modifier results shared one geometry"
@@ -110,6 +135,20 @@ def _main() -> None:
                 "unexpected cache cardinality: "
                 f"{len(scene['geometries'])} geometries, "
                 f"{len(scene['instances'])} instances"
+            )
+        smooth_section = scene["geometries"][shared_a][
+            "triangle_smooth"
+        ]
+        with (output / "geometry.bin").open("rb") as stream:
+            stream.seek(int(smooth_section["offset"]))
+            smooth_values = struct.unpack(
+                "<2I",
+                stream.read(int(smooth_section["bytes"])),
+            )
+        if smooth_values != (1, 1):
+            raise AssertionError(
+                "smooth-polygon flags did not survive evaluated "
+                f"triangulation: {smooth_values}"
             )
 
     print("Psycles Blender geometry-cache regression passed")
