@@ -16,6 +16,7 @@
 #include <utility>
 
 #include <luisa/luisa-compute.h>
+#include <yyjson.h>
 
 namespace {
 
@@ -32,6 +33,79 @@ template<typename T>
     return result;
 }
 
+class MemoryPathTraceSink final
+    : public psycles::luisa_backend::LuisaPathTraceSink {
+
+private:
+    std::optional<psycles::luisa_backend::LuisaPathTrace> _trace;
+
+public:
+    void write(
+        const psycles::luisa_backend::LuisaPathTrace &trace) override {
+        _trace = trace;
+    }
+
+    [[nodiscard]] const std::optional<
+        psycles::luisa_backend::LuisaPathTrace> &
+    trace() const noexcept {
+        return _trace;
+    }
+};
+
+[[nodiscard]] bool write_raw_path_trace(
+    const psycles::luisa_backend::LuisaPathTrace &trace,
+    const std::filesystem::path &path) {
+    auto *document = yyjson_mut_doc_new(nullptr);
+    if (document == nullptr) {
+        return false;
+    }
+    auto *root = yyjson_mut_obj(document);
+    yyjson_mut_doc_set_root(document, root);
+    yyjson_mut_obj_add_str(
+        document,
+        root,
+        "schema",
+        "psycles.cycles-path-trace-raw");
+    yyjson_mut_obj_add_uint(
+        document,
+        root,
+        "trace_schema_version",
+        psycles::luisa_backend::path_trace_schema::version);
+    yyjson_mut_obj_add_uint(
+        document, root, "pixel_x", trace.pixel_x);
+    yyjson_mut_obj_add_uint(
+        document, root, "pixel_y", trace.pixel_y);
+    yyjson_mut_obj_add_uint(
+        document, root, "sample", trace.sample);
+    auto *slots = yyjson_mut_arr(document);
+    for (const auto &slot : trace.slots) {
+        auto *rgba = yyjson_mut_arr(document);
+        for (const auto value : slot) {
+            yyjson_mut_arr_add_real(
+                document,
+                rgba,
+                static_cast<double>(value));
+        }
+        yyjson_mut_arr_add_val(slots, rgba);
+    }
+    yyjson_mut_obj_add_val(document, root, "slots", slots);
+    yyjson_write_err error{};
+    const auto written = yyjson_mut_write_file(
+        path.string().c_str(),
+        document,
+        YYJSON_WRITE_PRETTY,
+        nullptr,
+        &error);
+    if (!written) {
+        std::cerr
+            << "error: could not write path trace JSON: "
+            << (error.msg != nullptr ? error.msg : "unknown error")
+            << '\n';
+    }
+    yyjson_mut_doc_free(document);
+    return written;
+}
+
 }// namespace
 
 int main(int argc, char **argv) {
@@ -40,7 +114,9 @@ int main(int argc, char **argv) {
             << "usage: psycles_render_blender_scene "
                "<export-directory> <output.ppm> "
                "[backend=fallback] [width] [height] [samples] "
-               "[max-samples-per-dispatch=8]\n";
+               "[max-samples-per-dispatch=8] "
+               "[path-trace.json] [trace-x] [trace-y] "
+               "[trace-sample=0]\n";
         return EXIT_FAILURE;
     }
     const auto bundle = std::filesystem::path{argv[1]};
@@ -95,6 +171,50 @@ int main(int argc, char **argv) {
         }
         max_samples_per_dispatch = *value;
     }
+    std::optional<std::filesystem::path> path_trace_output;
+    auto path_trace_x = width / 2u;
+    auto path_trace_y = height / 2u;
+    auto path_trace_sample = std::uint32_t{0u};
+    if (argc > 8) {
+        path_trace_output =
+            std::filesystem::path{argv[8]};
+    }
+    if (argc > 9) {
+        auto value = parse_unsigned<std::uint32_t>(argv[9]);
+        if (!value || *value >= width) {
+            return EXIT_FAILURE;
+        }
+        path_trace_x = *value;
+    }
+    if (argc > 10) {
+        auto value = parse_unsigned<std::uint32_t>(argv[10]);
+        if (!value || *value >= height) {
+            return EXIT_FAILURE;
+        }
+        path_trace_y = *value;
+    }
+    if (argc > 11) {
+        auto value = parse_unsigned<std::uint32_t>(argv[11]);
+        if (!value || *value >= samples) {
+            return EXIT_FAILURE;
+        }
+        path_trace_sample = *value;
+    }
+    auto path_trace_sink =
+        path_trace_output
+            ? std::make_shared<MemoryPathTraceSink>()
+            : std::shared_ptr<MemoryPathTraceSink>{};
+    std::optional<
+        psycles::luisa_backend::LuisaPathTraceRequest>
+        path_trace_request;
+    if (path_trace_sink) {
+        path_trace_request =
+            psycles::luisa_backend::LuisaPathTraceRequest{
+                .pixel_x = path_trace_x,
+                .pixel_y = path_trace_y,
+                .sample = path_trace_sample,
+                .sink = path_trace_sink};
+    }
 
     luisa::compute::Context context{argv[0]};
     auto device = context.create_device(backend_name);
@@ -102,7 +222,8 @@ int main(int argc, char **argv) {
         std::move(device),
         {.next_event_estimation = true,
          .max_samples_per_dispatch =
-             max_samples_per_dispatch}};
+             max_samples_per_dispatch,
+         .path_trace = path_trace_request}};
     const auto compile_begin = std::chrono::steady_clock::now();
     auto compilation = renderer.compile_scene(*imported.scene);
     if (!compilation.ok()) {
@@ -213,6 +334,22 @@ int main(int argc, char **argv) {
             sink)) {
         return EXIT_FAILURE;
     }
+    if (path_trace_output) {
+        if (!path_trace_sink->trace()) {
+            std::cerr
+                << "error: requested path trace was not produced\n";
+            return EXIT_FAILURE;
+        }
+        if (!path_trace_output->parent_path().empty()) {
+            std::filesystem::create_directories(
+                path_trace_output->parent_path());
+        }
+        if (!write_raw_path_trace(
+                *path_trace_sink->trace(),
+                *path_trace_output)) {
+            return EXIT_FAILURE;
+        }
+    }
     const auto render_seconds =
         std::chrono::duration<double>(
             std::chrono::steady_clock::now() - render_begin)
@@ -321,6 +458,10 @@ int main(int argc, char **argv) {
         << "Linear Combined: " << combined_path << '\n'
         << "Linear Normal:   " << normal_path << '\n'
         << "Linear Albedo:   " << albedo_path << '\n'
+        << (path_trace_output
+                ? "Path trace:      " +
+                      path_trace_output->string() + "\n"
+                : std::string{})
 #if defined(PSYCLES_WITH_OPENIMAGEIO)
         << "Multilayer EXR:  " << exr_path << '\n'
 #endif

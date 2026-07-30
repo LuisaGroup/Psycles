@@ -31,6 +31,22 @@ output_filter_y(luisa::compute::Float cycles_filter_y) noexcept {
     return 1.0f - cycles_filter_y;
 }
 
+// Cycles stores camera rays with the origin already advanced to the near
+// clipping plane. The traversal interval therefore starts at zero and ends
+// after (far - near), scaled by the camera-space direction cosine for a
+// perspective ray. Orthographic and panoramic callers pass cosine = 1.
+[[nodiscard]] inline luisa::compute::Float2 camera_clip_range(
+    luisa::compute::Float near_clip,
+    luisa::compute::Float far_clip,
+    luisa::compute::Float direction_cosine) noexcept {
+    const auto safe_cosine = luisa::compute::max(
+        luisa::compute::abs(direction_cosine),
+        1.0e-20f);
+    return luisa::compute::make_float2(
+        near_clip / safe_cosine,
+        (far_clip - near_clip) / safe_cosine);
+}
+
 // Shirley-Chiu concentric square-to-disk map. Uniform polar sampling has the
 // same density, but it destroys the two-dimensional stratification of the
 // Sobol lens sample. Camera coverage must preserve this exact mapping so

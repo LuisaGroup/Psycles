@@ -58,7 +58,12 @@ def _load(path: pathlib.Path) -> dict[str, Any]:
         from decode_cycles_path_trace import decode_trace
 
         return decode_trace(path)
-    return json.loads(path.read_text(encoding="utf-8"))
+    document = json.loads(path.read_text(encoding="utf-8"))
+    if document.get("schema") == "psycles.cycles-path-trace-raw":
+        from decode_cycles_path_trace import decode_raw_trace
+
+        return decode_raw_trace(path)
+    return document
 
 
 def _record(trace: dict[str, Any], slot: TraceSlot) -> dict[str, Any]:

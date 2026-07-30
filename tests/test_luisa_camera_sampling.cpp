@@ -69,6 +69,8 @@ int main(int argc, char **argv) {
         device.create_buffer<float>(filter_samples.size());
     auto filter_result_buffer =
         device.create_buffer<float>(filter_samples.size());
+    auto clip_result_buffer =
+        device.create_buffer<luisa::float4>(3u);
 
     Kernel1D evaluate = [](BufferFloat2 randoms,
                            BufferFloat2 disk,
@@ -109,10 +111,40 @@ int main(int argc, char **argv) {
                           table, samples.read(index)));
     };
     auto filter_shader = device.compile(evaluate_filter);
+    Kernel1D evaluate_clipping =
+        [](BufferFloat4 results) noexcept {
+            const auto index = dispatch_x();
+            Float cosine = select(
+                1.0f,
+                0.8f,
+                index == 1u);
+            Float near_clip = select(
+                0.1f,
+                0.25f,
+                index == 2u);
+            Float far_clip = select(
+                1000.0f,
+                4.25f,
+                index == 2u);
+            auto range =
+                camera_sampling::camera_clip_range(
+                    near_clip,
+                    far_clip,
+                    cosine);
+            results.write(
+                index,
+                make_float4(
+                    range.x,
+                    0.0f,
+                    range.y,
+                    range.x + range.y));
+        };
+    auto clipping_shader = device.compile(evaluate_clipping);
     std::array<luisa::float2, random_samples.size()> disk{};
     std::array<luisa::float2, random_samples.size()> polygon{};
     std::array<luisa::float4, raster_samples.size()> raster{};
     std::array<float, filter_samples.size()> filtered{};
+    std::array<luisa::float4, 3u> clipping{};
     stream << random_buffer.copy_from(luisa::span{random_samples})
            << raster_sample_buffer.copy_from(luisa::span{raster_samples})
            << filter_table_buffer.copy_from(luisa::span{filter_table})
@@ -125,10 +157,12 @@ int main(int argc, char **argv) {
                             filter_sample_buffer,
                             filter_result_buffer)
                   .dispatch(static_cast<std::uint32_t>(filter_samples.size()))
+           << clipping_shader(clip_result_buffer).dispatch(3u)
            << disk_buffer.copy_to(luisa::span{disk})
            << polygon_buffer.copy_to(luisa::span{polygon})
            << raster_result_buffer.copy_to(luisa::span{raster})
            << filter_result_buffer.copy_to(luisa::span{filtered})
+           << clip_result_buffer.copy_to(luisa::span{clipping})
            << synchronize();
 
     for (std::size_t i = 0u; i < random_samples.size(); ++i) {
@@ -194,6 +228,31 @@ int main(int argc, char **argv) {
             std::cerr << "pixel-filter lookup failed on " << backend
                       << " for sample " << i << ": got " << filtered[i]
                       << ", expected " << expected << '\n';
+            return EXIT_FAILURE;
+        }
+    }
+    constexpr std::array expected_clipping{
+        luisa::float4{0.1f, 0.0f, 999.9f, 1000.0f},
+        luisa::float4{0.125f, 0.0f, 1249.875f, 1250.0f},
+        luisa::float4{0.25f, 0.0f, 4.0f, 4.25f}};
+    for (auto i = std::size_t{0u};
+         i < expected_clipping.size();
+         ++i) {
+        if (
+            !approximately_equal(
+                clipping[i].x,
+                expected_clipping[i].x) ||
+            !approximately_equal(
+                clipping[i].z,
+                expected_clipping[i].z,
+                5.0e-4f) ||
+            !approximately_equal(
+                clipping[i].w,
+                expected_clipping[i].w,
+                5.0e-4f)) {
+            std::cerr
+                << "Cycles camera clipping representation failed on "
+                << backend << " for case " << i << '\n';
             return EXIT_FAILURE;
         }
     }

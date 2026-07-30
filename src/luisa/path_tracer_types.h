@@ -174,6 +174,10 @@ struct RenderKernelParameters {
     luisa::uint transparent_max_bounces{};
     luisa::uint max_path_steps{};
     luisa::uint transparent_background{};
+    luisa::uint path_trace_enabled{};
+    luisa::uint path_trace_pixel_x{};
+    luisa::uint path_trace_pixel_y{};
+    luisa::uint path_trace_sample{};
     float sample_clamp_direct{};
     float sample_clamp_indirect{};
     float filter_glossy{};
@@ -351,6 +355,10 @@ LUISA_STRUCT(
     transparent_max_bounces,
     max_path_steps,
     transparent_background,
+    path_trace_enabled,
+    path_trace_pixel_x,
+    path_trace_pixel_y,
+    path_trace_sample,
     sample_clamp_direct,
     sample_clamp_indirect,
     filter_glossy,

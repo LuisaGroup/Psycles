@@ -294,6 +294,7 @@ using RenderShader = Shader1D<
     Buffer<luisa::float4>,
     Buffer<luisa::float4>,
     Buffer<luisa::uint>,
+    Buffer<luisa::float4>,
     std::uint32_t,
     std::uint32_t,
     Buffer<luisa::float4>,
@@ -313,12 +314,14 @@ private:
     Buffer<luisa::float4> _albedo;
     Buffer<luisa::float4> _light_passes;
     Buffer<luisa::uint> _sample_count;
+    Buffer<luisa::float4> _path_trace;
     Buffer<luisa::float4> _sobol_table;
     Buffer<float> _pixel_filter_table;
     std::uint32_t _sobol_sequence_size{};
     std::uint32_t _total_aa_samples{};
     RenderKernelParameters _kernel_parameters{};
     RenderShader _render_shader;
+    bool _path_trace_delivered{false};
     std::atomic_bool _cancelled{false};
 
 private:
@@ -326,6 +329,7 @@ private:
     void prepare_sobol_table(std::uint32_t total_samples);
     void initialize(const RenderSettings &settings);
     void write_passes(contract::OutputSink &output);
+    void deliver_path_trace();
 
 public:
     LuisaRenderSession(

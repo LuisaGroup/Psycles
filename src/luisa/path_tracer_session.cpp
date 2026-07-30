@@ -8,6 +8,34 @@ std::size_t LuisaRenderSession::pixel_count() const noexcept {
            static_cast<std::size_t>(_window.height);
 }
 
+void LuisaRenderSession::deliver_path_trace() {
+    if (_path_trace_delivered ||
+        !_options.path_trace ||
+        !_options.path_trace->sink) {
+        return;
+    }
+    luisa::vector<luisa::float4> slots(
+        path_trace_schema::slot_count);
+    _stream
+        << _path_trace.copy_to(luisa::span{slots})
+        << synchronize();
+    LuisaPathTrace trace{
+        .pixel_x = _options.path_trace->pixel_x,
+        .pixel_y = _options.path_trace->pixel_y,
+        .sample = _options.path_trace->sample};
+    for (auto index = std::size_t{0u};
+         index < slots.size();
+         ++index) {
+        trace.slots[index] = {
+            slots[index].x,
+            slots[index].y,
+            slots[index].z,
+            slots[index].w};
+    }
+    _options.path_trace->sink->write(trace);
+    _path_trace_delivered = true;
+}
+
 void LuisaRenderSession::prepare_sobol_table(
     std::uint32_t total_samples) {
     const auto sequence_size =
@@ -249,6 +277,7 @@ bool LuisaRenderSession::render_samples(
                    _albedo,
                    _light_passes,
                    _sample_count,
+                   _path_trace,
                    batch->first,
                    batch->count,
                    _sobol_table,
@@ -256,6 +285,21 @@ bool LuisaRenderSession::render_samples(
                    _kernel_parameters)
                    .dispatch(dispatch_size)
             << synchronize();
+        if (
+            _options.path_trace &&
+            !_path_trace_delivered &&
+            static_cast<std::uint64_t>(
+                _options.path_trace->sample) >=
+                static_cast<std::uint64_t>(
+                    batch->first) &&
+            static_cast<std::uint64_t>(
+                _options.path_trace->sample) <
+                static_cast<std::uint64_t>(
+                    batch->first) +
+                    static_cast<std::uint64_t>(
+                        batch->count)) {
+            deliver_path_trace();
+        }
     }
     if (_cancelled.load()) {
         return false;

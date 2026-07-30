@@ -20,6 +20,7 @@ namespace psycles::luisa_backend::detail {
 void LuisaRenderSession::initialize(const RenderSettings &settings) {
     _settings = settings;
     _total_aa_samples = 0u;
+    _path_trace_delivered = false;
     _window = effective_window(settings);
     const auto count = std::max<std::size_t>(pixel_count(), 1u);
     _combined =
@@ -33,6 +34,11 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
             count * light_pass_buffer_count);
     _sample_count =
         _scene->device.create_buffer<luisa::uint>(count);
+    _path_trace =
+        _scene->device.create_buffer<luisa::float4>(
+            _options.path_trace
+                ? path_trace_schema::slot_count
+                : 1u);
     const auto generated_filter_table =
         sampling::make_pixel_filter_table(
             settings.pixel_filter,
@@ -52,12 +58,18 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
     luisa::vector<luisa::float4> zeros_light_passes(
         count * light_pass_buffer_count);
     luisa::vector<luisa::uint> zeros_uint(count);
+    luisa::vector<luisa::float4> zeros_path_trace(
+        _options.path_trace
+            ? path_trace_schema::slot_count
+            : 1u);
     _stream << _combined.copy_from(luisa::span{zeros_float})
             << _normal.copy_from(luisa::span{zeros_float})
             << _albedo.copy_from(luisa::span{zeros_float})
             << _light_passes.copy_from(
                    luisa::span{zeros_light_passes})
             << _sample_count.copy_from(luisa::span{zeros_uint})
+            << _path_trace.copy_from(
+                   luisa::span{zeros_path_trace})
             << _pixel_filter_table.copy_from(
                    luisa::span{filter_table})
             << synchronize();
@@ -207,6 +219,20 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         .max_path_steps = max_path_steps,
         .transparent_background =
             render_settings.transparent_background ? 1u : 0u,
+        .path_trace_enabled =
+            _options.path_trace ? 1u : 0u,
+        .path_trace_pixel_x =
+            _options.path_trace
+                ? _options.path_trace->pixel_x
+                : 0u,
+        .path_trace_pixel_y =
+            _options.path_trace
+                ? _options.path_trace->pixel_y
+                : 0u,
+        .path_trace_sample =
+            _options.path_trace
+                ? _options.path_trace->sample
+                : 0u,
         .sample_clamp_direct = sample_clamp_direct,
         .sample_clamp_indirect = sample_clamp_indirect,
         .filter_glossy = filter_glossy,
@@ -281,6 +307,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
     auto trace_shadow_callable =
         make_trace_shadow_callable(
             scene, safe_normalize);
+    const auto path_trace_enabled =
+        _options.path_trace.has_value();
 
     Kernel1D kernel = [
                           =,
@@ -297,6 +325,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                           BufferFloat4 albedo,
                           BufferFloat4 light_passes,
                           BufferUInt sample_count,
+                          BufferFloat4 path_trace,
                           UInt sample_first,
                           UInt samples,
                           BufferFloat4 sobol_table,
@@ -515,6 +544,60 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                     UInt{
                         tabulated_sobol::
                             camera_lens_time_dimension});
+            Bool path_trace_active = false;
+            if (path_trace_enabled) {
+                path_trace_active =
+                    (kernel_parameters.path_trace_enabled !=
+                     0u) &
+                    (full_x ==
+                     kernel_parameters.path_trace_pixel_x) &
+                    (cycles_y ==
+                     kernel_parameters.path_trace_pixel_y) &
+                    (sample_index ==
+                     kernel_parameters.path_trace_sample);
+            }
+            auto trace_uint32 =
+                [](UInt value) noexcept {
+                    return make_float3(
+                        cast<float>(value & 0xffffu),
+                        cast<float>(value >> 16u),
+                        0.0f);
+                };
+            auto trace_write =
+                [&](UInt slot, Float3 value) noexcept {
+                    if (path_trace_enabled) {
+                        $if (path_trace_active) {
+                            path_trace.write(
+                                slot,
+                                make_float4(value, 1.0f));
+                        };
+                    }
+                };
+            auto trace_write_global =
+                [&](path_trace_schema::GlobalSlot slot,
+                    Float3 value) noexcept {
+                    trace_write(
+                        UInt{path_trace_schema::index(slot)},
+                        value);
+                };
+            auto trace_write_event =
+                [&](UInt event,
+                    path_trace_schema::EventSlot slot,
+                    Float3 value) noexcept {
+                    $if (
+                        event <
+                        path_trace_schema::max_events) {
+                        trace_write(
+                            path_trace_schema::
+                                global_slot_count +
+                                event *
+                                    path_trace_schema::
+                                        event_slot_count +
+                                static_cast<std::uint32_t>(
+                                    slot),
+                            value);
+                    };
+                };
             Float jitter_x =
                 pixel_filter::sample(
                     filter_table,
@@ -546,6 +629,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
             Float3 local_origin = make_float3(0.0f);
             Float3 local_direction =
                 make_float3(0.0f, 0.0f, -1.0f);
+            Float camera_clip_cosine = 1.0f;
             Float3 local_direction_dx = local_direction;
             Float3 local_direction_dy = local_direction;
             Float ray_dP = 0.0f;
@@ -560,6 +644,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                         kernel_parameters
                             .camera_vertical_tangent,
                     -1.0f));
+                camera_clip_cosine = -local_direction.z;
                 local_direction_dx =
                     normalize(make_float3(
                         (screen_x + 2.0f / width) *
@@ -694,11 +779,52 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                  make_float4(local_direction, 0.0f))
                     .xyz(),
                 make_float3(0.0f, 0.0f, -1.0f));
+            auto camera_clip =
+                camera_sampling::camera_clip_range(
+                    kernel_parameters.camera_near,
+                    kernel_parameters.camera_far,
+                    camera_clip_cosine);
+            ray_origin += ray_direction * camera_clip.x;
             Var<luisa::compute::Ray> ray = make_ray(
                 ray_origin,
                 ray_direction,
-                kernel_parameters.camera_near,
-                kernel_parameters.camera_far);
+                0.0f,
+                camera_clip.y);
+            if (path_trace_enabled) {
+                trace_write_global(
+                    path_trace_schema::GlobalSlot::header,
+                    make_float3(
+                        static_cast<float>(
+                            path_trace_schema::version),
+                        cast<float>(full_x),
+                        cast<float>(cycles_y)));
+                trace_write_global(
+                    path_trace_schema::GlobalSlot::rng,
+                    make_float3(
+                        cast<float>(sample_index),
+                        cast<float>(rng_hash & 0xffffu),
+                        cast<float>(rng_hash >> 16u)));
+                trace_write_global(
+                    path_trace_schema::GlobalSlot::filter,
+                    make_float3(filter_sample, 0.0f));
+                trace_write_global(
+                    path_trace_schema::GlobalSlot::lens_time,
+                    camera_depth_of_field
+                        ? lens_time_sample
+                        : make_float3(0.0f));
+                trace_write_global(
+                    path_trace_schema::GlobalSlot::ray_p,
+                    ray->origin());
+                trace_write_global(
+                    path_trace_schema::GlobalSlot::ray_d,
+                    ray->direction());
+                trace_write_global(
+                    path_trace_schema::GlobalSlot::ray_range,
+                    make_float3(
+                        ray->t_min(),
+                        ray->t_max(),
+                        0.5f));
+            }
             UInt ray_source_instance =
                 surface_ray::invalid_primitive;
             UInt ray_source_primitive =
@@ -738,6 +864,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
             Float minimum_bsdf_pdf =
                 std::numeric_limits<float>::max();
             Bool previous_delta = true;
+            Float continuation_probability = 1.0f;
             Float3 path_diffuse_weight =
                 make_float3(0.0f);
             Float3 path_glossy_weight =
@@ -748,6 +875,10 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
             UInt transparent_depth = 0u;
             UInt transmission_depth = 0u;
             UInt path_depth = 0u;
+            // By the time Cycles records a surface event, its primary data
+            // pass has marked PATH_RAY_SINGLE_PASS_DONE.
+            UInt path_flags =
+                (1u << 7u) | (1u << 8u) | (1u << 9u);
             Bool terminate_after_transparent = false;
             Bool terminate_on_next_surface = false;
             auto accumulate_light_pass =
@@ -770,6 +901,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
             $for (
                 path_step,
                 kernel_parameters.max_path_steps) {
+                continuation_probability = 1.0f;
                 const auto terminate_sample =
                     cycles_sampler::sample_1d(
                         sobol_table,
@@ -1500,6 +1632,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                     abs(throughput.y),
                                     abs(throughput.z)))),
                         1.0f);
+                    continuation_probability = survival;
                     $if (survival <= 0.0f) {
                         $break;
                     };
@@ -1508,6 +1641,146 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                     };
                     throughput /= survival;
                 };
+
+                if (path_trace_enabled) {
+                    UInt cycles_visibility = 0u;
+                    cycles_visibility |= select(
+                        0u,
+                        1u << 0u,
+                        (ray_visibility &
+                         camera_visibility) != 0u);
+                    cycles_visibility |= select(
+                        0u,
+                        1u << 1u,
+                        (ray_visibility &
+                         transmission_visibility) != 0u);
+                    cycles_visibility |= select(
+                        0u,
+                        1u << 2u,
+                        (ray_visibility &
+                         diffuse_visibility) != 0u);
+                    cycles_visibility |= select(
+                        0u,
+                        1u << 3u,
+                        (ray_visibility &
+                         glossy_visibility) != 0u);
+                    trace_write_event(
+                        path_step,
+                        path_trace_schema::
+                            EventSlot::state_depth,
+                        make_float3(
+                            cast<float>(path_step),
+                            cast<float>(
+                                (path_step + 1u) *
+                                tabulated_sobol::
+                                    bounce_dimension_count),
+                            cast<float>(path_depth)));
+                    trace_write_event(
+                        path_step,
+                        path_trace_schema::
+                            EventSlot::state_lobes,
+                        make_float3(
+                            cast<float>(transparent_depth),
+                            cast<float>(diffuse_depth),
+                            cast<float>(glossy_depth)));
+                    trace_write_event(
+                        path_step,
+                        path_trace_schema::
+                            EventSlot::state_visibility,
+                        make_float3(
+                            cast<float>(transmission_depth),
+                            trace_uint32(
+                                cycles_visibility)
+                                .xy()));
+                    trace_write_event(
+                        path_step,
+                        path_trace_schema::
+                            EventSlot::state_flags,
+                        make_float3(
+                            trace_uint32(path_flags).xy(),
+                            continuation_probability));
+                    trace_write_event(
+                        path_step,
+                        path_trace_schema::
+                            EventSlot::throughput,
+                        throughput);
+                    trace_write_event(
+                        path_step,
+                        path_trace_schema::EventSlot::ray_p,
+                        ray->origin());
+                    trace_write_event(
+                        path_step,
+                        path_trace_schema::EventSlot::ray_d,
+                        ray->direction());
+                    trace_write_event(
+                        path_step,
+                        path_trace_schema::
+                            EventSlot::ray_range,
+                        make_float3(
+                            ray->t_min(),
+                            ray->t_max(),
+                            0.5f));
+                    trace_write_event(
+                        path_step,
+                        path_trace_schema::
+                            EventSlot::isect_coord,
+                        make_float3(
+                            hit->committed_ray_t,
+                            hit->bary));
+                    trace_write_event(
+                        path_step,
+                        path_trace_schema::
+                            EventSlot::isect_id,
+                        make_float3(
+                            cast<float>(hit->inst),
+                            cast<float>(hit->prim),
+                            1.0f));
+                    trace_write_event(
+                        path_step,
+                        path_trace_schema::
+                            EventSlot::surface_meta,
+                        make_float3(
+                            trace_uint32(surface_tag).xy(),
+                            0.0f));
+                    trace_write_event(
+                        path_step,
+                        path_trace_schema::
+                            EventSlot::surface_p,
+                        point.position);
+                    trace_write_event(
+                        path_step,
+                        path_trace_schema::
+                            EventSlot::surface_ng,
+                        point.geometric_normal);
+                    trace_write_event(
+                        path_step,
+                        path_trace_schema::
+                            EventSlot::surface_n,
+                        point.shading_normal);
+                    trace_write_event(
+                        path_step,
+                        path_trace_schema::
+                            EventSlot::random_scalars,
+                        make_float3(
+                            terminate_sample,
+                            select(
+                                0.0f,
+                                light_terminate_sample,
+                                kernel_parameters
+                                        .light_inv_rr_threshold >
+                                    0.0f),
+                            0.0f));
+                    trace_write_event(
+                        path_step,
+                        path_trace_schema::
+                            EventSlot::random_light,
+                        light_sample);
+                    trace_write_event(
+                        path_step,
+                        path_trace_schema::
+                            EventSlot::random_bsdf,
+                        bsdf_sample);
+                }
 
                 // Cycles writes camera data passes only along the
                 // transparent-background chain. Diffuse Color is
@@ -1997,7 +2270,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                 transmission_depth,
                             .ray_length =
                                 light_distance,
-                            .time = 0.0f,
+                    .time = 0.5f,
                             .back_facing =
                                 light_back_facing};
                         Float3 light_radiance =

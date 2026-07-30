@@ -17,6 +17,19 @@ import cycles_path_trace_schema as trace_schema
 
 
 class CyclesPathTraceSchemaTests(unittest.TestCase):
+    def test_generated_cpp_header_is_current(self) -> None:
+        header = (
+            ROOT
+            / "include"
+            / "psycles"
+            / "luisa"
+            / "path_trace_schema.h"
+        )
+        self.assertEqual(
+            header.read_text(encoding="utf-8"),
+            trace_schema.cpp_header(),
+        )
+
     def test_trace_slots_are_fixed_and_contiguous(self) -> None:
         schema: Any = trace_schema
         self.assertEqual(schema.SCHEMA_VERSION, 1)
@@ -55,6 +68,38 @@ class CyclesPathTraceSchemaTests(unittest.TestCase):
                 },
                 set(range(schema.MAX_CLOSURES)),
             )
+
+    def test_cycles_random_component_order_is_explicit(self) -> None:
+        schema: Any = trace_schema
+        by_scope_and_name = {
+            (slot.scope, slot.name): slot
+            for slot in schema.SLOTS
+            if slot.event in {None, 0}
+        }
+        self.assertEqual(
+            by_scope_and_name[
+                ("global", "lens_time")
+            ].components,
+            ("time", "lens_u", "lens_v"),
+        )
+        self.assertEqual(
+            by_scope_and_name[
+                ("event", "random_light")
+            ].components,
+            ("u", "v", "selection"),
+        )
+        self.assertEqual(
+            by_scope_and_name[
+                ("event", "random_bsdf")
+            ].components,
+            ("u", "v", "selection"),
+        )
+        self.assertEqual(
+            by_scope_and_name[
+                ("event", "closure_random")
+            ].components,
+            ("u", "v", "selection_rescaled"),
+        )
 
     def test_schema_document_is_json_shaped(self) -> None:
         schema: Any = trace_schema
