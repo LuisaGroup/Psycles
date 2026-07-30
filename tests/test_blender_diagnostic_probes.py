@@ -137,6 +137,78 @@ def _main() -> None:
             "EMISSION diagnostic became an importance-sampled mesh light"
         )
 
+    source_closure_material = bpy.data.materials.new(
+        "Source Closure Material"
+    )
+    source_closure_material.use_nodes = True
+    source_tree = source_closure_material.node_tree
+    source_output = next(
+        node
+        for node in source_tree.nodes
+        if node.type == "OUTPUT_MATERIAL"
+    )
+    source_principled = next(
+        node
+        for node in source_tree.nodes
+        if node.type == "BSDF_PRINCIPLED"
+    )
+    source_other = bpy.data.materials.new("Source Closure Other")
+    source_other.use_nodes = True
+    stage["_isolate_surface"](
+        source_closure_material,
+        source_principled.outputs["BSDF"],
+        "SOURCE",
+    )
+    source_link = source_output.inputs["Surface"].links[0]
+    if (
+        source_link.from_node != source_principled
+        or source_link.from_socket != source_principled.outputs["BSDF"]
+    ):
+        raise AssertionError(
+            "SOURCE diagnostic did not connect the selected raw closure"
+        )
+    if _surface_source(source_other.node_tree).type != "EMISSION":
+        raise AssertionError(
+            "SOURCE diagnostic did not black out other materials"
+        )
+
+    disconnected_material = bpy.data.materials.new(
+        "Disconnected Input Material"
+    )
+    disconnected_material.use_nodes = True
+    disconnected_principled = next(
+        node
+        for node in disconnected_material.node_tree.nodes
+        if node.type == "BSDF_PRINCIPLED"
+    )
+    disconnected_color = disconnected_material.node_tree.nodes.new(
+        "ShaderNodeRGB"
+    )
+    disconnected_material.node_tree.links.new(
+        disconnected_color.outputs["Color"],
+        disconnected_principled.inputs["Base Color"],
+    )
+    stage["_disconnect_inputs"](
+        disconnected_material,
+        [["Principled BSDF", "Base Color"]],
+    )
+    if disconnected_principled.inputs["Base Color"].is_linked:
+        raise AssertionError(
+            "diagnostic input disconnection retained an incoming link"
+        )
+
+    shadow_mesh = bpy.data.meshes.new("Shadow Diagnostic Mesh")
+    shadow_object = bpy.data.objects.new(
+        "Shadow Diagnostic Object", shadow_mesh
+    )
+    shadow_mesh.materials.append(disconnected_material)
+    shadow_object.visible_shadow = True
+    stage["_disable_material_shadows"](disconnected_material)
+    if shadow_object.visible_shadow:
+        raise AssertionError(
+            "selected-material shadow visibility was not disabled"
+        )
+
     original_material = bpy.data.materials.new(
         "Original Closure Material"
     )
@@ -154,12 +226,24 @@ def _main() -> None:
     )
     original_link = original_output.inputs["Surface"].links[0]
 
+    preserved_dependency = bpy.data.materials.new(
+        "Preserved Original Dependency"
+    )
+    preserved_dependency.use_nodes = True
+    preserved_dependency_tree = preserved_dependency.node_tree
+    preserved_dependency_link = next(
+        node
+        for node in preserved_dependency_tree.nodes
+        if node.type == "OUTPUT_MATERIAL"
+    ).inputs["Surface"].links[0]
+
     isolated_other = bpy.data.materials.new("Isolated Other Material")
     isolated_other.use_nodes = True
     stage["_isolate_surface"](
         original_material,
         original_principled.outputs["BSDF"],
         "ORIGINAL",
+        (preserved_dependency,),
     )
     preserved_link = original_output.inputs["Surface"].links[0]
     if (
@@ -168,6 +252,20 @@ def _main() -> None:
     ):
         raise AssertionError(
             "ORIGINAL diagnostic replaced the selected raw closure"
+        )
+    current_dependency_link = next(
+        node
+        for node in preserved_dependency_tree.nodes
+        if node.type == "OUTPUT_MATERIAL"
+    ).inputs["Surface"].links[0]
+    if (
+        current_dependency_link.from_node
+        != preserved_dependency_link.from_node
+        or current_dependency_link.from_socket
+        != preserved_dependency_link.from_socket
+    ):
+        raise AssertionError(
+            "ORIGINAL diagnostic replaced a preserved dependency closure"
         )
     if _surface_source(isolated_other.node_tree).type != "EMISSION":
         raise AssertionError(

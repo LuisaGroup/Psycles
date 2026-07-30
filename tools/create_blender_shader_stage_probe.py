@@ -10,12 +10,16 @@ By default, the selected value output is connected to an Emission closure
 while all other surface materials and the world emit black. ``--closure
 DIFFUSE --world PRESERVE`` instead keeps the original world and feeds the
 selected value into a Lambertian closure, which isolates BSDF and shadow
-transport after a value-stage probe has aligned. ``--closure ORIGINAL`` keeps
-the selected material's raw closure graph and replaces only the other
-materials with black emission, isolating one production material without
-baking it. The source file is never saved. This is intended only to locate the
-first divergent evaluation stage between Cycles and Psycles; production scene
-export continues to preserve the original closure graphs.
+transport after a value-stage probe has aligned. ``--closure SOURCE`` connects
+a selected raw closure socket directly to the material output. ``--closure
+ORIGINAL`` keeps the selected material's complete raw closure graph and
+replaces only the other materials with black emission, isolating one
+production material without baking it. Repeated ``--preserve-material``
+options keep additional raw closures, which is useful for adding one potential
+light-transport dependency at a time. The source file is never saved. This is
+intended only to locate the first divergent evaluation stage between Cycles
+and Psycles; production scene export continues to preserve the original
+closure graphs.
 """
 
 from __future__ import annotations
@@ -39,13 +43,41 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("socket")
     parser.add_argument(
         "--closure",
-        choices=("EMISSION", "DIFFUSE", "ORIGINAL"),
+        choices=("EMISSION", "DIFFUSE", "SOURCE", "ORIGINAL"),
         default="EMISSION",
     )
     parser.add_argument(
         "--world",
         choices=("BLACK", "PRESERVE"),
         default="BLACK",
+    )
+    parser.add_argument(
+        "--preserve-material",
+        action="append",
+        default=[],
+        help=(
+            "additional raw material closure to retain; repeatable and "
+            "valid only with --closure ORIGINAL"
+        ),
+    )
+    parser.add_argument(
+        "--disconnect-input",
+        action="append",
+        nargs=2,
+        default=[],
+        metavar=("NODE", "SOCKET"),
+        help=(
+            "disconnect one selected-material input while retaining its "
+            "authored default; repeatable"
+        ),
+    )
+    parser.add_argument(
+        "--disable-selected-shadow",
+        action="store_true",
+        help=(
+            "keep selected-material surfaces camera-visible but remove "
+            "their shadow-ray visibility"
+        ),
     )
     return parser.parse_args(argv)
 
@@ -108,6 +140,11 @@ def _replace_surface(
     for link in tuple(surface.links):
         tree.links.remove(link)
 
+    if closure == "SOURCE":
+        if source_socket is None:
+            raise ValueError("SOURCE closure requires a source socket")
+        tree.links.new(source_socket, surface)
+        return
     if closure == "EMISSION":
         diagnostic = tree.nodes.new("ShaderNodeEmission")
         color_input = diagnostic.inputs["Color"]
@@ -148,15 +185,56 @@ def _isolate_surface(
     selected_material: Any,
     source_socket: Any,
     closure: str,
+    preserved_materials: tuple[Any, ...] = (),
 ) -> None:
     for candidate in bpy.data.materials:
-        if closure == "ORIGINAL" and candidate == selected_material:
+        preserve_original = closure == "ORIGINAL" and (
+            candidate == selected_material
+            or any(
+                candidate == preserved
+                for preserved in preserved_materials
+            )
+        )
+        if preserve_original:
             continue
         _replace_surface(
             candidate,
             source_socket if candidate == selected_material else None,
-            "EMISSION" if closure == "ORIGINAL" else closure,
+            (
+                "EMISSION"
+                if closure in {"ORIGINAL", "SOURCE"}
+                and candidate != selected_material
+                else closure
+            ),
         )
+
+
+def _disconnect_inputs(
+    material: Any,
+    inputs: list[list[str]],
+) -> None:
+    tree = material.node_tree
+    for node_name, socket_name in inputs:
+        node = tree.nodes.get(node_name)
+        if node is None:
+            raise KeyError(
+                f"node {node_name!r} was not found in "
+                f"material {material.name!r}"
+            )
+        socket = _socket_by_name_or_identifier(
+            node.inputs, socket_name
+        )
+        for link in tuple(socket.links):
+            tree.links.remove(link)
+
+
+def _disable_material_shadows(material: Any) -> None:
+    for obj in bpy.data.objects:
+        if any(
+            slot.material == material
+            for slot in obj.material_slots
+        ):
+            obj.visible_shadow = False
 
 
 def _main() -> None:
@@ -175,8 +253,24 @@ def _main() -> None:
     source = _socket_by_name_or_identifier(
         node.outputs, arguments.socket
     )
+    _disconnect_inputs(material, arguments.disconnect_input)
+    if arguments.disable_selected_shadow:
+        _disable_material_shadows(material)
 
-    _isolate_surface(material, source, arguments.closure)
+    if arguments.preserve_material and arguments.closure != "ORIGINAL":
+        raise ValueError(
+            "--preserve-material requires --closure ORIGINAL"
+        )
+    preserved_materials = tuple(
+        bpy.data.materials[name]
+        for name in arguments.preserve_material
+    )
+    _isolate_surface(
+        material,
+        source,
+        arguments.closure,
+        preserved_materials,
+    )
     if arguments.world == "BLACK":
         _black_world()
 
@@ -187,6 +281,8 @@ def _main() -> None:
         "Created shader-stage probe "
         f"{arguments.material!r}/{arguments.node!r}/"
         f"{arguments.socket!r} through {arguments.closure}, "
+        f"preserved={[item.name for item in preserved_materials]}, "
+        f"selected_shadow={not arguments.disable_selected_shadow}, "
         f"world={arguments.world}: {output}"
     )
 
