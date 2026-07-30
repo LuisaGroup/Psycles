@@ -214,6 +214,11 @@ the same source scene, final-render export, seed, extent, and fixed sample
 count. Fallback is always retained in the report, including when it is slower
 than the GPU paths.
 
+The first completed five-renderer Lone Monk result, including cold-stage
+timings, all numeric reports, original-resolution inspection, and committed
+triptychs, is in
+[docs/validation/2026-07-30/lone-monk-five-way](docs/validation/2026-07-30/lone-monk-five-way/).
+
 The focused probe command was:
 
 ```bash

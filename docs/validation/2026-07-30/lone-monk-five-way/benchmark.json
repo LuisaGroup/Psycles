@@ -1,0 +1,264 @@
+{
+  "commands": {
+    "cycles_cpu": {
+      "command": [
+        "/home/mike/Projects/blender-install-4fe17ef6/blender",
+        "/home/mike/Downloads/lone-monk_cycles_and_exposure-node_demo.blend",
+        "--background",
+        "--python-exit-code",
+        "1",
+        "--python",
+        "/home/mike/Projects/Psycles/tools/render_cycles_golden.py",
+        "--",
+        "/var/tmp/psycles-lone-monk-five-way-20260730/cycles/cpu.exr",
+        "640",
+        "480",
+        "64",
+        "--cycles-device",
+        "CPU",
+        "--device-name",
+        "Ryzen 9 9950X3D"
+      ],
+      "log": "/var/tmp/psycles-lone-monk-five-way-20260730/logs/cycles-cpu.log",
+      "returncode": 0,
+      "wall_seconds": 5.693281612941064
+    },
+    "cycles_hip": {
+      "command": [
+        "/home/mike/Projects/blender-install-4fe17ef6/blender",
+        "/home/mike/Downloads/lone-monk_cycles_and_exposure-node_demo.blend",
+        "--background",
+        "--python-exit-code",
+        "1",
+        "--python",
+        "/home/mike/Projects/Psycles/tools/render_cycles_golden.py",
+        "--",
+        "/var/tmp/psycles-lone-monk-five-way-20260730/cycles/hip.exr",
+        "640",
+        "480",
+        "64",
+        "--cycles-device",
+        "HIP",
+        "--device-name",
+        "Radeon RX 9070 XT"
+      ],
+      "log": "/var/tmp/psycles-lone-monk-five-way-20260730/logs/cycles-hip.log",
+      "returncode": 0,
+      "wall_seconds": 2.4040399099467322
+    },
+    "export": {
+      "command": [
+        "/home/mike/Projects/blender-install-4fe17ef6/blender",
+        "/home/mike/Downloads/lone-monk_cycles_and_exposure-node_demo.blend",
+        "--background",
+        "--python-exit-code",
+        "1",
+        "--python",
+        "/home/mike/Projects/Psycles/tools/export_psycles_scene.py",
+        "--",
+        "/var/tmp/psycles-lone-monk-five-way-20260730/export"
+      ],
+      "log": "/var/tmp/psycles-lone-monk-five-way-20260730/logs/export.log",
+      "returncode": 0,
+      "wall_seconds": 25.38788520602975
+    },
+    "psycles_fallback": {
+      "command": [
+        "/home/mike/Projects/Psycles/build/bin/psycles_render_blender_scene",
+        "/var/tmp/psycles-lone-monk-five-way-20260730/export",
+        "/var/tmp/psycles-lone-monk-five-way-20260730/psycles/fallback.ppm",
+        "fallback",
+        "640",
+        "480",
+        "64",
+        "8"
+      ],
+      "log": "/var/tmp/psycles-lone-monk-five-way-20260730/logs/psycles-fallback.log",
+      "returncode": 0,
+      "wall_seconds": 23.811051721917465
+    },
+    "psycles_hip": {
+      "command": [
+        "/home/mike/Projects/Psycles/build/bin/psycles_render_blender_scene",
+        "/var/tmp/psycles-lone-monk-five-way-20260730/export",
+        "/var/tmp/psycles-lone-monk-five-way-20260730/psycles/hip.ppm",
+        "hip",
+        "640",
+        "480",
+        "64",
+        "8"
+      ],
+      "log": "/var/tmp/psycles-lone-monk-five-way-20260730/logs/psycles-hip.log",
+      "returncode": 0,
+      "wall_seconds": 295.5068531780271
+    },
+    "psycles_vk": {
+      "command": [
+        "/home/mike/Projects/Psycles/build/bin/psycles_render_blender_scene",
+        "/var/tmp/psycles-lone-monk-five-way-20260730/export",
+        "/var/tmp/psycles-lone-monk-five-way-20260730/psycles/vk.ppm",
+        "vk",
+        "640",
+        "480",
+        "64",
+        "8"
+      ],
+      "log": "/var/tmp/psycles-lone-monk-five-way-20260730/logs/psycles-vk.log",
+      "returncode": 0,
+      "wall_seconds": 78.4697372619994
+    }
+  },
+  "comparisons": {
+    "cycles-cpu-vs-cycles-hip": {
+      "actual": "/var/tmp/psycles-lone-monk-five-way-20260730/cycles/cpu.exr",
+      "process_wall_seconds": 2.198740912019275,
+      "reference": "/var/tmp/psycles-lone-monk-five-way-20260730/cycles/hip.exr",
+      "report": "/var/tmp/psycles-lone-monk-five-way-20260730/comparisons/cycles-cpu-vs-cycles-hip/report.json"
+    },
+    "psycles-fallback-vs-cycles-cpu": {
+      "actual": "/var/tmp/psycles-lone-monk-five-way-20260730/psycles/fallback.exr",
+      "process_wall_seconds": 2.0445921680657193,
+      "reference": "/var/tmp/psycles-lone-monk-five-way-20260730/cycles/cpu.exr",
+      "report": "/var/tmp/psycles-lone-monk-five-way-20260730/comparisons/psycles-fallback-vs-cycles-cpu/report.json"
+    },
+    "psycles-fallback-vs-cycles-hip": {
+      "actual": "/var/tmp/psycles-lone-monk-five-way-20260730/psycles/fallback.exr",
+      "process_wall_seconds": 2.0222338809398934,
+      "reference": "/var/tmp/psycles-lone-monk-five-way-20260730/cycles/hip.exr",
+      "report": "/var/tmp/psycles-lone-monk-five-way-20260730/comparisons/psycles-fallback-vs-cycles-hip/report.json"
+    },
+    "psycles-hip-vs-cycles-cpu": {
+      "actual": "/var/tmp/psycles-lone-monk-five-way-20260730/psycles/hip.exr",
+      "process_wall_seconds": 1.9955818690359592,
+      "reference": "/var/tmp/psycles-lone-monk-five-way-20260730/cycles/cpu.exr",
+      "report": "/var/tmp/psycles-lone-monk-five-way-20260730/comparisons/psycles-hip-vs-cycles-cpu/report.json"
+    },
+    "psycles-hip-vs-cycles-hip": {
+      "actual": "/var/tmp/psycles-lone-monk-five-way-20260730/psycles/hip.exr",
+      "process_wall_seconds": 2.0075652330415323,
+      "reference": "/var/tmp/psycles-lone-monk-five-way-20260730/cycles/hip.exr",
+      "report": "/var/tmp/psycles-lone-monk-five-way-20260730/comparisons/psycles-hip-vs-cycles-hip/report.json"
+    },
+    "psycles-vk-vs-cycles-cpu": {
+      "actual": "/var/tmp/psycles-lone-monk-five-way-20260730/psycles/vk.exr",
+      "process_wall_seconds": 1.9971524550346658,
+      "reference": "/var/tmp/psycles-lone-monk-five-way-20260730/cycles/cpu.exr",
+      "report": "/var/tmp/psycles-lone-monk-five-way-20260730/comparisons/psycles-vk-vs-cycles-cpu/report.json"
+    },
+    "psycles-vk-vs-cycles-hip": {
+      "actual": "/var/tmp/psycles-lone-monk-five-way-20260730/psycles/vk.exr",
+      "process_wall_seconds": 2.004254019004293,
+      "reference": "/var/tmp/psycles-lone-monk-five-way-20260730/cycles/hip.exr",
+      "report": "/var/tmp/psycles-lone-monk-five-way-20260730/comparisons/psycles-vk-vs-cycles-hip/report.json"
+    }
+  },
+  "compiler_tmp": "/var/tmp/psycles-compiler-tmp",
+  "matrix": {
+    "cycles": [
+      "cpu",
+      "hip"
+    ],
+    "psycles": [
+      "fallback",
+      "hip",
+      "vk"
+    ]
+  },
+  "relative_performance": {
+    "cycles_cpu": {
+      "slowdown_vs_cycles_hip": 2.705570505142906,
+      "speedup_over_cycles_hip": 0.36960781398937553
+    },
+    "fallback": {
+      "slowdown_vs_cycles_cpu": 1.0518728254344967,
+      "slowdown_vs_cycles_hip": 2.845916091656907,
+      "speedup_over_cycles_cpu": 0.9506852689981133,
+      "speedup_over_cycles_hip": 0.3513807040662941
+    },
+    "hip": {
+      "slowdown_vs_cycles_cpu": 0.4198891317784018,
+      "slowdown_vs_cycles_hip": 1.1360396503697068,
+      "speedup_over_cycles_cpu": 2.3815810515613776,
+      "speedup_over_cycles_hip": 0.880250966306119
+    },
+    "vk": {
+      "slowdown_vs_cycles_cpu": 0.3775415981184116,
+      "slowdown_vs_cycles_hip": 1.0214654123336908,
+      "speedup_over_cycles_cpu": 2.648714750861338,
+      "speedup_over_cycles_hip": 0.9789856689472726
+    }
+  },
+  "renderers": {
+    "cycles": {
+      "cpu": {
+        "device": [
+          {
+            "id": "CPU",
+            "name": "AMD Ryzen 9 9950X3D 16-Core Processor",
+            "type": "CPU"
+          }
+        ],
+        "metadata": "/var/tmp/psycles-lone-monk-five-way-20260730/cycles/cpu.json",
+        "output": "/var/tmp/psycles-lone-monk-five-way-20260730/cycles/cpu.exr",
+        "process_wall_seconds": 5.693281612941064,
+        "render_seconds": 5.211637630942278,
+        "sha256": "d9cb4d4e41b147d0de337694539b9ba83151d91dc786f3f53d30d07e59ece275"
+      },
+      "hip": {
+        "device": [
+          {
+            "id": "HIP_AMD Radeon RX 9070 XT_0000:03:00",
+            "name": "AMD Radeon RX 9070 XT",
+            "type": "HIP"
+          }
+        ],
+        "metadata": "/var/tmp/psycles-lone-monk-five-way-20260730/cycles/hip.json",
+        "output": "/var/tmp/psycles-lone-monk-five-way-20260730/cycles/hip.exr",
+        "process_wall_seconds": 2.4040399099467322,
+        "render_seconds": 1.9262619920773432,
+        "sha256": "4a9c4519a97f76ab631a7293c9c032785d2cb805505baaae88674c651963f768"
+      }
+    },
+    "psycles": {
+      "fallback": {
+        "output": "/var/tmp/psycles-lone-monk-five-way-20260730/psycles/fallback.exr",
+        "process_wall_seconds": 23.811051721917465,
+        "render_seconds": 5.48198,
+        "scene_compile_seconds": 1.25783,
+        "sha256": "9282f282fadb919a83b001ff96a8f3c64d13edf024aeeab8d5c56ded0cdf7363",
+        "shader_jit_seconds": 16.6689
+      },
+      "hip": {
+        "output": "/var/tmp/psycles-lone-monk-five-way-20260730/psycles/hip.exr",
+        "process_wall_seconds": 295.5068531780271,
+        "render_seconds": 2.18831,
+        "scene_compile_seconds": 3.2134,
+        "sha256": "34af0cc1ebe2265b14f24ec99a1fafc8adb533ad282a40487e67db6a1e0eb2be",
+        "shader_jit_seconds": 289.628
+      },
+      "vk": {
+        "output": "/var/tmp/psycles-lone-monk-five-way-20260730/psycles/vk.exr",
+        "process_wall_seconds": 78.4697372619994,
+        "render_seconds": 1.96761,
+        "scene_compile_seconds": 1.05041,
+        "sha256": "70010c88637ed463a87fe96d2376e93f6dfc50dba062547d3adc3bb2fa4d91fd",
+        "shader_jit_seconds": 75.0263
+      }
+    }
+  },
+  "scene": {
+    "blend": "/home/mike/Downloads/lone-monk_cycles_and_exposure-node_demo.blend",
+    "bundle": "/var/tmp/psycles-lone-monk-five-way-20260730/export",
+    "geometry_bin_sha256": "251f48411c84c84028703d41f8b1fd71d201eff2acd9a2c337dc4cea097fce2d",
+    "scene_json_sha256": "6fff503e4c7dd66ee157469f081c283bd58db0a0fbfe831ebc0318607d35f98b",
+    "sha256": "4250d4205d8d01cefd98c15e81021d6dead540b2923797378bf7b32e96e8b8f7"
+  },
+  "schema": "psycles.scene-benchmark.v1",
+  "settings": {
+    "height": 480,
+    "max_samples_per_dispatch": 8,
+    "samples": 64,
+    "width": 640
+  },
+  "status": "complete"
+}
