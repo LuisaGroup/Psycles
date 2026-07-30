@@ -6,6 +6,8 @@
 
 #include <cstdint>
 
+#include <psycles/luisa/cycles_sample_mapping.h>
+
 #include <luisa/dsl/sugar.h>
 
 namespace psycles::luisa_backend::camera_sampling {
@@ -53,22 +55,7 @@ output_filter_y(luisa::compute::Float cycles_filter_y) noexcept {
 // depth-of-field silhouettes use the same sample placement as Cycles.
 [[nodiscard]] inline luisa::compute::Float2
 sample_uniform_disk(luisa::compute::Float2 random) noexcept {
-    const auto a = 2.0f * random.x - 1.0f;
-    const auto b = 2.0f * random.y - 1.0f;
-    const auto x_major = a * a > b * b;
-    const auto safe_a = luisa::compute::select(1.0f, a, a != 0.0f);
-    const auto safe_b = luisa::compute::select(1.0f, b, b != 0.0f);
-    const auto radius = luisa::compute::select(b, a, x_major);
-    const auto angle =
-        luisa::compute::select(0.5f * pi - 0.25f * pi * (a / safe_b),
-                               0.25f * pi * (b / safe_a),
-                               x_major);
-    const auto mapped =
-        luisa::compute::make_float2(luisa::compute::cos(angle),
-                                    luisa::compute::sin(angle)) *
-        radius;
-    return luisa::compute::select(
-        mapped, luisa::compute::make_float2(0.0f), (a == 0.0f) & (b == 0.0f));
+    return cycles_sample_mapping::sample_uniform_disk(random);
 }
 
 // Uniformly sample a regular polygon by selecting a corner triangle and

@@ -16,6 +16,7 @@
 #include <psycles/luisa/cycles_bsdf_tables.h>
 #include <psycles/luisa/cycles_color_nodes.h>
 #include <psycles/luisa/cycles_noise.h>
+#include <psycles/luisa/cycles_sample_mapping.h>
 #include <psycles/luisa/surface.h>
 
 #include <luisa/core/stl/vector.h>
@@ -1057,22 +1058,9 @@ private:
     [[nodiscard]] static Float3 sample_cosine_hemisphere(
         Float3 normal,
         Float2 random) noexcept {
-        auto radius = sqrt(clamp(random.x, 0.0f, 1.0f));
-        auto phi = two_pi * random.y;
-        auto x = radius * cos(phi);
-        auto y = radius * sin(phi);
-        auto z = sqrt(max(1.0f - radius * radius, 0.0f));
-        auto helper = select(
-            make_float3(1.0f, 0.0f, 0.0f),
-            make_float3(0.0f, 0.0f, 1.0f),
-            abs(normal.z) < 0.999f);
-        auto tangent = safe_normalize(
-            cross(helper, normal),
-            make_float3(1.0f, 0.0f, 0.0f));
-        auto bitangent = cross(normal, tangent);
-        return safe_normalize(
-            tangent * x + bitangent * y + normal * z,
-            normal);
+        return cycles_sample_mapping::
+            sample_cosine_hemisphere(normal, random)
+                .direction;
     }
 
     [[nodiscard]] static Float3 rotate_euler(

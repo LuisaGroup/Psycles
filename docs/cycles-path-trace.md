@@ -167,3 +167,22 @@ a zero-radius point has no competing forward-BSDF measure. The fallback, HIP,
 and Vulkan device regression passes, the three Luisa path traces agree, and
 all newly populated point-light trace fields pass against Cycles CPU. The
 strict comparison now reports 24 rather than 30 outstanding gates.
+
+The next gate identified a deterministic BSDF sample-mapping mismatch.
+Psycles used a polar disk map and an arbitrary valid frame around the shading
+normal. Those choices preserve cosine-weighted density, but they do not
+preserve the mapping from a Cycles RNG pair to its world-space direction.
+Camera aperture and diffuse closure sampling now share one Luisa DSL
+implementation of the Cycles concentric disk map and fixed algebraic
+orthonormal basis. The equality branch, disk-boundary branch, and absence of a
+final direction renormalization are treated as part of the definition rather
+than implementation details.
+
+The device regression locks the first-bounce oracle sample
+`random=(0.82080835, 0.67639267)` to
+`wo=(0.601930976, -0.222150967, 0.767025411)` and
+`pdf=0.244151756`; it passes on fallback, HIP, and Vulkan. The three fresh
+Luisa path records still compare with zero failures. The strict Cycles
+comparison remains at 24 outstanding gates because closure/BSDF output slots
+are intentionally not marked written until the raw closure inventory and
+lobe-selection trace are connected.
