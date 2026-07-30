@@ -1099,8 +1099,9 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                             .sobol_sequence_size,
                         sample_index,
                         rng_hash,
-                        cycles_sampler::path_dimension(
-                            path_step,
+                        cycles_sampler::
+                            path_state_dimension(
+                            cycles_rng_offset,
                             tabulated_sobol::
                                 terminate_dimension));
                 const auto light_sample =
@@ -1110,8 +1111,9 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                             .sobol_sequence_size,
                         sample_index,
                         rng_hash,
-                        cycles_sampler::path_dimension(
-                            path_step,
+                        cycles_sampler::
+                            path_state_dimension(
+                            cycles_rng_offset,
                             tabulated_sobol::
                                 light_dimension));
                 Var<LightDistributionGpu> selected_light =
@@ -1124,8 +1126,9 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                             .sobol_sequence_size,
                         sample_index,
                         rng_hash,
-                        cycles_sampler::path_dimension(
-                            path_step,
+                        cycles_sampler::
+                            path_state_dimension(
+                            cycles_rng_offset,
                             tabulated_sobol::
                                 light_terminate_dimension));
                 const auto bsdf_sample =
@@ -1135,8 +1138,9 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                             .sobol_sequence_size,
                         sample_index,
                         rng_hash,
-                        cycles_sampler::path_dimension(
-                            path_step,
+                        cycles_sampler::
+                            path_state_dimension(
+                            cycles_rng_offset,
                             tabulated_sobol::
                                 surface_bsdf_dimension));
                 // Match Cycles' RaySelfPrimitives contract: the previous
