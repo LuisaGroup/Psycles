@@ -1,0 +1,102 @@
+{
+  "actual_label": "Psycles-Vulkan",
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.Depth.Z",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.Diffuse Direct.R",
+    "ViewLayer.Diffuse Direct.G",
+    "ViewLayer.Diffuse Direct.B",
+    "ViewLayer.Diffuse Indirect.R",
+    "ViewLayer.Diffuse Indirect.G",
+    "ViewLayer.Diffuse Indirect.B",
+    "ViewLayer.Diffuse Color.R",
+    "ViewLayer.Diffuse Color.G",
+    "ViewLayer.Diffuse Color.B",
+    "ViewLayer.Glossy Direct.R",
+    "ViewLayer.Glossy Direct.G",
+    "ViewLayer.Glossy Direct.B",
+    "ViewLayer.Glossy Indirect.R",
+    "ViewLayer.Glossy Indirect.G",
+    "ViewLayer.Glossy Indirect.B",
+    "ViewLayer.Glossy Color.R",
+    "ViewLayer.Glossy Color.G",
+    "ViewLayer.Glossy Color.B",
+    "ViewLayer.Transmission Direct.R",
+    "ViewLayer.Transmission Direct.G",
+    "ViewLayer.Transmission Direct.B",
+    "ViewLayer.Transmission Indirect.R",
+    "ViewLayer.Transmission Indirect.G",
+    "ViewLayer.Transmission Indirect.B",
+    "ViewLayer.Transmission Color.R",
+    "ViewLayer.Transmission Color.G",
+    "ViewLayer.Transmission Color.B",
+    "ViewLayer.Emission.R",
+    "ViewLayer.Emission.G",
+    "ViewLayer.Emission.B",
+    "ViewLayer.Environment.R",
+    "ViewLayer.Environment.G",
+    "ViewLayer.Environment.B",
+    "ViewLayer.Debug Sample Count.X"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        0.9999738931655884,
+        0.9999738335609436,
+        0.9999738931655884
+      ],
+      "cycles": "/var/tmp/psycles-camera-refactor/fallback/camera_dof_disk/camera_dof_disk-cycles.exr",
+      "cycles_channel_mean": [
+        0.025883840397000313,
+        0.010572289116680622,
+        0.0047392891719937325
+      ],
+      "cycles_luminance_mean": 0.013406377285718918,
+      "cycles_rms": 0.060797058045864105,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999738797976073,
+      "maximum_absolute_error": 0.0027734339237213135,
+      "mean_absolute_error": 3.592173527522391e-07,
+      "orientation_rmse": {
+        "flip_x": 0.011598274111747742,
+        "flip_xy": 0.07142449915409088,
+        "flip_y": 0.07130330055952072,
+        "identity": 2.741149546636734e-05
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-camera-refactor/vk/camera_dof_disk/final-256-combined.pfm",
+      "psycles_channel_mean": [
+        0.025883164256811142,
+        0.010572012513875961,
+        0.004739165306091309
+      ],
+      "psycles_luminance_mean": 0.013406027108430862,
+      "psycles_rms": 0.06079567849227683,
+      "relative_rmse": 0.00045086878127702576,
+      "rmse": 2.741149546636734e-05,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.8977040907701004,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-camera-refactor/vk/camera_dof_disk/final-256-triptychs/combined.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    }
+  },
+  "reference_label": "Cycles",
+  "schema": "psycles.cycles-differential.v1"
+}
