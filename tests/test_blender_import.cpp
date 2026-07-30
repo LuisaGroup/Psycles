@@ -1,4 +1,5 @@
 #include <psycles/adapter/blender_scene.h>
+#include <psycles/compiler/core_nodes.h>
 
 #include <chrono>
 #include <cmath>
@@ -78,7 +79,175 @@ void test_integrator_settings_round_trip() {
       "cycles_sync": {
         "shader_index": 6
       },
-      "node_tree": null
+      "node_tree": {
+        "name": "Raw Volume Material",
+        "surface_root": null,
+        "volume_root": {
+          "node": "Mix Volume",
+          "socket": "Shader"
+        },
+        "displacement_root": null,
+        "links": [
+          {
+            "from_node": "Absorption",
+            "from_socket": "Volume",
+            "to_node": "Mix Volume",
+            "to_socket": "Shader"
+          },
+          {
+            "from_node": "Scatter",
+            "from_socket": "Volume",
+            "to_node": "Mix Volume",
+            "to_socket": "Shader_001"
+          }
+        ],
+        "nodes": [
+          {
+            "name": "Absorption",
+            "label": "",
+            "type": "VOLUME_ABSORPTION",
+            "bl_idname": "ShaderNodeVolumeAbsorption",
+            "inputs": [
+              {
+                "identifier": "Color",
+                "name": "Color",
+                "type": "NodeSocketColor",
+                "linked": false,
+                "default": [0.2, 0.4, 0.6, 1.0]
+              },
+              {
+                "identifier": "Density",
+                "name": "Density",
+                "type": "NodeSocketFloat",
+                "linked": false,
+                "default": 0.75
+              }
+            ],
+            "outputs": [
+              {
+                "identifier": "Volume",
+                "name": "Volume",
+                "type": "NodeSocketShader",
+                "linked": true
+              }
+            ],
+            "properties": {},
+            "special": {},
+            "image": null,
+            "node_tree": null
+          },
+          {
+            "name": "Scatter",
+            "label": "",
+            "type": "VOLUME_SCATTER",
+            "bl_idname": "ShaderNodeVolumeScatter",
+            "inputs": [
+              {
+                "identifier": "Color",
+                "name": "Color",
+                "type": "NodeSocketColor",
+                "linked": false,
+                "default": [0.8, 0.7, 0.6, 1.0]
+              },
+              {
+                "identifier": "Density",
+                "name": "Density",
+                "type": "NodeSocketFloat",
+                "linked": false,
+                "default": 0.5
+              },
+              {
+                "identifier": "Anisotropy",
+                "name": "Anisotropy",
+                "type": "NodeSocketFloat",
+                "linked": false,
+                "default": 0.25
+              },
+              {
+                "identifier": "IOR",
+                "name": "IOR",
+                "type": "NodeSocketFloat",
+                "linked": false,
+                "default": 1.33
+              },
+              {
+                "identifier": "Backscatter",
+                "name": "Backscatter",
+                "type": "NodeSocketFloat",
+                "linked": false,
+                "default": 0.1
+              },
+              {
+                "identifier": "Alpha",
+                "name": "Alpha",
+                "type": "NodeSocketFloat",
+                "linked": false,
+                "default": 0.5
+              },
+              {
+                "identifier": "Diameter",
+                "name": "Diameter",
+                "type": "NodeSocketFloat",
+                "linked": false,
+                "default": 20.0
+              }
+            ],
+            "outputs": [
+              {
+                "identifier": "Volume",
+                "name": "Volume",
+                "type": "NodeSocketShader",
+                "linked": true
+              }
+            ],
+            "properties": {
+              "phase": "DRAINE"
+            },
+            "special": {},
+            "image": null,
+            "node_tree": null
+          },
+          {
+            "name": "Mix Volume",
+            "label": "",
+            "type": "MIX_SHADER",
+            "bl_idname": "ShaderNodeMixShader",
+            "inputs": [
+              {
+                "identifier": "Fac",
+                "name": "Fac",
+                "type": "NodeSocketFloat",
+                "linked": false,
+                "default": 0.375
+              },
+              {
+                "identifier": "Shader",
+                "name": "Shader",
+                "type": "NodeSocketShader",
+                "linked": true
+              },
+              {
+                "identifier": "Shader_001",
+                "name": "Shader",
+                "type": "NodeSocketShader",
+                "linked": true
+              }
+            ],
+            "outputs": [
+              {
+                "identifier": "Shader",
+                "name": "Shader",
+                "type": "NodeSocketShader",
+                "linked": true
+              }
+            ],
+            "properties": {},
+            "special": {},
+            "image": null,
+            "node_tree": null
+          }
+        ]
+      }
     }
   ],
   "geometries": [],
@@ -390,6 +559,31 @@ void test_integrator_settings_round_trip() {
             imported_material->second.cycles_shader_index ==
                 std::optional<std::uint32_t>{6u},
         "material emission-sampling policy did not round-trip");
+    expect(
+        imported_material->second.shader.root(
+            psycles::contract::ShaderDomain::volume)
+            .has_value(),
+        "raw Blender Volume root was not retained");
+    bool has_absorption = false;
+    bool has_scatter = false;
+    bool has_volume_mix = false;
+    for (const auto &node :
+         imported_material->second.shader.nodes()) {
+        has_absorption |=
+            node.type ==
+            psycles::compiler::node_type::
+                volume_absorption;
+        has_scatter |=
+            node.type ==
+            psycles::compiler::node_type::volume_scatter;
+        has_volume_mix |=
+            node.type ==
+            psycles::compiler::node_type::mix_volume;
+    }
+    expect(
+        has_absorption && has_scatter && has_volume_mix,
+        "Blender Volume closure tree was flattened or typed as a "
+        "surface closure");
     const auto imported_light =
         imported.scene->lights.find(
             psycles::contract::LightId{1u});

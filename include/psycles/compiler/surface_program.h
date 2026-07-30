@@ -30,10 +30,12 @@ struct ProgramId {
 struct ParameterTag;
 struct ValueExpressionTag;
 struct ClosureExpressionTag;
+struct VolumeExpressionTag;
 
 using ParameterId = ProgramId<ParameterTag>;
 using ValueExpressionId = ProgramId<ValueExpressionTag>;
 using ClosureExpressionId = ProgramId<ClosureExpressionTag>;
+using VolumeExpressionId = ProgramId<VolumeExpressionTag>;
 
 struct ParameterDesc {
     ParameterId id;
@@ -306,6 +308,53 @@ struct ClosureInstruction {
     ClosureExpressionId b;
 };
 
+enum class VolumePhase : std::uint8_t {
+    henyey_greenstein,
+    fournier_forand,
+    draine,
+    rayleigh,
+    mie
+};
+
+enum class VolumeOperation : std::uint8_t {
+    null_volume,
+    absorption,
+    scatter,
+    coefficients,
+    principled,
+    add,
+    mix
+};
+
+// Volume closures stay as a tree for the same reason as surface closures:
+// Add/Mix weights are shading-point expressions and phase closures must
+// remain individually selectable. Coefficients are evaluated in Luisa DSL;
+// this IR never stores host-evaluated extinction or scattering.
+struct VolumeInstruction {
+    VolumeOperation operation{VolumeOperation::null_volume};
+    contract::NodeId source_node;
+    ValueExpressionId color;
+    ValueExpressionId density;
+    ValueExpressionId anisotropy;
+    ValueExpressionId ior;
+    ValueExpressionId backscatter;
+    ValueExpressionId alpha;
+    ValueExpressionId diameter;
+    ValueExpressionId scatter_coefficients;
+    ValueExpressionId absorption_coefficients;
+    ValueExpressionId absorption_color;
+    ValueExpressionId emission_coefficients;
+    ValueExpressionId emission_strength;
+    ValueExpressionId emission_color;
+    ValueExpressionId blackbody_intensity;
+    ValueExpressionId blackbody_tint;
+    ValueExpressionId temperature;
+    ValueExpressionId factor;
+    VolumeExpressionId a;
+    VolumeExpressionId b;
+    VolumePhase phase{VolumePhase::henyey_greenstein};
+};
+
 class SurfaceProgram {
 
 private:
@@ -313,7 +362,9 @@ private:
     std::vector<ParameterDesc> _parameters;
     std::vector<ValueInstruction> _value_instructions;
     std::vector<ClosureInstruction> _closure_instructions;
+    std::vector<VolumeInstruction> _volume_instructions;
     ClosureExpressionId _root;
+    VolumeExpressionId _volume_root;
 
 public:
     SurfaceProgram(
@@ -321,7 +372,9 @@ public:
         std::vector<ParameterDesc> parameters,
         std::vector<ValueInstruction> value_instructions,
         std::vector<ClosureInstruction> closure_instructions,
-        ClosureExpressionId root) noexcept;
+        ClosureExpressionId root,
+        std::vector<VolumeInstruction> volume_instructions = {},
+        VolumeExpressionId volume_root = {}) noexcept;
 
     [[nodiscard]] std::uint64_t structure_signature() const noexcept {
         return _structure_signature;
@@ -337,8 +390,15 @@ public:
     closure_instructions() const noexcept {
         return _closure_instructions;
     }
+    [[nodiscard]] const std::vector<VolumeInstruction> &
+    volume_instructions() const noexcept {
+        return _volume_instructions;
+    }
     [[nodiscard]] ClosureExpressionId root() const noexcept {
         return _root;
+    }
+    [[nodiscard]] VolumeExpressionId volume_root() const noexcept {
+        return _volume_root;
     }
 };
 

@@ -66,11 +66,12 @@ how parameters are packed or cached.
 ### Surface program
 
 `compiler::SurfaceProgram` is a typed, immutable semantic program with one
-topologically ordered value instruction stream and a separate closure tree.
+topologically ordered value instruction stream plus separate surface- and
+volume-closure trees.
 The unified stream is required for cross-type dependencies such as
 texture-color to scalar Math to Principled roughness, and for explicit Cycles
-socket conversions. Closure composition remains a tree; there is no fixed-size
-`ShaderClosure[]`.
+socket conversions. Closure composition remains a tree in both domains; there
+is no fixed-size `ShaderClosure[]`.
 
 Every unlinked editable socket becomes a typed `ParameterDesc`. A
 `SurfaceParameterBlock` can therefore be regenerated from a new shader graph
@@ -96,6 +97,7 @@ surface tag and consume a uniform semantic protocol:
 - BSDF evaluation and sampling;
 - emission;
 - visibility opacity;
+- volume extinction, scattering, and emission coefficients;
 - AOV properties;
 - static capability metadata.
 
@@ -114,6 +116,14 @@ parameters, textures, attributes, and surface differentials from
 `ShaderServices`. Implementations visible in a complex scene remain
 unverified until focused Cycles probes pass; the authoritative status is
 reported by `tools/check_cycles_shader_node_coverage.py`.
+
+`ShaderServices::attribute` returns both the value and an explicit presence
+bit. This is required for volume grids: an existing density voxel whose value
+is zero is semantically different from a missing `density` attribute, for
+which Cycles retains the node's scalar density. Volume coefficient evaluation
+also receives an explicit context that carries object-density scaling and
+whether emission is observable; shadow and extinction-only evaluations never
+infer that context from unrelated surface flags.
 
 ### Scene
 

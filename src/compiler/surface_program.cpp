@@ -19,7 +19,10 @@ struct OutputKey {
 };
 
 using LoweredOutput =
-    std::variant<ValueExpressionId, ClosureExpressionId>;
+    std::variant<
+        ValueExpressionId,
+        ClosureExpressionId,
+        VolumeExpressionId>;
 
 [[nodiscard]] const contract::InputBinding *find_input(
     const contract::ShaderNode &node,
@@ -69,6 +72,25 @@ using LoweredOutput =
         return fallback;
     }
     return std::get<bool>(value->value);
+}
+
+[[nodiscard]] VolumePhase volume_phase(
+    const contract::ShaderNode &node) {
+    const auto phase =
+        property_string(node, "Phase", "HENYEY_GREENSTEIN");
+    if (phase == "FOURNIER_FORAND") {
+        return VolumePhase::fournier_forand;
+    }
+    if (phase == "DRAINE") {
+        return VolumePhase::draine;
+    }
+    if (phase == "RAYLEIGH") {
+        return VolumePhase::rayleigh;
+    }
+    if (phase == "MIE") {
+        return VolumePhase::mie;
+    }
+    return VolumePhase::henyey_greenstein;
 }
 
 [[nodiscard]] float property_float(
@@ -415,6 +437,7 @@ private:
     std::vector<ParameterDesc> _parameters;
     std::vector<ValueInstruction> _value_instructions;
     std::vector<ClosureInstruction> _closure_instructions;
+    std::vector<VolumeInstruction> _volume_instructions;
     std::map<OutputKey, LoweredOutput> _outputs;
     std::uint32_t _nishita_count{};
 
@@ -459,6 +482,16 @@ private:
         auto id = ClosureExpressionId{
             static_cast<std::uint32_t>(_closure_instructions.size())};
         _closure_instructions.emplace_back(std::move(instruction));
+        return id;
+    }
+
+    [[nodiscard]] VolumeExpressionId append(
+        VolumeInstruction instruction) {
+        auto id = VolumeExpressionId{
+            static_cast<std::uint32_t>(
+                _volume_instructions.size())};
+        _volume_instructions.emplace_back(
+            std::move(instruction));
         return id;
     }
 
@@ -543,6 +576,24 @@ private:
             return std::nullopt;
         }
         return source_output<ClosureExpressionId>(
+            node, socket, *binding);
+    }
+
+    [[nodiscard]] std::optional<VolumeExpressionId>
+    lower_volume_input(
+        const contract::ShaderNode &node,
+        std::string_view socket) {
+        const auto *binding = find_input(node, socket);
+        if (binding == nullptr || !binding->source) {
+            diagnose(
+                SurfaceProgramDiagnosticCode::missing_input,
+                node_prefix(node.id) + "volume input '" +
+                    std::string{socket} + "' is not connected",
+                node.id,
+                std::string{socket});
+            return std::nullopt;
+        }
+        return source_output<VolumeExpressionId>(
             node, socket, *binding);
     }
 
@@ -1962,6 +2013,169 @@ private:
             }
             return;
         }
+        if (node.type == node_type::volume_absorption) {
+            auto color = lower_value_input(node, "Color");
+            auto density = lower_value_input(node, "Density");
+            if (color && density) {
+                publish(
+                    node.id,
+                    "Volume",
+                    append(VolumeInstruction{
+                        .operation =
+                            VolumeOperation::absorption,
+                        .source_node = node.id,
+                        .color = *color,
+                        .density = *density}));
+            }
+            return;
+        }
+        if (node.type == node_type::volume_scatter) {
+            auto color = lower_value_input(node, "Color");
+            auto density = lower_value_input(node, "Density");
+            auto anisotropy =
+                lower_value_input(node, "Anisotropy");
+            auto ior = lower_value_input(node, "IOR");
+            auto backscatter =
+                lower_value_input(node, "Backscatter");
+            auto alpha = lower_value_input(node, "Alpha");
+            auto diameter =
+                lower_value_input(node, "Diameter");
+            if (color && density && anisotropy && ior &&
+                backscatter && alpha && diameter) {
+                publish(
+                    node.id,
+                    "Volume",
+                    append(VolumeInstruction{
+                        .operation = VolumeOperation::scatter,
+                        .source_node = node.id,
+                        .color = *color,
+                        .density = *density,
+                        .anisotropy = *anisotropy,
+                        .ior = *ior,
+                        .backscatter = *backscatter,
+                        .alpha = *alpha,
+                        .diameter = *diameter,
+                        .phase = volume_phase(node)}));
+            }
+            return;
+        }
+        if (node.type == node_type::volume_coefficients) {
+            auto scatter = lower_value_input(
+                node, "ScatterCoefficients");
+            auto absorption = lower_value_input(
+                node, "AbsorptionCoefficients");
+            auto anisotropy =
+                lower_value_input(node, "Anisotropy");
+            auto ior = lower_value_input(node, "IOR");
+            auto backscatter =
+                lower_value_input(node, "Backscatter");
+            auto alpha = lower_value_input(node, "Alpha");
+            auto diameter =
+                lower_value_input(node, "Diameter");
+            auto emission = lower_value_input(
+                node, "EmissionCoefficients");
+            if (scatter && absorption && anisotropy && ior &&
+                backscatter && alpha && diameter && emission) {
+                publish(
+                    node.id,
+                    "Volume",
+                    append(VolumeInstruction{
+                        .operation =
+                            VolumeOperation::coefficients,
+                        .source_node = node.id,
+                        .anisotropy = *anisotropy,
+                        .ior = *ior,
+                        .backscatter = *backscatter,
+                        .alpha = *alpha,
+                        .diameter = *diameter,
+                        .scatter_coefficients = *scatter,
+                        .absorption_coefficients =
+                            *absorption,
+                        .emission_coefficients = *emission,
+                        .phase = volume_phase(node)}));
+            }
+            return;
+        }
+        if (node.type == node_type::principled_volume) {
+            auto color = lower_value_input(node, "Color");
+            auto density = lower_value_input(node, "Density");
+            auto anisotropy =
+                lower_value_input(node, "Anisotropy");
+            auto absorption =
+                lower_value_input(node, "AbsorptionColor");
+            auto emission_strength =
+                lower_value_input(node, "EmissionStrength");
+            auto emission_color =
+                lower_value_input(node, "EmissionColor");
+            auto blackbody_intensity =
+                lower_value_input(node, "BlackbodyIntensity");
+            auto blackbody_tint =
+                lower_value_input(node, "BlackbodyTint");
+            auto temperature =
+                lower_value_input(node, "Temperature");
+            if (color && density && anisotropy && absorption &&
+                emission_strength && emission_color &&
+                blackbody_intensity && blackbody_tint &&
+                temperature) {
+                publish(
+                    node.id,
+                    "Volume",
+                    append(VolumeInstruction{
+                        .operation =
+                            VolumeOperation::principled,
+                        .source_node = node.id,
+                        .color = *color,
+                        .density = *density,
+                        .anisotropy = *anisotropy,
+                        .absorption_color = *absorption,
+                        .emission_strength =
+                            *emission_strength,
+                        .emission_color = *emission_color,
+                        .blackbody_intensity =
+                            *blackbody_intensity,
+                        .blackbody_tint = *blackbody_tint,
+                        .temperature = *temperature,
+                        .phase =
+                            VolumePhase::henyey_greenstein}));
+            }
+            return;
+        }
+        if (node.type == node_type::null_volume) {
+            publish(
+                node.id,
+                "Volume",
+                append(VolumeInstruction{
+                    .operation =
+                        VolumeOperation::null_volume,
+                    .source_node = node.id}));
+            return;
+        }
+        if (node.type == node_type::add_volume ||
+            node.type == node_type::mix_volume) {
+            auto a = lower_volume_input(node, "A");
+            auto b = lower_volume_input(node, "B");
+            std::optional<ValueExpressionId> factor;
+            if (node.type == node_type::mix_volume) {
+                factor = lower_value_input(node, "Factor");
+            }
+            if (a && b &&
+                (node.type == node_type::add_volume || factor)) {
+                publish(
+                    node.id,
+                    "Volume",
+                    append(VolumeInstruction{
+                        .operation =
+                            node.type == node_type::add_volume
+                                ? VolumeOperation::add
+                                : VolumeOperation::mix,
+                        .source_node = node.id,
+                        .factor =
+                            factor.value_or(ValueExpressionId{}),
+                        .a = *a,
+                        .b = *b}));
+            }
+            return;
+        }
 
         diagnose(
             SurfaceProgramDiagnosticCode::unsupported_node,
@@ -2022,6 +2236,34 @@ public:
             }
         }
 
+        VolumeExpressionId lowered_volume_root;
+        const auto &volume_root =
+            _shader.graph().root(
+                contract::ShaderDomain::volume);
+        if (volume_root) {
+            auto iter = _outputs.find(
+                {.node = volume_root->node,
+                 .socket = volume_root->socket});
+            if (iter == _outputs.end()) {
+                diagnose(
+                    SurfaceProgramDiagnosticCode::missing_output,
+                    "volume root was not lowered",
+                    volume_root->node,
+                    volume_root->socket);
+            } else if (
+                const auto *volume =
+                    std::get_if<VolumeExpressionId>(
+                        &iter->second)) {
+                lowered_volume_root = *volume;
+            } else {
+                diagnose(
+                    SurfaceProgramDiagnosticCode::type_mismatch,
+                    "volume root did not lower to a volume closure",
+                    volume_root->node,
+                    volume_root->socket);
+            }
+        }
+
         if (!_diagnostics.empty()) {
             return {
                 .program = nullptr,
@@ -2034,7 +2276,9 @@ public:
                 std::move(_parameters),
                 std::move(_value_instructions),
                 std::move(_closure_instructions),
-                lowered_root),
+                lowered_root,
+                std::move(_volume_instructions),
+                lowered_volume_root),
             .diagnostics = {}};
     }
 };
@@ -2046,12 +2290,16 @@ SurfaceProgram::SurfaceProgram(
     std::vector<ParameterDesc> parameters,
     std::vector<ValueInstruction> value_instructions,
     std::vector<ClosureInstruction> closure_instructions,
-    ClosureExpressionId root) noexcept
+    ClosureExpressionId root,
+    std::vector<VolumeInstruction> volume_instructions,
+    VolumeExpressionId volume_root) noexcept
     : _structure_signature{structure_signature},
       _parameters{std::move(parameters)},
       _value_instructions{std::move(value_instructions)},
       _closure_instructions{std::move(closure_instructions)},
-      _root{root} {}
+      _volume_instructions{std::move(volume_instructions)},
+      _root{root},
+      _volume_root{volume_root} {}
 
 SurfaceParameterBlock::SurfaceParameterBlock(
     const SurfaceProgram &program) {

@@ -401,6 +401,14 @@ struct RawOutputKey {
     auto operator<=>(const RawOutputKey &) const noexcept = default;
 };
 
+struct LoweredOutputKey {
+    RawOutputKey raw;
+    contract::SocketType requested{
+        contract::SocketType::floating};
+
+    auto operator<=>(const LoweredOutputKey &) const noexcept = default;
+};
+
 class BlenderGraphNormalizer {
 
 private:
@@ -409,7 +417,7 @@ private:
     using RawLinkMap =
         std::map<RawOutputKey, RawOutputKey>;
     using LoweredOutputMap =
-        std::map<RawOutputKey, TypedOutput>;
+        std::map<LoweredOutputKey, TypedOutput>;
     using GroupInputMap =
         std::map<std::string, TypedOutput, std::less<>>;
     using NodeGroupMap =
@@ -762,6 +770,12 @@ private:
                         static_cast<std::uint32_t>(target)),
                 "unsupported implicit socket conversion; "
                 "using a zero literal");
+            if (target == SocketType::closure) {
+                return null_closure("Invalid Surface Conversion");
+            }
+            if (target == SocketType::volume_closure) {
+                return null_volume("Invalid Volume Conversion");
+            }
             const auto constant =
                 target == SocketType::floating
                     ? _graph.add_node(
@@ -804,6 +818,15 @@ private:
         return {
             .ref = {.node = id, .socket = "Closure"},
             .type = contract::SocketType::closure};
+    }
+
+    [[nodiscard]] TypedOutput null_volume(std::string label) {
+        const auto id = _graph.add_node(
+            compiler::node_type::null_volume,
+            std::move(label));
+        return {
+            .ref = {.node = id, .socket = "Volume"},
+            .type = contract::SocketType::volume_closure};
     }
 
     [[nodiscard]] bool bind(
@@ -855,6 +878,17 @@ private:
             auto source = null_closure(
                 text(member(raw_destination, "name")) +
                 " Empty Closure");
+            return _graph.connect(
+                source.ref,
+                destination,
+                std::move(target_socket));
+        }
+        if (
+            target_type ==
+            contract::SocketType::volume_closure) {
+            auto source = null_volume(
+                text(member(raw_destination, "name")) +
+                " Empty Volume");
             return _graph.connect(
                 source.ref,
                 destination,
@@ -1014,6 +1048,9 @@ private:
         if (type == SocketType::closure) {
             return null_closure(std::move(label));
         }
+        if (type == SocketType::volume_closure) {
+            return null_volume(std::move(label));
+        }
         if (type == SocketType::floating ||
             type == SocketType::boolean ||
             type == SocketType::integer ||
@@ -1059,7 +1096,8 @@ private:
 
     [[nodiscard]] TypedOutput lower_natural_output(
         const std::string &node_name,
-        const std::string &socket) {
+        const std::string &socket,
+        contract::SocketType requested) {
         using contract::SocketType;
         auto *node = raw_node(node_name);
         if (node == nullptr) {
@@ -1074,11 +1112,13 @@ private:
         if (type == "REROUTE") {
             auto source = input_source(node, "Input");
             if (source) {
-                return lower_natural_output(
-                    source->node, source->socket);
+                return lower_output(
+                    source->node,
+                    source->socket,
+                    requested);
             }
             return constant_from_output(
-                node, socket, SocketType::color);
+                node, socket, requested);
         }
         if (type == "BUMP") {
             const auto id = _graph.add_node(
@@ -1144,7 +1184,8 @@ private:
                 socket_type(output));
         }
         if (type == "GROUP") {
-            return lower_group_output(node, socket);
+            return lower_group_output(
+                node, socket, requested);
         }
 
         if (!_building.emplace(node_name).second) {
@@ -2761,12 +2802,166 @@ private:
                 .ref = {.node = id, .socket = "Closure"},
                 .type = SocketType::closure});
         }
+        if (type == "VOLUME_ABSORPTION") {
+            const auto id = _graph.add_node(
+                compiler::node_type::volume_absorption,
+                node_name);
+            static_cast<void>(bind(
+                id,
+                "Color",
+                node,
+                "Color",
+                SocketType::color));
+            static_cast<void>(bind(
+                id,
+                "Density",
+                node,
+                "Density",
+                SocketType::floating));
+            return finish({
+                .ref = {.node = id, .socket = "Volume"},
+                .type = SocketType::volume_closure});
+        }
+        if (type == "VOLUME_SCATTER") {
+            const auto id = _graph.add_node(
+                compiler::node_type::volume_scatter,
+                node_name);
+            static_cast<void>(_graph.set_property(
+                id,
+                "Phase",
+                SocketValue::string(node_property_text(
+                    node,
+                    "phase",
+                    "HENYEY_GREENSTEIN"))));
+            static_cast<void>(bind(
+                id,
+                "Color",
+                node,
+                "Color",
+                SocketType::color));
+            static_cast<void>(bind(
+                id,
+                "Density",
+                node,
+                "Density",
+                SocketType::floating));
+            for (const auto &[target, source] : {
+                     std::pair{"Anisotropy", "Anisotropy"},
+                     std::pair{"IOR", "IOR"},
+                     std::pair{"Backscatter", "Backscatter"},
+                     std::pair{"Alpha", "Alpha"},
+                     std::pair{"Diameter", "Diameter"}}) {
+                static_cast<void>(bind(
+                    id,
+                    target,
+                    node,
+                    source,
+                    SocketType::floating));
+            }
+            return finish({
+                .ref = {.node = id, .socket = "Volume"},
+                .type = SocketType::volume_closure});
+        }
+        if (type == "VOLUME_COEFFICIENTS") {
+            const auto id = _graph.add_node(
+                compiler::node_type::volume_coefficients,
+                node_name);
+            static_cast<void>(_graph.set_property(
+                id,
+                "Phase",
+                SocketValue::string(node_property_text(
+                    node,
+                    "phase",
+                    "HENYEY_GREENSTEIN"))));
+            for (const auto &[target, source] : {
+                     std::pair{
+                         "ScatterCoefficients",
+                         "Scatter Coefficients"},
+                     std::pair{
+                         "AbsorptionCoefficients",
+                         "Absorption Coefficients"},
+                     std::pair{
+                         "EmissionCoefficients",
+                         "Emission Coefficients"}}) {
+                static_cast<void>(bind(
+                    id,
+                    target,
+                    node,
+                    source,
+                    SocketType::vector));
+            }
+            for (const auto &[target, source] : {
+                     std::pair{"Anisotropy", "Anisotropy"},
+                     std::pair{"IOR", "IOR"},
+                     std::pair{"Backscatter", "Backscatter"},
+                     std::pair{"Alpha", "Alpha"},
+                     std::pair{"Diameter", "Diameter"}}) {
+                static_cast<void>(bind(
+                    id,
+                    target,
+                    node,
+                    source,
+                    SocketType::floating));
+            }
+            return finish({
+                .ref = {.node = id, .socket = "Volume"},
+                .type = SocketType::volume_closure});
+        }
+        if (type == "PRINCIPLED_VOLUME") {
+            const auto id = _graph.add_node(
+                compiler::node_type::principled_volume,
+                node_name);
+            for (const auto &[target, source] : {
+                     std::pair{"Color", "Color"},
+                     std::pair{
+                         "AbsorptionColor",
+                         "Absorption Color"},
+                     std::pair{
+                         "EmissionColor",
+                         "Emission Color"},
+                     std::pair{
+                         "BlackbodyTint",
+                         "Blackbody Tint"}}) {
+                static_cast<void>(bind(
+                    id,
+                    target,
+                    node,
+                    source,
+                    SocketType::color));
+            }
+            for (const auto &[target, source] : {
+                     std::pair{"Density", "Density"},
+                     std::pair{"Anisotropy", "Anisotropy"},
+                     std::pair{
+                         "EmissionStrength",
+                         "Emission Strength"},
+                     std::pair{
+                         "BlackbodyIntensity",
+                         "Blackbody Intensity"},
+                     std::pair{"Temperature", "Temperature"}}) {
+                static_cast<void>(bind(
+                    id,
+                    target,
+                    node,
+                    source,
+                    SocketType::floating));
+            }
+            return finish({
+                .ref = {.node = id, .socket = "Volume"},
+                .type = SocketType::volume_closure});
+        }
         if (type == "MIX_SHADER" ||
             type == "ADD_SHADER") {
+            const auto volume =
+                requested == SocketType::volume_closure;
             const auto id = _graph.add_node(
                 type == "MIX_SHADER"
-                    ? compiler::node_type::mix_closure
-                    : compiler::node_type::add_closure,
+                    ? volume
+                          ? compiler::node_type::mix_volume
+                          : compiler::node_type::mix_closure
+                    : volume
+                          ? compiler::node_type::add_volume
+                          : compiler::node_type::add_closure,
                 node_name);
             if (type == "MIX_SHADER") {
                 static_cast<void>(bind(
@@ -2777,16 +2972,30 @@ private:
                     SocketType::floating));
             }
             static_cast<void>(bind(
-                id, "A", node, "Shader", SocketType::closure));
+                id,
+                "A",
+                node,
+                "Shader",
+                volume
+                    ? SocketType::volume_closure
+                    : SocketType::closure));
             static_cast<void>(bind(
                 id,
                 "B",
                 node,
                 "Shader_001",
-                SocketType::closure));
+                volume
+                    ? SocketType::volume_closure
+                    : SocketType::closure));
             return finish({
-                .ref = {.node = id, .socket = "Closure"},
-                .type = SocketType::closure});
+                .ref = {
+                    .node = id,
+                    .socket =
+                        volume ? "Volume" : "Closure"},
+                .type =
+                    volume
+                        ? SocketType::volume_closure
+                        : SocketType::closure});
         }
 
         auto *output = raw_output(node, socket);
@@ -2808,13 +3017,15 @@ private:
         const std::string &node,
         const std::string &socket,
         contract::SocketType requested) {
-        const auto key =
-            RawOutputKey{.node = node, .socket = socket};
+        const auto key = LoweredOutputKey{
+            .raw = {.node = node, .socket = socket},
+            .requested = requested};
         auto iter = _outputs.find(key);
         if (iter == _outputs.end()) {
             iter = _outputs.emplace(
                 key,
-                lower_natural_output(node, socket))
+                lower_natural_output(
+                    node, socket, requested))
                        .first;
         }
         return conversion(iter->second, requested);
@@ -2822,15 +3033,21 @@ private:
 
     [[nodiscard]] TypedOutput lower_group_output(
         yyjson_val *instance,
-        const std::string &socket) {
+        const std::string &socket,
+        contract::SocketType requested) {
         using contract::SocketType;
         const auto instance_name =
             text(member(instance, "name"));
         const auto group_name =
             text(member(instance, "node_tree"));
         auto *instance_output = raw_output(instance, socket);
-        const auto result_type =
+        const auto natural_result_type =
             socket_type(instance_output);
+        const auto result_type =
+            natural_result_type == SocketType::closure &&
+                    requested == SocketType::volume_closure
+                ? SocketType::volume_closure
+                : natural_result_type;
 
         auto group = _node_groups.find(group_name);
         if (group == _node_groups.end()) {
@@ -2867,7 +3084,13 @@ private:
                     identifier == "__extend__") {
                     continue;
                 }
-                const auto type = socket_type(input);
+                const auto natural_type = socket_type(input);
+                const auto type =
+                    natural_type == SocketType::closure &&
+                            requested ==
+                                SocketType::volume_closure
+                        ? SocketType::volume_closure
+                        : natural_type;
                 if (auto source =
                         input_source(instance, identifier)) {
                     bindings.insert_or_assign(
@@ -3001,11 +3224,47 @@ public:
         if (node.empty() || socket.empty()) {
             // Cycles treats an unconnected material surface as an opaque
             // black path terminator while retaining the shading normal pass.
-            return diffuse_graph({0.0f, 0.0f, 0.0f}, 0.0f);
+            const auto closure = _graph.add_node(
+                compiler::node_type::diffuse_bsdf,
+                "Unconnected Surface");
+            static_cast<void>(_graph.set_input(
+                closure,
+                "Color",
+                SocketValue::color({0.0f, 0.0f, 0.0f})));
+            static_cast<void>(_graph.set_input(
+                closure,
+                "Roughness",
+                SocketValue::floating(0.0f)));
+            static_cast<void>(_graph.set_input(
+                closure,
+                "Normal",
+                SocketValue::normal({0.0f, 0.0f, 0.0f})));
+            _graph.set_root(
+                ShaderDomain::surface,
+                contract::OutputRef{
+                    closure, "Closure"});
+        } else {
+            auto output = lower_output(
+                node, socket, contract::SocketType::closure);
+            _graph.set_root(
+                ShaderDomain::surface, output.ref);
         }
-        auto output = lower_output(
-            node, socket, contract::SocketType::closure);
-        _graph.set_root(ShaderDomain::surface, output.ref);
+
+        auto *raw_volume_root =
+            member(_tree, "volume_root");
+        const auto volume_node =
+            text(member(raw_volume_root, "node"));
+        const auto volume_socket =
+            text(member(raw_volume_root, "socket"));
+        if (!volume_node.empty() &&
+            !volume_socket.empty()) {
+            auto output = lower_output(
+                volume_node,
+                volume_socket,
+                contract::SocketType::volume_closure);
+            _graph.set_root(
+                ShaderDomain::volume, output.ref);
+        }
         return std::move(_graph);
     }
 };
@@ -3038,24 +3297,14 @@ public:
                    !text(member(root, "node")).empty() &&
                    !text(member(root, "socket")).empty();
         };
-    for (const auto &[root, label] : {
-             std::pair{"volume_root", "Volume"},
-             std::pair{"displacement_root", "Displacement"}}) {
-        if (connected_root(root)) {
-            diagnostics.emplace_back(BlenderSceneDiagnostic{
-                .severity =
-                    BlenderSceneDiagnosticSeverity::error,
-                .message =
-                    "shader '" + material_name +
-                    "' has a connected " + label +
-                    " root, which the Luisa integrator does not yet "
-                    "implement"});
-        }
-    }
-    if (
-        member(tree, "surface_root") == nullptr ||
-        yyjson_is_null(member(tree, "surface_root"))) {
-        return diffuse_graph({0.0f, 0.0f, 0.0f}, 0.0f);
+    if (connected_root("displacement_root")) {
+        diagnostics.emplace_back(BlenderSceneDiagnostic{
+            .severity =
+                BlenderSceneDiagnosticSeverity::error,
+            .message =
+                "shader '" + material_name +
+                "' has a connected Displacement root, which the "
+                "Luisa integrator does not yet implement"});
     }
     return BlenderGraphNormalizer{
         tree,

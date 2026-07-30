@@ -45,10 +45,10 @@ public:
         return make_float4(0.0f);
     }
 
-    [[nodiscard]] Float4 attribute(
+    [[nodiscard]] ShaderAttribute attribute(
         Expr<std::uint64_t>,
         const SurfacePoint &) const noexcept override {
-        return make_float4(0.0f);
+        return ShaderAttribute::missing();
     }
 
     [[nodiscard]] Float parameter_float(

@@ -18,6 +18,7 @@
 #include <psycles/luisa/cycles_color_nodes.h>
 #include <psycles/luisa/cycles_noise.h>
 #include <psycles/luisa/cycles_sample_mapping.h>
+#include <psycles/luisa/cycles_volume.h>
 #include <psycles/luisa/surface.h>
 
 #include <luisa/core/stl/vector.h>
@@ -2494,7 +2495,8 @@ private:
                 case compiler::ValueOperation::uv:
                     if (instruction.static_u0 != 0u) {
                         value = services.attribute(
-                            instruction.static_u1, point);
+                            instruction.static_u1, point)
+                                    .value;
                     } else {
                         value = make_float4(
                             point.uv.x,
@@ -2977,8 +2979,8 @@ private:
                         instruction.operation ==
                                 compiler::ValueOperation::
                                     attribute_alpha
-                            ? make_float4(attribute.w)
-                            : attribute;
+                            ? make_float4(attribute.value.w)
+                            : attribute.value;
                     break;
                 }
                 case compiler::ValueOperation::normal_map: {
@@ -3001,9 +3003,9 @@ private:
                                 instruction.static_u1,
                                 point);
                         object_tangent =
-                            named_tangent.xyz();
+                            named_tangent.value.xyz();
                         tangent_sign =
-                            named_tangent.w;
+                            named_tangent.value.w;
                     }
                     const auto transform_object_normal =
                         [&](Float3 object_normal) noexcept {
@@ -3921,6 +3923,49 @@ private:
         visit(visit, _program->root(), 1.0f);
     }
 
+    template<typename Function>
+    void for_each_volume(
+        const TracedValues &values,
+        Function &&function) const noexcept {
+        auto visit =
+            [&](auto &&self,
+                compiler::VolumeExpressionId id,
+                Float mix_weight) noexcept -> void {
+            const auto &volume =
+                _program->volume_instructions()[id.value];
+            switch (volume.operation) {
+                case compiler::VolumeOperation::null_volume:
+                    return;
+                case compiler::VolumeOperation::add:
+                    self(self, volume.a, mix_weight);
+                    self(self, volume.b, mix_weight);
+                    return;
+                case compiler::VolumeOperation::mix: {
+                    const auto factor = clamp(
+                        scalar(volume.factor, values),
+                        0.0f,
+                        1.0f);
+                    self(
+                        self,
+                        volume.a,
+                        mix_weight * (1.0f - factor));
+                    self(
+                        self,
+                        volume.b,
+                        mix_weight * factor);
+                    return;
+                }
+                case compiler::VolumeOperation::absorption:
+                case compiler::VolumeOperation::scatter:
+                case compiler::VolumeOperation::coefficients:
+                case compiler::VolumeOperation::principled:
+                    function(volume, mix_weight);
+                    return;
+            }
+        };
+        visit(visit, _program->volume_root(), 1.0f);
+    }
+
 public:
     explicit GraphSurface(
         std::shared_ptr<const compiler::SurfaceProgram> program) noexcept
@@ -3972,6 +4017,8 @@ public:
                     closure.operation ==
                     compiler::ClosureOperation::transparent;
             }
+            _capabilities.may_have_volume =
+                _program->volume_root().valid();
         }
     }
 
@@ -4679,6 +4726,37 @@ public:
                     compiler::ClosureOperation::transparent) {
                     result += closure.weight;
                 }
+            });
+        return result;
+    }
+
+    [[nodiscard]] VolumeCoefficients volume_coefficients(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        const VolumeQuery &query) const noexcept override {
+        auto result = VolumeCoefficients::zero();
+        if (!_program ||
+            !_program->volume_root().valid()) {
+            return result;
+        }
+        const auto values = trace_values(services, point);
+        for_each_volume(
+            values,
+            [&](const compiler::VolumeInstruction &volume,
+                Float mix_weight) noexcept {
+                cycles_volume::accumulate_coefficients(
+                    volume,
+                    mix_weight,
+                    services,
+                    point,
+                    query,
+                    [&](compiler::ValueExpressionId id) noexcept {
+                        return scalar(id, values);
+                    },
+                    [&](compiler::ValueExpressionId id) noexcept {
+                        return vector(id, values);
+                    },
+                    result);
             });
         return result;
     }
