@@ -207,6 +207,13 @@ pre-baking or a value approximation.
 
 ## Render process
 
+Canonical scene performance runs use the fixed Cycles CPU/HIP plus
+Psycles-Luisa fallback/HIP/Vulkan matrix documented in
+[docs/scene-benchmark.md](docs/scene-benchmark.md). The five entries share
+the same source scene, final-render export, seed, extent, and fixed sample
+count. Fallback is always retained in the report, including when it is slower
+than the GPU paths.
+
 The focused probe command was:
 
 ```bash

@@ -70,6 +70,12 @@ Correctness is not inferred from another Psycles implementation. The
 regression harness renders the same `.blend` with Blender Cycles to linear
 multilayer EXR and compares those passes directly with Psycles-Luisa output.
 
+Full-scene checkpoints use the canonical
+[five-renderer benchmark](docs/scene-benchmark.md): Cycles CPU/HIP and
+Psycles-Luisa fallback/HIP/Vulkan at matched scene settings. It records
+render-only and process timings, EXR hashes, numeric pass comparisons, and
+device-labeled triptychs.
+
 ## Current vertical slice
 
 The implemented slice can:

@@ -549,6 +549,12 @@ if(PSYCLES_BUILD_TESTS)
                 "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_shader_probe_runner.py"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tools/run_cycles_shader_probes.py")
+        add_test(
+            NAME psycles.scene_benchmark_runner_contract
+            COMMAND
+                "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_scene_benchmark_runner.py"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/run_scene_benchmark.py")
     endif()
 
     find_program(PSYCLES_BLENDER_EXECUTABLE NAMES blender)

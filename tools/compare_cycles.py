@@ -222,6 +222,8 @@ def _write_triptych(
     pass_name: str,
     metrics: dict[str, Any],
     output_path: pathlib.Path,
+    reference_label: str = "Cycles",
+    actual_label: str = "Psycles",
 ) -> dict[str, Any]:
     finite_reference = np.nan_to_num(
         reference, nan=0.0, posinf=0.0, neginf=0.0
@@ -291,8 +293,8 @@ def _write_triptych(
     )
 
     panels = [
-        ("Cycles", display_reference),
-        ("Psycles", display_actual),
+        (reference_label, display_reference),
+        (actual_label, display_actual),
         (f"|Difference| x {difference_scale:.3g}", display_difference),
     ]
     height, width, _ = display_reference.shape
@@ -373,11 +375,14 @@ def _main() -> None:
         raise SystemExit(
             "expected: cycles.exr report.json "
             "[--triptych-dir directory] "
+            "[--reference-label label] [--actual-label label] "
             "Pass=psycles.exr [Pass=psycles.exr ...]"
         )
     cycles_path = pathlib.Path(args[0]).resolve()
     report_path = pathlib.Path(args[1]).resolve()
     triptych_dir: pathlib.Path | None = None
+    reference_label = "Cycles"
+    actual_label = "Psycles"
     bindings: list[str] = []
     argument_index = 2
     while argument_index < len(args):
@@ -390,6 +395,18 @@ def _main() -> None:
             triptych_dir = pathlib.Path(
                 args[argument_index + 1]
             ).resolve()
+            argument_index += 2
+            continue
+        if argument in {"--reference-label", "--actual-label"}:
+            if argument_index + 1 >= len(args):
+                raise ValueError(f"{argument} requires a label")
+            label = args[argument_index + 1].strip()
+            if not label:
+                raise ValueError(f"{argument} requires a non-empty label")
+            if argument == "--reference-label":
+                reference_label = label
+            else:
+                actual_label = label
             argument_index += 2
             continue
         bindings.append(argument)
@@ -436,11 +453,15 @@ def _main() -> None:
                 metrics,
                 triptych_dir /
                 f"{pass_name.lower().replace(' ', '-')}.png",
+                reference_label,
+                actual_label,
             )
             results[pass_name]["triptych"] = triptych
 
     report = {
         "schema": "psycles.cycles-differential.v1",
+        "reference_label": reference_label,
+        "actual_label": actual_label,
         "cycles_channels": channel_names,
         "passes": results,
     }
