@@ -579,6 +579,8 @@ def _geometry(
 
 
 def _image_extension(image: Any) -> str:
+    if image.source == "GENERATED":
+        return ".png"
     suffix = pathlib.Path(image.filepath).suffix.lower()
     if suffix in {".jpg", ".jpeg", ".png", ".tga", ".bmp", ".hdr"}:
         return suffix
@@ -589,6 +591,42 @@ def _image_extension(image: Any) -> str:
         "BMP": ".bmp",
         "HDR": ".hdr",
     }.get(image.file_format, ".bin")
+
+
+def _external_image_path(image: Any) -> pathlib.Path:
+    # Linked image datablocks retain paths relative to the library .blend
+    # that owns them, not the currently open main file. This distinction is
+    # observable in Blender's official Classroom scene, whose linked assets
+    # use paths such as ``//../../textures/_baseTextures/...``. Delegate the
+    # base selection to Blender so export and Cycles resolve the same file.
+    return pathlib.Path(
+        bpy.path.abspath(
+            image.filepath,
+            library=image.library,
+        )
+    )
+
+
+def _save_generated_image(
+    image: Any,
+    destination: pathlib.Path,
+) -> None:
+    # GENERATED images have no backing file, but their pixel buffer is a real
+    # Cycles texture input. Save a temporary datablock copy through Blender's
+    # image codec so the original filepath/format and source scene remain
+    # untouched. ``Image.save`` applies the datablock color-space encoding;
+    # Psycles decodes that declared space when sampling the exported texture.
+    encoded = image.copy()
+    try:
+        pixels = array.array("f", [0.0]) * len(image.pixels)
+        image.pixels.foreach_get(pixels)
+        encoded.pixels.foreach_set(pixels)
+        encoded.update()
+        encoded.filepath_raw = str(destination)
+        encoded.file_format = "PNG"
+        encoded.save()
+    finally:
+        bpy.data.images.remove(encoded)
 
 
 def _export_images(output: pathlib.Path) -> list[dict[str, Any]]:
@@ -606,8 +644,10 @@ def _export_images(output: pathlib.Path) -> list[dict[str, Any]]:
         )
         if image.packed_file is not None:
             destination.write_bytes(bytes(image.packed_file.data))
+        elif image.source == "GENERATED":
+            _save_generated_image(image, destination)
         else:
-            source = pathlib.Path(bpy.path.abspath(image.filepath))
+            source = _external_image_path(image)
             if not source.is_file():
                 raise FileNotFoundError(
                     f"external image is missing: {image.name}: {source}"
