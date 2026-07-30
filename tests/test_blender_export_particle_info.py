@@ -88,6 +88,9 @@ def _emitter(
     # Cycles keeps evaluating the particle instances but rejects the
     # emitter's own mesh through OB_VISIBLE_SELF in the render graph.
     emitter.show_instancer_for_render = False
+    # Cycles intersects the child object's ray visibility with this
+    # instancer visibility for every generated particle object.
+    emitter.visible_shadow = False
     if children:
         settings.child_type = "INTERPOLATED"
         settings.child_percent = _VIEWPORT_CHILDREN
@@ -261,6 +264,18 @@ def _main() -> None:
             child_instances,
             viewport_child_count,
         )
+        for instance in parent_instances + child_instances:
+            if instance["visibility"]["shadow"]:
+                raise AssertionError(
+                    "particle instance ignored its parent's disabled "
+                    f"shadow visibility: {instance['name']}"
+                )
+            if not instance["visibility"]["camera"]:
+                raise AssertionError(
+                    "particle instance lost an enabled visibility bit "
+                    f"while intersecting parent and child: "
+                    f"{instance['name']}"
+                )
 
     print("Psycles Blender Particle Info regression passed")
 
