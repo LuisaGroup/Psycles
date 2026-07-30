@@ -145,6 +145,35 @@ struct SurfaceSampleCall {
     luisa::uint valid{};
 };
 
+struct SurfaceClosureTraceCall {
+    luisa::uint count{};
+    luisa::uint index{};
+    luisa::uint type{};
+    float sample_weight{};
+    luisa::float3 weight{};
+    luisa::float3 normal{};
+    luisa::uint valid{};
+};
+
+struct SurfaceSampleTraceCall {
+    luisa::float3 f{};
+    float pdf{};
+    luisa::float3 diffuse_f{};
+    float diffuse_pdf{};
+    luisa::uint events{};
+    luisa::float3 wi{};
+    float eta{};
+    luisa::float2 roughness{};
+    luisa::uint valid{};
+    luisa::uint closure_index{};
+    luisa::uint closure_type{};
+    float closure_sample_weight{};
+    float selection_rescaled{};
+    luisa::float3 closure_weight{};
+    luisa::float3 closure_normal{};
+    luisa::uint closure_valid{};
+};
+
 struct SurfaceAovCall {
     luisa::float3 albedo{};
     luisa::float3 glossy_albedo{};
@@ -331,6 +360,33 @@ LUISA_STRUCT(
     eta,
     roughness,
     valid) {};
+LUISA_STRUCT(
+    psycles::luisa_backend::detail::SurfaceClosureTraceCall,
+    count,
+    index,
+    type,
+    sample_weight,
+    weight,
+    normal,
+    valid) {};
+LUISA_STRUCT(
+    psycles::luisa_backend::detail::SurfaceSampleTraceCall,
+    f,
+    pdf,
+    diffuse_f,
+    diffuse_pdf,
+    events,
+    wi,
+    eta,
+    roughness,
+    valid,
+    closure_index,
+    closure_type,
+    closure_sample_weight,
+    selection_rescaled,
+    closure_weight,
+    closure_normal,
+    closure_valid) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::SurfaceAovCall,
     albedo,

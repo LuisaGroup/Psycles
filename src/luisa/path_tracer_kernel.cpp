@@ -10,6 +10,7 @@
 #include <psycles/luisa/analytic_light_sampling.h>
 #include <psycles/luisa/background_sampling.h>
 #include <psycles/luisa/camera_sampling.h>
+#include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/pixel_filter.h>
 #include <psycles/luisa/spherical_geometry.h>
 #include <psycles/luisa/surface_ray.h>
@@ -290,6 +291,10 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         surface_callables.emission;
     auto shared_surface_sample =
         surface_callables.sample;
+    auto shared_surface_closure_trace =
+        surface_callables.closure_trace;
+    auto shared_surface_sample_trace =
+        surface_callables.sample_trace;
     auto shared_surface_aov =
         surface_callables.aov;
     auto shared_surface_shading_normal =
@@ -316,6 +321,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                           &shared_surface_evaluate,
                           &shared_surface_emission,
                           &shared_surface_sample,
+                          &shared_surface_closure_trace,
+                          &shared_surface_sample_trace,
                           &shared_surface_aov,
                           &shared_surface_shading_normal,
                           &light_component_ratio,
@@ -444,6 +451,40 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                 const SurfaceQuery &query) noexcept {
                 return unpack_surface_sample(
                     shared_surface_sample(
+                        scene->parameter_buffer,
+                        scene->cycles_bsdf_table_buffer,
+                        scene->texture_heap,
+                        scene->heap,
+                        surface_tag,
+                        pack_surface_point(point),
+                        u_lobe,
+                        u_direction,
+                        query.lobe_mask,
+                        query.transport_mode,
+                        query.glossy_filter_roughness));
+            };
+        auto trace_surface_closure =
+            [&](UInt surface_tag,
+                const SurfacePoint &point,
+                UInt requested_index) noexcept {
+                return unpack_surface_closure_trace(
+                    shared_surface_closure_trace(
+                        scene->parameter_buffer,
+                        scene->cycles_bsdf_table_buffer,
+                        scene->texture_heap,
+                        scene->heap,
+                        surface_tag,
+                        pack_surface_point(point),
+                        requested_index));
+            };
+        auto trace_sample_surface =
+            [&](UInt surface_tag,
+                const SurfacePoint &point,
+                Float u_lobe,
+                Float2 u_direction,
+                const SurfaceQuery &query) noexcept {
+                return unpack_surface_sample_trace(
+                    shared_surface_sample_trace(
                         scene->parameter_buffer,
                         scene->cycles_bsdf_table_buffer,
                         scene->texture_heap,
@@ -596,6 +637,28 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                         event_slot_count +
                                 static_cast<std::uint32_t>(
                                     slot),
+                            value);
+                    };
+                };
+            auto trace_write_closure =
+                [&](UInt event,
+                    std::uint32_t closure,
+                    std::uint32_t field,
+                    Float3 value) noexcept {
+                    $if (
+                        event <
+                        path_trace_schema::max_events) {
+                        trace_write(
+                            path_trace_schema::
+                                global_slot_count +
+                                event *
+                                    path_trace_schema::
+                                        event_slot_count +
+                                static_cast<std::uint32_t>(
+                                    path_trace_schema::
+                                        EventSlot::
+                                            closure_base) +
+                                closure * 3u + field,
                             value);
                     };
                 };
@@ -1644,6 +1707,11 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                 };
 
                 if (path_trace_enabled) {
+                    const auto closure_summary =
+                        trace_surface_closure(
+                            surface_tag,
+                            point,
+                            0u);
                     UInt cycles_visibility = 0u;
                     cycles_visibility |= select(
                         0u,
@@ -1742,7 +1810,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                             EventSlot::surface_meta,
                         make_float3(
                             trace_uint32(surface_tag).xy(),
-                            0.0f));
+                            cast<float>(
+                                closure_summary.count)));
                     trace_write_event(
                         path_step,
                         path_trace_schema::
@@ -1781,6 +1850,39 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                         path_trace_schema::
                             EventSlot::random_bsdf,
                         bsdf_sample);
+                    for (auto closure_index = 0u;
+                         closure_index <
+                         path_trace_schema::max_closures;
+                         ++closure_index) {
+                        const auto closure =
+                            trace_surface_closure(
+                                surface_tag,
+                                point,
+                                closure_index);
+                        $if (closure.valid) {
+                            trace_write_closure(
+                                path_step,
+                                closure_index,
+                                0u,
+                                make_float3(
+                                    cast<float>(
+                                        closure.index),
+                                    cast<float>(
+                                        closure.type),
+                                    closure
+                                        .sample_weight));
+                            trace_write_closure(
+                                path_step,
+                                closure_index,
+                                1u,
+                                closure.weight);
+                            trace_write_closure(
+                                path_step,
+                                closure_index,
+                                2u,
+                                closure.normal);
+                        };
+                    }
                 }
 
                 // Cycles writes camera data passes only along the
@@ -3169,12 +3271,108 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                     };
                 }
 
-                auto surface_sample = sample_surface(
-                    surface_tag,
-                    point,
-                    bsdf_sample.z,
-                    bsdf_sample.xy(),
-                    path_surface_query);
+                auto surface_sample =
+                    SurfaceSample::zero();
+                if (path_trace_enabled) {
+                    const auto sample_trace =
+                        trace_sample_surface(
+                            surface_tag,
+                            point,
+                            bsdf_sample.z,
+                            bsdf_sample.xy(),
+                            path_surface_query);
+                    surface_sample =
+                        sample_trace.sample;
+                    $if (sample_trace.closure_valid) {
+                        trace_write_event(
+                            path_step,
+                            path_trace_schema::
+                                EventSlot::
+                                    closure_pick,
+                            make_float3(
+                                cast<float>(
+                                    sample_trace
+                                        .closure_index),
+                                cast<float>(
+                                    sample_trace
+                                        .closure_type),
+                                sample_trace
+                                    .closure_sample_weight));
+                        trace_write_event(
+                            path_step,
+                            path_trace_schema::
+                                EventSlot::
+                                    closure_random,
+                            make_float3(
+                                bsdf_sample.xy(),
+                                sample_trace
+                                    .selection_rescaled));
+                        trace_write_event(
+                            path_step,
+                            path_trace_schema::
+                                EventSlot::
+                                    closure_weight,
+                            sample_trace
+                                .closure_weight);
+                        trace_write_event(
+                            path_step,
+                            path_trace_schema::
+                                EventSlot::closure_n,
+                            sample_trace
+                                .closure_normal);
+                        const auto cycles_label =
+                            cycles_closure::
+                                label_from_events(
+                                    sample_trace
+                                        .sample
+                                        .evaluation
+                                        .events);
+                        trace_write_event(
+                            path_step,
+                            path_trace_schema::
+                                EventSlot::bsdf_meta,
+                            make_float3(
+                                sample_trace
+                                    .sample
+                                    .evaluation
+                                    .pdf,
+                                sample_trace
+                                    .sample
+                                    .evaluation
+                                    .pdf,
+                                cast<float>(
+                                    cycles_label)));
+                        trace_write_event(
+                            path_step,
+                            path_trace_schema::
+                                EventSlot::bsdf_wo,
+                            sample_trace.sample.wi);
+                        trace_write_event(
+                            path_step,
+                            path_trace_schema::
+                                EventSlot::bsdf_eval,
+                            sample_trace
+                                .sample
+                                .evaluation.f);
+                        trace_write_event(
+                            path_step,
+                            path_trace_schema::
+                                EventSlot::
+                                    bsdf_roughness_eta,
+                            make_float3(
+                                sample_trace
+                                    .sample.roughness,
+                                sample_trace
+                                    .sample.eta));
+                    };
+                } else {
+                    surface_sample = sample_surface(
+                        surface_tag,
+                        point,
+                        bsdf_sample.z,
+                        bsdf_sample.xy(),
+                        path_surface_query);
+                }
                 $if (!surface_sample.valid |
                      (surface_sample.evaluation.pdf <=
                       0.0f)) {

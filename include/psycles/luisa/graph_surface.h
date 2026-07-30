@@ -14,6 +14,7 @@
 
 #include <psycles/compiler/surface_program.h>
 #include <psycles/luisa/cycles_bsdf_tables.h>
+#include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/cycles_color_nodes.h>
 #include <psycles/luisa/cycles_noise.h>
 #include <psycles/luisa/cycles_sample_mapping.h>
@@ -77,6 +78,13 @@ private:
         Float3 glossy_sample_weight;
         Float3 glossy_closure_weight;
         Float3 diffuse_albedo;
+    };
+
+    struct ClosureSelectionState {
+        Bool eligible;
+        Float weight;
+        Float principled_specular_chance;
+        Float3 glossy_normal;
     };
 
 private:
@@ -736,6 +744,167 @@ private:
             .glossy_sample_weight = glossy_sample_weight,
             .glossy_closure_weight = glossy_closure_weight,
             .diffuse_albedo = diffuse_albedo};
+    }
+
+    [[nodiscard]] static bool is_scattering_operation(
+        compiler::ClosureOperation operation) noexcept {
+        switch (operation) {
+            case compiler::ClosureOperation::diffuse:
+            case compiler::ClosureOperation::translucent:
+            case compiler::ClosureOperation::principled:
+            case compiler::ClosureOperation::glossy:
+            case compiler::ClosureOperation::transparent:
+                return true;
+            case compiler::ClosureOperation::null_closure:
+            case compiler::ClosureOperation::add:
+            case compiler::ClosureOperation::mix:
+            case compiler::ClosureOperation::emission:
+                return false;
+        }
+        return false;
+    }
+
+    [[nodiscard]] static Float closure_sample_weight(
+        const TracedClosure &closure) noexcept {
+        return sample_weight(closure.weight);
+    }
+
+    [[nodiscard]] static Bool closure_allocated(
+        const TracedClosure &closure) noexcept {
+        if (!is_scattering_operation(closure.operation)) {
+            return false;
+        }
+        return closure_sample_weight(closure) > 0.0f;
+    }
+
+    [[nodiscard]] static UInt cycles_closure_type(
+        const TracedClosure &closure) noexcept {
+        switch (closure.operation) {
+            case compiler::ClosureOperation::diffuse:
+                return select(
+                    cycles_closure::type_oren_nayar,
+                    cycles_closure::type_diffuse,
+                    closure.roughness < 1.0e-5f);
+            case compiler::ClosureOperation::translucent:
+                return cycles_closure::type_translucent;
+            case compiler::ClosureOperation::glossy:
+                return cycles_closure::type_microfacet_ggx;
+            case compiler::ClosureOperation::transparent:
+                return cycles_closure::type_transparent;
+            case compiler::ClosureOperation::principled:
+                // This virtual ID makes the still-aggregated Principled
+                // representation visible to the differential oracle. Cycles
+                // expands it into physical closures before sampling, so a
+                // comparison cannot accidentally pass until Psycles does the
+                // same.
+                return cycles_closure::
+                    type_principled_virtual;
+            case compiler::ClosureOperation::null_closure:
+            case compiler::ClosureOperation::add:
+            case compiler::ClosureOperation::mix:
+            case compiler::ClosureOperation::emission:
+                return cycles_closure::type_none;
+        }
+        return cycles_closure::type_none;
+    }
+
+    [[nodiscard]] static ClosureSelectionState
+    closure_selection_state(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        const TracedClosure &closure,
+        Float3 incoming,
+        const SurfaceQuery &query) noexcept {
+        const auto is_diffuse =
+            closure.operation ==
+            compiler::ClosureOperation::diffuse;
+        const auto is_translucent =
+            closure.operation ==
+            compiler::ClosureOperation::translucent;
+        const auto is_principled =
+            closure.operation ==
+            compiler::ClosureOperation::principled;
+        const auto is_glossy =
+            closure.operation ==
+            compiler::ClosureOperation::glossy;
+        const auto is_transparent =
+            closure.operation ==
+            compiler::ClosureOperation::transparent;
+        const auto diffuse_enabled =
+            (query.lobe_mask &
+             static_cast<std::uint32_t>(
+                 event_diffuse)) != 0u;
+        const auto glossy_enabled =
+            (query.lobe_mask &
+             static_cast<std::uint32_t>(
+                 event_glossy)) != 0u;
+        const auto transparent_enabled =
+            (query.lobe_mask &
+             static_cast<std::uint32_t>(
+                 event_transparent)) != 0u;
+        const auto transmission_enabled =
+            (query.lobe_mask &
+             static_cast<std::uint32_t>(
+                 event_transmission)) != 0u;
+        auto eligible =
+            is_transparent
+                ? transparent_enabled
+                : is_translucent
+                      ? (diffuse_enabled &
+                         transmission_enabled)
+                      : is_diffuse
+                      ? diffuse_enabled
+                      : is_principled
+                            ? (diffuse_enabled |
+                               glossy_enabled)
+                            : is_glossy
+                                  ? glossy_enabled
+                                  : Bool{false};
+        eligible &= closure_allocated(closure);
+        const auto glossy_normal =
+            ensure_valid_specular_reflection(
+                point.geometric_normal,
+                incoming,
+                closure.normal);
+        Float3 selection_color;
+        Float principled_specular_chance = 0.0f;
+        if (is_principled) {
+            const auto state = principled_state(
+                services,
+                closure,
+                incoming,
+                glossy_normal);
+            selection_color =
+                state.diffuse_sample_weight +
+                state.glossy_sample_weight;
+            const auto diffuse_weight = sample_weight(
+                state.diffuse_sample_weight);
+            const auto glossy_weight = sample_weight(
+                state.glossy_sample_weight);
+            principled_specular_chance =
+                glossy_weight /
+                max(
+                    diffuse_weight + glossy_weight,
+                    1.0e-20f);
+        } else {
+            selection_color =
+                is_diffuse || is_translucent ||
+                        is_transparent
+                    ? closure.weight
+                    : closure.weight *
+                          max(
+                              closure.color,
+                              make_float3(0.04f));
+        }
+        return {
+            .eligible = eligible,
+            .weight = select(
+                0.0f,
+                sample_weight(selection_color),
+                eligible),
+            .principled_specular_chance =
+                principled_specular_chance,
+            .glossy_normal = glossy_normal};
     }
 
     [[nodiscard]] static Float oren_nayar_g(
@@ -4018,15 +4187,65 @@ public:
             query);
     }
 
-    [[nodiscard]] SurfaceSample sample(
+    [[nodiscard]] SurfaceClosureTrace closure_trace(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        Expr<std::uint32_t>
+            requested_index_expression) const noexcept override {
+        auto requested_index =
+            UInt{requested_index_expression};
+        auto result =
+            SurfaceClosureTrace::zero(requested_index);
+        if (!_program) {
+            return result;
+        }
+        auto values = trace_values(services, point);
+        UInt closure_count = 0u;
+        for_each_closure(
+            values,
+            [&](const TracedClosure &closure) noexcept {
+                auto allocated =
+                    closure_allocated(closure);
+                auto match =
+                    allocated &
+                    (closure_count == requested_index);
+                result.type = select(
+                    result.type,
+                    cycles_closure_type(closure),
+                    match);
+                result.sample_weight = select(
+                    result.sample_weight,
+                    closure_sample_weight(closure),
+                    match);
+                result.weight = select(
+                    result.weight,
+                    closure.weight,
+                    match);
+                result.normal = select(
+                    result.normal,
+                    closure.normal,
+                    match);
+                result.valid = result.valid | match;
+                closure_count +=
+                    select(0u, 1u, allocated);
+            });
+        result.count = closure_count;
+        return result;
+    }
+
+private:
+    template<bool TraceSelection>
+    [[nodiscard]] SurfaceSampleTrace
+    sample_with_trace(
         const ShaderServices &services,
         const SurfacePoint &point,
         Expr<float> u_lobe_expression,
         Expr<luisa::float2> u_direction_expression,
-        const SurfaceQuery &query) const noexcept override {
-        auto result = SurfaceSample::zero();
+        const SurfaceQuery &query) const noexcept {
+        auto trace = SurfaceSampleTrace::zero();
+        auto &result = trace.sample;
         if (!_program) {
-            return result;
+            return trace;
         }
 
         auto values = trace_values(services, point);
@@ -4034,6 +4253,7 @@ public:
             point.incoming,
             point.shading_normal);
         Float total_weight = 0.0f;
+        UInt closure_count = 0u;
         auto diffuse_enabled =
             (query.lobe_mask &
              static_cast<std::uint32_t>(event_diffuse)) != 0u;
@@ -4049,64 +4269,18 @@ public:
         for_each_closure(
             values,
             [&](const TracedClosure &closure) noexcept {
-                auto is_diffuse =
-                    closure.operation ==
-                    compiler::ClosureOperation::diffuse;
-                auto is_translucent =
-                    closure.operation ==
-                    compiler::ClosureOperation::translucent;
-                auto is_principled =
-                    closure.operation ==
-                    compiler::ClosureOperation::principled;
-                auto is_glossy =
-                    closure.operation ==
-                    compiler::ClosureOperation::glossy;
-                auto is_transparent =
-                    closure.operation ==
-                    compiler::ClosureOperation::transparent;
-                auto eligible =
-                    is_transparent
-                        ? transparent_enabled
-                        : is_translucent
-                              ? (diffuse_enabled &
-                                 transmission_enabled)
-                              : is_diffuse
-                              ? diffuse_enabled
-                              : is_principled
-                                    ? (diffuse_enabled |
-                                       glossy_enabled)
-                                    : is_glossy
-                                          ? glossy_enabled
-                                          : Bool{false};
-                auto glossy_normal =
-                    ensure_valid_specular_reflection(
-                        point.geometric_normal,
-                        incoming,
-                        closure.normal);
-                Float3 selection_color;
-                if (is_principled) {
-                    auto state = principled_state(
+                const auto selection =
+                    closure_selection_state(
                         services,
+                        point,
                         closure,
                         incoming,
-                        glossy_normal);
-                    selection_color =
-                        state.diffuse_sample_weight +
-                        state.glossy_sample_weight;
-                } else {
-                    selection_color =
-                        is_diffuse || is_translucent ||
-                                is_transparent
-                            ? closure.weight
-                            : closure.weight *
-                                  max(
-                                      closure.color,
-                                      make_float3(0.04f));
-                }
-                total_weight += select(
-                    0.0f,
-                    sample_weight(selection_color),
-                    eligible);
+                        query);
+                total_weight += selection.weight;
+                closure_count += select(
+                    0u,
+                    1u,
+                    closure_allocated(closure));
             });
 
         auto random_lobe = clamp(
@@ -4120,6 +4294,7 @@ public:
         Bool selected_glossy = false;
         Float3 transparent_weight = make_float3(0.0f);
         Float transparent_sample_weight = 0.0f;
+        UInt closure_index = 0u;
 
         for_each_closure(
             values,
@@ -4139,60 +4314,20 @@ public:
                 auto is_transparent =
                     closure.operation ==
                     compiler::ClosureOperation::transparent;
-                auto eligible =
-                    is_transparent
-                        ? transparent_enabled
-                        : is_translucent
-                              ? (diffuse_enabled &
-                                 transmission_enabled)
-                              : is_diffuse
-                              ? diffuse_enabled
-                              : is_principled
-                                    ? (diffuse_enabled |
-                                       glossy_enabled)
-                                    : is_glossy
-                                          ? glossy_enabled
-                                          : Bool{false};
-                auto glossy_normal =
-                    ensure_valid_specular_reflection(
-                        point.geometric_normal,
-                        incoming,
-                        closure.normal);
-                Float3 selection_color;
-                Float principled_specular_chance = 0.0f;
-                if (is_principled) {
-                    auto state = principled_state(
+                const auto allocated =
+                    closure_allocated(closure);
+                const auto current_closure_index =
+                    closure_index;
+                const auto selection =
+                    closure_selection_state(
                         services,
+                        point,
                         closure,
                         incoming,
-                        glossy_normal);
-                    selection_color =
-                        state.diffuse_sample_weight +
-                        state.glossy_sample_weight;
-                    auto diffuse_weight = sample_weight(
-                        state.diffuse_sample_weight);
-                    auto glossy_weight = sample_weight(
-                        state.glossy_sample_weight);
-                    principled_specular_chance =
-                        glossy_weight /
-                        max(
-                            diffuse_weight +
-                                glossy_weight,
-                            1.0e-20f);
-                } else {
-                    selection_color =
-                        is_diffuse || is_translucent ||
-                                is_transparent
-                            ? closure.weight
-                            : closure.weight *
-                                  max(
-                                      closure.color,
-                                      make_float3(0.04f));
-                }
-                auto weight = select(
-                    0.0f,
-                    sample_weight(selection_color),
-                    eligible);
+                        query);
+                const auto glossy_normal =
+                    selection.glossy_normal;
+                const auto weight = selection.weight;
                 auto next = accumulated + weight;
                 auto choose =
                     (!selected) &
@@ -4216,7 +4351,8 @@ public:
                         ? 1.0f
                         : is_diffuse
                               ? 0.0f
-                              : principled_specular_chance;
+                              : selection
+                                    .principled_specular_chance;
                 specular_chance = select(
                     specular_chance,
                     0.0f,
@@ -4268,12 +4404,49 @@ public:
                     result.wi,
                     candidate_direction,
                     choose);
+                auto nontransparent_roughness =
+                    select(
+                        make_float2(1.0f),
+                        make_float2(closure.roughness),
+                        sample_glossy);
                 result.roughness = select(
                     result.roughness,
-                    !is_transparent
-                        ? make_float2(closure.roughness)
-                        : make_float2(0.0f),
+                    is_transparent
+                        ? make_float2(0.0f)
+                        : nontransparent_roughness,
                     choose);
+                if constexpr (TraceSelection) {
+                    const auto rescaled_selection =
+                        select(
+                            random_lobe,
+                            (target - accumulated) /
+                                max(weight, 1.0e-20f),
+                            closure_count > 1u);
+                    trace.closure_index = select(
+                        trace.closure_index,
+                        current_closure_index,
+                        choose);
+                    trace.closure_type = select(
+                        trace.closure_type,
+                        cycles_closure_type(closure),
+                        choose);
+                    trace.closure_sample_weight = select(
+                        trace.closure_sample_weight,
+                        closure_sample_weight(closure),
+                        choose);
+                    trace.selection_rescaled = select(
+                        trace.selection_rescaled,
+                        rescaled_selection,
+                        choose);
+                    trace.closure_weight = select(
+                        trace.closure_weight,
+                        closure.weight,
+                        choose);
+                    trace.closure_normal = select(
+                        trace.closure_normal,
+                        closure.normal,
+                        choose);
+                }
                 transparent_weight = select(
                     transparent_weight,
                     closure.weight,
@@ -4294,6 +4467,8 @@ public:
                      sample_glossy);
                 selected = selected | choose;
                 accumulated = next;
+                closure_index += select(
+                    0u, 1u, allocated);
             });
 
         auto diffuse_evaluation = evaluate_traced(
@@ -4345,7 +4520,40 @@ public:
                 event_transmission | event_transparent),
             selected_transparent);
         result.eta = 1.0f;
-        return result;
+        if constexpr (TraceSelection) {
+            trace.closure_valid = selected;
+        }
+        return trace;
+    }
+
+public:
+    [[nodiscard]] SurfaceSample sample(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        Expr<float> u_lobe_expression,
+        Expr<luisa::float2> u_direction_expression,
+        const SurfaceQuery &query) const noexcept override {
+        return sample_with_trace<false>(
+                   services,
+                   point,
+                   u_lobe_expression,
+                   u_direction_expression,
+                   query)
+            .sample;
+    }
+
+    [[nodiscard]] SurfaceSampleTrace sample_trace(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        Expr<float> u_lobe_expression,
+        Expr<luisa::float2> u_direction_expression,
+        const SurfaceQuery &query) const noexcept override {
+        return sample_with_trace<true>(
+            services,
+            point,
+            u_lobe_expression,
+            u_direction_expression,
+            query);
     }
 
     [[nodiscard]] Float3 emission(

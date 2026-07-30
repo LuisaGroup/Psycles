@@ -35,6 +35,28 @@ using SurfaceSampleCallable = Callable<SurfaceSampleCall(
     luisa::uint,
     luisa::uint,
     float)>;
+using SurfaceClosureTraceCallable =
+    Callable<SurfaceClosureTraceCall(
+        Buffer<luisa::float4>,
+        Buffer<float>,
+        BindlessArray,
+        BindlessArray,
+        luisa::uint,
+        SurfacePointCall,
+        luisa::uint)>;
+using SurfaceSampleTraceCallable =
+    Callable<SurfaceSampleTraceCall(
+        Buffer<luisa::float4>,
+        Buffer<float>,
+        BindlessArray,
+        BindlessArray,
+        luisa::uint,
+        SurfacePointCall,
+        float,
+        luisa::float2,
+        luisa::uint,
+        luisa::uint,
+        float)>;
 using SurfaceAovCallable = Callable<SurfaceAovCall(
     Buffer<luisa::float4>,
     Buffer<float>,
@@ -54,6 +76,8 @@ struct SurfaceCallables {
     SurfaceEvaluateCallable evaluate;
     SurfaceEmissionCallable emission;
     SurfaceSampleCallable sample;
+    SurfaceClosureTraceCallable closure_trace;
+    SurfaceSampleTraceCallable sample_trace;
     SurfaceAovCallable aov;
     SurfaceShadingNormalCallable shading_normal;
 };

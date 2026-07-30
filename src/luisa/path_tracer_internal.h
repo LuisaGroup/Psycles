@@ -358,6 +358,18 @@ public:
     const SurfaceSample &sample) noexcept;
 [[nodiscard]] SurfaceSample unpack_surface_sample(
     const Var<SurfaceSampleCall> &sample) noexcept;
+[[nodiscard]] Var<SurfaceClosureTraceCall>
+pack_surface_closure_trace(
+    const SurfaceClosureTrace &trace) noexcept;
+[[nodiscard]] SurfaceClosureTrace
+unpack_surface_closure_trace(
+    const Var<SurfaceClosureTraceCall> &trace) noexcept;
+[[nodiscard]] Var<SurfaceSampleTraceCall>
+pack_surface_sample_trace(
+    const SurfaceSampleTrace &trace) noexcept;
+[[nodiscard]] SurfaceSampleTrace
+unpack_surface_sample_trace(
+    const Var<SurfaceSampleTraceCall> &trace) noexcept;
 [[nodiscard]] Var<SurfaceAovCall> pack_surface_aov(
     const SurfaceAov &aov) noexcept;
 [[nodiscard]] SurfaceAov unpack_surface_aov(

@@ -144,6 +144,58 @@ struct SurfaceSample {
     }
 };
 
+// Diagnostic view of one entry in the post-shader closure array. `count` is
+// repeated so a single runtime-indexed callable can expose the fixed-capacity
+// trace without returning a backend-specific aggregate array.
+struct SurfaceClosureTrace {
+    UInt count;
+    UInt index;
+    UInt type;
+    Float sample_weight;
+    Float3 weight;
+    Float3 normal;
+    Bool valid;
+
+    [[nodiscard]] static SurfaceClosureTrace zero(
+        Expr<std::uint32_t> requested_index = 0u) noexcept {
+        return {
+            .count = 0u,
+            .index = requested_index,
+            .type = 0u,
+            .sample_weight = 0.0f,
+            .weight = make_float3(0.0f),
+            .normal = make_float3(0.0f, 0.0f, 1.0f),
+            .valid = false};
+    }
+};
+
+// Trace-only extension of SurfaceSample. Normal render kernels call `sample`
+// and retain the compact production ABI; differential kernels call
+// `sample_trace` to observe the exact closure selection without reimplementing
+// it in the integrator.
+struct SurfaceSampleTrace {
+    SurfaceSample sample;
+    UInt closure_index;
+    UInt closure_type;
+    Float closure_sample_weight;
+    Float selection_rescaled;
+    Float3 closure_weight;
+    Float3 closure_normal;
+    Bool closure_valid;
+
+    [[nodiscard]] static SurfaceSampleTrace zero() noexcept {
+        return {
+            .sample = SurfaceSample::zero(),
+            .closure_index = 0u,
+            .closure_type = 0u,
+            .closure_sample_weight = 0.0f,
+            .selection_rescaled = 0.0f,
+            .closure_weight = make_float3(0.0f),
+            .closure_normal = make_float3(0.0f, 0.0f, 1.0f),
+            .closure_valid = false};
+    }
+};
+
 struct SurfaceAov {
     Float3 albedo;
     Float3 glossy_albedo;
@@ -226,6 +278,29 @@ public:
         Expr<float> u_lobe,
         Expr<luisa::float2> u_direction,
         const SurfaceQuery &query) const noexcept = 0;
+
+    [[nodiscard]] virtual SurfaceClosureTrace closure_trace(
+        const ShaderServices &,
+        const SurfacePoint &,
+        Expr<std::uint32_t> requested_index) const noexcept {
+        return SurfaceClosureTrace::zero(requested_index);
+    }
+
+    [[nodiscard]] virtual SurfaceSampleTrace sample_trace(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        Expr<float> u_lobe,
+        Expr<luisa::float2> u_direction,
+        const SurfaceQuery &query) const noexcept {
+        auto result = SurfaceSampleTrace::zero();
+        result.sample = sample(
+            services,
+            point,
+            u_lobe,
+            u_direction,
+            query);
+        return result;
+    }
 
     [[nodiscard]] virtual Float3 emission(
         const ShaderServices &,
@@ -322,6 +397,41 @@ public:
         return result;
     }
 
+    [[nodiscard]] SurfaceClosureTrace closure_trace(
+        Expr<std::uint32_t> tag,
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        Expr<std::uint32_t> requested_index) const noexcept {
+        auto result =
+            SurfaceClosureTrace::zero(requested_index);
+        _surfaces.dispatch(tag, [&](const Surface *surface) noexcept {
+            result = surface->closure_trace(
+                services,
+                point,
+                requested_index);
+        });
+        return result;
+    }
+
+    [[nodiscard]] SurfaceSampleTrace sample_trace(
+        Expr<std::uint32_t> tag,
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        Expr<float> u_lobe,
+        Expr<luisa::float2> u_direction,
+        const SurfaceQuery &query) const noexcept {
+        auto result = SurfaceSampleTrace::zero();
+        _surfaces.dispatch(tag, [&](const Surface *surface) noexcept {
+            result = surface->sample_trace(
+                services,
+                point,
+                u_lobe,
+                u_direction,
+                query);
+        });
+        return result;
+    }
+
     [[nodiscard]] Float3 emission(
         Expr<std::uint32_t> tag,
         const ShaderServices &services,
@@ -405,4 +515,6 @@ LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::SurfacePoint)
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::SurfaceQuery)
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::SurfaceEvaluation)
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::SurfaceSample)
+LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::SurfaceClosureTrace)
+LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::SurfaceSampleTrace)
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::SurfaceAov)

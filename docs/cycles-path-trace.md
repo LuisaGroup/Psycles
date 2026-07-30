@@ -186,3 +186,23 @@ Luisa path records still compare with zero failures. The strict Cycles
 comparison remains at 24 outstanding gates because closure/BSDF output slots
 are intentionally not marked written until the raw closure inventory and
 lobe-selection trace are connected.
+
+That closure gate is now connected through a trace-only surface ABI. The
+ordinary renderer keeps its compact `SurfaceSample`; an oracle build requests
+the post-shader closure array and the selected-closure record from the same
+GraphSurface implementation that performs sampling. No closure selection is
+reimplemented in the integrator.
+
+For the point-path diffuse closure, all newly written fields pass against
+Cycles CPU: closure count/index/type/sample weight, raw weight and normal,
+rescaled selection dimension, BSDF label, `wo`, weighted evaluation, PDF,
+unguided PDF, sampled roughness, and eta. In particular, Cycles reports
+Diffuse sampled roughness as `(1, 1)`, independently of the Diffuse node's
+model-selection Roughness input. The strict failure count falls from 24 to 12
+with no comparator changes or waivers.
+
+The device regression executes the entire raw-closure and sample path on
+fallback, HIP, and Vulkan. All 32 project tests pass. Aggregated Principled is
+intentionally exposed with the Cycles virtual closure identity until it is
+expanded into the same physical closure list as Cycles; complex materials
+therefore cannot falsely pass this gate.

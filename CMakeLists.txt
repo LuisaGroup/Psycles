@@ -307,6 +307,29 @@ if(PSYCLES_ENABLE_LUISA)
                         fallback)
 
                 add_executable(
+                    psycles_luisa_cycles_closure_tests
+                    tests/test_luisa_cycles_closure.cpp)
+                target_link_libraries(
+                    psycles_luisa_cycles_closure_tests
+                    PRIVATE Psycles::luisa)
+                target_compile_features(
+                    psycles_luisa_cycles_closure_tests
+                    PRIVATE cxx_std_20)
+                add_dependencies(
+                    psycles_luisa_cycles_closure_tests
+                    luisa-compute-backend-fallback)
+                set_target_properties(
+                    psycles_luisa_cycles_closure_tests
+                    PROPERTIES
+                        RUNTIME_OUTPUT_DIRECTORY
+                            "${CMAKE_BINARY_DIR}/bin")
+                add_test(
+                    NAME psycles.luisa_cycles_closure_fallback
+                    COMMAND
+                        psycles_luisa_cycles_closure_tests
+                        fallback)
+
+                add_executable(
                     psycles_luisa_camera_sampling_tests
                     tests/test_luisa_camera_sampling.cpp)
                 target_link_libraries(

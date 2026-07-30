@@ -102,6 +102,67 @@ SurfaceCallables make_surface_callables(
                     u_direction,
                     query));
         };
+    SurfaceClosureTraceCallable closure_trace =
+        [scene](
+            BufferFloat4 parameters,
+            BufferFloat cycles_bsdf_tables,
+            BindlessVar textures,
+            BindlessVar geometry_heap,
+            UInt surface_tag,
+            Var<SurfacePointCall> packed_point,
+            UInt requested_index) noexcept {
+            BufferShaderServices services{
+                parameters,
+                cycles_bsdf_tables,
+                textures,
+                geometry_heap,
+                scene->attribute_binding_slot,
+                scene->attribute_range_slot,
+                scene->nishita_texture_bindings,
+                scene->shader_color_space};
+            return pack_surface_closure_trace(
+                scene->surfaces.closure_trace(
+                    surface_tag,
+                    services,
+                    unpack_surface_point(packed_point),
+                    requested_index));
+        };
+    SurfaceSampleTraceCallable sample_trace =
+        [scene](
+            BufferFloat4 parameters,
+            BufferFloat cycles_bsdf_tables,
+            BindlessVar textures,
+            BindlessVar geometry_heap,
+            UInt surface_tag,
+            Var<SurfacePointCall> packed_point,
+            Float u_lobe,
+            Float2 u_direction,
+            UInt lobe_mask,
+            UInt transport_mode,
+            Float glossy_filter_roughness) noexcept {
+            BufferShaderServices services{
+                parameters,
+                cycles_bsdf_tables,
+                textures,
+                geometry_heap,
+                scene->attribute_binding_slot,
+                scene->attribute_range_slot,
+                scene->nishita_texture_bindings,
+                scene->shader_color_space};
+            auto query = SurfaceQuery{
+                .lobe_mask = lobe_mask,
+                .transport_mode = transport_mode,
+                .glossy_filter_roughness =
+                    glossy_filter_roughness};
+            return pack_surface_sample_trace(
+                scene->surfaces.sample_trace(
+                    surface_tag,
+                    services,
+                    unpack_surface_point(packed_point),
+                    u_lobe,
+                    u_direction,
+                    query));
+        };
     SurfaceAovCallable aov =
         [scene](
             BufferFloat4 parameters,
@@ -151,6 +212,8 @@ SurfaceCallables make_surface_callables(
         std::move(evaluate),
         std::move(emission),
         std::move(sample),
+        std::move(closure_trace),
+        std::move(sample_trace),
         std::move(aov),
         std::move(shading_normal)};
 }

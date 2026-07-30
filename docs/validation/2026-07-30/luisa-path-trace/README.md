@@ -121,3 +121,49 @@ shows the same 24 deliberately unwritten closure/BSDF/post-state gates; none
 were waived. The minimal point-light EXR is unchanged under `oiiotool --diff`
 because its current visible contribution is direct lighting, while this
 checkpoint changes the subsequently sampled diffuse path.
+
+## Raw closure and BSDF checkpoint
+
+The differential surface interface now exposes two trace-only operations:
+
+- a runtime-indexed view of the post-shader closure array, including count,
+  Cycles type, sample weight, spectral weight, and normal;
+- the selected closure alongside the real `SurfaceSample`, including the
+  rescaled selection dimension.
+
+The normal render kernel continues to call the compact production sampler.
+The trace kernel calls the extended sampler, so closure enumeration and
+selection have one implementation rather than a second diagnostic model.
+Principled remains visibly represented as an aggregate virtual closure at this
+checkpoint; it is not relabeled as one of Cycles' physical closures and is not
+considered aligned until physical expansion is implemented.
+
+On the diffuse point-path oracle, the following groups now pass in full:
+
+- raw closure `count=1`, `index=0`, `type=2`,
+  `sample_weight≈0.42`, weight `(0.62, 0.41, 0.23)`, and `N=(0,0,1)`;
+- closure pick and exact rescaled random
+  `(0.82080835, 0.67639267, 0.37341177)`;
+- BSDF `pdf=unguided_pdf=0.244151756`, label `6`;
+- `wo=(0.601930976, -0.222150967, 0.767025411)`;
+- weighted evaluation
+  `(0.151374087, 0.100102216, 0.056154907)`;
+- sampled roughness `(1,1)` and eta `1`.
+
+The strict Cycles CPU comparison drops from 24 to 12 failures without changing
+the schema, tolerances, or written-state rules. Remaining failures are source
+shader/light identities, post-bounce state, surface runtime flags, visibility,
+and light shader identity. Fallback versus HIP and fallback versus Vulkan both
+pass with zero failures. The dedicated GraphSurface device regression passes
+on all three Luisa backends, and the complete suite passes 32/32 with
+`ctest -j32`.
+
+Fresh trace JIT timing on this probe was about `0.93 s` on HIP and `2.27 s` on
+Vulkan. Vulkan's compute SPIR-V optimization reduced 83,078 words to 74,829;
+the optimization interval accounted for about `1.29 s` of the trace compile.
+The corresponding non-trace Vulkan kernel compiled in `0.51 s`, with its
+SPIR-V optimization taking about `0.39 s` (75,552 to 67,995 words). This
+localizes the new cost to deliberately expanded trace instrumentation rather
+than the production sampler. HIP's fresh non-trace kernel compiled in
+`0.71 s`. Non-trace HIP and Vulkan EXRs remain identical to the preceding
+checkpoint under `oiiotool --diff`.

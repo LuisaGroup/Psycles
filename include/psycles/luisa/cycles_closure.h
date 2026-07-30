@@ -1,0 +1,81 @@
+#pragma once
+
+#if !defined(PSYCLES_WITH_LUISA)
+#error "Include <psycles/luisa/cycles_closure.h> through the Psycles::luisa target."
+#endif
+
+#include <cstdint>
+
+#include <psycles/contract/surface.h>
+
+#include <luisa/dsl/sugar.h>
+
+namespace psycles::luisa_backend::cycles_closure {
+
+// Stable values from the Cycles ClosureType ABI used by ShaderClosure. These
+// are trace and interoperability identities, not Psycles-internal operation
+// tags.
+inline constexpr std::uint32_t type_none = 0u;
+inline constexpr std::uint32_t type_diffuse = 2u;
+inline constexpr std::uint32_t type_oren_nayar = 3u;
+inline constexpr std::uint32_t type_rough_translucent = 4u;
+inline constexpr std::uint32_t type_translucent = 9u;
+inline constexpr std::uint32_t type_microfacet_ggx = 12u;
+inline constexpr std::uint32_t type_transparent = 30u;
+inline constexpr std::uint32_t type_principled_virtual = 43u;
+
+inline constexpr std::uint32_t label_none = 0u;
+inline constexpr std::uint32_t label_transmit = 1u;
+inline constexpr std::uint32_t label_reflect = 2u;
+inline constexpr std::uint32_t label_diffuse = 4u;
+inline constexpr std::uint32_t label_glossy = 8u;
+inline constexpr std::uint32_t label_singular = 16u;
+inline constexpr std::uint32_t label_transparent = 32u;
+
+// Convert the renderer-independent surface-event contract back to the exact
+// Cycles ClosureLabel bit layout. Keeping this mapping explicit prevents
+// path-state code from accidentally treating the two enums as ABI-compatible.
+[[nodiscard]] inline luisa::compute::UInt
+label_from_events(luisa::compute::UInt events) noexcept {
+    using namespace luisa::compute;
+    UInt label = label_none;
+    label |= select(
+        0u,
+        label_transmit,
+        (events &
+         static_cast<std::uint32_t>(
+             contract::event_transmission)) != 0u);
+    label |= select(
+        0u,
+        label_reflect,
+        (events &
+         static_cast<std::uint32_t>(
+             contract::event_reflection)) != 0u);
+    label |= select(
+        0u,
+        label_diffuse,
+        (events &
+         static_cast<std::uint32_t>(
+             contract::event_diffuse)) != 0u);
+    label |= select(
+        0u,
+        label_glossy,
+        (events &
+         static_cast<std::uint32_t>(
+             contract::event_glossy)) != 0u);
+    label |= select(
+        0u,
+        label_singular,
+        (events &
+         static_cast<std::uint32_t>(
+             contract::event_singular)) != 0u);
+    label |= select(
+        0u,
+        label_transparent,
+        (events &
+         static_cast<std::uint32_t>(
+             contract::event_transparent)) != 0u);
+    return label;
+}
+
+} // namespace psycles::luisa_backend::cycles_closure
