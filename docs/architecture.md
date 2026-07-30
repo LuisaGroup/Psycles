@@ -117,6 +117,16 @@ parameters, textures, attributes, and surface differentials from
 unverified until focused Cycles probes pass; the authoritative status is
 reported by `tools/check_cycles_shader_node_coverage.py`.
 
+`GraphSurface` is compiled as a host-side AST builder rather than implemented
+by textual header fragments. Its public header owns an opaque implementation.
+The implementation binds each immutable value instruction to a polymorphic
+node component, then invokes that component while Luisa is recording a
+kernel. Ordinary C++ classes, virtual methods, visitors, and host booleans may
+therefore organize shader construction without appearing as device-side
+objects, virtual calls, or dynamic branches. The resulting device program
+remains one fused Luisa AST. New node families extend the component factory
+and a focused translation unit instead of expanding a central shader switch.
+
 `ShaderServices::attribute` returns both the value and an explicit presence
 bit. This is required for volume grids: an existing density voxel whose value
 is zero is semantically different from a missing `density` attribute, for

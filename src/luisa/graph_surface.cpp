@@ -1,0 +1,94 @@
+#include <psycles/luisa/graph_surface.h>
+
+#include <utility>
+
+#include "graph_surface_internal.h"
+
+namespace psycles::luisa_backend {
+
+GraphSurface::GraphSurface(
+    std::shared_ptr<const compiler::SurfaceProgram> program) noexcept
+    : _implementation{
+          std::make_unique<detail::GraphSurfaceImplementation>(
+              std::move(program))} {}
+
+GraphSurface::~GraphSurface() noexcept = default;
+
+SurfaceCapabilities GraphSurface::capabilities() const noexcept {
+    return _implementation->capabilities();
+}
+
+SurfaceEvaluation GraphSurface::evaluate(
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    Expr<luisa::float3> outgoing,
+    const SurfaceQuery &query) const noexcept {
+    return _implementation->evaluate(
+        services, point, outgoing, query);
+}
+
+SurfaceSample GraphSurface::sample(
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    Expr<float> u_lobe,
+    Expr<luisa::float2> u_direction,
+    const SurfaceQuery &query) const noexcept {
+    return _implementation->sample(
+        services, point, u_lobe, u_direction, query);
+}
+
+SurfaceClosureTrace GraphSurface::closure_trace(
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    Expr<std::uint32_t> requested_index) const noexcept {
+    return _implementation->closure_trace(
+        services, point, requested_index);
+}
+
+SurfaceSampleTrace GraphSurface::sample_trace(
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    Expr<float> u_lobe,
+    Expr<luisa::float2> u_direction,
+    const SurfaceQuery &query) const noexcept {
+    return _implementation->sample_trace(
+        services, point, u_lobe, u_direction, query);
+}
+
+Float3 GraphSurface::emission(
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    Expr<luisa::float3> outgoing) const noexcept {
+    return _implementation->emission(
+        services, point, outgoing);
+}
+
+Float3 GraphSurface::transparent_extinction(
+    const ShaderServices &services,
+    const SurfacePoint &point) const noexcept {
+    return _implementation->transparent_extinction(
+        services, point);
+}
+
+VolumeCoefficients GraphSurface::volume_coefficients(
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    const VolumeQuery &query) const noexcept {
+    return _implementation->volume_coefficients(
+        services, point, query);
+}
+
+Float3 GraphSurface::shading_normal(
+    const ShaderServices &services,
+    const SurfacePoint &point) const noexcept {
+    return _implementation->shading_normal(
+        services, point);
+}
+
+SurfaceAov GraphSurface::aov(
+    const ShaderServices &services,
+    const SurfacePoint &point) const noexcept {
+    return _implementation->aov(services, point);
+}
+
+}// namespace psycles::luisa_backend

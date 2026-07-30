@@ -65,15 +65,14 @@ differential renders are byte-identical. The extraction added fallback, HIP,
 and Vulkan camera tests and is documented under
 `validation/2026-07-31/camera-vulkan`.
 
-The `GraphSurface` implementation is now partitioned along renderer semantics:
-state and value access, Cycles scattering, value evaluation by node family,
-raw closure traversal, and the public surface/volume API. The public
-`graph_surface.h` facade decreased from 4,882 to 41 lines; its largest
-implementation fragment is 966 lines. The fragments remain in class and
-dispatcher context intentionally: this preserves Luisa DSL callable
-visibility, expression construction order, and generated AST control flow.
-Every extracted source range was checked byte-for-byte against the original
-header before compilation.
+The first `GraphSurface` size-control checkpoint partitioned the implementation
+along renderer semantics: state and value access, Cycles scattering, value
+evaluation by node family, raw closure traversal, and the public surface/
+volume API. It reduced the 4,882-line header to a small facade, but retained
+the implementation as textual `.inl` fragments in one class scope. That was
+an intentionally conservative equivalence checkpoint, not the target
+architecture. Every extracted source range was checked byte-for-byte against
+the original header before compilation.
 
 After this checkpoint the complete scan covered 153 source files and 60,008
 lines, with four remaining files over 2,000 lines. The
@@ -91,6 +90,35 @@ The existing Cycles/Psycles triptych below remains the visual record for this
 fixture because the current Psycles panel is byte-identical:
 
 ![Cycles, Psycles, and absolute difference for the material fixture](validation/2026-07-31/camera-vulkan/blackman-harris-vk-vs-cycles.png)
+
+`GraphSurface` is now a real compiled host-stage surface compiler. Its public
+91-line header contains only the stable `Surface` override ABI and a private
+implementation pointer. State/color helpers, scattering, closure traversal,
+value-graph tracing, and the surface API are ordinary functions in separate
+translation units; the largest implementation file is 999 lines.
+
+The value graph uses an explicit host-side `ValueNode` interface. At
+`GraphSurfaceImplementation` construction, every immutable compiler IR
+instruction is bound once to a math, context, image, or procedural node
+object. Calling the virtual `evaluate()` method while a Luisa kernel is being
+recorded emits DSL expressions into the current AST. The virtual dispatch is
+therefore C++ metaprogramming at JIT/trace time: it does not add device-side
+virtual calls or split the fused shader into Luisa `Callable` kernels. Closure
+visitors and the traced/untraced sampling choice use the same host-stage
+boundary.
+
+All nine non-generated `GraphSurface` `.inl` files have been deleted. The
+source-size regression now rejects every new hand-written `.inl`; the four
+Blender normalizer and eight path-kernel fragments are an explicit shrinking
+debt list, while the versioned Cycles BSDF table remains classified as
+generated declarative data.
+
+The compiled architecture passed the 32-worker full build and all 42 tests.
+The 64×64, 256 spp fixture was rerun through fallback, HIP, and Vulkan; all 13
+linear passes on every backend (39 files total) remain byte-identical to the
+pre-refactor baseline. The HIP output was also opened and inspected at native
+resolution. The complete source gate now covers 183 first-party files and
+61,298 lines, with no file over 2,000 lines.
 
 The surface-program compiler is now a second semantic checkpoint. Its public
 implementation decreased from 2,416 to 135 lines. Builder state and
