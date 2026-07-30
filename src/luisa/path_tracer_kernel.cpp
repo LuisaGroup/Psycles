@@ -8,6 +8,7 @@
 #include "path_tracer_lighting.h"
 #include "path_tracer_surfaces.h"
 
+#include <psycles/luisa/analytic_light_intersection.h>
 #include <psycles/luisa/analytic_light_sampling.h>
 #include <psycles/luisa/background_sampling.h>
 #include <psycles/luisa/camera_sampling.h>
@@ -969,6 +970,114 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                     sample_transmission_indirect +=
                         contribution.transmission_indirect;
                 };
+            auto analytic_light_shader =
+                [&](Var<LightGpu> light,
+                    UInt light_index,
+                    Float3 light_position,
+                    Float3 light_normal,
+                    Float2 light_uv,
+                    Float3 incoming,
+                    Float light_distance) noexcept {
+                    Float3 result = make_float3(1.0f);
+                    $if (light.surface_tag !=
+                         ~std::uint32_t{0u}) {
+                        Float3 relative_position =
+                            light_position -
+                            light.position;
+                        Float3 object_position =
+                            make_float3(
+                                dot(
+                                    relative_position,
+                                    light.axis_x),
+                                dot(
+                                    relative_position,
+                                    light.axis_y),
+                                dot(
+                                    relative_position,
+                                    light.axis_z));
+                        SurfacePoint light_point{
+                            .position = light_position,
+                            .object_position =
+                                object_position,
+                            .object_location =
+                                light.position,
+                            .generated = object_position,
+                            .geometric_normal =
+                                light_normal,
+                            .shading_normal =
+                                light_normal,
+                            .object_shading_normal =
+                                light_normal,
+                            .object_tangent =
+                                light.axis_x,
+                            .tangent_sign = 1.0f,
+                            .normal_to_world_x =
+                                light.axis_x,
+                            .normal_to_world_y =
+                                light.axis_y,
+                            .normal_to_world_z =
+                                light.axis_z,
+                            .dpdu =
+                                light.axis_x *
+                                light.size_u,
+                            .dpdv =
+                                light.axis_y *
+                                light.size_v,
+                            .dPdx = make_float3(0.0f),
+                            .dPdy = make_float3(0.0f),
+                            .object_dPdx =
+                                make_float3(0.0f),
+                            .object_dPdy =
+                                make_float3(0.0f),
+                            .generated_dx =
+                                make_float3(0.0f),
+                            .generated_dy =
+                                make_float3(0.0f),
+                            .incoming = incoming,
+                            .uv = light_uv,
+                            .uv_dx =
+                                make_float2(0.0f),
+                            .uv_dy =
+                                make_float2(0.0f),
+                            .geometry_index = ~0u,
+                            .barycentric =
+                                make_float2(0.0f),
+                            .barycentric_dx =
+                                make_float2(0.0f),
+                            .barycentric_dy =
+                                make_float2(0.0f),
+                            .instance_id = 0u,
+                            .primitive_id =
+                                light_index,
+                            .parameter_block =
+                                light.parameter_block,
+                            .object_random = 0.0f,
+                            .particle_index = 0u,
+                            .random_per_island = 0.0f,
+                            .ray_visibility =
+                                ray_visibility,
+                            .ray_events = ray_events,
+                            .ray_depth = path_depth,
+                            .diffuse_depth =
+                                diffuse_depth,
+                            .glossy_depth =
+                                glossy_depth,
+                            .transparent_depth =
+                                transparent_depth,
+                            .transmission_depth =
+                                transmission_depth,
+                            .ray_length =
+                                light_distance,
+                            .time = 0.0f,
+                            .back_facing = false};
+                        result =
+                            surface_emission(
+                                light.surface_tag,
+                                light_point,
+                                incoming);
+                    };
+                    return result;
+                };
 
             $for (
                 path_step,
@@ -1053,6 +1162,193 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                    ProceduralCandidate &) noexcept {
                             })
                         .trace();
+                Float closest_surface_distance =
+                    ray->t_max();
+                $if (!hit->miss()) {
+                    closest_surface_distance =
+                        hit->committed_ray_t;
+                };
+
+                // Cycles treats finite analytic lights as transparent
+                // primitives in the same closest-event ordering as mesh
+                // geometry. Accumulate every light before the closest
+                // surface, advance only tmin, and preserve the path/RNG
+                // state. The immediately preceding lamp is excluded exactly
+                // like RaySelfPrimitives; transparent-bounce depth bounds the
+                // sequence.
+                UInt previous_analytic_light =
+                    surface_ray::invalid_primitive;
+                Bool search_analytic_lights = true;
+                Bool analytic_light_terminated = false;
+                $while (
+                    search_analytic_lights &
+                    !analytic_light_terminated) {
+                    Bool light_hit = false;
+                    Float light_hit_distance =
+                        closest_surface_distance;
+                    UInt light_hit_index =
+                        surface_ray::invalid_primitive;
+                    Float3 light_hit_position =
+                        make_float3(0.0f);
+                    Float3 light_hit_normal =
+                        make_float3(0.0f);
+                    Float2 light_hit_uv =
+                        make_float2(0.0f);
+                    Float light_hit_pdf = 0.0f;
+                    Float light_hit_eval_factor = 0.0f;
+
+                    $for (
+                        light_index,
+                        scene->light_count) {
+                        Var<LightGpu> light =
+                            scene->light_buffer->read(
+                                light_index);
+                        const auto camera_path =
+                            (ray_visibility &
+                             camera_visibility) != 0u;
+                        const auto use_mis =
+                            (light.flags &
+                             light_flag_use_mis) !=
+                            0u;
+                        const auto visible =
+                            (light.visibility_mask &
+                             ray_visibility) != 0u;
+                        const auto eligible =
+                            visible &
+                            (camera_path | use_mis) &
+                            (light_index !=
+                             previous_analytic_light);
+                        $if (
+                            eligible &
+                            (light.type ==
+                             static_cast<
+                                 std::uint32_t>(
+                                 LightType::area))) {
+                            const auto ellipse =
+                                (light.flags &
+                                 light_flag_ellipse) !=
+                                0u;
+                            const auto full_spread =
+                                (light.flags &
+                                 light_flag_full_spread) !=
+                                0u;
+                            const auto normalize_power =
+                                (light.flags &
+                                 light_flag_normalize) !=
+                                0u;
+                            const auto candidate =
+                                analytic_light_intersection::
+                                    intersect_area(
+                                        ray->origin(),
+                                        ray->direction(),
+                                        ray->t_min(),
+                                        light_hit_distance,
+                                        light.position,
+                                        light.axis_x,
+                                        light.size_u,
+                                        light.axis_y,
+                                        light.size_v,
+                                        light.axis_z,
+                                        ellipse,
+                                        full_spread,
+                                        light.spread,
+                                        normalize_power);
+                            $if (candidate.valid) {
+                                light_hit = true;
+                                light_hit_distance =
+                                    candidate.distance;
+                                light_hit_index =
+                                    light_index;
+                                light_hit_position =
+                                    candidate.position;
+                                light_hit_normal =
+                                    candidate.normal;
+                                light_hit_uv =
+                                    candidate.uv;
+                                light_hit_pdf =
+                                    candidate
+                                        .conditional_pdf;
+                                light_hit_eval_factor =
+                                    candidate
+                                        .evaluation_factor;
+                            };
+                        };
+                    };
+
+                    $if (light_hit) {
+                        Var<LightGpu> light =
+                            scene->light_buffer->read(
+                                light_hit_index);
+                        const auto light_pdf =
+                            light_hit_pdf *
+                            scene->light_selection_pdf;
+                        const auto competing =
+                            (path_depth > 0u) &
+                            (!previous_delta);
+                        const auto mis_weight =
+                            forward_light_weight(
+                                previous_bsdf_pdf,
+                                light_pdf,
+                                competing,
+                                light_pdf > 0.0f);
+                        auto light_radiance =
+                            light.color *
+                            (light.power *
+                             light_hit_eval_factor);
+                        light_radiance *=
+                            analytic_light_shader(
+                                light,
+                                light_hit_index,
+                                light_hit_position,
+                                light_hit_normal,
+                                light_hit_uv,
+                                -ray->direction(),
+                                light_hit_distance);
+                        const auto contribution =
+                            clamp_contribution(
+                                throughput *
+                                    light_radiance *
+                                    mis_weight,
+                                path_depth);
+                        radiance += contribution;
+                        const auto directly_visible =
+                            path_depth == 0u;
+                        sample_emission += select(
+                            make_float3(0.0f),
+                            contribution,
+                            directly_visible);
+                        accumulate_light_pass(
+                            split_scattered_light(
+                            select(
+                                contribution,
+                                make_float3(0.0f),
+                                directly_visible),
+                            path_diffuse_weight,
+                            path_glossy_weight,
+                            path_depth == 1u));
+
+                        previous_analytic_light =
+                            light_hit_index;
+                        transparent_depth += 1u;
+                        analytic_light_terminated =
+                            transparent_depth >=
+                            kernel_parameters
+                                .transparent_max_bounces;
+                        ray = make_ray(
+                            ray->origin(),
+                            ray->direction(),
+                            surface_ray::
+                                intersection_t_offset(
+                                    light_hit_distance),
+                            ray->t_max());
+                    }
+                    $else {
+                        search_analytic_lights = false;
+                    };
+                };
+                $if (analytic_light_terminated) {
+                    $break;
+                };
                 $if (hit->miss()) {
                     Bool competing =
                         (path_depth > 0u) & (!previous_delta);
@@ -2608,53 +2904,12 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                 1.0f,
                                 1.0f / area,
                                 normalize_power);
-                            Float spread_attenuation = 1.0f;
-                            $if (light.spread <
-                                 pi - 1.0e-6f) {
-                                Float half_spread =
-                                    0.5f *
-                                    max(light.spread, 0.0f);
-                                Float sine_angle = sqrt(max(
-                                    1.0f -
-                                        cosine * cosine,
-                                    0.0f));
-                                Float tangent_angle =
-                                    sine_angle /
-                                    max(cosine, 1.0e-20f);
-                                $if (half_spread <= 0.0f) {
-                                    spread_attenuation =
-                                        select(
-                                            pi,
-                                            0.0f,
-                                            tangent_angle >
-                                                1.0e-5f);
-                                }
-                                $else {
-                                    Float tangent_spread =
-                                        tan(half_spread);
-                                    Float normalization =
-                                        select(
-                                            3.0f /
-                                                max(
-                                                    half_spread *
-                                                        half_spread *
-                                                        half_spread,
-                                                    1.0e-20f),
-                                            1.0f /
-                                                max(
-                                                    tangent_spread -
-                                                        half_spread,
-                                                    1.0e-20f),
-                                            half_spread >
-                                                0.05f);
-                                    spread_attenuation =
-                                        max(
-                                            (tangent_spread -
-                                             tangent_angle) *
-                                                normalization,
-                                            0.0f);
-                                };
-                            };
+                            Float spread_attenuation =
+                                analytic_light_sampling::
+                                    area_spread_attenuation(
+                                        wi,
+                                        -light.axis_z,
+                                        light.spread);
                             light_radiance =
                                 light.color *
                                 (light.power *
@@ -2668,8 +2923,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                             light_normal =
                                 -light.axis_z;
                             light_uv = make_float2(
-                                u + 0.5f,
-                                v + 0.5f);
+                                v + 0.5f,
+                                -u - v);
                             light_valid =
                                 (distance2 > 1.0e-12f) &
                                 (cosine > 0.0f) &
@@ -3043,109 +3298,15 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                             };
                         };
 
-                        $if (light.surface_tag !=
-                             ~std::uint32_t{0u}) {
-                            Float3 relative_position =
-                                light_position -
-                                light.position;
-                            Float3 object_position =
-                                make_float3(
-                                    dot(
-                                        relative_position,
-                                        light.axis_x),
-                                    dot(
-                                        relative_position,
-                                        light.axis_y),
-                                    dot(
-                                        relative_position,
-                                        light.axis_z));
-                            SurfacePoint light_point{
-                                .position =
-                                    light_position,
-                                .object_position =
-                                    object_position,
-                                .object_location =
-                                    light.position,
-                                .generated =
-                                    object_position,
-                                .geometric_normal =
-                                    light_normal,
-                                .shading_normal =
-                                    light_normal,
-                                .object_shading_normal =
-                                    light_normal,
-                                .object_tangent =
-                                    light.axis_x,
-                                .tangent_sign = 1.0f,
-                                .normal_to_world_x =
-                                    light.axis_x,
-                                .normal_to_world_y =
-                                    light.axis_y,
-                                .normal_to_world_z =
-                                    light.axis_z,
-                                .dpdu =
-                                    light.axis_x *
-                                    light.size_u,
-                                .dpdv =
-                                    light.axis_y *
-                                    light.size_v,
-                                .dPdx =
-                                    make_float3(0.0f),
-                                .dPdy =
-                                    make_float3(0.0f),
-                                .object_dPdx =
-                                    make_float3(0.0f),
-                                .object_dPdy =
-                                    make_float3(0.0f),
-                                .generated_dx =
-                                    make_float3(0.0f),
-                                .generated_dy =
-                                    make_float3(0.0f),
-                                .incoming = -wi,
-                                .uv = light_uv,
-                                .uv_dx =
-                                    make_float2(0.0f),
-                                .uv_dy =
-                                    make_float2(0.0f),
-                                .geometry_index = ~0u,
-                                .barycentric =
-                                    make_float2(0.0f),
-                                .barycentric_dx =
-                                    make_float2(0.0f),
-                                .barycentric_dy =
-                                    make_float2(0.0f),
-                                .instance_id = 0u,
-                                .primitive_id =
-                                    light_index,
-                                .parameter_block =
-                                    light.parameter_block,
-                                .object_random = 0.0f,
-                                .particle_index = 0u,
-                                .random_per_island = 0.0f,
-                                .ray_visibility =
-                                    ray_visibility,
-                                .ray_events =
-                                    ray_events,
-                                .ray_depth =
-                                    path_depth,
-                                .diffuse_depth =
-                                    diffuse_depth,
-                                .glossy_depth =
-                                    glossy_depth,
-                                .transparent_depth =
-                                    transparent_depth,
-                                .transmission_depth =
-                                    transmission_depth,
-                                .ray_length =
-                                    light_distance,
-                                .time = 0.0f,
-                                .back_facing = false};
-                            light_radiance *=
-                                surface_emission(
-                                    light.surface_tag,
-                                    light_point,
-                                    -wi);
-                        };
+                        light_radiance *=
+                            analytic_light_shader(
+                                light,
+                                light_index,
+                                light_position,
+                                light_normal,
+                                light_uv,
+                                -wi,
+                                light_distance);
 
                         light_pdf *=
                             selected_light.selection_pdf;
@@ -3303,12 +3464,16 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                         point,
                                         wi,
                                         path_surface_query);
-                                // Analytic lights are not part of the
-                                // Psycles acceleration structure yet, so
-                                // forward BSDF rays cannot hit them. Their
-                                // NEE estimator has no competing forward
-                                // technique and must carry full weight.
-                                Float mis_weight = 1.0f;
+                                const auto forward_intersectable =
+                                    (light.flags &
+                                     light_flag_forward_intersectable) !=
+                                    0u;
+                                Float mis_weight = select(
+                                    1.0f,
+                                    nee_light_weight(
+                                        light_pdf,
+                                        evaluation.pdf),
+                                    forward_intersectable);
                                 Float3 unshadowed_contribution =
                                     evaluation.f *
                                     light_radiance *

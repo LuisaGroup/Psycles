@@ -1,3 +1,4 @@
+#include <psycles/luisa/analytic_light_intersection.h>
 #include <psycles/luisa/analytic_light_sampling.h>
 
 #include <algorithm>
@@ -14,6 +15,8 @@ namespace {
 using namespace luisa::compute;
 namespace analytic_light =
     psycles::luisa_backend::analytic_light_sampling;
+namespace analytic_intersection =
+    psycles::luisa_backend::analytic_light_intersection;
 
 struct PointCase {
     float distance_squared;
@@ -63,6 +66,8 @@ int main(int argc, char **argv) {
             point_cases.size());
     auto rectangle_output =
         device.create_buffer<luisa::float4>(2u);
+    auto intersection_output =
+        device.create_buffer<luisa::float4>(2u);
 
     std::array<luisa::float4, point_cases.size()> input_data{};
     std::array<luisa::uint2, point_cases.size()> flag_data{};
@@ -84,7 +89,8 @@ int main(int argc, char **argv) {
                             BufferFloat4 cases,
                             BufferUInt2 case_flags,
                             BufferFloat4 results,
-                            BufferFloat4 rectangle_result) noexcept {
+                            BufferFloat4 rectangle_result,
+                            BufferFloat4 intersection_result) noexcept {
         const auto index = dispatch_x();
         const auto value = cases.read(index);
         const auto flags_value = case_flags.read(index);
@@ -166,6 +172,48 @@ int main(int argc, char **argv) {
                     rectangle.position,
                     rectangle.pdf));
         };
+        $if (index == 0u) {
+            const auto intersection =
+                analytic_intersection::
+                    intersect_area(
+                        make_float3(
+                            0.30941081047058105f,
+                            -0.1030890941619873f,
+                            0.0f),
+                        make_float3(
+                            -0.006292062345892191f,
+                            0.013297063298523426f,
+                            0.9998918175697327f),
+                        0.0f,
+                        1.0e10f,
+                        make_float3(
+                            0.3700000047683716f,
+                            -0.20999999344348907f,
+                            1.399999976158142f),
+                        make_float3(1.0f, 0.0f, 0.0f),
+                        0.800000011920929f,
+                        make_float3(0.0f, 1.0f, 0.0f),
+                        0.5f,
+                        make_float3(0.0f, 0.0f, 1.0f),
+                        false,
+                        true,
+                        analytic_light::pi,
+                        true);
+            intersection_result.write(
+                0u,
+                make_float4(
+                    intersection.position,
+                    select(
+                        -1.0f,
+                        intersection.distance,
+                        intersection.valid)));
+            intersection_result.write(
+                1u,
+                make_float4(
+                    intersection.conditional_pdf,
+                    intersection.evaluation_factor,
+                    intersection.uv));
+        };
     };
 
     auto shader = device.compile(
@@ -175,19 +223,23 @@ int main(int argc, char **argv) {
             .enable_fast_math = false});
     std::array<luisa::float4, point_cases.size()> results{};
     std::array<luisa::float4, 2u> rectangle_result{};
+    std::array<luisa::float4, 2u> intersection_result{};
     stream << input.copy_from(luisa::span{input_data})
            << flags.copy_from(luisa::span{flag_data})
            << shader(
                   input,
                   flags,
                   output,
-                  rectangle_output)
+                  rectangle_output,
+                  intersection_output)
                   .dispatch(
                       static_cast<std::uint32_t>(
                           point_cases.size()))
            << output.copy_to(luisa::span{results})
            << rectangle_output.copy_to(
                   luisa::span{rectangle_result})
+           << intersection_output.copy_to(
+                  luisa::span{intersection_result})
            << synchronize();
 
     for (std::size_t index = 0u;
@@ -309,6 +361,47 @@ int main(int argc, char **argv) {
             << grazing_rectangle.y << ", "
             << grazing_rectangle.z << ", "
             << grazing_rectangle.w << "}\n";
+        return EXIT_FAILURE;
+    }
+    const auto intersection_position =
+        intersection_result[0u];
+    const auto intersection_measure =
+        intersection_result[1u];
+    if (!approximately_equal(
+            intersection_position.x,
+            0.30060097575187683) ||
+        !approximately_equal(
+            intersection_position.y,
+            -0.0844711884856224) ||
+        !approximately_equal(
+            intersection_position.z,
+            1.399999976158142) ||
+        !approximately_equal(
+            intersection_position.w,
+            1.4001514911651611) ||
+        !approximately_equal(
+            intersection_measure.x,
+            5.228616237640381) ||
+        !approximately_equal(
+            intersection_measure.y,
+            0.7957746982574463) ||
+        !approximately_equal(
+            intersection_measure.z,
+            0.7510576248168945) ||
+        !approximately_equal(
+            intersection_measure.w,
+            -0.1643088459968567)) {
+        std::cerr
+            << "Cycles forward rectangle intersection regression failed on "
+            << backend << ": position/distance={"
+            << intersection_position.x << ", "
+            << intersection_position.y << ", "
+            << intersection_position.z << ", "
+            << intersection_position.w << "}, measure/uv={"
+            << intersection_measure.x << ", "
+            << intersection_measure.y << ", "
+            << intersection_measure.z << ", "
+            << intersection_measure.w << "}\n";
         return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;

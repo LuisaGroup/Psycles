@@ -1615,6 +1615,11 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         flags |= effective_light_mis
                      ? light_flag_use_mis
                      : 0u;
+        flags |=
+            effective_light_mis &&
+                    light.type == LightType::area
+                ? light_flag_forward_intersectable
+                : 0u;
         lights.emplace_back(LightGpu{
             .type =
                 static_cast<std::uint32_t>(light.type),
@@ -1652,7 +1657,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 cycles_shader_id,
             .cycles_type =
                 cycles_shader_identity::light_type(
-                    light.type)});
+                    light.type),
+            .visibility_mask =
+                light.visibility_mask});
     }
     data->background = to_luisa(background);
     data->light_count =

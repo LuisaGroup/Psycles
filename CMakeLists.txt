@@ -284,6 +284,29 @@ if(PSYCLES_ENABLE_LUISA)
                         fallback)
 
                 add_executable(
+                    psycles_luisa_area_light_forward_tests
+                    tests/test_luisa_area_light_forward.cpp)
+                target_link_libraries(
+                    psycles_luisa_area_light_forward_tests
+                    PRIVATE Psycles::luisa_runtime)
+                target_compile_features(
+                    psycles_luisa_area_light_forward_tests
+                    PRIVATE cxx_std_20)
+                add_dependencies(
+                    psycles_luisa_area_light_forward_tests
+                    luisa-compute-backend-fallback)
+                set_target_properties(
+                    psycles_luisa_area_light_forward_tests
+                    PROPERTIES
+                        RUNTIME_OUTPUT_DIRECTORY
+                            "${CMAKE_BINARY_DIR}/bin")
+                add_test(
+                    NAME psycles.luisa_area_light_forward_fallback
+                    COMMAND
+                        psycles_luisa_area_light_forward_tests
+                        fallback)
+
+                add_executable(
                     psycles_luisa_cycles_sample_mapping_tests
                     tests/test_luisa_cycles_sample_mapping.cpp)
                 target_link_libraries(

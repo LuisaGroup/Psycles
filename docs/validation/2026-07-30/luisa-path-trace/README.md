@@ -389,3 +389,84 @@ implementation is forward intersection/evaluation of area, distant, point,
 and spot lights, followed by use of the Cycles MIS weights in production.
 Narrow-spread area lights also still require Cycles'
 `area_light_spread_clamp_light` construction before solid-angle sampling.
+
+## Full-spread area-light forward intersection checkpoint
+
+The missing complementary technique is now implemented for full-spread
+rectangle lights. The implementation follows the current Cycles finite-lamp
+event model rather than treating a lamp hit as ordinary opaque geometry:
+
+- the closest mesh distance first bounds a search over eligible analytic
+  lights;
+- an area hit must be one-sided, inside the strict open ray interval, inside
+  the rectangle or ellipse, visible to the current path, and closer than the
+  current closest event;
+- the immediately preceding analytic light is excluded with the same
+  primitive-identity rule as Cycles' `RaySelfPrimitives`;
+- each lamp is a transparent event: its raw light closure is evaluated at the
+  hit position and Cycles-compatible lamp UV, its contribution is accumulated,
+  only `tmin` and transparent depth advance, and the path resumes toward the
+  original surface or background without consuming a sampling dimension;
+- the forward PDF is the shared full-spread rectangle solid-angle PDF times
+  the flat light-selection PDF, and the forward and NEE contributions use the
+  corresponding Cycles power-heuristic weights;
+- NEE is MIS-weighted only for light kinds that have a production forward
+  technique, so point and spot lights remain unbiased while their forward
+  intersections are still being implemented.
+
+The production shader still receives the original light closure graph. No
+Cycles render, shader evaluation, texture, or closure value is baked into the
+scene.
+
+Two regression layers pin the discovered defect. The device-level regression
+uses the exact Cycles ray from pixel `(20, 14)` and checks its hit position,
+distance, UV, conditional PDF, and evaluation factor on fallback, HIP, and
+Vulkan. The production-integrator regression constructs the original diffuse
+closure and rectangle lamp directly, then checks the Cycles CPU full-frame RGB
+means and the same BSDF-forward hit pixel. It also passes on all three Luisa
+backends. Removing only the integrator event loop, while leaving the
+intersection helper intact, therefore still fails the regression.
+
+The corrected one-sample 32×32 comparison against the pinned Cycles CPU EXR is:
+
+| Luisa backend | Combined RMSE | Mean absolute error | Maximum absolute error | Luminance ratio | Invalid pixels |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| fallback | `1.0329457e-7` | `7.9489837e-8` | `3.8743019e-7` | `1.0000000000` | `0` |
+| HIP | `1.4921126e-7` | `1.1455268e-7` | `5.9604645e-7` | `1.0000001108` | `0` |
+| Vulkan | `1.4916520e-7` | `1.1422284e-7` | `5.6624413e-7` | `1.0000000000` | `0` |
+
+The machine-readable reports are
+[fallback](cycles-cpu-vs-psycles-fallback-rectangle-forward-image.json),
+[HIP](cycles-cpu-vs-psycles-hip-rectangle-forward-image.json), and
+[Vulkan](cycles-cpu-vs-psycles-vk-rectangle-forward-image.json).
+
+Left to right below: Cycles CPU, Psycles HIP, and absolute difference amplified
+by approximately `2.06e6`.
+
+![Cycles CPU, Psycles HIP, and corrected rectangle-light difference](rectangle-area-forward-cycles-cpu-vs-psycles-hip.png)
+
+The triptych was opened at its original generated resolution. The reference
+and HIP panels are visually indistinguishable in footprint, falloff, hue,
+brightness, and sample placement. Only sub-micro float32 backend noise becomes
+visible after the extreme difference amplification; the earlier sparse dark
+samples are gone. The triptych SHA-256 is
+`74e2ebc8c3d1737164bd148023278b2757f2aaca30e17a91556557511ecaf914`.
+
+The cold diagnostic JIT times were `0.343 s` for fallback, `0.922 s` for HIP,
+and `2.834 s` for Vulkan; render times were respectively `2.98 ms`,
+`3.59 ms`, and `3.05 ms`. HIP code generation took `0.331 s` and device
+bitcode linking `0.484 s`. Vulkan's long stage again occurred while generating,
+optimizing, and preparing the `92,431 -> 84,576` word SPIR-V program, not
+during rendering.
+
+As a non-regression guard, the delta point-light scene was rendered again at
+the original `(17, 16)` oracle pixel. Fallback, HIP, and Vulkan each pass all
+`43` exact, `16` random-exact, `84` float32, and `3` topology checks, and each
+new EXR is unchanged from its pre-forward-intersection backend result under
+`oiiotool --diff`.
+
+This closes full-spread rectangle forward intersection and MIS. It does not
+yet claim analytic-light completeness: finite-radius point and spot
+intersection, distant-light background evaluation, and Cycles'
+narrow-spread clamped area construction remain the next light-transport
+gates.
