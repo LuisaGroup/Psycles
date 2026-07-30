@@ -2519,19 +2519,23 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                             Bool ellipse =
                                 (light.flags &
                                  light_flag_ellipse) != 0u;
-                            Float disk_radius =
-                                0.5f * sqrt(sample_x);
-                            Float disk_angle =
-                                2.0f * pi * sample_y;
+                            Bool solid_angle_rectangle =
+                                !ellipse &
+                                ((light.flags &
+                                  light_flag_full_spread) !=
+                                 0u);
+                            Float rectangle_pdf = 0.0f;
+                            Float2 disk =
+                                cycles_sample_mapping::
+                                    sample_uniform_disk(
+                                        light_sample.xy());
                             Float u = select(
                                 sample_x - 0.5f,
-                                disk_radius *
-                                    cos(disk_angle),
+                                0.5f * disk.x,
                                 ellipse);
                             Float v = select(
                                 sample_y - 0.5f,
-                                disk_radius *
-                                    sin(disk_angle),
+                                0.5f * disk.y,
                                 ellipse);
                             light_position =
                                 light.position +
@@ -2539,6 +2543,37 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                     (u * light.size_u) +
                                 light.axis_y *
                                     (v * light.size_v);
+                            $if (solid_angle_rectangle) {
+                                const auto rectangle_sample =
+                                    analytic_light_sampling::
+                                        sample_rectangle_solid_angle(
+                                            hit_position,
+                                            light.position,
+                                            light.axis_x,
+                                            light.size_u,
+                                            light.axis_y,
+                                            light.size_v,
+                                            light_sample.xy());
+                                light_position =
+                                    rectangle_sample.position;
+                                rectangle_pdf =
+                                    rectangle_sample.pdf;
+                            };
+                            Float3 inplane =
+                                light_position -
+                                light.position;
+                            u = dot(
+                                    inplane,
+                                    light.axis_x) /
+                                max(
+                                    light.size_u,
+                                    1.0e-20f);
+                            v = dot(
+                                    inplane,
+                                    light.axis_y) /
+                                max(
+                                    light.size_v,
+                                    1.0e-20f);
                             Float3 offset =
                                 light_position - hit_position;
                             Float distance2 =
@@ -2559,9 +2594,13 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                 0.25f * pi,
                                 ellipse);
                             area = max(area, 1.0e-12f);
-                            light_pdf =
+                            const auto area_pdf =
                                 distance2 /
                                 max(cosine * area, 1.0e-20f);
+                            light_pdf = select(
+                                area_pdf,
+                                rectangle_pdf,
+                                solid_angle_rectangle);
                             Bool normalize_power =
                                 (light.flags &
                                  light_flag_normalize) != 0u;
@@ -2622,6 +2661,10 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                  inverse_area *
                                  (1.0f / pi) *
                                  spread_attenuation);
+                            light_eval_factor =
+                                inverse_area *
+                                (1.0f / pi) *
+                                spread_attenuation;
                             light_normal =
                                 -light.axis_z;
                             light_uv = make_float2(
@@ -2715,6 +2758,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                         1.0e-20f),
                                 normalize_power &
                                     finite_sun);
+                            light_eval_factor =
+                                eval_factor;
                             light_radiance =
                                 light.color *
                                 (light.power *
@@ -3105,15 +3150,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                         light_pdf *=
                             selected_light.selection_pdf;
                         if (path_trace_enabled) {
-                            const auto delta_point =
-                                (light.type ==
-                                 static_cast<
-                                     std::uint32_t>(
-                                     LightType::point)) &
-                                (light.radius == 0.0f);
                             $if (
                                 path_trace_active &
-                                delta_point &
                                 light_valid &
                                 (light_pdf > 0.0f)) {
                                 auto trace_evaluation =
@@ -3126,16 +3164,11 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                     (light.flags &
                                      light_flag_use_mis) !=
                                     0u;
-                                const auto has_competing =
-                                    analytic_light_sampling::
-                                        point_has_competing_bsdf_technique(
-                                            light.radius,
-                                            use_mis);
                                 const auto trace_bsdf_pdf =
                                     select(
                                         0.0f,
                                         trace_evaluation.pdf,
-                                        has_competing);
+                                        use_mis);
                                 const auto trace_mis_weight =
                                     nee_light_weight(
                                         light_pdf,
@@ -3146,7 +3179,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                         EventSlot::
                                             light_meta,
                                     make_float3(
-                                        0.0f,
+                                        cast<float>(
+                                            light.cycles_type),
                                         cast<float>(
                                             selected_light
                                                 .emitter_id),

@@ -265,3 +265,127 @@ scene-performance claim. Vulkan logged a substantially longer compile stage;
 the complex-scene benchmark will separately measure kernel generation,
 SPIR-V optimization, pipeline creation, and steady-state render time. The
 complete build and 35/35 tests pass with `--parallel 32` and `ctest -j32`.
+
+## Flat multi-light and rectangle solid-angle checkpoint
+
+The next gate broadens the one-point-light oracle without changing its
+tolerances. The two-point diagnostic disables the Cycles light tree and gives
+both dependency-graph-ordered emitters probability `0.5`. Two pixels exercise
+opposite halves of the same flat distribution:
+
+| Pixel | Selection random | Emitter / primitive | Object | Final PDF |
+| --- | ---: | ---: | ---: | ---: |
+| `(17, 16)` | `0.1931770742` | `0 / 0` | `1` | `1.0454698801` |
+| `(0, 16)` | `0.8768947124` | `1 / 1` | `2` | `1.5947346687` |
+
+Both branches pass all `43` exact, `16` random-exact, `84` float32, and `3`
+topology checks on all three Luisa backends. The reports are:
+
+- first emitter:
+  [fallback](cpu-vs-fallback-two-point-first.json),
+  [HIP](cpu-vs-hip-two-point-first.json), and
+  [Vulkan](cpu-vs-vk-two-point-first.json);
+- second emitter:
+  [fallback](cpu-vs-fallback-two-point-second.json),
+  [HIP](cpu-vs-hip-two-point-second.json), and
+  [Vulkan](cpu-vs-vk-two-point-second.json).
+
+Full-spread rectangle lights now use the same Ureña et al.
+area-preserving spherical-rectangle construction as current Cycles
+`area_light_rect_sample`. The Luisa DSL implementation preserves the complete
+measure contract:
+
+- the light-local rectangle frame and facing-dependent `z` flip;
+- the four cancellation-resistant `asin` internal-angle terms;
+- the same safe division, range reduction, and coordinate clamps;
+- `1 / solid_angle` as a directional PDF;
+- the same planar-PDF limit for a solid angle below `1e-5` or the grazing
+  normalized-edge condition above `0.99999`;
+- Cycles' concentric uniform-disk mapping for ellipse lights.
+
+The center probe `(17, 16)` locks the sampled position
+`(0.3655244410, -0.03522232175, 1.3999999762)` and PDF
+`5.6394987106`. The grazing probe `(6, 30)` locks
+`(0.08314055204, 0.01382339001, 1.3999999762)` and PDF
+`16.7171344757`. Both complete paths pass the official Cycles CPU oracle on
+fallback, HIP, and Vulkan:
+
+- center:
+  [fallback](cpu-vs-fallback-rectangle-center.json),
+  [HIP](cpu-vs-hip-rectangle-center.json), and
+  [Vulkan](cpu-vs-vk-rectangle-center.json);
+- grazing:
+  [fallback](cpu-vs-fallback-rectangle-grazing.json),
+  [HIP](cpu-vs-hip-rectangle-grazing.json), and
+  [Vulkan](cpu-vs-vk-rectangle-grazing.json).
+
+The grazing oracle exposed a Luisa Vulkan backend defect rather than an
+application-level light-sampling defect. Strict float32 `asin` compiled
+through Vulkan did not reproduce the cancellation-heavy values used by the
+spherical-rectangle formula. The fix is Luisa `next` commit
+`0d2ea3f6e` (`Make Vulkan strict asin reproducible`):
+
+- native XIR-to-SPIR-V uses a range-reduced, no-contraction float32 minimax
+  path when fast math is disabled;
+- the HLSL-to-SPIR-V fallback uses the same strict contract;
+- float16 and explicitly fast math retain the native extended instruction;
+- a dense `4,000,001`-sample sweep over `[-1, 1]` measured at most
+  `2.3841858e-7` absolute error and two ULP;
+- device regressions cover the native and forced-HLSL routes on fallback,
+  HIP, and Vulkan;
+- the native Vulkan shader-cache ABI tag moved from `v13` to `v14`, so
+  corrected SPIR-V cannot be hidden by a stale disk entry.
+
+With the corrected cache tag, the first current trace compile logged
+`87,942 -> 80,155` SPIR-V words and `2.588 s` total JIT; the warm run loaded
+the same program in about `0.053 s`. This confirms that the long portion is
+native SPIR-V generation/optimization and pipeline preparation, rather than
+CMake compilation or render execution.
+
+The full-frame Cycles comparison initially inherited Blender 5.3's
+`AUTOMATIC` sampling pattern, while the path oracle and Psycles use Tabulated
+Sobol. That invalid baseline produced `0.01826` Combined RMSE. The golden
+renderer now pins `TABULATED_SOBOL`, scrambling distance `1`, and disabled
+automatic scrambling by default, records those fields in its JSON metadata,
+and has a Blender-side regression. With the corrected baseline, the
+one-sample rectangle image has:
+
+```text
+Combined RMSE             = 0.0026099617
+Combined mean abs error   = 0.0007948235
+mean luminance ratio      = 0.9999436938
+maximum absolute error    = 0.0302399397
+invalid pixels            = 0
+```
+
+Left to right below: Cycles CPU, Psycles HIP, and the absolute difference
+scaled by `43.6`.
+
+![Cycles CPU, Psycles HIP, and rectangle-light difference](rectangle-area-cycles-cpu-vs-psycles-hip.png)
+
+The image was opened at its original generated resolution. The two render
+panels agree visually in footprint, falloff, color, and orientation. The
+difference panel contains sparse brighter samples rather than a displaced or
+rescaled illumination field. The machine-readable image report is
+[here](cycles-cpu-vs-psycles-hip-rectangle-image.json), and the triptych
+SHA-256 is
+`90dd11bd2e6532c7fdc1c3fd89a04b367a2501c5d9d0fbc7375c18f576c07e7b`.
+
+This sparse residual has a concrete, non-statistical explanation. At the
+maximum-error pixel `(20, 14)`, the complete NEE/BSDF path still passes the
+Cycles oracle with zero field failures. Its sampled secondary ray intersects
+the rectangle plane at light-local
+`(-0.0693990, 0.1255288)`, inside the half extents `(0.4, 0.25)`. Cycles
+therefore records the complementary BSDF-hit-light contribution. Analytic
+lights are not yet intersectable by Psycles forward rays, so that contribution
+is absent. Until that technique exists, production analytic-light NEE
+deliberately carries weight one to stay unbiased; the trace records the
+theoretical Cycles MIS weight only for differential diagnosis.
+
+Accordingly, this checkpoint claims exact sampled-light construction, light
+identity, flat selection, PDF/evaluation measure, and traced Cycles MIS inputs.
+It does **not** claim complete analytic-light MIS yet. The next required
+implementation is forward intersection/evaluation of area, distant, point,
+and spot lights, followed by use of the Cycles MIS weights in production.
+Narrow-spread area lights also still require Cycles'
+`area_light_spread_clamp_light` construction before solid-angle sampling.

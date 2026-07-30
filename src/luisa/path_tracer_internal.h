@@ -134,6 +134,7 @@ constexpr std::uint32_t light_flag_normalize = 1u << 0u;
 constexpr std::uint32_t light_flag_ellipse = 1u << 1u;
 constexpr std::uint32_t light_flag_sphere = 1u << 2u;
 constexpr std::uint32_t light_flag_use_mis = 1u << 3u;
+constexpr std::uint32_t light_flag_full_spread = 1u << 4u;
 
 
 struct MaterialBinding {

@@ -1,0 +1,20 @@
+{
+  "absolute_tolerance": 1e-06,
+  "actual": "/var/tmp/psycles-area-light/final-vk-center.raw.json",
+  "checked": {
+    "exact": 43,
+    "float32": 84,
+    "random_exact": 16,
+    "topology": 3
+  },
+  "failure_count": 0,
+  "failures": [],
+  "max_absolute_error": 7.152557373046875e-07,
+  "max_error_field": "events[0].surface_p.x",
+  "max_relative_error": 1.3856940941717706e-05,
+  "passed": true,
+  "reference": "/var/tmp/psycles-area-light/cycles-cpu.exr",
+  "relative_tolerance": 2e-06,
+  "schema": "psycles.cycles-path-trace-comparison.v1",
+  "topology_equivalent": []
+}

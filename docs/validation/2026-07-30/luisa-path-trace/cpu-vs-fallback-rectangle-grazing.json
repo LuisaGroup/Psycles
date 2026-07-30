@@ -1,0 +1,20 @@
+{
+  "absolute_tolerance": 1e-06,
+  "actual": "/var/tmp/psycles-area-light/final-fallback-grazing.raw.json",
+  "checked": {
+    "exact": 43,
+    "float32": 84,
+    "random_exact": 16,
+    "topology": 3
+  },
+  "failure_count": 0,
+  "failures": [],
+  "max_absolute_error": 7.62939453125e-06,
+  "max_error_field": "events[0].light_pdf.pdf",
+  "max_relative_error": 2.1507380616114764e-06,
+  "passed": true,
+  "reference": "/var/tmp/psycles-area-light/cycles-cpu-p6y30.exr",
+  "relative_tolerance": 2e-06,
+  "schema": "psycles.cycles-path-trace-comparison.v1",
+  "topology_equivalent": []
+}

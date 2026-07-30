@@ -4,7 +4,9 @@ Usage:
 
     blender scene.blend --background --python render_cycles_golden.py -- \
         output.exr [width height samples seed] \
-        [--cycles-device CPU|HIP] [--device-name substring]
+        [--cycles-device CPU|HIP] [--device-name substring] \
+        [--sampling-pattern TABULATED_SOBOL] \
+        [--scrambling-distance 1.0]
 
 The output is a multilayer, 32-bit float EXR before display transforms and
 without compositor modifications. It is the rendering oracle for Psycles.
@@ -66,6 +68,17 @@ def _arguments(scene: Any) -> argparse.Namespace:
         "--device-name",
         default="",
         help="case-insensitive substring required in the selected device",
+    )
+    parser.add_argument(
+        "--sampling-pattern",
+        default="TABULATED_SOBOL",
+        help="Cycles sampling pattern used by the reference render",
+    )
+    parser.add_argument(
+        "--scrambling-distance",
+        type=float,
+        default=1.0,
+        help="Cycles sampler scrambling distance",
     )
     return parser.parse_args(argv)
 
@@ -145,6 +158,33 @@ def _configure_cycles_device(
     return [_device_record(device) for device in selected]
 
 
+def _set_if_present(owner: Any, name: str, value: Any) -> None:
+    if hasattr(owner, name):
+        setattr(owner, name, value)
+
+
+def _configure_sampler(
+    scene: Any,
+    sampling_pattern: str,
+    scrambling_distance: float,
+) -> None:
+    _set_if_present(
+        scene.cycles,
+        "sampling_pattern",
+        sampling_pattern,
+    )
+    _set_if_present(
+        scene.cycles,
+        "scrambling_distance",
+        scrambling_distance,
+    )
+    _set_if_present(
+        scene.cycles,
+        "use_auto_scrambling_distance",
+        False,
+    )
+
+
 def _main() -> None:
     scene = bpy.context.scene
     arguments = _arguments(scene)
@@ -174,6 +214,11 @@ def _main() -> None:
     scene.cycles.seed = seed
     scene.cycles.use_adaptive_sampling = False
     scene.cycles.use_denoising = False
+    _configure_sampler(
+        scene,
+        arguments.sampling_pattern,
+        arguments.scrambling_distance,
+    )
     scene.render.resolution_x = width
     scene.render.resolution_y = height
     scene.render.resolution_percentage = 100
@@ -236,6 +281,16 @@ def _main() -> None:
         "height": height,
         "samples": samples,
         "seed": scene.cycles.seed,
+        "sampling_pattern": getattr(
+            scene.cycles,
+            "sampling_pattern",
+            None,
+        ),
+        "scrambling_distance": getattr(
+            scene.cycles,
+            "scrambling_distance",
+            None,
+        ),
         "adaptive_sampling": scene.cycles.use_adaptive_sampling,
         "denoising": scene.cycles.use_denoising,
         "transparent": scene.render.film_transparent,

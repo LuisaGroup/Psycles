@@ -1569,9 +1569,11 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         flags |= light.is_sphere
                      ? light_flag_sphere
                      : 0u;
-        flags |= light.use_mis
-                     ? light_flag_use_mis
-                     : 0u;
+        flags |=
+            light.type == LightType::area &&
+                    light.spread >= pi - 1.0e-6f
+                ? light_flag_full_spread
+                : 0u;
         MaterialBinding light_binding{
             .surface_tag = ~std::uint32_t{0u},
             .parameter_block = 0u,
@@ -1610,6 +1612,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                       light.is_shadow_catcher,
                       effective_light_mis)
                 : cycles_shader_identity::invalid_index;
+        flags |= effective_light_mis
+                     ? light_flag_use_mis
+                     : 0u;
         lights.emplace_back(LightGpu{
             .type =
                 static_cast<std::uint32_t>(light.type),
@@ -1645,7 +1650,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 light.cycles_light_group,
             .cycles_shader_id =
                 cycles_shader_id,
-            .padding = 0u});
+            .cycles_type =
+                cycles_shader_identity::light_type(
+                    light.type)});
     }
     data->background = to_luisa(background);
     data->light_count =
