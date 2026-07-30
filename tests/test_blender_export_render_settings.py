@@ -74,6 +74,32 @@ def _main() -> None:
         str(probe_creator),
         run_name="psycles_test_cycles_shader_probes",
     )
+    golden = runpy.run_path(
+        str(exporter.with_name("render_cycles_golden.py")),
+        run_name="psycles_test_cycles_golden",
+    )
+    scene.cycles.sampling_pattern = "AUTOMATIC"
+    scene.cycles.scrambling_distance = 0.25
+    golden["_configure_sampler"](
+        scene,
+        "TABULATED_SOBOL",
+        1.0,
+    )
+    if (
+        scene.cycles.sampling_pattern != "TABULATED_SOBOL"
+        or float(scene.cycles.scrambling_distance) != 1.0
+        or (
+            hasattr(
+                scene.cycles,
+                "use_auto_scrambling_distance",
+            )
+            and scene.cycles.use_auto_scrambling_distance
+        )
+    ):
+        raise AssertionError(
+            "Cycles golden did not pin the path-sampler contract"
+        )
+
     scene.cycles.sampling_pattern = "AUTOMATIC"
     probes["_camera_dof_disk"](scene)
     if (

@@ -296,3 +296,53 @@ visually. The complete project suite passes 35/35 with 32-way scheduling.
 
 The committed reports and triptych are under
 [`docs/validation/2026-07-30/luisa-path-trace/`](validation/2026-07-30/luisa-path-trace/).
+
+## Multi-emitter and spherical-rectangle light contract
+
+The analytic-light trace is no longer restricted to a zero-radius point
+light. A two-point scene locks both halves of a flat, non-light-tree
+distribution: selection random `0.1931770742` selects dependency-graph emitter
+zero and `0.8768947124` selects emitter one, each with selection PDF `0.5`.
+Both complete paths pass Cycles CPU on fallback, HIP, and Vulkan with all
+`43 + 16 + 84 + 3` comparison gates.
+
+Full-spread rectangle lights now lower Cycles'
+`area_light_rect_sample` measure contract directly into Luisa DSL. This is the
+Ureña spherical-rectangle parametrization, including the
+cancellation-resistant four-`asin` solid-angle expression and Cycles' planar
+fallback at tiny solid angles and grazing normalized edges. Rectangle
+sampling produces a solid-angle PDF directly; it is never subjected to a
+second area Jacobian. Ellipse lights use Cycles' concentric disk mapping.
+
+Center and grazing complete-path oracles pass on all three Luisa backends. The
+grazing case also produced a backend-level regression: strict Vulkan float32
+`asin` was not reproducible through either native SPIR-V or the HLSL fallback.
+Luisa `next` commit `0d2ea3f6e` implements one no-contraction, range-reduced
+strict contract, exercises both code-generation routes, and bumps the native
+Vulkan shader-cache tag so stale SPIR-V cannot survive the semantic change.
+No application-side trigonometric approximation was retained.
+
+Full-frame comparison revealed and corrected a separate oracle configuration
+bug. `render_cycles_golden.py` now pins Tabulated Sobol, scrambling distance
+one, and disabled automatic scrambling, matching both the path oracle and
+Psycles. A Blender regression locks this configuration. On the one-sample
+rectangle diagnostic, this reduces Combined RMSE from `0.01826` under
+Blender's unrelated `AUTOMATIC` sampler to `0.002610`.
+
+The remaining sparse image residual is expected but not waived. At the
+maximum-error pixel, all sampled NEE and BSDF fields pass; the BSDF secondary
+ray intersects the rectangle inside its extents. Cycles therefore evaluates a
+forward analytic-light hit, while Psycles currently cannot intersect analytic
+lights. Production NEE must remain full-weight until that complementary
+technique exists. Consequently:
+
+1. sampled rectangle position, direction, identity, PDF, evaluation factor,
+   and theoretical MIS inputs are aligned;
+2. actual analytic-light MIS is not aligned until forward light
+   intersection/evaluation is implemented;
+3. narrow-spread area lights still require the formal Cycles spread-clamping
+   construction before sampling.
+
+The reports, image metrics, and inspected reference/actual/difference
+triptych are in the
+[`luisa-path-trace` validation record](validation/2026-07-30/luisa-path-trace/README.md).

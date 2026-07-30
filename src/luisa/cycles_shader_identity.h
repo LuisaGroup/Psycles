@@ -29,6 +29,26 @@ inline constexpr std::uint32_t shader_mask =
     ~(smooth_normal | cast_shadow | use_mis | exclude_any);
 inline constexpr std::uint32_t invalid_index = ~std::uint32_t{0u};
 
+// Cycles' KernelLightType order is a stable device ABI and differs from the
+// renderer-neutral scene-contract order.
+[[nodiscard]] constexpr std::uint32_t light_type(
+    contract::LightType type) noexcept {
+    using contract::LightType;
+    switch (type) {
+        case LightType::point:
+            return 0u;
+        case LightType::distant:
+            return 1u;
+        case LightType::background:
+            return 2u;
+        case LightType::area:
+            return 3u;
+        case LightType::spot:
+            return 4u;
+    }
+    return invalid_index;
+}
+
 [[nodiscard]] constexpr std::uint32_t surface(
     std::uint32_t shader_index,
     bool smooth) noexcept {

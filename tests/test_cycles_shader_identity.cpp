@@ -33,6 +33,15 @@ void test_surface_shader_composition() {
 }
 
 void test_light_shader_composition() {
+    using psycles::contract::LightType;
+    require(
+        identity::light_type(LightType::point) == 0u &&
+            identity::light_type(LightType::distant) == 1u &&
+            identity::light_type(LightType::background) == 2u &&
+            identity::light_type(LightType::area) == 3u &&
+            identity::light_type(LightType::spot) == 4u,
+        "scene light types no longer map to Cycles' kernel ABI");
+
     const auto point_visibility =
         all_ray_visibility &
         ~visibility_bit(RayVisibility::camera);
