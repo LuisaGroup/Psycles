@@ -125,11 +125,34 @@ SurfaceCallables make_surface_callables(
                     services,
                     unpack_surface_point(packed_point)));
         };
+    SurfaceShadingNormalCallable shading_normal =
+        [scene](
+            BufferFloat4 parameters,
+            BufferFloat cycles_bsdf_tables,
+            BindlessVar textures,
+            BindlessVar geometry_heap,
+            UInt surface_tag,
+            Var<SurfacePointCall> packed_point) noexcept {
+            BufferShaderServices services{
+                parameters,
+                cycles_bsdf_tables,
+                textures,
+                geometry_heap,
+                scene->attribute_binding_slot,
+                scene->attribute_range_slot,
+                scene->nishita_texture_bindings,
+                scene->shader_color_space};
+            return scene->surfaces.shading_normal(
+                surface_tag,
+                services,
+                unpack_surface_point(packed_point));
+        };
     return {
         std::move(evaluate),
         std::move(emission),
         std::move(sample),
-        std::move(aov)};
+        std::move(aov),
+        std::move(shading_normal)};
 }
 
 }// namespace psycles::luisa_backend::detail

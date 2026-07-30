@@ -125,6 +125,10 @@ struct TriangleMeshDesc {
     std::vector<std::array<std::uint32_t, 3u>> triangles;
     std::vector<MaterialId> material_slots;
     std::vector<std::uint32_t> triangle_material_slots;
+    // Cycles' SHADER_SMOOTH_NORMAL flag is a per-triangle topology
+    // property. It gates shadow-terminator geometry offset and cannot be
+    // reconstructed reliably from corner-normal values.
+    std::vector<std::uint8_t> triangle_smooth;
     // Face-domain ATTR_STD_RANDOM_PER_ISLAND values, already hashed with the
     // Cycles hash. This must not be interpolated across a triangle.
     std::vector<float> triangle_random_per_island;
@@ -168,6 +172,9 @@ struct InstanceDesc {
     // Cycles Particle Info indexes its particle table separately from object
     // identity. Zero is the non-particle sentinel used by ordinary objects.
     std::uint32_t particle_index{};
+    // Cycles Object::shadow_terminator_geometry_offset. This is evaluated per
+    // instance because objects sharing a mesh may author different values.
+    float shadow_terminator_geometry_offset{};
     std::uint32_t visibility_mask{all_ray_visibility};
 };
 

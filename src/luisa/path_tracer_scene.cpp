@@ -1085,6 +1085,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             geometry.triangles.size());
         upload.triangle_random_per_island.reserve(
             geometry.triangles.size());
+        upload.triangle_smooth.reserve(
+            geometry.triangles.size());
         for (std::size_t i = 0u;
              i < geometry.triangles.size();
              ++i) {
@@ -1113,6 +1115,11 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                     ? geometry
                           .triangle_random_per_island[i]
                     : 0.0f);
+            upload.triangle_smooth.emplace_back(
+                i < geometry.triangle_smooth.size() &&
+                        geometry.triangle_smooth[i] != 0u
+                    ? 1u
+                    : 0u);
         }
         if (!result.diagnostics.empty()) {
             continue;
@@ -1174,6 +1181,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         resource.triangle_random_per_island =
             data->device.create_buffer<float>(
                 upload.triangle_random_per_island.size());
+        resource.triangle_smooth =
+            data->device.create_buffer<luisa::uint>(
+                upload.triangle_smooth.size());
         resource.attributes.reserve(
             upload.attributes.size());
         resource.mesh = data->device.create_mesh(
@@ -1198,6 +1208,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         data->heap.emplace_on_update(
             bindless_base + 7u,
             resource.uv_tangents);
+        data->heap.emplace_on_update(
+            bindless_base + 8u,
+            resource.triangle_smooth);
         const auto attribute_offset =
             static_cast<std::uint32_t>(
                 attribute_bindings.size());
@@ -1247,6 +1260,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                           luisa::span{
                               upload
                                   .triangle_random_per_island})
+               << resource.triangle_smooth.copy_from(
+                      luisa::span{
+                          upload.triangle_smooth})
                << resource.mesh.build();
         geometry_indices.emplace(geometry_id, index);
         geometry_gpu.emplace_back(GeometryGpu{
@@ -1343,7 +1359,12 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                     instance.material_overrides.size()),
             .object_random = std::clamp(
                 instance.random, 0.0f, 1.0f),
-            .particle_index = instance.particle_index});
+            .particle_index = instance.particle_index,
+            .shadow_terminator_geometry_offset =
+                std::max(
+                    instance
+                        .shadow_terminator_geometry_offset,
+                    0.0f)});
         const auto &geometry =
             snapshot.geometries.at(instance.geometry);
         const auto light_visible =

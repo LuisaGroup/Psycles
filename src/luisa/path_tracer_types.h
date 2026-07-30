@@ -33,6 +33,7 @@ struct InstanceGpu {
     luisa::uint override_count{};
     float object_random{};
     luisa::uint particle_index{};
+    float shadow_terminator_geometry_offset{};
 };
 
 struct LightGpu {
@@ -217,7 +218,8 @@ LUISA_STRUCT(
     override_offset,
     override_count,
     object_random,
-    particle_index) {};
+    particle_index,
+    shadow_terminator_geometry_offset) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::LightGpu,
     type,

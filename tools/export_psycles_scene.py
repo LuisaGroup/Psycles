@@ -409,6 +409,7 @@ def _geometry(
         }
         indices = array.array("I")
         materials = array.array("I")
+        smooth = array.array("I")
         random_per_island = array.array("f")
 
         texspace_location = mesh.texspace_location
@@ -506,6 +507,9 @@ def _geometry(
                 indices.append(next_index)
                 next_index += 1
             materials.append(int(triangle.material_index))
+            smooth.append(
+                int(mesh.polygons[triangle.polygon_index].use_smooth)
+            )
             first_vertex = mesh.loops[triangle.loops[0]].vertex_index
             random_per_island.append(
                 _cycles_uint_to_float(
@@ -546,6 +550,7 @@ def _geometry(
             ],
             "indices": _write_array(stream, indices),
             "triangle_material_slots": _write_array(stream, materials),
+            "triangle_smooth": _write_array(stream, smooth),
             "triangle_random_per_island": _write_array(
                 stream, random_per_island
             ),
@@ -711,6 +716,9 @@ def _export_scene(
                         )
                     )
                     & _UINT32_MASK,
+                    "shadow_terminator_geometry_offset": float(
+                        original.cycles.shadow_terminator_geometry_offset
+                    ),
                     "visibility": {
                         "camera": bool(original.visible_camera),
                         "diffuse": bool(original.visible_diffuse),

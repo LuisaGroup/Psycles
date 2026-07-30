@@ -3677,6 +3677,17 @@ BlenderSceneImport load_blender_scene_bundle(
                         geometry,
                         "triangle_material_slots"),
                     triangle_count);
+            std::vector<std::uint32_t> smooth_values(
+                triangle_count, 0u);
+            if (member(geometry, "triangle_smooth") != nullptr) {
+                smooth_values =
+                    read_values<std::uint32_t>(
+                        geometry_stream,
+                        section_offset(
+                            geometry,
+                            "triangle_smooth"),
+                        triangle_count);
+            }
             auto random_per_island_values =
                 read_values<float>(
                     geometry_stream,
@@ -3797,6 +3808,11 @@ BlenderSceneImport load_blender_scene_bundle(
             }
             mesh.triangle_material_slots =
                 std::move(material_values);
+            mesh.triangle_smooth.reserve(triangle_count);
+            for (const auto smooth : smooth_values) {
+                mesh.triangle_smooth.emplace_back(
+                    static_cast<std::uint8_t>(smooth != 0u));
+            }
             mesh.triangle_random_per_island =
                 std::move(random_per_island_values);
 
@@ -3879,6 +3895,13 @@ BlenderSceneImport load_blender_scene_bundle(
                     .particle_index = static_cast<std::uint32_t>(
                         unsigned_number(
                             member(instance, "particle_index"))),
+                    .shadow_terminator_geometry_offset =
+                        std::max(
+                            number(
+                                member(
+                                    instance,
+                                    "shadow_terminator_geometry_offset")),
+                            0.0f),
                     .visibility_mask = visibility_mask});
         }
 
