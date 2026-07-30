@@ -34,6 +34,15 @@ struct InstanceGpu {
     float object_random{};
     luisa::uint particle_index{};
     float shadow_terminator_geometry_offset{};
+    luisa::uint cycles_object_index{};
+    std::int32_t cycles_light_group{};
+};
+
+struct MaterialBindingGpu {
+    luisa::uint surface_tag{};
+    luisa::uint parameter_block{};
+    luisa::uint cycles_shader_index{};
+    luisa::uint padding{};
 };
 
 struct LightGpu {
@@ -54,6 +63,10 @@ struct LightGpu {
     luisa::uint flags{};
     luisa::uint surface_tag{};
     luisa::uint parameter_block{};
+    luisa::uint cycles_object_index{};
+    std::int32_t cycles_light_group{};
+    luisa::uint cycles_shader_id{};
+    luisa::uint padding{};
 };
 
 struct EmissiveTriangleGpu {
@@ -261,7 +274,15 @@ LUISA_STRUCT(
     override_count,
     object_random,
     particle_index,
-    shadow_terminator_geometry_offset) {};
+    shadow_terminator_geometry_offset,
+    cycles_object_index,
+    cycles_light_group) {};
+LUISA_STRUCT(
+    psycles::luisa_backend::detail::MaterialBindingGpu,
+    surface_tag,
+    parameter_block,
+    cycles_shader_index,
+    padding) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::LightGpu,
     type,
@@ -280,7 +301,11 @@ LUISA_STRUCT(
     angle,
     flags,
     surface_tag,
-    parameter_block) {};
+    parameter_block,
+    cycles_object_index,
+    cycles_light_group,
+    cycles_shader_id,
+    padding) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::EmissiveTriangleGpu,
     instance_index,

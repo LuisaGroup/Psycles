@@ -85,6 +85,37 @@ using Document = std::unique_ptr<yyjson_doc, DocumentDeleter>;
                : fallback;
 }
 
+[[nodiscard]] std::optional<std::uint32_t>
+optional_unsigned_number(yyjson_val *value) noexcept {
+    if (value == nullptr || !yyjson_is_uint(value)) {
+        return std::nullopt;
+    }
+    const auto number = yyjson_get_uint(value);
+    if (number > std::numeric_limits<std::uint32_t>::max()) {
+        return std::nullopt;
+    }
+    return static_cast<std::uint32_t>(number);
+}
+
+[[nodiscard]] std::int64_t signed_number(
+    yyjson_val *value,
+    std::int64_t fallback = 0) noexcept {
+    if (value == nullptr) {
+        return fallback;
+    }
+    if (yyjson_is_sint(value)) {
+        return yyjson_get_sint(value);
+    }
+    if (yyjson_is_uint(value) &&
+        yyjson_get_uint(value) <=
+            static_cast<std::uint64_t>(
+                std::numeric_limits<std::int64_t>::max())) {
+        return static_cast<std::int64_t>(
+            yyjson_get_uint(value));
+    }
+    return fallback;
+}
+
 [[nodiscard]] float number(
     yyjson_val *value,
     float fallback = 0.0f) noexcept {
@@ -99,6 +130,37 @@ using Document = std::unique_ptr<yyjson_doc, DocumentDeleter>;
     return value != nullptr && yyjson_is_bool(value)
                ? yyjson_get_bool(value)
                : fallback;
+}
+
+[[nodiscard]] std::uint32_t ray_visibility_mask(
+    yyjson_val *visibility) noexcept {
+    std::uint32_t mask = 0u;
+    for (const auto &[name, bit] : {
+             std::pair{
+                 "camera",
+                 contract::RayVisibility::camera},
+             std::pair{
+                 "diffuse",
+                 contract::RayVisibility::diffuse},
+             std::pair{
+                 "glossy",
+                 contract::RayVisibility::glossy},
+             std::pair{
+                 "transmission",
+                 contract::RayVisibility::transmission},
+             std::pair{
+                 "shadow",
+                 contract::RayVisibility::shadow},
+             std::pair{
+                 "volume_scatter",
+                 contract::RayVisibility::volume_scatter}}) {
+        if (boolean(
+                member(visibility, name),
+                visibility == nullptr)) {
+            mask |= contract::visibility_bit(bit);
+        }
+    }
+    return mask;
 }
 
 [[nodiscard]] Vec3f float3(
@@ -3259,7 +3321,8 @@ BlenderSceneImport load_blender_scene_bundle(
             MaterialDesc{
                 .name = "__psycles_missing_material__",
                 .shader = diffuse_graph(
-                    {1.0f, 0.0f, 1.0f}, 0.0f)});
+                    {1.0f, 0.0f, 1.0f}, 0.0f),
+                .cycles_shader_index = std::nullopt});
 
         auto *materials = member(root, "materials");
         yyjson_arr_iter material_iterator =
@@ -3269,6 +3332,8 @@ BlenderSceneImport load_blender_scene_bundle(
                    yyjson_arr_iter_next(&material_iterator)) {
             const auto id = MaterialId{material_index++};
             const auto name = text(member(material, "name"));
+            auto *cycles_sync =
+                member(material, "cycles_sync");
             material_ids.emplace(name, id);
             scene.materials.emplace(
                 id,
@@ -3286,7 +3351,11 @@ BlenderSceneImport load_blender_scene_bundle(
                             member(
                                 material,
                                 "emission_sampling"),
-                            "AUTO"))});
+                            "AUTO")),
+                    .cycles_shader_index =
+                        optional_unsigned_number(member(
+                            cycles_sync,
+                            "shader_index"))});
         }
 
         yyjson_arr_iter image_iterator =
@@ -3851,33 +3920,8 @@ BlenderSceneImport load_blender_scene_bundle(
             const auto geometry =
                 unsigned_number(member(instance, "geometry"));
             auto *visibility = member(instance, "visibility");
-            std::uint32_t visibility_mask = 0u;
-            for (const auto &[name, bit] : {
-                     std::pair{
-                         "camera",
-                         contract::RayVisibility::camera},
-                     std::pair{
-                         "diffuse",
-                         contract::RayVisibility::diffuse},
-                     std::pair{
-                         "glossy",
-                         contract::RayVisibility::glossy},
-                     std::pair{
-                         "transmission",
-                         contract::RayVisibility::transmission},
-                     std::pair{
-                         "shadow",
-                         contract::RayVisibility::shadow},
-                     std::pair{
-                         "volume_scatter",
-                         contract::RayVisibility::volume_scatter}}) {
-                if (boolean(
-                        member(visibility, name),
-                        visibility == nullptr)) {
-                    visibility_mask |=
-                        contract::visibility_bit(bit);
-                }
-            }
+            auto *cycles_sync =
+                member(instance, "cycles_sync");
             scene.instances.emplace(
                 InstanceId{instance_index++},
                 contract::InstanceDesc{
@@ -3902,7 +3946,19 @@ BlenderSceneImport load_blender_scene_bundle(
                                     instance,
                                     "shadow_terminator_geometry_offset")),
                             0.0f),
-                    .visibility_mask = visibility_mask});
+                    .visibility_mask =
+                        ray_visibility_mask(visibility),
+                    .cycles_object_index =
+                        optional_unsigned_number(member(
+                            cycles_sync,
+                            "object_index")),
+                    .cycles_light_group =
+                        static_cast<std::int32_t>(
+                            signed_number(
+                                member(
+                                    cycles_sync,
+                                    "light_group"),
+                                -1))});
         }
 
         auto *lights = member(root, "lights");
@@ -3912,6 +3968,8 @@ BlenderSceneImport load_blender_scene_bundle(
         while (auto *light =
                    yyjson_arr_iter_next(&light_iterator)) {
             const auto type = text(member(light, "type"));
+            auto *cycles_sync =
+                member(light, "cycles_sync");
             auto color = float3(
                 member(light, "color"),
                 {1.0f, 1.0f, 1.0f});
@@ -3946,7 +4004,11 @@ BlenderSceneImport load_blender_scene_bundle(
                                 image_color_spaces,
                                 image_alpha_types,
                                 node_groups,
-                                result.diagnostics)});
+                                result.diagnostics),
+                        .cycles_shader_index =
+                            optional_unsigned_number(member(
+                                cycles_sync,
+                                "shader_index"))});
             }
             scene.lights.emplace(
                 LightId{light_index++},
@@ -3994,7 +4056,31 @@ BlenderSceneImport load_blender_scene_bundle(
                         member(
                             light,
                             "use_multiple_importance_sampling"),
-                        true)});
+                        true),
+                    .cast_shadow = boolean(
+                        member(light, "cast_shadow"), true),
+                    .visibility_mask =
+                        ray_visibility_mask(
+                            member(light, "visibility")),
+                    .is_shadow_catcher = boolean(
+                        member(
+                            light,
+                            "is_shadow_catcher")),
+                    .cycles_shader_index =
+                        optional_unsigned_number(member(
+                            cycles_sync,
+                            "shader_index")),
+                    .cycles_object_index =
+                        optional_unsigned_number(member(
+                            cycles_sync,
+                            "object_index")),
+                    .cycles_light_group =
+                        static_cast<std::int32_t>(
+                            signed_number(
+                                member(
+                                    cycles_sync,
+                                    "light_group"),
+                                -1))});
         }
 
         auto *world = member(root, "world");
@@ -4012,6 +4098,8 @@ BlenderSceneImport load_blender_scene_bundle(
             Vec3f world_color =
                 float3(member(world, "color"), {0.05f, 0.05f, 0.05f});
             auto *tree = member(world, "node_tree");
+            auto *world_cycles_sync =
+                member(world, "cycles_sync");
             const auto world_id =
                 MaterialId{material_index++};
             auto world_graph =
@@ -4031,7 +4119,11 @@ BlenderSceneImport load_blender_scene_bundle(
                 MaterialDesc{
                     .name =
                         "__world__" + text(member(world, "name")),
-                    .shader = std::move(world_graph)});
+                    .shader = std::move(world_graph),
+                    .cycles_shader_index =
+                        optional_unsigned_number(member(
+                            world_cycles_sync,
+                            "shader_index"))});
             scene.world_shader = world_id;
             if (auto nishita =
                     find_simple_world_nishita(world)) {

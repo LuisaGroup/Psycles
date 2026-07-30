@@ -2,10 +2,14 @@
 
 namespace psycles::luisa_backend::detail {
 
-[[nodiscard]] luisa::uint2 to_luisa(
+[[nodiscard]] MaterialBindingGpu to_luisa(
     MaterialBinding binding) noexcept {
-    return luisa::make_uint2(
-        binding.surface_tag, binding.parameter_block);
+    return {
+        .surface_tag = binding.surface_tag,
+        .parameter_block = binding.parameter_block,
+        .cycles_shader_index =
+            binding.cycles_shader_index,
+        .padding = 0u};
 }
 
 [[nodiscard]] Var<SurfacePointCall> pack_surface_point(

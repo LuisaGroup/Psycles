@@ -139,6 +139,8 @@ constexpr std::uint32_t light_flag_use_mis = 1u << 3u;
 struct MaterialBinding {
     std::uint32_t surface_tag{};
     std::uint32_t parameter_block{};
+    std::uint32_t cycles_shader_index{
+        ~std::uint32_t{0u}};
 };
 
 struct NishitaTextureBinding {
@@ -223,8 +225,8 @@ struct LuisaSceneData {
     BindlessArray heap;
     Buffer<GeometryGpu> geometry_buffer;
     Buffer<InstanceGpu> instance_buffer;
-    Buffer<luisa::uint2> geometry_material_buffer;
-    Buffer<luisa::uint2> override_material_buffer;
+    Buffer<MaterialBindingGpu> geometry_material_buffer;
+    Buffer<MaterialBindingGpu> override_material_buffer;
     Buffer<AttributeBindingGpu> attribute_binding_buffer;
     Buffer<AttributeRangeGpu> attribute_range_buffer;
     std::uint32_t attribute_binding_slot{};
@@ -344,7 +346,7 @@ public:
     void cancel() noexcept override;
 };
 
-[[nodiscard]] luisa::uint2 to_luisa(
+[[nodiscard]] MaterialBindingGpu to_luisa(
     MaterialBinding binding) noexcept;
 [[nodiscard]] Var<SurfacePointCall> pack_surface_point(
     const SurfacePoint &point) noexcept;

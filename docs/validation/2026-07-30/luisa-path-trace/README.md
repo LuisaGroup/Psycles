@@ -198,3 +198,70 @@ fallback/HIP and fallback/Vulkan traces pass with zero failures and maximum
 absolute difference `2.384185791015625e-7`. The full suite passes 33/33 with
 32-way scheduling. The fallback, HIP, and Vulkan multilayer EXRs are unchanged
 from the preceding closure checkpoint under `oiiotool --diff`.
+
+## Explicit Cycles identity and two-stage shadow origin
+
+The remaining source identities now originate in the Blender exporter and
+survive the scene contract and GPU upload unchanged. The export mirrors the
+Cycles synchronization order: five fixed default shaders, dependency-graph
+light shaders, then dependency-graph material shaders. World shader index 3,
+object IDs, signed light-group IDs, light shader IDs, and surface shader IDs
+are recorded explicitly. Analytic lights now also retain dependency-graph
+order instead of being sorted by name, which is required for fixed-RNG
+emitter-selection equivalence.
+
+The new exporter test uses `Zulu Light` followed by `Alpha Light` to make an
+accidental lexical sort observable. It locks light shader IDs 5 and 6,
+material shader ID 7, object identities, and light-group identities. The
+source-identity unit test independently locks the exact Cycles shader-flag
+composition.
+
+All three fresh Luisa traces pass the official Cycles CPU trace with no
+waivers:
+
+| Luisa backend | Exact | Random exact | Float32 | Topology | Failures | Max abs error |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| fallback | 43 | 16 | 84 | 3 | 0 | `4.76837158203125e-7` |
+| HIP | 43 | 16 | 84 | 3 | 0 | `7.152557373046875e-7` |
+| Vulkan | 43 | 16 | 84 | 3 | 0 | `7.152557373046875e-7` |
+
+The machine-readable reports are
+[fallback](cpu-vs-fallback-identity-shadow-origin.json),
+[HIP](cpu-vs-hip-identity-shadow-origin.json), and
+[Vulkan](cpu-vs-vk-identity-shadow-origin.json).
+
+Numerical event equality did not replace image inspection. Before the final
+checkpoint, the fallback EXR contained a diagonal dotted self-shadow and the
+Vulkan EXR had a dark corner; `oiiotool --diff` reported a maximum channel
+difference of `0.4223019`. This exposed a missing second stage in the Cycles
+surface-shadow-ray construction.
+
+The correction is a geometric certificate rather than an epsilon adjustment.
+After the existing shadow-terminator origin, the implementation performs the
+same source-triangle self-intersection test in object space that Cycles uses
+for `integrate_surface_ray_offset`. It keeps the exact origin when certified
+safe and applies the robust ULP offset only when that certificate fails,
+without dropping source-primitive exclusion. The regression covers an
+interior point and the previously ambiguous shared-edge case on fallback,
+HIP, and Vulkan.
+
+Left to right below: fallback, HIP, Vulkan after the correction.
+
+![Fallback, HIP, and Vulkan shadow-origin triptych](point-shadow-origin-triptych.png)
+
+The three post-fix EXRs pass pairwise `oiiotool --diff` with zero pixel
+difference. Manual inspection confirms that the dotted band and dark corner
+are gone and that all three shadow boundaries agree. Fresh trace-enabled
+timings for this 32×32 diagnostic were:
+
+| Backend | JIT | Render |
+| --- | ---: | ---: |
+| fallback | `0.298 s` | `0.00238 s` |
+| HIP | `0.804 s` | `0.00171 s` |
+| Vulkan | `2.537 s` | `0.00362 s` |
+
+These timings characterize only the diagnostic and are not used as a
+scene-performance claim. Vulkan logged a substantially longer compile stage;
+the complex-scene benchmark will separately measure kernel generation,
+SPIR-V optimization, pipeline creation, and steady-state render time. The
+complete build and 35/35 tests pass with `--parallel 32` and `ctest -j32`.

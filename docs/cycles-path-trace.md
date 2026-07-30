@@ -242,3 +242,57 @@ The strict failure count falls from 12 to 4. The only remaining point-probe
 gates are Blender/Cycles synchronization identities: surface shader ID,
 light object/group ID, and light shader ID. Fallback versus HIP and fallback
 versus Vulkan both pass with zero failures, and all 33 project tests pass.
+
+## Explicit synchronization identity and shadow-origin checkpoint
+
+The four remaining identity gates are now populated from explicit Blender
+synchronization metadata. They are not reconstructed later from Psycles array
+indices. The exporter mirrors the relevant `BlenderSync` ordering:
+
+- the five Cycles default shaders retain their fixed leading slots, including
+  the world shader at index 3;
+- light shaders are assigned in dependency-graph object order;
+- material shaders follow in dependency-graph material order;
+- object, light-group, and full 64-bit shader identities travel through the
+  scene contract and GPU records without truncation.
+
+This also removes the former lexical sort of analytic lights. That sort was
+visually harmless in a one-light probe but changes which physical emitter is
+selected for a fixed random number in a multi-light scene. The exporter
+regression deliberately names two lights in reverse lexical order and locks
+the dependency-graph order, shader IDs, object IDs, and light-group IDs.
+Cycles' shader flags are represented by a formal source-identity composition
+function with a host regression for the exact ABI values.
+
+The resulting fallback, HIP, and Vulkan point-path records each pass the
+official Cycles CPU oracle with zero failures:
+
+```text
+exact fields        = 43 / 43
+random exact fields = 16 / 16
+float32 fields      = 84 / 84
+topology checks     = 3 / 3
+maximum abs error   = 4.76837158203125e-7 (fallback)
+                      7.152557373046875e-7 (HIP, Vulkan)
+```
+
+Visual inspection then exposed a separate backend-dependent self-shadow that
+the single-pixel trace did not cover: fallback showed a diagonal dotted band
+and Vulkan showed a dark corner, while HIP was clean. The missing operation
+was Cycles' second surface-ray offset stage, not a tunable epsilon. Psycles now
+composes the same two predicates:
+
+1. construct the light shadow origin with the shadow-terminator offset;
+2. while the source primitive exclusion is active, transform the ray to object
+   space and run the source-triangle self-intersection certificate;
+3. retain the exact origin when the certificate succeeds, otherwise apply the
+   robust ULP offset while retaining explicit source exclusion.
+
+The shared-edge regression proves that an interior origin remains exact while
+an ambiguous edge origin takes the robust branch. It runs on fallback, HIP,
+and Vulkan. Fresh EXRs are pixel-identical between all three Luisa backends
+under `oiiotool --diff`, and the post-fix triptych was also inspected
+visually. The complete project suite passes 35/35 with 32-way scheduling.
+
+The committed reports and triptych are under
+[`docs/validation/2026-07-30/luisa-path-trace/`](validation/2026-07-30/luisa-path-trace/).

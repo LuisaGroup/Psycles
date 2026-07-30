@@ -262,6 +262,70 @@ shadow_terminator_origin(
             active)};
 }
 
+// Cycles constructs direct-light shadow origins in two formal stages:
+// shadow_ray_offset may move a smooth surface and decide whether the source
+// primitive remains explicitly excluded; when exclusion remains active,
+// integrate_surface_ray_offset tests the exact source triangle and applies a
+// robust geometric-normal ULP offset only if a neighboring triangle could be
+// hit instead. Keeping the stages together prevents flat and disabled-smooth
+// paths from accidentally skipping the neighboring-triangle certificate.
+[[nodiscard]] inline ShadowOrigin surface_shadow_origin(
+    luisa::compute::Float3 world_position,
+    luisa::compute::Float3 world_shading_normal,
+    luisa::compute::Float3 world_geometric_normal,
+    luisa::compute::Float3 light_direction,
+    luisa::compute::Float geometry_offset,
+    luisa::compute::Bool smooth_triangle,
+    luisa::compute::Float4x4 object_to_world,
+    luisa::compute::Float4x4 world_to_object,
+    luisa::compute::Float2 barycentric,
+    luisa::compute::Float3 p0,
+    luisa::compute::Float3 p1,
+    luisa::compute::Float3 p2,
+    luisa::compute::Float3 n0,
+    luisa::compute::Float3 n1,
+    luisa::compute::Float3 n2) noexcept {
+    auto origin = shadow_terminator_origin(
+        world_position,
+        world_shading_normal,
+        world_geometric_normal,
+        light_direction,
+        geometry_offset,
+        smooth_triangle,
+        object_to_world,
+        barycentric,
+        p0,
+        p1,
+        p2,
+        n0,
+        n1,
+        n2);
+    const auto object_origin =
+        (world_to_object *
+         luisa::compute::make_float4(
+             origin.position, 1.0f))
+            .xyz();
+    const auto object_direction =
+        (world_to_object *
+         luisa::compute::make_float4(
+             light_direction, 0.0f))
+            .xyz();
+    const auto offset_origin =
+        origin_with_explicit_self_exclusion(
+            origin.position,
+            world_geometric_normal,
+            object_origin,
+            object_direction,
+            p0,
+            p1,
+            p2);
+    origin.position = luisa::compute::select(
+        origin.position,
+        offset_origin,
+        origin.skip_self);
+    return origin;
+}
+
 [[nodiscard]] inline luisa::compute::Bool
 same_primitive(
     luisa::compute::UInt instance,

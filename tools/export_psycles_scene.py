@@ -36,6 +36,19 @@ import blender_scene_manifest as manifest  # noqa: E402
 
 
 _UINT32_MASK = 0xFFFFFFFF
+_CYCLES_DEFAULT_SHADER_COUNT = 5
+_CYCLES_BACKGROUND_SHADER_INDEX = 3
+_CYCLES_GEOMETRY_OBJECT_TYPES = {
+    "MESH",
+    "CURVE",
+    "SURFACE",
+    "FONT",
+    "META",
+    "CURVES",
+    "POINTCLOUD",
+    "VOLUME",
+    "LIGHT",
+}
 
 
 def _cycles_shader_color_space() -> dict[str, list[list[float]]]:
@@ -616,7 +629,87 @@ def _export_images(output: pathlib.Path) -> list[dict[str, Any]]:
     return result
 
 
-def _light(obj: Any) -> dict[str, Any]:
+def _original_id(value: Any) -> Any:
+    original = getattr(value, "original", None)
+    return original if original is not None else value
+
+
+def _id_key(value: Any) -> int:
+    return int(_original_id(value).as_pointer())
+
+
+def _cycles_shader_indices(
+    depsgraph: Any,
+) -> tuple[dict[int, int], dict[int, int]]:
+    """Reproduce the Cycles scene shader-vector insertion order.
+
+    ShaderManager::add_default inserts five shaders. BlenderSync then reuses
+    the default background shader, inserts one shader per dependency-graph
+    Light ID, and finally one per dependency-graph Material ID. The exported
+    material array may remain name-sorted for stable JSON; source shader
+    identity must not be reconstructed from that array order.
+    """
+
+    next_index = _CYCLES_DEFAULT_SHADER_COUNT
+    light_indices: dict[int, int] = {}
+    material_indices: dict[int, int] = {}
+    for expected_type, indices in (
+        (bpy.types.Light, light_indices),
+        (bpy.types.Material, material_indices),
+    ):
+        for dependency_id in depsgraph.ids:
+            original = _original_id(dependency_id)
+            if not isinstance(original, expected_type):
+                continue
+            key = _id_key(original)
+            if key in indices:
+                continue
+            indices[key] = next_index
+            next_index += 1
+    return light_indices, material_indices
+
+
+def _cycles_object_is_geometry(object_instance: Any) -> bool:
+    if not object_instance.show_self:
+        return False
+    if object_instance.object.type not in _CYCLES_GEOMETRY_OBJECT_TYPES:
+        return False
+    return any(_instance_ray_visibility(object_instance).values())
+
+
+def _cycles_light_group(
+    object_instance: Any,
+    light_groups: dict[str, int],
+) -> int:
+    obj = object_instance.object
+    name = str(getattr(obj, "lightgroup", ""))
+    if not name and object_instance.is_instance:
+        parent = object_instance.parent
+        if parent is not None and parent != obj:
+            name = str(getattr(parent, "lightgroup", ""))
+    return light_groups.get(name, -1)
+
+
+def _cycles_shadow_catcher(object_instance: Any) -> bool:
+    obj = object_instance.object
+    result = bool(getattr(obj, "is_shadow_catcher", False))
+    if object_instance.is_instance:
+        parent = object_instance.parent
+        if parent is not None and parent != obj:
+            result = result or bool(
+                getattr(parent, "is_shadow_catcher", False)
+            )
+    return result
+
+
+def _light(
+    obj: Any,
+    *,
+    transform: Any | None = None,
+    visibility: dict[str, bool] | None = None,
+    is_shadow_catcher: bool = False,
+    cycles_sync: dict[str, int] | None = None,
+) -> dict[str, Any]:
     light = obj.data
     cycles = getattr(light, "cycles", None)
     use_temperature = bool(getattr(light, "use_temperature", False))
@@ -633,7 +726,9 @@ def _light(obj: Any) -> dict[str, Any]:
     return {
         "name": obj.name,
         "type": light.type,
-        "transform": _column_major(obj.matrix_world),
+        "transform": _column_major(
+            obj.matrix_world if transform is None else transform
+        ),
         "color": list(light.color),
         "temperature_color": temperature_color,
         "energy": float(light.energy),
@@ -652,6 +747,25 @@ def _light(obj: Any) -> dict[str, Any]:
         "use_multiple_importance_sampling": bool(
             getattr(cycles, "use_multiple_importance_sampling", True)
         ),
+        "cast_shadow": bool(getattr(light, "use_shadow", True)),
+        "visibility": (
+            visibility
+            if visibility is not None
+            else {
+                "camera": bool(getattr(obj, "visible_camera", True)),
+                "diffuse": bool(getattr(obj, "visible_diffuse", True)),
+                "glossy": bool(getattr(obj, "visible_glossy", True)),
+                "transmission": bool(
+                    getattr(obj, "visible_transmission", True)
+                ),
+                "shadow": bool(getattr(obj, "visible_shadow", True)),
+                "volume_scatter": bool(
+                    getattr(obj, "visible_volume_scatter", True)
+                ),
+            }
+        ),
+        "is_shadow_catcher": is_shadow_catcher,
+        "cycles_sync": cycles_sync,
         "node_tree": (
             _tree(light.node_tree, light=True)
             if light.use_nodes
@@ -705,10 +819,24 @@ def _export_scene(
     geometries: list[dict[str, Any]] = []
     geometry_by_source: dict[tuple[Any, ...], int] = {}
     instances: list[dict[str, Any]] = []
+    lights: list[dict[str, Any]] = []
+    light_shader_indices, material_shader_indices = (
+        _cycles_shader_indices(depsgraph)
+    )
+    light_groups = {
+        group.name: index
+        for index, group in enumerate(bpy.context.view_layer.lightgroups)
+    }
+    cycles_object_index = 0
     with (output / "geometry.bin").open("wb") as stream:
         stream.write(b"PSYGEO1\0")
         stream.write(struct.pack("<II", 1, 0))
         for object_instance in depsgraph.object_instances:
+            source_object_index: int | None = None
+            if _cycles_object_is_geometry(object_instance):
+                source_object_index = cycles_object_index
+                cycles_object_index += 1
+
             # Match Cycles' OB_VISIBLE_SELF gate exactly. A particle emitter
             # or collection instancer remains present in the render
             # dependency graph even when its own geometry is disabled; its
@@ -720,7 +848,41 @@ def _export_scene(
             original = obj.original if obj.original is not None else obj
             if original.hide_render:
                 continue
+            if obj.type == "LIGHT":
+                if source_object_index is None:
+                    continue
+                light_data = _original_id(obj.data)
+                light_shader_index = light_shader_indices.get(
+                    _id_key(light_data)
+                )
+                if light_shader_index is None:
+                    raise RuntimeError(
+                        "Cycles dependency graph did not expose the shader "
+                        f"identity for light data {light_data.name!r}"
+                    )
+                lights.append(
+                    _light(
+                        obj,
+                        transform=object_instance.matrix_world,
+                        visibility=_instance_ray_visibility(
+                            object_instance
+                        ),
+                        is_shadow_catcher=_cycles_shadow_catcher(
+                            object_instance
+                        ),
+                        cycles_sync={
+                            "object_index": source_object_index,
+                            "light_group": _cycles_light_group(
+                                object_instance, light_groups
+                            ),
+                            "shader_index": light_shader_index,
+                        },
+                    )
+                )
+                continue
             if obj.type not in {"MESH", "CURVE", "SURFACE", "FONT", "META"}:
+                continue
+            if source_object_index is None:
                 continue
             key = _geometry_cache_key(original, scene)
             geometry_index = geometry_by_source.get(key)
@@ -759,6 +921,12 @@ def _export_scene(
                     "visibility": _instance_ray_visibility(
                         object_instance
                     ),
+                    "cycles_sync": {
+                        "object_index": source_object_index,
+                        "light_group": _cycles_light_group(
+                            object_instance, light_groups
+                        ),
+                    },
                 }
             )
 
@@ -800,6 +968,7 @@ def _export_scene(
     materials = []
     for material in sorted(bpy.data.materials, key=lambda item: item.name):
         cycles = getattr(material, "cycles", None)
+        shader_index = material_shader_indices.get(_id_key(material))
         materials.append(
             {
                 "name": material.name,
@@ -808,6 +977,11 @@ def _export_scene(
                 ),
                 "surface_render_method": getattr(
                     material, "surface_render_method", None
+                ),
+                "cycles_sync": (
+                    {"shader_index": shader_index}
+                    if shader_index is not None
+                    else None
                 ),
                 "node_tree": (
                     _tree(material.node_tree)
@@ -889,11 +1063,7 @@ def _export_scene(
         "geometries": geometries,
         "instances": instances,
         "materials": materials,
-        "lights": [
-            _light(obj)
-            for obj in sorted(bpy.data.objects, key=lambda item: item.name)
-            if obj.type == "LIGHT" and not obj.hide_render
-        ],
+        "lights": lights,
         "world": (
             {
                 "name": scene.world.name,
@@ -912,6 +1082,9 @@ def _export_scene(
                         1024,
                     )
                 ),
+                "cycles_sync": {
+                    "shader_index": _CYCLES_BACKGROUND_SHADER_INDEX
+                },
                 "node_tree": (
                     _tree(scene.world.node_tree, world=True)
                     if scene.world.use_nodes

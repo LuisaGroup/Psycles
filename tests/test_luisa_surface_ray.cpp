@@ -36,11 +36,14 @@ int main(int argc, char **argv) {
         device.create_buffer<float>(3u);
     auto terminators_buffer =
         device.create_buffer<luisa::float4>(4u);
+    auto neighboring_triangles_buffer =
+        device.create_buffer<luisa::float4>(2u);
 
     Kernel1D evaluate =
         [](BufferFloat4 results,
            BufferFloat offsets,
-           BufferFloat4 terminators) noexcept {
+           BufferFloat4 terminators,
+           BufferFloat4 neighboring_triangles) noexcept {
             const auto index = dispatch_x();
             const auto world_origin =
                 make_float3(32.0f, -17.0f, 0.25f);
@@ -156,20 +159,70 @@ int main(int argc, char **argv) {
                         0.0f,
                         1.0f,
                         terminator.skip_self)));
+
+            $if (index < 2u) {
+                const auto barycentric = select(
+                    make_float2(
+                        1.0f / 3.0f,
+                        1.0f / 3.0f),
+                    make_float2(0.5f, 0.0f),
+                    index == 1u);
+                const auto flat_position =
+                    curved_p0 *
+                        (1.0f -
+                         barycentric.x -
+                         barycentric.y) +
+                    curved_p1 * barycentric.x +
+                    curved_p2 * barycentric.y;
+                const auto flat_normal =
+                    make_float3(0.0f, 0.0f, 1.0f);
+                const auto complete_origin =
+                    surface_ray::surface_shadow_origin(
+                        flat_position,
+                        flat_normal,
+                        flat_normal,
+                        normalize(
+                            make_float3(
+                                0.3f, -0.2f, 1.0f)),
+                        0.0f,
+                        false,
+                        make_float4x4(1.0f),
+                        make_float4x4(1.0f),
+                        barycentric,
+                        curved_p0,
+                        curved_p1,
+                        curved_p2,
+                        flat_normal,
+                        flat_normal,
+                        flat_normal);
+                neighboring_triangles.write(
+                    index,
+                    make_float4(
+                        complete_origin.position,
+                        select(
+                            0.0f,
+                            1.0f,
+                            complete_origin.skip_self)));
+            };
         };
     auto shader = device.compile(evaluate);
     std::array<luisa::float4, 4u> results{};
     std::array<float, 3u> offsets{};
     std::array<luisa::float4, 4u> terminators{};
+    std::array<luisa::float4, 2u>
+        neighboring_triangles{};
     stream << shader(
                   results_buffer,
                   offsets_buffer,
-                  terminators_buffer)
+                  terminators_buffer,
+                  neighboring_triangles_buffer)
                   .dispatch(4u)
            << results_buffer.copy_to(luisa::span{results})
            << offsets_buffer.copy_to(luisa::span{offsets})
            << terminators_buffer.copy_to(
                   luisa::span{terminators})
+           << neighboring_triangles_buffer.copy_to(
+                  luisa::span{neighboring_triangles})
            << synchronize();
 
     for (auto index = 0u; index < 2u; ++index) {
@@ -282,6 +335,33 @@ int main(int argc, char **argv) {
                 << "}\n";
             return EXIT_FAILURE;
         }
+    }
+    const auto interior = neighboring_triangles[0u];
+    if (std::abs(interior.x) > 1.0e-6f ||
+        std::abs(interior.y + 1.0f / 3.0f) >
+            1.0e-6f ||
+        !equal_bits(interior.z, 0.0f) ||
+        interior.w != 1.0f) {
+        std::cerr
+            << "certified flat-triangle shadow origin changed on "
+            << backend << ": {" << interior.x << ", "
+            << interior.y << ", " << interior.z << ", "
+            << interior.w << "}\n";
+        return EXIT_FAILURE;
+    }
+    const auto shared_edge = neighboring_triangles[1u];
+    if (std::abs(shared_edge.x) > 1.0e-6f ||
+        std::abs(shared_edge.y + 1.0f) >
+            1.0e-6f ||
+        !(shared_edge.z > 0.0f) ||
+        shared_edge.w != 1.0f) {
+        std::cerr
+            << "shared-edge shadow origin did not receive Cycles' "
+               "neighboring-triangle offset on "
+            << backend << ": {" << shared_edge.x << ", "
+            << shared_edge.y << ", " << shared_edge.z << ", "
+            << shared_edge.w << "}\n";
+        return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;
 }

@@ -2,6 +2,7 @@
 #include "path_tracer_environment.h"
 #include "path_tracer_shader_services.h"
 #include "path_tracer_surfaces.h"
+#include "cycles_shader_identity.h"
 
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/luisa/background_sampling.h>
@@ -437,7 +438,13 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             id,
             MaterialBinding{
                 .surface_tag = surface_iter->second,
-                .parameter_block = base});
+                .parameter_block = base,
+                .cycles_shader_index =
+                    snapshot.materials.at(id)
+                        .cycles_shader_index
+                        .value_or(
+                            cycles_shader_identity::
+                                invalid_index)});
         const auto &program = *material.surface_program();
         const auto scalar_parameter =
             [&](compiler::ValueExpressionId expression)
@@ -641,7 +648,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         attribute_ranges;
     attribute_ranges.reserve(
         snapshot.geometries.size());
-    luisa::vector<luisa::uint2> geometry_materials;
+    luisa::vector<MaterialBindingGpu> geometry_materials;
     auto next_attribute_slot =
         static_cast<std::uint32_t>(
             fixed_geometry_slots);
@@ -1149,7 +1156,10 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         }
         if (geometry.material_slots.empty()) {
             geometry_materials.emplace_back(
-                luisa::make_uint2(0u));
+                MaterialBindingGpu{
+                    .cycles_shader_index =
+                        cycles_shader_identity::
+                            invalid_index});
         }
         if (!result.diagnostics.empty()) {
             continue;
@@ -1311,7 +1321,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     }
 
     luisa::vector<InstanceGpu> instances;
-    luisa::vector<luisa::uint2> override_materials;
+    luisa::vector<MaterialBindingGpu> override_materials;
     luisa::vector<EmissiveTriangleGpu> emissive_triangles;
     std::vector<float> emissive_triangle_areas;
     data->accel = data->device.create_accel();
@@ -1364,7 +1374,13 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 std::max(
                     instance
                         .shadow_terminator_geometry_offset,
-                    0.0f)});
+                    0.0f),
+            .cycles_object_index =
+                instance.cycles_object_index.value_or(
+                    cycles_shader_identity::
+                        invalid_index),
+            .cycles_light_group =
+                instance.cycles_light_group});
         const auto &geometry =
             snapshot.geometries.at(instance.geometry);
         const auto light_visible =
@@ -1558,7 +1574,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                      : 0u;
         MaterialBinding light_binding{
             .surface_tag = ~std::uint32_t{0u},
-            .parameter_block = 0u};
+            .parameter_block = 0u,
+            .cycles_shader_index =
+                cycles_shader_identity::invalid_index};
         if (light.shader) {
             if (const auto iter =
                     data->material_bindings.find(
@@ -1567,6 +1585,31 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 light_binding = iter->second;
             }
         }
+        const auto effective_light_mis =
+            light.use_mis &&
+            (light.type == LightType::point ||
+             light.type == LightType::spot
+                 ? light.size > 0.0f
+                 : light.type == LightType::area
+                       ? light.size * axis_x_length != 0.0f &&
+                             (light.size_y > 0.0f
+                                  ? light.size_y
+                                  : light.size) *
+                                     axis_y_length !=
+                                 0.0f &&
+                             light.spread > 0.0f
+                       : light.type == LightType::distant
+                             ? light.angle > 0.0f
+                             : true);
+        const auto cycles_shader_id =
+            light.cycles_shader_index
+                ? cycles_shader_identity::analytic_light(
+                      *light.cycles_shader_index,
+                      light.cast_shadow,
+                      light.visibility_mask,
+                      light.is_shadow_catcher,
+                      effective_light_mis)
+                : cycles_shader_identity::invalid_index;
         lights.emplace_back(LightGpu{
             .type =
                 static_cast<std::uint32_t>(light.type),
@@ -1593,7 +1636,16 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             .surface_tag =
                 light_binding.surface_tag,
             .parameter_block =
-                light_binding.parameter_block});
+                light_binding.parameter_block,
+            .cycles_object_index =
+                light.cycles_object_index.value_or(
+                    cycles_shader_identity::
+                        invalid_index),
+            .cycles_light_group =
+                light.cycles_light_group,
+            .cycles_shader_id =
+                cycles_shader_id,
+            .padding = 0u});
     }
     data->background = to_luisa(background);
     data->light_count =
@@ -1673,11 +1725,17 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     }
     if (geometry_materials.empty()) {
         geometry_materials.emplace_back(
-            luisa::make_uint2(0u));
+            MaterialBindingGpu{
+                .cycles_shader_index =
+                    cycles_shader_identity::
+                        invalid_index});
     }
     if (override_materials.empty()) {
         override_materials.emplace_back(
-            luisa::make_uint2(0u));
+            MaterialBindingGpu{
+                .cycles_shader_index =
+                    cycles_shader_identity::
+                        invalid_index});
     }
     // Empty-world renders are valid Cycles scenes. Luisa buffers cannot be
     // zero-sized, so keep inert storage records while leaving the acceleration
@@ -1719,10 +1777,10 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         data->device.create_buffer<InstanceGpu>(
             instances.size());
     data->geometry_material_buffer =
-        data->device.create_buffer<luisa::uint2>(
+        data->device.create_buffer<MaterialBindingGpu>(
             geometry_materials.size());
     data->override_material_buffer =
-        data->device.create_buffer<luisa::uint2>(
+        data->device.create_buffer<MaterialBindingGpu>(
             override_materials.size());
     data->light_buffer =
         data->device.create_buffer<LightGpu>(
