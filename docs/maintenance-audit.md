@@ -167,6 +167,26 @@ took 135.7 s. Warm-cache JIT times were 0.278 s, 0.273 s, and 1.157 s for
 fallback, HIP, and Vulkan respectively. Render-only times were 5.43 s,
 2.37 s, and 2.08 s.
 
+The Cycles probe generator is the final completed decomposition.
+`create_cycles_shader_probe.py` decreased from 5,518 to 189 lines and is now
+only the stable Blender CLI, canonical registry, and shared scene setup.
+Builders live in modules for common construction, camera/lights, closures,
+texture inputs, procedural textures, and color/value operations. The largest
+module is `texture_inputs.py` at 1,868 lines.
+
+All 111 moved function bodies compare exactly with their original source, and
+all 89 probe-name/function mappings retain their original order and targets.
+The Blender regression now also requires the creator registry to equal the
+canonical runner inventory. Representative probes from every module family
+were created through the real Blender CLI. Re-exporting the camera/filter
+probe produced an identical `geometry.bin` and an identical `scene.json`
+after removing only the expected absolute source-`.blend` path.
+
+The final 32-worker build and all 42 tests pass. The complete source gate now
+covers 181 first-party files and 60,499 lines with no exceptions: every
+hand-written first-party source file is at most 2,000 lines, and the temporary
+debt budget is empty.
+
 ## Target boundaries
 
 The path tracer is split by renderer semantics:
@@ -189,10 +209,10 @@ The material stack is split by compilation stage:
 - volume closure coefficients and phase functions;
 - textures, procedural nodes, and color operations.
 
-Probe-generation modules are grouped by feature family only after the runtime
-critical files are under control. Their current size has lower correctness
-risk because the functions are independent and the generated `.blend` files
-are checked against Cycles.
+Probe-generation modules are grouped by feature family. Their functions
+remain independent, the canonical registry is checked against the runner, and
+representative generated `.blend` files are re-exported to verify the raw
+Cycles graph contract.
 
 ## Refactoring rules
 

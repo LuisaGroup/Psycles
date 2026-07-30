@@ -12,9 +12,7 @@ LINE_LIMIT = 2_000
 
 # Existing debt is allowed to shrink in place, but not grow. Remove an entry
 # as soon as its semantic decomposition brings it under LINE_LIMIT.
-DEBT_BUDGETS = {
-    "tools/create_cycles_shader_probe.py": 5_518,
-}
+DEBT_BUDGETS: dict[str, int] = {}
 
 SOURCE_SUFFIXES = {
     ".c",
