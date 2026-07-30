@@ -585,3 +585,30 @@ This closes finite point/spot NEE and forward MIS for surface paths. It does
 not close distant-light forward/background semantics, narrow-spread area
 clamping, the light tree, volume direct lighting, or the remaining material
 and Light Path state gates.
+
+## Explicit path RNG-state checkpoint
+
+Production Sobol dimensions are now addressed from the path's explicit
+Cycles-compatible `rng_offset`. The enclosing renderer loop counter remains
+only an execution bound and trace-event index; it is no longer allowed to
+define the random sequence. This distinction is required because transparent
+surfaces, portals, volume bounds, subsurface walks, and split paths do not in
+general share one renderer-loop transition model.
+
+The device path-state regression crosses two consecutive transparent
+surfaces. It locks the invariant
+
+`rng_offset: 16 -> 32 -> 48`, `bounce: 0 -> 0 -> 0`,
+`transparent_bounce: 0 -> 1 -> 2`,
+
+and verifies that the next light sample uses absolute Sobol dimension `49`
+(`48 + PRNG_LIGHT`). The regression passes on fallback, HIP, and Vulkan. A
+full 32-thread build and CTest run passes all `36/36` tests.
+
+As a production-kernel non-regression check, the pinned finite sphere-point
+path at pixel `(17, 16)`, sample `0`, was rendered again on HIP and compared
+with the current Cycles CPU `ff404d072bb4` oracle. All `43` exact, `16`
+random-exact, `84` float32, and `3` topology checks pass with zero failures;
+the largest absolute float32 residual is `7.1526e-7`. Pure surface paths retain
+their previous sequence, while future state transitions can advance random
+dimensions without silently depending on loop structure.

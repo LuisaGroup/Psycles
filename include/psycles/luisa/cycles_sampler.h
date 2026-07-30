@@ -121,6 +121,16 @@ using luisa::compute::make_float3;
            bounce_dimension;
 }
 
+// Production path sampling is addressed from Cycles' explicit RNG state, not
+// from an enclosing loop counter. Surface transparency, portals, volume
+// bounds, subsurface walks, and future split paths can all advance rng_offset
+// without sharing the same notion of a renderer loop iteration.
+[[nodiscard]] inline UInt path_state_dimension(
+    UInt rng_offset,
+    std::uint32_t bounce_dimension) noexcept {
+    return rng_offset + bounce_dimension;
+}
+
 [[nodiscard]] inline UInt shuffled_sample_index(
     UInt sample,
     UInt dimension,

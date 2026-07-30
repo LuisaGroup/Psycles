@@ -1,5 +1,7 @@
 #include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/cycles_path_state.h>
+#include <psycles/luisa/cycles_sampler.h>
+#include <psycles/sampling/tabulated_sobol.h>
 
 #include <array>
 #include <cstdlib>
@@ -135,15 +137,47 @@ int main(int argc, char **argv) {
                     cast<float>(
                         singular.glossy_bounce),
                     cast<float>(singular.rng_offset)));
+
+            const auto transparent_twice =
+                cycles_path_state::next_surface(
+                    transparent,
+                    cycles_closure::label_transparent,
+                    cycles_closure::runtime_bsdf |
+                        cycles_closure::
+                            runtime_transparent,
+                    {
+                        .maximum = 8u,
+                        .maximum_diffuse = 8u,
+                        .maximum_glossy = 8u,
+                        .maximum_transmission = 8u,
+                        .maximum_transparent = 8u});
+            output.write(
+                6u,
+                make_float4(
+                    cast<float>(
+                        transparent_twice.rng_offset),
+                    cast<float>(
+                        cycles_sampler::
+                            path_state_dimension(
+                                transparent_twice
+                                    .rng_offset,
+                                psycles::sampling::
+                                    tabulated_sobol::
+                                        light_dimension)),
+                    cast<float>(
+                        transparent_twice.bounce),
+                    cast<float>(
+                        transparent_twice
+                            .transparent_bounce)));
         };
 
     Context context{argv[0]};
     auto device = context.create_device(backend);
     auto stream = device.create_stream();
     auto output =
-        device.create_buffer<luisa::float4>(6u);
+        device.create_buffer<luisa::float4>(7u);
     auto kernel = device.compile(evaluate);
-    std::array<luisa::float4, 6u> actual{};
+    std::array<luisa::float4, 7u> actual{};
     stream << kernel(output).dispatch(1u)
            << output.copy_to(luisa::span{actual})
            << synchronize();
@@ -162,7 +196,11 @@ int main(int argc, char **argv) {
             static_cast<float>(expected_singular_flag),
             8.0f,
             1.0f,
-            32.0f}};
+            32.0f},
+        // Two transparent transitions consume two complete 16-dimensional
+        // bounce blocks without incrementing the ordinary bounce counter.
+        // The next light sample is addressed directly from rng_offset.
+        luisa::float4{48.0f, 49.0f, 0.0f, 2.0f}};
     for (std::size_t index = 0u;
          index < expected.size();
          ++index) {
