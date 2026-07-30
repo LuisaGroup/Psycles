@@ -67,6 +67,7 @@ struct LightGpu {
     std::int32_t cycles_light_group{};
     luisa::uint cycles_shader_id{};
     luisa::uint cycles_type{};
+    luisa::uint visibility_mask{};
 };
 
 struct EmissiveTriangleGpu {
@@ -305,7 +306,8 @@ LUISA_STRUCT(
     cycles_object_index,
     cycles_light_group,
     cycles_shader_id,
-    cycles_type) {};
+    cycles_type,
+    visibility_mask) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::EmissiveTriangleGpu,
     instance_index,
