@@ -2441,6 +2441,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                         invalid_primitive,
                                     surface_ray::
                                         invalid_primitive,
+                                    kernel_parameters
+                                        .transparent_max_bounces,
                                     pack_shader_evaluation_state(
                                         cycles_path_state::
                                             shadow_shader_state(
@@ -2903,6 +2905,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                         shadow.skip_self),
                                     emitter.instance_index,
                                     emitter.primitive_index,
+                                    kernel_parameters
+                                        .transparent_max_bounces,
                                     pack_shader_evaluation_state(
                                         cycles_path_state::
                                             shadow_shader_state(
@@ -3474,6 +3478,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                         invalid_primitive,
                                     surface_ray::
                                         invalid_primitive,
+                                    kernel_parameters
+                                        .transparent_max_bounces,
                                     pack_shader_evaluation_state(
                                         cycles_path_state::
                                             shadow_shader_state(
