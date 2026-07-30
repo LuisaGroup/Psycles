@@ -28,7 +28,7 @@ intersection-distance difference in the probe. The Luisa camera construction
 now uses the Cycles representation, with a fallback GPU regression covering
 orthographic and oblique perspective clipping.
 
-After the correction:
+After the camera correction:
 
 - 13 currently populated sampled-random fields are exact against Cycles;
 - 22 currently populated discrete fields are exact;
@@ -39,12 +39,46 @@ After the correction:
 - fallback versus Vulkan: zero failures, maximum absolute error
   `2.384185791015625e-7`.
 
-The Cycles comparison still reports 30 gates. All are explicit unpopulated
-records for direct-light sampling, raw closure inventory/selection, BSDF
-sampling, post-bounce state, and Cycles shader identity. They remain failures
-until implemented; the comparator does not waive them. This checkpoint is an
-infrastructure and camera-contract milestone, not a claim that the material
-or lighting algorithms are already aligned.
+The next differential gate exposed an important point-light representation
+difference. Psycles divided point radiance by distance squared and used a
+conditional PDF of one. Cycles keeps the light's `eval_fac` independent of
+distance and represents the area-to-solid-angle Jacobian in the light PDF:
+
+```text
+delta point conditional PDF = distance²
+normalized delta point eval_fac = 1 / (4π)
+```
+
+Those forms have the same quotient in this isolated estimator, but only the
+Cycles form composes correctly with selection PDF, light identity, forward
+sampling, and MIS. The implementation now shares one Luisa DSL invariant for
+delta and finite oriented-disk point lights. A device regression exercises the
+formula and the measure-level rule that a zero-radius point has no competing
+BSDF technique even when Blender's use-MIS property is enabled. The regression
+passes on fallback, HIP, and Vulkan.
+
+The point-path trace now also records emitter/type/primitive identity,
+selection and conditional PDF, `eval_fac`, sampled direction/position/normal,
+distance, BSDF PDF, and MIS weight. Against Cycles CPU, every newly populated
+light field passes:
+
+- `pdf = 2.09093976020813`;
+- `selection_pdf = 1`;
+- `eval_fac = 0.07957746833562851`;
+- `distance = 1.4460082054138184`;
+- `bsdf_pdf = 0`, `mis_weight = 1`;
+- continuous direction differences remain below the existing float32 bound.
+
+The comparison has therefore moved from 30 to 24 failing gates without
+weakening the comparator. The remaining gates are raw closure
+inventory/selection, BSDF sampling, post-bounce state, source object/light
+group identity, and Cycles shader identity. Internal source identities are not
+guessed from array lengths: they remain explicitly unwritten until the Blender
+export preserves the corresponding Cycles sync identity.
+
+The estimator image is unchanged by the point-light refactor (`oiiotool
+--diff` passes), confirming that this checkpoint changes the sampling
+representation rather than the intended energy.
 
 Observed fresh trace-enabled JIT times were about 0.71 seconds for HIP and
 0.72 seconds for Vulkan. Vulkan's logged compute SPIR-V optimization reduced

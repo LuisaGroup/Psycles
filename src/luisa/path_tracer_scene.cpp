@@ -1627,15 +1627,27 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         light_distribution_entries;
     light_distribution_entries.reserve(
         light_distribution.entries.size());
-    for (const auto &entry :
-         light_distribution.entries) {
+    for (std::size_t emitter_id = 0u;
+         emitter_id <
+         light_distribution.entries.size();
+         ++emitter_id) {
+        const auto &entry =
+            light_distribution.entries[emitter_id];
         light_distribution_entries.emplace_back(
             LightDistributionGpu{
                 .cumulative = entry.cumulative,
                 .selection_pdf = entry.selection_pdf,
                 .kind = static_cast<std::uint32_t>(
                     entry.kind),
-                .index = entry.index});
+                .index = entry.index,
+                .emitter_id =
+                    emitter_id <
+                            static_cast<std::size_t>(
+                                light_distribution
+                                    .emitter_count)
+                        ? static_cast<std::uint32_t>(
+                              emitter_id)
+                        : ~std::uint32_t{0u}});
     }
     data->light_distribution_count =
         light_distribution.usable()

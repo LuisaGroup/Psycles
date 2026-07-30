@@ -70,6 +70,12 @@ struct LightDistributionGpu {
     float selection_pdf{};
     luisa::uint kind{};
     luisa::uint index{};
+    // Position in Cycles' flattened emitter array. This is distinct from the
+    // per-kind index above and is part of the sampled-light identity.
+    luisa::uint emitter_id{};
+    luisa::uint padding_0{};
+    luisa::uint padding_1{};
+    luisa::uint padding_2{};
 };
 
 struct SurfacePointCall {
@@ -256,7 +262,11 @@ LUISA_STRUCT(
     cumulative,
     selection_pdf,
     kind,
-    index) {};
+    index,
+    emitter_id,
+    padding_0,
+    padding_1,
+    padding_2) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::SurfacePointCall,
     position,
