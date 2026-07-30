@@ -718,6 +718,12 @@ if(PSYCLES_BUILD_TESTS)
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)
         add_test(
+            NAME psycles.source_size
+            COMMAND
+                "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_source_size.py"
+                "${CMAKE_CURRENT_SOURCE_DIR}")
+        add_test(
             NAME psycles.cycles_shader_node_inventory
             COMMAND
                 "${Python3_EXECUTABLE}"

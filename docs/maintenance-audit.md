@@ -37,10 +37,10 @@ new features to cross semantic boundaries.
 
 The 2026-07-31 scan covered every first-party C/C++ source and header, Python
 module, CMake source, and `.inl` file: 143 files and 59,835 lines. It excluded
-only `third_party`, build trees, and generated validation artifacts. Exactly
-five hand-written files exceed 2,000 lines:
+only `third_party`, build trees, and generated validation artifacts. The
+initial scan found exactly five hand-written files over 2,000 lines:
 
-| File | Current lines | Planned semantic modules |
+| File | Baseline lines | Planned semantic modules |
 |---|---:|---|
 | `tools/create_cycles_shader_probe.py` | 5,518 | camera/light, closure, texture, color/value, and graph-composition probe families |
 | `include/psycles/luisa/graph_surface.h` | 4,882 | value evaluation, closure construction, closure sampling, and trace ABI |
@@ -64,6 +64,33 @@ to 3,789 lines, the new implementation file is 244 lines, and old/new
 differential renders are byte-identical. The extraction added fallback, HIP,
 and Vulkan camera tests and is documented under
 `validation/2026-07-31/camera-vulkan`.
+
+The `GraphSurface` implementation is now partitioned along renderer semantics:
+state and value access, Cycles scattering, value evaluation by node family,
+raw closure traversal, and the public surface/volume API. The public
+`graph_surface.h` facade decreased from 4,882 to 41 lines; its largest
+implementation fragment is 966 lines. The fragments remain in class and
+dispatcher context intentionally: this preserves Luisa DSL callable
+visibility, expression construction order, and generated AST control flow.
+Every extracted source range was checked byte-for-byte against the original
+header before compilation.
+
+The complete scan now covers 153 source files and 60,008 lines, with four
+remaining files over 2,000 lines. The `psycles.source_size` CTest contract
+rejects every new over-limit first-party source and rejects growth in the four
+explicitly budgeted debt files. A debt entry is removed as soon as its
+semantic decomposition reaches the target.
+
+The split passed the 32-worker full build and all 42 CTest contracts. A
+64×64, 256 spp material fixture was then rendered through fallback, HIP, and
+Vulkan. All 13 linear passes from each backend (39 PFM files total) are
+byte-identical to their pre-split baselines; all three Combined outputs have
+SHA-256
+`4ac47cfe7d528e14da89e116f1dffd3b8dbf6536f8ff0817d87ef66a4f3409b0`.
+The existing Cycles/Psycles triptych below remains the visual record for this
+fixture because the current Psycles panel is byte-identical:
+
+![Cycles, Psycles, and absolute difference for the material fixture](validation/2026-07-31/camera-vulkan/blackman-harris-vk-vs-cycles.png)
 
 ## Target boundaries
 
