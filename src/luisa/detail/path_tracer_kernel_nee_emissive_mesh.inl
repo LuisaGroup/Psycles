@@ -1,0 +1,456 @@
+// Emissive-triangle next-event estimation.
+// Included by path_tracer_kernel.cpp inside LuisaRenderSession::initialize.
+
+                    $if (selected_light.kind ==
+                         static_cast<std::uint32_t>(
+                             sampling::
+                                 LightDistributionEmitterKind::
+                                     emissive_triangle)) {
+                        Var<EmissiveTriangleGpu> emitter =
+                            scene->emissive_triangle_buffer->read(
+                                selected_light.index);
+                        Var<GeometryGpu> light_geometry =
+                            scene->geometry_buffer->read(
+                                emitter.geometry_index);
+                        Var<Triangle> light_triangle =
+                            scene->heap
+                                ->buffer<Triangle>(
+                                    light_geometry.bindless_base)
+                                .read(emitter.primitive_index);
+                        Float3 lp0 =
+                            scene->heap
+                                ->buffer<luisa::float3>(
+                                    light_geometry.bindless_base +
+                                    1u)
+                                .read(light_triangle.i0);
+                        Float3 lp1 =
+                            scene->heap
+                                ->buffer<luisa::float3>(
+                                    light_geometry.bindless_base +
+                                    1u)
+                                .read(light_triangle.i1);
+                        Float3 lp2 =
+                            scene->heap
+                                ->buffer<luisa::float3>(
+                                    light_geometry.bindless_base +
+                                    1u)
+                                .read(light_triangle.i2);
+                        Float3 ln0 =
+                            scene->heap
+                                ->buffer<luisa::float3>(
+                                    light_geometry.bindless_base +
+                                    2u)
+                                .read(light_triangle.i0);
+                        Float3 ln1 =
+                            scene->heap
+                                ->buffer<luisa::float3>(
+                                    light_geometry.bindless_base +
+                                    2u)
+                                .read(light_triangle.i1);
+                        Float3 ln2 =
+                            scene->heap
+                                ->buffer<luisa::float3>(
+                                    light_geometry.bindless_base +
+                                    2u)
+                                .read(light_triangle.i2);
+                        Float2 luv0 =
+                            scene->heap
+                                ->buffer<luisa::float2>(
+                                    light_geometry.bindless_base +
+                                    3u)
+                                .read(light_triangle.i0);
+                        Float2 luv1 =
+                            scene->heap
+                                ->buffer<luisa::float2>(
+                                    light_geometry.bindless_base +
+                                    3u)
+                                .read(light_triangle.i1);
+                        Float2 luv2 =
+                            scene->heap
+                                ->buffer<luisa::float2>(
+                                    light_geometry.bindless_base +
+                                    3u)
+                                .read(light_triangle.i2);
+                        Float4 light_tangent0 =
+                            scene->heap
+                                ->buffer<luisa::float4>(
+                                    light_geometry.bindless_base +
+                                    7u)
+                                .read(light_triangle.i0);
+                        Float4 light_tangent1 =
+                            scene->heap
+                                ->buffer<luisa::float4>(
+                                    light_geometry.bindless_base +
+                                    7u)
+                                .read(light_triangle.i1);
+                        Float4 light_tangent2 =
+                            scene->heap
+                                ->buffer<luisa::float4>(
+                                    light_geometry.bindless_base +
+                                    7u)
+                                .read(light_triangle.i2);
+                        Float3 light_generated0 =
+                            scene->heap
+                                ->buffer<luisa::float3>(
+                                    light_geometry.bindless_base +
+                                    5u)
+                                .read(light_triangle.i0);
+                        Float3 light_generated1 =
+                            scene->heap
+                                ->buffer<luisa::float3>(
+                                    light_geometry.bindless_base +
+                                    5u)
+                                .read(light_triangle.i1);
+                        Float3 light_generated2 =
+                            scene->heap
+                                ->buffer<luisa::float3>(
+                                    light_geometry.bindless_base +
+                                    5u)
+                                .read(light_triangle.i2);
+                        Float light_random_per_island =
+                            scene->heap
+                                ->buffer<float>(
+                                    light_geometry.bindless_base +
+                                    6u)
+                                .read(
+                                    emitter.primitive_index);
+                        Var<InstanceGpu> light_instance =
+                            scene->instance_buffer->read(
+                                emitter.instance_index);
+                        Float3 local_lp0 = lp0;
+                        Float3 local_lp1 = lp1;
+                        Float3 local_lp2 = lp2;
+                        auto light_object_to_world =
+                            scene->accel->instance_transform(
+                                emitter.instance_index);
+                        auto light_normal_to_world =
+                            transpose(inverse(
+                                light_object_to_world));
+                        lp0 =
+                            (light_object_to_world *
+                             make_float4(lp0, 1.0f))
+                                .xyz();
+                        lp1 =
+                            (light_object_to_world *
+                             make_float4(lp1, 1.0f))
+                                .xyz();
+                        lp2 =
+                            (light_object_to_world *
+                             make_float4(lp2, 1.0f))
+                                .xyz();
+                        auto triangle_sample =
+                            spherical_geometry::
+                                sample_triangle(
+                                    hit_position,
+                                    lp0,
+                                    lp1,
+                                    lp2,
+                                    light_sample.xy());
+                        Float2 light_barycentric =
+                            triangle_sample.barycentric;
+                        Float3 light_position =
+                            triangle_sample.position;
+                        Float3
+                            light_object_geometric_normal =
+                                safe_normalize(
+                                    cross(
+                                        local_lp1 - local_lp0,
+                                        local_lp2 - local_lp0),
+                                    make_float3(
+                                        0.0f,
+                                        0.0f,
+                                        1.0f));
+                        Float3 light_geometric_normal =
+                            safe_normalize(
+                                (light_normal_to_world *
+                                 make_float4(
+                                     light_object_geometric_normal,
+                                     0.0f))
+                                    .xyz(),
+                                make_float3(
+                                    0.0f, 0.0f, 1.0f));
+                        Float3 light_object_shading_normal =
+                            triangle_interpolate(
+                                light_barycentric,
+                                ln0,
+                                ln1,
+                                ln2);
+                        Float4 light_object_tangent =
+                            triangle_interpolate(
+                                light_barycentric,
+                                light_tangent0,
+                                light_tangent1,
+                                light_tangent2);
+                        Float3 light_shading_normal =
+                            safe_normalize(
+                                (light_normal_to_world *
+                                 make_float4(
+                                     light_object_shading_normal,
+                                     0.0f))
+                                    .xyz(),
+                                light_geometric_normal);
+                        Float light_distance = triangle_sample.distance;
+                        Float3 wi = triangle_sample.direction;
+                        Bool light_back_facing =
+                            dot(
+                                light_geometric_normal,
+                                -wi) < 0.0f;
+                        light_geometric_normal = select(
+                            light_geometric_normal,
+                            -light_geometric_normal,
+                            light_back_facing);
+                        light_shading_normal = select(
+                            light_shading_normal,
+                            -light_shading_normal,
+                            light_back_facing);
+                        light_shading_normal = select(
+                            light_shading_normal,
+                            -light_shading_normal,
+                            dot(
+                                light_shading_normal,
+                                light_geometric_normal) <
+                                0.0f);
+                        Float3 light_tangent =
+                            safe_normalize(
+                                (light_object_to_world *
+                                 make_float4(
+                                     light_object_tangent.xyz(),
+                                     0.0f))
+                                    .xyz(),
+                                safe_normalize(
+                                    (lp1 - lp0) -
+                                        light_geometric_normal *
+                                            dot(
+                                                lp1 - lp0,
+                                                light_geometric_normal),
+                                    make_float3(
+                                        1.0f,
+                                        0.0f,
+                                        0.0f)));
+                        SurfacePoint light_point{
+                            .position = light_position,
+                            .object_position =
+                                triangle_interpolate(
+                                    light_barycentric,
+                                    local_lp0,
+                                    local_lp1,
+                                    local_lp2),
+                            .object_location =
+                                (light_object_to_world *
+                                 make_float4(
+                                     0.0f,
+                                     0.0f,
+                                     0.0f,
+                                     1.0f))
+                                    .xyz(),
+                            .generated =
+                                triangle_interpolate(
+                                    light_barycentric,
+                                    light_generated0,
+                                    light_generated1,
+                                    light_generated2),
+                            .geometric_normal =
+                                light_geometric_normal,
+                            .shading_normal =
+                                light_shading_normal,
+                            .object_shading_normal =
+                                light_object_shading_normal,
+                            .object_tangent =
+                                light_object_tangent.xyz(),
+                            .tangent_sign =
+                                light_object_tangent.w,
+                            .normal_to_world_x =
+                                (light_normal_to_world *
+                                 make_float4(
+                                     1.0f,
+                                     0.0f,
+                                     0.0f,
+                                     0.0f))
+                                    .xyz(),
+                            .normal_to_world_y =
+                                (light_normal_to_world *
+                                 make_float4(
+                                     0.0f,
+                                     1.0f,
+                                     0.0f,
+                                     0.0f))
+                                    .xyz(),
+                            .normal_to_world_z =
+                                (light_normal_to_world *
+                                 make_float4(
+                                     0.0f,
+                                     0.0f,
+                                     1.0f,
+                                     0.0f))
+                                    .xyz(),
+                            .dpdu = light_tangent,
+                            .dpdv = cross(
+                                light_shading_normal,
+                                light_tangent),
+                            .dPdx = make_float3(0.0f),
+                            .dPdy = make_float3(0.0f),
+                            .object_dPdx =
+                                make_float3(0.0f),
+                            .object_dPdy =
+                                make_float3(0.0f),
+                            .generated_dx =
+                                make_float3(0.0f),
+                            .generated_dy =
+                                make_float3(0.0f),
+                            .incoming = -wi,
+                            .uv = triangle_interpolate(
+                                light_barycentric,
+                                luv0,
+                                luv1,
+                                luv2),
+                            .uv_dx = make_float2(0.0f),
+                            .uv_dy = make_float2(0.0f),
+                            .geometry_index =
+                                emitter.geometry_index,
+                            .barycentric =
+                                light_barycentric,
+                            .barycentric_dx =
+                                make_float2(0.0f),
+                            .barycentric_dy =
+                                make_float2(0.0f),
+                            .instance_id =
+                                emitter.instance_index,
+                            .primitive_id =
+                                emitter.primitive_index,
+                            .parameter_block =
+                                emitter.parameter_block,
+                            .object_random =
+                                light_instance.object_random,
+                            .particle_index =
+                                light_instance.particle_index,
+                            .random_per_island =
+                                light_random_per_island,
+                            .ray_visibility =
+                                shadow_visibility,
+                            .ray_events = 0u,
+                            .ray_depth = path_depth,
+                            .diffuse_depth =
+                                diffuse_depth,
+                            .glossy_depth =
+                                glossy_depth,
+                            .transparent_depth =
+                                transparent_depth,
+                            .transmission_depth =
+                                transmission_depth,
+                            .ray_length =
+                                light_distance,
+                            .time = 0.5f,
+                            .back_facing =
+                                light_back_facing};
+                        cycles_path_state::
+                            apply_shader_state(
+                                light_point,
+                                cycles_path_state::
+                                    light_emission_shader_state(
+                                        path_depth,
+                                        diffuse_depth,
+                                        glossy_depth,
+                                        transparent_depth,
+                                        transmission_depth));
+                        Float3 light_radiance =
+                            surface_emission(
+                                emitter.surface_tag,
+                                light_point,
+                                -wi);
+                        Float light_pdf =
+                            emissive_triangle_pdf(
+                                emitter.instance_index,
+                                emitter.primitive_index,
+                                hit_position,
+                                light_position,
+                                lp0,
+                                lp1,
+                                lp2);
+                        $if (triangle_sample.valid &
+                             (light_pdf > 0.0f) &
+                             any(light_radiance > 0.0f)) {
+                            const auto shadow =
+                                make_surface_shadow_origin(
+                                    wi);
+                            const auto shadow_offset =
+                                light_position -
+                                shadow.position;
+                            const auto shadow_distance =
+                                sqrt(max(
+                                    length_squared(
+                                        shadow_offset),
+                                    1.0e-20f));
+                            const auto shadow_direction =
+                                shadow_offset /
+                                shadow_distance;
+                            Var<luisa::compute::Ray>
+                                mesh_light_shadow_ray =
+                                    make_ray(
+                                        shadow.position,
+                                        shadow_direction,
+                                        0.0f,
+                                        shadow_distance);
+                            Float3 shadow_transmittance =
+                                trace_shadow(
+                                    mesh_light_shadow_ray,
+                                    select(
+                                        surface_ray::
+                                            invalid_primitive,
+                                        hit->inst,
+                                        shadow.skip_self),
+                                    select(
+                                        surface_ray::
+                                            invalid_primitive,
+                                        hit->prim,
+                                        shadow.skip_self),
+                                    emitter.instance_index,
+                                    emitter.primitive_index,
+                                    kernel_parameters
+                                        .transparent_max_bounces,
+                                    pack_shader_evaluation_state(
+                                        cycles_path_state::
+                                            shadow_shader_state(
+                                                path_depth,
+                                                diffuse_depth,
+                                                glossy_depth,
+                                                transparent_depth,
+                                                transmission_depth)));
+                            $if (any(
+                                shadow_transmittance > 0.0f)) {
+                                auto evaluation =
+                                    evaluate_surface(
+                                        surface_tag,
+                                        point,
+                                        wi,
+                                        path_surface_query);
+                                Float mis_weight =
+                                    nee_light_weight(
+                                        light_pdf,
+                                        evaluation.pdf);
+                                Float3 unshadowed_contribution =
+                                    evaluation.f *
+                                    light_radiance *
+                                    (mis_weight / light_pdf);
+                                Float roulette_weight =
+                                    sample_light_roulette(
+                                        unshadowed_contribution,
+                                        light_terminate_sample);
+                                Float3 contribution =
+                                    clamp_contribution(
+                                        throughput *
+                                            unshadowed_contribution *
+                                            shadow_transmittance *
+                                            roulette_weight,
+                                        path_depth);
+                                radiance += contribution;
+                                accumulate_light_pass(
+                                    split_nee_light(
+                                    contribution,
+                                    evaluation.f,
+                                    evaluation.diffuse_f,
+                                    path_diffuse_weight,
+                                    path_glossy_weight,
+                                    path_depth));
+                            };
+                        };
+                    };
