@@ -166,6 +166,7 @@ if(PSYCLES_ENABLE_LUISA)
             psycles_luisa_runtime
             src/adapter/blender_scene.cpp
             src/luisa/path_tracer.cpp
+            src/luisa/path_tracer_camera.cpp
             src/luisa/path_tracer_common.cpp
             src/luisa/path_tracer_environment.cpp
             src/luisa/path_tracer_geometry.cpp
@@ -442,6 +443,26 @@ if(PSYCLES_ENABLE_LUISA)
                     COMMAND
                         psycles_luisa_camera_sampling_tests
                         fallback)
+                if(TARGET luisa-compute-backend-hip)
+                    add_dependencies(
+                        psycles_luisa_camera_sampling_tests
+                        luisa-compute-backend-hip)
+                    add_test(
+                        NAME psycles.luisa_camera_sampling_hip
+                        COMMAND
+                            psycles_luisa_camera_sampling_tests
+                            hip)
+                endif()
+                if(TARGET luisa-compute-backend-vk)
+                    add_dependencies(
+                        psycles_luisa_camera_sampling_tests
+                        luisa-compute-backend-vk)
+                    add_test(
+                        NAME psycles.luisa_camera_sampling_vk
+                        COMMAND
+                            psycles_luisa_camera_sampling_tests
+                            vk)
+                endif()
 
                 add_executable(
                     psycles_luisa_background_sampling_tests

@@ -2,6 +2,7 @@
 #include "cycles_filter_glossy.h"
 #include "cycles_integrator_limits.h"
 #include "cycles_shader_identity.h"
+#include "path_tracer_camera.h"
 #include "path_tracer_environment.h"
 #include "path_tracer_geometry.h"
 #include "path_tracer_light_distribution.h"
@@ -11,7 +12,6 @@
 #include <psycles/luisa/analytic_light_intersection.h>
 #include <psycles/luisa/analytic_light_sampling.h>
 #include <psycles/luisa/background_sampling.h>
-#include <psycles/luisa/camera_sampling.h>
 #include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/cycles_path_state.h>
 #include <psycles/luisa/pixel_filter.h>
@@ -563,35 +563,21 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         $for (sample_offset, samples) {
             UInt sample_index =
                 sample_first + sample_offset;
-            UInt cycles_y = camera_sampling::cycles_pixel_y(
-                full_y,
-                kernel_parameters.full_height);
-            UInt rng_hash = cycles_sampler::pixel_hash(
-                full_x,
-                cycles_y,
-                kernel_parameters.seed);
-            Float2 filter_sample =
-                cycles_sampler::sample_2d(
+            const auto camera_dimensions =
+                sample_camera_dimensions(
                     sobol_table,
-                    kernel_parameters.sobol_sequence_size,
-                    sample_index,
-                    rng_hash,
-                    UInt{
-                        tabulated_sobol::
-                            camera_filter_dimension});
-            filter_sample = select(
-                filter_sample,
-                make_float2(0.5f),
-                sample_index == 0u);
-            Float3 lens_time_sample =
-                cycles_sampler::sample_3d(
-                    sobol_table,
-                    kernel_parameters.sobol_sequence_size,
-                    sample_index,
-                    rng_hash,
-                    UInt{
-                        tabulated_sobol::
-                            camera_lens_time_dimension});
+                    kernel_parameters,
+                    full_x,
+                    full_y,
+                    sample_index);
+            const UInt cycles_y =
+                camera_dimensions.cycles_y;
+            const UInt rng_hash =
+                camera_dimensions.rng_hash;
+            const Float2 filter_sample =
+                camera_dimensions.filter_sample;
+            const Float3 lens_time_sample =
+                camera_dimensions.lens_time_sample;
             Bool path_trace_active = false;
             if (path_trace_enabled) {
                 path_trace_active =
@@ -668,198 +654,23 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                             value);
                     };
                 };
-            Float jitter_x =
-                pixel_filter::sample(
-                    filter_table,
-                    filter_sample.x);
-            Float jitter_y = camera_sampling::output_filter_y(
-                pixel_filter::sample(
-                    filter_table,
-                    filter_sample.y));
-            Float width =
-                cast<float>(kernel_parameters.full_width);
-            Float height =
-                cast<float>(kernel_parameters.full_height);
-            Float screen_x =
-                2.0f *
-                    (cast<float>(full_x) + jitter_x) /
-                    width -
-                1.0f +
-                2.0f *
-                    kernel_parameters.camera_shift_x;
-            Float screen_y =
-                1.0f -
-                2.0f *
-                    (cast<float>(full_y) + jitter_y) /
-                    height +
-                2.0f *
-                    kernel_parameters.camera_shift_y;
-            Float aspect = width / height;
-
-            Float3 local_origin = make_float3(0.0f);
-            Float3 local_direction =
-                make_float3(0.0f, 0.0f, -1.0f);
-            Float camera_clip_cosine = 1.0f;
-            Float3 local_direction_dx = local_direction;
-            Float3 local_direction_dy = local_direction;
-            Float ray_dP = 0.0f;
-            Float ray_dD = 0.0f;
-            if (camera_projection ==
-                CameraProjection::perspective) {
-                local_direction = normalize(make_float3(
-                    screen_x *
-                        kernel_parameters
-                            .camera_horizontal_tangent,
-                    screen_y *
-                        kernel_parameters
-                            .camera_vertical_tangent,
-                    -1.0f));
-                camera_clip_cosine = -local_direction.z;
-                local_direction_dx =
-                    normalize(make_float3(
-                        (screen_x + 2.0f / width) *
-                            kernel_parameters
-                                .camera_horizontal_tangent,
-                        screen_y *
-                            kernel_parameters
-                                .camera_vertical_tangent,
-                        -1.0f));
-                local_direction_dy =
-                    normalize(make_float3(
-                        screen_x *
-                            kernel_parameters
-                                .camera_horizontal_tangent,
-                        (screen_y - 2.0f / height) *
-                            kernel_parameters
-                                .camera_vertical_tangent,
-                        -1.0f));
-                ray_dD =
-                    0.5f *
-                    (length(
-                         local_direction_dx -
-                         local_direction) +
-                     length(
-                         local_direction_dy -
-                         local_direction));
-            } else if (
-                camera_projection ==
-                CameraProjection::orthographic) {
-                local_origin = make_float3(
-                    screen_x *
-                        kernel_parameters
-                            .camera_ortho_scale *
-                        aspect * 0.5f,
-                    screen_y *
-                        kernel_parameters
-                            .camera_ortho_scale *
-                        0.5f,
-                    0.0f);
-                ray_dP =
-                    0.5f *
-                    (kernel_parameters.camera_ortho_scale *
-                         aspect / width +
-                     kernel_parameters.camera_ortho_scale /
-                         height);
-            } else {
-                Float longitude = screen_x * pi;
-                Float latitude = screen_y * pi * 0.5f;
-                Float cosine_latitude = cos(latitude);
-                local_direction = make_float3(
-                    cosine_latitude * sin(longitude),
-                    sin(latitude),
-                    -cosine_latitude * cos(longitude));
-                Float longitude_dx =
-                    (screen_x + 2.0f / width) * pi;
-                Float latitude_dy =
-                    (screen_y - 2.0f / height) *
-                    pi * 0.5f;
-                local_direction_dx =
-                    make_float3(
-                        cosine_latitude *
-                            sin(longitude_dx),
-                        sin(latitude),
-                        -cosine_latitude *
-                            cos(longitude_dx));
-                Float cosine_latitude_dy =
-                    cos(latitude_dy);
-                local_direction_dy =
-                    make_float3(
-                        cosine_latitude_dy *
-                            sin(longitude),
-                        sin(latitude_dy),
-                        -cosine_latitude_dy *
-                            cos(longitude));
-                ray_dD =
-                    0.5f *
-                    (length(
-                         local_direction_dx -
-                         local_direction) +
-                     length(
-                         local_direction_dy -
-                         local_direction));
-            }
-            if (camera_depth_of_field) {
-                Float2 lens_position =
-                    camera_sampling::sample_aperture(
-                        lens_time_sample.yz(),
-                        camera_aperture_blades,
-                        camera_aperture_rotation) *
-                    kernel_parameters
-                        .camera_aperture_radius;
-                lens_position.x /=
-                    max(
-                        kernel_parameters
-                            .camera_aperture_ratio,
-                        1.0e-5f);
-                Float focus_scale =
-                    kernel_parameters
-                        .camera_focal_distance /
-                    max(-local_direction.z, 1.0e-6f);
-                Float3 focus_position =
-                    local_direction * focus_scale;
-                Float focus_scale_dx =
-                    kernel_parameters
-                        .camera_focal_distance /
-                    max(-local_direction_dx.z, 1.0e-6f);
-                Float focus_scale_dy =
-                    kernel_parameters
-                        .camera_focal_distance /
-                    max(-local_direction_dy.z, 1.0e-6f);
-                Float3 focus_position_dx =
-                    local_direction_dx * focus_scale_dx;
-                Float3 focus_position_dy =
-                    local_direction_dy * focus_scale_dy;
-                local_origin = make_float3(
-                    lens_position.x,
-                    lens_position.y,
-                    0.0f);
-                local_direction = normalize(
-                    focus_position - local_origin);
-                local_direction_dx = normalize(
-                    focus_position_dx - local_origin);
-                local_direction_dy = normalize(
-                    focus_position_dy - local_origin);
-            }
-            Float3 ray_origin =
-                (kernel_parameters.camera_transform *
-                 make_float4(local_origin, 1.0f))
-                    .xyz();
-            Float3 ray_direction = safe_normalize(
-                (kernel_parameters.camera_transform *
-                 make_float4(local_direction, 0.0f))
-                    .xyz(),
-                make_float3(0.0f, 0.0f, -1.0f));
-            auto camera_clip =
-                camera_sampling::camera_clip_range(
-                    kernel_parameters.camera_near,
-                    kernel_parameters.camera_far,
-                    camera_clip_cosine);
-            ray_origin += ray_direction * camera_clip.x;
-            Var<luisa::compute::Ray> ray = make_ray(
-                ray_origin,
-                ray_direction,
-                0.0f,
-                camera_clip.y);
+            auto camera_ray = construct_camera_ray(
+                filter_table,
+                kernel_parameters,
+                full_x,
+                full_y,
+                camera_dimensions,
+                camera_projection,
+                camera_depth_of_field,
+                camera_aperture_blades,
+                camera_aperture_rotation,
+                safe_normalize);
+            Var<luisa::compute::Ray> ray =
+                std::move(camera_ray.ray);
+            Float ray_dP =
+                camera_ray.differential_position;
+            Float ray_dD =
+                camera_ray.differential_direction;
             if (path_trace_enabled) {
                 trace_write_global(
                     path_trace_schema::GlobalSlot::header,
