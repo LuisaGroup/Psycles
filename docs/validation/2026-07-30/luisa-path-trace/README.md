@@ -84,3 +84,40 @@ Observed fresh trace-enabled JIT times were about 0.71 seconds for HIP and
 0.72 seconds for Vulkan. Vulkan's logged compute SPIR-V optimization reduced
 77,253 words to 69,543 words before pipeline creation; this small probe did not
 reproduce the earlier complex-scene Vulkan compile stall.
+
+## Cosine-hemisphere mapping checkpoint
+
+The next formal comparison separated a measure-level match from a
+sample-by-sample match. Psycles' diffuse closure previously used
+`sqrt(u), 2πv` polar disk sampling and selected an arbitrary orthonormal frame.
+That estimator has the correct cosine-weighted PDF, but the same two Cycles
+random dimensions produce a different world-space ray. This breaks
+correlated-path comparison and changes which microgeometry is visited on later
+bounces.
+
+Psycles now uses one shared Luisa DSL mapping for camera and closure sampling:
+
+- the Shirley-Chiu concentric square-to-disk map, including Cycles' strict
+  branch at equal squared coordinates;
+- the fixed Cycles algebraic tangent/bitangent orientation, including its
+  equal-normal-component branch;
+- `sqrt(max(1 - |disk|², 0))` and no post-construction renormalization;
+- `pdf = cos(theta) / π`.
+
+The actual first-bounce diffuse oracle record is locked by the device test:
+
+```text
+N      = (0, 0, 1)
+random = (0.82080835, 0.67639267)
+wo     = (0.601930976, -0.222150967, 0.767025411)
+pdf    = 0.244151756
+```
+
+The new regression passes independently on fallback, HIP, and Vulkan, and all
+31 project tests pass with 32-way CTest scheduling. Fresh trace-enabled
+renders agree between fallback/HIP and fallback/Vulkan with zero failures and
+maximum absolute error `2.384185791015625e-7`. The Cycles CPU comparison still
+shows the same 24 deliberately unwritten closure/BSDF/post-state gates; none
+were waived. The minimal point-light EXR is unchanged under `oiiotool --diff`
+because its current visible contribution is direct lighting, while this
+checkpoint changes the subsequently sampled diffuse path.
