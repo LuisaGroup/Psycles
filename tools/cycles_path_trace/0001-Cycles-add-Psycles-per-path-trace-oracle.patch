@@ -1,0 +1,573 @@
+From 7fa06e0a26f9b20b91005705a2ef8cef3df52562 Mon Sep 17 00:00:00 2001
+From: Mike Smith <mango@live.cn>
+Date: Thu, 30 Jul 2026 14:08:56 +0800
+Subject: [PATCH] Cycles: add Psycles per-path trace oracle
+
+---
+ .../kernel/integrator/init_from_camera.h      |  37 +++
+ .../cycles/kernel/integrator/psycles_trace.h  | 168 ++++++++++++
+ .../cycles/kernel/integrator/shade_surface.h  | 242 +++++++++++++++++-
+ 3 files changed, 439 insertions(+), 8 deletions(-)
+ create mode 100644 intern/cycles/kernel/integrator/psycles_trace.h
+
+diff --git a/intern/cycles/kernel/integrator/init_from_camera.h b/intern/cycles/kernel/integrator/init_from_camera.h
+index 948a83a7..b1429b53 100644
+--- a/intern/cycles/kernel/integrator/init_from_camera.h
++++ b/intern/cycles/kernel/integrator/init_from_camera.h
+@@ -10,6 +10,7 @@
+ #include "kernel/film/light_passes.h"
+ 
+ #include "kernel/integrator/path_state.h"
++#include "kernel/integrator/psycles_trace.h"
+ 
+ #include "kernel/integrator/state_util.h"
+ #include "kernel/sample/pattern.h"
+@@ -139,6 +140,42 @@ ccl_device bool integrator_init_from_camera(KernelGlobals kg,
+     }
+   }
+ 
++  if (sample == 0) {
++    const float2 trace_filter = make_float2(0.5f, 0.5f);
++    const bool trace_use_motionblur = kernel_data.cam.shuttertime != -1.0f;
++    const bool trace_use_dof = kernel_data.cam.aperturesize > 0.0f;
++    const bool trace_use_custom_cam = kernel_data.cam.type == CAMERA_CUSTOM;
++    const float3 trace_time_lens = (trace_use_motionblur || trace_use_dof ||
++                                    trace_use_custom_cam) ?
++                                       path_rng_3D(kg, rng_pixel, sample, PRNG_LENS_TIME) :
++                                       zero_float3();
++    const float rng_low = float(rng_pixel & 0xffffu);
++    const float rng_high = float(rng_pixel >> 16);
++    psycles_trace_write(kg,
++                        state,
++                        render_buffer,
++                        PSYCLES_TRACE_GLOBAL_HEADER,
++                        make_float3(float(PSYCLES_TRACE_SCHEMA_VERSION), float(x), float(y)));
++    psycles_trace_write(kg,
++                        state,
++                        render_buffer,
++                        PSYCLES_TRACE_GLOBAL_RNG,
++                        make_float3(float(sample), rng_low, rng_high));
++    psycles_trace_write(kg,
++                        state,
++                        render_buffer,
++                        PSYCLES_TRACE_GLOBAL_FILTER,
++                        make_float3(trace_filter.x, trace_filter.y, 0.0f));
++    psycles_trace_write(kg, state, render_buffer, PSYCLES_TRACE_GLOBAL_LENS_TIME, trace_time_lens);
++    psycles_trace_write(kg, state, render_buffer, PSYCLES_TRACE_GLOBAL_RAY_P, ray.P);
++    psycles_trace_write(kg, state, render_buffer, PSYCLES_TRACE_GLOBAL_RAY_D, ray.D);
++    psycles_trace_write(kg,
++                        state,
++                        render_buffer,
++                        PSYCLES_TRACE_GLOBAL_RAY_RANGE,
++                        make_float3(ray.tmin, ray.tmax, ray.time));
++  }
++
+   return true;
+ }
+ 
+diff --git a/intern/cycles/kernel/integrator/psycles_trace.h b/intern/cycles/kernel/integrator/psycles_trace.h
+new file mode 100644
+index 00000000..9b946fb1
+--- /dev/null
++++ b/intern/cycles/kernel/integrator/psycles_trace.h
+@@ -0,0 +1,168 @@
++/* SPDX-FileCopyrightText: 2026 Psycles Authors
++ *
++ * SPDX-License-Identifier: Apache-2.0 */
++
++#pragma once
++
++/*
++ * Diagnostic-only Cycles oracle used by Psycles.
++ *
++ * The trace is written into color AOVs so the exact same instrumentation can
++ * run on the CPU and GPU wavefront integrators. The companion Blender script
++ * creates all required AOVs and renders exactly one pixel at one sample.
++ * Writes only observe existing state and never request a new random dimension.
++ */
++
++#include "kernel/film/write.h"
++#include "kernel/integrator/path_state.h"
++
++CCL_NAMESPACE_BEGIN
++
++static constexpr int PSYCLES_TRACE_SCHEMA_VERSION = 1;
++static constexpr int PSYCLES_TRACE_GLOBAL_SLOTS = 8;
++static constexpr int PSYCLES_TRACE_EVENT_SLOTS = 72;
++static constexpr int PSYCLES_TRACE_MAX_EVENTS = 4;
++static constexpr int PSYCLES_TRACE_MAX_CLOSURES = 8;
++static constexpr int PSYCLES_TRACE_AOV_COUNT = PSYCLES_TRACE_GLOBAL_SLOTS +
++                                               PSYCLES_TRACE_EVENT_SLOTS *
++                                                   PSYCLES_TRACE_MAX_EVENTS;
++
++enum PsyclesTraceGlobalSlot {
++  PSYCLES_TRACE_GLOBAL_HEADER = 0,
++  PSYCLES_TRACE_GLOBAL_RNG = 1,
++  PSYCLES_TRACE_GLOBAL_FILTER = 2,
++  PSYCLES_TRACE_GLOBAL_LENS_TIME = 3,
++  PSYCLES_TRACE_GLOBAL_RAY_P = 4,
++  PSYCLES_TRACE_GLOBAL_RAY_D = 5,
++  PSYCLES_TRACE_GLOBAL_RAY_RANGE = 6,
++  PSYCLES_TRACE_GLOBAL_RESERVED = 7,
++};
++
++enum PsyclesTraceEventSlot {
++  PSYCLES_TRACE_EVENT_STATE_DEPTH = 0,
++  PSYCLES_TRACE_EVENT_STATE_LOBES = 1,
++  PSYCLES_TRACE_EVENT_STATE_VISIBILITY = 2,
++  PSYCLES_TRACE_EVENT_STATE_FLAGS = 3,
++  PSYCLES_TRACE_EVENT_THROUGHPUT = 4,
++  PSYCLES_TRACE_EVENT_RAY_P = 5,
++  PSYCLES_TRACE_EVENT_RAY_D = 6,
++  PSYCLES_TRACE_EVENT_RAY_RANGE = 7,
++  PSYCLES_TRACE_EVENT_ISECT_COORD = 8,
++  PSYCLES_TRACE_EVENT_ISECT_ID = 9,
++  PSYCLES_TRACE_EVENT_SURFACE_META = 10,
++  PSYCLES_TRACE_EVENT_SURFACE_P = 11,
++  PSYCLES_TRACE_EVENT_SURFACE_NG = 12,
++  PSYCLES_TRACE_EVENT_SURFACE_N = 13,
++  PSYCLES_TRACE_EVENT_RANDOM_SCALARS = 14,
++  PSYCLES_TRACE_EVENT_RANDOM_LIGHT = 15,
++  PSYCLES_TRACE_EVENT_RANDOM_BSDF = 16,
++  PSYCLES_TRACE_EVENT_LIGHT_META = 17,
++  PSYCLES_TRACE_EVENT_LIGHT_ID = 18,
++  PSYCLES_TRACE_EVENT_LIGHT_PDF = 19,
++  PSYCLES_TRACE_EVENT_LIGHT_D = 20,
++  PSYCLES_TRACE_EVENT_LIGHT_P = 21,
++  PSYCLES_TRACE_EVENT_LIGHT_NG = 22,
++  PSYCLES_TRACE_EVENT_LIGHT_EVAL = 23,
++  PSYCLES_TRACE_EVENT_CLOSURE_PICK = 24,
++  PSYCLES_TRACE_EVENT_CLOSURE_RANDOM = 25,
++  PSYCLES_TRACE_EVENT_CLOSURE_WEIGHT = 26,
++  PSYCLES_TRACE_EVENT_CLOSURE_N = 27,
++  PSYCLES_TRACE_EVENT_BSDF_META = 28,
++  PSYCLES_TRACE_EVENT_BSDF_WO = 29,
++  PSYCLES_TRACE_EVENT_BSDF_EVAL = 30,
++  PSYCLES_TRACE_EVENT_BSDF_ROUGHNESS_ETA = 31,
++  PSYCLES_TRACE_EVENT_POST_DEPTH = 32,
++  PSYCLES_TRACE_EVENT_POST_THROUGHPUT = 33,
++  PSYCLES_TRACE_EVENT_POST_RAY_P = 34,
++  PSYCLES_TRACE_EVENT_POST_RAY_D = 35,
++  PSYCLES_TRACE_EVENT_POST_FLAGS = 36,
++  PSYCLES_TRACE_EVENT_POST_MIS = 37,
++  PSYCLES_TRACE_EVENT_SURFACE_FLAGS = 38,
++  PSYCLES_TRACE_EVENT_POST_VISIBILITY = 39,
++  PSYCLES_TRACE_EVENT_LIGHT_SHADER = 40,
++  PSYCLES_TRACE_EVENT_CLOSURE_BASE = 48,
++};
++
++ccl_device_forceinline int psycles_trace_event_index(ConstIntegratorState state)
++{
++  const int rng_offset = INTEGRATOR_STATE(state, path, rng_offset);
++  return rng_offset / PRNG_BOUNCE_NUM - 1;
++}
++
++ccl_device_forceinline int psycles_trace_event_slot(ConstIntegratorState state,
++                                                    const int relative_slot)
++{
++  const int event = psycles_trace_event_index(state);
++  return PSYCLES_TRACE_GLOBAL_SLOTS + event * PSYCLES_TRACE_EVENT_SLOTS + relative_slot;
++}
++
++ccl_device_forceinline bool psycles_trace_active(KernelGlobals kg,
++                                                 ConstIntegratorState state,
++                                                 const int slot)
++{
++  return kernel_data.film.pass_aov_color != PASS_UNUSED &&
++         kernel_data.film.pass_stride >=
++             kernel_data.film.pass_aov_color + PSYCLES_TRACE_AOV_COUNT * 4 &&
++         INTEGRATOR_STATE(state, path, sample) == 0 && slot >= 0 && slot < PSYCLES_TRACE_AOV_COUNT;
++}
++
++ccl_device_forceinline void psycles_trace_write(KernelGlobals kg,
++                                                ConstIntegratorState state,
++                                                ccl_global float *ccl_restrict render_buffer,
++                                                const int slot,
++                                                const float3 value)
++{
++  if (render_buffer == nullptr || !psycles_trace_active(kg, state, slot)) {
++    return;
++  }
++  ccl_global float *buffer = film_pass_pixel_render_buffer(kg, state, render_buffer);
++  buffer += kernel_data.film.pass_aov_color + slot * 4;
++  buffer[0] = value.x;
++  buffer[1] = value.y;
++  buffer[2] = value.z;
++  buffer[3] = 1.0f;
++}
++
++ccl_device_forceinline void psycles_trace_write_event(KernelGlobals kg,
++                                                      ConstIntegratorState state,
++                                                      ccl_global float *ccl_restrict render_buffer,
++                                                      const int relative_slot,
++                                                      const float3 value)
++{
++  const int event = psycles_trace_event_index(state);
++  if (event < 0 || event >= PSYCLES_TRACE_MAX_EVENTS) {
++    return;
++  }
++  psycles_trace_write(kg,
++                      state,
++                      render_buffer,
++                      PSYCLES_TRACE_GLOBAL_SLOTS + event * PSYCLES_TRACE_EVENT_SLOTS +
++                          relative_slot,
++                      value);
++}
++
++ccl_device_forceinline void psycles_trace_write_event_at(KernelGlobals kg,
++                                                         ConstIntegratorState state,
++                                                         ccl_global float *ccl_restrict
++                                                             render_buffer,
++                                                         const int event,
++                                                         const int relative_slot,
++                                                         const float3 value)
++{
++  if (event < 0 || event >= PSYCLES_TRACE_MAX_EVENTS) {
++    return;
++  }
++  psycles_trace_write(kg,
++                      state,
++                      render_buffer,
++                      PSYCLES_TRACE_GLOBAL_SLOTS + event * PSYCLES_TRACE_EVENT_SLOTS +
++                          relative_slot,
++                      value);
++}
++
++ccl_device_forceinline float3 psycles_trace_uint32(const uint32_t value)
++{
++  return make_float3(float(value & 0xffffu), float(value >> 16), 0.0f);
++}
++
++CCL_NAMESPACE_END
+diff --git a/intern/cycles/kernel/integrator/shade_surface.h b/intern/cycles/kernel/integrator/shade_surface.h
+index 33b875a0..75f1078c 100644
+--- a/intern/cycles/kernel/integrator/shade_surface.h
++++ b/intern/cycles/kernel/integrator/shade_surface.h
+@@ -5,6 +5,7 @@
+ #pragma once
+ 
+ #include "kernel/integrator/path_state.h"
++#include "kernel/integrator/psycles_trace.h"
+ #include "kernel/integrator/surface_shader.h"
+ 
+ #include "kernel/film/data_passes.h"
+@@ -315,11 +316,11 @@ ccl_device_forceinline
+ /* MSVC has very long compilation time (x20) if we force inline this function */
+ ccl_device
+ #endif
+-    ShaderEvalResult
+-    integrate_surface_direct_light(KernelGlobals kg,
+-                                   IntegratorState state,
+-                                   ccl_private ShaderData *sd,
+-                                   const ccl_private RNGState *rng_state)
++    ShaderEvalResult integrate_surface_direct_light(KernelGlobals kg,
++                                                    IntegratorState state,
++                                                    ccl_private ShaderData *sd,
++                                                    const ccl_private RNGState *rng_state,
++                                                    ccl_global float *ccl_restrict render_buffer)
+ {
+   /* Test if there is a light or BSDF that needs direct light. */
+   if (!(kernel_data.integrator.use_direct_light && (sd->runtime_flag & SR_BSDF_HAS_EVAL))) {
+@@ -355,11 +356,43 @@ ccl_device
+                                     path_flag,
+                                     &ls))
+     {
++      psycles_trace_write_event(kg,
++                                state,
++                                render_buffer,
++                                PSYCLES_TRACE_EVENT_LIGHT_META,
++                                make_float3(-1.0f, -1.0f, -1.0f));
+       return SHADER_EVAL_EMPTY;
+     }
+   }
+ 
+   kernel_assert(ls.pdf != 0.0f);
++  psycles_trace_write_event(kg,
++                            state,
++                            render_buffer,
++                            PSYCLES_TRACE_EVENT_LIGHT_META,
++                            make_float3(float(ls.type), float(ls.emitter_id), float(ls.prim)));
++  psycles_trace_write_event(kg,
++                            state,
++                            render_buffer,
++                            PSYCLES_TRACE_EVENT_LIGHT_ID,
++                            make_float3(float(ls.object), float(ls.group), 0.0f));
++  psycles_trace_write_event(kg,
++                            state,
++                            render_buffer,
++                            PSYCLES_TRACE_EVENT_LIGHT_SHADER,
++                            psycles_trace_uint32(uint32_t(ls.shader)));
++  psycles_trace_write_event(kg,
++                            state,
++                            render_buffer,
++                            PSYCLES_TRACE_EVENT_LIGHT_PDF,
++                            make_float3(ls.pdf, ls.pdf_selection, ls.eval_fac));
++  psycles_trace_write_event(kg, state, render_buffer, PSYCLES_TRACE_EVENT_LIGHT_D, ls.D);
++  psycles_trace_write_event(kg, state, render_buffer, PSYCLES_TRACE_EVENT_LIGHT_P, ls.P);
++  psycles_trace_write_event(kg,
++                            state,
++                            render_buffer,
++                            PSYCLES_TRACE_EVENT_LIGHT_NG,
++                            make_float3(ls.Ng.x, ls.Ng.y, ls.Ng.z));
+ 
+   const bool is_transmission = dot(ls.D, sd->N) < 0.0f;
+ 
+@@ -394,6 +427,12 @@ ccl_device
+   float avg_roughness_squared = 0.0f;
+   const float bsdf_pdf = surface_shader_bsdf_eval(
+       kg, state, sd, ls.D, &bsdf_eval, ls.shader, avg_roughness_squared);
++  const float light_mis_weight = light_sample_mis_weight_nee(kg, ls.pdf, bsdf_pdf);
++  psycles_trace_write_event(kg,
++                            state,
++                            render_buffer,
++                            PSYCLES_TRACE_EVENT_LIGHT_EVAL,
++                            make_float3(ls.t, bsdf_pdf, light_mis_weight));
+ 
+   Ray ray ccl_optional_struct_init;
+ 
+@@ -491,8 +530,10 @@ ccl_device_forceinline int integrate_surface_bsdf_bssrdf_bounce(
+     KernelGlobals kg,
+     IntegratorState state,
+     ccl_private ShaderData *sd,
+-    const ccl_private RNGState *rng_state)
++    const ccl_private RNGState *rng_state,
++    ccl_global float *ccl_restrict render_buffer)
+ {
++  const int trace_event = psycles_trace_event_index(state);
+   /* Sample BSDF or BSSRDF. */
+   if (!(sd->runtime_flag & (SR_BSDF | SR_BSSRDF))) {
+     return LABEL_NONE;
+@@ -500,6 +541,23 @@ ccl_device_forceinline int integrate_surface_bsdf_bssrdf_bounce(
+ 
+   float3 rand_bsdf = path_state_rng_3D(kg, rng_state, PRNG_SURFACE_BSDF);
+   const ccl_private ShaderClosure *sc = surface_shader_bsdf_bssrdf_pick(sd, &rand_bsdf);
++  int closure_index = 0;
++  for (int i = 0; i < sd->num_closure; i++) {
++    if (&sd->closure[i] == sc) {
++      closure_index = i;
++      break;
++    }
++  }
++  psycles_trace_write_event(kg,
++                            state,
++                            render_buffer,
++                            PSYCLES_TRACE_EVENT_CLOSURE_PICK,
++                            make_float3(float(closure_index), float(sc->type), sc->sample_weight));
++  psycles_trace_write_event(
++      kg, state, render_buffer, PSYCLES_TRACE_EVENT_CLOSURE_RANDOM, rand_bsdf);
++  psycles_trace_write_event(
++      kg, state, render_buffer, PSYCLES_TRACE_EVENT_CLOSURE_WEIGHT, spectrum_to_rgb(sc->weight));
++  psycles_trace_write_event(kg, state, render_buffer, PSYCLES_TRACE_EVENT_CLOSURE_N, sc->N);
+ 
+ #ifdef __SUBSURFACE__
+   /* BSSRDF closure, we schedule subsurface intersection kernel. */
+@@ -570,6 +628,24 @@ ccl_device_forceinline int integrate_surface_bsdf_bssrdf_bounce(
+     unguided_bsdf_pdf = bsdf_pdf;
+   }
+ 
++  psycles_trace_write_event(kg,
++                            state,
++                            render_buffer,
++                            PSYCLES_TRACE_EVENT_BSDF_META,
++                            make_float3(bsdf_pdf, unguided_bsdf_pdf, float(label)));
++  psycles_trace_write_event(kg, state, render_buffer, PSYCLES_TRACE_EVENT_BSDF_WO, bsdf_wo);
++  psycles_trace_write_event(kg,
++                            state,
++                            render_buffer,
++                            PSYCLES_TRACE_EVENT_BSDF_EVAL,
++                            spectrum_to_rgb(bsdf_eval_sum(&bsdf_eval)));
++  psycles_trace_write_event(
++      kg,
++      state,
++      render_buffer,
++      PSYCLES_TRACE_EVENT_BSDF_ROUGHNESS_ETA,
++      make_float3(bsdf_sampled_roughness.x, bsdf_sampled_roughness.y, bsdf_eta));
++
+   if (label & LABEL_TRANSPARENT) {
+     /* Only need to modify start distance for transparent. */
+     INTEGRATOR_STATE_WRITE(state, ray, tmin) = intersection_t_offset(sd->ray_length);
+@@ -619,6 +695,57 @@ ccl_device_forceinline int integrate_surface_bsdf_bssrdf_bounce(
+   }
+ 
+   path_state_next(kg, state, label, sd->runtime_flag);
++  const uint32_t post_flag = INTEGRATOR_STATE(state, path, flag);
++  psycles_trace_write_event_at(
++      kg,
++      state,
++      render_buffer,
++      trace_event,
++      PSYCLES_TRACE_EVENT_POST_DEPTH,
++      make_float3(float(INTEGRATOR_STATE(state, path, bounce)),
++                  float(INTEGRATOR_STATE(state, path, transparent_bounce)),
++                  float(INTEGRATOR_STATE(state, path, rng_offset))));
++  psycles_trace_write_event_at(kg,
++                               state,
++                               render_buffer,
++                               trace_event,
++                               PSYCLES_TRACE_EVENT_POST_THROUGHPUT,
++                               spectrum_to_rgb(INTEGRATOR_STATE(state, path, throughput)));
++  psycles_trace_write_event_at(kg,
++                               state,
++                               render_buffer,
++                               trace_event,
++                               PSYCLES_TRACE_EVENT_POST_RAY_P,
++                               INTEGRATOR_STATE(state, ray, P));
++  psycles_trace_write_event_at(kg,
++                               state,
++                               render_buffer,
++                               trace_event,
++                               PSYCLES_TRACE_EVENT_POST_RAY_D,
++                               INTEGRATOR_STATE(state, ray, D));
++  psycles_trace_write_event_at(
++      kg,
++      state,
++      render_buffer,
++      trace_event,
++      PSYCLES_TRACE_EVENT_POST_FLAGS,
++      make_float3(float(post_flag & 0xffffu), float(post_flag >> 16), 0.0f));
++  psycles_trace_write_event_at(
++      kg,
++      state,
++      render_buffer,
++      trace_event,
++      PSYCLES_TRACE_EVENT_POST_VISIBILITY,
++      psycles_trace_uint32(uint32_t(INTEGRATOR_STATE(state, path, visibility))));
++  psycles_trace_write_event_at(
++      kg,
++      state,
++      render_buffer,
++      trace_event,
++      PSYCLES_TRACE_EVENT_POST_MIS,
++      make_float3(INTEGRATOR_STATE(state, path, mis_ray_pdf),
++                  INTEGRATOR_STATE(state, path, min_ray_pdf),
++                  INTEGRATOR_STATE(state, path, continuation_probability)));
+ 
+   guiding_record_surface_bounce(kg,
+                                 state,
+@@ -841,6 +968,104 @@ ccl_device int integrate_surface(KernelGlobals kg,
+     /* Load random number state. */
+     RNGState rng_state;
+     path_state_rng_load(state, &rng_state);
++    const uint32_t trace_flag = INTEGRATOR_STATE(state, path, flag);
++    const float3 trace_light = path_state_rng_3D(kg, &rng_state, PRNG_LIGHT);
++    const float3 trace_bsdf = path_state_rng_3D(kg, &rng_state, PRNG_SURFACE_BSDF);
++    psycles_trace_write_event(kg,
++                              state,
++                              render_buffer,
++                              PSYCLES_TRACE_EVENT_STATE_DEPTH,
++                              make_float3(float(psycles_trace_event_index(state)),
++                                          float(INTEGRATOR_STATE(state, path, rng_offset)),
++                                          float(INTEGRATOR_STATE(state, path, bounce))));
++    psycles_trace_write_event(kg,
++                              state,
++                              render_buffer,
++                              PSYCLES_TRACE_EVENT_STATE_LOBES,
++                              make_float3(float(INTEGRATOR_STATE(state, path, transparent_bounce)),
++                                          float(INTEGRATOR_STATE(state, path, diffuse_bounce)),
++                                          float(INTEGRATOR_STATE(state, path, glossy_bounce))));
++    psycles_trace_write_event(
++        kg,
++        state,
++        render_buffer,
++        PSYCLES_TRACE_EVENT_STATE_VISIBILITY,
++        make_float3(float(INTEGRATOR_STATE(state, path, transmission_bounce)),
++                    float(uint32_t(path_visibility) & 0xffffu),
++                    float(uint32_t(path_visibility) >> 16)));
++    psycles_trace_write_event(
++        kg,
++        state,
++        render_buffer,
++        PSYCLES_TRACE_EVENT_STATE_FLAGS,
++        make_float3(float(trace_flag & 0xffffu),
++                    float(trace_flag >> 16),
++                    INTEGRATOR_STATE(state, path, continuation_probability)));
++    psycles_trace_write_event(kg,
++                              state,
++                              render_buffer,
++                              PSYCLES_TRACE_EVENT_THROUGHPUT,
++                              spectrum_to_rgb(INTEGRATOR_STATE(state, path, throughput)));
++    psycles_trace_write_event(
++        kg, state, render_buffer, PSYCLES_TRACE_EVENT_RAY_P, INTEGRATOR_STATE(state, ray, P));
++    psycles_trace_write_event(
++        kg, state, render_buffer, PSYCLES_TRACE_EVENT_RAY_D, INTEGRATOR_STATE(state, ray, D));
++    psycles_trace_write_event(kg,
++                              state,
++                              render_buffer,
++                              PSYCLES_TRACE_EVENT_RAY_RANGE,
++                              make_float3(INTEGRATOR_STATE(state, ray, tmin),
++                                          INTEGRATOR_STATE(state, ray, tmax),
++                                          INTEGRATOR_STATE(state, ray, time)));
++    psycles_trace_write_event(kg,
++                              state,
++                              render_buffer,
++                              PSYCLES_TRACE_EVENT_ISECT_COORD,
++                              make_float3(sd.ray_length, sd.u, sd.v));
++    psycles_trace_write_event(kg,
++                              state,
++                              render_buffer,
++                              PSYCLES_TRACE_EVENT_ISECT_ID,
++                              make_float3(float(sd.object), float(sd.prim), float(sd.type)));
++    const uint32_t trace_shader = uint32_t(sd.shader);
++    psycles_trace_write_event(kg,
++                              state,
++                              render_buffer,
++                              PSYCLES_TRACE_EVENT_SURFACE_META,
++                              make_float3(float(trace_shader & 0xffffu),
++                                          float(trace_shader >> 16),
++                                          float(sd.num_closure)));
++    psycles_trace_write_event(kg,
++                              state,
++                              render_buffer,
++                              PSYCLES_TRACE_EVENT_SURFACE_FLAGS,
++                              psycles_trace_uint32(uint32_t(sd.runtime_flag)));
++    psycles_trace_write_event(kg, state, render_buffer, PSYCLES_TRACE_EVENT_SURFACE_P, sd.P);
++    psycles_trace_write_event(kg, state, render_buffer, PSYCLES_TRACE_EVENT_SURFACE_NG, sd.Ng);
++    psycles_trace_write_event(kg, state, render_buffer, PSYCLES_TRACE_EVENT_SURFACE_N, sd.N);
++    psycles_trace_write_event(kg,
++                              state,
++                              render_buffer,
++                              PSYCLES_TRACE_EVENT_RANDOM_SCALARS,
++                              make_float3(path_state_rng_1D(kg, &rng_state, PRNG_TERMINATE),
++                                          path_state_rng_light_termination(kg, &rng_state),
++                                          0.0f));
++    psycles_trace_write_event(
++        kg, state, render_buffer, PSYCLES_TRACE_EVENT_RANDOM_LIGHT, trace_light);
++    psycles_trace_write_event(
++        kg, state, render_buffer, PSYCLES_TRACE_EVENT_RANDOM_BSDF, trace_bsdf);
++    for (int i = 0; i < sd.num_closure && i < PSYCLES_TRACE_MAX_CLOSURES; i++) {
++      const ShaderClosure &closure = sd.closure[i];
++      const int closure_slot = PSYCLES_TRACE_EVENT_CLOSURE_BASE + i * 3;
++      psycles_trace_write_event(kg,
++                                state,
++                                render_buffer,
++                                closure_slot,
++                                make_float3(float(i), float(closure.type), closure.sample_weight));
++      psycles_trace_write_event(
++          kg, state, render_buffer, closure_slot + 1, spectrum_to_rgb(closure.weight));
++      psycles_trace_write_event(kg, state, render_buffer, closure_slot + 2, closure.N);
++    }
+ 
+ #if defined(__PATH_GUIDING__) && PATH_GUIDING_LEVEL >= 4
+     if (kernel_data.kernel_features & KERNEL_FEATURE_PATH_GUIDING) {
+@@ -851,7 +1076,7 @@ ccl_device int integrate_surface(KernelGlobals kg,
+     /* Direct light. */
+     PROFILING_EVENT(PROFILING_SHADE_SURFACE_DIRECT_LIGHT);
+     const ShaderEvalResult result = integrate_surface_direct_light<node_feature_mask>(
+-        kg, state, &sd, &rng_state);
++        kg, state, &sd, &rng_state, render_buffer);
+     if (result == SHADER_EVAL_CACHE_MISS) {
+       return LABEL_CACHE_MISS;
+     }
+@@ -865,7 +1090,8 @@ ccl_device int integrate_surface(KernelGlobals kg,
+ #endif
+ 
+     PROFILING_EVENT(PROFILING_SHADE_SURFACE_INDIRECT_LIGHT);
+-    continue_path_label = integrate_surface_bsdf_bssrdf_bounce(kg, state, &sd, &rng_state);
++    continue_path_label = integrate_surface_bsdf_bssrdf_bounce(
++        kg, state, &sd, &rng_state, render_buffer);
+ #ifdef __VOLUME__
+   }
+   else {
+-- 
+2.55.0
+
