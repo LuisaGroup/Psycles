@@ -75,11 +75,11 @@ visibility, expression construction order, and generated AST control flow.
 Every extracted source range was checked byte-for-byte against the original
 header before compilation.
 
-The complete scan now covers 153 source files and 60,008 lines, with four
-remaining files over 2,000 lines. The `psycles.source_size` CTest contract
-rejects every new over-limit first-party source and rejects growth in the four
-explicitly budgeted debt files. A debt entry is removed as soon as its
-semantic decomposition reaches the target.
+After this checkpoint the complete scan covered 153 source files and 60,008
+lines, with four remaining files over 2,000 lines. The
+`psycles.source_size` CTest contract rejects every new over-limit first-party
+source and rejects growth in the explicitly budgeted debt files. A debt entry
+is removed as soon as its semantic decomposition reaches the target.
 
 The split passed the 32-worker full build and all 42 CTest contracts. A
 64×64, 256 spp material fixture was then rendered through fallback, HIP, and
@@ -91,6 +91,22 @@ The existing Cycles/Psycles triptych below remains the visual record for this
 fixture because the current Psycles panel is byte-identical:
 
 ![Cycles, Psycles, and absolute difference for the material fixture](validation/2026-07-31/camera-vulkan/blackman-harris-vk-vs-cycles.png)
+
+The surface-program compiler is now a second semantic checkpoint. Its public
+implementation decreased from 2,416 to 135 lines. Builder state and
+diagnostics, graph-context nodes, typed value nodes, texture/procedural nodes,
+and raw surface/volume closure nodes live in separate translation units; the
+largest is 731 lines. The old 1,540-line `lower_node()` chain is now a family
+dispatcher. Each family returns `true` when it recognizes a node even if
+invalid inputs prevent emission, preserving the distinction between an input
+diagnostic and an unsupported-node diagnostic.
+
+The split passed the 32-worker full build and all 42 CTest contracts. The same
+fallback/HIP/Vulkan fixture again produced 39 linear pass files that are
+byte-identical to the pre-split baselines, including the Combined hash above.
+The current scan covers 159 files and 60,210 lines, with three remaining
+over-limit debt files. `surface_program.cpp` has therefore been removed from
+the size-gate allowlist.
 
 ## Target boundaries
 
