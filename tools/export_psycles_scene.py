@@ -660,6 +660,36 @@ def _light(obj: Any) -> dict[str, Any]:
     }
 
 
+def _instance_ray_visibility(
+    object_instance: Any,
+) -> dict[str, bool]:
+    """Match Cycles' child-and-instancer ray visibility intersection."""
+
+    obj = object_instance.object
+    parent = (
+        object_instance.parent
+        if object_instance.is_instance
+        else None
+    )
+
+    def visible(property_name: str) -> bool:
+        result = bool(getattr(obj, property_name))
+        if parent is not None and parent != obj:
+            result = result and bool(
+                getattr(parent, property_name)
+            )
+        return result
+
+    return {
+        "camera": visible("visible_camera"),
+        "diffuse": visible("visible_diffuse"),
+        "glossy": visible("visible_glossy"),
+        "transmission": visible("visible_transmission"),
+        "shadow": visible("visible_shadow"),
+        "volume_scatter": visible("visible_volume_scatter"),
+    }
+
+
 def _export_scene(
     output: pathlib.Path,
     depsgraph: Any,
@@ -726,16 +756,9 @@ def _export_scene(
                     "shadow_terminator_geometry_offset": float(
                         original.cycles.shadow_terminator_geometry_offset
                     ),
-                    "visibility": {
-                        "camera": bool(original.visible_camera),
-                        "diffuse": bool(original.visible_diffuse),
-                        "glossy": bool(original.visible_glossy),
-                        "transmission": bool(original.visible_transmission),
-                        "shadow": bool(original.visible_shadow),
-                        "volume_scatter": bool(
-                            original.visible_volume_scatter
-                        ),
-                    },
+                    "visibility": _instance_ray_visibility(
+                        object_instance
+                    ),
                 }
             )
 
