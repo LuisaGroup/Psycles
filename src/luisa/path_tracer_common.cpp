@@ -162,6 +162,89 @@ pack_surface_evaluation(
         .valid = sample.valid != 0u};
 }
 
+[[nodiscard]] Var<SurfaceClosureTraceCall>
+pack_surface_closure_trace(
+    const SurfaceClosureTrace &trace) noexcept {
+    Var<SurfaceClosureTraceCall> result;
+    result.count = trace.count;
+    result.index = trace.index;
+    result.type = trace.type;
+    result.sample_weight = trace.sample_weight;
+    result.weight = trace.weight;
+    result.normal = trace.normal;
+    result.valid = select(0u, 1u, trace.valid);
+    return result;
+}
+
+[[nodiscard]] SurfaceClosureTrace
+unpack_surface_closure_trace(
+    const Var<SurfaceClosureTraceCall> &trace) noexcept {
+    return {
+        .count = trace.count,
+        .index = trace.index,
+        .type = trace.type,
+        .sample_weight = trace.sample_weight,
+        .weight = trace.weight,
+        .normal = trace.normal,
+        .valid = trace.valid != 0u};
+}
+
+[[nodiscard]] Var<SurfaceSampleTraceCall>
+pack_surface_sample_trace(
+    const SurfaceSampleTrace &trace) noexcept {
+    Var<SurfaceSampleTraceCall> result;
+    result.f = trace.sample.evaluation.f;
+    result.pdf = trace.sample.evaluation.pdf;
+    result.diffuse_f =
+        trace.sample.evaluation.diffuse_f;
+    result.diffuse_pdf =
+        trace.sample.evaluation.diffuse_pdf;
+    result.events = trace.sample.evaluation.events;
+    result.wi = trace.sample.wi;
+    result.eta = trace.sample.eta;
+    result.roughness = trace.sample.roughness;
+    result.valid =
+        select(0u, 1u, trace.sample.valid);
+    result.closure_index = trace.closure_index;
+    result.closure_type = trace.closure_type;
+    result.closure_sample_weight =
+        trace.closure_sample_weight;
+    result.selection_rescaled =
+        trace.selection_rescaled;
+    result.closure_weight = trace.closure_weight;
+    result.closure_normal = trace.closure_normal;
+    result.closure_valid =
+        select(0u, 1u, trace.closure_valid);
+    return result;
+}
+
+[[nodiscard]] SurfaceSampleTrace
+unpack_surface_sample_trace(
+    const Var<SurfaceSampleTraceCall> &trace) noexcept {
+    return {
+        .sample = {
+            .evaluation = {
+                .f = trace.f,
+                .pdf = trace.pdf,
+                .diffuse_f = trace.diffuse_f,
+                .diffuse_pdf = trace.diffuse_pdf,
+                .events = trace.events},
+            .wi = trace.wi,
+            .eta = trace.eta,
+            .roughness = trace.roughness,
+            .valid = trace.valid != 0u},
+        .closure_index = trace.closure_index,
+        .closure_type = trace.closure_type,
+        .closure_sample_weight =
+            trace.closure_sample_weight,
+        .selection_rescaled =
+            trace.selection_rescaled,
+        .closure_weight = trace.closure_weight,
+        .closure_normal = trace.closure_normal,
+        .closure_valid =
+            trace.closure_valid != 0u};
+}
+
 [[nodiscard]] Var<SurfaceAovCall> pack_surface_aov(
     const SurfaceAov &aov) noexcept {
     Var<SurfaceAovCall> result;
