@@ -9,7 +9,7 @@ using EnvironmentBaseCallable =
     Callable<luisa::float3(
         luisa::float3,
         luisa::float3,
-        luisa::uint)>;
+        ShaderEvaluationStateCall)>;
 using EnvironmentSunCallable =
     Callable<luisa::float3(luisa::float3)>;
 

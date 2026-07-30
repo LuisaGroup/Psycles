@@ -169,15 +169,82 @@ int main(int argc, char **argv) {
                     cast<float>(
                         transparent_twice
                             .transparent_bounce)));
+
+            constexpr auto input_visibility =
+                psycles::contract::visibility_bit(
+                    psycles::contract::RayVisibility::camera) |
+                psycles::contract::visibility_bit(
+                    psycles::contract::
+                        RayVisibility::transmission);
+            constexpr auto input_events =
+                psycles::contract::event_singular |
+                psycles::contract::event_reflection;
+            const auto surface_shader_state =
+                cycles_path_state::surface_shader_state(
+                    input_visibility,
+                    input_events,
+                    3u,
+                    2u,
+                    1u,
+                    4u,
+                    5u);
+            const auto background_shader_state =
+                cycles_path_state::
+                    background_emission_shader_state(
+                        input_visibility,
+                        input_events,
+                        3u,
+                        2u,
+                        1u,
+                        4u,
+                        5u);
+            const auto light_shader_state =
+                cycles_path_state::
+                    light_emission_shader_state(
+                        3u, 2u, 1u, 4u, 5u);
+            const auto shadow_shader_state =
+                cycles_path_state::shadow_shader_state(
+                    3u, 2u, 1u, 4u, 5u);
+
+            const auto write_shader_state =
+                [&](std::uint32_t index,
+                    const cycles_path_state::
+                        ShaderEvaluationState
+                            &state) noexcept {
+                    output.write(
+                        index,
+                        make_float4(
+                            cast<float>(
+                                state.ray_visibility),
+                            cast<float>(state.ray_events),
+                            cast<float>(state.ray_depth),
+                            cast<float>(
+                                state.diffuse_depth)));
+                    output.write(
+                        index + 1u,
+                        make_float4(
+                            cast<float>(
+                                state.glossy_depth),
+                            cast<float>(
+                                state.transparent_depth),
+                            cast<float>(
+                                state.transmission_depth),
+                            0.0f));
+                };
+            write_shader_state(7u, surface_shader_state);
+            write_shader_state(
+                9u, background_shader_state);
+            write_shader_state(11u, light_shader_state);
+            write_shader_state(13u, shadow_shader_state);
         };
 
     Context context{argv[0]};
     auto device = context.create_device(backend);
     auto stream = device.create_stream();
     auto output =
-        device.create_buffer<luisa::float4>(7u);
+        device.create_buffer<luisa::float4>(15u);
     auto kernel = device.compile(evaluate);
-    std::array<luisa::float4, 7u> actual{};
+    std::array<luisa::float4, 15u> actual{};
     stream << kernel(output).dispatch(1u)
            << output.copy_to(luisa::span{actual})
            << synchronize();
@@ -200,7 +267,21 @@ int main(int argc, char **argv) {
         // Two transparent transitions consume two complete 16-dimensional
         // bounce blocks without incrementing the ordinary bounce counter.
         // The next light sample is addressed directly from rng_offset.
-        luisa::float4{48.0f, 49.0f, 0.0f, 2.0f}};
+        luisa::float4{48.0f, 49.0f, 0.0f, 2.0f},
+        // Ordinary surface evaluation preserves the incoming state.
+        luisa::float4{9.0f, 12.0f, 3.0f, 2.0f},
+        luisa::float4{1.0f, 4.0f, 5.0f, 0.0f},
+        // Background evaluation preserves visibility/flags and adds the
+        // effective PATH_RAY_EMISSION depth.
+        luisa::float4{9.0f, 12.0f, 4.0f, 2.0f},
+        luisa::float4{1.0f, 4.0f, 5.0f, 0.0f},
+        // Lamp and NEE emission suppress path visibility/flags.
+        luisa::float4{0.0f, 0.0f, 4.0f, 2.0f},
+        luisa::float4{1.0f, 4.0f, 5.0f, 0.0f},
+        // Transparent-shadow evaluation exposes only shadow visibility and
+        // the same effective one-bounce-deeper Ray Depth.
+        luisa::float4{16.0f, 0.0f, 4.0f, 2.0f},
+        luisa::float4{1.0f, 4.0f, 5.0f, 0.0f}};
     for (std::size_t index = 0u;
          index < expected.size();
          ++index) {

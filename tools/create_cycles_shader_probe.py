@@ -531,6 +531,65 @@ def _point_light_nodes(scene: Any) -> None:
     _input(emission, "Strength").default_value = 0.63
 
 
+def _point_light_light_path(scene: Any) -> None:
+    data = _analytic_light_probe(scene, "POINT")
+    data.shadow_soft_size = 0.19
+    data.use_soft_falloff = False
+    data.use_nodes = True
+    tree = data.node_tree
+    emission = tree.nodes.get("Emission")
+    if emission is None:
+        raise RuntimeError("point light has no default Emission node")
+
+    light_path = tree.nodes.new("ShaderNodeLightPath")
+    light_path.name = "Light Path Contract"
+
+    weighted_outputs = (
+        ("Is Camera Ray", 8.0),
+        ("Is Diffuse Ray", 4.0),
+        ("Is Shadow Ray", 2.0),
+    )
+    accumulated = None
+    for socket_name, weight in weighted_outputs:
+        multiply = tree.nodes.new("ShaderNodeMath")
+        multiply.operation = "MULTIPLY"
+        multiply.inputs[1].default_value = weight
+        tree.links.new(
+            _output(light_path, socket_name),
+            multiply.inputs[0],
+        )
+        if accumulated is None:
+            accumulated = _output(multiply, "Value")
+            continue
+        add = tree.nodes.new("ShaderNodeMath")
+        add.operation = "ADD"
+        tree.links.new(accumulated, add.inputs[0])
+        tree.links.new(
+            _output(multiply, "Value"),
+            add.inputs[1],
+        )
+        accumulated = _output(add, "Value")
+
+    add_depth = tree.nodes.new("ShaderNodeMath")
+    add_depth.operation = "ADD"
+    tree.links.new(accumulated, add_depth.inputs[0])
+    tree.links.new(
+        _output(light_path, "Ray Depth"),
+        add_depth.inputs[1],
+    )
+    add_bias = tree.nodes.new("ShaderNodeMath")
+    add_bias.operation = "ADD"
+    add_bias.inputs[1].default_value = 1.0
+    tree.links.new(
+        _output(add_depth, "Value"),
+        add_bias.inputs[0],
+    )
+    tree.links.new(
+        _output(add_bias, "Value"),
+        _input(emission, "Strength"),
+    )
+
+
 def _point_light_soft_disk(scene: Any) -> None:
     data = _analytic_light_probe(scene, "POINT")
     data.shadow_soft_size = 0.19
@@ -5276,6 +5335,7 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "particle_random_instances": _particle_random_instances,
     "particle_random_nonparticle": _particle_random_nonparticle,
     "point_light": _point_light,
+    "point_light_light_path": _point_light_light_path,
     "point_light_nodes": _point_light_nodes,
     "point_light_soft_disk": _point_light_soft_disk,
     "point_light_soft_sphere": _point_light_soft_sphere,

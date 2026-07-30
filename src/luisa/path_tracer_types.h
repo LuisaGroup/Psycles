@@ -93,6 +93,16 @@ struct LightDistributionGpu {
     luisa::uint padding_2{};
 };
 
+struct ShaderEvaluationStateCall {
+    luisa::uint ray_visibility{};
+    luisa::uint ray_events{};
+    luisa::uint ray_depth{};
+    luisa::uint diffuse_depth{};
+    luisa::uint glossy_depth{};
+    luisa::uint transparent_depth{};
+    luisa::uint transmission_depth{};
+};
+
 struct SurfacePointCall {
     luisa::float3 position{};
     luisa::float3 object_position{};
@@ -328,6 +338,15 @@ LUISA_STRUCT(
     padding_0,
     padding_1,
     padding_2) {};
+LUISA_STRUCT(
+    psycles::luisa_backend::detail::ShaderEvaluationStateCall,
+    ray_visibility,
+    ray_events,
+    ray_depth,
+    diffuse_depth,
+    glossy_depth,
+    transparent_depth,
+    transmission_depth) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::SurfacePointCall,
     position,

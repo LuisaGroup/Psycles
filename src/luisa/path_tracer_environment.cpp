@@ -14,7 +14,11 @@ EnvironmentCallables make_environment_callables(
         [scene, surface_emission](
             Float3 direction,
             Float3 background,
-            UInt ray_visibility) noexcept {
+            Var<ShaderEvaluationStateCall>
+                shader_state_call) noexcept {
+            const auto shader_state =
+                unpack_shader_evaluation_state(
+                    shader_state_call);
             BufferShaderServices services{
                 scene->parameter_buffer,
                 scene->cycles_bsdf_table_buffer,
@@ -72,17 +76,22 @@ EnvironmentCallables make_environment_callables(
                             .object_random = 0.0f,
                             .particle_index = 0u,
                             .random_per_island = 0.0f,
-                            .ray_visibility =
-                                ray_visibility,
+                            .ray_visibility = 0u,
                             .ray_events = 0u,
                             .ray_depth = 0u,
                             .diffuse_depth = 0u,
                             .glossy_depth = 0u,
                             .transparent_depth = 0u,
                             .transmission_depth = 0u,
-                            .ray_length = 0.0f,
+                            .ray_length =
+                                std::numeric_limits<
+                                    float>::max(),
                             .time = 0.0f,
                             .back_facing = false};
+                        cycles_path_state::
+                            apply_shader_state(
+                                world_point,
+                                shader_state);
                         world += surface_emission(
                             scene->parameter_buffer,
                             scene->cycles_bsdf_table_buffer,

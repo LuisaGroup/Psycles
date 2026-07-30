@@ -274,7 +274,10 @@ void build_background_sampling_distribution(
             Float3 value = environment_base(
                 direction,
                 make_float3(background),
-                0u);
+                pack_shader_evaluation_state(
+                    cycles_path_state::
+                        light_emission_shader_state(
+                            0u, 0u, 0u, 0u, 0u)));
             if (include_discrete_suns) {
                 for (const auto &sun :
                      environment_suns) {

@@ -3,6 +3,7 @@
 #include <psycles/luisa/path_tracer.h>
 
 #include <psycles/compiler/material_library.h>
+#include <psycles/luisa/cycles_path_state.h>
 #include <psycles/luisa/cycles_sampler.h>
 #include <psycles/luisa/graph_surface.h>
 
@@ -351,6 +352,12 @@ public:
 
 [[nodiscard]] MaterialBindingGpu to_luisa(
     MaterialBinding binding) noexcept;
+[[nodiscard]] Var<ShaderEvaluationStateCall>
+pack_shader_evaluation_state(
+    const cycles_path_state::ShaderEvaluationState &state) noexcept;
+[[nodiscard]] cycles_path_state::ShaderEvaluationState
+unpack_shader_evaluation_state(
+    const Var<ShaderEvaluationStateCall> &state) noexcept;
 [[nodiscard]] Var<SurfacePointCall> pack_surface_point(
     const SurfacePoint &point) noexcept;
 [[nodiscard]] SurfacePoint unpack_surface_point(
