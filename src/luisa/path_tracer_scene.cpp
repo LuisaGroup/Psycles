@@ -1555,7 +1555,6 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             normalized_axis(matrix_axis(light.transform, 1u));
         auto [axis_z, axis_z_length] =
             normalized_axis(matrix_axis(light.transform, 2u));
-        static_cast<void>(axis_z_length);
         if (axis_z == Vec3f{}) {
             axis_z = {0.0f, 0.0f, 1.0f};
         }
@@ -1617,7 +1616,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                      : 0u;
         flags |=
             effective_light_mis &&
-                    light.type == LightType::area
+                    (light.type == LightType::area ||
+                     light.type == LightType::point ||
+                     light.type == LightType::spot)
                 ? light_flag_forward_intersectable
                 : 0u;
         lights.emplace_back(LightGpu{
@@ -1628,6 +1629,10 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             .axis_x = to_luisa(axis_x),
             .axis_y = to_luisa(axis_y),
             .axis_z = to_luisa(axis_z),
+            .axis_scale = luisa::make_float3(
+                axis_x_length,
+                axis_y_length,
+                axis_z_length),
             .color = to_luisa(light.color),
             .power = light.power,
             .radius = light.size,

@@ -928,6 +928,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                     0u);
             Bool primary_recorded = false;
             Float previous_bsdf_pdf = 0.0f;
+            Float3 previous_mis_origin_normal =
+                make_float3(0.0f);
             Float minimum_bsdf_pdf =
                 std::numeric_limits<float>::max();
             Bool previous_delta = true;
@@ -984,17 +986,23 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                         Float3 relative_position =
                             light_position -
                             light.position;
+                        const auto light_transform =
+                            analytic_light_sampling::
+                                light_linear_transform(
+                                    light.axis_x,
+                                    light.axis_y,
+                                    light.axis_z,
+                                    light.axis_scale);
                         Float3 object_position =
-                            make_float3(
-                                dot(
+                            analytic_light_sampling::
+                                world_to_light_direction(
                                     relative_position,
-                                    light.axis_x),
-                                dot(
-                                    relative_position,
-                                    light.axis_y),
-                                dot(
-                                    relative_position,
-                                    light.axis_z));
+                                    light_transform);
+                        Float3 object_normal =
+                            analytic_light_sampling::
+                                world_to_light_normal(
+                                    light_normal,
+                                    light_transform);
                         SurfacePoint light_point{
                             .position = light_position,
                             .object_position =
@@ -1007,22 +1015,23 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                             .shading_normal =
                                 light_normal,
                             .object_shading_normal =
-                                light_normal,
+                                object_normal,
                             .object_tangent =
                                 light.axis_x,
                             .tangent_sign = 1.0f,
                             .normal_to_world_x =
-                                light.axis_x,
+                                light_transform
+                                    .inverse_row_x,
                             .normal_to_world_y =
-                                light.axis_y,
+                                light_transform
+                                    .inverse_row_y,
                             .normal_to_world_z =
-                                light.axis_z,
+                                light_transform
+                                    .inverse_row_z,
                             .dpdu =
-                                light.axis_x *
-                                light.size_u,
+                                make_float3(0.0f),
                             .dpdv =
-                                light.axis_y *
-                                light.size_v,
+                                make_float3(0.0f),
                             .dPdx = make_float3(0.0f),
                             .dPdy = make_float3(0.0f),
                             .object_dPdx =
@@ -1253,6 +1262,110 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                         full_spread,
                                         light.spread,
                                         normalize_power);
+                            $if (candidate.valid) {
+                                light_hit = true;
+                                light_hit_distance =
+                                    candidate.distance;
+                                light_hit_index =
+                                    light_index;
+                                light_hit_position =
+                                    candidate.position;
+                                light_hit_normal =
+                                    candidate.normal;
+                                light_hit_uv =
+                                    candidate.uv;
+                                light_hit_pdf =
+                                    candidate
+                                        .conditional_pdf;
+                                light_hit_eval_factor =
+                                    candidate
+                                        .evaluation_factor;
+                            };
+                        };
+                        const auto point_type =
+                            light.type ==
+                            static_cast<
+                                std::uint32_t>(
+                                LightType::point);
+                        const auto spot_type =
+                            light.type ==
+                            static_cast<
+                                std::uint32_t>(
+                                LightType::spot);
+                        $if (
+                            eligible &
+                            (point_type | spot_type)) {
+                            const auto sphere =
+                                (light.flags &
+                                 light_flag_sphere) !=
+                                0u;
+                            const auto normalize_power =
+                                (light.flags &
+                                 light_flag_normalize) !=
+                                0u;
+                            const auto
+                                had_transmission =
+                                    (path_flags &
+                                     cycles_path_state::
+                                         flag_mis_had_transmission) !=
+                                    0u;
+                            analytic_light_intersection::
+                                PointIntersection candidate{
+                                    .valid = false,
+                                    .distance = 0.0f,
+                                    .position =
+                                        make_float3(
+                                            0.0f),
+                                    .normal =
+                                        make_float3(
+                                            0.0f),
+                                    .uv =
+                                        make_float2(
+                                            0.0f),
+                                    .conditional_pdf =
+                                        0.0f,
+                                    .evaluation_factor =
+                                        0.0f};
+                            $if (spot_type) {
+                                candidate =
+                                    analytic_light_intersection::
+                                        intersect_spot(
+                                            ray->origin(),
+                                            ray->direction(),
+                                            ray->t_min(),
+                                            light_hit_distance,
+                                            light.position,
+                                            light.radius,
+                                            sphere,
+                                            light.axis_x,
+                                            light.axis_y,
+                                            light.axis_z,
+                                            light.axis_scale,
+                                            light.spot_angle,
+                                            light.spot_smooth,
+                                            normalize_power,
+                                            previous_mis_origin_normal,
+                                            had_transmission);
+                            }
+                            $else {
+                                candidate =
+                                    analytic_light_intersection::
+                                        intersect_point(
+                                            ray->origin(),
+                                            ray->direction(),
+                                            ray->t_min(),
+                                            light_hit_distance,
+                                            light.position,
+                                            light.radius,
+                                            sphere,
+                                            light.axis_x,
+                                            light.axis_y,
+                                            light.axis_z,
+                                            light.axis_scale,
+                                            normalize_power,
+                                            previous_mis_origin_normal,
+                                            had_transmission);
+                            };
                             $if (candidate.valid) {
                                 light_hit = true;
                                 light_hit_distance =
@@ -3024,278 +3137,126 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                             light_valid = true;
                         }
                         $else {
-                            Float3 offset =
-                                light.position - hit_position;
-                            Float distance2 =
-                                length_squared(offset);
-                            Float center_distance = sqrt(max(
-                                distance2, 1.0e-20f));
-                            Float3 center_direction =
-                                offset / center_distance;
-                            Bool normalize_power =
+                            const auto sphere =
                                 (light.flags &
-                                 light_flag_normalize) != 0u;
-                            light_valid =
-                                distance2 > 1.0e-12f;
-                            $if (light.radius > 0.0f) {
-                                Float sample_x =
-                                    light_sample.x;
-                                Float sample_y =
-                                    light_sample.y;
-                                Bool sphere =
-                                    (light.flags &
-                                     light_flag_sphere) != 0u;
-                                $if (sphere) {
-                                    Float sine2 = min(
-                                        light.radius *
-                                            light.radius /
-                                            max(
-                                                distance2,
-                                                1.0e-20f),
-                                        1.0f);
-                                    Float cosine_max =
-                                        sqrt(max(
-                                            1.0f - sine2,
-                                            0.0f));
-                                    Float3 basis_reference =
-                                        select(
-                                            make_float3(
-                                                0.0f,
-                                                0.0f,
-                                                1.0f),
-                                            make_float3(
-                                                0.0f,
-                                                1.0f,
-                                                0.0f),
-                                            abs(
-                                                center_direction
-                                                    .z) >
-                                                0.999f);
-                                    Float3 tangent =
-                                        safe_normalize(
-                                            cross(
-                                                basis_reference,
-                                                center_direction),
-                                            make_float3(
-                                                1.0f,
-                                                0.0f,
-                                                0.0f));
-                                    Float3 bitangent = cross(
-                                        center_direction,
-                                        tangent);
-                                    Float cosine_theta =
-                                        1.0f -
-                                        sample_x *
-                                            (1.0f -
-                                             cosine_max);
-                                    Float sine_theta =
-                                        sqrt(max(
-                                            1.0f -
-                                                cosine_theta *
-                                                    cosine_theta,
-                                            0.0f));
-                                    Float phi =
-                                        2.0f * pi *
-                                        sample_y;
-                                    wi =
-                                        tangent *
-                                            (cos(phi) *
-                                             sine_theta) +
-                                        bitangent *
-                                            (sin(phi) *
-                                             sine_theta) +
-                                        center_direction *
-                                            cosine_theta;
-                                    light_pdf =
-                                        1.0f /
-                                        max(
-                                            2.0f * pi *
-                                                (1.0f -
-                                                 cosine_max),
-                                            1.0e-20f);
-                                    Float root = sqrt(max(
-                                        light.radius *
-                                                light.radius -
-                                            distance2 +
-                                            distance2 *
-                                                cosine_theta *
-                                                cosine_theta,
-                                        0.0f));
-                                    light_distance =
-                                        center_distance *
-                                            cosine_theta -
-                                        root;
-                                    light_position =
-                                        hit_position +
-                                        wi *
-                                            light_distance;
-                                    light_normal =
-                                        safe_normalize(
-                                            light_position -
-                                                light.position,
-                                            -wi);
-                                    light_valid =
-                                        light_valid &
-                                        (distance2 >
-                                         light.radius *
-                                             light.radius);
-                                }
-                                $else {
-                                    Float3 disk_normal =
-                                        -center_direction;
-                                    Float3 basis_reference =
-                                        select(
-                                            make_float3(
-                                                0.0f,
-                                                0.0f,
-                                                1.0f),
-                                            make_float3(
-                                                0.0f,
-                                                1.0f,
-                                                0.0f),
-                                            abs(disk_normal.z) >
-                                                0.999f);
-                                    Float3 tangent =
-                                        safe_normalize(
-                                            cross(
-                                                basis_reference,
-                                                disk_normal),
-                                            make_float3(
-                                                1.0f,
-                                                0.0f,
-                                                0.0f));
-                                    Float3 bitangent = cross(
-                                        disk_normal,
-                                        tangent);
-                                    Float disk_radius =
-                                        light.radius *
-                                        sqrt(sample_x);
-                                    Float disk_angle =
-                                        2.0f * pi *
-                                        sample_y;
-                                    light_position =
-                                        light.position +
-                                        tangent *
-                                            (disk_radius *
-                                             cos(
-                                                 disk_angle)) +
-                                        bitangent *
-                                            (disk_radius *
-                                             sin(
-                                                 disk_angle));
-                                    Float3 light_offset =
-                                        light_position -
-                                        hit_position;
-                                    Float sampled_distance2 =
-                                        length_squared(
-                                            light_offset);
-                                    light_distance = sqrt(max(
-                                        sampled_distance2,
-                                        1.0e-20f));
-                                    wi =
-                                        light_offset /
-                                        light_distance;
-                                    Float light_cosine = abs(
-                                        dot(
-                                            disk_normal,
-                                            -wi));
-                                    light_pdf =
-                                        sampled_distance2 /
-                                        max(
-                                            pi *
-                                                light.radius *
-                                                light.radius *
-                                                light_cosine,
-                                            1.0e-20f);
-                                    light_normal =
-                                        disk_normal;
-                                    light_valid =
-                                        light_valid &
-                                        (light_cosine >
-                                         0.0f);
+                                 light_flag_sphere) !=
+                                0u;
+                            const auto inside_sphere =
+                                sphere &
+                                (light.radius > 0.0f) &
+                                (length_squared(
+                                     hit_position -
+                                     light.position) <=
+                                 light.radius *
+                                     light.radius);
+                            // Only a point inside spherical emitter geometry
+                            // needs the surface's transmission capability to
+                            // choose Cycles' uniform-sphere versus
+                            // cosine-hemisphere measure. Avoid a second graph
+                            // evaluation for every ordinary light sample.
+                            if (!path_trace_enabled) {
+                                $if (inside_sphere) {
+                                    cycles_surface_runtime_flags =
+                                        trace_surface_closure(
+                                            surface_tag,
+                                            point,
+                                            0u)
+                                            .runtime_flags;
                                 };
-                                Float point_eval_factor =
+                            }
+                            const auto has_transmission =
+                                (cycles_surface_runtime_flags &
+                                 cycles_closure::
+                                     runtime_bsdf_has_transmission) !=
+                                0u;
+                            const auto normalize_power =
+                                (light.flags &
+                                 light_flag_normalize) !=
+                                0u;
+                            analytic_light_sampling::
+                                FiniteLightSample
+                                    finite_sample{
+                                        .valid = false,
+                                        .direction =
+                                            make_float3(
+                                                0.0f),
+                                        .position =
+                                            light.position,
+                                        .normal =
+                                            make_float3(
+                                                0.0f),
+                                        .uv =
+                                            make_float2(
+                                                0.0f),
+                                        .distance =
+                                            0.0f,
+                                        .conditional_pdf =
+                                            0.0f,
+                                        .evaluation_factor =
+                                            0.0f};
+                            const auto spot =
+                                light.type ==
+                                static_cast<
+                                    std::uint32_t>(
+                                    LightType::spot);
+                            $if (spot) {
+                                finite_sample =
                                     analytic_light_sampling::
-                                        point_eval_factor(
+                                        sample_spot_light(
+                                            hit_position,
+                                            point.shading_normal,
+                                            has_transmission,
+                                            light.position,
                                             light.radius,
+                                            sphere,
+                                            light.axis_x,
+                                            light.axis_y,
+                                            light.axis_z,
+                                            light.axis_scale,
+                                            light.spot_angle,
+                                            light.spot_smooth,
+                                            light_sample.xy(),
                                             normalize_power);
-                                light_eval_factor =
-                                    point_eval_factor;
-                                light_radiance =
-                                    light.color *
-                                    (light.power *
-                                     point_eval_factor);
                             }
                             $else {
-                                wi = center_direction;
-                                light_distance =
-                                    center_distance;
-                                Float point_eval_factor =
+                                finite_sample =
                                     analytic_light_sampling::
-                                        point_eval_factor(
+                                        sample_point_light(
+                                            hit_position,
+                                            point.shading_normal,
+                                            has_transmission,
+                                            light.position,
                                             light.radius,
+                                            sphere,
+                                            light.axis_x,
+                                            light.axis_y,
+                                            light.axis_z,
+                                            light.axis_scale,
+                                            light_sample.xy(),
                                             normalize_power);
-                                light_eval_factor =
-                                    point_eval_factor;
-                                light_radiance =
-                                    light.color *
-                                    (light.power *
-                                     point_eval_factor);
-                                light_pdf =
-                                    analytic_light_sampling::
-                                        point_disk_pdf(
-                                            distance2,
-                                            1.0f,
-                                            light.radius);
-                                light_position =
-                                    light.position;
-                                light_normal = -wi;
                             };
-                            $if (light.type ==
-                                 static_cast<std::uint32_t>(
-                                     LightType::spot)) {
-                                Float cone =
-                                    dot(-light.axis_z, -wi);
-                                Float cone_minimum =
-                                    cos(
-                                        max(
-                                            light.spot_angle,
-                                            0.0f) *
-                                        0.5f);
-                                Float blend_width =
-                                    (1.0f - cone_minimum) *
-                                    max(
-                                        light.spot_smooth,
-                                        0.0f);
-                                Float attenuation =
-                                    select(
-                                        select(
-                                            0.0f,
-                                            1.0f,
-                                            cone >=
-                                                cone_minimum),
-                                        clamp(
-                                            (cone -
-                                             cone_minimum) /
-                                                max(
-                                                    blend_width,
-                                                    1.0e-20f),
-                                            0.0f,
-                                            1.0f),
-                                        blend_width >
-                                            0.0f);
-                                attenuation =
-                                    attenuation *
-                                    attenuation *
-                                    (3.0f -
-                                     2.0f * attenuation);
-                                light_radiance *= attenuation;
-                                light_eval_factor *=
-                                    attenuation;
-                                light_valid =
-                                    light_valid &
-                                    (attenuation > 0.0f);
-                            };
+                            wi =
+                                finite_sample.direction;
+                            light_position =
+                                finite_sample.position;
+                            light_normal =
+                                finite_sample.normal;
+                            light_uv =
+                                finite_sample.uv;
+                            light_distance =
+                                finite_sample.distance;
+                            light_pdf =
+                                finite_sample
+                                    .conditional_pdf;
+                            light_eval_factor =
+                                finite_sample
+                                    .evaluation_factor;
+                            light_radiance =
+                                light.color *
+                                (light.power *
+                                 light_eval_factor);
+                            light_valid =
+                                finite_sample.valid;
                         };
 
                         light_radiance *=
@@ -3756,6 +3717,10 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                 previous_delta = select(
                     singular,
                     previous_delta,
+                    transparent);
+                previous_mis_origin_normal = select(
+                    point.shading_normal,
+                    previous_mis_origin_normal,
                     transparent);
                 // A transparent Cycles bounce keeps the complete ray line and
                 // advances only tmin to the next representable float after

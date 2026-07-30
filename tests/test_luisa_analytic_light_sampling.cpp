@@ -5,6 +5,7 @@
 #include <array>
 #include <cmath>
 #include <cstdlib>
+#include <iomanip>
 #include <iostream>
 #include <string_view>
 
@@ -68,6 +69,25 @@ int main(int argc, char **argv) {
         device.create_buffer<luisa::float4>(2u);
     auto intersection_output =
         device.create_buffer<luisa::float4>(2u);
+    constexpr std::size_t finite_case_count = 3u;
+    auto finite_direction_output =
+        device.create_buffer<luisa::float4>(
+            finite_case_count);
+    auto finite_position_output =
+        device.create_buffer<luisa::float4>(
+            finite_case_count);
+    auto finite_normal_output =
+        device.create_buffer<luisa::float4>(
+            finite_case_count);
+    auto finite_uv_output =
+        device.create_buffer<luisa::float4>(
+            finite_case_count);
+    auto forward_position_output =
+        device.create_buffer<luisa::float4>(
+            finite_case_count);
+    auto forward_normal_output =
+        device.create_buffer<luisa::float4>(
+            finite_case_count);
 
     std::array<luisa::float4, point_cases.size()> input_data{};
     std::array<luisa::uint2, point_cases.size()> flag_data{};
@@ -216,14 +236,191 @@ int main(int argc, char **argv) {
         };
     };
 
+    Kernel1D evaluate_finite =
+        [](BufferFloat4 direction_result,
+           BufferFloat4 position_result,
+           BufferFloat4 normal_result,
+           BufferFloat4 uv_result,
+           BufferFloat4 forward_position_result,
+           BufferFloat4 forward_normal_result) noexcept {
+            const auto index = dispatch_x();
+            const auto reference = make_float3(
+                0.10316085815429688f,
+                0.034410953521728516f,
+                0.0f);
+            const auto center = make_float3(
+                0.3700000047683716f,
+                -0.20999999344348907f,
+                1.399999976158142f);
+            const auto shading_normal =
+                make_float3(0.0f, 0.0f, 1.0f);
+            const auto axis_x =
+                make_float3(1.0f, 0.0f, 0.0f);
+            const auto axis_y =
+                make_float3(0.0f, 1.0f, 0.0f);
+            const auto axis_z =
+                make_float3(0.0f, 0.0f, 1.0f);
+            const auto axis_scale =
+                make_float3(1.0f);
+            const auto random = make_float2(
+                0.5302490592002869f,
+                0.8410298824310303f);
+            const auto spot = index == 2u;
+            const auto sphere = index != 1u;
+            const auto radius = select(
+                0.19f,
+                0.13f,
+                spot);
+            analytic_light::FiniteLightSample sample{
+                .valid = false,
+                .direction = make_float3(0.0f),
+                .position = center,
+                .normal = make_float3(0.0f),
+                .uv = make_float2(0.0f),
+                .distance = 0.0f,
+                .conditional_pdf = 0.0f,
+                .evaluation_factor = 0.0f};
+            $if (spot) {
+                sample =
+                    analytic_light::sample_spot_light(
+                        reference,
+                        shading_normal,
+                        false,
+                        center,
+                        radius,
+                        sphere,
+                        axis_x,
+                        axis_y,
+                        axis_z,
+                        axis_scale,
+                        0.9200000166893005f,
+                        0.3700000047683716f,
+                        random,
+                        true);
+            }
+            $else {
+                sample =
+                    analytic_light::sample_point_light(
+                        reference,
+                        shading_normal,
+                        false,
+                        center,
+                        radius,
+                        sphere,
+                        axis_x,
+                        axis_y,
+                        axis_z,
+                        axis_scale,
+                        random,
+                        true);
+            };
+            analytic_intersection::PointIntersection
+                forward{
+                    .valid = false,
+                    .distance = 0.0f,
+                    .position = reference,
+                    .normal = make_float3(0.0f),
+                    .uv = make_float2(0.0f),
+                    .conditional_pdf = 0.0f,
+                    .evaluation_factor = 0.0f};
+            $if (spot) {
+                forward =
+                    analytic_intersection::intersect_spot(
+                        reference,
+                        sample.direction,
+                        0.0f,
+                        1.0e10f,
+                        center,
+                        radius,
+                        sphere,
+                        axis_x,
+                        axis_y,
+                        axis_z,
+                        axis_scale,
+                        0.9200000166893005f,
+                        0.3700000047683716f,
+                        true,
+                        shading_normal,
+                        false);
+            }
+            $else {
+                forward =
+                    analytic_intersection::intersect_point(
+                        reference,
+                        sample.direction,
+                        0.0f,
+                        1.0e10f,
+                        center,
+                        radius,
+                        sphere,
+                        axis_x,
+                        axis_y,
+                        axis_z,
+                        axis_scale,
+                        true,
+                        shading_normal,
+                        false);
+            };
+            direction_result.write(
+                index,
+                make_float4(
+                    sample.direction,
+                    sample.conditional_pdf));
+            position_result.write(
+                index,
+                make_float4(
+                    sample.position,
+                    sample.distance));
+            normal_result.write(
+                index,
+                make_float4(
+                    sample.normal,
+                    sample.evaluation_factor));
+            uv_result.write(
+                index,
+                make_float4(
+                    sample.uv,
+                    select(
+                        0.0f, 1.0f, sample.valid),
+                    select(
+                        0.0f, 1.0f, forward.valid)));
+            forward_position_result.write(
+                index,
+                make_float4(
+                    forward.position,
+                    forward.distance));
+            forward_normal_result.write(
+                index,
+                make_float4(
+                    forward.normal,
+                    forward.conditional_pdf));
+        };
+
     auto shader = device.compile(
         evaluate,
+        ShaderOption{
+            .enable_cache = false,
+            .enable_fast_math = false});
+    auto finite_shader = device.compile(
+        evaluate_finite,
         ShaderOption{
             .enable_cache = false,
             .enable_fast_math = false});
     std::array<luisa::float4, point_cases.size()> results{};
     std::array<luisa::float4, 2u> rectangle_result{};
     std::array<luisa::float4, 2u> intersection_result{};
+    std::array<luisa::float4, finite_case_count>
+        finite_direction_result{};
+    std::array<luisa::float4, finite_case_count>
+        finite_position_result{};
+    std::array<luisa::float4, finite_case_count>
+        finite_normal_result{};
+    std::array<luisa::float4, finite_case_count>
+        finite_uv_result{};
+    std::array<luisa::float4, finite_case_count>
+        forward_position_result{};
+    std::array<luisa::float4, finite_case_count>
+        forward_normal_result{};
     stream << input.copy_from(luisa::span{input_data})
            << flags.copy_from(luisa::span{flag_data})
            << shader(
@@ -240,6 +437,33 @@ int main(int argc, char **argv) {
                   luisa::span{rectangle_result})
            << intersection_output.copy_to(
                   luisa::span{intersection_result})
+           << finite_shader(
+                  finite_direction_output,
+                  finite_position_output,
+                  finite_normal_output,
+                  finite_uv_output,
+                  forward_position_output,
+                  forward_normal_output)
+                  .dispatch(
+                      static_cast<std::uint32_t>(
+                          finite_case_count))
+           << finite_direction_output.copy_to(
+                  luisa::span{
+                      finite_direction_result})
+           << finite_position_output.copy_to(
+                  luisa::span{
+                      finite_position_result})
+           << finite_normal_output.copy_to(
+                  luisa::span{
+                      finite_normal_result})
+           << finite_uv_output.copy_to(
+                  luisa::span{finite_uv_result})
+           << forward_position_output.copy_to(
+                  luisa::span{
+                      forward_position_result})
+           << forward_normal_output.copy_to(
+                  luisa::span{
+                      forward_normal_result})
            << synchronize();
 
     for (std::size_t index = 0u;
@@ -403,6 +627,158 @@ int main(int argc, char **argv) {
             << intersection_measure.z << ", "
             << intersection_measure.w << "}\n";
         return EXIT_FAILURE;
+    }
+
+    constexpr std::array finite_direction_oracles{
+        luisa::float4{
+            0.24016082286834717f,
+            -0.09855160862207413f,
+            0.9657175540924072f,
+            18.35677719116211f},
+        luisa::float4{
+            0.22996534407138824f,
+            -0.09208722412586212f,
+            0.96883225440979f,
+            18.65931510925293f},
+        luisa::float4{
+            0.2227325737476349f,
+            -0.12098376452922821f,
+            0.9673433899879456f,
+            39.30256271362305f}};
+    constexpr std::array finite_position_oracles{
+        luisa::float4{
+            0.4156992435455322f,
+            -0.0938410609960556f,
+            1.2567565441131592f,
+            1.3013709783554077f},
+        luisa::float4{
+            0.43702536821365356f,
+            -0.09928160160779953f,
+            1.406554102897644f,
+            1.4518035650253296f},
+        luisa::float4{
+            0.4034624397754669f,
+            -0.12870670855045319f,
+            1.3042311668395996f,
+            1.348260760307312f}};
+    constexpr std::array finite_normal_oracles{
+        luisa::float4{
+            0.24052239954471588f,
+            0.6113628149032593f,
+            -0.7539128065109253f,
+            0.7016701698303223f},
+        luisa::float4{
+            -0.22996534407138824f,
+            0.09208722412586212f,
+            -0.96883225440979f,
+            0.7016701698303223f},
+        luisa::float4{
+            0.25740334391593933f,
+            0.6253330111503601f,
+            -0.736683189868927f,
+            1.4988338947296143f}};
+    const auto float4_equal =
+        [](luisa::float4 actual,
+           luisa::float4 expected) noexcept {
+            return approximately_equal(
+                       actual.x, expected.x, 1.5e-5) &&
+                   approximately_equal(
+                       actual.y, expected.y, 1.5e-5) &&
+                   approximately_equal(
+                       actual.z, expected.z, 1.5e-5) &&
+                   approximately_equal(
+                       actual.w, expected.w, 1.5e-5);
+        };
+    for (std::size_t index = 0u;
+         index < finite_case_count;
+         ++index) {
+        if (!float4_equal(
+                finite_direction_result[index],
+                finite_direction_oracles[index]) ||
+            !float4_equal(
+                finite_position_result[index],
+                finite_position_oracles[index]) ||
+            !float4_equal(
+                finite_normal_result[index],
+                finite_normal_oracles[index]) ||
+            finite_uv_result[index].z != 1.0f ||
+            finite_uv_result[index].w != 1.0f) {
+            const auto direction =
+                finite_direction_result[index];
+            const auto position =
+                finite_position_result[index];
+            const auto normal =
+                finite_normal_result[index];
+            std::cerr
+                << std::setprecision(10)
+                << "Cycles finite-light NEE oracle failed on "
+                << backend << " for case " << index
+                << ": direction/pdf={" << direction.x
+                << ", " << direction.y << ", "
+                << direction.z << ", " << direction.w
+                << "}, position/distance={"
+                << position.x << ", " << position.y
+                << ", " << position.z << ", "
+                << position.w << "}, normal/eval={"
+                << normal.x << ", " << normal.y << ", "
+                << normal.z << ", " << normal.w
+                << "}\n";
+            return EXIT_FAILURE;
+        }
+        const auto forward_position =
+            forward_position_result[index];
+        const auto forward_normal =
+            forward_normal_result[index];
+        // NEE explicitly remaps the hit to the authored sphere radius after
+        // the law-of-cosines solve; a fresh forward solve can therefore differ
+        // by a few single-precision ulps in P/Ng while retaining the same
+        // directional measure.
+        if (!approximately_equal(
+                forward_position.x,
+                finite_position_result[index].x,
+                1.0e-5) ||
+            !approximately_equal(
+                forward_position.y,
+                finite_position_result[index].y,
+                1.0e-5) ||
+            !approximately_equal(
+                forward_position.z,
+                finite_position_result[index].z,
+                1.0e-5) ||
+            !approximately_equal(
+                forward_position.w,
+                finite_position_result[index].w,
+                1.0e-5) ||
+            !approximately_equal(
+                forward_normal.x,
+                finite_normal_result[index].x,
+                1.0e-5) ||
+            !approximately_equal(
+                forward_normal.y,
+                finite_normal_result[index].y,
+                1.0e-5) ||
+            !approximately_equal(
+                forward_normal.z,
+                finite_normal_result[index].z,
+                1.0e-5) ||
+            !approximately_equal(
+                forward_normal.w,
+                finite_direction_result[index].w)) {
+            std::cerr
+                << "finite-light NEE/forward reciprocity failed on "
+                << backend << " for case " << index
+                << ": forward position/distance={"
+                << forward_position.x << ", "
+                << forward_position.y << ", "
+                << forward_position.z << ", "
+                << forward_position.w
+                << "}, forward normal/pdf={"
+                << forward_normal.x << ", "
+                << forward_normal.y << ", "
+                << forward_normal.z << ", "
+                << forward_normal.w << "}\n";
+            return EXIT_FAILURE;
+        }
     }
     return EXIT_SUCCESS;
 }

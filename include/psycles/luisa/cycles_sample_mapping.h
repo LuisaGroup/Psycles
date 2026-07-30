@@ -10,6 +10,8 @@ namespace psycles::luisa_backend::cycles_sample_mapping {
 
 inline constexpr float pi = 3.14159265358979323846f;
 inline constexpr float inverse_pi = 0.31830988618379067154f;
+inline constexpr float inverse_two_pi =
+    0.15915494309189533577f;
 
 struct OrthonormalBasis {
     luisa::compute::Float3 tangent;
@@ -18,6 +20,12 @@ struct OrthonormalBasis {
 
 struct CosineHemisphereSample {
     luisa::compute::Float3 direction;
+    luisa::compute::Float pdf;
+};
+
+struct UniformConeSample {
+    luisa::compute::Float3 direction;
+    luisa::compute::Float cosine;
     luisa::compute::Float pdf;
 };
 
@@ -88,6 +96,83 @@ sample_cosine_hemisphere(
             disk.y * basis.bitangent +
             cosine * normal,
         .pdf = cosine * inverse_pi};
+}
+
+[[nodiscard]] inline luisa::compute::Float
+cosine_hemisphere_pdf(
+    luisa::compute::Float3 normal,
+    luisa::compute::Float3 direction) noexcept {
+    using namespace luisa::compute;
+    const auto cosine = dot(normal, direction);
+    return select(
+        0.0f,
+        cosine * inverse_pi,
+        cosine > 0.0f);
+}
+
+// Cycles evaluates 1 - cos(theta) directly from sin(theta)^2 so tiny finite
+// lights retain their solid angle in single precision. The branch point and
+// second-order limit are part of the light-sampling measure.
+[[nodiscard]] inline luisa::compute::Float
+sin_squared_to_one_minus_cosine(
+    luisa::compute::Float sine_squared) noexcept {
+    using namespace luisa::compute;
+    return select(
+        0.5f * sine_squared,
+        1.0f -
+            sqrt(max(1.0f - sine_squared, 0.0f)),
+        sine_squared > 0.0004f);
+}
+
+// Uniform solid-angle cone sampling in Cycles is not the usual polar
+// (u, phi) map. It first applies the concentric square-to-disk map and then
+// remaps the disk radius. This keeps the deterministic Sobol pairing as well
+// as the target density.
+[[nodiscard]] inline UniformConeSample
+sample_uniform_cone(
+    luisa::compute::Float3 axis,
+    luisa::compute::Float one_minus_cosine,
+    luisa::compute::Float2 random) noexcept {
+    using namespace luisa::compute;
+
+    const auto disk = sample_uniform_disk(random);
+    const auto radius_squared = dot(disk, disk);
+    const auto cosine =
+        1.0f - radius_squared * one_minus_cosine;
+    const auto radial_scale = sqrt(max(
+        one_minus_cosine *
+            (2.0f -
+             one_minus_cosine * radius_squared),
+        0.0f));
+    const auto mapped = disk * radial_scale;
+    const auto basis = make_orthonormals(axis);
+    const auto finite_direction =
+        mapped.x * basis.tangent +
+        mapped.y * basis.bitangent +
+        cosine * axis;
+    const auto finite_pdf =
+        inverse_two_pi / one_minus_cosine;
+    const auto finite =
+        one_minus_cosine > 0.0f;
+    return {
+        .direction =
+            select(axis, finite_direction, finite),
+        .cosine = select(1.0f, cosine, finite),
+        .pdf = select(1.0f, finite_pdf, finite)};
+}
+
+[[nodiscard]] inline luisa::compute::Float3
+sample_uniform_sphere(
+    luisa::compute::Float2 random) noexcept {
+    using namespace luisa::compute;
+    const auto z = 1.0f - 2.0f * random.x;
+    const auto radius =
+        sqrt(max(1.0f - z * z, 0.0f));
+    const auto phi = 2.0f * pi * random.y;
+    return make_float3(
+        radius * cos(phi),
+        radius * sin(phi),
+        z);
 }
 
 } // namespace psycles::luisa_backend::cycles_sample_mapping
