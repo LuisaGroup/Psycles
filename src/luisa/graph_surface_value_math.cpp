@@ -1,6 +1,55 @@
-// Scalar, vector-math, and mix node evaluation cases.
-// Included by <psycles/luisa/graph_surface.h>; not a standalone header.
+#include "graph_surface_internal.h"
 
+#include <luisa/dsl/sugar.h>
+
+namespace psycles::luisa_backend::detail {
+namespace {
+
+[[nodiscard]] bool supports_math_value(
+    compiler::ValueOperation operation) noexcept {
+    switch (operation) {
+        case compiler::ValueOperation::parameter:
+        case compiler::ValueOperation::passthrough:
+        case compiler::ValueOperation::scalar_to_color:
+        case compiler::ValueOperation::color_to_scalar:
+        case compiler::ValueOperation::vector_to_scalar:
+        case compiler::ValueOperation::add:
+        case compiler::ValueOperation::subtract:
+        case compiler::ValueOperation::multiply:
+        case compiler::ValueOperation::divide:
+        case compiler::ValueOperation::minimum:
+        case compiler::ValueOperation::maximum:
+        case compiler::ValueOperation::power:
+        case compiler::ValueOperation::math:
+        case compiler::ValueOperation::absolute:
+        case compiler::ValueOperation::clamp01:
+        case compiler::ValueOperation::clamp_range:
+        case compiler::ValueOperation::map_range_float:
+        case compiler::ValueOperation::map_range_vector:
+        case compiler::ValueOperation::vector_math_value:
+        case compiler::ValueOperation::vector_math_vector:
+        case compiler::ValueOperation::mix_float:
+        case compiler::ValueOperation::mix_vector:
+        case compiler::ValueOperation::mix:
+            return true;
+        default:
+            return false;
+    }
+}
+
+class MathValueNode final : public ValueNode {
+
+public:
+    using ValueNode::ValueNode;
+
+    [[nodiscard]] Float4 evaluate(
+        ValueEvaluationContext &context) const noexcept override {
+        [[maybe_unused]] const auto &services = context.services;
+        [[maybe_unused]] const auto &point = context.point;
+        [[maybe_unused]] auto &result = context.result;
+        const auto &instruction = this->instruction();
+        Float4 value = make_float4(0.0f);
+        switch (instruction.operation) {
                 case compiler::ValueOperation::parameter:
                     value = make_float4(
                         services.parameter_float3(
@@ -930,3 +979,21 @@
                         1.0f);
                     break;
                 }
+            default:
+                break;
+        }
+        return value;
+    }
+};
+
+}// namespace
+
+std::unique_ptr<ValueNode> try_make_math_value_node(
+    const compiler::ValueInstruction &instruction) noexcept {
+    if (!supports_math_value(instruction.operation)) {
+        return nullptr;
+    }
+    return std::make_unique<MathValueNode>(instruction);
+}
+
+}// namespace psycles::luisa_backend::detail

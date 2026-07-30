@@ -14,6 +14,29 @@ LINE_LIMIT = 2_000
 # as soon as its semantic decomposition brings it under LINE_LIMIT.
 DEBT_BUDGETS: dict[str, int] = {}
 
+# Textual implementation inclusion is temporary architectural debt. These
+# files are being replaced with typed host-stage AST builders in ordinary
+# translation units; the allowlist prevents a new .inl from becoming the
+# easiest way to evade that boundary.
+HANDWRITTEN_INL_DEBT = {
+    "src/adapter/detail/blender_graph_lower_closures.inl",
+    "src/adapter/detail/blender_graph_lower_inputs.inl",
+    "src/adapter/detail/blender_graph_lower_procedural.inl",
+    "src/adapter/detail/blender_graph_lower_values.inl",
+    "src/luisa/detail/path_tracer_kernel_closest_event.inl",
+    "src/luisa/detail/path_tracer_kernel_nee_analytic.inl",
+    "src/luisa/detail/path_tracer_kernel_nee_emissive_mesh.inl",
+    "src/luisa/detail/path_tracer_kernel_nee_environment.inl",
+    "src/luisa/detail/path_tracer_kernel_sample_setup.inl",
+    "src/luisa/detail/path_tracer_kernel_scatter_film.inl",
+    "src/luisa/detail/path_tracer_kernel_surface_geometry.inl",
+    "src/luisa/detail/path_tracer_kernel_surface_shading.inl",
+}
+
+GENERATED_INL = {
+    "src/luisa/cycles_shader_tables_4_5_10.inl",
+}
+
 SOURCE_SUFFIXES = {
     ".c",
     ".cc",
@@ -66,6 +89,16 @@ def check_tree(root: Path) -> tuple[list[str], list[tuple[str, int, int]], int, 
         count = line_count(path)
         files_checked += 1
         lines_checked += count
+
+        if (
+            path.suffix.lower() == ".inl"
+            and relative not in HANDWRITTEN_INL_DEBT
+            and relative not in GENERATED_INL
+        ):
+            violations.append(
+                f"{relative}: new hand-written .inl files are not allowed; "
+                "use a typed interface and a .cpp translation unit"
+            )
 
         budget = DEBT_BUDGETS.get(relative)
         if budget is not None:

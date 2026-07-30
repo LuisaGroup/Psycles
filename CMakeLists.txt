@@ -155,17 +155,41 @@ if(PSYCLES_ENABLE_LUISA)
     endif()
 
     if(TARGET luisa::compute)
-        add_library(psycles_luisa INTERFACE)
+        add_library(
+            psycles_luisa
+            STATIC
+            src/luisa/graph_surface.cpp
+            src/luisa/graph_surface_closures.cpp
+            src/luisa/graph_surface_implementation.cpp
+            src/luisa/graph_surface_scattering.cpp
+            src/luisa/graph_surface_state.cpp
+            src/luisa/graph_surface_values.cpp
+            src/luisa/graph_surface_value_context.cpp
+            src/luisa/graph_surface_value_image.cpp
+            src/luisa/graph_surface_value_math.cpp
+            src/luisa/graph_surface_value_procedural.cpp)
         add_library(Psycles::luisa ALIAS psycles_luisa)
-        target_include_directories(psycles_luisa INTERFACE
+        target_include_directories(psycles_luisa PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
             $<INSTALL_INTERFACE:include>)
-        target_compile_features(psycles_luisa INTERFACE cxx_std_20)
-        target_compile_definitions(psycles_luisa INTERFACE PSYCLES_WITH_LUISA=1)
-        target_link_libraries(psycles_luisa INTERFACE
+        target_compile_features(psycles_luisa PUBLIC cxx_std_20)
+        target_compile_definitions(psycles_luisa PUBLIC PSYCLES_WITH_LUISA=1)
+        target_link_libraries(psycles_luisa PUBLIC
             Psycles::core
             luisa::compute)
-        message(STATUS "Psycles Luisa DSL interface enabled")
+        message(STATUS "Psycles Luisa DSL surface compiler enabled")
+
+        if(MSVC)
+            target_compile_options(
+                psycles_luisa
+                PRIVATE /W4 /permissive-)
+        else()
+            target_compile_options(
+                psycles_luisa
+                PRIVATE
+                    -Wall -Wextra -Wpedantic
+                    -Wconversion -Wsign-conversion)
+        endif()
 
         add_library(
             psycles_luisa_runtime

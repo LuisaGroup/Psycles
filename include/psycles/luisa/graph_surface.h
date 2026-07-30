@@ -4,38 +4,88 @@
 #error "Include <psycles/luisa/graph_surface.h> through the Psycles::luisa target."
 #endif
 
-#include <algorithm>
-#include <array>
-#include <cmath>
-#include <cstdint>
 #include <memory>
-#include <utility>
-#include <vector>
 
-#include <psycles/compiler/surface_program.h>
-#include <psycles/luisa/cycles_bsdf_tables.h>
-#include <psycles/luisa/cycles_closure.h>
-#include <psycles/luisa/cycles_color_nodes.h>
-#include <psycles/luisa/cycles_noise.h>
-#include <psycles/luisa/cycles_sample_mapping.h>
-#include <psycles/luisa/cycles_volume.h>
 #include <psycles/luisa/surface.h>
 
-#include <luisa/core/stl/vector.h>
+namespace psycles::compiler {
+class SurfaceProgram;
+}// namespace psycles::compiler
 
 namespace psycles::luisa_backend {
 
+namespace detail {
+class GraphSurfaceImplementation;
+}// namespace detail
+
+// A compiled Cycles surface graph. The implementation deliberately lives
+// behind a private host-side object model: its polymorphic nodes are invoked
+// while Luisa records the device AST, so the emitted kernel remains fused and
+// contains no device-side C++ virtual dispatch.
 class GraphSurface final : public Surface {
 
-// The header-only Luisa DSL implementation is partitioned by renderer
-// semantics. Each fragment is included in this class context so template
-// callables remain visible without merging the responsibilities back into
-// one monolithic source file.
-#include <psycles/luisa/detail/graph_surface_state.inl>
-#include <psycles/luisa/detail/graph_surface_scattering.inl>
-#include <psycles/luisa/detail/graph_surface_values.inl>
-#include <psycles/luisa/detail/graph_surface_closure_walk.inl>
-#include <psycles/luisa/detail/graph_surface_api.inl>
+private:
+    std::unique_ptr<detail::GraphSurfaceImplementation> _implementation;
+
+public:
+    explicit GraphSurface(
+        std::shared_ptr<const compiler::SurfaceProgram> program) noexcept;
+    ~GraphSurface() noexcept override;
+
+    GraphSurface(const GraphSurface &) = delete;
+    GraphSurface(GraphSurface &&) = delete;
+    GraphSurface &operator=(const GraphSurface &) = delete;
+    GraphSurface &operator=(GraphSurface &&) = delete;
+
+    [[nodiscard]] SurfaceCapabilities capabilities()
+        const noexcept override;
+
+    [[nodiscard]] SurfaceEvaluation evaluate(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        Expr<luisa::float3> outgoing,
+        const SurfaceQuery &query) const noexcept override;
+
+    [[nodiscard]] SurfaceSample sample(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        Expr<float> u_lobe,
+        Expr<luisa::float2> u_direction,
+        const SurfaceQuery &query) const noexcept override;
+
+    [[nodiscard]] SurfaceClosureTrace closure_trace(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        Expr<std::uint32_t> requested_index) const noexcept override;
+
+    [[nodiscard]] SurfaceSampleTrace sample_trace(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        Expr<float> u_lobe,
+        Expr<luisa::float2> u_direction,
+        const SurfaceQuery &query) const noexcept override;
+
+    [[nodiscard]] Float3 emission(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        Expr<luisa::float3> outgoing) const noexcept override;
+
+    [[nodiscard]] Float3 transparent_extinction(
+        const ShaderServices &services,
+        const SurfacePoint &point) const noexcept override;
+
+    [[nodiscard]] VolumeCoefficients volume_coefficients(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        const VolumeQuery &query) const noexcept override;
+
+    [[nodiscard]] Float3 shading_normal(
+        const ShaderServices &services,
+        const SurfacePoint &point) const noexcept override;
+
+    [[nodiscard]] SurfaceAov aov(
+        const ShaderServices &services,
+        const SurfacePoint &point) const noexcept override;
 };
 
 }// namespace psycles::luisa_backend

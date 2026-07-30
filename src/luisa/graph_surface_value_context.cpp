@@ -1,6 +1,73 @@
-// Color transforms, geometry/path inputs, Fresnel, and mapping cases.
-// Included by <psycles/luisa/graph_surface.h>; not a standalone header.
+#include "graph_surface_internal.h"
 
+#include <psycles/luisa/cycles_color_nodes.h>
+#include <psycles/luisa/cycles_noise.h>
+#include <luisa/dsl/sugar.h>
+
+namespace psycles::luisa_backend::detail {
+namespace {
+
+[[nodiscard]] bool supports_context_value(
+    compiler::ValueOperation operation) noexcept {
+    switch (operation) {
+        case compiler::ValueOperation::multiply_color:
+        case compiler::ValueOperation::hue_saturation:
+        case compiler::ValueOperation::invert:
+        case compiler::ValueOperation::gamma:
+        case compiler::ValueOperation::brightness_contrast:
+        case compiler::ValueOperation::blackbody:
+        case compiler::ValueOperation::wavelength:
+        case compiler::ValueOperation::surface_position:
+        case compiler::ValueOperation::shading_normal:
+        case compiler::ValueOperation::geometric_normal:
+        case compiler::ValueOperation::incoming:
+        case compiler::ValueOperation::tangent:
+        case compiler::ValueOperation::uv:
+        case compiler::ValueOperation::generated:
+        case compiler::ValueOperation::object_position:
+        case compiler::ValueOperation::object_location:
+        case compiler::ValueOperation::object_random:
+        case compiler::ValueOperation::particle_index:
+        case compiler::ValueOperation::particle_random:
+        case compiler::ValueOperation::back_facing:
+        case compiler::ValueOperation::random_per_island:
+        case compiler::ValueOperation::path_is_camera:
+        case compiler::ValueOperation::path_is_shadow:
+        case compiler::ValueOperation::path_is_diffuse:
+        case compiler::ValueOperation::path_is_glossy:
+        case compiler::ValueOperation::path_is_singular:
+        case compiler::ValueOperation::path_is_reflection:
+        case compiler::ValueOperation::path_is_transmission:
+        case compiler::ValueOperation::path_is_volume_scatter:
+        case compiler::ValueOperation::path_ray_length:
+        case compiler::ValueOperation::path_ray_depth:
+        case compiler::ValueOperation::path_diffuse_depth:
+        case compiler::ValueOperation::path_glossy_depth:
+        case compiler::ValueOperation::path_transparent_depth:
+        case compiler::ValueOperation::path_transmission_depth:
+        case compiler::ValueOperation::fresnel:
+        case compiler::ValueOperation::layer_weight_fresnel:
+        case compiler::ValueOperation::layer_weight_facing:
+        case compiler::ValueOperation::mapping:
+            return true;
+        default:
+            return false;
+    }
+}
+
+class ContextValueNode final : public ValueNode {
+
+public:
+    using ValueNode::ValueNode;
+
+    [[nodiscard]] Float4 evaluate(
+        ValueEvaluationContext &context) const noexcept override {
+        [[maybe_unused]] const auto &services = context.services;
+        [[maybe_unused]] const auto &point = context.point;
+        [[maybe_unused]] auto &result = context.result;
+        const auto &instruction = this->instruction();
+        Float4 value = make_float4(0.0f);
+        switch (instruction.operation) {
                 case compiler::ValueOperation::multiply_color: {
                     auto t = clamp(
                         scalar(instruction.c, result),
@@ -352,3 +419,21 @@
                     value = make_float4(mapped, 0.0f);
                     break;
                 }
+            default:
+                break;
+        }
+        return value;
+    }
+};
+
+}// namespace
+
+std::unique_ptr<ValueNode> try_make_context_value_node(
+    const compiler::ValueInstruction &instruction) noexcept {
+    if (!supports_context_value(instruction.operation)) {
+        return nullptr;
+    }
+    return std::make_unique<ContextValueNode>(instruction);
+}
+
+}// namespace psycles::luisa_backend::detail

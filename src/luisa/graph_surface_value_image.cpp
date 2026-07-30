@@ -1,6 +1,38 @@
-// Image, attribute, normal-map, and bump node evaluation cases.
-// Included by <psycles/luisa/graph_surface.h>; not a standalone header.
+#include "graph_surface_internal.h"
 
+#include <luisa/dsl/sugar.h>
+
+namespace psycles::luisa_backend::detail {
+namespace {
+
+[[nodiscard]] bool supports_image_value(
+    compiler::ValueOperation operation) noexcept {
+    switch (operation) {
+        case compiler::ValueOperation::image_color:
+        case compiler::ValueOperation::image_alpha:
+        case compiler::ValueOperation::attribute_color:
+        case compiler::ValueOperation::attribute_alpha:
+        case compiler::ValueOperation::normal_map:
+        case compiler::ValueOperation::bump:
+            return true;
+        default:
+            return false;
+    }
+}
+
+class ImageValueNode final : public ValueNode {
+
+public:
+    using ValueNode::ValueNode;
+
+    [[nodiscard]] Float4 evaluate(
+        ValueEvaluationContext &context) const noexcept override {
+        [[maybe_unused]] const auto &services = context.services;
+        [[maybe_unused]] const auto &point = context.point;
+        [[maybe_unused]] auto &result = context.result;
+        const auto &instruction = this->instruction();
+        Float4 value = make_float4(0.0f);
+        switch (instruction.operation) {
                 case compiler::ValueOperation::image_color:
                 case compiler::ValueOperation::image_alpha: {
                     const auto extension =
@@ -427,12 +459,12 @@
                         point.barycentric_dy * filter_width;
 
                     const auto height_dependencies =
-                        value_dependency_mask(instruction.a);
-                    auto values_x = trace_values(
+                        context.surface.value_dependency_mask(instruction.a);
+                    auto values_x = context.surface.trace_values(
                         services,
                         point_x,
                         &height_dependencies);
-                    auto values_y = trace_values(
+                    auto values_y = context.surface.trace_values(
                         services,
                         point_y,
                         &height_dependencies);
@@ -481,3 +513,21 @@
                     result.shading_normal = normal_out;
                     break;
                 }
+            default:
+                break;
+        }
+        return value;
+    }
+};
+
+}// namespace
+
+std::unique_ptr<ValueNode> try_make_image_value_node(
+    const compiler::ValueInstruction &instruction) noexcept {
+    if (!supports_image_value(instruction.operation)) {
+        return nullptr;
+    }
+    return std::make_unique<ImageValueNode>(instruction);
+}
+
+}// namespace psycles::luisa_backend::detail

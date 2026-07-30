@@ -1,6 +1,49 @@
-// Procedural texture, ramp, channel, and sky node evaluation cases.
-// Included by <psycles/luisa/graph_surface.h>; not a standalone header.
+#include "graph_surface_internal.h"
 
+#include <psycles/luisa/cycles_noise.h>
+#include <luisa/dsl/sugar.h>
+
+namespace psycles::luisa_backend::detail {
+namespace {
+
+[[nodiscard]] bool supports_procedural_value(
+    compiler::ValueOperation operation) noexcept {
+    switch (operation) {
+        case compiler::ValueOperation::noise_factor:
+        case compiler::ValueOperation::noise_color:
+        case compiler::ValueOperation::white_noise_value:
+        case compiler::ValueOperation::white_noise_color:
+        case compiler::ValueOperation::checker_color:
+        case compiler::ValueOperation::checker_factor:
+        case compiler::ValueOperation::brick_color:
+        case compiler::ValueOperation::brick_factor:
+        case compiler::ValueOperation::gradient:
+        case compiler::ValueOperation::color_ramp:
+        case compiler::ValueOperation::rgb_curve:
+        case compiler::ValueOperation::separate_r:
+        case compiler::ValueOperation::separate_g:
+        case compiler::ValueOperation::separate_b:
+        case compiler::ValueOperation::combine_color:
+        case compiler::ValueOperation::nishita_sky:
+            return true;
+        default:
+            return false;
+    }
+}
+
+class ProceduralValueNode final : public ValueNode {
+
+public:
+    using ValueNode::ValueNode;
+
+    [[nodiscard]] Float4 evaluate(
+        ValueEvaluationContext &context) const noexcept override {
+        [[maybe_unused]] const auto &services = context.services;
+        [[maybe_unused]] const auto &point = context.point;
+        [[maybe_unused]] auto &result = context.result;
+        const auto &instruction = this->instruction();
+        Float4 value = make_float4(0.0f);
+        switch (instruction.operation) {
                 case compiler::ValueOperation::noise_factor:
                 case compiler::ValueOperation::noise_color: {
                     const auto color_needed =
@@ -569,3 +612,21 @@
                         1.0f);
                     break;
                 }
+            default:
+                break;
+        }
+        return value;
+    }
+};
+
+}// namespace
+
+std::unique_ptr<ValueNode> try_make_procedural_value_node(
+    const compiler::ValueInstruction &instruction) noexcept {
+    if (!supports_procedural_value(instruction.operation)) {
+        return nullptr;
+    }
+    return std::make_unique<ProceduralValueNode>(instruction);
+}
+
+}// namespace psycles::luisa_backend::detail
