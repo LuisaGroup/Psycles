@@ -1,24 +1,12 @@
 #include "path_tracer_internal.h"
 #include "cycles_filter_glossy.h"
 #include "cycles_integrator_limits.h"
-#include "cycles_shader_identity.h"
-#include "path_tracer_camera.h"
-#include "path_tracer_environment.h"
-#include "path_tracer_geometry.h"
-#include "path_tracer_light_distribution.h"
-#include "path_tracer_lighting.h"
-#include "path_tracer_surfaces.h"
+#include "path_kernel_builder.h"
 
-#include <psycles/luisa/analytic_light_intersection.h>
-#include <psycles/luisa/analytic_light_sampling.h>
-#include <psycles/luisa/background_sampling.h>
-#include <psycles/luisa/cycles_closure.h>
-#include <psycles/luisa/cycles_path_state.h>
 #include <psycles/luisa/pixel_filter.h>
-#include <psycles/luisa/spherical_geometry.h>
-#include <psycles/luisa/surface_ray.h>
-
 #include <psycles/sampling/light_distribution.h>
+
+#include <utility>
 
 namespace psycles::luisa_backend::detail {
 
@@ -265,22 +253,6 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
     auto light_transport =
         make_light_transport_callables(
             direct_light_sampling);
-    auto safe_normalize =
-        light_transport.safe_normalize;
-    auto forward_light_weight =
-        light_transport.forward_light_weight;
-    auto nee_light_weight =
-        light_transport.nee_light_weight;
-    auto clamp_light_contribution =
-        light_transport.clamp_light_contribution;
-    auto light_sample_roulette_weight =
-        light_transport.light_sample_roulette_weight;
-    auto light_component_ratio =
-        light_transport.light_component_ratio;
-    auto split_scattered_light =
-        light_transport.split_scattered_light;
-    auto split_nee_light =
-        light_transport.split_nee_light;
     auto emissive_triangle_pdf_callable =
         make_emissive_triangle_pdf_callable(scene);
     auto light_distribution_sample_callable =
@@ -288,48 +260,37 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
 
     auto surface_callables =
         make_surface_callables(scene);
-    auto shared_surface_evaluate =
-        surface_callables.evaluate;
-    auto shared_surface_emission =
-        surface_callables.emission;
-    auto shared_surface_sample =
-        surface_callables.sample;
-    auto shared_surface_closure_trace =
-        surface_callables.closure_trace;
-    auto shared_surface_sample_trace =
-        surface_callables.sample_trace;
-    auto shared_surface_aov =
-        surface_callables.aov;
-    auto shared_surface_shading_normal =
-        surface_callables.shading_normal;
     auto environment_callables =
         make_environment_callables(
             scene,
-            safe_normalize,
-            shared_surface_emission);
-    auto environment_base_callable =
-        environment_callables.base;
-    auto environment_sun_callables =
-        environment_callables.suns;
-    auto nishita_sun_callable =
-        environment_callables.nishita_sun;
+            light_transport.safe_normalize,
+            surface_callables.emission);
     auto trace_shadow_callable =
         make_trace_shadow_callable(
-            scene, safe_normalize);
+            scene, light_transport.safe_normalize);
     const auto path_trace_enabled =
         _options.path_trace.has_value();
 
-    // Keep the stateful transport program in one Luisa DSL kernel while
-    // partitioning its source by renderer phase. The fragment boundaries do
-    // not add Callable boundaries or change expression/RNG construction order.
-#include "detail/path_tracer_kernel_sample_setup.inl"
-#include "detail/path_tracer_kernel_closest_event.inl"
-#include "detail/path_tracer_kernel_surface_geometry.inl"
-#include "detail/path_tracer_kernel_surface_shading.inl"
-#include "detail/path_tracer_kernel_nee_environment.inl"
-#include "detail/path_tracer_kernel_nee_emissive_mesh.inl"
-#include "detail/path_tracer_kernel_nee_analytic.inl"
-#include "detail/path_tracer_kernel_scatter_film.inl"
+    PathKernelConfig kernel_config{
+        .scene = scene,
+        .camera_projection = camera_projection,
+        .camera_depth_of_field = camera_depth_of_field,
+        .camera_aperture_blades = camera_aperture_blades,
+        .camera_aperture_rotation =
+            camera_aperture_rotation,
+        .next_event_estimation = next_event_estimation,
+        .reflective_caustics = reflective_caustics,
+        .refractive_caustics = refractive_caustics,
+        .path_trace_enabled = path_trace_enabled,
+        .light_transport = std::move(light_transport),
+        .emissive_triangle_pdf =
+            std::move(emissive_triangle_pdf_callable),
+        .light_distribution_sample =
+            std::move(light_distribution_sample_callable),
+        .surfaces = std::move(surface_callables),
+        .environment = std::move(environment_callables),
+        .trace_shadow = std::move(trace_shadow_callable)};
+    auto kernel = build_path_kernel(kernel_config);
 
     _render_shader = _scene->device.compile(
         kernel,

@@ -162,6 +162,25 @@ writes named pass tiles to an `OutputSink`. This maps cleanly to Cycles
 `PathTraceWork::render_samples()` and output tiles without importing
 `PathTraceWorkGPU`, `DeviceScene`, or its queue state machine.
 
+The Luisa integrator is assembled by a host-stage `PathKernelPipeline`.
+`LuisaRenderSession::initialize()` supplies immutable scene resources,
+settings, and existing Luisa callables through `PathKernelConfig`; it does not
+contain transport code. While the `Kernel1D` constructor records its AST, the
+pipeline invokes typed virtual stages for closest-event handling, surface
+reconstruction, surface shading, direct lighting, and closure continuation.
+Environment, emissive-mesh, and analytic-light NEE are independently
+extensible `DirectLightingComponent` objects.
+
+The stage values are explicit `PathSampleContext`, `PathBounceContext`,
+`SurfaceGeometryContext`, and `SurfaceShadingState` objects. These are C++
+AST-builder state, not a device ABI or a wavefront queue. The pipeline owns the
+path loop, the top-level builder owns the sample loop, and the setup/film
+module owns accumulation. This makes `$break` scope and cross-stage lifetime
+formal while retaining one fused device kernel, the original expression
+construction order, and the original Cycles RNG-dimension order. A new
+transport feature extends a component or a typed context instead of relying
+on textual inclusion into another function's lexical scope.
+
 ### Cycles differential contract
 
 Official Blender Cycles is the sole rendering oracle. A regression case owns
