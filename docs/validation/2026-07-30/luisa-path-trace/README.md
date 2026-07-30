@@ -612,3 +612,69 @@ random-exact, `84` float32, and `3` topology checks pass with zero failures;
 the largest absolute float32 residual is `7.1526e-7`. Pure surface paths retain
 their previous sequence, while future state transitions can advance random
 dimensions without silently depending on loop structure.
+
+## Light Path evaluation-context checkpoint
+
+Light Path is not a property of a geometric point alone. Current Cycles
+evaluates the same original shader graph under four distinct transport
+contexts, and Psycles previously mixed those contexts:
+
+| Shader evaluation | Visibility seen by Light Path | Event flags | Effective Ray Depth |
+| --- | --- | --- | ---: |
+| ordinary surface | incoming path visibility | incoming path flags | `bounce` |
+| background emission | incoming path visibility | incoming path flags plus emission context | `bounce + 1` |
+| analytic/NEE emission | none | emission context only | `bounce + 1` |
+| transparent shadow | shadow only | none | `shadow bounce + 1` |
+
+The implementation now represents this as one explicit
+`ShaderEvaluationState` value rather than reconstructing individual node
+inputs at each call site. The diffuse, glossy, transmission, and transparent
+counters are carried unchanged into emission evaluation; transparent-shadow
+evaluation begins with the main path's counters. World shader `Ray Length` is
+also `FLT_MAX`, matching `shader_setup_from_background`, instead of the former
+zero.
+
+The device regression locks every visibility/event/depth field for all four
+contexts and passes on fallback, HIP, and Vulkan. An end-to-end raw light-node
+probe then makes a finite point lamp's original Emission strength depend on
+`8 * Is Camera + 4 * Is Diffuse + 2 * Is Shadow + Ray Depth + 1`. Cycles
+therefore requires primary analytic-light evaluation to produce strength
+`2`: all three visibility outputs are false and the effective depth is one.
+The exported graph is evaluated directly by Psycles; no closure value or
+Cycles result is baked into the scene.
+
+At 64×64 and 64 samples, with Cycles CPU `ff404d072bb4` as the oracle:
+
+| Luisa backend | Combined relative RMSE | Direct-diffuse relative RMSE | Maximum absolute error | Luminance ratio |
+| --- | ---: | ---: | ---: | ---: |
+| fallback | `3.3178e-7` | `3.3341e-7` | `2.9802e-7` | `1.0000000000` |
+| HIP | `4.5626e-7` | `4.5879e-7` | `3.1292e-7` | `1.0000000000` |
+| Vulkan | `1.1260e-6` | `1.1147e-6` | `5.0664e-7` | `1.0000009392` |
+
+The machine-readable reports are
+[fallback](cycles-cpu-vs-psycles-fallback-light-path-image.json),
+[HIP](cycles-cpu-vs-psycles-hip-light-path-image.json), and
+[Vulkan](cycles-cpu-vs-psycles-vk-light-path-image.json). The probe runner
+enforces a `5e-6` relative-RMSE gate in addition to its energy gate, so an
+incorrect visibility combination cannot pass merely by averaging to similar
+energy.
+
+Left to right below: Cycles CPU, Psycles HIP, and the absolute difference
+amplified by approximately `4.31e6`.
+
+![Cycles CPU, Psycles HIP, and Light Path difference](light-path-cycles-cpu-vs-psycles-hip.png)
+
+The image was opened at its original generated resolution. The two render
+panels are visually indistinguishable in footprint, gradient, hue, and
+brightness. Only backend float32 noise is visible after the extreme
+amplification. The triptych SHA-256 is
+`9035e30ae4769f8044b830d920b48359fd29a6ac33f076ec3ae63990e72633b9`.
+
+This checkpoint establishes the evaluation context and the first transparent
+shadow counter value. It deliberately does not yet claim ordered Light Path
+semantics across multiple transparent shadow intersections: Cycles sorts
+recorded intersections by ray distance before shading, whereas a Luisa
+ray-query candidate callback has no traversal-order guarantee. The next
+shadow gate must use an explicit closest-to-farthest iterator and a
+multi-layer regression; relying on callback order would be an invalid
+case-by-case approximation.

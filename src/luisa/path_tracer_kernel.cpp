@@ -538,12 +538,15 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
             .glossy_filter_roughness = 0.0f};
         auto evaluate_environment =
             [&](Float3 direction,
-                UInt visibility) noexcept {
+                const cycles_path_state::
+                    ShaderEvaluationState
+                        &shader_state) noexcept {
                 Float3 result =
                     environment_base_callable(
                         direction,
                         kernel_parameters.background,
-                        visibility);
+                        pack_shader_evaluation_state(
+                            shader_state));
                 for (const auto &sun :
                      environment_sun_callables) {
                     result += sun(direction);
@@ -1079,6 +1082,16 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                 light_distance,
                             .time = 0.0f,
                             .back_facing = false};
+                        cycles_path_state::
+                            apply_shader_state(
+                                light_point,
+                                cycles_path_state::
+                                    light_emission_shader_state(
+                                        path_depth,
+                                        diffuse_depth,
+                                        glossy_depth,
+                                        transparent_depth,
+                                        transmission_depth));
                         result =
                             surface_emission(
                                 light.surface_tag,
@@ -1505,7 +1518,15 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                             throughput *
                                 evaluate_environment(
                                     ray->direction(),
-                                    ray_visibility) *
+                                    cycles_path_state::
+                                        background_emission_shader_state(
+                                            ray_visibility,
+                                            ray_events,
+                                            path_depth,
+                                            diffuse_depth,
+                                            glossy_depth,
+                                            transparent_depth,
+                                            transmission_depth)) *
                                 environment_weight,
                             path_depth);
                     radiance += environment_contribution;
@@ -2419,7 +2440,15 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                     surface_ray::
                                         invalid_primitive,
                                     surface_ray::
-                                        invalid_primitive);
+                                        invalid_primitive,
+                                    pack_shader_evaluation_state(
+                                        cycles_path_state::
+                                            shadow_shader_state(
+                                                path_depth,
+                                                diffuse_depth,
+                                                glossy_depth,
+                                                transparent_depth,
+                                                transmission_depth)));
                             $if (any(
                                 shadow_transmittance >
                                 0.0f)) {
@@ -2438,7 +2467,13 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                         evaluation.f *
                                         evaluate_environment(
                                             wi,
-                                            ray_visibility) *
+                                            cycles_path_state::
+                                                light_emission_shader_state(
+                                                    path_depth,
+                                                    diffuse_depth,
+                                                    glossy_depth,
+                                                    transparent_depth,
+                                                    transmission_depth)) *
                                         (mis_weight /
                                          light_pdf);
                                 Float roulette_weight =
@@ -2802,9 +2837,19 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                 transmission_depth,
                             .ray_length =
                                 light_distance,
-                    .time = 0.5f,
+                            .time = 0.5f,
                             .back_facing =
                                 light_back_facing};
+                        cycles_path_state::
+                            apply_shader_state(
+                                light_point,
+                                cycles_path_state::
+                                    light_emission_shader_state(
+                                        path_depth,
+                                        diffuse_depth,
+                                        glossy_depth,
+                                        transparent_depth,
+                                        transmission_depth));
                         Float3 light_radiance =
                             surface_emission(
                                 emitter.surface_tag,
@@ -2857,7 +2902,15 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                         hit->prim,
                                         shadow.skip_self),
                                     emitter.instance_index,
-                                    emitter.primitive_index);
+                                    emitter.primitive_index,
+                                    pack_shader_evaluation_state(
+                                        cycles_path_state::
+                                            shadow_shader_state(
+                                                path_depth,
+                                                diffuse_depth,
+                                                glossy_depth,
+                                                transparent_depth,
+                                                transmission_depth)));
                             $if (any(
                                 shadow_transmittance > 0.0f)) {
                                 auto evaluation =
@@ -3420,7 +3473,15 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                     surface_ray::
                                         invalid_primitive,
                                     surface_ray::
-                                        invalid_primitive);
+                                        invalid_primitive,
+                                    pack_shader_evaluation_state(
+                                        cycles_path_state::
+                                            shadow_shader_state(
+                                                path_depth,
+                                                diffuse_depth,
+                                                glossy_depth,
+                                                transparent_depth,
+                                                transmission_depth)));
                             $if (any(
                                 shadow_transmittance > 0.0f)) {
                                 auto evaluation =

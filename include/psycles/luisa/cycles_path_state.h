@@ -8,6 +8,7 @@
 
 #include <psycles/contract/scene.h>
 #include <psycles/luisa/cycles_closure.h>
+#include <psycles/luisa/surface.h>
 
 #include <luisa/dsl/sugar.h>
 
@@ -62,6 +63,114 @@ struct Limits {
     luisa::compute::UInt maximum_transmission;
     luisa::compute::UInt maximum_transparent;
 };
+
+// Canonical state observed by a Cycles Light Path node. Keep evaluation
+// context separate from transport state: surface, background emission, lamp
+// emission, and transparent-shadow evaluation deliberately expose different
+// visibility/flag/depth combinations even when they originate from one path.
+struct ShaderEvaluationState {
+    luisa::compute::UInt ray_visibility;
+    luisa::compute::UInt ray_events;
+    luisa::compute::UInt ray_depth;
+    luisa::compute::UInt diffuse_depth;
+    luisa::compute::UInt glossy_depth;
+    luisa::compute::UInt transparent_depth;
+    luisa::compute::UInt transmission_depth;
+};
+
+[[nodiscard]] inline ShaderEvaluationState
+surface_shader_state(
+    luisa::compute::UInt ray_visibility,
+    luisa::compute::UInt ray_events,
+    luisa::compute::UInt ray_depth,
+    luisa::compute::UInt diffuse_depth,
+    luisa::compute::UInt glossy_depth,
+    luisa::compute::UInt transparent_depth,
+    luisa::compute::UInt transmission_depth) noexcept {
+    return {
+        .ray_visibility = ray_visibility,
+        .ray_events = ray_events,
+        .ray_depth = ray_depth,
+        .diffuse_depth = diffuse_depth,
+        .glossy_depth = glossy_depth,
+        .transparent_depth = transparent_depth,
+        .transmission_depth = transmission_depth};
+}
+
+// Background shaders retain the incoming path visibility and flags, but
+// PATH_RAY_EMISSION makes Light Path's Ray Depth one bounce deeper.
+[[nodiscard]] inline ShaderEvaluationState
+background_emission_shader_state(
+    luisa::compute::UInt ray_visibility,
+    luisa::compute::UInt ray_events,
+    luisa::compute::UInt ray_depth,
+    luisa::compute::UInt diffuse_depth,
+    luisa::compute::UInt glossy_depth,
+    luisa::compute::UInt transparent_depth,
+    luisa::compute::UInt transmission_depth) noexcept {
+    return {
+        .ray_visibility = ray_visibility,
+        .ray_events = ray_events,
+        .ray_depth = ray_depth + 1u,
+        .diffuse_depth = diffuse_depth,
+        .glossy_depth = glossy_depth,
+        .transparent_depth = transparent_depth,
+        .transmission_depth = transmission_depth};
+}
+
+// Analytic and NEE light shaders are evaluated with
+// PATH_RAY_VISIBILITY_NONE | PATH_RAY_EMISSION in Cycles. In particular,
+// Light Path must not see camera/diffuse/glossy/reflection/singular state.
+[[nodiscard]] inline ShaderEvaluationState
+light_emission_shader_state(
+    luisa::compute::UInt ray_depth,
+    luisa::compute::UInt diffuse_depth,
+    luisa::compute::UInt glossy_depth,
+    luisa::compute::UInt transparent_depth,
+    luisa::compute::UInt transmission_depth) noexcept {
+    return {
+        .ray_visibility = visibility_none,
+        .ray_events = 0u,
+        .ray_depth = ray_depth + 1u,
+        .diffuse_depth = diffuse_depth,
+        .glossy_depth = glossy_depth,
+        .transparent_depth = transparent_depth,
+        .transmission_depth = transmission_depth};
+}
+
+// Transparent-shadow shaders receive shadow visibility and no path flags.
+// Their ordinary bounce is copied from the main path and Light Path adds one
+// for shadow evaluation; lobe and transparent counters remain observable.
+[[nodiscard]] inline ShaderEvaluationState
+shadow_shader_state(
+    luisa::compute::UInt ray_depth,
+    luisa::compute::UInt diffuse_depth,
+    luisa::compute::UInt glossy_depth,
+    luisa::compute::UInt transparent_depth,
+    luisa::compute::UInt transmission_depth) noexcept {
+    return {
+        .ray_visibility =
+            contract::visibility_bit(
+                contract::RayVisibility::shadow),
+        .ray_events = 0u,
+        .ray_depth = ray_depth + 1u,
+        .diffuse_depth = diffuse_depth,
+        .glossy_depth = glossy_depth,
+        .transparent_depth = transparent_depth,
+        .transmission_depth = transmission_depth};
+}
+
+inline void apply_shader_state(
+    SurfacePoint &point,
+    const ShaderEvaluationState &state) noexcept {
+    point.ray_visibility = state.ray_visibility;
+    point.ray_events = state.ray_events;
+    point.ray_depth = state.ray_depth;
+    point.diffuse_depth = state.diffuse_depth;
+    point.glossy_depth = state.glossy_depth;
+    point.transparent_depth = state.transparent_depth;
+    point.transmission_depth = state.transmission_depth;
+}
 
 [[nodiscard]] inline State initial_state() noexcept {
     using namespace luisa::compute;

@@ -10,7 +10,8 @@ using TraceShadowCallable =
         luisa::uint,
         luisa::uint,
         luisa::uint,
-        luisa::uint)>;
+        luisa::uint,
+        ShaderEvaluationStateCall)>;
 
 [[nodiscard]] TraceShadowCallable make_trace_shadow_callable(
     const std::shared_ptr<LuisaSceneData> &scene,

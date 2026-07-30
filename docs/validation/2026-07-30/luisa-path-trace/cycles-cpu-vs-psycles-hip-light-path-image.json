@@ -1,0 +1,714 @@
+{
+  "actual_label": "Psycles",
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.Depth.Z",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.Diffuse Direct.R",
+    "ViewLayer.Diffuse Direct.G",
+    "ViewLayer.Diffuse Direct.B",
+    "ViewLayer.Diffuse Indirect.R",
+    "ViewLayer.Diffuse Indirect.G",
+    "ViewLayer.Diffuse Indirect.B",
+    "ViewLayer.Diffuse Color.R",
+    "ViewLayer.Diffuse Color.G",
+    "ViewLayer.Diffuse Color.B",
+    "ViewLayer.Glossy Direct.R",
+    "ViewLayer.Glossy Direct.G",
+    "ViewLayer.Glossy Direct.B",
+    "ViewLayer.Glossy Indirect.R",
+    "ViewLayer.Glossy Indirect.G",
+    "ViewLayer.Glossy Indirect.B",
+    "ViewLayer.Glossy Color.R",
+    "ViewLayer.Glossy Color.G",
+    "ViewLayer.Glossy Color.B",
+    "ViewLayer.Transmission Direct.R",
+    "ViewLayer.Transmission Direct.G",
+    "ViewLayer.Transmission Direct.B",
+    "ViewLayer.Transmission Indirect.R",
+    "ViewLayer.Transmission Indirect.G",
+    "ViewLayer.Transmission Indirect.B",
+    "ViewLayer.Transmission Color.R",
+    "ViewLayer.Transmission Color.G",
+    "ViewLayer.Transmission Color.B",
+    "ViewLayer.Emission.R",
+    "ViewLayer.Emission.G",
+    "ViewLayer.Emission.B",
+    "ViewLayer.Environment.R",
+    "ViewLayer.Environment.G",
+    "ViewLayer.Environment.B",
+    "ViewLayer.Debug Sample Count.X"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        0.9999998807907104,
+        1.0000001192092896,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-light-path-hip/point_light_light_path/point_light_light_path-cycles.exr",
+      "cycles_channel_mean": [
+        0.1286821961402893,
+        0.1701921820640564,
+        0.13260246813297272
+      ],
+      "cycles_luminance_mean": 0.1586533784866333,
+      "cycles_rms": 0.15297406911849976,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 3.129243850708008e-07,
+      "mean_absolute_error": 5.342159781207556e-08,
+      "orientation_rmse": {
+        "flip_x": 0.06169848144054413,
+        "flip_xy": 0.07012957334518433,
+        "flip_y": 0.03624174743890762,
+        "identity": 6.979535527307235e-08
+      },
+      "p95_pixel_rmse": 1.358922645522398e-07,
+      "p99_pixel_rmse": 1.816882786442875e-07,
+      "psycles": "/var/tmp/psycles-light-path-hip/point_light_light_path/point_light_light_path-psycles.exr",
+      "psycles_channel_mean": [
+        0.1286821812391281,
+        0.1701921969652176,
+        0.13260246813297272
+      ],
+      "psycles_luminance_mean": 0.1586533784866333,
+      "psycles_rms": 0.1529740718582108,
+      "relative_rmse": 4.562561202383007e-07,
+      "rmse": 6.979535527307235e-08,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 4314141.257142858,
+        "display_scale": 3.2461381540314034,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-light-path-hip/point_light_light_path/triptychs/combined.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "DiffCol": {
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-light-path-hip/point_light_light_path/point_light_light_path-cycles.exr",
+      "cycles_channel_mean": [
+        0.6200190782546997,
+        0.4100061058998108,
+        0.22999368607997894
+      ],
+      "cycles_luminance_mean": 0.4416499137878418,
+      "cycles_rms": 0.44922152161598206,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-light-path-hip/point_light_light_path/point_light_light_path-psycles.exr",
+      "psycles_channel_mean": [
+        0.6200190782546997,
+        0.4100061058998108,
+        0.22999368607997894
+      ],
+      "psycles_luminance_mean": 0.4416499137878418,
+      "psycles_rms": 0.44922153637892637,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.4516126129555862,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-light-path-hip/point_light_light_path/triptychs/diffcol.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "DiffDir": {
+      "channel_mean_ratio": [
+        1.000000238418579,
+        1.000000238418579,
+        1.0000001192092896
+      ],
+      "cycles": "/var/tmp/psycles-light-path-hip/point_light_light_path/point_light_light_path-cycles.exr",
+      "cycles_channel_mean": [
+        0.2075514793395996,
+        0.41510313749313354,
+        0.5765328407287598
+      ],
+      "cycles_luminance_mean": 0.38263338804244995,
+      "cycles_rms": 0.4506905972957611,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 1.0728836059570312e-06,
+      "mean_absolute_error": 1.4871996256715647e-07,
+      "orientation_rmse": {
+        "flip_x": 0.18177540600299835,
+        "flip_xy": 0.20661500096321106,
+        "flip_y": 0.10677504539489746,
+        "identity": 2.0677281042935647e-07
+      },
+      "p95_pixel_rmse": 4.060851210851979e-07,
+      "p99_pixel_rmse": 5.443990289677458e-07,
+      "psycles": "/var/tmp/psycles-light-path-hip/point_light_light_path/point_light_light_path-psycles.exr",
+      "psycles_channel_mean": [
+        0.2075515240430832,
+        0.4151032269001007,
+        0.5765329003334045
+      ],
+      "psycles_luminance_mean": 0.38263338804244995,
+      "psycles_rms": 0.45069060315005594,
+      "relative_rmse": 4.5879104571969565e-07,
+      "rmse": 2.0677281042935647e-07,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1258291.2,
+        "display_scale": 0.9582591440339644,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-light-path-hip/point_light_light_path/triptychs/diffdir.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "DiffInd": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-light-path-hip/point_light_light_path/point_light_light_path-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-light-path-hip/point_light_light_path/point_light_light_path-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-light-path-hip/point_light_light_path/triptychs/diffind.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "Emit": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-light-path-hip/point_light_light_path/point_light_light_path-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-light-path-hip/point_light_light_path/point_light_light_path-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-light-path-hip/point_light_light_path/triptychs/emit.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "Env": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-light-path-hip/point_light_light_path/point_light_light_path-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-light-path-hip/point_light_light_path/point_light_light_path-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-light-path-hip/point_light_light_path/triptychs/env.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "GlossCol": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-light-path-hip/point_light_light_path/point_light_light_path-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-light-path-hip/point_light_light_path/point_light_light_path-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-light-path-hip/point_light_light_path/triptychs/glosscol.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "GlossDir": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-light-path-hip/point_light_light_path/point_light_light_path-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-light-path-hip/point_light_light_path/point_light_light_path-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-light-path-hip/point_light_light_path/triptychs/glossdir.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "GlossInd": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-light-path-hip/point_light_light_path/point_light_light_path-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-light-path-hip/point_light_light_path/point_light_light_path-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-light-path-hip/point_light_light_path/triptychs/glossind.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "Normal": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.9999999403953552
+      ],
+      "cycles": "/var/tmp/psycles-light-path-hip/point_light_light_path/point_light_light_path-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "cycles_luminance_mean": 0.0722000002861023,
+      "cycles_rms": 0.5773502588272095,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999997936127266,
+      "maximum_absolute_error": 5.960464477539063e-08,
+      "mean_absolute_error": 1.9868215517249155e-08,
+      "orientation_rmse": {
+        "flip_x": 3.4412757088375656e-08,
+        "flip_xy": 3.4412757088375656e-08,
+        "flip_y": 3.4412757088375656e-08,
+        "identity": 3.4412757088375656e-08
+      },
+      "p95_pixel_rmse": 3.4412757088375656e-08,
+      "p99_pixel_rmse": 3.4412757088375656e-08,
+      "psycles": "/var/tmp/psycles-light-path-hip/point_light_light_path/point_light_light_path-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.9999999403953552
+      ],
+      "psycles_luminance_mean": 0.0721999853849411,
+      "psycles_rms": 0.577350226173677,
+      "relative_rmse": 5.960464477539063e-08,
+      "rmse": 3.4412757088375656e-08,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 15099494.4,
+        "display_scale": 1.0,
+        "mapping": "normal_xyz_to_rgb",
+        "path": "/var/tmp/psycles-light-path-hip/point_light_light_path/triptychs/normal.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "TransCol": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-light-path-hip/point_light_light_path/point_light_light_path-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-light-path-hip/point_light_light_path/point_light_light_path-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-light-path-hip/point_light_light_path/triptychs/transcol.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "TransDir": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-light-path-hip/point_light_light_path/point_light_light_path-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-light-path-hip/point_light_light_path/point_light_light_path-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-light-path-hip/point_light_light_path/triptychs/transdir.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "TransInd": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-light-path-hip/point_light_light_path/point_light_light_path-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-light-path-hip/point_light_light_path/point_light_light_path-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-light-path-hip/point_light_light_path/triptychs/transind.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    }
+  },
+  "reference_label": "Cycles",
+  "schema": "psycles.cycles-differential.v1"
+}

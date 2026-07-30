@@ -15,7 +15,12 @@ TraceShadowCallable make_trace_shadow_callable(
             UInt source_instance,
             UInt source_primitive,
             UInt light_instance,
-            UInt light_primitive) noexcept {
+            UInt light_primitive,
+            Var<ShaderEvaluationStateCall>
+                shader_state_call) noexcept {
+            const auto shader_state =
+                unpack_shader_evaluation_state(
+                    shader_state_call);
             BufferShaderServices services{
                 scene->parameter_buffer,
                 scene->cycles_bsdf_table_buffer,
@@ -26,6 +31,8 @@ TraceShadowCallable make_trace_shadow_callable(
                 scene->nishita_texture_bindings,
                 scene->shader_color_space};
             Float3 transmittance = make_float3(1.0f);
+            UInt shadow_transparent_depth =
+                shader_state.transparent_depth;
             auto committed =
                 scene->accel
                     ->traverse(
@@ -395,6 +402,12 @@ TraceShadowCallable make_trace_shadow_callable(
                                         hit->committed_ray_t,
                                     .time = 0.0f,
                                     .back_facing = back_facing};
+                                cycles_path_state::
+                                    apply_shader_state(
+                                        point,
+                                        shader_state);
+                                point.transparent_depth =
+                                    shadow_transparent_depth;
                                 auto transparent =
                                     clamp(
                                         scene->surfaces
@@ -417,6 +430,10 @@ TraceShadowCallable make_trace_shadow_callable(
                                     carries_light);
                                 $if (!carries_light) {
                                     candidate.commit();
+                                };
+                                $if (carries_light) {
+                                    shadow_transparent_depth +=
+                                        1u;
                                 };
                             };
                         })

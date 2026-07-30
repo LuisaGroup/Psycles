@@ -80,6 +80,7 @@ _ALL_PROBES = (
     "particle_random_instances",
     "particle_random_nonparticle",
     "point_light",
+    "point_light_light_path",
     "point_light_nodes",
     "point_light_soft_disk",
     "point_light_soft_sphere",
@@ -139,6 +140,10 @@ _PROBE_RATIO_GATES = {
         "Combined": (0.9995, 1.0005),
         "DiffDir": (0.9995, 1.0005),
     },
+    "point_light_light_path": {
+        "Combined": (0.9995, 1.0005),
+        "DiffDir": (0.9995, 1.0005),
+    },
     "triangle_light_solid_angle": {
         "Combined": (0.995, 1.005),
         "DiffDir": (0.995, 1.005),
@@ -155,6 +160,10 @@ _PROBE_RELATIVE_RMSE_GATES = {
     "nishita_diffuse_transport": {
         "Combined": 0.0005,
         "DiffDir": 0.0005,
+    },
+    "point_light_light_path": {
+        "Combined": 0.000005,
+        "DiffDir": 0.000005,
     },
     "triangle_light_solid_angle": {
         "Combined": 0.005,

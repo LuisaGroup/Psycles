@@ -12,6 +12,34 @@ namespace psycles::luisa_backend::detail {
         .padding = 0u};
 }
 
+[[nodiscard]] Var<ShaderEvaluationStateCall>
+pack_shader_evaluation_state(
+    const cycles_path_state::ShaderEvaluationState
+        &state) noexcept {
+    Var<ShaderEvaluationStateCall> result;
+    result.ray_visibility = state.ray_visibility;
+    result.ray_events = state.ray_events;
+    result.ray_depth = state.ray_depth;
+    result.diffuse_depth = state.diffuse_depth;
+    result.glossy_depth = state.glossy_depth;
+    result.transparent_depth = state.transparent_depth;
+    result.transmission_depth = state.transmission_depth;
+    return result;
+}
+
+[[nodiscard]] cycles_path_state::ShaderEvaluationState
+unpack_shader_evaluation_state(
+    const Var<ShaderEvaluationStateCall> &state) noexcept {
+    return {
+        .ray_visibility = state.ray_visibility,
+        .ray_events = state.ray_events,
+        .ray_depth = state.ray_depth,
+        .diffuse_depth = state.diffuse_depth,
+        .glossy_depth = state.glossy_depth,
+        .transparent_depth = state.transparent_depth,
+        .transmission_depth = state.transmission_depth};
+}
+
 [[nodiscard]] Var<SurfacePointCall> pack_surface_point(
     const SurfacePoint &point) noexcept {
     Var<SurfacePointCall> result;
