@@ -157,3 +157,13 @@ absolute error `4.76837158203125e-7`, and all 13 currently populated random
 fields are exact. The remaining failures are deliberately visible unpopulated
 light, raw-closure, BSDF, and post-bounce records plus the Cycles shader ID;
 they are the next implementation gates, not tolerated differences.
+
+The following light checkpoint found a second representation mismatch:
+Psycles had folded delta-point inverse-square falloff into radiance while
+using a conditional light PDF of one. Cycles instead stores `distance²` in
+`LightSample.pdf` and keeps the normalized point `eval_fac` at `1 / (4π)`.
+Psycles now uses that same Luisa DSL contract, including the formal rule that
+a zero-radius point has no competing forward-BSDF measure. The fallback, HIP,
+and Vulkan device regression passes, the three Luisa path traces agree, and
+all newly populated point-light trace fields pass against Cycles CPU. The
+strict comparison now reports 24 rather than 30 outstanding gates.

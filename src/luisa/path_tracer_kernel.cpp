@@ -7,6 +7,7 @@
 #include "path_tracer_lighting.h"
 #include "path_tracer_surfaces.h"
 
+#include <psycles/luisa/analytic_light_sampling.h>
 #include <psycles/luisa/background_sampling.h>
 #include <psycles/luisa/camera_sampling.h>
 #include <psycles/luisa/pixel_filter.h>
@@ -2387,6 +2388,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                             make_float2(0.5f);
                         Float light_distance = ray_maximum;
                         Float light_pdf = 0.0f;
+                        Float light_eval_factor = 0.0f;
                         Bool light_valid = false;
 
                         $if (light.type ==
@@ -2794,19 +2796,13 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                         (light_cosine >
                                          0.0f);
                                 };
-                                Float point_area =
-                                    4.0f * pi *
-                                    light.radius *
-                                    light.radius;
                                 Float point_eval_factor =
-                                    select(
-                                        1.0f / pi,
-                                        1.0f /
-                                            max(
-                                                pi *
-                                                    point_area,
-                                                1.0e-20f),
-                                        normalize_power);
+                                    analytic_light_sampling::
+                                        point_eval_factor(
+                                            light.radius,
+                                            normalize_power);
+                                light_eval_factor =
+                                    point_eval_factor;
                                 light_radiance =
                                     light.color *
                                     (light.power *
@@ -2817,19 +2813,22 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                 light_distance =
                                     center_distance;
                                 Float point_eval_factor =
-                                    select(
-                                        1.0f / pi,
-                                        1.0f /
-                                            (4.0f * pi),
-                                        normalize_power);
+                                    analytic_light_sampling::
+                                        point_eval_factor(
+                                            light.radius,
+                                            normalize_power);
+                                light_eval_factor =
+                                    point_eval_factor;
                                 light_radiance =
                                     light.color *
                                     (light.power *
-                                     point_eval_factor /
-                                     max(
-                                         distance2,
-                                         1.0e-20f));
-                                light_pdf = 1.0f;
+                                     point_eval_factor);
+                                light_pdf =
+                                    analytic_light_sampling::
+                                        point_disk_pdf(
+                                            distance2,
+                                            1.0f,
+                                            light.radius);
                                 light_position =
                                     light.position;
                                 light_normal = -wi;
@@ -2873,6 +2872,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                                     (3.0f -
                                      2.0f * attenuation);
                                 light_radiance *= attenuation;
+                                light_eval_factor *=
+                                    attenuation;
                                 light_valid =
                                     light_valid &
                                     (attenuation > 0.0f);
@@ -2985,6 +2986,90 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
 
                         light_pdf *=
                             selected_light.selection_pdf;
+                        if (path_trace_enabled) {
+                            const auto delta_point =
+                                (light.type ==
+                                 static_cast<
+                                     std::uint32_t>(
+                                     LightType::point)) &
+                                (light.radius == 0.0f);
+                            $if (
+                                path_trace_active &
+                                delta_point &
+                                light_valid &
+                                (light_pdf > 0.0f)) {
+                                auto trace_evaluation =
+                                    evaluate_surface(
+                                        surface_tag,
+                                        point,
+                                        wi,
+                                        path_surface_query);
+                                const auto use_mis =
+                                    (light.flags &
+                                     light_flag_use_mis) !=
+                                    0u;
+                                const auto has_competing =
+                                    analytic_light_sampling::
+                                        point_has_competing_bsdf_technique(
+                                            light.radius,
+                                            use_mis);
+                                const auto trace_bsdf_pdf =
+                                    select(
+                                        0.0f,
+                                        trace_evaluation.pdf,
+                                        has_competing);
+                                const auto trace_mis_weight =
+                                    nee_light_weight(
+                                        light_pdf,
+                                        trace_bsdf_pdf);
+                                trace_write_event(
+                                    path_step,
+                                    path_trace_schema::
+                                        EventSlot::
+                                            light_meta,
+                                    make_float3(
+                                        0.0f,
+                                        cast<float>(
+                                            selected_light
+                                                .emitter_id),
+                                        cast<float>(
+                                            light_index)));
+                                trace_write_event(
+                                    path_step,
+                                    path_trace_schema::
+                                        EventSlot::
+                                            light_pdf,
+                                    make_float3(
+                                        light_pdf,
+                                        selected_light
+                                            .selection_pdf,
+                                        light_eval_factor));
+                                trace_write_event(
+                                    path_step,
+                                    path_trace_schema::
+                                        EventSlot::light_d,
+                                    wi);
+                                trace_write_event(
+                                    path_step,
+                                    path_trace_schema::
+                                        EventSlot::light_p,
+                                    light_position);
+                                trace_write_event(
+                                    path_step,
+                                    path_trace_schema::
+                                        EventSlot::light_ng,
+                                    light_normal);
+                                trace_write_event(
+                                    path_step,
+                                    path_trace_schema::
+                                        EventSlot::
+                                            light_eval,
+                                    make_float3(
+                                        light_distance,
+                                        trace_bsdf_pdf,
+                                        trace_mis_weight));
+                            };
+                        }
                         $if (light_valid &
                              (light_pdf > 0.0f)) {
                             const auto shadow =
