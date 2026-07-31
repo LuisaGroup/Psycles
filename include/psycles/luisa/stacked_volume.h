@@ -30,6 +30,9 @@ struct VolumeShadingState {
 
 struct VolumeStackEntryShading {
     SurfacePoint point;
+    // Cycles' object_volume_density is an entry-level scale: it is constant
+    // over all spatial evaluations of one object and is applied again by
+    // runtime transport after being divided out of majorant metadata.
     Float object_density;
 };
 

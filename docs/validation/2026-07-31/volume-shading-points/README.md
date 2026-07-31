@@ -17,6 +17,9 @@ yet a volume-render or visual-parity claim.
   `intern/cycles/blender/mesh.cpp`.
 - The world shading position is the free-flight point and `N`, `Ng`, and
   `wi` are the negative ray direction supplied by the transport stage.
+- Cycles' density-bake ray direction is exactly zero. Its
+  `safe_normalize()` leaves a zero vector unchanged, so object-space normal
+  transformation must also produce zero rather than NaN.
 - Object coordinates use the inverse TLAS instance transform. Object
   location, random value, and particle index come from that same instance.
 - Volume Generated coordinates are not interpolated from a boundary
@@ -59,7 +62,9 @@ scale, and translation. It validates:
 5. object location/random/particle and path-state forwarding;
 6. `PRIM_NONE` plus all zero primitive-coordinate fields; and
 7. a world entry whose `~0u` instance identity never enters a TLAS transform
-   query.
+   query; and
+8. zero-direction object and world entries whose `N`, `Ng`, `wi`, and
+   object-space normal remain exactly zero.
 
 The focused CTest group is:
 
@@ -71,7 +76,7 @@ psycles.luisa_volume_point_hip
 psycles.luisa_volume_point_vk
 ```
 
-All five pass. The device fixture produces the same 24 records on fallback,
+All five pass. The device fixture produces the same 26 records on fallback,
 HIP, and Vulkan.
 
 ## Remaining render gate

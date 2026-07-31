@@ -8,9 +8,9 @@ approximation is involved.
 ## Cycles construction contract
 
 The host builder consumes one minimum/maximum pair for every cell of a
-`128^3` grid. The future producer of those values is a Luisa kernel that
-evaluates the original volume graph; the builder only reduces acceleration
-metadata.
+`128^3` grid. `VolumeMajorantPrepass` now produces those values in a Luisa
+kernel by evaluating the original volume graph; the builder only reduces
+acceleration metadata.
 
 For each node it merges all covered cell extrema and splits exactly when
 
@@ -76,8 +76,10 @@ connected to the production scene path.
 
 ## Remaining connection
 
-The next slice is the raw Luisa `128^3 x 16` shader-evaluation prepass,
-including Cycles' exact padded-voxel Sobol indexing and camera-visibility
-volume state. It will feed this builder without baking closures. After that,
-multi-root stack reduction and the collision/phase/direct-light path can be
-composed and validated against official Cycles images.
+The raw Luisa `128^3 x 16` shader-evaluation prepass is complete and recorded
+in
+[`../volume-majorant-prepass`](../volume-majorant-prepass/README.md).
+Scene-side buffer construction must now dispatch it over each heterogeneous
+object/shader root and feed the resulting extrema into this builder. After
+that, multi-root stack reduction and the collision/phase/direct-light path can
+be composed and validated against official Cycles images.

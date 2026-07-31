@@ -336,8 +336,10 @@ normal transforms, `PRIM_NONE`, and zero primitive differentials. Scene
 schema v2 now preserves Cycles' `ATTR_STD_GENERATED_TRANSFORM`; volume
 Generated coordinates apply that affine transform to object-space `P` rather
 than interpolating a boundary triangle. The exporter/importer consistency
-check and a 24-record negative/non-uniform-scale fixture pass on fallback,
-HIP, and Vulkan. Details are in
+check and a 26-record negative/non-uniform-scale fixture pass on fallback,
+HIP, and Vulkan. The added records pin Cycles' zero-preserving
+`safe_normalize()` semantics for the zero-direction bake ray, preventing an
+object-space normal transform from introducing NaNs. Details are in
 [`validation/2026-07-31/volume-shading-points`](validation/2026-07-31/volume-shading-points/README.md).
 
 Mapping now implements Cycles' four device formulas directly in Luisa:
@@ -588,16 +590,22 @@ Blender direct clamp 2; both Cycles and Luisa/fallback produce linear RGB
 `(2, 2, 2)`, with zero RMSE and maximum absolute error in all recorded passes.
 
 The heterogeneous-volume foundation now includes Cycles' local real/null
-collision measure, exact path-offset hash, depth-seven 128-cubed majorant
-hierarchy reduction, and single-root bitwise hierarchical DDA. The hierarchy
-matches Cycles main `b82c3f0d`: eight siblings are contiguous, subdivision
-uses `range * diagonal * volume_scale > 1.442`, object bounds map to
-`[1, 2)`, and traversal retains the root-extrema tail outside an implicit
-volume bound. Focused fallback, HIP, and Vulkan device regressions cover
-forward/reverse adjacency, parent ascent, root exit, and the outside-root
-path. Cycles' hierarchy extrema come from finite padded Sobol samples; they
-are not claimed as a mathematically guaranteed bound. Runtime majorant
-violations remain explicit.
+collision measure, exact path-offset hash, raw volume-graph extrema prepass,
+depth-seven 128-cubed majorant hierarchy reduction, and single-root bitwise
+hierarchical DDA. The prepass evaluates the original `GraphSurface` closure at
+sixteen twenty-percent-padded Sobol-Burley positions per cell with Cycles'
+camera/zero-direction/time-`0.5` bake state. Its 3D sampler is bit-pinned to
+official Cycles, while raw-graph extrema for three distant cells pass on
+fallback, HIP, and Vulkan. The hierarchy matches Cycles main `b82c3f0d`:
+eight siblings are contiguous, subdivision uses
+`range * diagonal * volume_scale > 1.442`, object bounds map to `[1, 2)`, and
+traversal retains the root-extrema tail outside an implicit volume bound.
+Focused device regressions cover forward/reverse adjacency, parent ascent,
+root exit, and the outside-root path. Cycles' hierarchy extrema come from
+finite padded Sobol samples; they are not claimed as a mathematically
+guaranteed bound. Runtime majorant violations remain explicit. Prepass
+details are in
+[`validation/2026-07-31/volume-majorant-prepass`](validation/2026-07-31/volume-majorant-prepass/README.md).
 
 Adaptive sampling and denoising are exported and diagnosed but are not part of
 the path-integrator estimator. Psycles renders fixed-count, un-denoised linear
@@ -614,8 +622,8 @@ compatible yet:
 
 - Cycles' emitter importance distribution and environment importance map;
 - light-tree construction and traversal;
-- heterogeneous raw volume-graph extrema evaluation, overlapping-octree
-  reduction, and production path integration;
+- heterogeneous scene-side prepass resource construction,
+  overlapping-octree reduction, and production path integration;
 - remaining distant-light forward/background behavior;
 - MNEE, path guiding, shadow catcher, light linking, and light groups;
 - Cycles' exact sampling sequence and random dimensions.
