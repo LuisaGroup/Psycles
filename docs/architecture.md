@@ -333,6 +333,15 @@ transmittance. Surface transparency stays in the shared shadow component.
 These objects are ordinary C++ abstractions while the resulting device work
 remains one fused path kernel.
 
+`VolumeAnalyticLightSampling` specializes the host-stage point/spot geometry
+contract without duplicating the transport pipeline. In particular, the spot
+segment proposal retains Cycles' zero-attenuation samples and visible-sphere
+cap, while the collision-position method delegates to the ordinary spot
+measure. `VolumeLightInterval` independently maps the original segment to its
+spot/area geometric support. This separation prevents radiometric rejection,
+proposal measure, and interval algebra from becoming emitter-specific branches
+inside the homogeneous estimator.
+
 Volume-scattering probability guidance is persistent render-session state,
 not path-local policy. The path kernel accumulates Cycles' raw scatter,
 primary-transmit, and optical-depth statistics in dedicated per-pixel buffers.

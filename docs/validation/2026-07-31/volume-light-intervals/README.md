@@ -63,14 +63,17 @@ Run the fixture on all enabled backends:
 ./build/bin/psycles_luisa_homogeneous_volume_tests vk
 ```
 
-All 57 records pass on fallback, HIP, and Vulkan on the RX 9070 XT. During the
-first HIP run, the vector reciprocal AABB form incorrectly rejected a
-parallel-inside slab that passed on fallback. Rewriting the operation as the
-composition of three scalar slab intersections removed the undefined
-`0 * infinity` path and made all three backends agree with the Cycles
-interval.
+All 11 interval records pass on fallback, HIP, and Vulkan on the RX 9070 XT;
+the fixture now contains 59 total records after the subsequent spot-sampler
+checkpoint. During the first HIP run, the vector reciprocal AABB form
+incorrectly rejected a parallel-inside slab that passed on fallback.
+Rewriting the operation as the composition of three scalar slab intersections
+removed the undefined `0 * infinity` path and made all three backends agree
+with the Cycles interval.
 
 This checkpoint is purely geometric and therefore has no meaningful image
-triptych. The next integrated spot-light checkpoint must include raw
-scene-linear OpenEXR comparisons and visually inspected Cycles/Psycles/diff
-triptychs before it is accepted.
+triptych. The subsequent
+[`homogeneous-volume-spot-mis`](../homogeneous-volume-spot-mis/README.md)
+checkpoint composes it into production rendering and retains raw scene-linear
+OpenEXR comparisons plus visually inspected Cycles/Psycles/difference
+triptychs.

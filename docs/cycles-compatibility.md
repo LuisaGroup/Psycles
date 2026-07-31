@@ -222,11 +222,12 @@ Its Luisa `.h`/`.cpp` component matches Cycles' per-channel transmittance,
 second-order small-optical-depth emission integral, throughput/albedo-weighted
 RGB channel selection, bounded exponential density, random-number rescaling,
 and the scatter/transmit estimator weights. It also accepts Cycles' externally
-guided VSPG scatter probability without changing that measure. A 46-record
+guided VSPG scatter probability without changing that measure. A 59-record
 fixture generated from official Cycles main `b82c3f0` `volume.h`, `mapping.h`,
 and the current homogeneous control flow now also pins the formal
 Distance/Equiangular/MIS selector, equiangular endpoint measure, and degenerate
-PDF boundaries. It passes on fallback, HIP, and Vulkan.
+PDF boundaries, finite-emitter intervals, and both spot-proposal contracts. It
+passes on fallback, HIP, and Vulkan.
 The Sobol contract now pins the official volume phase, reservoir, scatter
 distance, expansion, shade-offset, and phase-guiding dimensions. The
 production path composes this estimator before its typed closest-event stages
@@ -249,8 +250,16 @@ collision point. The 16-pixel official Blender 5.2.0 CPU EXR matches fallback
 and HIP with maximum absolute error `1.4901e-8`, and Vulkan with
 `2.3842e-7`. Reports, EXRs, and inspected triptychs are in
 [`validation/2026-07-31/homogeneous-volume-point-mis`](validation/2026-07-31/homogeneous-volume-point-mis/README.md).
-Spot/area/triangle visible-interval sampling, environment volume NEE, and
-heterogeneous transport remain separate work.
+Finite spot-light MIS now composes two deliberately different Cycles sampling
+contracts: the segment proposal always uses the visible sphere cap and keeps
+zero-attenuation geometry valid, then the clipped-cone interval drives
+free-flight before an ordinary spot sample from the final collision. The
+16-pixel official Blender 5.2.0 CPU EXR matches fallback and HIP with maximum
+absolute error `1.1921e-7`, and Vulkan with `3.2783e-7`. Reports, EXRs, and
+visually inspected triptychs are in
+[`validation/2026-07-31/homogeneous-volume-spot-mis`](validation/2026-07-31/homogeneous-volume-spot-mis/README.md).
+Area/triangle sampling, environment volume NEE, and heterogeneous transport
+remain separate work.
 
 Accumulated VSPG history is now connected end to end. The production path
 classifies every Combined contribution into Cycles' raw scatter/transmit
@@ -546,7 +555,7 @@ compatible yet:
 
 - Cycles' emitter importance distribution and environment importance map;
 - light-tree construction and traversal;
-- finite-light/environment volume NEE and heterogeneous grid integration;
+- area/triangle/environment volume NEE and heterogeneous grid integration;
 - forward intersections for analytic area and distant lights;
 - MNEE, path guiding, shadow catcher, light linking, and light groups;
 - Cycles' exact sampling sequence and random dimensions.
