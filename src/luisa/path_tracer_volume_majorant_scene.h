@@ -95,6 +95,15 @@ class VolumeMajorantSceneComponent {
         const std::shared_ptr<LuisaSceneData> &scene,
         Stream &stream,
         const VolumeMajorantScenePlan &plan) const;
+
+    // Production entry point. It derives root identities from the same
+    // retained material bindings used by runtime VolumeStack entries, then
+    // delegates to the independently testable plan/build stages above.
+    [[nodiscard]] VolumeMajorantSceneBuildResult
+    build(
+        const std::shared_ptr<LuisaSceneData> &scene,
+        Stream &stream,
+        const SceneSnapshot &snapshot) const;
 };
 
 }// namespace psycles::luisa_backend::detail

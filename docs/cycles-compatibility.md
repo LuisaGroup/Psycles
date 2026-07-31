@@ -637,6 +637,13 @@ matches Cycles' finalized whole-shader scan, including surface-only uses;
 Volume homogeneity remains a separate complete dependency reduction.
 The exact device regression is recorded in
 [`validation/2026-07-31/volume-majorant-runtime-provider`](validation/2026-07-31/volume-majorant-runtime-provider/README.md).
+Production `compile_scene` now derives the same root identities directly from
+retained runtime material bindings, executes the raw-closure prepass after
+TLAS/resource completion, and owns the flattened buffers in `LuisaSceneData`.
+The three-backend resource regression, official Cycles pixel differential,
+inspected triptychs, and the accompanying Luisa Vulkan optimized-XIR Accel
+metadata fix are recorded in
+[`validation/2026-08-01/volume-majorant-production-scene`](validation/2026-08-01/volume-majorant-production-scene/README.md).
 
 Adaptive sampling and denoising are exported and diagnosed but are not part of
 the path-integrator estimator. Psycles renders fixed-count, un-denoised linear

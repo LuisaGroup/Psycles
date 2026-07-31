@@ -3,6 +3,8 @@
 #include <psycles/io/image.h>
 #include <psycles/luisa/path_tracer.h>
 
+#include "../src/luisa/path_tracer_internal.h"
+
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -646,6 +648,30 @@ int main(int argc, char **argv) {
              compilation.diagnostics) {
             std::cerr << diagnostic.message << '\n';
         }
+        return EXIT_FAILURE;
+    }
+    const auto *compiled_scene =
+        dynamic_cast<
+            const psycles::luisa_backend::detail::
+                LuisaCompiledScene *>(
+            compilation.scene.get());
+    if (compiled_scene == nullptr ||
+        compiled_scene->data()
+                ->volume_majorant_root_count !=
+            1u ||
+        compiled_scene->data()
+                ->volume_majorant_node_count !=
+            1u ||
+        compiled_scene->data()
+                ->volume_majorant_range_count !=
+            2u ||
+        compiled_scene->data()
+                ->volume_majorant_world_range !=
+            1u) {
+        std::cerr
+            << "production scene compilation did not "
+               "retain homogeneous Cycles majorant "
+               "resources\n";
         return EXIT_FAILURE;
     }
 
