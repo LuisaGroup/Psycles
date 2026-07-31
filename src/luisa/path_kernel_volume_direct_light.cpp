@@ -834,7 +834,7 @@ class PathVolumeDirectLightingComponent final
     void accumulate(
         ClosestPathEvent &event,
         const VolumeDirectLightSample &light,
-        const HomogeneousVolumeSegmentResult &volume,
+        const VolumeDirectScatter &volume,
         const VolumeStack &path_stack,
         Float3 segment_position,
         Bool inside_volume)
@@ -846,9 +846,8 @@ class PathVolumeDirectLightingComponent final
         const auto eligible =
             inside_volume &
             light.valid &
-            volume.direct_transport
-                .scattered &
-            volume.direct_phase.valid &
+            volume.scattered &
+            volume.phase.valid &
             (sample
                  .continuation_probability >
              0.0f);
@@ -856,8 +855,7 @@ class PathVolumeDirectLightingComponent final
             const auto position =
                 segment_position +
                 sample.ray->direction() *
-                    volume.direct_transport
-                        .distance;
+                    volume.distance;
             Var<luisa::compute::Ray>
                 surface_shadow_ray =
                     make_ray(
@@ -903,7 +901,7 @@ class PathVolumeDirectLightingComponent final
             const auto phase_pdf =
                 select(
                     0.0f,
-                    volume.direct_phase.pdf,
+                    volume.phase.pdf,
                     light.use_mis);
             const auto mis_weight =
                 _config.light_transport
@@ -912,8 +910,7 @@ class PathVolumeDirectLightingComponent final
                         phase_pdf);
             const auto unshadowed =
                 make_float3(
-                    volume.direct_phase
-                        .value) *
+                    volume.phase.value) *
                 light.radiance *
                 (mis_weight /
                  max(
@@ -926,8 +923,7 @@ class PathVolumeDirectLightingComponent final
                         bounce
                             .light_terminate_sample);
             const auto continuation =
-                volume.direct_transport
-                    .throughput /
+                volume.throughput /
                 sample
                     .continuation_probability;
             const auto contribution =

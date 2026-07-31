@@ -297,11 +297,15 @@ continuation, and the defensive majorant-violation correction. The component
 also exposes that violation as a predicate so an unsound preprocessing bound
 cannot be mistaken for supported rendering. A 16-record fixture plus exact
 32-bit hash checks passes on fallback, HIP, and Vulkan. Spatial majorant
-construction and overlapping traversal have since been completed as separate
-components; VSPG reservoir use and the production path connection remain
-open, so heterogeneous scenes are still rejected rather than falling back to
-homogeneous integration. Details of the collision checkpoint are in
+construction and overlapping traversal were subsequently completed as
+separate components. VSPG reservoir use, raw phase recovery, residual-ratio
+equiangular transmittance, and distance/equiangular direct-light MIS now
+compose in the production camera path. Heterogeneous scenes remain rejected
+until the shadow path uses the same residual-ratio traversal rather than
+homogeneous attenuation. Details of the collision checkpoint are in
 [`validation/2026-07-31/heterogeneous-volume-collision`](validation/2026-07-31/heterogeneous-volume-collision/README.md).
+The composed estimator and three-backend evidence are recorded in
+[`validation/2026-08-01/heterogeneous-volume-vspg-direct`](validation/2026-08-01/heterogeneous-volume-vspg-direct/README.md).
 
 Accumulated VSPG history is now connected end to end. The production path
 classifies every Combined contribution into Cycles' raw scatter/transmit
@@ -672,7 +676,7 @@ compatible yet:
 
 - Cycles' emitter importance distribution and environment importance map;
 - light-tree construction and traversal;
-- heterogeneous collision/phase/direct-light path integration;
+- heterogeneous residual-ratio shadow transport and scene-gate removal;
 - remaining distant-light forward/background behavior;
 - MNEE, path guiding, shadow catcher, light linking, and light groups;
 - Cycles' exact sampling sequence and random dimensions.

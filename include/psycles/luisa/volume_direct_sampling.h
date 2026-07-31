@@ -33,6 +33,27 @@ struct VolumeEquiangularSample {
     luisa::compute::Bool valid;
 };
 
+struct VolumeDirectDirectionSample {
+    luisa::compute::Float3 direction;
+    luisa::compute::Bool valid;
+};
+
+// A scene-light component implements this host-stage callback. Volume
+// integration chooses a collision distance first, then invokes the provider
+// so finite emitters are sampled again from that exact point with the original
+// PRNG_LIGHT coordinates, as Cycles requires.
+class VolumeDirectDirectionProvider {
+
+  public:
+    virtual ~VolumeDirectDirectionProvider() noexcept =
+        default;
+
+    [[nodiscard]] virtual VolumeDirectDirectionSample
+    emit(
+        luisa::compute::Float distance)
+        const noexcept = 0;
+};
+
 // Pure Luisa-AST implementation of Cycles' direct-volume technique choice and
 // equiangular measure. Geometry components provide the sampled emitter point
 // and its visible ray interval; this component owns only probability measure.
@@ -62,3 +83,7 @@ class VolumeDirectSampling {
 };
 
 }// namespace psycles::luisa_backend
+
+LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(
+    psycles::luisa_backend::
+        VolumeDirectDirectionSample)

@@ -13,7 +13,9 @@ HeterogeneousVolumeCandidateWalk::
             &random,
         Float majorant_scale,
         Float ray_minimum,
-        UInt tracking_rng_offset) noexcept
+        UInt tracking_rng_offset,
+        HeterogeneousVolumeCandidateObserver
+            *observer) noexcept
     : _segments{segments},
       _random{random},
       _majorant_scale{majorant_scale},
@@ -21,7 +23,8 @@ HeterogeneousVolumeCandidateWalk::
       _optical_depth{0.0f},
       _rng_offset{tracking_rng_offset},
       _step{0u},
-      _finished{false} {
+      _finished{false},
+      _observer{observer} {
     const auto initial = _segments.current();
     _optical_depth =
         select(
@@ -31,6 +34,11 @@ HeterogeneousVolumeCandidateWalk::
                  initial.minimum),
             initial.valid);
     _finished = !initial.valid;
+    if (_observer != nullptr) {
+        _observer->enter_segment(
+            initial,
+            _rng_offset);
+    }
 }
 
 HeterogeneousVolumeCandidate
@@ -89,6 +97,16 @@ HeterogeneousVolumeCandidateWalk::advance()
                             .candidate_distance(
                                 scatter_random,
                                 sampled_majorant);
+                    if (_observer != nullptr) {
+                        _observer
+                            ->advance_candidate(
+                                segment,
+                                _distance,
+                                _distance +
+                                    step_distance,
+                                sampled_majorant,
+                                _rng_offset);
+                    }
                     _distance +=
                         step_distance;
                     beyond_segment =
@@ -104,6 +122,12 @@ HeterogeneousVolumeCandidateWalk::advance()
                     $if(advanced) {
                         const auto next =
                             _segments.current();
+                        if (_observer != nullptr) {
+                            _observer
+                                ->enter_segment(
+                                    next,
+                                    _rng_offset);
+                        }
                         _optical_depth +=
                             next.sigma_maximum *
                             (next.maximum -

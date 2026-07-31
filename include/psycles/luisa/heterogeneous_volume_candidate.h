@@ -40,6 +40,16 @@ class HeterogeneousVolumeTrackingRandomSource {
     // runtime majorant extrema, not the 1D value at the same dimension.
     [[nodiscard]] virtual Float shade_offset(
         UInt rng_offset) const noexcept = 0;
+
+    // Cycles' residual-ratio transmittance estimator uses the 1D expansion
+    // order and 1D shade offset from the same copied tracking RNG state.
+    // The latter is the x component at PRNG_VOLUME_SHADE_OFFSET; hierarchy
+    // extrema deliberately use the y component above.
+    [[nodiscard]] virtual Float expansion_order(
+        UInt rng_offset) const noexcept = 0;
+    [[nodiscard]] virtual Float
+    transmittance_shade_offset(
+        UInt rng_offset) const noexcept = 0;
 };
 
 struct HeterogeneousVolumeCandidate {
@@ -55,6 +65,28 @@ struct HeterogeneousVolumeCandidate {
     Bool candidate;
     Bool traversal_exhausted;
     Bool step_limit_exceeded;
+};
+
+// Optional observation boundary for estimators coupled to the exact same
+// copied tracking walk. Direct equiangular transport observes immutable
+// majorant segments and proposed free-flight intervals without duplicating
+// traversal or changing candidate generation.
+class HeterogeneousVolumeCandidateObserver {
+
+  public:
+    virtual ~HeterogeneousVolumeCandidateObserver()
+        noexcept = default;
+
+    virtual void enter_segment(
+        const VolumeMajorantSegment &segment,
+        UInt rng_offset) noexcept = 0;
+
+    virtual void advance_candidate(
+        const VolumeMajorantSegment &segment,
+        Float previous_distance,
+        Float proposed_distance,
+        Float sampled_majorant,
+        UInt rng_offset) noexcept = 0;
 };
 
 // Stateful Luisa AST component for Cycles' volume_integrate_advance().
@@ -74,6 +106,8 @@ class HeterogeneousVolumeCandidateWalk {
     UInt _rng_offset;
     UInt _step;
     Bool _finished;
+    HeterogeneousVolumeCandidateObserver
+        *_observer;
 
   public:
     HeterogeneousVolumeCandidateWalk(
@@ -82,7 +116,9 @@ class HeterogeneousVolumeCandidateWalk {
             &random,
         Float majorant_scale,
         Float ray_minimum,
-        UInt tracking_rng_offset) noexcept;
+        UInt tracking_rng_offset,
+        HeterogeneousVolumeCandidateObserver
+            *observer = nullptr) noexcept;
 
     [[nodiscard]] HeterogeneousVolumeCandidate
     advance() noexcept;

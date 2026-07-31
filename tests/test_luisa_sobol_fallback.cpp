@@ -19,7 +19,7 @@ namespace cycles_sampler =
 namespace tabulated_sobol =
     psycles::sampling::tabulated_sobol;
 
-constexpr auto probe_count = std::size_t{4u};
+constexpr auto probe_count = std::size_t{5u};
 constexpr auto metadata_count = std::size_t{11u};
 
 void expect(bool condition, const std::string &message) {
@@ -121,6 +121,40 @@ int main(int argc, char **argv) {
                     path_sample,
                     rng_hash,
                     next_light_dimension)));
+            const auto expansion_dimension =
+                cycles_sampler::path_state_dimension(
+                    16u,
+                    tabulated_sobol::
+                        volume_expansion_order_dimension);
+            const auto expansion =
+                cycles_sampler::
+                    sample_volume_expansion_order(
+                        samples,
+                        sequence_size,
+                        path_sample,
+                        16u);
+            const auto zero_hash_expansion =
+                cycles_sampler::sample_1d(
+                    samples,
+                    sequence_size,
+                    path_sample,
+                    0u,
+                    expansion_dimension);
+            const auto pixel_hash_expansion =
+                cycles_sampler::sample_1d(
+                    samples,
+                    sequence_size,
+                    path_sample,
+                    rng_hash,
+                    expansion_dimension);
+            output_bits.write(
+                4u,
+                as<luisa::uint4>(
+                    make_float4(
+                        expansion,
+                        zero_hash_expansion,
+                        pixel_hash_expansion,
+                        0.0f)));
 
             output_metadata.write(0u, rng_hash);
             output_metadata.write(1u, camera_dimension);
@@ -214,12 +248,21 @@ int main(int argc, char **argv) {
                 0x3d561a3au,
                 0x3e81b40au,
                 0x3f6b1363u}};
-        for (auto i = std::size_t{0u}; i < probe_count; ++i) {
+        for (auto i = std::size_t{0u};
+             i < expected_bits.size();
+             ++i) {
             expect(
                 lanes(actual_bits[i]) == expected_bits[i],
                 "fallback Sobol sample bits changed at probe " +
                     std::to_string(i));
         }
+        expect(
+            actual_bits[4u].x == actual_bits[4u].y,
+            "volume expansion order no longer uses Cycles' zero-hash sample");
+        expect(
+            actual_bits[4u].x != actual_bits[4u].z,
+            "volume expansion-order regression probe does not distinguish "
+            "zero-hash and pixel-hash samples");
 
         constexpr std::array<std::uint32_t, metadata_count>
             expected_metadata{

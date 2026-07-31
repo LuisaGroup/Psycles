@@ -7,12 +7,12 @@ there were no `intern/cycles` changes after the previously inspected
 `b82c3f0d` revision. Psycles does not add a CPU reference renderer and does not
 bake, fit, or preprocess Blender material closures.
 
-The production scene capability gate remains intentionally closed for
-heterogeneous full-frame rendering. The independent direct-light estimator and
-volume-scatter-probability guiding (VSPG) still have to be connected before
-enabling spatial Volume graphs in user scenes. This checkpoint therefore
-validates the true production transport branch without presenting incomplete
-pixels as a rendering result.
+At this historical checkpoint the production scene capability gate remained
+closed because direct lighting and VSPG were not yet connected. Those camera-
+path estimators are now complete in the
+[VSPG/direct-light checkpoint](../heterogeneous-volume-vspg-direct/README.md);
+the gate still remains closed until heterogeneous residual-ratio shadow
+transport is connected.
 
 ## Host-stage composition
 

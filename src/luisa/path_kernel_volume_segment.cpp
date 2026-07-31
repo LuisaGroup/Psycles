@@ -390,7 +390,20 @@ class PathVolumeSegmentStageImpl final
                     _direct_lighting->accumulate(
                         event,
                         direct_light,
-                        result,
+                        {.throughput =
+                             result
+                                 .direct_transport
+                                 .throughput,
+                         .distance =
+                             result
+                                 .direct_transport
+                                 .distance,
+                         .phase =
+                             result.direct_phase,
+                         .scattered =
+                             result
+                                 .direct_transport
+                                 .scattered},
                         stack,
                         segment_position,
                         inside_volume);
@@ -450,11 +463,61 @@ class PathVolumeSegmentStageImpl final
                              channel_random,
                          .phase_random =
                              phase_random,
-                         // VSPG supplies this scale in a later,
-                         // independent estimator component.
-                         .majorant_scale = 1.0f,
+                         .guiding =
+                             {.scattered_radiance =
+                                  invocation
+                                      .volume_guiding_scattered_radiance,
+                              .transmitted_radiance =
+                                  invocation
+                                      .volume_guiding_transmitted_radiance,
+                              .majorant_optical_depth =
+                                  invocation
+                                      .volume_guiding_majorant_optical_depth(),
+                              .enabled =
+                                  inside_volume &
+                                  (path_depth ==
+                                   0u)},
+                         .direct =
+                             {.requested_method =
+                                  direct_proposal
+                                      .requested_method,
+                              .light_position =
+                                  direct_proposal
+                                      .light_position,
+                              .interval =
+                                  direct_proposal
+                                      .interval,
+                              .enabled =
+                                  inside_volume &
+                                  direct_proposal
+                                      .valid},
+                         .direct_direction =
+                             direct_direction.get(),
                          .terminate =
                              transport_terminate});
+                if (_direct_lighting) {
+                    _direct_lighting->accumulate(
+                        event,
+                        direct_light,
+                        {.throughput =
+                             result
+                                 .direct_transport
+                                 .throughput,
+                         .distance =
+                             result
+                                 .direct_transport
+                                 .distance -
+                             segment_start,
+                         .phase =
+                             result.direct_phase,
+                         .scattered =
+                             result
+                                 .direct_transport
+                                 .scattered},
+                        stack,
+                        segment_position,
+                        inside_volume);
+                }
                 result_throughput =
                     result.transport
                         .throughput;

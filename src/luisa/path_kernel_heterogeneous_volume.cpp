@@ -74,6 +74,31 @@ class PathVolumeTrackingRandomSource final
                            volume_shade_offset_dimension))
             .y;
     }
+
+    Float expansion_order(
+        UInt rng_offset)
+        const noexcept override {
+        return cycles_sampler::
+            sample_volume_expansion_order(
+                _sobol_table,
+                _sequence_size,
+                _sample_index,
+                rng_offset);
+    }
+
+    Float transmittance_shade_offset(
+        UInt rng_offset)
+        const noexcept override {
+        return cycles_sampler::sample_1d(
+            _sobol_table,
+            _sequence_size,
+            _sample_index,
+            _rng_hash,
+            _dimension(
+                rng_offset,
+                sampling::tabulated_sobol::
+                    volume_shade_offset_dimension));
+    }
 };
 
 class PathHeterogeneousVolumeComponentImpl final
@@ -87,6 +112,8 @@ class PathHeterogeneousVolumeComponentImpl final
     std::unique_ptr<
         HeterogeneousVolumeSegmentComponent>
         _segment;
+    HeterogeneousVolumeScatterProbability
+        _scatter_probability;
 
     [[nodiscard]] UInt _surface_flags(
         const VolumeStackEntry &entry)
@@ -153,6 +180,9 @@ class PathHeterogeneousVolumeComponentImpl final
         const auto initial_shade_offset =
             random.shade_offset(
                 input.path_rng_offset);
+        const auto direct_random =
+            random.scatter_distance(
+                input.path_rng_offset);
         const auto tracking_rng_offset =
             cycles_sampler::
                 scramble_path_offset(
@@ -205,18 +235,38 @@ class PathHeterogeneousVolumeComponentImpl final
                 input.ray_origin,
                 input.ray_direction);
         return _segment->emit(
-            traversal,
-            random,
-            *collisions,
-            input.majorant_scale,
-            input.ray_minimum,
-            input.ray_maximum,
-            input.ray_direction,
-            input.throughput,
-            input.reservoir_random,
-            input.phase_random,
-            tracking_rng_offset,
-            input.terminate);
+            {.segments = traversal,
+             .random = random,
+             .collisions = *collisions,
+             .guiding =
+                 _scatter_probability
+                     .evaluate(
+                         input.guiding),
+             .direct = input.direct,
+             .direct_direction =
+                 input.direct_direction,
+             .ray_minimum =
+                 input.ray_minimum,
+             .ray_maximum =
+                 input.ray_maximum,
+             .segment_origin =
+                 input.ray_origin +
+                 input.ray_direction *
+                     input.ray_minimum,
+             .phase_axis =
+                 input.ray_direction,
+             .throughput =
+                 input.throughput,
+             .direct_random =
+                 direct_random,
+             .reservoir_random =
+                 input.reservoir_random,
+             .phase_random =
+                 input.phase_random,
+             .tracking_rng_offset =
+                 tracking_rng_offset,
+             .terminate =
+                 input.terminate});
     }
 };
 

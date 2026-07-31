@@ -60,6 +60,63 @@ HeterogeneousVolumeTracking::null_event_coefficients(
             actual_maximum > sampled_majorant};
 }
 
+HeterogeneousVolumeScatterMeasure
+HeterogeneousVolumeTracking::scatter_measure(
+    const VolumeCoefficients &coefficients,
+    Float3 sigma_n,
+    Float3 throughput) const noexcept {
+    const auto absorption_only =
+        coefficients.sigma_s.x +
+            coefficients.sigma_s.y +
+            coefficients.sigma_s.z ==
+        0.0f;
+    Float3 channel_pdf =
+        make_float3(0.0f);
+    Float probability = 0.0f;
+    // Cycles returns before constructing a channel measure for an
+    // absorption-only candidate. Preserve that control-flow domain so dead
+    // 0/0 spectral quotients cannot leak NaNs into the result.
+    $if(!absorption_only) {
+        const auto sigma_c =
+            coefficients.sigma_s +
+            sigma_n;
+        const auto albedo =
+            _safe_divide_color(
+                coefficients.sigma_s,
+                coefficients.sigma_t,
+                1.0f);
+        const auto channel_weights =
+            abs(throughput * albedo);
+        const auto weight_sum =
+            channel_weights.x +
+            channel_weights.y +
+            channel_weights.z;
+        // Cycles uses this form to reject denormals that could normalize to
+        // NaN.
+        const auto usable_weights =
+            (1.0f - weight_sum) < 1.0f;
+        channel_pdf =
+            select(
+                make_float3(1.0f / 3.0f),
+                channel_weights /
+                    select(
+                        1.0f,
+                        weight_sum,
+                        usable_weights),
+                usable_weights);
+        probability =
+            dot(
+                coefficients.sigma_s /
+                    sigma_c,
+                channel_pdf);
+    };
+    return {
+        .channel_pdf = channel_pdf,
+        .probability = probability,
+        .absorption_only =
+            absorption_only};
+}
+
 HeterogeneousVolumeCollision
 HeterogeneousVolumeTracking::evaluate_collision(
     const VolumeCoefficients &coefficients,
@@ -100,52 +157,17 @@ HeterogeneousVolumeTracking::evaluate_collision(
         normalized_throughput *
         coefficients.emission;
 
+    const auto scatter =
+        scatter_measure(
+            coefficients,
+            null_event.sigma_n,
+            normalized_throughput);
     const auto absorption_only =
-        coefficients.sigma_s.x +
-            coefficients.sigma_s.y +
-            coefficients.sigma_s.z ==
-        0.0f;
-    Float3 channel_pdf = make_float3(0.0f);
-    Float scatter_probability = 0.0f;
-    // Cycles returns before constructing a channel measure for an
-    // absorption-only candidate. Preserve that control-flow domain so dead
-    // 0/0 spectral quotients cannot leak NaNs into the result.
-    $if(!absorption_only) {
-        const auto sigma_c =
-            coefficients.sigma_s +
-            null_event.sigma_n;
-        const auto albedo =
-            _safe_divide_color(
-                coefficients.sigma_s,
-                coefficients.sigma_t,
-                1.0f);
-        const auto channel_weights =
-            abs(normalized_throughput * albedo);
-        const auto weight_sum =
-            channel_weights.x +
-            channel_weights.y +
-            channel_weights.z;
-        // Cycles uses this form to reject denormals that could normalize to
-        // NaN.
-        const auto usable_weights =
-            (1.0f - weight_sum) < 1.0f;
-        channel_pdf =
-            select(
-                make_float3(1.0f / 3.0f),
-                channel_weights /
-                    select(
-                        1.0f,
-                        weight_sum,
-                        usable_weights),
-                usable_weights);
-
-        // Cycles evaluates this quotient directly inside the scattering
-        // domain.
-        const auto scatter_ratio =
-            coefficients.sigma_s / sigma_c;
-        scatter_probability =
-            dot(scatter_ratio, channel_pdf);
-    };
+        scatter.absorption_only;
+    const auto channel_pdf =
+        scatter.channel_pdf;
+    const auto scatter_probability =
+        scatter.probability;
     const auto null_probability =
         1.0f - scatter_probability;
     const auto scatter_throughput =
