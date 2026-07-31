@@ -1,6 +1,6 @@
 #include "path_kernel_builder.h"
+#include "path_kernel_environment_light.h"
 
-#include <psycles/luisa/background_sampling.h>
 #include <psycles/luisa/surface_ray.h>
 
 #include <utility>
@@ -10,13 +10,18 @@ namespace {
 
 class EnvironmentLightingComponent final : public DirectLightingComponent {
 
+  private:
+    std::shared_ptr<
+        const EnvironmentLightComponent>
+        _environment_light{
+            make_environment_light_component()};
+
   public:
     void emit(DirectLightingContext &context) const noexcept override {
         auto &bounce = context.bounce;
         auto &sample = bounce.sample;
         auto &invocation = sample.invocation;
         const auto &config = invocation.config;
-        const auto &scene = config.scene;
         auto &surface = context.surface;
         auto &selected_light = bounce.selected_light;
         auto &light_sample = bounce.light_sample;
@@ -47,12 +52,6 @@ class EnvironmentLightingComponent final : public DirectLightingComponent {
             return invocation.evaluate_surface(
                 tag, surface_point, outgoing, query);
         };
-        auto evaluate_environment =
-            [&](Float3 direction,
-                const cycles_path_state::ShaderEvaluationState
-                    &shader_state) noexcept {
-                return invocation.evaluate_environment(direction, shader_state);
-            };
         auto sample_light_roulette = [&](Float3 contribution,
                                          Float random) noexcept {
             return invocation.sample_light_roulette(contribution, random);
@@ -68,23 +67,23 @@ class EnvironmentLightingComponent final : public DirectLightingComponent {
         $if(selected_light.kind ==
             static_cast<std::uint32_t>(
                 sampling::LightDistributionEmitterKind::environment)) {
-            const auto background_sample = background_sampling::sample(
-                scene->background_conditional_cdf,
-                scene->background_marginal_cdf,
-                scene->background_map_width,
-                scene->background_map_height,
-                scene->background_map_weight,
-                scene->background_guided_sun_weight,
-                make_float3(scene->background_guided_sun_axis),
-                scene->background_guided_sun_radius,
-                light_sample.xy());
-            Float3 wi = background_sample.direction;
-            Float light_pdf =
-                background_sample.pdf * selected_light.selection_pdf;
-            $if(light_pdf > 0.0f) {
-                const auto shadow = make_surface_shadow_origin(wi);
+            const auto light =
+                _environment_light
+                    ->from_position(
+                        sample,
+                        surface.hit_position,
+                        light_sample.xy(),
+                        selected_light
+                            .selection_pdf);
+            $if(light.valid) {
+                const auto shadow =
+                    make_surface_shadow_origin(
+                        light.direction);
                 Var<luisa::compute::Ray> environment_shadow_ray =
-                    make_ray(shadow.position, wi, 0.0f, ray_maximum);
+                    make_ray(shadow.position,
+                             light.direction,
+                             0.0f,
+                             ray_maximum);
                 Float3 shadow_transmittance =
                     trace_shadow(environment_shadow_ray,
                                  select(surface_ray::invalid_primitive,
@@ -105,20 +104,19 @@ class EnvironmentLightingComponent final : public DirectLightingComponent {
                                          transmission_depth)));
                 $if(any(shadow_transmittance > 0.0f)) {
                     auto evaluation = evaluate_surface(
-                        surface_tag, point, wi, path_surface_query);
+                        surface_tag,
+                        point,
+                        light.direction,
+                        path_surface_query);
                     Float mis_weight =
-                        nee_light_weight(light_pdf, evaluation.pdf);
+                        nee_light_weight(
+                            light.pdf,
+                            evaluation.pdf);
                     Float3 unshadowed_contribution =
                         evaluation.f *
-                        evaluate_environment(
-                            wi,
-                            cycles_path_state::light_emission_shader_state(
-                                path_depth,
-                                diffuse_depth,
-                                glossy_depth,
-                                transparent_depth,
-                                transmission_depth)) *
-                        (mis_weight / light_pdf);
+                        light.radiance *
+                        (mis_weight /
+                         light.pdf);
                     Float roulette_weight = sample_light_roulette(
                         unshadowed_contribution, light_terminate_sample);
                     Float3 contribution = clamp_contribution(

@@ -33,7 +33,15 @@ def argument_options() -> argparse.Namespace:
     )
     parser.add_argument(
         "--light",
-        choices=("distant", "point", "spot", "area", "mesh"),
+        choices=(
+            "distant",
+            "point",
+            "spot",
+            "area",
+            "mesh",
+            "environment",
+            "environment_constant",
+        ),
         default="distant",
         help="emitter family (default: distant)",
     )
@@ -48,6 +56,16 @@ def argument_options() -> argparse.Namespace:
         help="Cycles material volume-sampling policy",
     )
     parser.add_argument(
+        "--direct-light-sampling",
+        choices=(
+            "MULTIPLE_IMPORTANCE_SAMPLING",
+            "NEXT_EVENT_ESTIMATION",
+            "FORWARD_PATH_TRACING",
+        ),
+        default="MULTIPLE_IMPORTANCE_SAMPLING",
+        help="Cycles direct-light strategy",
+    )
+    parser.add_argument(
         "--area-shape",
         choices=("RECTANGLE", "ELLIPSE"),
         default="RECTANGLE",
@@ -58,6 +76,22 @@ def argument_options() -> argparse.Namespace:
         type=float,
         default=math.pi,
         help="area-light spread in radians (default: pi)",
+    )
+    parser.add_argument(
+        "--hide-world-camera",
+        action="store_true",
+        help="disable the World Camera visibility bit",
+    )
+    parser.add_argument(
+        "--hide-world-scatter",
+        action="store_true",
+        help="disable the World Volume Scatter visibility bit",
+    )
+    parser.add_argument(
+        "--world-sampling",
+        choices=("MANUAL", "AUTOMATIC", "NONE"),
+        default=None,
+        help="override the environment World sampling policy",
     )
     options = parser.parse_args(trailing)
     if options.samples <= 0:
@@ -107,20 +141,83 @@ def make_volume_material(
     return material
 
 
-def make_world() -> bpy.types.World:
-    world = bpy.data.worlds.new("Cycles black world")
+def make_world(
+    light_type: str,
+    sampling_method: str | None,
+) -> bpy.types.World:
+    environment = light_type in {
+        "environment",
+        "environment_constant",
+    }
+    spatial_environment = (
+        light_type == "environment"
+    )
+    world = bpy.data.worlds.new(
+        "Cycles raw environment closure"
+        if environment
+        else "Cycles black world"
+    )
     if world.node_tree is None:
         world.use_nodes = True
     nodes = world.node_tree.nodes
     nodes.clear()
     output = nodes.new("ShaderNodeOutputWorld")
     background = nodes.new("ShaderNodeBackground")
-    background.inputs["Color"].default_value = (0.0, 0.0, 0.0, 1.0)
-    background.inputs["Strength"].default_value = 0.0
+    if spatial_environment:
+        coordinates = nodes.new(
+            "ShaderNodeTexCoord"
+        )
+        gradient = nodes.new(
+            "ShaderNodeTexGradient"
+        )
+        gradient.gradient_type = "LINEAR"
+        remap = nodes.new(
+            "ShaderNodeMath"
+        )
+        remap.operation = "MULTIPLY_ADD"
+        remap.inputs[1].default_value = 0.25
+        remap.inputs[2].default_value = 0.5
+        world.node_tree.links.new(
+            coordinates.outputs["Generated"],
+            gradient.inputs["Vector"],
+        )
+        world.node_tree.links.new(
+            gradient.outputs["Fac"],
+            remap.inputs[0],
+        )
+        world.node_tree.links.new(
+            remap.outputs["Value"],
+            background.inputs["Color"],
+        )
+    else:
+        background.inputs[
+            "Color"
+        ].default_value = (
+            (0.8, 0.4, 0.2, 1.0)
+            if environment
+            else (0.0, 0.0, 0.0, 1.0)
+        )
+    background.inputs["Strength"].default_value = (
+        1.0 if environment else 0.0
+    )
     world.node_tree.links.new(
         background.outputs["Background"], output.inputs["Surface"]
     )
-    world.cycles.sampling_method = "NONE"
+    world.cycles.sampling_method = (
+        sampling_method
+        if sampling_method is not None
+        else (
+            "MANUAL"
+            if environment
+            else "NONE"
+        )
+    )
+    if (
+        environment
+        and world.cycles.sampling_method
+        == "MANUAL"
+    ):
+        world.cycles.sample_map_resolution = 4
     return world
 
 
@@ -130,6 +227,11 @@ def make_light(
     area_shape: str,
     area_spread: float,
 ) -> None:
+    if light_type in {
+        "environment",
+        "environment_constant",
+    }:
+        return
     if light_type == "mesh":
         material = bpy.data.materials.new(
             "Cycles raw mesh emission closure"
@@ -242,8 +344,12 @@ def configure_scene(
     samples: int,
     light_type: str,
     volume_sampling: str,
+    direct_light_sampling: str,
     area_shape: str,
     area_spread: float,
+    hide_world_camera: bool,
+    hide_world_scatter: bool,
+    world_sampling: str | None,
 ) -> None:
     scene = bpy.context.scene
     scene.render.engine = "CYCLES"
@@ -267,18 +373,40 @@ def configure_scene(
     scene.cycles.sample_clamp_indirect = 0.0
     scene.cycles.blur_glossy = 0.0
     scene.cycles.use_light_tree = False
-    scene.cycles.direct_light_sampling_type = "MULTIPLE_IMPORTANCE_SAMPLING"
+    scene.cycles.direct_light_sampling_type = (
+        direct_light_sampling
+    )
     scene.render.resolution_x = 4
     scene.render.resolution_y = 4
     scene.render.resolution_percentage = 100
-    scene.render.image_settings.file_format = "OPEN_EXR"
+    image_settings = scene.render.image_settings
+    if hasattr(image_settings, "media_type"):
+        image_settings.media_type = "MULTI_LAYER_IMAGE"
+    image_settings.file_format = "OPEN_EXR_MULTILAYER"
     scene.render.image_settings.color_mode = "RGBA"
     scene.render.image_settings.color_depth = "32"
     scene.render.film_transparent = False
     scene.cycles.pixel_filter_type = "BOX"
     scene.cycles.filter_width = 1.0
     scene.render.filepath = str(output)
-    scene.world = make_world()
+    scene.world = make_world(
+        light_type,
+        world_sampling,
+    )
+    scene.world.cycles_visibility.camera = (
+        not hide_world_camera
+    )
+    scene.world.cycles_visibility.scatter = (
+        not hide_world_scatter
+    )
+    print(
+        "Cycles world sampling: "
+        f"{scene.world.cycles.sampling_method}, "
+        "camera="
+        f"{scene.world.cycles_visibility.camera}, "
+        "scatter="
+        f"{scene.world.cycles_visibility.scatter}"
+    )
 
     layer = scene.view_layers[0]
     layer.use_pass_environment = True
@@ -323,8 +451,12 @@ def main() -> None:
         options.samples,
         options.light,
         options.volume_sampling,
+        options.direct_light_sampling,
         options.area_shape,
         options.area_spread,
+        options.hide_world_camera,
+        options.hide_world_scatter,
+        options.world_sampling,
     )
     bpy.ops.render.render(write_still=True)
     print(

@@ -52,6 +52,13 @@ def _main() -> None:
     group_b = bpy.context.view_layer.lightgroups.add()
     group_b.name = "Group B"
 
+    scene.world.cycles_visibility.camera = False
+    scene.world.cycles_visibility.diffuse = True
+    scene.world.cycles_visibility.glossy = False
+    scene.world.cycles_visibility.transmission = True
+    scene.world.cycles_visibility.shadow = False
+    scene.world.cycles_visibility.scatter = False
+
     material = bpy.data.materials.new("Middle Material")
     material.use_nodes = True
     material.cycles.volume_sampling = "EQUIANGULAR"
@@ -147,11 +154,24 @@ def _main() -> None:
                 f"{light['name']} shader flags were not preserved"
             )
 
-    if payload["world"] is not None and payload["world"]["cycles_sync"] != {
-        "shader_index": 3,
-        "object_index": 3,
-    }:
-        raise AssertionError("world Cycles identity changed")
+    if payload["world"] is not None:
+        if payload["world"]["cycles_sync"] != {
+            "shader_index": 3,
+            "object_index": 3,
+        }:
+            raise AssertionError("world Cycles identity changed")
+        visibility = payload["world"]["visibility"]
+        if (
+            visibility["camera"]
+            or not visibility["diffuse"]
+            or visibility["glossy"]
+            or not visibility["transmission"]
+            or visibility["shadow"]
+            or visibility["volume_scatter"]
+        ):
+            raise AssertionError(
+                f"world visibility changed: {visibility}"
+            )
 
     print("Psycles Blender Cycles-identity regression passed")
 

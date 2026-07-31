@@ -362,6 +362,10 @@ struct SceneSnapshot {
     // closure graph and procedural environment resources.
     WorldSampling world_sampling{WorldSampling::automatic};
     std::uint32_t world_sample_map_resolution{1024u};
+    // Cycles Background::visibility. Unlike an ordinary object this belongs
+    // to the world shader/background-light pair, but uses the same public ray
+    // categories.
+    std::uint32_t world_visibility_mask{all_ray_visibility};
 };
 
 struct UpsertMaterial {

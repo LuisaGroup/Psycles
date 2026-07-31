@@ -1,6 +1,5 @@
 #include "path_kernel_builder.h"
-
-#include <psycles/luisa/background_sampling.h>
+#include "path_kernel_environment_light.h"
 
 #include <utility>
 
@@ -9,6 +8,12 @@ namespace {
 
 class BackgroundEventStageImpl final
     : public BackgroundEventStage {
+
+  private:
+    std::shared_ptr<
+        const EnvironmentLightComponent>
+        _environment_light{
+            make_environment_light_component()};
 
   public:
     void emit(ClosestPathEvent &event)
@@ -50,28 +55,22 @@ class BackgroundEventStageImpl final
             scene->environment_in_light_distribution
                 ? scene->light_selection_pdf
                 : 0.0f;
-        Float background_pdf =
-            background_sampling::pdf(
-                scene->background_conditional_cdf,
-                scene->background_marginal_cdf,
-                scene->background_map_width,
-                scene->background_map_height,
-                scene->background_map_weight,
-                scene->background_guided_sun_weight,
-                make_float3(
-                    scene->
-                        background_guided_sun_axis),
-                scene->background_guided_sun_radius,
-                ray->direction());
         Float environment_pdf =
-            environment_selection_pdf *
-            background_pdf;
+            _environment_light
+                ->from_direction(
+                    scene,
+                    ray->origin(),
+                    ray->direction(),
+                    environment_selection_pdf);
         Float environment_weight =
             forward_light_weight(
                 previous_bsdf_pdf,
                 environment_pdf,
                 competing,
                 environment_pdf > 0.0f);
+        const auto world_visible =
+            (scene->world_visibility_mask &
+             ray_visibility) != 0u;
         Float3 environment_contribution =
             invocation
                 .clamp_emission_contribution(
@@ -90,6 +89,11 @@ class BackgroundEventStageImpl final
                                     transmission_depth)) *
                     environment_weight,
                 path_depth);
+        environment_contribution =
+            select(
+                make_float3(0.0f),
+                environment_contribution,
+                world_visible);
         const auto transparent_background_ray =
             (invocation.parameters
                  .transparent_background !=

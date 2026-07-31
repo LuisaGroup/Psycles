@@ -39,6 +39,8 @@ _PASS_CHANNELS = {
     "TransInd": ("R", "G", "B"),
     "Emit": ("R", "G", "B"),
     "Env": ("R", "G", "B"),
+    "Volume Direct": ("R", "G", "B"),
+    "Volume Indirect": ("R", "G", "B"),
     "Depth": ("Z",),
     "Debug Sample Count": ("X",),
 }
