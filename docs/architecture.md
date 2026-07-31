@@ -259,10 +259,12 @@ measure, real-versus-null probabilities, absorption-only deterministic
 continuation, and both continuation weights. Its result carries an explicit
 `majorant_exceeded` predicate. That predicate is a failed preprocessing
 contract, not permission to continue with an estimated bound. Majorant
-construction, octree traversal, VSPG reservoir selection, and direct-light
-MIS are separate components so that none can silently alter this local
-measure. Until a sound majorant provider and traversal are connected, the
-scene capability gate continues to reject heterogeneous material graphs.
+construction, octree traversal, overlapping-stack reduction, VSPG reservoir
+selection, and direct-light MIS are separate components so that none can
+silently alter this local measure. The first three acceleration stages are
+now complete; the scene capability gate continues to reject heterogeneous
+material graphs until their production coordinate/extrema provider and
+collision/phase/direct-light path are connected.
 
 `VolumeMajorantSceneComponent` owns the next host-stage boundary. It maps each
 internal instance and its effective material overrides to one object/shader
@@ -410,14 +412,24 @@ stored estimate and follows the explicit Cycles correction path.
 mirrors positive ray axes, derives octants and common ancestors from IEEE-754
 mantissa bits, walks parent links without a device stack, and preserves
 Cycles' root-extrema tail for an implicit medium whose active segment extends
-beyond the root bounds. Overlapping volume-stack reduction remains a separate
-component so single-root adjacency, multi-root interval selection, and
-coefficient accumulation cannot silently acquire different traversal rules.
+beyond the root bounds.
+
+`VolumeMajorantOverlapTraversal` owns the separate ordered stack reduction.
+It persists only the currently selected single-root traversal and rebuilds
+every other root at the new common minimum, accumulates extrema in stack
+order, and uses Cycles' `<=` replacement so the last equal endpoint is active.
+Instance ranges and the final World range are searched backward by masked
+shader identity. Missing, malformed, or invalid root coverage fails the whole
+segment closed and cannot invoke the coordinate/extrema provider. The
+host-stage-polymorphic `VolumeMajorantEntryProvider` keeps object transforms
+and runtime Light Path extrema evaluation outside the interval algebra; its
+default policy is the baked leaf extrema times object density.
+
 `HeterogeneousVolumeTracking` independently owns exponential candidate
 distance and the throughput/albedo-weighted real/null collision measure.
-Scene-side prepass resources now compose the first two stages; production
-transport will consume them only after the multi-root interval reducer is
-connected.
+Scene-side prepass resources, hierarchy traversal, and multi-root reduction
+now compose the acceleration stages. Production transport still needs the
+scene-aware provider and collision/phase/direct-light connection.
 
 Volume-scattering probability guidance is persistent render-session state,
 not path-local policy. The path kernel accumulates Cycles' raw scatter,

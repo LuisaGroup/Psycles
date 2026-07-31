@@ -201,9 +201,11 @@ or background event, `PathVolumeSegmentStage` evaluates the original stacked
 closure graphs, resolves attenuation/emission or a phase collision, and
 applies the total Cycles volume path-state transition. Scene compilation now
 accepts raw volume programs structurally proven homogeneous and explicitly
-rejects spatially varying volume dependencies. Heterogeneous grids and volume
-lighting outside the exact homogeneous analytic-light subset remain open, so
-the four Blender volume nodes remain unverified in the public node matrix.
+rejects spatially varying volume dependencies at the production path gate.
+Heterogeneous acceleration metadata and overlap traversal are implemented,
+but runtime collision/phase/direct-light integration remains open; volume
+lighting outside the exact homogeneous analytic-light subset therefore
+remains unverified in the public node matrix.
 
 World volume identity is now complete in scene schema v2: the exporter retains
 Cycles' background-light object index separately from the default-background
@@ -294,9 +296,10 @@ continuation, and the defensive majorant-violation correction. The component
 also exposes that violation as a predicate so an unsound preprocessing bound
 cannot be mistaken for supported rendering. A 16-record fixture plus exact
 32-bit hash checks passes on fallback, HIP, and Vulkan. Spatial majorant
-construction, octree traversal, VSPG reservoirs, and production path
-connection remain open, so heterogeneous scenes are still rejected rather
-than falling back to homogeneous integration. Details are in
+construction and overlapping traversal have since been completed as separate
+components; VSPG reservoir use and the production path connection remain
+open, so heterogeneous scenes are still rejected rather than falling back to
+homogeneous integration. Details of the collision checkpoint are in
 [`validation/2026-07-31/heterogeneous-volume-collision`](validation/2026-07-31/heterogeneous-volume-collision/README.md).
 
 Accumulated VSPG history is now connected end to end. The production path
@@ -613,13 +616,19 @@ extrema before any device buffer becomes visible.
 Focused device regressions cover forward/reverse adjacency, parent ascent,
 root exit, and the outside-root path. Cycles' hierarchy extrema come from
 finite padded Sobol samples; they are not claimed as a mathematically
-guaranteed bound. Runtime majorant violations remain explicit. Prepass
-details are in
+guaranteed bound. The multi-root reducer now preserves one active traversal,
+reconstructs all other roots at each common minimum, sums extrema in stack
+order, uses the exact last-equal-endpoint tie rule, and takes Cycles'
+one-medium shortcut. Reverse range lookup masks high shader flags and fails
+closed on missing or malformed coverage without evaluating the entry
+provider. Runtime majorant violations remain explicit. Prepass details are in
 [`validation/2026-07-31/volume-majorant-prepass`](validation/2026-07-31/volume-majorant-prepass/README.md);
 scene-resource details are in
 [`validation/2026-07-31/volume-majorant-scene-resources`](validation/2026-07-31/volume-majorant-scene-resources/README.md).
 The complete stack-root-domain correction is recorded in
 [`validation/2026-07-31/volume-majorant-root-domain`](validation/2026-07-31/volume-majorant-root-domain/README.md).
+The ordered overlap reduction is recorded in
+[`validation/2026-07-31/volume-majorant-overlap`](validation/2026-07-31/volume-majorant-overlap/README.md).
 
 Adaptive sampling and denoising are exported and diagnosed but are not part of
 the path-integrator estimator. Psycles renders fixed-count, un-denoised linear
@@ -636,7 +645,8 @@ compatible yet:
 
 - Cycles' emitter importance distribution and environment importance map;
 - light-tree construction and traversal;
-- heterogeneous overlapping-octree reduction and production path integration;
+- heterogeneous production transforms/runtime Light Path extrema and
+  collision/phase/direct-light path integration;
 - remaining distant-light forward/background behavior;
 - MNEE, path guiding, shadow catcher, light linking, and light groups;
 - Cycles' exact sampling sequence and random dimensions.
