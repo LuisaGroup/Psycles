@@ -215,6 +215,7 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/path_kernel_surface_geometry.cpp
             src/luisa/path_kernel_surface_scatter.cpp
             src/luisa/path_kernel_surface_shading.cpp
+            src/luisa/path_kernel_triangle_geometry.cpp
             src/luisa/path_tracer_kernel.cpp
             src/luisa/path_tracer_light_distribution.cpp
             src/luisa/path_tracer_lighting.cpp
@@ -396,6 +397,26 @@ if(PSYCLES_ENABLE_LUISA)
                     COMMAND
                         psycles_luisa_area_light_forward_tests
                         fallback)
+                if(TARGET luisa-compute-backend-hip)
+                    add_dependencies(
+                        psycles_luisa_area_light_forward_tests
+                        luisa-compute-backend-hip)
+                    add_test(
+                        NAME psycles.luisa_area_light_forward_hip
+                        COMMAND
+                            psycles_luisa_area_light_forward_tests
+                            hip)
+                endif()
+                if(TARGET luisa-compute-backend-vk)
+                    add_dependencies(
+                        psycles_luisa_area_light_forward_tests
+                        luisa-compute-backend-vk)
+                    add_test(
+                        NAME psycles.luisa_area_light_forward_vk
+                        COMMAND
+                            psycles_luisa_area_light_forward_tests
+                            vk)
+                endif()
 
                 add_executable(
                     psycles_luisa_cycles_sample_mapping_tests
@@ -830,6 +851,19 @@ if(PSYCLES_BUILD_TESTS)
                 --
                 "${CMAKE_CURRENT_SOURCE_DIR}/tools/export_psycles_scene.py")
         add_test(
+            NAME psycles.blender_export_attribute_domains
+            COMMAND
+                "${PSYCLES_BLENDER_EXECUTABLE}"
+                --background
+                --factory-startup
+                --python-exit-code
+                1
+                --python
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_attribute_domains.py"
+                --
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/export_psycles_scene.py"
+                "$<TARGET_FILE:psycles_inspect_blender_material>")
+        add_test(
             NAME psycles.blender_export_linked_images
             COMMAND
                 "${PSYCLES_BLENDER_EXECUTABLE}"
@@ -909,5 +943,18 @@ if(PSYCLES_BUILD_TESTS)
                 --factory-startup
                 --python
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_multilayer_exr_api.py")
+        set_tests_properties(
+            psycles.blender_export_geometry_cache
+            psycles.blender_export_attribute_domains
+            psycles.blender_export_linked_images
+            psycles.blender_export_generated_images
+            psycles.blender_export_particle_info
+            psycles.blender_export_render_settings
+            psycles.blender_export_cycles_identity
+            psycles.blender_diagnostic_probes
+            psycles.blender_multilayer_exr_api
+            PROPERTIES
+                ENVIRONMENT
+                    "SDL_AUDIODRIVER=dummy;ALSOFT_DRIVERS=null")
     endif()
 endif()

@@ -205,24 +205,41 @@ public:
                             ->template buffer<Triangle>(
                                 range.triangle_slot)
                             .read(point.primitive_id);
+                    UInt i0 = triangle.i0;
+                    UInt i1 = triangle.i1;
+                    UInt i2 = triangle.i2;
+                    $if (binding.domain ==
+                         attribute_domain_corner) {
+                        const auto corner =
+                            point.primitive_id * 3u;
+                        i0 = corner;
+                        i1 = corner + 1u;
+                        i2 = corner + 2u;
+                    };
+                    $if (binding.domain ==
+                         attribute_domain_face) {
+                        i0 = point.primitive_id;
+                        i1 = point.primitive_id;
+                        i2 = point.primitive_id;
+                    };
                     auto v0 =
                         _geometry_heap
                             ->template buffer<
                                 luisa::float4>(
                                 binding.value_slot)
-                            .read(triangle.i0);
+                            .read(i0);
                     auto v1 =
                         _geometry_heap
                             ->template buffer<
                                 luisa::float4>(
                                 binding.value_slot)
-                            .read(triangle.i1);
+                            .read(i1);
                     auto v2 =
                         _geometry_heap
                             ->template buffer<
                                 luisa::float4>(
                                 binding.value_slot)
-                            .read(triangle.i2);
+                            .read(i2);
                     result.value = triangle_interpolate(
                         point.barycentric, v0, v1, v2);
                     found = true;

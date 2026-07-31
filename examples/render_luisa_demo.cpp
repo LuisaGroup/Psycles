@@ -97,10 +97,10 @@ void add_quad(
         static_cast<std::uint32_t>(mesh.positions.size());
     for (const auto value : p) {
         mesh.positions.emplace_back(value);
-        mesh.normals.emplace_back(normal);
+        mesh.normals.values.emplace_back(normal);
     }
-    mesh.uv.insert(
-        mesh.uv.end(),
+    mesh.uv.values.insert(
+        mesh.uv.values.end(),
         {{0.0f, 0.0f},
          {1.0f, 0.0f},
          {1.0f, 1.0f},

@@ -21,6 +21,19 @@ using namespace detail;
 
 namespace {
 
+[[nodiscard]] constexpr std::uint32_t encode_attribute_domain(
+    contract::MeshAttributeDomain domain) noexcept {
+    switch (domain) {
+        case contract::MeshAttributeDomain::point:
+            return attribute_domain_point;
+        case contract::MeshAttributeDomain::corner:
+            return attribute_domain_corner;
+        case contract::MeshAttributeDomain::face:
+            return attribute_domain_face;
+    }
+    return attribute_domain_point;
+}
+
 [[nodiscard]] Vec3f transform_point(
     const Mat4f &transform,
     Vec3f point) noexcept {
@@ -993,10 +1006,6 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         }
         auto &upload = uploads.emplace_back();
         upload.positions.reserve(geometry.positions.size());
-        upload.normals.reserve(geometry.positions.size());
-        upload.uv.reserve(geometry.positions.size());
-        upload.uv_tangents.reserve(geometry.positions.size());
-        upload.generated.reserve(geometry.positions.size());
         auto bounds_min = geometry.positions.front();
         auto bounds_max = geometry.positions.front();
         for (const auto position : geometry.positions) {
@@ -1023,47 +1032,140 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 map_axis(position.y, bounds_min.y, bounds_max.y),
                 map_axis(position.z, bounds_min.z, bounds_max.z)};
         };
-        for (std::size_t i = 0u;
-             i < geometry.positions.size();
-             ++i) {
+        for (const auto position : geometry.positions) {
             upload.positions.emplace_back(
-                to_luisa(geometry.positions[i]));
-            upload.normals.emplace_back(
-                i < geometry.normals.size()
-                    ? to_luisa(geometry.normals[i])
-                    : luisa::make_float3(0.0f));
-            upload.uv.emplace_back(
-                i < geometry.uv.size()
-                    ? to_luisa(geometry.uv[i])
-                    : luisa::make_float2(0.0f));
-            const auto uv_tangent =
-                i < geometry.uv_tangents.size()
-                    ? geometry.uv_tangents[i]
-                    : Vec4f{};
-            upload.uv_tangents.emplace_back(
-                luisa::make_float4(
-                    uv_tangent.x,
-                    uv_tangent.y,
-                    uv_tangent.z,
-                    uv_tangent.w));
-            upload.generated.emplace_back(
-                to_luisa(
-                    i < geometry.generated.size()
-                        ? geometry.generated[i]
-                        : generated_fallback(
-                              geometry.positions[i])));
+                to_luisa(position));
+        }
+        const auto require_vertex_or_corner =
+            [&](std::string_view name,
+                contract::MeshAttributeDomain domain) {
+                if (domain !=
+                        contract::MeshAttributeDomain::point &&
+                    domain !=
+                        contract::MeshAttributeDomain::corner) {
+                    diagnose(
+                        result.diagnostics,
+                        "Geometry '" + geometry.name +
+                            "' uses unsupported " +
+                            std::string{name} +
+                            " domain. Cycles primary triangle "
+                            "attributes must be point or corner.");
+                    return false;
+                }
+                return true;
+            };
+        const auto normal_domain =
+            geometry.normals.values.empty()
+                ? contract::MeshAttributeDomain::point
+                : geometry.normals.domain;
+        const auto uv_domain =
+            geometry.uv.values.empty()
+                ? contract::MeshAttributeDomain::point
+                : geometry.uv.domain;
+        const auto uv_tangent_domain =
+            geometry.uv_tangents.values.empty()
+                ? contract::MeshAttributeDomain::point
+                : geometry.uv_tangents.domain;
+        const auto generated_domain =
+            geometry.generated.values.empty()
+                ? contract::MeshAttributeDomain::point
+                : geometry.generated.domain;
+        if (!require_vertex_or_corner(
+                "normal", normal_domain) ||
+            !require_vertex_or_corner("UV", uv_domain) ||
+            !require_vertex_or_corner(
+                "UV tangent", uv_tangent_domain) ||
+            !require_vertex_or_corner(
+                "Generated", generated_domain)) {
+            continue;
+        }
+        upload.attribute_domains =
+            (normal_domain ==
+                     contract::MeshAttributeDomain::corner
+                 ? geometry_normal_corner
+                 : 0u) |
+            (uv_domain ==
+                     contract::MeshAttributeDomain::corner
+                 ? geometry_uv_corner
+                 : 0u) |
+            (uv_tangent_domain ==
+                     contract::MeshAttributeDomain::corner
+                 ? geometry_uv_tangent_corner
+                 : 0u) |
+            (generated_domain ==
+                     contract::MeshAttributeDomain::corner
+                 ? geometry_generated_corner
+                 : 0u);
+        if (geometry.normals.values.empty()) {
+            upload.normals.assign(
+                geometry.positions.size(),
+                luisa::make_float3(0.0f));
+        } else {
+            upload.normals.reserve(
+                geometry.normals.values.size());
+            for (const auto value :
+                 geometry.normals.values) {
+                upload.normals.emplace_back(
+                    to_luisa(value));
+            }
+        }
+        if (geometry.uv.values.empty()) {
+            upload.uv.assign(
+                geometry.positions.size(),
+                luisa::make_float2(0.0f));
+        } else {
+            upload.uv.reserve(geometry.uv.values.size());
+            for (const auto value : geometry.uv.values) {
+                upload.uv.emplace_back(to_luisa(value));
+            }
+        }
+        if (geometry.uv_tangents.values.empty()) {
+            upload.uv_tangents.assign(
+                geometry.positions.size(),
+                luisa::make_float4(0.0f));
+        } else {
+            upload.uv_tangents.reserve(
+                geometry.uv_tangents.values.size());
+            for (const auto value :
+                 geometry.uv_tangents.values) {
+                upload.uv_tangents.emplace_back(
+                    luisa::make_float4(
+                        value.x,
+                        value.y,
+                        value.z,
+                        value.w));
+            }
+        }
+        if (geometry.generated.values.empty()) {
+            upload.generated.reserve(
+                geometry.positions.size());
+            for (const auto position :
+                 geometry.positions) {
+                upload.generated.emplace_back(
+                    to_luisa(generated_fallback(position)));
+            }
+        } else {
+            upload.generated.reserve(
+                geometry.generated.values.size());
+            for (const auto value :
+                 geometry.generated.values) {
+                upload.generated.emplace_back(
+                    to_luisa(value));
+            }
         }
         upload.attributes.reserve(
             geometry.color_attributes.size() +
             geometry.uv_layers.size() +
             geometry.uv_tangent_layers.size());
-        for (const auto &[name, values] :
+        for (const auto &[name, source] :
              geometry.color_attributes) {
             auto &attribute =
                 upload.attributes.emplace_back();
             attribute.id = contract::attribute_id(name);
-            attribute.values.reserve(values.size());
-            for (const auto value : values) {
+            attribute.domain =
+                encode_attribute_domain(source.domain);
+            attribute.values.reserve(source.values.size());
+            for (const auto value : source.values) {
                 attribute.values.emplace_back(
                     luisa::make_float4(
                         value.x,
@@ -1072,27 +1174,31 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                         value.w));
             }
         }
-        for (const auto &[name, values] :
+        for (const auto &[name, source] :
              geometry.uv_layers) {
             auto &attribute =
                 upload.attributes.emplace_back();
             attribute.id =
                 contract::uv_attribute_id(name);
-            attribute.values.reserve(values.size());
-            for (const auto value : values) {
+            attribute.domain =
+                encode_attribute_domain(source.domain);
+            attribute.values.reserve(source.values.size());
+            for (const auto value : source.values) {
                 attribute.values.emplace_back(
                     luisa::make_float4(
                         value.x, value.y, 0.0f, 0.0f));
             }
         }
-        for (const auto &[name, values] :
+        for (const auto &[name, source] :
              geometry.uv_tangent_layers) {
             auto &attribute =
                 upload.attributes.emplace_back();
             attribute.id =
                 contract::uv_tangent_attribute_id(name);
-            attribute.values.reserve(values.size());
-            for (const auto value : values) {
+            attribute.domain =
+                encode_attribute_domain(source.domain);
+            attribute.values.reserve(source.values.size());
+            for (const auto value : source.values) {
                 attribute.values.emplace_back(
                     luisa::make_float4(
                         value.x,
@@ -1252,7 +1358,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 AttributeBindingGpu{
                     .id = attribute.id,
                     .value_slot = attribute_slot,
-                    .padding = 0u});
+                    .domain = attribute.domain});
             stream << attribute_resource.copy_from(
                 luisa::span{attribute.values});
         }
@@ -1296,7 +1402,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 static_cast<std::uint32_t>(
                     std::max<std::size_t>(
                         geometry.material_slots.size(), 1u)),
-            .padding = 0u});
+            .attribute_domains =
+                upload.attribute_domains});
     }
     if (!result.diagnostics.empty()) {
         return result;

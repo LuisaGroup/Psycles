@@ -11,13 +11,13 @@ struct GeometryGpu {
     luisa::uint bindless_base{};
     luisa::uint material_offset{};
     luisa::uint material_count{};
-    luisa::uint padding{};
+    luisa::uint attribute_domains{};
 };
 
 struct AttributeBindingGpu {
     std::uint64_t id{};
     luisa::uint value_slot{};
-    luisa::uint padding{};
+    luisa::uint domain{};
 };
 
 struct AttributeRangeGpu {
@@ -267,12 +267,12 @@ LUISA_STRUCT(
     bindless_base,
     material_offset,
     material_count,
-    padding) {};
+    attribute_domains) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::AttributeBindingGpu,
     id,
     value_slot,
-    padding) {};
+    domain) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::AttributeRangeGpu,
     offset,

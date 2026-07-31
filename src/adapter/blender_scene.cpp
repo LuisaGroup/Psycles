@@ -37,6 +37,7 @@ using contract::LightId;
 using contract::LightType;
 using contract::MaterialDesc;
 using contract::MaterialId;
+using contract::MeshAttributeDomain;
 using contract::NishitaSkyDesc;
 using contract::SceneSnapshot;
 using contract::ShaderDomain;
@@ -65,6 +66,27 @@ using detail::unsigned_number;
     yyjson_val *geometry,
     const char *name) noexcept {
     return unsigned_number(member(member(geometry, name), "offset"));
+}
+
+[[nodiscard]] MeshAttributeDomain mesh_attribute_domain(
+    yyjson_val *value,
+    MeshAttributeDomain fallback =
+        MeshAttributeDomain::point) {
+    const auto name = text(value);
+    if (name.empty()) {
+        return fallback;
+    }
+    if (name == "POINT") {
+        return MeshAttributeDomain::point;
+    }
+    if (name == "CORNER") {
+        return MeshAttributeDomain::corner;
+    }
+    if (name == "FACE") {
+        return MeshAttributeDomain::face;
+    }
+    throw std::runtime_error(
+        "unsupported mesh attribute domain '" + name + "'");
 }
 
 template<typename T>
@@ -242,8 +264,11 @@ BlenderSceneImport load_blender_scene_bundle(
         return result;
     }
     auto *root = yyjson_doc_get_root(document.get());
-    if (text(member(root, "schema")) !=
-        "psycles.blender-scene.v1") {
+    const auto schema = text(member(root, "schema"));
+    const auto compact_geometry =
+        schema == "psycles.blender-scene.v2";
+    if (!compact_geometry &&
+        schema != "psycles.blender-scene.v1") {
         error("unsupported Blender scene bundle schema");
         return result;
     }
@@ -686,9 +711,14 @@ BlenderSceneImport load_blender_scene_bundle(
         geometry_stream.read(
             magic.data(),
             static_cast<std::streamsize>(magic.size()));
+        const auto geometry_magic =
+            std::string_view{magic.data(), magic.size()};
+        const auto expected_magic =
+            compact_geometry
+                ? std::string_view{"PSYGEO2\0", 8u}
+                : std::string_view{"PSYGEO1\0", 8u};
         if (!geometry_stream ||
-            std::string_view{magic.data(), magic.size()} !=
-                std::string_view{"PSYGEO1\0", 8u}) {
+            geometry_magic != expected_magic) {
             throw std::runtime_error(
                 "geometry.bin has an invalid header");
         }
@@ -699,35 +729,91 @@ BlenderSceneImport load_blender_scene_bundle(
         std::uint64_t geometry_index = 1u;
         while (auto *geometry =
                    yyjson_arr_iter_next(&geometry_iterator)) {
-            const auto vertex_count = static_cast<std::size_t>(
-                unsigned_number(
-                    member(geometry, "vertex_count")));
             const auto triangle_count = static_cast<std::size_t>(
                 unsigned_number(
                     member(geometry, "triangle_count")));
+            const auto point_count = static_cast<std::size_t>(
+                unsigned_number(
+                    member(
+                        geometry,
+                        compact_geometry
+                            ? "point_count"
+                            : "vertex_count")));
+            const auto corner_count = triangle_count * 3u;
+            if (compact_geometry &&
+                static_cast<std::size_t>(
+                    unsigned_number(
+                        member(geometry, "corner_count"))) !=
+                    corner_count) {
+                throw std::runtime_error(
+                    "compact geometry has an invalid corner count");
+            }
+            const auto domain_count =
+                [&](MeshAttributeDomain domain) noexcept {
+                    switch (domain) {
+                        case MeshAttributeDomain::point:
+                            return point_count;
+                        case MeshAttributeDomain::corner:
+                            return corner_count;
+                        case MeshAttributeDomain::face:
+                            return triangle_count;
+                    }
+                    return std::size_t{0u};
+                };
+            const auto normal_domain =
+                compact_geometry
+                    ? mesh_attribute_domain(
+                          member(geometry, "normal_domain"))
+                    : MeshAttributeDomain::point;
+            const auto uv_domain =
+                compact_geometry
+                    ? mesh_attribute_domain(
+                          member(geometry, "uv_domain"))
+                    : MeshAttributeDomain::point;
+            const auto uv_tangent_domain =
+                compact_geometry
+                    ? mesh_attribute_domain(
+                          member(
+                              geometry,
+                              "uv_tangent_domain"))
+                    : MeshAttributeDomain::point;
+            const auto generated_domain =
+                compact_geometry
+                    ? mesh_attribute_domain(
+                          member(
+                              geometry,
+                              "generated_domain"))
+                    : MeshAttributeDomain::point;
+            const auto normal_count =
+                domain_count(normal_domain);
+            const auto uv_count = domain_count(uv_domain);
+            const auto uv_tangent_count =
+                domain_count(uv_tangent_domain);
+            const auto generated_count =
+                domain_count(generated_domain);
             auto position_values = read_values<float>(
                 geometry_stream,
                 section_offset(geometry, "positions"),
-                vertex_count * 3u);
+                point_count * 3u);
             auto normal_values = read_values<float>(
                 geometry_stream,
                 section_offset(geometry, "normals"),
-                vertex_count * 3u);
+                normal_count * 3u);
             auto uv_values = read_values<float>(
                 geometry_stream,
                 section_offset(geometry, "uv"),
-                vertex_count * 2u);
+                uv_count * 2u);
             std::vector<float> uv_tangent_values;
             if (member(geometry, "uv_tangents") != nullptr) {
                 uv_tangent_values = read_values<float>(
                     geometry_stream,
                     section_offset(geometry, "uv_tangents"),
-                    vertex_count * 4u);
+                    uv_tangent_count * 4u);
             }
             auto generated_values = read_values<float>(
                 geometry_stream,
                 section_offset(geometry, "generated"),
-                vertex_count * 3u);
+                generated_count * 3u);
             auto index_values = read_values<std::uint32_t>(
                 geometry_stream,
                 section_offset(geometry, "indices"),
@@ -760,33 +846,50 @@ BlenderSceneImport load_blender_scene_bundle(
 
             TriangleMeshDesc mesh;
             mesh.name = text(member(geometry, "name"));
-            mesh.positions.reserve(vertex_count);
-            mesh.normals.reserve(vertex_count);
-            mesh.uv.reserve(vertex_count);
-            mesh.uv_tangents.reserve(vertex_count);
-            mesh.generated.reserve(vertex_count);
-            for (std::size_t i = 0u; i < vertex_count; ++i) {
+            mesh.positions.reserve(point_count);
+            for (std::size_t i = 0u; i < point_count; ++i) {
                 mesh.positions.emplace_back(Vec3f{
                     position_values[i * 3u],
                     position_values[i * 3u + 1u],
                     position_values[i * 3u + 2u]});
-                mesh.normals.emplace_back(Vec3f{
+            }
+            mesh.normals.domain = normal_domain;
+            mesh.normals.values.reserve(normal_count);
+            for (std::size_t i = 0u; i < normal_count; ++i) {
+                mesh.normals.values.emplace_back(Vec3f{
                     normal_values[i * 3u],
                     normal_values[i * 3u + 1u],
                     normal_values[i * 3u + 2u]});
-                mesh.uv.emplace_back(Vec2f{
+            }
+            mesh.uv.domain = uv_domain;
+            mesh.uv.values.reserve(uv_count);
+            for (std::size_t i = 0u; i < uv_count; ++i) {
+                mesh.uv.values.emplace_back(Vec2f{
                     uv_values[i * 2u],
                     uv_values[i * 2u + 1u]});
-                mesh.uv_tangents.emplace_back(
+            }
+            mesh.uv_tangents.domain = uv_tangent_domain;
+            mesh.uv_tangents.values.reserve(
+                uv_tangent_count);
+            for (std::size_t i = 0u;
+                 i < uv_tangent_count;
+                 ++i) {
+                mesh.uv_tangents.values.emplace_back(
                     uv_tangent_values.size() ==
-                            vertex_count * 4u
+                            uv_tangent_count * 4u
                         ? Vec4f{
                               uv_tangent_values[i * 4u],
                               uv_tangent_values[i * 4u + 1u],
                               uv_tangent_values[i * 4u + 2u],
                               uv_tangent_values[i * 4u + 3u]}
                         : Vec4f{});
-                mesh.generated.emplace_back(Vec3f{
+            }
+            mesh.generated.domain = generated_domain;
+            mesh.generated.values.reserve(generated_count);
+            for (std::size_t i = 0u;
+                 i < generated_count;
+                 ++i) {
+                mesh.generated.values.emplace_back(Vec3f{
                     generated_values[i * 3u],
                     generated_values[i * 3u + 1u],
                     generated_values[i * 3u + 2u]});
@@ -801,31 +904,43 @@ BlenderSceneImport load_blender_scene_bundle(
                                &uv_layer_iterator)) {
                     const auto name =
                         text(member(uv_layer, "name"));
+                    const auto domain =
+                        compact_geometry
+                            ? mesh_attribute_domain(
+                                  member(uv_layer, "domain"),
+                                  MeshAttributeDomain::corner)
+                            : MeshAttributeDomain::point;
+                    const auto value_count =
+                        domain_count(domain);
                     auto values = read_values<float>(
                         geometry_stream,
                         section_offset(uv_layer, "values"),
-                        vertex_count * 2u);
+                        value_count * 2u);
                     auto tangents = read_values<float>(
                         geometry_stream,
                         section_offset(uv_layer, "tangents"),
-                        vertex_count * 4u);
+                        value_count * 4u);
                     auto &uv_destination =
                         mesh.uv_layers[name];
                     auto &tangent_destination =
                         mesh.uv_tangent_layers[name];
-                    uv_destination.reserve(vertex_count);
-                    tangent_destination.reserve(vertex_count);
+                    uv_destination.domain = domain;
+                    tangent_destination.domain = domain;
+                    uv_destination.values.reserve(value_count);
+                    tangent_destination.values.reserve(
+                        value_count);
                     for (std::size_t i = 0u;
-                         i < vertex_count;
+                         i < value_count;
                          ++i) {
-                        uv_destination.emplace_back(Vec2f{
+                        uv_destination.values.emplace_back(Vec2f{
                             values[i * 2u],
                             values[i * 2u + 1u]});
-                        tangent_destination.emplace_back(Vec4f{
-                            tangents[i * 4u],
-                            tangents[i * 4u + 1u],
-                            tangents[i * 4u + 2u],
-                            tangents[i * 4u + 3u]});
+                        tangent_destination.values.emplace_back(
+                            Vec4f{
+                                tangents[i * 4u],
+                                tangents[i * 4u + 1u],
+                                tangents[i * 4u + 2u],
+                                tangents[i * 4u + 3u]});
                     }
                 }
             }
@@ -840,21 +955,30 @@ BlenderSceneImport load_blender_scene_bundle(
                                &attribute_iterator)) {
                     const auto name =
                         text(member(attribute, "name"));
+                    const auto domain =
+                        compact_geometry
+                            ? mesh_attribute_domain(
+                                  member(attribute, "domain"))
+                            : MeshAttributeDomain::point;
+                    const auto value_count =
+                        domain_count(domain);
                     auto values = read_values<float>(
                         geometry_stream,
                         section_offset(attribute, "values"),
-                        vertex_count * 4u);
+                        value_count * 4u);
                     auto &destination =
                         mesh.color_attributes[name];
-                    destination.reserve(vertex_count);
+                    destination.domain = domain;
+                    destination.values.reserve(value_count);
                     for (std::size_t i = 0u;
-                         i < vertex_count;
+                         i < value_count;
                          ++i) {
-                        destination.emplace_back(Vec4f{
-                            values[i * 4u],
-                            values[i * 4u + 1u],
-                            values[i * 4u + 2u],
-                            values[i * 4u + 3u]});
+                        destination.values.emplace_back(
+                            Vec4f{
+                                values[i * 4u],
+                                values[i * 4u + 1u],
+                                values[i * 4u + 2u],
+                                values[i * 4u + 3u]});
                     }
                 }
             }

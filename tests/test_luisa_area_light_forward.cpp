@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -21,6 +22,12 @@ using namespace psycles::compiler;
 using namespace psycles::contract;
 
 constexpr auto pi = 3.14159265358979323846f;
+constexpr std::string_view oracle_color_attribute{
+    "Cycles rectangle oracle color"};
+constexpr std::string_view point_identity_attribute{
+    "Cycles rectangle point identity"};
+constexpr std::string_view face_identity_attribute{
+    "Cycles rectangle face identity"};
 
 [[nodiscard]] Mat4f translated(
     float x,
@@ -35,15 +42,49 @@ constexpr auto pi = 3.14159265358979323846f;
 
 [[nodiscard]] ShaderGraph diffuse_shader() {
     ShaderGraph graph;
+    const auto oracle_color =
+        graph.add_node(node_type::vertex_color, "Corner Color");
+    const auto point_identity =
+        graph.add_node(node_type::vertex_color, "Point Identity");
+    const auto face_identity =
+        graph.add_node(node_type::vertex_color, "Face Identity");
+    const auto multiply_point =
+        graph.add_node(node_type::multiply_color, "Multiply Point");
+    const auto multiply_face =
+        graph.add_node(node_type::multiply_color, "Multiply Face");
     const auto diffuse =
         graph.add_node(node_type::diffuse_bsdf, "Diffuse");
-    static_cast<void>(graph.set_input(
+    const auto bind_attribute =
+        [&](NodeId node, std::string_view name) {
+            static_cast<void>(graph.set_property(
+                node,
+                "AttributeId",
+                SocketValue::unsigned_integer(
+                    attribute_id(name))));
+        };
+    bind_attribute(oracle_color, oracle_color_attribute);
+    bind_attribute(point_identity, point_identity_attribute);
+    bind_attribute(face_identity, face_identity_attribute);
+    static_cast<void>(graph.connect(
+        {.node = oracle_color, .socket = "Color"},
+        multiply_point,
+        "A"));
+    static_cast<void>(graph.connect(
+        {.node = point_identity, .socket = "Color"},
+        multiply_point,
+        "B"));
+    static_cast<void>(graph.connect(
+        {.node = multiply_point, .socket = "Color"},
+        multiply_face,
+        "A"));
+    static_cast<void>(graph.connect(
+        {.node = face_identity, .socket = "Color"},
+        multiply_face,
+        "B"));
+    static_cast<void>(graph.connect(
+        {.node = multiply_face, .socket = "Color"},
         diffuse,
-        "Color",
-        SocketValue::color(
-            {0.6200000047683716f,
-             0.4099999964237213f,
-             0.23000000417232513f})));
+        "Color"));
     static_cast<void>(graph.set_input(
         diffuse,
         "Roughness",
@@ -76,22 +117,46 @@ constexpr auto pi = 3.14159265358979323846f;
         {-4.0f, -4.0f, 0.0f},
         {4.0f, -4.0f, 0.0f},
         {4.0f, 4.0f, 0.0f},
-        {-4.0f, -4.0f, 0.0f},
-        {4.0f, 4.0f, 0.0f},
         {-4.0f, 4.0f, 0.0f}};
-    mesh.normals.assign(
+    mesh.normals.values.assign(
         mesh.positions.size(),
         Vec3f{0.0f, 0.0f, 1.0f});
-    mesh.uv = {
+    mesh.uv.values = {
         {0.0f, 0.0f},
         {1.0f, 0.0f},
         {1.0f, 1.0f},
         {0.0f, 0.0f},
         {1.0f, 1.0f},
         {0.0f, 1.0f}};
+    mesh.uv.domain = MeshAttributeDomain::corner;
+    auto &oracle_color =
+        mesh.color_attributes[
+            std::string{oracle_color_attribute}];
+    oracle_color.domain = MeshAttributeDomain::corner;
+    oracle_color.values.assign(
+        mesh.uv.values.size(),
+        Vec4f{
+            0.6200000047683716f,
+            0.4099999964237213f,
+            0.23000000417232513f,
+            1.0f});
+    auto &point_identity =
+        mesh.color_attributes[
+            std::string{point_identity_attribute}];
+    point_identity.domain = MeshAttributeDomain::point;
+    point_identity.values.assign(
+        mesh.positions.size(),
+        Vec4f{1.0f, 1.0f, 1.0f, 1.0f});
+    auto &face_identity =
+        mesh.color_attributes[
+            std::string{face_identity_attribute}];
+    face_identity.domain = MeshAttributeDomain::face;
+    face_identity.values.assign(
+        2u,
+        Vec4f{1.0f, 1.0f, 1.0f, 1.0f});
     mesh.triangles = {
         {0u, 1u, 2u},
-        {3u, 4u, 5u}};
+        {0u, 2u, 3u}};
     mesh.material_slots = {material_id};
     mesh.triangle_material_slots = {0u, 0u};
     mesh.triangle_smooth = {0u, 0u};
