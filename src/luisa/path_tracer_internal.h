@@ -218,6 +218,8 @@ struct LuisaSceneData {
     std::map<contract::MaterialId, MaterialBinding>
         material_bindings;
     std::optional<MaterialBinding> world_surface;
+    std::uint32_t cycles_background_object_index{
+        ~std::uint32_t{0u}};
     Buffer<luisa::float4> parameter_buffer;
     Buffer<float> cycles_bsdf_table_buffer;
     std::vector<GeometryResource> geometries;

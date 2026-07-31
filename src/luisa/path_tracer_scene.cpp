@@ -428,6 +428,11 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     data->revision = snapshot.revision;
     data->camera = camera_iter->second;
     data->shader_color_space = snapshot.shader_color_space;
+    data->cycles_background_object_index =
+        snapshot.cycles_background_object_index
+            .value_or(
+                cycles_shader_identity::
+                    invalid_index);
 
     ShaderCompiler shader_compiler{
         compiler::make_core_node_registry()};
