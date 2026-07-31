@@ -147,6 +147,20 @@ semantics. Path-kernel traversal and boundary hookup, free-flight integration,
 heterogeneous grids, and volume direct lighting remain open, so the four
 Blender volume nodes remain unverified in the public node matrix.
 
+The analytic homogeneous segment estimator is the fourth internal checkpoint.
+Its Luisa `.h`/`.cpp` component matches Cycles' per-channel transmittance,
+second-order small-optical-depth emission integral, throughput/albedo-weighted
+RGB channel selection, bounded exponential density, random-number rescaling,
+and the scatter/transmit estimator weights. It also accepts Cycles' externally
+guided VSPG scatter probability without changing that measure. A 31-record
+fixture generated from official Cycles main `b82c3f0` `volume.h`, `mapping.h`,
+and the current homogeneous control flow passes on fallback, HIP, and Vulkan.
+The Sobol contract now pins the official volume phase, reservoir, scatter
+distance, expansion, shade-offset, and phase-guiding dimensions. This
+checkpoint still does not enable volume materials in scene compilation:
+stacked graph evaluation, camera/path traversal hookup, VSPG history, volume
+NEE, and phase-bounce state must be integrated first.
+
 Mapping now implements Cycles' four device formulas directly in Luisa:
 Point applies scale, Euler rotation, and translation; Texture applies inverse
 translation, transposed Euler rotation, and safe inverse scale; Vector omits

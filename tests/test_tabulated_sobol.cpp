@@ -67,6 +67,20 @@ void test_sequence_sizing_and_dimensions() {
            "first-bounce light dimension changed");
     expect(first_bounce_offset + surface_bsdf_dimension == 19u,
            "first-bounce BSDF dimension changed");
+    expect(
+        volume_phase_dimension == surface_bsdf_dimension,
+        "Cycles volume-phase/BSDF dimension alias changed");
+    expect(
+        volume_reservoir_dimension == surface_ao_dimension,
+        "Cycles volume-reservoir/AO dimension alias changed");
+    expect(
+        first_bounce_offset +
+                volume_scatter_distance_dimension ==
+            21u,
+        "first-bounce volume scatter-distance dimension changed");
+    expect(
+        volume_phase_guiding_equiangular_dimension == 9u,
+        "volume equiangular-guiding dimension changed");
     expect(first_bounce_offset + bounce_dimension_count +
                    light_dimension ==
                33u,

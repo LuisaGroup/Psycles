@@ -172,6 +172,17 @@ front-hit accounting. Camera traversal and free-flight integration consume
 these components in later path-kernel slices rather than duplicating their
 state rules.
 
+`HomogeneousVolumeTransport` is another host-stage AST component. It owns the
+analytic segment measure independently of scene traversal: Cycles' weighted
+RGB channel choice, bounded exponential sampling and density, scatter-versus-
+transmit estimator, transmittance, and the numerically stable emission
+integral. The two random inputs retain their official
+`PRNG_VOLUME_SCATTER_DISTANCE` and `PRNG_VOLUME_RESERVOIR` identities; phase
+sampling remains a later `PRNG_VOLUME_PHASE` operation. The default entry point
+uses Cycles' unguided scatter probability, while an explicit-probability entry
+point admits the history-dependent VSPG probability without changing the
+estimator measure or duplicating its implementation.
+
 ### Scene
 
 `SceneDatabase` stores immutable logical snapshots and accepts a `SceneDelta`
