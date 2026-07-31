@@ -22,6 +22,20 @@ using namespace psycles::compiler;
 using namespace psycles::contract;
 using namespace psycles::luisa_backend;
 
+static_assert(cycles_closure::runtime_backfacing == 1u);
+static_assert(cycles_closure::runtime_cache_miss == 2u);
+static_assert(cycles_closure::runtime_emission == 4u);
+static_assert(cycles_closure::runtime_bsdf == 8u);
+static_assert(cycles_closure::runtime_bsdf_has_eval == 16u);
+static_assert(cycles_closure::runtime_bssrdf == 32u);
+static_assert(cycles_closure::runtime_holdout == 64u);
+static_assert(cycles_closure::runtime_extinction == 128u);
+static_assert(cycles_closure::runtime_scatter == 256u);
+static_assert(cycles_closure::runtime_is_volume_shader_eval == 512u);
+static_assert(cycles_closure::runtime_transparent == 1024u);
+static_assert(cycles_closure::runtime_bsdf_has_transmission == 2048u);
+static_assert(cycles_closure::runtime_ray_portal == 4096u);
+
 class OracleShaderServices final : public ShaderServices {
 
 private:
@@ -384,7 +398,7 @@ int main(int argc, char **argv) {
             0.056154907f,
             0.0f},
         luisa::float4{1.0f, 1.0f, 1.0f, 0.0f},
-        luisa::float4{12.0f, 12.0f, 0.0f, 1.0f}};
+        luisa::float4{24.0f, 24.0f, 0.0f, 1.0f}};
     for (std::size_t index = 0u;
          index < expected.size();
          ++index) {

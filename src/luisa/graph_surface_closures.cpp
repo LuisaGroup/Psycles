@@ -153,7 +153,9 @@ void GraphSurfaceImplementation::for_each_closure(
                         compiler::ClosureOperation::transparent,
                     .weight = color * mix_weight,
                     .color = color,
-                    .normal = make_float3(0.0f, 0.0f, 1.0f),
+                    // Cycles initializes ShaderClosure::N from ShaderData::N
+                    // even though transparent sampling does not consume it.
+                    .normal = values.shading_normal,
                     .roughness = 0.0f,
                     .metallic = 0.0f,
                     .ior = 1.0f});
