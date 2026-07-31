@@ -7,7 +7,8 @@ it is not a visual-parity claim.
 
 ## Reference revisions
 
-- Psycles began this audit at `42b5be8`.
+- Psycles began this audit at `42b5be8`; compact-domain geometry completed at
+  `151bb96`.
 - Blender/Cycles reference checkout:
   `b82c3f0da6c1813dabedc563d64e536f4d83e868`.
 - Exporting Blender build: 5.3.0 Alpha,
@@ -18,24 +19,26 @@ it is not a visual-parity claim.
 
 ## Blender 4.1 splash
 
-The complete source scene exported 144 evaluated geometries, 232 instances,
+The complete source scene exports 144 evaluated geometries, 232 instances,
 76 materials, 120 images, 26 analytic lights, and 28,089,460 triangles. The
-current v1 geometry contract expanded every triangle corner into an independent
-vertex:
+initial v1 contract expanded every triangle corner into an independent vertex;
+v2 retains 14,135,152 points and 84,268,380 true corners:
 
-| Measurement | Value |
-|---|---:|
-| Exported triangle corners | 84,268,380 |
-| `geometry.bin` | 8.3 GiB |
-| All referenced geometry sections | 8,841,529,440 bytes |
-| Position stream | 1,011,220,560 bytes |
-| Generated-coordinate stream | 1,011,220,560 bytes |
-| Named UV value/tangent streams | 3,074,860,368 bytes |
+| Measurement | v1 flattened | v2 domain-aware |
+|---|---:|---:|
+| `geometry.bin` | 8,841,529,456 B | 7,046,437,660 B |
+| Complete export bundle | 9,018,751,868 B | 7,223,688,451 B |
+| Position stream | 1,011,220,560 B | 169,621,824 B |
+| Generated-coordinate stream | 1,011,220,560 B | 169,621,824 B |
+| Named UV value/tangent streams | 3,074,860,368 B | 3,074,860,368 B |
 
-This is now the motivating real-scene case for replacing the flattened v1
-layout with Cycles-style point, corner, and face attribute domains. The scene
-also enables Cycles light-tree sampling and connects seven Displacement roots;
-both remain explicit render gates. No volume root is connected.
+Geometry storage decreased by 20.30% and the complete bundle by 19.90%.
+The v2 export took 353.9 s and peaked at 25,051,412 KiB RSS. That peak remains
+an engineering problem: the required corner-domain UV/tangent arrays need a
+streaming exporter, not vertex averaging or discarded attributes.
+
+The scene enables Cycles light-tree sampling and connects seven Displacement
+roots; both remain explicit render gates. No volume root is connected.
 
 ## Classroom
 
@@ -53,9 +56,10 @@ The repaired export completed with:
 |---|---:|
 | Geometries / instances | 252 / 894 |
 | Materials / images / lights | 85 / 51 / 10 |
-| Triangles / flattened corners | 496,424 / 1,489,272 |
-| Export directory | 222 MiB |
-| `geometry.bin` | 135 MiB |
+| Points / triangle corners | 256,269 / 1,489,272 |
+| Triangles | 496,424 |
+| Export bundle, v1 / v2 | 232,131,023 B / 191,619,255 B |
+| `geometry.bin`, v1 / v2 | 140,996,704 B / 100,440,364 B |
 | Source render dimensions | 1920x1080 |
 
 Classroom has no connected Volume root in its active `_mainScene`; its legacy
@@ -70,8 +74,17 @@ denoising, and the light tree, so after displacement handling it is a useful
   whose texture path is only valid relative to that library.
 - `psycles.blender_export_generated_images` exports a generated RGBA texture
   and checks its PNG payload, digest, dimensions, and decoded pixel values.
-- The full 32-way build and all 44 CTest cases pass after both repairs.
+- `psycles.blender_export_attribute_domains` checks a shared-index quad with
+  point and corner attributes, binary section cardinalities, and C++ v2
+  import.
+- The full path area-light oracle reads POINT, CORNER, and FACE attributes and
+  passes on fallback, HIP, and Vulkan.
+- The full 32-way build and all 47 CTest cases pass.
 
-Visual triptychs are intentionally deferred until the outstanding scene gates
-are implemented. Publishing an image with substituted displacement, light-tree
-sampling, or volume behavior would not be a Cycles-parity result.
+The same contract was rendered and visually inspected on Lone Monk; its
+same-binary v1/v2 A/B, official Cycles comparison, backend timings, and
+triptychs are recorded in
+[the compact-geometry report](../compact-geometry/README.md). Splash and
+Classroom triptychs remain deferred until their displacement/light-tree gates
+are implemented. Publishing images with substituted behavior would not be a
+Cycles-parity result.
