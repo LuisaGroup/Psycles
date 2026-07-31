@@ -154,9 +154,19 @@ is a separate `.h`/`.cpp` AST-builder component:
 it stores closures in device-local memory, merges only exactly equal
 family-specific parameters, preserves source order, applies Cycles' explicit
 eight-phase copy limit, evaluates the sample-weighted mixture, and performs
-Cycles' reservoir selection with random-number reuse. The path integrator will
-aggregate these raw sets across the media named by its volume stack; neither
-stage may collapse phase parameters into an averaged anisotropy.
+Cycles' reservoir selection with random-number reuse.
+
+`StackedVolumeEvaluator` is the host-stage aggregation boundary. At one
+spatial sample it visits the runtime `VolumeStack` in order, dispatches every
+original `GraphSurface` with that entry's parameter block, adds extinction,
+scattering, and emission coefficients, and sends all raw phases to one
+`VolumePhaseSet`. It deliberately skips merging after stack entry zero and
+performs exact family/parameter merging after every later entry, matching
+Cycles' `volume_shader_eval()` control flow before the stable first-eight copy.
+`VolumeStackEntryPointProvider` is a polymorphic host interface for
+object-dependent shader coordinates and density scale; world, mesh, motion,
+and grid implementations can evolve without changing stack aggregation.
+Neither layer may collapse phase parameters into an averaged anisotropy.
 
 `VolumeStack` is the device-local boundary-state component. Its fixed storage
 contains Cycles' mandatory terminator slot, is capped at

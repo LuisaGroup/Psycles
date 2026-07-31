@@ -1,0 +1,74 @@
+#pragma once
+
+#if !defined(PSYCLES_WITH_LUISA)
+#error "Include <psycles/luisa/stacked_volume.h> through the Psycles::luisa target."
+#endif
+
+#include <psycles/luisa/surface.h>
+#include <psycles/luisa/volume_phase_set.h>
+#include <psycles/luisa/volume_stack.h>
+
+namespace psycles::luisa_backend {
+
+// Path fields shared by every medium in a stack. Object-dependent coordinates
+// and density scaling are deliberately supplied by a host-stage provider:
+// mesh volumes, world volumes, motion transforms, and future grid volumes can
+// construct exact Cycles ShaderData semantics without changing aggregation.
+struct VolumeShadingState {
+    Float3 position;
+    Float3 incoming;
+    UInt ray_visibility;
+    UInt ray_events;
+    UInt ray_depth;
+    UInt diffuse_depth;
+    UInt glossy_depth;
+    UInt transparent_depth;
+    UInt transmission_depth;
+    Float ray_length;
+    Float time;
+};
+
+struct VolumeStackEntryShading {
+    SurfacePoint point;
+    Float object_density;
+};
+
+class VolumeStackEntryPointProvider {
+
+  public:
+    virtual ~VolumeStackEntryPointProvider() noexcept = default;
+
+    [[nodiscard]] virtual VolumeStackEntryShading
+    emit(const VolumeStackEntry &entry,
+         const VolumeShadingState &state) const noexcept = 0;
+};
+
+// Evaluates every original volume graph in stack order at one spatial point.
+// Coefficients are additive. Raw phase closures share one collector and are
+// merged only after the second and subsequent stack entries, matching
+// Cycles' volume_shader_eval() rather than pre-combining material data.
+class StackedVolumeEvaluator {
+
+  private:
+    const SurfaceDispatch &_surfaces;
+    const VolumeStackEntryPointProvider &_points;
+
+  public:
+    StackedVolumeEvaluator(
+        const SurfaceDispatch &surfaces,
+        const VolumeStackEntryPointProvider &points) noexcept;
+
+    [[nodiscard]] VolumeCoefficients evaluate(
+        const VolumeStack &stack,
+        const ShaderServices &services,
+        const VolumeShadingState &state,
+        Bool evaluate_emission,
+        VolumePhaseSet *phases = nullptr) const noexcept;
+};
+
+}// namespace psycles::luisa_backend
+
+LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(
+    psycles::luisa_backend::VolumeShadingState)
+LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(
+    psycles::luisa_backend::VolumeStackEntryShading)
