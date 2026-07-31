@@ -3,6 +3,7 @@
 #include <psycles/compiler/surface_program.h>
 #include <psycles/contract/scene.h>
 #include <psycles/luisa/graph_surface.h>
+#include <psycles/luisa/volume_phase_set.h>
 
 #include <algorithm>
 #include <array>
@@ -22,6 +23,10 @@ using namespace psycles;
 using namespace psycles::compiler;
 using namespace psycles::contract;
 using namespace psycles::luisa_backend;
+namespace phase =
+    psycles::luisa_backend::cycles_volume_phase;
+
+inline constexpr std::size_t record_count = 37u;
 
 class VolumeShaderServices final : public ShaderServices {
 
@@ -307,11 +312,16 @@ void require(bool condition, const char *message) {
 
 [[nodiscard]] bool approximately_equal(
     luisa::float4 actual,
-    luisa::float4 expected) noexcept {
-    return approximately_equal(actual.x, expected.x) &&
-           approximately_equal(actual.y, expected.y) &&
-           approximately_equal(actual.z, expected.z) &&
-           approximately_equal(actual.w, expected.w);
+    luisa::float4 expected,
+    float tolerance = 4.0e-6f) noexcept {
+    return approximately_equal(
+               actual.x, expected.x, tolerance) &&
+           approximately_equal(
+               actual.y, expected.y, tolerance) &&
+           approximately_equal(
+               actual.z, expected.z, tolerance) &&
+           approximately_equal(
+               actual.w, expected.w, tolerance);
 }
 
 }// namespace
@@ -347,7 +357,9 @@ int main(int argc, char **argv) {
         parameter_data(*program.program);
     auto parameters = device.create_buffer<luisa::float4>(
         host_parameters.size());
-    auto output = device.create_buffer<luisa::float4>(9u);
+    auto output =
+        device.create_buffer<luisa::float4>(
+            record_count);
 
     Kernel1D evaluate =
         [&](BufferFloat4 parameter_buffer,
@@ -477,10 +489,261 @@ int main(int argc, char **argv) {
                         0.0f,
                         1.0f,
                         zero_attribute.has_emission)));
+
+            VolumePhaseSet phases{8u};
+            const auto combined =
+                surfaces.evaluate_volume(
+                UInt{surface_tag},
+                attributes,
+                point,
+                query,
+                &phases);
+            records.write(
+                34u,
+                make_float4(
+                    combined.sigma_t,
+                    select(
+                        0.0f,
+                        1.0f,
+                        combined.has_extinction)));
+            records.write(
+                35u,
+                make_float4(
+                    combined.sigma_s,
+                    select(
+                        0.0f,
+                        1.0f,
+                        combined.has_scatter)));
+            records.write(
+                36u,
+                make_float4(
+                    combined.emission,
+                    select(
+                        0.0f,
+                        1.0f,
+                        combined.has_emission)));
+            phases.merge_equal();
+            phases.truncate();
+            const auto phase_axis =
+                normalize(
+                    make_float3(
+                        0.2f,
+                        -0.3f,
+                        0.9327379f));
+            const auto phase_evaluation =
+                phases.evaluate(
+                    make_float3(0.0f, 0.0f, 1.0f),
+                    make_float3(
+                        0.7599342f,
+                        0.0f,
+                        0.65f));
+            records.write(
+                9u,
+                make_float4(
+                    cast<float>(phases.count()),
+                    phase_evaluation.value,
+                    phase_evaluation.pdf,
+                    phase_evaluation.sample_weight));
+            for (auto index = 0u;
+                 index < 4u;
+                 ++index) {
+                const auto entry =
+                    phases.entry(UInt{index});
+                records.write(
+                    10u + index,
+                    make_float4(
+                        entry.weight,
+                        entry.sample_weight));
+                records.write(
+                    14u + index,
+                    make_float4(
+                        entry.parameters,
+                        cast<float>(entry.type)));
+            }
+            const auto invalid_entry =
+                phases.entry(4u);
+            records.write(
+                18u,
+                make_float4(
+                    select(
+                        0.0f,
+                        1.0f,
+                        phases.entry(0u).valid),
+                    select(
+                        0.0f,
+                        1.0f,
+                        phases.entry(1u).valid),
+                    select(
+                        0.0f,
+                        1.0f,
+                        phases.entry(3u).valid),
+                    select(
+                        0.0f,
+                        1.0f,
+                        invalid_entry.valid)));
+
+            const std::array sample_randoms{
+                0.17f, 0.37f, 0.9f};
+            for (auto index = 0u;
+                 index < sample_randoms.size();
+                 ++index) {
+                const auto sample =
+                    phases.sample(
+                        phase_axis,
+                        make_float2(
+                            sample_randoms[index],
+                            0.72f));
+                records.write(
+                    19u + index * 2u,
+                    make_float4(
+                        sample.direction,
+                        sample.pdf));
+                records.write(
+                    20u + index * 2u,
+                    make_float4(
+                        sample.sampled_roughness,
+                        sample.selection_rescaled,
+                        cast<float>(
+                            sample.closure_index),
+                        cast<float>(
+                            sample.closure_type)));
+            }
+
+            VolumePhaseSet merged{6u};
+            merged.add(
+                phase::henyey_greenstein(0.2f),
+                make_float3(1.0f, 2.0f, 3.0f));
+            merged.add(
+                phase::draine(-0.1f, 2.0f),
+                make_float3(0.3f, 0.6f, 0.9f));
+            merged.add(
+                phase::henyey_greenstein(0.2f),
+                make_float3(-1.0f, 0.5f, 1.0f));
+            merged.add(
+                phase::rayleigh(),
+                make_float3(0.9f, 0.3f, 0.0f));
+            const auto pre_merge_count =
+                merged.count();
+            merged.merge_equal();
+            records.write(
+                25u,
+                make_float4(
+                    cast<float>(pre_merge_count),
+                    cast<float>(merged.count()),
+                    0.0f,
+                    0.0f));
+            for (auto index = 0u;
+                 index < 3u;
+                 ++index) {
+                const auto entry =
+                    merged.entry(UInt{index});
+                records.write(
+                    26u + index,
+                    make_float4(
+                        entry.weight,
+                        entry.sample_weight));
+            }
+            records.write(
+                29u,
+                make_float4(
+                    cast<float>(
+                        merged.entry(0u).type),
+                    cast<float>(
+                        merged.entry(1u).type),
+                    cast<float>(
+                        merged.entry(2u).type),
+                    merged.entry(0u)
+                        .parameters.x));
+
+            VolumePhaseSet truncated{10u};
+            for (auto index = 0u;
+                 index < 10u;
+                 ++index) {
+                truncated.add(
+                    phase::henyey_greenstein(
+                        static_cast<float>(index) *
+                        0.05f),
+                    make_float3(1.0f));
+            }
+            const auto pre_truncate_count =
+                truncated.count();
+            truncated.truncate();
+            records.write(
+                30u,
+                make_float4(
+                    cast<float>(
+                        pre_truncate_count),
+                    cast<float>(truncated.count()),
+                    truncated.entry(7u)
+                        .parameters.x,
+                    select(
+                        0.0f,
+                        1.0f,
+                        truncated.entry(8u).valid)));
+
+            VolumePhaseSet capacity_limited{2u};
+            capacity_limited.add(
+                phase::henyey_greenstein(0.1f),
+                make_float3(1.0f));
+            capacity_limited.add(
+                phase::draine(0.2f, 0.5f),
+                make_float3(1.0f));
+            capacity_limited.add(
+                phase::rayleigh(),
+                make_float3(1.0f));
+            records.write(
+                31u,
+                make_float4(
+                    cast<float>(
+                        capacity_limited.count()),
+                    cast<float>(
+                        capacity_limited.entry(0u)
+                            .type),
+                    cast<float>(
+                        capacity_limited.entry(1u)
+                            .type),
+                    select(
+                        0.0f,
+                        1.0f,
+                        capacity_limited.entry(2u)
+                            .valid)));
+
+            VolumePhaseSet empty{1u};
+            const auto empty_evaluation =
+                empty.evaluate(
+                    make_float3(0.0f, 0.0f, 1.0f),
+                    make_float3(0.0f, 0.0f, 1.0f));
+            records.write(
+                32u,
+                make_float4(
+                    empty_evaluation.value,
+                    empty_evaluation.pdf,
+                    empty_evaluation.sample_weight,
+                    select(
+                        0.0f,
+                        1.0f,
+                        empty_evaluation.valid)));
+            const auto empty_sample =
+                empty.sample(
+                    make_float3(0.0f, 0.0f, 1.0f),
+                    make_float2(0.3f, 0.7f));
+            records.write(
+                33u,
+                make_float4(
+                    empty_sample.pdf,
+                    select(
+                        0.0f,
+                        1.0f,
+                        empty_sample.valid),
+                    cast<float>(
+                        empty_sample.closure_index),
+                    cast<float>(
+                        empty_sample.closure_type)));
         };
 
     auto kernel = device.compile(evaluate);
-    std::array<luisa::float4, 9u> actual{};
+    std::array<luisa::float4, record_count>
+        actual{};
     stream << parameters.copy_from(
                   luisa::span{host_parameters})
            << kernel(parameters, output).dispatch(1u)
@@ -515,6 +778,149 @@ int main(int argc, char **argv) {
                 << ", " << actual[index].z
                 << ", " << actual[index].w
                 << "}\n";
+            return EXIT_FAILURE;
+        }
+    }
+
+    // Generated from official Cycles main b82c3f0. The graph must preserve
+    // four raw closures in source order: Draine, fitted-Mie HG, fitted-Mie
+    // Draine, and Principled HG. No closure is pre-baked by Blender/Cycles.
+    constexpr std::array phase_expected{
+        luisa::float4{
+            4.0f,
+            0.0707130209f,
+            0.0707130209f,
+            0.708333373f},
+        luisa::float4{
+            0.45f, 0.0f, 0.225f, 0.225f},
+        luisa::float4{
+            0.100368105f,
+            0.20073621f,
+            0.0f,
+            0.100368105f},
+        luisa::float4{
+            0.0996318981f,
+            0.199263796f,
+            0.0f,
+            0.0996318981f},
+        luisa::float4{
+            0.2f,
+            0.25f,
+            0.4f,
+            0.283333331f},
+        luisa::float4{
+            0.0f, 0.5f, 0.0f, 2.0f},
+        luisa::float4{
+            0.994610012f,
+            0.0f,
+            0.0f,
+            0.0f},
+        luisa::float4{
+            0.59379518f,
+            27.1138496f,
+            0.0f,
+            2.0f},
+        luisa::float4{
+            0.0f, 0.0f, 0.0f, 0.0f},
+        luisa::float4{
+            1.0f, 1.0f, 1.0f, 0.0f},
+        luisa::float4{
+            0.049110055f,
+            -0.44522649f,
+            0.894070327f,
+            0.0892113373f},
+        luisa::float4{
+            0.00538998842f,
+            0.0227289386f,
+            1.0f,
+            0.0f},
+        luisa::float4{
+            -0.484209776f,
+            -0.0472326875f,
+            -0.87367624f,
+            0.0795774683f},
+        luisa::float4{
+            1.0f,
+            0.948791504f,
+            3.0f,
+            0.0f},
+        luisa::float4{
+            -0.543359995f,
+            -0.777569592f,
+            0.316457808f,
+            0.0742187649f},
+        luisa::float4{
+            1.0f,
+            0.685185194f,
+            0.0f,
+            2.0f}};
+    for (auto index = std::size_t{0u};
+         index < phase_expected.size();
+         ++index) {
+        const auto record = 9u + index;
+        if (!approximately_equal(
+                actual[record],
+                phase_expected[index],
+                2.0e-5f)) {
+            std::cerr
+                << "Cycles raw volume phase fixture failed on "
+                << backend << " at record " << record
+                << ": got {" << actual[record].x
+                << ", " << actual[record].y
+                << ", " << actual[record].z
+                << ", " << actual[record].w
+                << "}\n";
+            return EXIT_FAILURE;
+        }
+    }
+
+    constexpr std::array set_expected{
+        luisa::float4{
+            4.0f, 3.0f, 0.0f, 0.0f},
+        luisa::float4{
+            1.0f, 2.5f, 4.0f, 2.5f},
+        luisa::float4{
+            0.3f, 0.6f, 0.9f, 0.6f},
+        luisa::float4{
+            0.9f, 0.3f, 0.0f, 0.4f},
+        luisa::float4{
+            0.0f, 2.0f, 3.0f, 0.2f},
+        luisa::float4{
+            10.0f, 8.0f, 0.35f, 0.0f},
+        luisa::float4{
+            2.0f, 0.0f, 2.0f, 0.0f},
+        luisa::float4{
+            0.0f, 0.0f, 0.0f, 0.0f},
+        luisa::float4{
+            0.0f, 0.0f, 0.0f, 0.0f}};
+    for (auto index = std::size_t{0u};
+         index < set_expected.size();
+         ++index) {
+        const auto record = 25u + index;
+        if (!approximately_equal(
+                actual[record],
+                set_expected[index])) {
+            std::cerr
+                << "volume phase set invariant failed on "
+                << backend << " at record " << record
+                << ": got {" << actual[record].x
+                << ", " << actual[record].y
+                << ", " << actual[record].z
+                << ", " << actual[record].w
+                << "}\n";
+            return EXIT_FAILURE;
+        }
+    }
+    for (auto index = std::size_t{0u};
+         index < 3u;
+         ++index) {
+        if (!approximately_equal(
+                actual[34u + index],
+                expected[index])) {
+            std::cerr
+                << "combined volume evaluation failed on "
+                << backend << " at record "
+                << 34u + index << '\n';
             return EXIT_FAILURE;
         }
     }

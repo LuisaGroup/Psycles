@@ -146,9 +146,17 @@ infer that context from unrelated surface flags.
 Volume phase mathematics is kept outside the path integrator in
 `cycles_volume_phase.h`. It exposes normalized phase closures and samples,
 while `cycles_fast_math.h` fixes the small set of Cycles numerical
-approximations used by fitted Mie parameters. The volume-stack component is
-responsible for retaining and mixing raw graph closures; it must not collapse
-phase parameters into an averaged anisotropy.
+approximations used by fitted Mie parameters. `GraphSurface` emits the
+original phase closures through the host-stage `VolumePhaseCollector`
+protocol. The combined `Surface::evaluate_volume` boundary returns
+coefficients and optionally emits phases from one graph trace. `VolumePhaseSet`
+is a separate `.h`/`.cpp` AST-builder component:
+it stores closures in device-local memory, merges only exactly equal
+family-specific parameters, preserves source order, applies Cycles' explicit
+eight-phase copy limit, evaluates the sample-weighted mixture, and performs
+Cycles' reservoir selection with random-number reuse. The future volume-stack
+component will aggregate these raw sets across participating media; neither
+component may collapse phase parameters into an averaged anisotropy.
 
 ### Scene
 

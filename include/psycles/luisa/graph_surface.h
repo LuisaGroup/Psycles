@@ -74,10 +74,11 @@ public:
         const ShaderServices &services,
         const SurfacePoint &point) const noexcept override;
 
-    [[nodiscard]] VolumeCoefficients volume_coefficients(
+    [[nodiscard]] VolumeCoefficients evaluate_volume(
         const ShaderServices &services,
         const SurfacePoint &point,
-        const VolumeQuery &query) const noexcept override;
+        const VolumeQuery &query,
+        VolumePhaseCollector *collector) const noexcept override;
 
     [[nodiscard]] Float3 shading_normal(
         const ShaderServices &services,
