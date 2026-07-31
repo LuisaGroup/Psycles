@@ -1,4 +1,5 @@
 #include "path_kernel_builder.h"
+#include "path_kernel_volume_direct_light.h"
 #include "path_kernel_volume_point.h"
 #include "path_tracer_shader_services.h"
 
@@ -26,6 +27,9 @@ class PathVolumeSegmentStageImpl final
     std::unique_ptr<
         HomogeneousVolumeSegmentComponent>
         _segment;
+    std::unique_ptr<
+        VolumeDirectLightingComponent>
+        _direct_lighting;
 
   public:
     explicit PathVolumeSegmentStageImpl(
@@ -39,7 +43,12 @@ class PathVolumeSegmentStageImpl final
                   _scene->surfaces,
                   _points,
                   _scene->volume_metadata
-                      .closure_allocation_budget)} {}
+                      .closure_allocation_budget)},
+          _direct_lighting{
+              config.next_event_estimation
+                  ? make_volume_direct_lighting_component(
+                        config)
+                  : nullptr} {}
 
     VolumeSegmentEvent emit(
         ClosestPathEvent &event)
@@ -167,6 +176,22 @@ class PathVolumeSegmentStageImpl final
             (path_flags &
              cycles_path_state::
                  flag_terminate) != 0u;
+        VolumeDirectLightSample direct_light{
+            .direction = make_float3(0.0f),
+            .radiance = make_float3(0.0f),
+            .pdf = 0.0f,
+            .maximum_distance = 0.0f,
+            .light_instance =
+                surface_ray::invalid_primitive,
+            .light_primitive =
+                surface_ray::invalid_primitive,
+            .use_mis = false,
+            .valid = false};
+        if (_direct_lighting) {
+            direct_light =
+                _direct_lighting->sample(
+                    event);
+        }
 
         BufferShaderServices services{
             _scene->parameter_buffer,
@@ -244,7 +269,30 @@ class PathVolumeSegmentStageImpl final
                 scatter_random,
                 channel_random,
                 phase_random,
-                transport_terminate);
+                transport_terminate,
+                {.scattered_radiance =
+                     make_float3(0.0f),
+                 .transmitted_radiance =
+                     make_float3(0.0f),
+                 .majorant_optical_depth =
+                     std::numeric_limits<
+                         float>::max(),
+                 .enabled =
+                     inside_volume &
+                     (path_depth == 0u)},
+                inside_volume &
+                    direct_light.valid,
+                direct_light.direction);
+
+        if (_direct_lighting) {
+            _direct_lighting->accumulate(
+                event,
+                direct_light,
+                result,
+                stack,
+                segment_position,
+                inside_volume);
+        }
 
         const auto emission =
             invocation

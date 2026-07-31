@@ -98,6 +98,47 @@ using namespace psycles::contract;
     return graph;
 }
 
+[[nodiscard]] ShaderGraph volume_scatter_shader() {
+    ShaderGraph graph;
+    const auto transparent =
+        graph.add_node(
+            node_type::transparent_bsdf,
+            "Transparent boundary");
+    const auto scatter =
+        graph.add_node(
+            node_type::volume_scatter,
+            "Homogeneous isotropic scatter");
+    static_cast<void>(graph.set_input(
+        transparent,
+        "Color",
+        SocketValue::color(
+            {1.0f, 1.0f, 1.0f})));
+    static_cast<void>(graph.set_input(
+        scatter,
+        "Color",
+        SocketValue::color(
+            {1.0f, 1.0f, 1.0f})));
+    static_cast<void>(graph.set_input(
+        scatter,
+        "Density",
+        SocketValue::floating(0.5f)));
+    static_cast<void>(graph.set_input(
+        scatter,
+        "Anisotropy",
+        SocketValue::floating(0.0f)));
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{
+            .node = transparent,
+            .socket = "Closure"});
+    graph.set_root(
+        ShaderDomain::volume,
+        OutputRef{
+            .node = scatter,
+            .socket = "Volume"});
+    return graph;
+}
+
 [[nodiscard]] ShaderGraph world_shader() {
     ShaderGraph graph;
     const auto emission =
@@ -113,6 +154,29 @@ using namespace psycles::contract;
         emission,
         "Strength",
         SocketValue::floating(1.0f)));
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{
+            .node = emission,
+            .socket = "Closure"});
+    return graph;
+}
+
+[[nodiscard]] ShaderGraph black_world_shader() {
+    ShaderGraph graph;
+    const auto emission =
+        graph.add_node(
+            node_type::emission,
+            "Black world");
+    static_cast<void>(graph.set_input(
+        emission,
+        "Color",
+        SocketValue::color(
+            {0.0f, 0.0f, 0.0f})));
+    static_cast<void>(graph.set_input(
+        emission,
+        "Strength",
+        SocketValue::floating(0.0f)));
     graph.set_root(
         ShaderDomain::surface,
         OutputRef{
@@ -206,6 +270,42 @@ using namespace psycles::contract;
     return scene;
 }
 
+[[nodiscard]] SceneSnapshot make_direct_scene() {
+    auto scene = make_scene();
+    scene.revision = 2u;
+    scene.materials
+        .at(MaterialId{1u})
+        .name =
+        "Cycles homogeneous isotropic volume boundary";
+    scene.materials
+        .at(MaterialId{1u})
+        .shader = volume_scatter_shader();
+    scene.materials
+        .at(MaterialId{2u})
+        .name = "Cycles black world";
+    scene.materials
+        .at(MaterialId{2u})
+        .shader = black_world_shader();
+    scene.cycles_background_object_index = 2u;
+    scene.lights.emplace(
+        LightId{6u},
+        LightDesc{
+            .name = "Cycles unit distant light",
+            .type = LightType::distant,
+            .transform = {},
+            .color = {1.0f, 1.0f, 1.0f},
+            .power = 1.0f,
+            .angle = 0.0f,
+            .normalize = true,
+            .use_mis = true,
+            .cast_shadow = true,
+            .visibility_mask =
+                all_ray_visibility,
+            .cycles_shader_index = 2u,
+            .cycles_object_index = 1u});
+    return scene;
+}
+
 [[nodiscard]] RenderSettings make_settings() {
     return {
         .full_extent = {
@@ -252,6 +352,15 @@ using namespace psycles::contract;
              .channels = 3u}}};
 }
 
+[[nodiscard]] RenderSettings make_direct_settings() {
+    auto settings = make_settings();
+    settings.integrator
+        .direct_light_sampling =
+        DirectLightSampling::
+            multiple_importance_sampling;
+    return settings;
+}
+
 [[nodiscard]] bool approximately_equal(
     float actual,
     float expected,
@@ -271,7 +380,7 @@ int main(int argc, char **argv) {
     psycles::luisa_backend::LuisaPathTracerBackend
         renderer{
             std::move(device),
-            {.next_event_estimation = false,
+            {.next_event_estimation = true,
              .max_samples_per_dispatch = 1u}};
     auto heterogeneous = make_scene();
     heterogeneous.materials
@@ -406,5 +515,163 @@ int main(int argc, char **argv) {
             }
         }
     }
+
+    auto direct_compilation =
+        renderer.compile_scene(
+            make_direct_scene());
+    if (!direct_compilation.ok()) {
+        for (const auto &diagnostic :
+             direct_compilation.diagnostics) {
+            std::cerr << diagnostic.message
+                      << '\n';
+        }
+        return EXIT_FAILURE;
+    }
+    const auto direct_settings =
+        make_direct_settings();
+    auto direct_session =
+        renderer.create_session(
+            *direct_compilation.scene,
+            direct_settings);
+    if (!direct_session) {
+        std::cerr
+            << "could not create volume-direct "
+               "render session\n";
+        return EXIT_FAILURE;
+    }
+    psycles::io::MemoryOutputSink
+        direct_sink;
+    if (!direct_session->render_samples(
+            {.first = 0u,
+             .count = 1u,
+             .offset = 0u,
+             .total = 1u},
+            direct_sink)) {
+        std::cerr
+            << "volume-direct render failed\n";
+        return EXIT_FAILURE;
+    }
+    const auto *direct_combined =
+        direct_sink.find(
+            PassKind::combined);
+    const auto *direct_volume =
+        direct_sink.find(
+            PassKind::volume_direct);
+    const auto *direct_volume_indirect =
+        direct_sink.find(
+            PassKind::volume_indirect);
+    const auto *direct_environment =
+        direct_sink.find(
+            PassKind::environment);
+    if (direct_combined == nullptr ||
+        direct_volume == nullptr ||
+        direct_volume_indirect == nullptr ||
+        direct_environment == nullptr) {
+        std::cerr
+            << "volume-direct passes were not "
+               "produced\n";
+        return EXIT_FAILURE;
+    }
+    // Official Blender 5.2.0/Cycles CPU, Tabulated Sobol, one sample,
+    // raw 32-bit Combined EXR. This scene exercises primary-ray VSPG's
+    // empty-history defensive probability, distance sampling, isotropic
+    // phase evaluation, distant-light NEE/MIS, and volume shadow
+    // transmittance without any material pre-baking.
+    constexpr std::array cycles_direct{
+        0.015102289f,
+        0.011529196f,
+        0.010234529f,
+        0.016950374f,
+        0.016323633f,
+        0.010089879f,
+        0.017004959f,
+        0.008192022f,
+        0.016794045f,
+        0.012923940f,
+        0.014676524f,
+        0.012400300f,
+        0.009641428f,
+        0.009475062f,
+        0.015544447f,
+        0.016437037f};
+    for (auto pixel = std::size_t{0u};
+         pixel < pixel_count;
+         ++pixel) {
+        const auto combined_base =
+            pixel *
+            direct_combined->channels;
+        const auto pass_base =
+            pixel *
+            direct_volume->channels;
+        for (auto channel = std::size_t{0u};
+             channel < 3u;
+             ++channel) {
+            const auto combined_value =
+                direct_combined->pixels[
+                    combined_base + channel];
+            const auto direct_value =
+                direct_volume->pixels[
+                    pass_base + channel];
+            if (!approximately_equal(
+                    combined_value,
+                    cycles_direct[pixel]) ||
+                !approximately_equal(
+                    direct_value,
+                    cycles_direct[pixel]) ||
+                !approximately_equal(
+                    direct_volume_indirect
+                        ->pixels[
+                            pass_base +
+                            channel],
+                    0.0f) ||
+                !approximately_equal(
+                    direct_environment
+                        ->pixels[
+                            pass_base +
+                            channel],
+                    0.0f)) {
+                std::cerr
+                    << "Cycles volume-direct regression "
+                       "failed on "
+                    << backend << " pixel " << pixel
+                    << " channel " << channel
+                    << ": got combined "
+                    << combined_value
+                    << ", direct "
+                    << direct_value
+                    << ", expected "
+                    << cycles_direct[pixel]
+                    << '\n';
+                return EXIT_FAILURE;
+            }
+        }
+        if (!approximately_equal(
+                direct_combined->pixels[
+                    combined_base + 3u],
+                1.0f)) {
+            std::cerr
+                << "volume-direct alpha regression "
+                   "failed on "
+                << backend << " pixel " << pixel
+                << '\n';
+            return EXIT_FAILURE;
+        }
+    }
+#if defined(PSYCLES_WITH_OPENIMAGEIO)
+    if (argc > 2) {
+        std::string error;
+        if (!psycles::io::write_multilayer_exr(
+                direct_sink.images(),
+                argv[2],
+                "ViewLayer",
+                &error)) {
+            std::cerr
+                << "could not write volume-direct "
+                   "diagnostic EXR: "
+                << error << '\n';
+            return EXIT_FAILURE;
+        }
+    }
+#endif
     return EXIT_SUCCESS;
 }

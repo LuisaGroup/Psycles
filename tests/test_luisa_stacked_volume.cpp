@@ -738,7 +738,16 @@ int main(int argc, char **argv) {
                     0.2f,
                     make_float2(
                         0.034f, 0.83f),
-                    false);
+                    false,
+                    {.scattered_radiance =
+                         make_float3(0.0f),
+                     .transmitted_radiance =
+                         make_float3(0.0f),
+                     .majorant_optical_depth =
+                         0.0f,
+                     .enabled = false},
+                    false,
+                    make_float3(0.0f));
             records.write(
                 15u,
                 make_float4(
@@ -805,7 +814,16 @@ int main(int argc, char **argv) {
                     0.2f,
                     make_float2(
                         0.034f, 0.83f),
-                    false);
+                    false,
+                    {.scattered_radiance =
+                         make_float3(0.0f),
+                     .transmitted_radiance =
+                         make_float3(0.0f),
+                     .majorant_optical_depth =
+                         0.0f,
+                     .enabled = false},
+                    false,
+                    make_float3(0.0f));
             records.write(
                 21u,
                 make_float4(

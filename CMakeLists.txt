@@ -170,6 +170,7 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/graph_surface_value_procedural.cpp
             src/luisa/homogeneous_volume_segment.cpp
             src/luisa/homogeneous_volume_transport.cpp
+            src/luisa/volume_scatter_probability.cpp
             src/luisa/stacked_volume.cpp
             src/luisa/volume_phase_set.cpp
             src/luisa/volume_stack.cpp)
@@ -227,8 +228,10 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/path_kernel_triangle_geometry.cpp
             src/luisa/path_kernel_triangle_primitive.cpp
             src/luisa/path_kernel_volume_boundary.cpp
+            src/luisa/path_kernel_volume_direct_light.cpp
             src/luisa/path_kernel_volume_point.cpp
             src/luisa/path_kernel_volume_segment.cpp
+            src/luisa/path_kernel_volume_shadow.cpp
             src/luisa/path_kernel_volume_state.cpp
             src/luisa/path_tracer_kernel.cpp
             src/luisa/path_tracer_light_distribution.cpp
@@ -1263,6 +1266,12 @@ if(PSYCLES_BUILD_TESTS)
                 "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_scene_benchmark_runner.py"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tools/run_scene_benchmark.py")
+        add_test(
+            NAME psycles.compare_cycles_contract
+            COMMAND
+                "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_compare_cycles.py"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/compare_cycles.py")
         add_test(
             NAME psycles.cycles_path_trace_schema
             COMMAND

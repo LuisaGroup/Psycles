@@ -202,8 +202,8 @@ closure graphs, resolves attenuation/emission or a phase collision, and
 applies the total Cycles volume path-state transition. Scene compilation now
 accepts raw volume programs structurally proven homogeneous and explicitly
 rejects spatially varying volume dependencies. Heterogeneous grids and volume
-direct lighting remain open, so the four Blender volume nodes remain
-unverified in the public node matrix.
+lighting outside the exact homogeneous distant-light subset remain open, so
+the four Blender volume nodes remain unverified in the public node matrix.
 
 World volume identity is now complete in scene schema v2: the exporter retains
 Cycles' background-light object index separately from the default-background
@@ -216,14 +216,24 @@ Its Luisa `.h`/`.cpp` component matches Cycles' per-channel transmittance,
 second-order small-optical-depth emission integral, throughput/albedo-weighted
 RGB channel selection, bounded exponential density, random-number rescaling,
 and the scatter/transmit estimator weights. It also accepts Cycles' externally
-guided VSPG scatter probability without changing that measure. A 31-record
+guided VSPG scatter probability without changing that measure. A 35-record
 fixture generated from official Cycles main `b82c3f0` `volume.h`, `mapping.h`,
 and the current homogeneous control flow passes on fallback, HIP, and Vulkan.
 The Sobol contract now pins the official volume phase, reservoir, scatter
-distance, expansion, shade-offset, and phase-guiding dimensions. This
-The production path now composes this estimator before its typed closest-event
-stages and enables the homogeneous subset. VSPG history, volume NEE, and
-heterogeneous transport remain separate work.
+distance, expansion, shade-offset, and phase-guiding dimensions. The
+production path composes this estimator before its typed closest-event stages
+and enables the homogeneous subset.
+
+Homogeneous distant-light NEE is now the next production checkpoint. It
+reuses Cycles' rescaled reservoir/scatter dimensions, evaluates the original
+phase closures, integrates ordered surface plus medium shadow transmittance,
+and routes the result to Combined and Volume Direct. Primary rays implement
+the exact empty-history VSPG defensive probability. The official Blender
+5.2.0 one-sample EXR matches fallback, HIP, and Vulkan with maximum absolute
+error `3.7253e-9`; reports and inspected triptychs are in
+[`validation/2026-07-31/homogeneous-volume-direct`](validation/2026-07-31/homogeneous-volume-direct/README.md).
+Finite-light equiangular/MIS, environment volume NEE, accumulated VSPG
+history, and heterogeneous transport remain separate work.
 
 The stacked-medium evaluator is the fifth internal checkpoint. It visits
 runtime stack entries in Cycles order, evaluates each original graph with its
@@ -501,7 +511,8 @@ compatible yet:
 
 - Cycles' emitter importance distribution and environment importance map;
 - light-tree construction and traversal;
-- volume NEE, VSPG history, and heterogeneous grid integration;
+- finite-light/environment volume NEE, VSPG history, and heterogeneous grid
+  integration;
 - forward intersections for analytic area and distant lights;
 - MNEE, path guiding, shadow catcher, light linking, and light groups;
 - Cycles' exact sampling sequence and random dimensions.

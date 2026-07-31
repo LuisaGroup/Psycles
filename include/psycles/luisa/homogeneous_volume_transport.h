@@ -24,9 +24,20 @@ struct HomogeneousVolumeSample {
     Float distance;
     Float event_pdf;
     Float scatter_random;
+    Float reservoir_random;
     UInt channel;
     Bool scattered;
     Bool active;
+};
+
+struct HomogeneousVolumeDirectSample {
+    Float3 transmittance;
+    Float3 throughput;
+    Float3 channel_pdf;
+    Float distance;
+    Float distance_pdf;
+    UInt channel;
+    Bool scattered;
 };
 
 // Host-stage Luisa AST component for Cycles' analytic homogeneous-volume
@@ -100,7 +111,19 @@ class HomogeneousVolumeTransport {
         Float channel_random,
         Float3 scatter_probability,
         Bool terminate) const noexcept;
+
+    // Cycles samples direct volume scattering independently from the
+    // scatter-vs-transmit decision used by the continuation path. Distant
+    // emitters and the environment force this distance measure even when a
+    // material requests equiangular or multiple-importance sampling.
+    [[nodiscard]] HomogeneousVolumeDirectSample
+    sample_direct_distance(
+        const VolumeCoefficients &coefficients,
+        Float distance,
+        Float3 throughput,
+        Float scatter_random,
+        Float reservoir_random,
+        Bool enabled) const noexcept;
 };
 
 }// namespace psycles::luisa_backend
-

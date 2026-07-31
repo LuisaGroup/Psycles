@@ -308,6 +308,17 @@ same stage owns the fixed Cycles Sobol dimensions, closest-event roulette
 reuse, volume emission/pass accumulation, and the atomic
 `cycles_path_state::next_volume()` transition.
 
+Homogeneous volume direct lighting is composed from three additional
+host-stage objects. `HomogeneousVolumeScatterProbability` owns the VSPG
+sampling probability without changing transport weights.
+`DistantVolumeDirectLightingComponent` owns distant-emitter sampling,
+phase/light MIS, roulette, clamping, and pass routing.
+`HomogeneousVolumeShadowComponent` copies the active volume stack and walks
+ordered closest boundary events to integrate shadow transmittance. Surface
+transparency stays in the shared shadow component. These objects are ordinary
+C++ abstractions while the resulting device work remains one fused path
+kernel.
+
 The pipeline owns the path loop, the top-level builder owns the sample loop,
 and the setup/film module owns accumulation. This makes `$break` scope and
 cross-stage lifetime formal while retaining one fused device kernel, the

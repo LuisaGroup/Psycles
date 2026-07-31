@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Render the finite homogeneous-volume path regression with official Cycles.
+"""Render the homogeneous distant-light volume regression with Cycles.
 
 Run through Blender:
   blender --background --factory-startup --python \
-    tools/create_cycles_volume_path_oracle.py -- /tmp/volume-path.exr
+    tools/create_cycles_volume_direct_oracle.py -- /tmp/volume-direct.exr
 """
 
 from __future__ import annotations
@@ -34,39 +34,55 @@ def clear_scene() -> None:
 
 
 def make_volume_material() -> bpy.types.Material:
-    material = bpy.data.materials.new("Cycles homogeneous absorption boundary")
+    material = bpy.data.materials.new(
+        "Cycles homogeneous isotropic volume boundary"
+    )
     material.use_nodes = True
     nodes = material.node_tree.nodes
     nodes.clear()
     output = nodes.new("ShaderNodeOutputMaterial")
     transparent = nodes.new("ShaderNodeBsdfTransparent")
-    absorption = nodes.new("ShaderNodeVolumeAbsorption")
+    scatter = nodes.new("ShaderNodeVolumeScatter")
     transparent.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
-    absorption.inputs["Color"].default_value = (0.2, 0.5, 0.8, 1.0)
-    absorption.inputs["Density"].default_value = 0.5
+    scatter.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
+    scatter.inputs["Density"].default_value = 0.5
+    scatter.inputs["Anisotropy"].default_value = 0.0
     material.node_tree.links.new(
         transparent.outputs["BSDF"], output.inputs["Surface"]
     )
     material.node_tree.links.new(
-        absorption.outputs["Volume"], output.inputs["Volume"]
+        scatter.outputs["Volume"], output.inputs["Volume"]
     )
+    material.cycles.volume_sampling = "DISTANCE"
     return material
 
 
 def make_world() -> bpy.types.World:
-    world = bpy.data.worlds.new("Cycles white world")
+    world = bpy.data.worlds.new("Cycles black world")
     world.use_nodes = True
     nodes = world.node_tree.nodes
     nodes.clear()
     output = nodes.new("ShaderNodeOutputWorld")
     background = nodes.new("ShaderNodeBackground")
-    background.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
-    background.inputs["Strength"].default_value = 1.0
+    background.inputs["Color"].default_value = (0.0, 0.0, 0.0, 1.0)
+    background.inputs["Strength"].default_value = 0.0
     world.node_tree.links.new(
         background.outputs["Background"], output.inputs["Surface"]
     )
     world.cycles.sampling_method = "NONE"
     return world
+
+
+def make_sun(scene: bpy.types.Scene) -> None:
+    light_data = bpy.data.lights.new(
+        "Cycles unit distant light", type="SUN"
+    )
+    light_data.color = (1.0, 1.0, 1.0)
+    light_data.energy = 1.0
+    light_data.angle = 0.0
+    light_data.normalize = True
+    light = bpy.data.objects.new(light_data.name, light_data)
+    scene.collection.objects.link(light)
 
 
 def configure_scene(output: Path) -> None:
@@ -76,6 +92,9 @@ def configure_scene(output: Path) -> None:
     scene.cycles.samples = 1
     scene.cycles.use_denoising = False
     scene.cycles.seed = 11939
+    # Psycles currently implements Cycles' explicit Tabulated Sobol mode.
+    # Keep the oracle on that authored mode instead of Blender 5.2's
+    # Automatic -> Blue-Noise render default.
     scene.cycles.sampling_pattern = "TABULATED_SOBOL"
     scene.cycles.max_bounces = 1
     scene.cycles.min_light_bounces = 0
@@ -89,7 +108,7 @@ def configure_scene(output: Path) -> None:
     scene.cycles.sample_clamp_indirect = 0.0
     scene.cycles.blur_glossy = 0.0
     scene.cycles.use_light_tree = False
-    scene.cycles.direct_light_sampling_type = "FORWARD_PATH_TRACING"
+    scene.cycles.direct_light_sampling_type = "MULTIPLE_IMPORTANCE_SAMPLING"
     scene.render.resolution_x = 4
     scene.render.resolution_y = 4
     scene.render.resolution_percentage = 100
@@ -107,12 +126,18 @@ def configure_scene(output: Path) -> None:
     layer.cycles.use_pass_volume_direct = True
     layer.cycles.use_pass_volume_indirect = True
 
-    bpy.ops.mesh.primitive_cube_add(size=4.0, location=(0.0, 0.0, 0.0))
+    bpy.ops.mesh.primitive_cube_add(
+        size=4.0, location=(0.0, 0.0, 0.0)
+    )
     volume = bpy.context.object
     volume.name = "Volume box"
     volume.data.materials.append(make_volume_material())
 
-    camera_data = bpy.data.cameras.new("Inside-volume orthographic camera")
+    make_sun(scene)
+
+    camera_data = bpy.data.cameras.new(
+        "Inside-volume orthographic camera"
+    )
     camera_data.type = "ORTHO"
     camera_data.ortho_scale = 1.0
     camera_data.clip_start = 0.1
@@ -128,7 +153,7 @@ def main() -> None:
     clear_scene()
     configure_scene(output)
     bpy.ops.render.render(write_still=True)
-    print(f"Cycles volume-path oracle: {output}")
+    print(f"Cycles volume-direct oracle: {output}")
 
 
 if __name__ == "__main__":

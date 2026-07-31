@@ -1,10 +1,12 @@
 #include <psycles/luisa/homogeneous_volume_transport.h>
+#include <psycles/luisa/volume_scatter_probability.h>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <string_view>
 
 #include <luisa/luisa-compute.h>
@@ -14,7 +16,7 @@ namespace {
 using namespace luisa::compute;
 using namespace psycles::luisa_backend;
 
-inline constexpr std::size_t record_count = 31u;
+inline constexpr std::size_t record_count = 35u;
 
 [[nodiscard]] bool approximately_equal(
     float actual,
@@ -406,6 +408,76 @@ int main(int argc, char **argv) {
                     flag(zero_length.scattered),
                     zero_length.event_pdf,
                     zero_length.scatter_random));
+
+            HomogeneousVolumeScatterProbability
+                probability;
+            records.write(
+                31u,
+                make_float4(
+                    probability.evaluate(
+                        scattering,
+                        1.3f,
+                        false,
+                        {.scattered_radiance =
+                             make_float3(0.0f),
+                         .transmitted_radiance =
+                             make_float3(0.0f),
+                         .majorant_optical_depth =
+                             std::numeric_limits<
+                                 float>::max(),
+                         .enabled = true}),
+                    0.0f));
+            records.write(
+                32u,
+                make_float4(
+                    probability.evaluate(
+                        scattering,
+                        1.3f,
+                        false,
+                        {.scattered_radiance =
+                             make_float3(
+                                 0.2f,
+                                 0.6f,
+                                 0.3f),
+                         .transmitted_radiance =
+                             make_float3(
+                                 0.8f,
+                                 0.4f,
+                                 0.7f),
+                         .majorant_optical_depth =
+                             2.6f,
+                         .enabled = true}),
+                    0.0f));
+            records.write(
+                33u,
+                make_float4(
+                    probability.evaluate(
+                        scattering,
+                        1.3f,
+                        false,
+                        {.scattered_radiance =
+                             make_float3(0.0f),
+                         .transmitted_radiance =
+                             make_float3(0.0f),
+                         .majorant_optical_depth =
+                             0.0f,
+                         .enabled = false}),
+                    0.0f));
+            records.write(
+                34u,
+                make_float4(
+                    probability.evaluate(
+                        scattering,
+                        1.3f,
+                        true,
+                        {.scattered_radiance =
+                             make_float3(0.0f),
+                         .transmitted_radiance =
+                             make_float3(0.0f),
+                         .majorant_optical_depth =
+                             0.0f,
+                         .enabled = true}),
+                    0.0f));
         };
 
     auto shader = device.compile(evaluate);
@@ -453,7 +525,14 @@ int main(int argc, char **argv) {
         luisa::float4{0.362224072f, 0.378314435f, 0.895553827f, 0.277717739f},
         luisa::float4{0.333333343f, 1.0f, 0.480559349f, 1.0f},
         luisa::float4{0.8f, 1.2f, 0.5f, 1.0f},
-        luisa::float4{0.0f, 0.0f, 1.0f, 0.2f}};
+        luisa::float4{0.0f, 0.0f, 1.0f, 0.2f},
+        luisa::float4{
+            0.494488537f, 0.556867063f, 0.606431603f, 0.0f},
+        luisa::float4{
+            0.269488543f, 0.631867051f, 0.456431597f, 0.0f},
+        luisa::float4{
+            0.477954209f, 0.727468193f, 0.925726414f, 0.0f},
+        luisa::float4{0.0f, 0.0f, 0.0f, 0.0f}};
     for (auto index = std::size_t{0u};
          index < expected.size();
          ++index) {
@@ -477,4 +556,3 @@ int main(int argc, char **argv) {
     }
     return EXIT_SUCCESS;
 }
-
