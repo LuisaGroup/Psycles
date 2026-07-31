@@ -18,6 +18,12 @@ struct VolumeNullEventCoefficients {
     Bool majorant_exceeded;
 };
 
+struct HeterogeneousVolumeScatterMeasure {
+    Float3 channel_pdf;
+    Float probability;
+    Bool absorption_only;
+};
+
 // The complete local state transition at one candidate collision. Keeping
 // real and null continuations side by side makes their common normalization
 // explicit and prevents either estimator from silently changing measure.
@@ -65,6 +71,13 @@ class HeterogeneousVolumeTracking {
         Float3 sigma_t,
         Float sampled_majorant) const noexcept;
 
+    [[nodiscard]]
+    HeterogeneousVolumeScatterMeasure
+    scatter_measure(
+        const VolumeCoefficients &coefficients,
+        Float3 sigma_n,
+        Float3 throughput) const noexcept;
+
     [[nodiscard]] HeterogeneousVolumeCollision
     evaluate_collision(
         const VolumeCoefficients &coefficients,
@@ -83,6 +96,9 @@ class HeterogeneousVolumeTracking {
 
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(
     psycles::luisa_backend::VolumeNullEventCoefficients)
+LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(
+    psycles::luisa_backend::
+        HeterogeneousVolumeScatterMeasure)
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(
     psycles::luisa_backend::HeterogeneousVolumeCollision)
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(

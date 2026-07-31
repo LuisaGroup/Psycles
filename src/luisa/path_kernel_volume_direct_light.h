@@ -28,6 +28,13 @@ struct VolumeDirectLightProposal {
     Bool valid;
 };
 
+struct VolumeDirectScatter {
+    Float3 throughput;
+    Float distance;
+    VolumePhaseSetEvaluation phase;
+    Bool scattered;
+};
+
 // The light is sampled before volume-distance integration because Cycles
 // chooses distance/equiangular transport from the selected emitter. The
 // contribution is completed afterwards, once the direct collision point and
@@ -59,7 +66,7 @@ class VolumeDirectLightingComponent {
     virtual void accumulate(
         ClosestPathEvent &event,
         const VolumeDirectLightSample &light,
-        const HomogeneousVolumeSegmentResult &volume,
+        const VolumeDirectScatter &volume,
         const VolumeStack &path_stack,
         Float3 segment_position,
         Bool inside_volume) const noexcept = 0;

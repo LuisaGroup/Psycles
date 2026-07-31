@@ -28,7 +28,11 @@ struct PathHeterogeneousVolumeInput {
     Float3 throughput;
     Float reservoir_random;
     Float2 phase_random;
-    Float majorant_scale;
+    HeterogeneousVolumeGuidingState
+        guiding;
+    HeterogeneousVolumeDirectInput direct;
+    const VolumeDirectDirectionProvider
+        *direct_direction;
     Bool terminate;
 };
 

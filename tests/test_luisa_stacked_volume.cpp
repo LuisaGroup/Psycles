@@ -421,6 +421,20 @@ class RawGraphTrackingRandom final
         static_cast<void>(rng_offset);
         return 0.5f;
     }
+
+    Float expansion_order(
+        UInt rng_offset)
+        const noexcept override {
+        static_cast<void>(rng_offset);
+        return 0.5f;
+    }
+
+    Float transmittance_shade_offset(
+        UInt rng_offset)
+        const noexcept override {
+        static_cast<void>(rng_offset);
+        return 0.5f;
+    }
 };
 
 [[nodiscard]] bool approximately_equal(

@@ -1577,7 +1577,25 @@ void run_scene_build(
                          0.01f,
                      .phase_random =
                          phase_random,
-                     .majorant_scale = 1.0f,
+                     .guiding =
+                         {.scattered_radiance =
+                              make_float3(0.0f),
+                          .transmitted_radiance =
+                              make_float3(0.0f),
+                          .majorant_optical_depth =
+                              std::numeric_limits<
+                                  float>::max(),
+                          .enabled = false},
+                     .direct =
+                         {.requested_method =
+                              volume_sample_none,
+                          .light_position =
+                              make_float3(0.0f),
+                          .interval =
+                              {.minimum = 0.0f,
+                               .maximum = 0.0f},
+                          .enabled = false},
+                     .direct_direction = nullptr,
                      .terminate = false});
             output.write(
                 0u,

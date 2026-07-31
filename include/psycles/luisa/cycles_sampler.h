@@ -285,6 +285,27 @@ inline constexpr std::array<std::uint32_t, 64u>
         .x;
 }
 
+// Cycles deliberately evaluates PRNG_VOLUME_EXPANSION_ORDER with rng_hash
+// zero, rather than the pixel hash used by ordinary path dimensions. Keeping
+// that correlation policy behind a named boundary prevents volume
+// transmittance call sites from accidentally decorrelating the geometric
+// expansion order across pixels and desynchronizing GPU work.
+[[nodiscard]] inline Float sample_volume_expansion_order(
+    const BufferFloat4 &table,
+    UInt sequence_size,
+    UInt sample,
+    UInt rng_offset) noexcept {
+    return sample_1d(
+        table,
+        sequence_size,
+        sample,
+        0u,
+        path_state_dimension(
+            rng_offset,
+            sampling::tabulated_sobol::
+                volume_expansion_order_dimension));
+}
+
 [[nodiscard]] inline Float2 sample_2d(
     const BufferFloat4 &table,
     UInt sequence_size,

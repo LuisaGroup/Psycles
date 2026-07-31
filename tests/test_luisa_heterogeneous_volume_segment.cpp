@@ -124,6 +124,20 @@ class FixtureRandomSource final
         static_cast<void>(rng_offset);
         return 0.5f;
     }
+
+    Float expansion_order(
+        UInt rng_offset)
+        const noexcept override {
+        static_cast<void>(rng_offset);
+        return 0.5f;
+    }
+
+    Float transmittance_shade_offset(
+        UInt rng_offset)
+        const noexcept override {
+        static_cast<void>(rng_offset);
+        return 0.5f;
+    }
 };
 
 class FixtureCollisionProvider final
@@ -187,6 +201,24 @@ class FixtureCollisionProvider final
     }
 };
 
+class FixtureDirectionProvider final
+    : public VolumeDirectDirectionProvider {
+
+  public:
+    VolumeDirectDirectionSample emit(
+        Float distance)
+        const noexcept override {
+        return {
+            .direction =
+                normalize(
+                    make_float3(
+                        0.3f,
+                        0.4f,
+                        0.8660254f)),
+            .valid = distance > 0.0f};
+    }
+};
+
 [[nodiscard]] UInt flags(
     const HeterogeneousVolumeSegmentResult
         &result) noexcept {
@@ -233,7 +265,7 @@ void run_backend(
     auto stream =
         device.create_stream();
     auto float_output =
-        device.create_buffer<luisa::float4>(6u);
+        device.create_buffer<luisa::float4>(26u);
     auto uint_output =
         device.create_buffer<luisa::uint4>(2u);
 
@@ -340,6 +372,415 @@ void run_backend(
                     path_rng_offset,
                     tracking_seed,
                     0u));
+
+            const HeterogeneousVolumeScatterProbability
+                guiding_probability;
+            const auto guiding =
+                guiding_probability.evaluate(
+                    {.scattered_radiance =
+                         make_float3(0.0f),
+                     .transmitted_radiance =
+                         make_float3(0.0f),
+                     .majorant_optical_depth =
+                         1.0f,
+                     .enabled = true});
+            FixtureDirectionProvider
+                direction;
+            SingleSegmentSequence
+                guided_sequence;
+            FixtureRandomSource
+                guided_random{
+                    initial_offset};
+            UInt guided_calls = 0u;
+            FixtureCollisionProvider
+                guided_collisions{
+                    &guided_calls};
+            const auto guided =
+                segment->emit(
+                    {.segments =
+                         guided_sequence,
+                     .random = guided_random,
+                     .collisions =
+                         guided_collisions,
+                     .guiding = guiding,
+                     .direct =
+                         {.requested_method =
+                              volume_sample_distance,
+                          .light_position =
+                              make_float3(
+                                  1.0f,
+                                  0.0f,
+                                  2.0f),
+                          .interval =
+                              {.minimum = 0.0f,
+                               .maximum = 5.0f},
+                          .enabled = true},
+                     .direct_direction =
+                         &direction,
+                     .ray_minimum = 0.0f,
+                     .ray_maximum = 5.0f,
+                     .segment_origin =
+                         make_float3(0.0f),
+                     .phase_axis =
+                         phase_axis,
+                     .throughput =
+                         make_float3(1.0f),
+                     .direct_random = 0.25f,
+                     .reservoir_random =
+                         0.1f,
+                     .phase_random =
+                         make_float2(
+                             0.17f,
+                             0.83f),
+                     .tracking_rng_offset =
+                         initial_offset,
+                     .terminate = false});
+            float_records.write(
+                6u,
+                make_float4(
+                    guiding
+                        .scatter_probability,
+                    guiding.majorant_scale,
+                    cast<float>(
+                        guided_calls),
+                    select(
+                        0.0f,
+                        1.0f,
+                        guiding.enabled)));
+            float_records.write(
+                7u,
+                make_float4(
+                    guided.transport
+                        .throughput,
+                    guided.transport
+                        .distance));
+            float_records.write(
+                8u,
+                make_float4(
+                    guided.transport.emission,
+                    guided.transport
+                        .null_transmittance));
+            float_records.write(
+                9u,
+                make_float4(
+                    guided.transport
+                        .unguided_scatter_probability,
+                    guided.transport
+                        .guided_scatter_probability,
+                    guided.transport
+                        .reservoir_random,
+                    cast<float>(
+                        flags(guided))));
+            float_records.write(
+                10u,
+                make_float4(
+                    guided.direct_transport
+                        .throughput,
+                    guided.direct_transport
+                        .distance));
+            float_records.write(
+                11u,
+                make_float4(
+                    guided.direct_transport
+                        .distance_pdf,
+                    guided.direct_transport
+                        .equiangular_pdf,
+                    guided.direct_transport
+                        .mis_weight,
+                    cast<float>(
+                        guided.direct_transport
+                            .sample_method)));
+            float_records.write(
+                12u,
+                make_float4(
+                    guided.direct_phase.value,
+                    guided.direct_phase.pdf,
+                    guided.direct_phase
+                        .sample_weight,
+                    select(
+                        0.0f,
+                        1.0f,
+                        guided.direct_phase
+                            .valid)));
+
+            SingleSegmentSequence
+                mis_sequence;
+            FixtureRandomSource
+                mis_random{
+                    initial_offset};
+            UInt mis_calls = 0u;
+            FixtureCollisionProvider
+                mis_collisions{
+                    &mis_calls};
+            const auto mis =
+                segment->emit(
+                    {.segments = mis_sequence,
+                     .random = mis_random,
+                     .collisions =
+                         mis_collisions,
+                     .guiding =
+                         {.scatter_probability =
+                              1.0f,
+                          .majorant_scale = 1.0f,
+                          .enabled = false},
+                     .direct =
+                         {.requested_method =
+                              volume_sample_mis,
+                          .light_position =
+                              make_float3(
+                                  1.0f,
+                                  0.0f,
+                                  2.0f),
+                          .interval =
+                              {.minimum = 0.0f,
+                               .maximum = 5.0f},
+                          .enabled = true},
+                     .direct_direction =
+                         &direction,
+                     .ray_minimum = 0.0f,
+                     .ray_maximum = 5.0f,
+                     .segment_origin =
+                         make_float3(0.0f),
+                     .phase_axis =
+                         phase_axis,
+                     .throughput =
+                         make_float3(1.0f),
+                     .direct_random = 0.625f,
+                     .reservoir_random =
+                         0.1f,
+                     .phase_random =
+                         make_float2(
+                             0.17f,
+                             0.83f),
+                     .tracking_rng_offset =
+                         initial_offset,
+                     .terminate = false});
+            float_records.write(
+                13u,
+                make_float4(
+                    mis.transport.throughput,
+                    mis.transport.distance));
+            float_records.write(
+                14u,
+                make_float4(
+                    mis.direct_transport
+                        .throughput,
+                    mis.direct_transport
+                        .distance));
+            float_records.write(
+                15u,
+                make_float4(
+                    mis.direct_transport
+                        .distance_pdf,
+                    mis.direct_transport
+                        .equiangular_pdf,
+                    mis.direct_transport
+                        .mis_weight,
+                    cast<float>(
+                        mis.direct_transport
+                            .sample_method)));
+            float_records.write(
+                16u,
+                make_float4(
+                    mis.direct_phase.value,
+                    mis.direct_phase.pdf,
+                    mis.direct_phase
+                        .sample_weight,
+                    select(
+                        0.0f,
+                        1.0f,
+                        mis.direct_phase.valid)));
+            float_records.write(
+                17u,
+                make_float4(
+                    mis.transport
+                        .unguided_scatter_probability,
+                    mis.transport
+                        .guided_scatter_probability,
+                    mis.transport
+                        .reservoir_random,
+                    cast<float>(
+                        flags(mis))));
+
+            SingleSegmentSequence
+                distance_mis_sequence;
+            FixtureRandomSource
+                distance_mis_random{
+                    initial_offset};
+            UInt distance_mis_calls = 0u;
+            FixtureCollisionProvider
+                distance_mis_collisions{
+                    &distance_mis_calls};
+            const auto distance_mis =
+                segment->emit(
+                    {.segments =
+                         distance_mis_sequence,
+                     .random =
+                         distance_mis_random,
+                     .collisions =
+                         distance_mis_collisions,
+                     .guiding =
+                         {.scatter_probability =
+                              1.0f,
+                          .majorant_scale = 1.0f,
+                          .enabled = false},
+                     .direct =
+                         {.requested_method =
+                              volume_sample_mis,
+                          .light_position =
+                              make_float3(
+                                  1.0f,
+                                  0.0f,
+                                  2.0f),
+                          .interval =
+                              {.minimum = 0.0f,
+                               .maximum = 5.0f},
+                          .enabled = true},
+                     .direct_direction =
+                         &direction,
+                     .ray_minimum = 0.0f,
+                     .ray_maximum = 5.0f,
+                     .segment_origin =
+                         make_float3(0.0f),
+                     .phase_axis =
+                         phase_axis,
+                     .throughput =
+                         make_float3(1.0f),
+                     .direct_random = 0.25f,
+                     .reservoir_random =
+                         0.1f,
+                     .phase_random =
+                         make_float2(
+                             0.17f,
+                             0.83f),
+                     .tracking_rng_offset =
+                         initial_offset,
+                     .terminate = false});
+            float_records.write(
+                18u,
+                make_float4(
+                    distance_mis.transport
+                        .throughput,
+                    distance_mis.transport
+                        .distance));
+            float_records.write(
+                19u,
+                make_float4(
+                    distance_mis
+                        .direct_transport
+                        .throughput,
+                    distance_mis
+                        .direct_transport
+                        .distance));
+            float_records.write(
+                20u,
+                make_float4(
+                    distance_mis
+                        .direct_transport
+                        .distance_pdf,
+                    distance_mis
+                        .direct_transport
+                        .equiangular_pdf,
+                    distance_mis
+                        .direct_transport
+                        .mis_weight,
+                    cast<float>(
+                        distance_mis
+                            .direct_transport
+                            .sample_method)));
+            float_records.write(
+                21u,
+                make_float4(
+                    distance_mis.direct_phase
+                        .value,
+                    distance_mis.direct_phase
+                        .pdf,
+                    cast<float>(
+                        distance_mis_calls),
+                    cast<float>(
+                        flags(
+                            distance_mis))));
+
+            SingleSegmentSequence
+                guided_scatter_sequence;
+            FixtureRandomSource
+                guided_scatter_random{
+                    initial_offset};
+            UInt guided_scatter_calls = 0u;
+            FixtureCollisionProvider
+                guided_scatter_collisions{
+                    &guided_scatter_calls};
+            const auto guided_scatter =
+                segment->emit(
+                    {.segments =
+                         guided_scatter_sequence,
+                     .random =
+                         guided_scatter_random,
+                     .collisions =
+                         guided_scatter_collisions,
+                     .guiding = guiding,
+                     .direct =
+                         {.requested_method =
+                              volume_sample_none,
+                          .light_position =
+                              make_float3(0.0f),
+                          .interval =
+                              {.minimum = 0.0f,
+                               .maximum = 5.0f},
+                          .enabled = false},
+                     .direct_direction =
+                         nullptr,
+                     .ray_minimum = 0.0f,
+                     .ray_maximum = 5.0f,
+                     .segment_origin =
+                         make_float3(0.0f),
+                     .phase_axis =
+                         phase_axis,
+                     .throughput =
+                         make_float3(1.0f),
+                     .direct_random = 0.0f,
+                     .reservoir_random =
+                         0.9f,
+                     .phase_random =
+                         make_float2(
+                             0.17f,
+                             0.83f),
+                     .tracking_rng_offset =
+                         initial_offset,
+                     .terminate = false});
+            float_records.write(
+                22u,
+                make_float4(
+                    guided_scatter.transport
+                        .throughput,
+                    guided_scatter.transport
+                        .distance));
+            float_records.write(
+                23u,
+                make_float4(
+                    guided_scatter.transport
+                        .emission,
+                    guided_scatter.transport
+                        .null_transmittance));
+            float_records.write(
+                24u,
+                make_float4(
+                    guided_scatter.transport
+                        .unguided_scatter_probability,
+                    guided_scatter.transport
+                        .guided_scatter_probability,
+                    guided_scatter.transport
+                        .reservoir_random,
+                    cast<float>(
+                        guided_scatter_calls)));
+            float_records.write(
+                25u,
+                make_float4(
+                    guided_scatter.phase
+                        .direction,
+                    cast<float>(
+                        flags(
+                            guided_scatter))));
         };
     auto shader =
         device.compile(
@@ -348,7 +789,7 @@ void run_backend(
                 .enable_cache = false,
                 .enable_fast_math = false});
 
-    std::array<luisa::float4, 6u>
+    std::array<luisa::float4, 26u>
         actual_float{};
     std::array<luisa::uint4, 2u>
         actual_uint{};
@@ -363,11 +804,15 @@ void run_backend(
                luisa::span{actual_uint})
         << synchronize();
 
-    // Transport values are pinned to volume_integrate_step_scattering() and
-    // volume_distance_sampling_finalize() in official Cycles main
-    // 0ae970969e3f. The phase value reuses the official Cycles CPU-kernel
-    // oracle already covered exhaustively by test_luisa_volume_phase.
-    constexpr std::array<luisa::float4, 6u>
+    // Records 0..5 pin weighted-delta tracking. Records 6..12 pin empty-
+    // history VSPG, its defensive transmit selection, and non-MIS distance
+    // NEE. Records 13..17 and 18..21 pin both equiangular and distance arms
+    // of Cycles' heterogeneous two-technique MIS. Records 22..25 reuse the
+    // same VSPG masses but force the defensive scatter selection. All
+    // equations and random remappings correspond to official Cycles main
+    // 6f7add4a791e; phase values reuse the separately exhaustive Cycles phase
+    // fixtures.
+    constexpr std::array<luisa::float4, 26u>
         expected_float{{
             {0.268873110f,
              0.358497481f,
@@ -387,6 +832,86 @@ void run_backend(
              0.044300843f},
             {1.0f, 1.5f, 2.0f, 0.2f},
             {0.58f, 0.17f, 0.0f, 0.0f},
+            {0.790988386f,
+             1.0f,
+             3.0f,
+             1.0f},
+            {1.40298247f,
+             0.467660815f,
+             0.0f,
+             5.0f},
+            {0.125f,
+             0.125f,
+             0.200000003f,
+             0.442116022f},
+            {0.557883978f,
+             0.732712269f,
+             0.374128670f,
+             18.0f},
+            {0.150000006f,
+             0.199999988f,
+             0.150000006f,
+             1.25f},
+            {1.11576796f,
+             0.248494565f,
+             1.0f,
+             1.0f},
+            {0.161441714f,
+             0.161441714f,
+             0.800000012f,
+             1.0f},
+            {0.268873125f,
+             0.358497471f,
+             0.268873125f,
+             1.25f},
+            {0.438155144f,
+             0.292103410f,
+             0.0f,
+             1.52656865f},
+            {0.342331618f,
+             0.339373589f,
+             0.991321862f,
+             2.0f},
+            {0.161441714f,
+             0.161441714f,
+             0.800000012f,
+             1.0f},
+            {0.557883978f,
+             0.557883978f,
+             0.179248735f,
+             51.0f},
+            {0.268873125f,
+             0.358497471f,
+             0.268873125f,
+             1.25f},
+            {0.512334168f,
+             0.683112204f,
+             0.512334168f,
+             1.25f},
+            {1.11576796f,
+             0.248494565f,
+             1.90548682f,
+             1.0f},
+            {0.161441714f,
+             0.161441714f,
+             4.0f,
+             49.0f},
+            {0.204718843f,
+             0.272958428f,
+             0.204718843f,
+             1.25f},
+            {0.125f,
+             0.125f,
+             0.200000003f,
+             0.442116022f},
+            {0.557883978f,
+             0.732712269f,
+             0.863520741f,
+             3.0f},
+            {-0.117953509f,
+             -0.899912238f,
+             -0.419815451f,
+             51.0f},
         }};
     for (std::size_t index = 0u;
          index < expected_float.size();

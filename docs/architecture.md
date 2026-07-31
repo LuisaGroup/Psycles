@@ -260,11 +260,13 @@ continuation, and both continuation weights. Its result carries an explicit
 `majorant_exceeded` predicate. That predicate is a failed preprocessing
 contract, not permission to continue with an estimated bound. Majorant
 construction, octree traversal, overlapping-stack reduction, VSPG reservoir
-selection, and direct-light MIS are separate components so that none can
-silently alter this local measure. The first three acceleration stages are
-now complete and the production coordinate/extrema provider composes with
-them. The scene capability gate continues to reject heterogeneous material
-graphs until the collision/phase/direct-light path is connected.
+selection, residual-ratio transmittance, and direct-light MIS are separate
+components so that none can silently alter this local measure. These stages
+now compose in the production camera-path AST, including raw collision/phase
+recovery and both distance/equiangular direct techniques. The scene capability
+gate continues to reject heterogeneous material graphs until the same
+residual-ratio traversal replaces homogeneous attenuation on volume shadow
+rays.
 
 `VolumeMajorantSceneComponent` owns the next host-stage boundary. It maps each
 internal instance and its effective material overrides to one object/shader
