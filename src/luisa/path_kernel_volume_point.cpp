@@ -5,6 +5,20 @@
 namespace psycles::luisa_backend::detail {
 namespace {
 
+[[nodiscard]] Float3 cycles_safe_normalize(
+    Float3 value) noexcept {
+    // Cycles safe_normalize() returns the input unchanged when its length is
+    // zero. This matters for the volume-majorant prepass: bake rays have an
+    // exactly zero direction, so ShaderData N/Ng/wi and their object-space
+    // transforms must remain zero rather than becoming NaN.
+    const auto value_length = length(value);
+    return value /
+           select(
+               1.0f,
+               value_length,
+               value_length != 0.0f);
+}
+
 class SceneVolumeStackEntryPointProvider final
     : public VolumeStackEntryPointProvider {
 
@@ -73,7 +87,7 @@ class SceneVolumeStackEntryPointProvider final
                      object_position, 1.0f))
                     .xyz();
             object_shading_normal =
-                normalize(
+                cycles_safe_normalize(
                     (transpose(object_to_world) *
                      make_float4(
                          state.incoming, 0.0f))

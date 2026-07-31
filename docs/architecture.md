@@ -371,9 +371,19 @@ radiometric rejection, proposal measure, and interval algebra from becoming
 emitter-specific branches inside the homogeneous estimator.
 
 Heterogeneous transport is split at the same semantic boundaries.
-`VolumeMajorantHierarchyBuilder` consumes the 128-cubed cell extrema produced
-by a raw Luisa volume-graph evaluation pass and reduces them into Cycles'
-eight-contiguous-child hierarchy. It applies the current depth-seven and
+`VolumeMajorantPrepass` records the raw Luisa volume graph at the same
+sixteen padded Sobol-Burley positions Cycles uses for every cell of its
+128-cubed grid. Cell addressing is x-fast, sample index is
+`cell_index * 16 + sample`, and the bake state is camera visibility, zero
+path state and direction, and time `0.5`. The ordinary polymorphic
+`SurfaceDispatch` and `VolumeStackEntryPointProvider` construct the shader
+AST, so this pass evaluates the original closure graph rather than a
+host-side material surrogate. It reduces the maximum extinction or emission
+channel, then divides the entry-invariant object-density scale out of the
+cell extrema exactly where Cycles does.
+
+`VolumeMajorantHierarchyBuilder` consumes those extrema and reduces them into
+Cycles' eight-contiguous-child hierarchy. It applies the current depth-seven and
 `range * node_diagonal * volume_scale > 1.442` split rule and records the
 object-bounds-to-`[1, 2)` transform. The builder is host acceleration-metadata
 code only: it neither evaluates a material nor acts as a CPU transport
@@ -391,8 +401,8 @@ component so single-root adjacency, multi-root interval selection, and
 coefficient accumulation cannot silently acquire different traversal rules.
 `HeterogeneousVolumeTracking` independently owns exponential candidate
 distance and the throughput/albedo-weighted real/null collision measure.
-These components will be composed only after the raw shader-evaluation
-prepass and multi-root interval reducer are connected.
+These components will be composed only after scene-side prepass resource
+construction and the multi-root interval reducer are connected.
 
 Volume-scattering probability guidance is persistent render-session state,
 not path-local policy. The path kernel accumulates Cycles' raw scatter,

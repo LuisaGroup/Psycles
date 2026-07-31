@@ -4,10 +4,13 @@
 #error "Include <psycles/luisa/cycles_sampler.h> through the Psycles::luisa target."
 #endif
 
+#include <array>
 #include <cstdint>
 
 #include <psycles/sampling/tabulated_sobol.h>
 
+#include <luisa/dsl/builtin.h>
+#include <luisa/dsl/constant.h>
 #include <luisa/dsl/sugar.h>
 
 namespace psycles::luisa_backend::cycles_sampler {
@@ -100,6 +103,82 @@ using luisa::compute::make_float3;
     return hash_hp_seeded_uint(
                rng_offset, seed) &
            ~0x3u;
+}
+
+// First three reversed-bit Sobol direction tables from current Cycles.
+// Dimension zero has the Van der Corput fast path and therefore needs no
+// table lookup. The remaining two dimensions are dynamically indexed by the
+// device loop in sobol_burley().
+inline constexpr std::array<std::uint32_t, 64u>
+    sobol_burley_directions_1_2{{
+        0x00000001u, 0x00000003u, 0x00000005u, 0x0000000fu,
+        0x00000011u, 0x00000033u, 0x00000055u, 0x000000ffu,
+        0x00000101u, 0x00000303u, 0x00000505u, 0x00000f0fu,
+        0x00001111u, 0x00003333u, 0x00005555u, 0x0000ffffu,
+        0x00010001u, 0x00030003u, 0x00050005u, 0x000f000fu,
+        0x00110011u, 0x00330033u, 0x00550055u, 0x00ff00ffu,
+        0x01010101u, 0x03030303u, 0x05050505u, 0x0f0f0f0fu,
+        0x11111111u, 0x33333333u, 0x55555555u, 0xffffffffu,
+        0x00000001u, 0x00000003u, 0x00000006u, 0x00000009u,
+        0x00000017u, 0x0000003au, 0x00000071u, 0x000000a3u,
+        0x00000116u, 0x00000339u, 0x00000677u, 0x000009aau,
+        0x00001601u, 0x00003903u, 0x00007706u, 0x0000aa09u,
+        0x00010117u, 0x0003033au, 0x00060671u, 0x000909a3u,
+        0x00171616u, 0x003a3939u, 0x00717777u, 0x00a3aaaau,
+        0x01170001u, 0x033a0003u, 0x06710006u, 0x09a30009u,
+        0x16160017u, 0x3939003au, 0x77770071u, 0xaaaa00a3u}};
+
+[[nodiscard]] inline Float sobol_burley(
+    UInt reversed_index,
+    std::uint32_t dimension,
+    UInt scramble_seed) noexcept {
+    UInt result = 0u;
+    if (dimension == 0u) {
+        result = reverse_bits(reversed_index);
+    } else {
+        luisa::compute::Constant<std::uint32_t>
+            directions{sobol_burley_directions_1_2};
+        UInt bit = 0u;
+        $while(reversed_index != 0u) {
+            const auto zeros =
+                luisa::compute::clz(reversed_index);
+            const auto table_offset =
+                static_cast<std::uint32_t>(
+                    (dimension - 1u) * 32u);
+            result ^=
+                directions.read(
+                    table_offset + bit + zeros);
+            bit += zeros + 1u;
+            // A single shift by 32 is not portable. Cycles deliberately
+            // performs the two shifts separately.
+            reversed_index <<= zeros;
+            reversed_index <<= 1u;
+        };
+    }
+    result = reverse_bits(
+        reversed_bit_owen(
+            result, scramble_seed));
+    return luisa::compute::cast<float>(result) *
+           (1.0f / 4294967808.0f);
+}
+
+[[nodiscard]] inline Float3 sobol_burley_sample_3d(
+    UInt index,
+    UInt dimension_set,
+    UInt seed,
+    UInt shuffled_index_mask) noexcept {
+    seed ^= hash_hp_uint(dimension_set);
+    index = reversed_bit_owen(
+        reverse_bits(index),
+        seed ^ 0xcaa726acu);
+    index &= shuffled_index_mask;
+    return make_float3(
+        sobol_burley(
+            index, 0u, seed ^ 0x9e78e391u),
+        sobol_burley(
+            index, 1u, seed ^ 0x67c33241u),
+        sobol_burley(
+            index, 2u, seed ^ 0x78c395c5u));
 }
 
 [[nodiscard]] inline UInt shuffled_pattern_index(

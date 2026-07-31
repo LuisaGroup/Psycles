@@ -15,7 +15,7 @@ using namespace luisa::compute;
 using namespace psycles::luisa_backend;
 using namespace psycles::luisa_backend::detail;
 
-inline constexpr std::size_t record_count = 24u;
+inline constexpr std::size_t record_count = 26u;
 
 [[nodiscard]] bool approximately_equal(
     float actual,
@@ -398,6 +398,72 @@ int main(int argc, char **argv) {
                     flag(
                         zero_surface_fields(
                             world.point))));
+
+            const VolumeShadingState zero_direction_state{
+                .position = state.position,
+                .incoming =
+                    make_float3(0.0f),
+                .ray_visibility =
+                    state.ray_visibility,
+                .ray_events =
+                    state.ray_events,
+                .ray_depth =
+                    state.ray_depth,
+                .diffuse_depth =
+                    state.diffuse_depth,
+                .glossy_depth =
+                    state.glossy_depth,
+                .transparent_depth =
+                    state.transparent_depth,
+                .transmission_depth =
+                    state.transmission_depth,
+                .ray_length =
+                    state.ray_length,
+                .time = state.time};
+            const auto zero_object =
+                point_provider->emit(
+                    object_entry,
+                    zero_direction_state);
+            records.write(
+                24u,
+                make_float4(
+                    zero_object.point
+                        .object_shading_normal,
+                    flag(
+                        all(
+                            zero_object.point
+                                .geometric_normal ==
+                            make_float3(0.0f)) &
+                        all(
+                            zero_object.point
+                                .shading_normal ==
+                            make_float3(0.0f)) &
+                        all(
+                            zero_object.point
+                                .incoming ==
+                            make_float3(0.0f)))));
+            const auto zero_world =
+                point_provider->emit(
+                    world_entry,
+                    zero_direction_state);
+            records.write(
+                25u,
+                make_float4(
+                    zero_world.point
+                        .object_shading_normal,
+                    flag(
+                        all(
+                            zero_world.point
+                                .geometric_normal ==
+                            make_float3(0.0f)) &
+                        all(
+                            zero_world.point
+                                .shading_normal ==
+                            make_float3(0.0f)) &
+                        all(
+                            zero_world.point
+                                .incoming ==
+                            make_float3(0.0f)))));
         };
     auto shader = device.compile(evaluate);
 
@@ -478,7 +544,11 @@ int main(int argc, char **argv) {
         luisa::float4{
             37.0f, 41.0f, 5.0f, 11.0f},
         luisa::float4{
-            0.0f, 0.0f, 0.625f, 1.0f}};
+            0.0f, 0.0f, 0.625f, 1.0f},
+        luisa::float4{
+            0.0f, 0.0f, 0.0f, 1.0f},
+        luisa::float4{
+            0.0f, 0.0f, 0.0f, 1.0f}};
 
     for (std::size_t index = 0u;
          index < expected.size();
