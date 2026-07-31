@@ -1,6 +1,7 @@
 #include <psycles/luisa/homogeneous_volume_transport.h>
-#include <psycles/luisa/volume_scatter_probability.h>
 #include <psycles/luisa/volume_direct_sampling.h>
+#include <psycles/luisa/volume_light_interval.h>
+#include <psycles/luisa/volume_scatter_probability.h>
 
 #include <algorithm>
 #include <array>
@@ -17,7 +18,7 @@ namespace {
 using namespace luisa::compute;
 using namespace psycles::luisa_backend;
 
-inline constexpr std::size_t record_count = 46u;
+inline constexpr std::size_t record_count = 57u;
 
 [[nodiscard]] bool approximately_equal(
     float actual,
@@ -639,6 +640,308 @@ int main(int argc, char **argv) {
                     empty_interval.pdf,
                     flag(
                         empty_interval.valid)));
+
+            VolumeLightInterval
+                light_interval;
+            const auto write_interval =
+                [&](std::uint32_t index,
+                    const VolumeLightIntervalResult
+                        &result) noexcept {
+                    records.write(
+                        index,
+                        make_float4(
+                            select(
+                                0.0f,
+                                result.interval
+                                    .minimum,
+                                result.valid),
+                            select(
+                                0.0f,
+                                result.interval
+                                    .maximum,
+                                result.valid),
+                            flag(result.valid),
+                            0.0f));
+                };
+            constexpr auto half_pi =
+                1.5707963267948966f;
+            write_interval(
+                46u,
+                light_interval.spot(
+                    {.ray_origin =
+                         make_float3(
+                             3.0f, 0.0f, -2.0f),
+                     .ray_direction =
+                         make_float3(
+                             -1.0f, 0.0f, 0.0f),
+                     .interval =
+                         {.minimum = 0.0f,
+                          .maximum = 6.0f},
+                     .center =
+                         make_float3(0.0f),
+                     .axis_x =
+                         make_float3(
+                             1.0f, 0.0f, 0.0f),
+                     .axis_y =
+                         make_float3(
+                             0.0f, 1.0f, 0.0f),
+                     .axis_z =
+                         make_float3(
+                             0.0f, 0.0f, 1.0f),
+                     .axis_scale =
+                         make_float3(1.0f),
+                     .radius = 0.0f,
+                     .spot_angle = half_pi}));
+            write_interval(
+                47u,
+                light_interval.spot(
+                    {.ray_origin =
+                         make_float3(
+                             5.0f, 0.0f, -2.0f),
+                     .ray_direction =
+                         make_float3(
+                             -1.0f, 0.0f, 0.0f),
+                     .interval =
+                         {.minimum = 0.0f,
+                          .maximum = 10.0f},
+                     .center =
+                         make_float3(0.0f),
+                     .axis_x =
+                         make_float3(
+                             1.0f, 0.0f, 0.0f),
+                     .axis_y =
+                         make_float3(
+                             0.0f, 1.0f, 0.0f),
+                     .axis_z =
+                         make_float3(
+                             0.0f, 0.0f, 1.0f),
+                     .axis_scale =
+                         make_float3(1.0f),
+                     .radius = 1.0f,
+                     .spot_angle = half_pi}));
+            write_interval(
+                48u,
+                light_interval.spot(
+                    {.ray_origin =
+                         make_float3(
+                             13.0f,
+                             -2.0f,
+                             -1.5f),
+                     .ray_direction =
+                         make_float3(
+                             -2.0f, 0.0f, 0.0f),
+                     .interval =
+                         {.minimum = 0.0f,
+                          .maximum = 12.0f},
+                     .center =
+                         make_float3(
+                             1.0f, -2.0f, 0.5f),
+                     .axis_x =
+                         make_float3(
+                             1.0f, 0.0f, 0.0f),
+                     .axis_y =
+                         make_float3(
+                             0.0f, 1.0f, 0.0f),
+                     .axis_z =
+                         make_float3(
+                             0.0f, 0.0f, 1.0f),
+                     .axis_scale =
+                         make_float3(
+                             2.0f, 1.0f, 0.5f),
+                     .radius = 0.25f,
+                     .spot_angle = half_pi}));
+            write_interval(
+                49u,
+                light_interval.spot(
+                    {.ray_origin =
+                         make_float3(
+                             3.0f, 0.0f, 2.0f),
+                     .ray_direction =
+                         make_float3(
+                             -1.0f, 0.0f, 0.0f),
+                     .interval =
+                         {.minimum = 0.0f,
+                          .maximum = 6.0f},
+                     .center =
+                         make_float3(0.0f),
+                     .axis_x =
+                         make_float3(
+                             1.0f, 0.0f, 0.0f),
+                     .axis_y =
+                         make_float3(
+                             0.0f, 1.0f, 0.0f),
+                     .axis_z =
+                         make_float3(
+                             0.0f, 0.0f, 1.0f),
+                     .axis_scale =
+                         make_float3(1.0f),
+                     .radius = 0.0f,
+                     .spot_angle = half_pi}));
+            write_interval(
+                50u,
+                light_interval.area(
+                    {.ray_origin =
+                         make_float3(
+                             -2.0f, 1.5f, -1.0f),
+                     .ray_direction =
+                         make_float3(
+                             1.0f, 0.0f, -0.1f),
+                     .interval =
+                         {.minimum = 0.0f,
+                          .maximum = 5.0f},
+                     .center =
+                         make_float3(0.0f),
+                     .axis_u =
+                         make_float3(
+                             1.0f, 0.0f, 0.0f),
+                     .axis_v =
+                         make_float3(
+                             0.0f, 1.0f, 0.0f),
+                     .axis_z =
+                         make_float3(
+                             0.0f, 0.0f, 1.0f),
+                     .length_u = 2.0f,
+                     .length_v = 4.0f,
+                     .spread = 0.0f,
+                     .ellipse = false}));
+            write_interval(
+                51u,
+                light_interval.area(
+                    {.ray_origin =
+                         make_float3(
+                             -2.0f, 1.5f, -1.0f),
+                     .ray_direction =
+                         make_float3(
+                             1.0f, 0.0f, -0.1f),
+                     .interval =
+                         {.minimum = 0.0f,
+                          .maximum = 5.0f},
+                     .center =
+                         make_float3(0.0f),
+                     .axis_u =
+                         make_float3(
+                             1.0f, 0.0f, 0.0f),
+                     .axis_v =
+                         make_float3(
+                             0.0f, 1.0f, 0.0f),
+                     .axis_z =
+                         make_float3(
+                             0.0f, 0.0f, 1.0f),
+                     .length_u = 2.0f,
+                     .length_v = 4.0f,
+                     .spread = 0.0f,
+                     .ellipse = true}));
+            write_interval(
+                52u,
+                light_interval.area(
+                    {.ray_origin =
+                         make_float3(
+                             0.0f, 0.0f, -1.0f),
+                     .ray_direction =
+                         make_float3(
+                             0.0f, 0.0f, -1.0f),
+                     .interval =
+                         {.minimum = 0.0f,
+                          .maximum = 5.0f},
+                     .center =
+                         make_float3(0.0f),
+                     .axis_u =
+                         make_float3(
+                             1.0f, 0.0f, 0.0f),
+                     .axis_v =
+                         make_float3(
+                             0.0f, 1.0f, 0.0f),
+                     .axis_z =
+                         make_float3(
+                             0.0f, 0.0f, 1.0f),
+                     .length_u = 2.0f,
+                     .length_v = 4.0f,
+                     .spread = 0.0f,
+                     .ellipse = true}));
+            const auto finite_area_input =
+                VolumeAreaIntervalInput{
+                    .ray_origin =
+                        make_float3(
+                            5.0f, 0.0f, -2.0f),
+                    .ray_direction =
+                        make_float3(
+                            -1.0f,
+                            0.0f,
+                            -0.01f),
+                    .interval =
+                        {.minimum = 0.0f,
+                         .maximum = 10.0f},
+                    .center =
+                        make_float3(0.0f),
+                    .axis_u =
+                        make_float3(
+                            1.0f, 0.0f, 0.0f),
+                    .axis_v =
+                        make_float3(
+                            0.0f, 1.0f, 0.0f),
+                    .axis_z =
+                        make_float3(
+                            0.0f, 0.0f, 1.0f),
+                    .length_u = 2.0f,
+                    .length_v = 4.0f,
+                    .spread = half_pi,
+                    .ellipse = false};
+            write_interval(
+                53u,
+                light_interval.area(
+                    finite_area_input));
+            auto finite_ellipse_input =
+                finite_area_input;
+            finite_ellipse_input.ellipse =
+                true;
+            write_interval(
+                54u,
+                light_interval.area(
+                    finite_ellipse_input));
+            auto full_spread_input =
+                finite_area_input;
+            full_spread_input.ray_origin =
+                make_float3(
+                    0.0f, 0.0f, -2.0f);
+            full_spread_input.ray_direction =
+                make_float3(
+                    0.0f, 0.0f, 1.0f);
+            full_spread_input.interval =
+                {.minimum = 0.0f,
+                 .maximum = 5.0f};
+            full_spread_input.spread =
+                3.1415926535897932f;
+            write_interval(
+                55u,
+                light_interval.area(
+                    full_spread_input));
+            write_interval(
+                56u,
+                light_interval.spot(
+                    {.ray_origin =
+                         make_float3(
+                             -2.0f, 0.0f, -3.0f),
+                     .ray_direction =
+                         make_float3(
+                             0.0f, 0.0f, 1.0f),
+                     .interval =
+                         {.minimum = 0.0f,
+                          .maximum = 6.0f},
+                     .center =
+                         make_float3(0.0f),
+                     .axis_x =
+                         make_float3(
+                             0.0f, 0.0f, -1.0f),
+                     .axis_y =
+                         make_float3(
+                             0.0f, 1.0f, 0.0f),
+                     .axis_z =
+                         make_float3(
+                             1.0f, 0.0f, 0.0f),
+                     .axis_scale =
+                         make_float3(1.0f),
+                     .radius = 0.0f,
+                     .spot_angle = half_pi}));
         };
 
     auto shader = device.compile(evaluate);
@@ -707,7 +1010,44 @@ int main(int argc, char **argv) {
             0.509295821f, 0.0f, 0.0f, 0.0f},
         luisa::float4{0.0f, 0.0f, 0.0f, 0.0f},
         luisa::float4{0.36f, 0.0f, 0.0f, 0.0f},
-        luisa::float4{0.0f, 0.0f, 0.0f, 0.0f}};
+        luisa::float4{0.0f, 0.0f, 0.0f, 0.0f},
+        // Official Cycles b82c3f0 math_intersect.h and the light-space
+        // transforms in spot.h/area.h. These records pin cone hemisphere
+        // selection, finite-radius apex expansion, non-uniform transforms,
+        // zero-spread primitive clipping, shape-specific maximal extent, and
+        // the exact full-spread plane limit.
+        luisa::float4{1.0f, 5.0f, 1.0f, 0.0f},
+        luisa::float4{
+            1.5857861f,
+            8.41421413f,
+            1.0f,
+            0.0f},
+        luisa::float4{
+            1.44098282f,
+            10.5590172f,
+            1.0f,
+            0.0f},
+        luisa::float4{0.0f, 0.0f, 0.0f, 0.0f},
+        luisa::float4{1.0f, 3.0f, 1.0f, 0.0f},
+        luisa::float4{
+            1.33856213f,
+            2.66143775f,
+            1.0f,
+            0.0f},
+        luisa::float4{0.0f, 0.0f, 0.0f, 0.0f},
+        luisa::float4{
+            0.756368399f,
+            9.32936192f,
+            1.0f,
+            0.0f},
+        luisa::float4{
+            0.990098953f,
+            9.09090996f,
+            1.0f,
+            0.0f},
+        luisa::float4{0.0f, 2.0f, 1.0f, 0.0f},
+        luisa::float4{1.0f, 5.0f, 1.0f, 0.0f}};
+    auto passed = true;
     for (auto index = std::size_t{0u};
          index < expected.size();
          ++index) {
@@ -726,8 +1066,10 @@ int main(int argc, char **argv) {
                 << expected[index].y << ", "
                 << expected[index].z << ", "
                 << expected[index].w << "}\n";
-            return EXIT_FAILURE;
+            passed = false;
         }
     }
-    return EXIT_SUCCESS;
+    return passed
+               ? EXIT_SUCCESS
+               : EXIT_FAILURE;
 }
