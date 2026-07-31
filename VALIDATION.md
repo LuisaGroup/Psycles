@@ -6,6 +6,19 @@ original-resolution visual inspection, and known limitations for the AMD GPU
 bring-up, Cycles differential rendering, XIR control-flow repair, and
 multilayer OpenEXR output.
 
+## Latest checkpoint
+
+The newer
+[2026-08-01 Lone Monk Principled physical-closure validation](docs/validation/2026-08-01/lone-monk-principled-physical-closures/README.md)
+records the full Cycles CPU/HIP and Psycles fallback/HIP/Vulkan matrix after
+expanding Principled into Cycles physical closures. At 640x480 and 64 fixed
+samples, Psycles HIP Combined relative RMSE is `0.084969`, MAE is `0.029320`,
+and render time is 16.4% slower than Cycles HIP on the same RX 9070 XT. That
+checkpoint includes pass reports, original-resolution visual inspection,
+triptychs, and cold HIP/Vulkan compilation diagnosis. It remains an
+intermediate parity checkpoint rather than a replacement for the high-sample
+1080p validation below.
+
 ## Verdict
 
 - Psycles configures and builds the Luisa fallback, HIP, and Vulkan backends
