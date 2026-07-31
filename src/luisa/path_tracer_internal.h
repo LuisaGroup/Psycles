@@ -8,6 +8,7 @@
 #include <psycles/luisa/graph_surface.h>
 
 #include "path_tracer_types.h"
+#include "path_tracer_volume_metadata.h"
 
 #include <algorithm>
 #include <array>
@@ -264,10 +265,7 @@ struct LuisaSceneData {
     contract::ShaderColorSpace shader_color_space;
     Accel accel;
     CameraDesc camera;
-    // Zero specializes volume-free path kernels: no device-local stack and
-    // no camera enclosure ray query are recorded into their Luisa AST.
-    std::uint32_t volume_stack_size{};
-    bool camera_may_be_inside_volume{};
+    VolumeSceneMetadata volume_metadata;
 };
 
 class LuisaCompiledScene final : public contract::CompiledScene {

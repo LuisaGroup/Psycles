@@ -407,9 +407,12 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 "contains a non-default mask outside that range.");
         }
     }
+    std::set<contract::MaterialId>
+        volume_materials;
     for (const auto &[id, material] : snapshot.materials) {
         if (material.shader.root(
                 contract::ShaderDomain::volume)) {
+            volume_materials.emplace(id);
             diagnose(
                 result.diagnostics,
                 "Material " + std::to_string(id.value) +
@@ -418,6 +421,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                     "volume-stack integrator is not enabled yet.");
         }
     }
+    const auto volume_metadata =
+        VolumeSceneMetadataComponent{}.analyze(
+            snapshot, volume_materials);
     if (!result.diagnostics.empty()) {
         return result;
     }
@@ -427,6 +433,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         luisa::compute::Device{_device.impl_shared()};
     data->revision = snapshot.revision;
     data->camera = camera_iter->second;
+    data->volume_metadata = volume_metadata;
     data->shader_color_space = snapshot.shader_color_space;
     data->cycles_background_object_index =
         snapshot.cycles_background_object_index

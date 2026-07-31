@@ -184,6 +184,31 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         camera_projection == CameraProjection::perspective &&
         camera_aperture_radius > 0.0f &&
         camera_focal_distance > 0.0f;
+    const auto camera_may_be_inside_volume =
+        VolumeSceneMetadataComponent{}
+            .camera_may_be_inside_volume(
+                scene->volume_metadata,
+                CameraVolumeBoundsQuery{
+                    .projection =
+                        camera_projection,
+                    .transform =
+                        scene->camera.transform,
+                    .aspect = camera_aspect,
+                    .horizontal_tangent =
+                        camera_horizontal_tangent,
+                    .vertical_tangent =
+                        camera_vertical_tangent,
+                    .orthographic_scale =
+                        camera_ortho_scale,
+                    .shift_x = camera_shift_x,
+                    .shift_y = camera_shift_y,
+                    .near_clip = camera_near,
+                    .aperture_radius =
+                        camera_aperture_radius,
+                    .focal_distance =
+                        camera_focal_distance,
+                    .aperture_ratio =
+                        camera_aperture_ratio});
     const auto pass_alpha_threshold = std::clamp(
         render_settings.pass_alpha_threshold,
         0.0f,
@@ -273,7 +298,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
     std::shared_ptr<
         const PathVolumeStateComponent>
         volume_state;
-    if (scene->volume_stack_size != 0u) {
+    if (scene->volume_metadata.stack_size != 0u) {
         volume_state =
             make_path_volume_state_component();
     }
@@ -290,9 +315,9 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         .refractive_caustics = refractive_caustics,
         .path_trace_enabled = path_trace_enabled,
         .volume_stack_size =
-            scene->volume_stack_size,
+            scene->volume_metadata.stack_size,
         .camera_may_be_inside_volume =
-            scene->camera_may_be_inside_volume,
+            camera_may_be_inside_volume,
         .volume_state = std::move(volume_state),
         .light_transport = std::move(light_transport),
         .emissive_triangle_pdf =

@@ -185,6 +185,19 @@ medium and terminator; the +Z probe is emitted only when the camera view plane
 may overlap an object volume. Surface crossing and free-flight stages consume
 this state in later slices rather than duplicating its rules.
 
+`VolumeSceneMetadataComponent` performs the matching host preprocessing. It
+resolves each instance's effective material slots, transforms the geometry
+bound through all eight AABB corners, marks pairwise-overlapping volume
+objects, and applies Cycles' conservative stack-size rule: two slots for the
+background and terminator, one shared slot for disjoint object volumes, and an
+additional slot for every object whose bound intersects another volume, capped
+at 32. At render-kernel construction it builds the camera near-view-plane
+bound for the actual aspect, projection, shift, near clip, aperture, focal
+distance, and aperture ratio. Only overlap with an object-volume bound enables
+the +Z enclosure query. A host stack size of zero is solely the Luisa
+specialization sentinel for a volume-free scene; it is never exposed as a
+Cycles stack size.
+
 The world entry is not identified by its shader alone. BlenderSync creates a
 background-light object and Cycles stores that object's index beside the world
 volume shader in kernel data. Scene schema v2 therefore exports and imports the
