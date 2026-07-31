@@ -152,6 +152,12 @@ semantics. Path-kernel traversal and boundary hookup, free-flight integration,
 heterogeneous grids, and volume direct lighting remain open, so the four
 Blender volume nodes remain unverified in the public node matrix.
 
+World volume identity is now complete in scene schema v2: the exporter retains
+Cycles' background-light object index separately from the default-background
+shader index, and both round-trip through the contract adapter. This is the
+same `(object, shader)` pair that Cycles writes before its camera enclosure
+probe; the stack does not infer it from object counts or sentinels.
+
 The analytic homogeneous segment estimator is the fourth internal checkpoint.
 Its Luisa `.h`/`.cpp` component matches Cycles' per-channel transmittance,
 second-order small-optical-depth emission integral, throughput/albedo-weighted

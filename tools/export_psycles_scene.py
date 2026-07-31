@@ -1152,7 +1152,10 @@ def _export_scene(
                     )
                 ),
                 "cycles_sync": {
-                    "shader_index": _CYCLES_BACKGROUND_SHADER_INDEX
+                    "shader_index": _CYCLES_BACKGROUND_SHADER_INDEX,
+                    # BlenderSync creates the background-light object after
+                    # dependency-graph geometry and analytic lights.
+                    "object_index": cycles_object_index,
                 },
                 "node_tree": (
                     _tree(scene.world.node_tree, world=True)
