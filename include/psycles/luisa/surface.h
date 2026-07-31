@@ -17,6 +17,10 @@
 
 namespace psycles::luisa_backend {
 
+namespace cycles_volume_phase {
+struct Closure;
+}// namespace cycles_volume_phase
+
 using luisa::compute::Bool;
 using luisa::compute::Expr;
 using luisa::compute::Float;
@@ -148,6 +152,19 @@ struct VolumeCoefficients {
             .has_scatter = false,
             .has_emission = false};
     }
+};
+
+// Host-stage sink for raw phase closures. A GraphSurface invokes this while
+// Luisa records the shader AST; implementations may retain closures in device
+// local storage, merge them across stacked media, or expose them to a focused
+// diagnostic kernel. The closure parameters are never averaged or pre-baked.
+class VolumePhaseCollector {
+
+  public:
+    virtual ~VolumePhaseCollector() noexcept = default;
+    virtual void add(
+        const cycles_volume_phase::Closure &phase,
+        Float3 weight) noexcept = 0;
 };
 
 struct SurfaceEvaluation {
@@ -359,10 +376,15 @@ public:
         return make_float3(0.0f);
     }
 
-    [[nodiscard]] virtual VolumeCoefficients volume_coefficients(
+    // Combined volume evaluation is the host-stage semantic boundary.
+    // Passing a collector emits raw phase closures from the same traced graph
+    // that produced the coefficients, so the path kernel never evaluates a
+    // volume shader twice.
+    [[nodiscard]] virtual VolumeCoefficients evaluate_volume(
         const ShaderServices &,
         const SurfacePoint &,
-        const VolumeQuery &) const noexcept {
+        const VolumeQuery &,
+        VolumePhaseCollector *) const noexcept {
         return VolumeCoefficients::zero();
     }
 
@@ -531,11 +553,12 @@ public:
         return result;
     }
 
-    [[nodiscard]] VolumeCoefficients volume_coefficients(
+    [[nodiscard]] VolumeCoefficients evaluate_volume(
         Expr<std::uint32_t> tag,
         const ShaderServices &services,
         const SurfacePoint &point,
-        const VolumeQuery &query) const noexcept {
+        const VolumeQuery &query,
+        VolumePhaseCollector *collector) const noexcept {
         auto result = VolumeCoefficients::zero();
         luisa::vector<luisa::uint> volume_tags;
         volume_tags.reserve(_surfaces.size());
@@ -554,12 +577,43 @@ public:
                 tag,
                 volume_tags,
                 [&](const Surface *surface) noexcept {
-                    result = surface->volume_coefficients(
-                        services, point, query);
+                    result = surface->evaluate_volume(
+                        services,
+                        point,
+                        query,
+                        collector);
                 },
                 []() noexcept {});
         }
         return result;
+    }
+
+    [[nodiscard]] VolumeCoefficients volume_coefficients(
+        Expr<std::uint32_t> tag,
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        const VolumeQuery &query) const noexcept {
+        return evaluate_volume(
+            tag,
+            services,
+            point,
+            query,
+            nullptr);
+    }
+
+    void volume_phases(
+        Expr<std::uint32_t> tag,
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        const VolumeQuery &query,
+        VolumePhaseCollector &collector) const noexcept {
+        static_cast<void>(
+            evaluate_volume(
+                tag,
+                services,
+                point,
+                query,
+                &collector));
     }
 
     [[nodiscard]] Float3 shading_normal(

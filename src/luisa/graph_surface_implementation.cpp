@@ -775,10 +775,11 @@ GraphSurfaceImplementation::sample_with_trace(
     return result;
 }
 
-[[nodiscard]] VolumeCoefficients GraphSurfaceImplementation::volume_coefficients(
+[[nodiscard]] VolumeCoefficients GraphSurfaceImplementation::evaluate_volume(
     const ShaderServices &services,
     const SurfacePoint &point,
-    const VolumeQuery &query) const noexcept {
+    const VolumeQuery &query,
+    VolumePhaseCollector *collector) const noexcept {
     auto result = VolumeCoefficients::zero();
     if (!_program ||
         !_program->volume_root().valid()) {
@@ -789,19 +790,36 @@ GraphSurfaceImplementation::sample_with_trace(
         values,
         [&](const compiler::VolumeInstruction &volume,
             Float mix_weight) noexcept {
-            cycles_volume::accumulate_coefficients(
-                volume,
-                mix_weight,
-                services,
-                point,
-                query,
+            const auto scalar_reader =
                 [&](compiler::ValueExpressionId id) noexcept {
                     return scalar(id, values);
-                },
+                };
+            const auto vector_reader =
                 [&](compiler::ValueExpressionId id) noexcept {
                     return vector(id, values);
-                },
-                result);
+                };
+            const auto leaf =
+                cycles_volume::evaluate_leaf(
+                    volume,
+                    mix_weight,
+                    services,
+                    point,
+                    query,
+                    scalar_reader,
+                    vector_reader);
+            cycles_volume::accumulate_coefficients(
+                leaf, result);
+            if (collector != nullptr) {
+                cycles_volume::emit_phase_closures(
+                    volume,
+                    leaf,
+                    scalar_reader,
+                    [&](const cycles_volume_phase::Closure &phase,
+                        Float3 weight) noexcept {
+                        collector->add(
+                            phase, weight);
+                    });
+            }
         });
     return result;
 }

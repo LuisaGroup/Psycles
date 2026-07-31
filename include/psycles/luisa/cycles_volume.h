@@ -7,6 +7,7 @@
 #include <psycles/compiler/surface_program.h>
 #include <psycles/contract/scene.h>
 #include <psycles/luisa/cycles_color_nodes.h>
+#include <psycles/luisa/cycles_volume_phase.h>
 #include <psycles/luisa/surface.h>
 
 namespace psycles::luisa_backend::cycles_volume {
@@ -15,16 +16,35 @@ namespace psycles::luisa_backend::cycles_volume {
     return abs((value.x + value.y + value.z) / 3.0f);
 }
 
+struct LeafCoefficients {
+    Float3 sigma_t;
+    Float3 sigma_s;
+    Float3 emission;
+    Bool has_extinction;
+    Bool has_scatter;
+    Bool has_emission;
+
+    [[nodiscard]] static LeafCoefficients zero() noexcept {
+        return {
+            .sigma_t = make_float3(0.0f),
+            .sigma_s = make_float3(0.0f),
+            .emission = make_float3(0.0f),
+            .has_extinction = false,
+            .has_scatter = false,
+            .has_emission = false};
+    }
+};
+
 template<typename ScalarReader, typename VectorReader>
-void accumulate_coefficients(
+[[nodiscard]] LeafCoefficients evaluate_leaf(
     const compiler::VolumeInstruction &volume,
     Float mix_weight,
     const ShaderServices &services,
     const SurfacePoint &point,
     const VolumeQuery &query,
     ScalarReader &&scalar,
-    VectorReader &&vector,
-    VolumeCoefficients &result) noexcept {
+    VectorReader &&vector) noexcept {
+    auto result = LeafCoefficients::zero();
     const auto add_scatter =
         [&](Float3 weight, Bool active) noexcept {
             // Cycles closure_sample_weight() clamps negative volume closure
@@ -75,7 +95,7 @@ void accumulate_coefficients(
                  vector(volume.color)) *
                 density;
             add_extinction(extinction, active);
-            return;
+            return result;
         }
         case compiler::VolumeOperation::scatter: {
             const auto density =
@@ -86,7 +106,7 @@ void accumulate_coefficients(
                 vector(volume.color) * density;
             add_scatter(scatter, active);
             add_extinction(scatter, active);
-            return;
+            return result;
         }
         case compiler::VolumeOperation::coefficients: {
             const auto weight =
@@ -106,7 +126,7 @@ void accumulate_coefficients(
                 emission * weight,
                 active &
                     any(emission != make_float3(0.0f)));
-            return;
+            return result;
         }
         case compiler::VolumeOperation::principled: {
             const auto object_weight =
@@ -153,7 +173,8 @@ void accumulate_coefficients(
                 emission_strength *
                     vector(volume.emission_color) *
                     object_weight,
-                emission_strength > 0.0f);
+                active &
+                    (emission_strength > 0.0f));
 
             const auto blackbody =
                 scalar(volume.blackbody_intensity);
@@ -197,13 +218,106 @@ void accumulate_coefficients(
                             temperature));
             add_emission(
                 blackbody_color * object_weight,
-                blackbody_active);
-            return;
+                active & blackbody_active);
+            return result;
         }
         case compiler::VolumeOperation::null_volume:
         case compiler::VolumeOperation::add:
         case compiler::VolumeOperation::mix:
+            return result;
+    }
+    return result;
+}
+
+inline void accumulate_coefficients(
+    const LeafCoefficients &leaf,
+    VolumeCoefficients &result) noexcept {
+    result.sigma_t += leaf.sigma_t;
+    result.sigma_s += leaf.sigma_s;
+    result.emission += leaf.emission;
+    result.has_extinction =
+        result.has_extinction | leaf.has_extinction;
+    result.has_scatter =
+        result.has_scatter | leaf.has_scatter;
+    result.has_emission =
+        result.has_emission | leaf.has_emission;
+}
+
+template<typename ScalarReader, typename Visitor>
+void emit_phase_closures(
+    const compiler::VolumeInstruction &volume,
+    const LeafCoefficients &leaf,
+    ScalarReader &&scalar,
+    Visitor &&visitor) noexcept {
+    if (volume.operation !=
+            compiler::VolumeOperation::scatter &&
+        volume.operation !=
+            compiler::VolumeOperation::coefficients &&
+        volume.operation !=
+            compiler::VolumeOperation::principled) {
+        return;
+    }
+    const auto add =
+        [&](cycles_volume_phase::Closure phase,
+            Float3 weight) noexcept {
+            visitor(phase, weight);
+        };
+    if (volume.operation ==
+        compiler::VolumeOperation::principled) {
+        add(
+            cycles_volume_phase::henyey_greenstein(
+                scalar(volume.anisotropy)),
+            leaf.sigma_s);
+        return;
+    }
+    switch (volume.phase) {
+        case compiler::VolumePhase::
+            henyey_greenstein:
+            add(
+                cycles_volume_phase::
+                    henyey_greenstein(
+                        scalar(volume.anisotropy)),
+                leaf.sigma_s);
             return;
+        case compiler::VolumePhase::fournier_forand:
+            add(
+                cycles_volume_phase::fournier_forand(
+                    scalar(volume.backscatter),
+                    scalar(volume.ior)),
+                leaf.sigma_s);
+            return;
+        case compiler::VolumePhase::draine:
+            add(
+                cycles_volume_phase::draine(
+                    scalar(volume.anisotropy),
+                    scalar(volume.alpha)),
+                leaf.sigma_s);
+            return;
+        case compiler::VolumePhase::rayleigh:
+            add(
+                cycles_volume_phase::rayleigh(),
+                leaf.sigma_s);
+            return;
+        case compiler::VolumePhase::mie: {
+            const auto parameters =
+                cycles_volume_phase::mie_parameters(
+                    scalar(volume.diameter));
+            add(
+                cycles_volume_phase::
+                    henyey_greenstein(
+                        parameters
+                            .henyey_greenstein_g),
+                leaf.sigma_s *
+                    (1.0f -
+                     parameters.draine_weight));
+            add(
+                cycles_volume_phase::draine(
+                    parameters.draine_g,
+                    parameters.draine_alpha),
+                leaf.sigma_s *
+                    parameters.draine_weight);
+            return;
+        }
     }
 }
 

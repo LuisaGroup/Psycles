@@ -539,6 +539,116 @@ sample_fournier_forand_cosine(
         .pdf = evaluate(closure, cosine)};
 }
 
+[[nodiscard]] inline luisa::compute::Float evaluate(
+    luisa::compute::UInt type,
+    luisa::compute::Float3 parameters,
+    luisa::compute::Float cosine) noexcept {
+    using namespace luisa::compute;
+    Float result = 0.0f;
+    $if(type ==
+        static_cast<std::uint32_t>(
+            Type::henyey_greenstein)) {
+        result = evaluate(
+            Closure{
+                .type = Type::henyey_greenstein,
+                .parameters = parameters},
+            cosine);
+    }
+    $elif(type ==
+          static_cast<std::uint32_t>(
+              Type::fournier_forand)) {
+        result = evaluate(
+            Closure{
+                .type = Type::fournier_forand,
+                .parameters = parameters},
+            cosine);
+    }
+    $elif(type ==
+          static_cast<std::uint32_t>(
+              Type::draine)) {
+        result = evaluate(
+            Closure{
+                .type = Type::draine,
+                .parameters = parameters},
+            cosine);
+    }
+    $elif(type ==
+          static_cast<std::uint32_t>(
+              Type::rayleigh)) {
+        result = evaluate(
+            Closure{
+                .type = Type::rayleigh,
+                .parameters = parameters},
+            cosine);
+    };
+    return result;
+}
+
+[[nodiscard]] inline Sample sample(
+    luisa::compute::UInt type,
+    luisa::compute::Float3 parameters,
+    luisa::compute::Float3 axis,
+    luisa::compute::Float2 random) noexcept {
+    using namespace luisa::compute;
+    Float3 direction = axis;
+    Float pdf = 0.0f;
+    const auto assign =
+        [&](Type static_type) noexcept {
+            const auto result = sample(
+                Closure{
+                    .type = static_type,
+                    .parameters = parameters},
+                axis,
+                random);
+            direction = result.direction;
+            pdf = result.pdf;
+        };
+    $if(type ==
+        static_cast<std::uint32_t>(
+            Type::henyey_greenstein)) {
+        assign(Type::henyey_greenstein);
+    }
+    $elif(type ==
+          static_cast<std::uint32_t>(
+              Type::fournier_forand)) {
+        assign(Type::fournier_forand);
+    }
+    $elif(type ==
+          static_cast<std::uint32_t>(
+              Type::draine)) {
+        assign(Type::draine);
+    }
+    $elif(type ==
+          static_cast<std::uint32_t>(
+              Type::rayleigh)) {
+        assign(Type::rayleigh);
+    };
+    return {
+        .direction = direction,
+        .pdf = pdf};
+}
+
+[[nodiscard]] inline luisa::compute::Float sampled_roughness(
+    luisa::compute::UInt type,
+    luisa::compute::Float3 parameters) noexcept {
+    using namespace luisa::compute;
+    Float anisotropy = 0.0f;
+    $if(type ==
+            static_cast<std::uint32_t>(
+                Type::fournier_forand)) {
+        anisotropy = 1.0f;
+    }
+    $elif((type ==
+           static_cast<std::uint32_t>(
+               Type::henyey_greenstein)) |
+          (type ==
+           static_cast<std::uint32_t>(
+               Type::draine))) {
+        anisotropy = parameters.x;
+    };
+    return 1.0f - abs(anisotropy);
+}
+
 [[nodiscard]] inline MieParameters mie_parameters(
     luisa::compute::Float diameter) noexcept {
     using namespace luisa::compute;

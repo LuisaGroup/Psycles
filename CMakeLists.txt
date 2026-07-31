@@ -167,7 +167,8 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/graph_surface_value_context.cpp
             src/luisa/graph_surface_value_image.cpp
             src/luisa/graph_surface_value_math.cpp
-            src/luisa/graph_surface_value_procedural.cpp)
+            src/luisa/graph_surface_value_procedural.cpp
+            src/luisa/volume_phase_set.cpp)
         add_library(Psycles::luisa ALIAS psycles_luisa)
         target_include_directories(psycles_luisa PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

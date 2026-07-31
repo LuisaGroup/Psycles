@@ -70,12 +70,16 @@ Float3 GraphSurface::transparent_extinction(
         services, point);
 }
 
-VolumeCoefficients GraphSurface::volume_coefficients(
+VolumeCoefficients GraphSurface::evaluate_volume(
     const ShaderServices &services,
     const SurfacePoint &point,
-    const VolumeQuery &query) const noexcept {
-    return _implementation->volume_coefficients(
-        services, point, query);
+    const VolumeQuery &query,
+    VolumePhaseCollector *collector) const noexcept {
+    return _implementation->evaluate_volume(
+        services,
+        point,
+        query,
+        collector);
 }
 
 Float3 GraphSurface::shading_normal(

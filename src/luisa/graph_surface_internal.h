@@ -346,10 +346,11 @@ public:
     [[nodiscard]] Float3 transparent_extinction(
         const ShaderServices &services,
         const SurfacePoint &point) const noexcept;
-    [[nodiscard]] VolumeCoefficients volume_coefficients(
+    [[nodiscard]] VolumeCoefficients evaluate_volume(
         const ShaderServices &services,
         const SurfacePoint &point,
-        const VolumeQuery &query) const noexcept;
+        const VolumeQuery &query,
+        VolumePhaseCollector *collector) const noexcept;
     [[nodiscard]] Float3 shading_normal(
         const ShaderServices &services,
         const SurfacePoint &point) const noexcept;
