@@ -358,6 +358,42 @@ HomogeneousVolumeTransport::
         Float scatter_random,
         Float reservoir_random,
         Bool enabled) const noexcept {
+    const VolumeDirectSampling sampling;
+    const auto state =
+        sampling.prepare(
+            volume_sample_distance,
+            scatter_random,
+            enabled);
+    return sample_direct(
+        coefficients,
+        distance,
+        throughput,
+        scatter_random,
+        reservoir_random,
+        state,
+        make_float3(0.0f),
+        make_float3(
+            0.0f, 0.0f, 1.0f),
+        {.light_position =
+             make_float3(
+                 1.0f, 0.0f, 0.0f),
+         .interval =
+             {.minimum = 0.0f,
+              .maximum = distance}});
+}
+
+HomogeneousVolumeDirectSample
+HomogeneousVolumeTransport::sample_direct(
+    const VolumeCoefficients &coefficients,
+    Float distance,
+    Float3 throughput,
+    Float scatter_random,
+    Float reservoir_random,
+    const VolumeDirectSamplingState &sampling,
+    Float3 ray_origin,
+    Float3 ray_direction,
+    const VolumeEquiangularCoefficients
+        &equiangular) const noexcept {
     const auto segment_transmittance =
         transmittance(
             coefficients.sigma_t,
@@ -368,9 +404,11 @@ HomogeneousVolumeTransport::
             coefficients.sigma_s !=
             make_float3(0.0f));
     const auto scattered =
-        enabled &
+        sampling.enabled &
         has_scatter &
-        (distance > 0.0f);
+        (distance > 0.0f) &
+        (equiangular.interval.minimum <
+         equiangular.interval.maximum);
 
     const auto albedo = _safe_divide(
         coefficients.sigma_s,
@@ -400,23 +438,80 @@ HomogeneousVolumeTransport::
                 coefficients.sigma_t.x,
                 channel == 0u),
             channel < 2u);
-    const auto sampled_distance =
+    const auto distance_sample =
         bounded_exponential_sample(
             scatter_random,
             rate,
-            0.0f,
-            distance);
-    const auto distance_pdf =
+            equiangular.interval.minimum,
+            equiangular.interval.maximum);
+    const auto distance_sample_pdf =
         dot(
             bounded_exponential_pdf(
-                sampled_distance,
+                distance_sample,
                 coefficients.sigma_t,
-                0.0f,
-                distance),
+                equiangular.interval.minimum,
+                equiangular.interval.maximum),
             channel_sample.pdf);
+    const VolumeDirectSampling
+        direct_sampling;
+    const auto equiangular_sample =
+        direct_sampling.sample_equiangular(
+            ray_origin,
+            ray_direction,
+            equiangular,
+            sampling.random);
+    const auto select_equiangular =
+        sampling.method ==
+        volume_sample_equiangular;
+    const auto sampled_distance =
+        select(
+            distance_sample,
+            equiangular_sample.distance,
+            select_equiangular);
+    const auto distance_pdf =
+        select(
+            distance_sample_pdf,
+            dot(
+                bounded_exponential_pdf(
+                    equiangular_sample.distance,
+                    coefficients.sigma_t,
+                    equiangular.interval.minimum,
+                    equiangular.interval.maximum),
+                channel_sample.pdf),
+            select_equiangular);
+    const auto equiangular_pdf =
+        select(
+            direct_sampling.equiangular_pdf(
+                ray_origin,
+                ray_direction,
+                equiangular,
+                distance_sample),
+            equiangular_sample.pdf,
+            select_equiangular);
+    const auto selected_pdf =
+        select(
+            distance_pdf,
+            equiangular_pdf,
+            select_equiangular);
+    const auto competing_pdf =
+        select(
+            equiangular_pdf,
+            distance_pdf,
+            select_equiangular);
+    const auto mis_weight =
+        select(
+            1.0f,
+            2.0f *
+                direct_sampling
+                    .power_heuristic(
+                        selected_pdf,
+                        competing_pdf),
+            sampling.use_mis);
     const auto valid =
         scattered &
-        (distance_pdf > 0.0f);
+        (!select_equiangular |
+         equiangular_sample.valid) &
+        (selected_pdf > 0.0f);
     const auto direct_throughput =
         throughput *
         _safe_divide(
@@ -424,7 +519,8 @@ HomogeneousVolumeTransport::
                 transmittance(
                     coefficients.sigma_t,
                     sampled_distance),
-            distance_pdf);
+            selected_pdf) *
+        mis_weight;
     return {
         .transmittance =
             select(
@@ -450,7 +546,21 @@ HomogeneousVolumeTransport::
                 0.0f,
                 distance_pdf,
                 valid),
+        .equiangular_pdf =
+            select(
+                0.0f,
+                equiangular_pdf,
+                valid),
+        .mis_weight =
+            select(
+                0.0f,
+                mis_weight,
+                valid),
         .channel = channel,
+        .sample_method =
+            sampling.method,
+        .use_mis =
+            sampling.use_mis,
         .scattered = valid};
 }
 

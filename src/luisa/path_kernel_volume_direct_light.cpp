@@ -2,6 +2,7 @@
 
 #include "path_kernel_volume_shadow.h"
 
+#include <psycles/luisa/analytic_light_sampling.h>
 #include <psycles/luisa/cycles_path_state.h>
 #include <psycles/luisa/spherical_geometry.h>
 #include <psycles/luisa/surface_ray.h>
@@ -12,7 +13,284 @@
 namespace psycles::luisa_backend::detail {
 namespace {
 
-class DistantVolumeDirectLightingComponent final
+class AnalyticVolumeDirectionProvider final
+    : public VolumeDirectDirectionProvider {
+
+  private:
+    const PathKernelConfig &_config;
+    ClosestPathEvent &_event;
+    VolumeDirectLightProposal _proposal;
+    Float3 _segment_position;
+    Float3 _segment_direction;
+    VolumeDirectLightSample &_result;
+
+    void _sample_distant(
+        Var<LightGpu> light,
+        UInt light_index,
+        Float3 random,
+        Bool active) const noexcept {
+        const auto half_angle =
+            0.5f * max(light.angle, 0.0f);
+        const auto finite_sun =
+            half_angle > 0.0f;
+        const auto cap_height =
+            spherical_geometry::
+                unit_cap_height(
+                    half_angle);
+        const auto sun_axis =
+            light.axis_z;
+        const auto basis_reference =
+            select(
+                make_float3(
+                    0.0f, 0.0f, 1.0f),
+                make_float3(
+                    0.0f, 1.0f, 0.0f),
+                abs(sun_axis.z) >
+                    0.999f);
+        const auto sun_tangent =
+            _config.light_transport
+                .safe_normalize(
+                    cross(
+                        basis_reference,
+                        sun_axis),
+                    make_float3(
+                        1.0f, 0.0f, 0.0f));
+        const auto sun_bitangent =
+            cross(
+                sun_axis,
+                sun_tangent);
+        const auto cosine_theta =
+            1.0f -
+            random.x * cap_height;
+        const auto sine_theta =
+            sqrt(max(
+                1.0f -
+                    cosine_theta *
+                        cosine_theta,
+                0.0f));
+        const auto phi =
+            2.0f * pi * random.y;
+        const auto cone_direction =
+            sun_tangent *
+                (cos(phi) * sine_theta) +
+            sun_bitangent *
+                (sin(phi) * sine_theta) +
+            sun_axis * cosine_theta;
+        const auto direction =
+            select(
+                sun_axis,
+                cone_direction,
+                finite_sun);
+        const auto solid_angle =
+            spherical_geometry::two_pi *
+            cap_height;
+        const auto conditional_pdf =
+            select(
+                1.0f,
+                1.0f /
+                    max(
+                        solid_angle,
+                        1.0e-20f),
+                finite_sun);
+        const auto normalize_power =
+            (light.flags &
+             light_flag_normalize) != 0u;
+        const auto disk_area =
+            pi *
+            sin(half_angle) *
+            sin(half_angle);
+        const auto evaluation_factor =
+            select(
+                1.0f,
+                1.0f /
+                    max(
+                        disk_area,
+                        1.0e-20f),
+                normalize_power &
+                    finite_sun);
+        auto radiance =
+            light.color *
+            (light.power *
+             evaluation_factor);
+        radiance *=
+            _event.bounce.sample
+                .analytic_light_shader(
+                    light,
+                    light_index,
+                    direction,
+                    -direction,
+                    make_float2(0.5f),
+                    -direction,
+                    ray_maximum);
+        const auto pdf =
+            conditional_pdf *
+            _event.bounce.selected_light
+                .selection_pdf;
+        const auto valid =
+            active & (pdf > 0.0f);
+        _result.direction =
+            select(
+                _result.direction,
+                direction,
+                valid);
+        _result.radiance =
+            select(
+                _result.radiance,
+                radiance,
+                valid);
+        _result.pdf =
+            select(
+                _result.pdf,
+                pdf,
+                valid);
+        _result.maximum_distance =
+            select(
+                _result.maximum_distance,
+                ray_maximum,
+                valid);
+        _result.use_mis =
+            select(
+                _result.use_mis,
+                (light.flags &
+                 light_flag_use_mis) != 0u,
+                valid);
+        _result.valid |= valid;
+    }
+
+    void _sample_point(
+        Var<LightGpu> light,
+        UInt light_index,
+        Float3 position,
+        Float3 random,
+        Bool active) const noexcept {
+        const auto normalize_power =
+            (light.flags &
+             light_flag_normalize) != 0u;
+        const auto finite =
+            analytic_light_sampling::
+                sample_point_light(
+                    position,
+                    make_float3(0.0f),
+                    true,
+                    light.position,
+                    light.radius,
+                    (light.flags &
+                     light_flag_sphere) != 0u,
+                    light.axis_x,
+                    light.axis_y,
+                    light.axis_z,
+                    light.axis_scale,
+                    random.xy(),
+                    normalize_power);
+        auto radiance =
+            light.color *
+            (light.power *
+             finite.evaluation_factor);
+        radiance *=
+            _event.bounce.sample
+                .analytic_light_shader(
+                    light,
+                    light_index,
+                    finite.position,
+                    finite.normal,
+                    finite.uv,
+                    -finite.direction,
+                    finite.distance);
+        const auto pdf =
+            finite.conditional_pdf *
+            _event.bounce.selected_light
+                .selection_pdf;
+        const auto valid =
+            active &
+            finite.valid &
+            (pdf > 0.0f);
+        _result.direction =
+            select(
+                _result.direction,
+                finite.direction,
+                valid);
+        _result.radiance =
+            select(
+                _result.radiance,
+                radiance,
+                valid);
+        _result.pdf =
+            select(
+                _result.pdf,
+                pdf,
+                valid);
+        _result.maximum_distance =
+            select(
+                _result.maximum_distance,
+                finite.distance,
+                valid);
+        _result.use_mis =
+            select(
+                _result.use_mis,
+                (light.flags &
+                 light_flag_use_mis) != 0u,
+                valid);
+        _result.valid |= valid;
+    }
+
+  public:
+    AnalyticVolumeDirectionProvider(
+        const PathKernelConfig &config,
+        ClosestPathEvent &event,
+        const VolumeDirectLightProposal
+            &proposal,
+        Float3 segment_position,
+        Float3 segment_direction,
+        VolumeDirectLightSample &result) noexcept
+        : _config{config},
+          _event{event},
+          _proposal{proposal},
+          _segment_position{
+              std::move(segment_position)},
+          _segment_direction{
+              std::move(segment_direction)},
+          _result{result} {}
+
+    VolumeDirectDirectionSample emit(
+        Float distance) const noexcept override {
+        const auto position =
+            _segment_position +
+            _segment_direction *
+                distance;
+        const auto random =
+            _event.bounce.light_sample;
+        Var<LightGpu> light =
+            _config.scene->light_buffer->read(
+                _proposal.light_index);
+        const auto distant =
+            light.type ==
+            static_cast<std::uint32_t>(
+                contract::LightType::
+                    distant);
+        const auto point =
+            light.type ==
+            static_cast<std::uint32_t>(
+                contract::LightType::
+                    point);
+        _sample_distant(
+            light,
+            _proposal.light_index,
+            random,
+            _proposal.valid & distant);
+        _sample_point(
+            light,
+            _proposal.light_index,
+            position,
+            random,
+            _proposal.valid & point);
+        return {
+            .direction =
+                _result.direction,
+            .valid = _result.valid};
+    }
+};
+
+class AnalyticVolumeDirectLightingComponent final
     : public VolumeDirectLightingComponent {
 
   private:
@@ -22,167 +300,58 @@ class DistantVolumeDirectLightingComponent final
         _volume_shadow;
 
   public:
-    explicit DistantVolumeDirectLightingComponent(
+    explicit AnalyticVolumeDirectLightingComponent(
         const PathKernelConfig &config)
         : _config{config},
           _volume_shadow{
               make_homogeneous_volume_shadow_component(
                   config)} {}
 
-    VolumeDirectLightSample sample(
-        const ClosestPathEvent &event)
+    VolumeDirectLightProposal propose(
+        const ClosestPathEvent &event,
+        const VolumeStack &path_stack,
+        Float3 segment_position,
+        Float3 segment_direction,
+        Float segment_length)
         const noexcept override {
-        const auto &bounce = event.bounce;
-        const auto &path_sample =
-            bounce.sample;
-        const auto &scene =
-            _config.scene;
         const auto &selected =
-            bounce.selected_light;
-        const auto &random =
-            bounce.light_sample;
-
+            event.bounce.selected_light;
         const auto selected_analytic =
             selected.kind ==
             static_cast<std::uint32_t>(
                 sampling::
                     LightDistributionEmitterKind::
                         analytic_light);
-        VolumeDirectLightSample result{
-            .direction =
+        VolumeDirectLightProposal result{
+            .light_index = 0u,
+            .requested_method =
+                volume_sample_none,
+            .light_position =
                 make_float3(0.0f),
-            .radiance =
-                make_float3(0.0f),
-            .pdf = 0.0f,
-            .maximum_distance =
-                ray_maximum,
-            .light_instance =
-                surface_ray::
-                    invalid_primitive,
-            .light_primitive =
-                surface_ray::
-                    invalid_primitive,
-            .use_mis = false,
+            .interval =
+                {.minimum = 0.0f,
+                 .maximum =
+                     segment_length},
             .valid = false};
-        // Distribution entries for emissive meshes and the environment do
-        // not index light_buffer. Keep the device read structurally inside
-        // the analytic-emitter arm instead of masking an out-of-range read
-        // after the fact.
+        // Non-analytic distribution entries do not index light_buffer.
         $if(selected_analytic) {
             const auto light_index =
                 selected.index;
             Var<LightGpu> light =
-                scene->light_buffer->read(
-                    light_index);
+                _config.scene->light_buffer
+                    ->read(light_index);
             const auto distant =
                 light.type ==
                 static_cast<std::uint32_t>(
                     contract::LightType::
                         distant);
-
-            const auto half_angle =
-                0.5f *
-                max(light.angle, 0.0f);
-            const auto finite_sun =
-                half_angle > 0.0f;
-            const auto cap_height =
-                spherical_geometry::
-                    unit_cap_height(
-                        half_angle);
-            const auto sun_axis =
-                light.axis_z;
-            const auto basis_reference =
-                select(
-                    make_float3(
-                        0.0f, 0.0f, 1.0f),
-                    make_float3(
-                        0.0f, 1.0f, 0.0f),
-                    abs(sun_axis.z) >
-                        0.999f);
-            const auto sun_tangent =
-                _config.light_transport
-                    .safe_normalize(
-                        cross(
-                            basis_reference,
-                            sun_axis),
-                        make_float3(
-                            1.0f, 0.0f, 0.0f));
-            const auto sun_bitangent =
-                cross(
-                    sun_axis,
-                    sun_tangent);
-            const auto cosine_theta =
-                1.0f -
-                random.x * cap_height;
-            const auto sine_theta =
-                sqrt(
-                    max(
-                        1.0f -
-                            cosine_theta *
-                                cosine_theta,
-                        0.0f));
-            const auto phi =
-                2.0f * pi * random.y;
-            const auto cone_direction =
-                sun_tangent *
-                    (cos(phi) *
-                     sine_theta) +
-                sun_bitangent *
-                    (sin(phi) *
-                     sine_theta) +
-                sun_axis * cosine_theta;
-            const auto direction =
-                select(
-                    sun_axis,
-                    cone_direction,
-                    finite_sun);
-            const auto solid_angle =
-                spherical_geometry::
-                    two_pi *
-                cap_height;
-            const auto conditional_pdf =
-                select(
-                    1.0f,
-                    1.0f /
-                        max(
-                            solid_angle,
-                            1.0e-20f),
-                    finite_sun);
-            const auto normalize_power =
-                (light.flags &
-                 light_flag_normalize) !=
-                0u;
-            const auto disk_area =
-                pi *
-                sin(half_angle) *
-                sin(half_angle);
-            const auto evaluation_factor =
-                select(
-                    1.0f,
-                    1.0f /
-                        max(
-                            disk_area,
-                            1.0e-20f),
-                    normalize_power &
-                        finite_sun);
-            auto radiance =
-                light.color *
-                (light.power *
-                 evaluation_factor);
-            radiance *=
-                path_sample
-                    .analytic_light_shader(
-                        light,
-                        light_index,
-                        direction,
-                        -direction,
-                        make_float2(0.5f),
-                        -direction,
-                        ray_maximum);
-
-            const auto pdf =
-                conditional_pdf *
-                selected.selection_pdf;
+            const auto point =
+                light.type ==
+                static_cast<std::uint32_t>(
+                    contract::LightType::
+                        point);
+            const auto supported =
+                distant | point;
             const auto visible_to_volume =
                 (light.visibility_mask &
                  contract::visibility_bit(
@@ -190,33 +359,77 @@ class DistantVolumeDirectLightingComponent final
                          RayVisibility::
                              volume_scatter)) !=
                 0u;
+            const auto normalize_power =
+                (light.flags &
+                 light_flag_normalize) != 0u;
+            const auto point_sample =
+                analytic_light_sampling::
+                    sample_point_light(
+                        segment_position,
+                        segment_direction,
+                        true,
+                        light.position,
+                        light.radius,
+                        (light.flags &
+                         light_flag_sphere) !=
+                            0u,
+                        light.axis_x,
+                        light.axis_y,
+                        light.axis_z,
+                        light.axis_scale,
+                        event.bounce
+                            .light_sample.xy(),
+                        normalize_power);
+            const auto finite_valid =
+                !point |
+                point_sample.valid;
             const auto valid =
-                distant &
+                supported &
                 visible_to_volume &
-                (pdf > 0.0f);
-            result.direction =
+                finite_valid &
+                (segment_length > 0.0f);
+            result.light_index =
+                select(
+                    0u,
+                    light_index,
+                    valid);
+            result.requested_method =
+                select(
+                    volume_sample_none,
+                    select(
+                        path_stack
+                            .sample_method(),
+                        volume_sample_distance,
+                        distant),
+                    valid);
+            result.light_position =
                 select(
                     make_float3(0.0f),
-                    direction,
-                    valid);
-            result.radiance =
-                select(
-                    make_float3(0.0f),
-                    radiance,
-                    valid);
-            result.pdf =
-                select(
-                    0.0f,
-                    pdf,
-                    valid);
-            result.use_mis =
-                valid &
-                ((light.flags &
-                  light_flag_use_mis) !=
-                 0u);
+                    point_sample.position,
+                    valid & point);
             result.valid = valid;
         };
         return result;
+    }
+
+    std::unique_ptr<
+        VolumeDirectDirectionProvider>
+    make_direction_provider(
+        ClosestPathEvent &event,
+        const VolumeDirectLightProposal
+            &proposal,
+        Float3 segment_position,
+        Float3 segment_direction,
+        VolumeDirectLightSample &result)
+        const override {
+        return std::make_unique<
+            AnalyticVolumeDirectionProvider>(
+                _config,
+                event,
+                proposal,
+                std::move(segment_position),
+                std::move(segment_direction),
+                result);
     }
 
     void accumulate(
@@ -355,7 +568,7 @@ std::unique_ptr<
 make_volume_direct_lighting_component(
     const PathKernelConfig &config) {
     return std::make_unique<
-        DistantVolumeDirectLightingComponent>(
+        AnalyticVolumeDirectLightingComponent>(
         config);
 }
 

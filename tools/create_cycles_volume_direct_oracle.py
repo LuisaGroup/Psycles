@@ -30,6 +30,22 @@ def argument_options() -> argparse.Namespace:
         default=1,
         help="Cycles AA sample count (default: 1)",
     )
+    parser.add_argument(
+        "--light",
+        choices=("distant", "point"),
+        default="distant",
+        help="analytic emitter family (default: distant)",
+    )
+    parser.add_argument(
+        "--volume-sampling",
+        choices=(
+            "DISTANCE",
+            "EQUIANGULAR",
+            "MULTIPLE_IMPORTANCE",
+        ),
+        default="DISTANCE",
+        help="Cycles material volume-sampling policy",
+    )
     options = parser.parse_args(trailing)
     if options.samples <= 0:
         parser.error("--samples must be positive")
@@ -46,7 +62,9 @@ def clear_scene() -> None:
         bpy.data.worlds.remove(world)
 
 
-def make_volume_material() -> bpy.types.Material:
+def make_volume_material(
+    volume_sampling: str,
+) -> bpy.types.Material:
     material = bpy.data.materials.new(
         "Cycles homogeneous isotropic volume boundary"
     )
@@ -66,7 +84,7 @@ def make_volume_material() -> bpy.types.Material:
     material.node_tree.links.new(
         scatter.outputs["Volume"], output.inputs["Volume"]
     )
-    material.cycles.volume_sampling = "DISTANCE"
+    material.cycles.volume_sampling = volume_sampling
     return material
 
 
@@ -86,7 +104,26 @@ def make_world() -> bpy.types.World:
     return world
 
 
-def make_sun(scene: bpy.types.Scene) -> None:
+def make_light(
+    scene: bpy.types.Scene,
+    light_type: str,
+) -> None:
+    if light_type == "point":
+        light_data = bpy.data.lights.new(
+            "Cycles finite-volume point light",
+            type="POINT",
+        )
+        light_data.color = (1.0, 1.0, 1.0)
+        light_data.energy = 10.0
+        light_data.shadow_soft_size = 0.0
+        light_data.normalize = True
+        light = bpy.data.objects.new(
+            light_data.name, light_data
+        )
+        light.location = (0.6, -0.25, -0.8)
+        scene.collection.objects.link(light)
+        return
+
     light_data = bpy.data.lights.new(
         "Cycles unit distant light", type="SUN"
     )
@@ -98,7 +135,12 @@ def make_sun(scene: bpy.types.Scene) -> None:
     scene.collection.objects.link(light)
 
 
-def configure_scene(output: Path, samples: int) -> None:
+def configure_scene(
+    output: Path,
+    samples: int,
+    light_type: str,
+    volume_sampling: str,
+) -> None:
     scene = bpy.context.scene
     scene.render.engine = "CYCLES"
     scene.cycles.device = "CPU"
@@ -144,9 +186,11 @@ def configure_scene(output: Path, samples: int) -> None:
     )
     volume = bpy.context.object
     volume.name = "Volume box"
-    volume.data.materials.append(make_volume_material())
+    volume.data.materials.append(
+        make_volume_material(volume_sampling)
+    )
 
-    make_sun(scene)
+    make_light(scene, light_type)
 
     camera_data = bpy.data.cameras.new(
         "Inside-volume orthographic camera"
@@ -165,11 +209,18 @@ def main() -> None:
     output = options.output
     output.parent.mkdir(parents=True, exist_ok=True)
     clear_scene()
-    configure_scene(output, options.samples)
+    configure_scene(
+        output,
+        options.samples,
+        options.light,
+        options.volume_sampling,
+    )
     bpy.ops.render.render(write_still=True)
     print(
         "Cycles volume-direct oracle: "
-        f"{output} ({options.samples} spp)"
+        f"{output} ({options.samples} spp, "
+        f"light={options.light}, "
+        f"volume_sampling={options.volume_sampling})"
     )
 
 

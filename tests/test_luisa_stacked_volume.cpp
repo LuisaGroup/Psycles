@@ -746,8 +746,15 @@ int main(int argc, char **argv) {
                      .majorant_optical_depth =
                          0.0f,
                      .enabled = false},
-                    false,
-                    make_float3(0.0f));
+                    {.requested_method =
+                         volume_sample_none,
+                     .light_position =
+                         make_float3(0.0f),
+                     .interval =
+                         {.minimum = 0.0f,
+                          .maximum = 0.5f},
+                     .enabled = false},
+                    nullptr);
             records.write(
                 15u,
                 make_float4(
@@ -822,8 +829,15 @@ int main(int argc, char **argv) {
                      .majorant_optical_depth =
                          0.0f,
                      .enabled = false},
-                    false,
-                    make_float3(0.0f));
+                    {.requested_method =
+                         volume_sample_none,
+                     .light_position =
+                         make_float3(0.0f),
+                     .interval =
+                         {.minimum = 0.0f,
+                          .maximum = 0.5f},
+                     .enabled = false},
+                    nullptr);
             records.write(
                 21u,
                 make_float4(

@@ -314,16 +314,24 @@ same stage owns the fixed Cycles Sobol dimensions, closest-event roulette
 reuse, volume emission/pass accumulation, and the atomic
 `cycles_path_state::next_volume()` transition.
 
-Homogeneous volume direct lighting is composed from three additional
-host-stage objects. `HomogeneousVolumeScatterProbability` owns the VSPG
-sampling probability without changing transport weights.
-`DistantVolumeDirectLightingComponent` owns distant-emitter sampling,
-phase/light MIS, roulette, clamping, and pass routing.
-`HomogeneousVolumeShadowComponent` copies the active volume stack and walks
-ordered closest boundary events to integrate shadow transmittance. Surface
-transparency stays in the shared shadow component. These objects are ordinary
-C++ abstractions while the resulting device work remains one fused path
-kernel.
+Homogeneous volume direct lighting is composed from additional host-stage
+objects. `HomogeneousVolumeScatterProbability` owns the VSPG sampling
+probability without changing transport weights. `VolumeDirectSampling` owns
+the exact Distance/Equiangular/MIS technique algebra, equiangular geometry,
+and power heuristic independently of light shape.
+`AnalyticVolumeDirectLightingComponent` first proposes an emitter and its
+valid ray interval. After the segment component has selected a collision
+distance, a polymorphic `VolumeDirectDirectionProvider` samples that same
+emitter again from the collision point with the original light random
+coordinates. This proposal/re-sample protocol preserves Cycles' coupled RNG
+measure while allowing point, spot, area, triangle, and future light-tree
+implementations to supply geometry without branching the homogeneous
+estimator. The component then owns phase/light MIS, roulette, clamping, and
+pass routing. `HomogeneousVolumeShadowComponent` copies the active volume
+stack and walks ordered closest boundary events to integrate shadow
+transmittance. Surface transparency stays in the shared shadow component.
+These objects are ordinary C++ abstractions while the resulting device work
+remains one fused path kernel.
 
 Volume-scattering probability guidance is persistent render-session state,
 not path-local policy. The path kernel accumulates Cycles' raw scatter,
