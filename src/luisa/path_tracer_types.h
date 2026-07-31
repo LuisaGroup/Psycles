@@ -35,6 +35,9 @@ struct InstanceGpu {
     luisa::uint geometry_index{};
     luisa::uint override_offset{};
     luisa::uint override_count{};
+    // Contract ray-visibility bits normalized during scene upload. The
+    // permissive default keeps hand-authored device fixtures shadow-visible.
+    luisa::uint visibility_mask{0xffu};
     float object_random{};
     luisa::uint particle_index{};
     float shadow_terminator_geometry_offset{};
@@ -299,6 +302,7 @@ LUISA_STRUCT(
     geometry_index,
     override_offset,
     override_count,
+    visibility_mask,
     object_random,
     particle_index,
     shadow_terminator_geometry_offset,

@@ -18,7 +18,10 @@ VolumeCoefficients StackedVolumeEvaluator::evaluate(
     UInt index = 0u;
     $while(index < stack.count()) {
         const auto entry = stack.entry(index);
-        $if(entry.valid) {
+        const auto should_evaluate =
+            _points.should_evaluate(
+                entry, state);
+        $if(entry.valid & should_evaluate) {
             const auto shading =
                 _points.emit(entry, state);
             const auto coefficients =

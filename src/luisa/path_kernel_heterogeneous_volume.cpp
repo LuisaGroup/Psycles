@@ -1,105 +1,16 @@
 #include "path_kernel_heterogeneous_volume.h"
 
 #include "path_kernel_volume_majorant_provider.h"
+#include "path_kernel_volume_random.h"
 #include "path_tracer_volume_capabilities.h"
 
 #include <psycles/luisa/cycles_sampler.h>
 #include <psycles/luisa/volume_majorant_overlap.h>
-#include <psycles/sampling/tabulated_sobol.h>
 
 #include <utility>
 
 namespace psycles::luisa_backend::detail {
 namespace {
-
-inline constexpr std::uint32_t
-    heterogeneous_tracking_scramble_seed =
-        0xe35fad82u;
-
-class PathVolumeTrackingRandomSource final
-    : public HeterogeneousVolumeTrackingRandomSource {
-
-  private:
-    const BufferFloat4 &_sobol_table;
-    UInt _sequence_size;
-    UInt _sample_index;
-    UInt _rng_hash;
-
-    [[nodiscard]] UInt _dimension(
-        UInt rng_offset,
-        std::uint32_t dimension) const noexcept {
-        return cycles_sampler::
-            path_state_dimension(
-                rng_offset, dimension);
-    }
-
-  public:
-    PathVolumeTrackingRandomSource(
-        const BufferFloat4 &sobol_table,
-        UInt sequence_size,
-        UInt sample_index,
-        UInt rng_hash) noexcept
-        : _sobol_table{sobol_table},
-          _sequence_size{
-              std::move(sequence_size)},
-          _sample_index{
-              std::move(sample_index)},
-          _rng_hash{std::move(rng_hash)} {}
-
-    Float scatter_distance(
-        UInt rng_offset)
-        const noexcept override {
-        return cycles_sampler::sample_1d(
-            _sobol_table,
-            _sequence_size,
-            _sample_index,
-            _rng_hash,
-            _dimension(
-                rng_offset,
-                sampling::tabulated_sobol::
-                    volume_scatter_distance_dimension));
-    }
-
-    Float shade_offset(
-        UInt rng_offset)
-        const noexcept override {
-        return cycles_sampler::sample_2d(
-                   _sobol_table,
-                   _sequence_size,
-                   _sample_index,
-                   _rng_hash,
-                   _dimension(
-                       rng_offset,
-                       sampling::tabulated_sobol::
-                           volume_shade_offset_dimension))
-            .y;
-    }
-
-    Float expansion_order(
-        UInt rng_offset)
-        const noexcept override {
-        return cycles_sampler::
-            sample_volume_expansion_order(
-                _sobol_table,
-                _sequence_size,
-                _sample_index,
-                rng_offset);
-    }
-
-    Float transmittance_shade_offset(
-        UInt rng_offset)
-        const noexcept override {
-        return cycles_sampler::sample_1d(
-            _sobol_table,
-            _sequence_size,
-            _sample_index,
-            _rng_hash,
-            _dimension(
-                rng_offset,
-                sampling::tabulated_sobol::
-                    volume_shade_offset_dimension));
-    }
-};
 
 class PathHeterogeneousVolumeComponentImpl final
     : public PathHeterogeneousVolumeComponent {

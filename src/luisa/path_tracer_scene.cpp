@@ -407,22 +407,6 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     }
     const VolumeProgramCapabilityComponent
         volume_capabilities;
-    for (const auto id : volume_materials) {
-        const auto *material = data->materials.find(id);
-        if (material != nullptr &&
-            !volume_capabilities
-                 .analyze(*material->surface_program())
-                 .homogeneous) {
-            diagnose(
-                result.diagnostics,
-                "Material " + std::to_string(id.value) +
-                    " has a spatially varying Volume closure; "
-                    "heterogeneous integration is not enabled yet.");
-        }
-    }
-    if (!result.diagnostics.empty()) {
-        return result;
-    }
     data->volume_metadata
         .closure_allocation_budget =
         cycles_scene_closure_allocation_budget(
@@ -1487,12 +1471,19 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         }
         const auto instance_index =
             static_cast<std::uint32_t>(instances.size());
+        const auto normalized_visibility =
+            instance.visibility_mask ==
+                    ~std::uint32_t{0u}
+                ? contract::all_ray_visibility
+                : instance.visibility_mask;
         instances.emplace_back(InstanceGpu{
             .geometry_index = geometry_iter->second,
             .override_offset = override_offset,
             .override_count =
                 static_cast<std::uint32_t>(
                     instance.material_overrides.size()),
+            .visibility_mask =
+                normalized_visibility,
             .object_random = std::clamp(
                 instance.random, 0.0f, 1.0f),
             .particle_index = instance.particle_index,
@@ -1587,12 +1578,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                                 material_emission_sampling
                                     .at(*material_id)),
                         .visibility_mask =
-                            instance.visibility_mask ==
-                                    ~std::uint32_t{0u}
-                                ? contract::
-                                      all_ray_visibility
-                                : instance
-                                      .visibility_mask,
+                            normalized_visibility,
                         .padding = 0u});
                 emissive_triangle_areas.emplace_back(
                     world_triangle_area(
@@ -1603,11 +1589,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             }
         }
         const auto visibility =
-            instance.visibility_mask ==
-                    ~std::uint32_t{0u}
-                ? std::uint8_t{0xffu}
-                : static_cast<std::uint8_t>(
-                      instance.visibility_mask);
+            static_cast<std::uint8_t>(
+                normalized_visibility);
         data->accel.emplace_back(
             data->geometries[geometry_iter->second].mesh,
             to_luisa(instance.transform),

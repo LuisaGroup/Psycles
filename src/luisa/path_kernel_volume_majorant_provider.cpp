@@ -119,6 +119,9 @@ class SceneVolumeMajorantEntryProvider final
         const auto camera_ray =
             (_state.ray_visibility &
              camera_visibility) != 0u;
+        const auto should_evaluate =
+            _points->should_evaluate(
+                entry, _state);
         $if(has_light_path & !camera_ray) {
             const auto heterogeneous =
                 (flags &
@@ -173,22 +176,31 @@ class SceneVolumeMajorantEntryProvider final
                             _state.ray_length,
                         .time =
                             _state.time};
-                const auto shading =
-                    _points->emit(
-                        entry,
-                        sample_state);
-                const auto coefficients =
-                    _scene->surfaces
-                        .volume_coefficients(
-                            entry.surface_tag,
-                            _services,
-                            shading.point,
-                            VolumeQuery{
-                                .object_density =
-                                    shading
-                                        .object_density,
-                                .evaluate_emission =
-                                    _evaluate_emission});
+                auto coefficients =
+                    VolumeCoefficients::zero();
+                // Current Cycles keeps a shadow-invisible object in the
+                // hierarchy and performs the same sample loop, but
+                // volume_shader_eval_entry<true>() leaves its coefficients
+                // at zero. Preserve that structure and the heterogeneous
+                // 0.5 majorant floor below.
+                $if(should_evaluate) {
+                    const auto shading =
+                        _points->emit(
+                            entry,
+                            sample_state);
+                    coefficients =
+                        _scene->surfaces
+                            .volume_coefficients(
+                                entry.surface_tag,
+                                _services,
+                                shading.point,
+                                VolumeQuery{
+                                    .object_density =
+                                        shading
+                                            .object_density,
+                                    .evaluate_emission =
+                                        _evaluate_emission});
+                };
                 const auto extinction =
                     max(
                         coefficients.sigma_t.x,

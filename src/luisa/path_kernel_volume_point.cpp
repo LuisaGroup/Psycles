@@ -41,6 +41,38 @@ class SceneVolumeStackEntryPointProvider final
         return 1.0f;
     }
 
+    Bool should_evaluate(
+        const VolumeStackEntry &entry,
+        const VolumeShadingState &state)
+        const noexcept override {
+        Bool should_evaluate = true;
+        const auto object_entry =
+            entry.instance_id !=
+            invalid_volume_identity;
+        const auto shadow_ray =
+            (state.ray_visibility &
+             shadow_visibility) != 0u;
+        // volume_shader_eval_entry<true>() leaves the copied stack intact
+        // and skips only the closure evaluation for a shadow-invisible
+        // object. World volumes have OBJECT_NONE and do not take this branch.
+        $if(shadow_ray & object_entry) {
+            should_evaluate = false;
+            const auto in_range =
+                entry.instance_id <
+                static_cast<std::uint32_t>(
+                    _scene->instance_buffer.size());
+            $if(in_range) {
+                const auto instance =
+                    _scene->instance_buffer->read(
+                        entry.instance_id);
+                should_evaluate =
+                    (instance.visibility_mask &
+                     shadow_visibility) != 0u;
+            };
+        };
+        return should_evaluate;
+    }
+
     VolumeStackEntryShading emit(
         const VolumeStackEntry &entry,
         const VolumeShadingState &state)

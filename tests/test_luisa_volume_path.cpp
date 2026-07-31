@@ -4,6 +4,7 @@
 #include <psycles/luisa/path_tracer.h>
 
 #include "../src/luisa/path_tracer_internal.h"
+#include "../src/luisa/path_tracer_volume_capabilities.h"
 
 #include <array>
 #include <cmath>
@@ -13,6 +14,7 @@
 #include <iostream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <luisa/runtime/context.h>
 
@@ -84,10 +86,10 @@ using namespace psycles::contract;
         graph.add_node(
             node_type::vector_to_scalar,
             "Generated to density");
-    const auto absorption =
+    const auto scatter =
         graph.add_node(
-            node_type::volume_absorption,
-            "Heterogeneous absorption");
+            node_type::volume_scatter,
+            "Generated-coordinate isotropic scatter");
     static_cast<void>(graph.connect(
         {.node = coordinates,
          .socket = "Generated"},
@@ -96,7 +98,76 @@ using namespace psycles::contract;
     static_cast<void>(graph.connect(
         {.node = scalar,
          .socket = "Value"},
-        absorption,
+        scatter,
+        "Density"));
+    static_cast<void>(graph.set_input(
+        scatter,
+        "Color",
+        SocketValue::color(
+            {1.0f, 1.0f, 1.0f})));
+    static_cast<void>(graph.set_input(
+        scatter,
+        "Anisotropy",
+        SocketValue::floating(0.0f)));
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{
+            .node = transparent,
+            .socket = "Closure"});
+    graph.set_root(
+        ShaderDomain::volume,
+        OutputRef{
+            .node = scatter,
+            .socket = "Volume"});
+    return graph;
+}
+
+[[nodiscard]] ShaderGraph
+shadow_ray_length_volume_shader() {
+    ShaderGraph graph;
+    const auto transparent =
+        graph.add_node(
+            node_type::transparent_bsdf,
+            "Transparent boundary");
+    const auto scatter =
+        graph.add_node(
+            node_type::volume_scatter,
+            "Ray Length isotropic scatter");
+    const auto path =
+        graph.add_node(
+            node_type::light_path,
+            "Raw Light Path");
+    const auto density =
+        graph.add_node(
+            node_type::add_float,
+            "0.5 + Ray Length");
+    static_cast<void>(graph.set_input(
+        transparent,
+        "Color",
+        SocketValue::color(
+            {1.0f, 1.0f, 1.0f})));
+    static_cast<void>(graph.set_input(
+        scatter,
+        "Color",
+        SocketValue::color(
+            {1.0f, 1.0f, 1.0f})));
+    static_cast<void>(graph.set_input(
+        scatter,
+        "Anisotropy",
+        SocketValue::floating(0.0f)));
+    static_cast<void>(graph.set_input(
+        density,
+        "B",
+        SocketValue::floating(0.5f)));
+    static_cast<void>(graph.connect(
+        {.node = path,
+         .socket = "RayLength"},
+        density,
+        "A"));
+    static_cast<void>(graph.connect(
+        {.node = density,
+         .socket = "Value"},
+        scatter,
         "Density"));
     graph.set_root(
         ShaderDomain::surface,
@@ -106,8 +177,28 @@ using namespace psycles::contract;
     graph.set_root(
         ShaderDomain::volume,
         OutputRef{
-            .node = absorption,
+            .node = scatter,
             .socket = "Volume"});
+    return graph;
+}
+
+[[nodiscard]] ShaderGraph
+transparent_surface_shader() {
+    ShaderGraph graph;
+    const auto transparent =
+        graph.add_node(
+            node_type::transparent_bsdf,
+            "White transparent shadow splitter");
+    static_cast<void>(graph.set_input(
+        transparent,
+        "Color",
+        SocketValue::color(
+            {1.0f, 1.0f, 1.0f})));
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{
+            .node = transparent,
+            .socket = "Closure"});
     return graph;
 }
 
@@ -232,6 +323,28 @@ using namespace psycles::contract;
     return mesh;
 }
 
+[[nodiscard]] TriangleMeshDesc
+shadow_split_plane(
+    MaterialId material) {
+    TriangleMeshDesc mesh;
+    mesh.name =
+        "Shadow-only interval splitter";
+    mesh.positions = {
+        {-3.0f, -3.0f, 0.0f},
+        {3.0f, -3.0f, 0.0f},
+        {3.0f, 3.0f, 0.0f},
+        {-3.0f, 3.0f, 0.0f}};
+    mesh.triangles = {
+        {0u, 1u, 2u},
+        {0u, 2u, 3u}};
+    mesh.material_slots = {material};
+    mesh.triangle_material_slots = {
+        0u, 0u};
+    mesh.triangle_smooth = {
+        0u, 0u};
+    return mesh;
+}
+
 [[nodiscard]] SceneSnapshot make_scene() {
     constexpr MaterialId volume_material{1u};
     constexpr MaterialId world_material{2u};
@@ -316,6 +429,81 @@ using namespace psycles::contract;
                 all_ray_visibility,
             .cycles_shader_index = 2u,
             .cycles_object_index = 1u});
+    return scene;
+}
+
+[[nodiscard]] SceneSnapshot
+make_heterogeneous_direct_scene() {
+    auto scene = make_direct_scene();
+    scene.revision = 7u;
+    scene.materials
+        .at(MaterialId{1u})
+        .name =
+        "Cycles Generated-coordinate volume boundary";
+    scene.materials
+        .at(MaterialId{1u})
+        .shader =
+        heterogeneous_volume_shader();
+    scene.materials
+        .at(MaterialId{1u})
+        .volume_sampling =
+        VolumeSampling::distance;
+    return scene;
+}
+
+[[nodiscard]] SceneSnapshot
+make_shadow_ray_length_scene() {
+    constexpr MaterialId
+        splitter_material{8u};
+    constexpr GeometryId
+        splitter_geometry{9u};
+    constexpr InstanceId
+        splitter_instance{10u};
+    auto scene = make_direct_scene();
+    scene.revision = 8u;
+    scene.materials
+        .at(MaterialId{1u})
+        .name =
+        "Cycles Ray Length volume boundary";
+    scene.materials
+        .at(MaterialId{1u})
+        .shader =
+        shadow_ray_length_volume_shader();
+    scene.materials.emplace(
+        splitter_material,
+        MaterialDesc{
+            .name =
+                "White transparent shadow splitter",
+            .shader =
+                transparent_surface_shader(),
+            .cycles_shader_index = 3u});
+    scene.geometries.emplace(
+        splitter_geometry,
+        shadow_split_plane(
+            splitter_material));
+    scene.instances.emplace(
+        splitter_instance,
+        InstanceDesc{
+            .name =
+                "Shadow-only interval splitter",
+            .geometry =
+                splitter_geometry,
+            .transform = {},
+            .cycles_object_index = 3u});
+    return scene;
+}
+
+[[nodiscard]] SceneSnapshot
+make_shadow_invisible_volume_scene() {
+    auto scene =
+        make_heterogeneous_direct_scene();
+    scene.revision = 10u;
+    scene.instances
+        .at(InstanceId{4u})
+        .visibility_mask =
+        all_ray_visibility &
+        ~visibility_bit(
+            RayVisibility::shadow);
     return scene;
 }
 
@@ -606,6 +794,25 @@ render_direct_fixture(
     return passed;
 }
 
+inline constexpr std::array
+    cycles_heterogeneous_direct{
+        0.011216902f,
+        0.000000000f,
+        0.010174498f,
+        0.011000538f,
+        0.019292036f,
+        0.016054520f,
+        0.000000000f,
+        0.014974721f,
+        0.009519611f,
+        0.012089880f,
+        0.015181597f,
+        0.011744858f,
+        0.000000000f,
+        0.000000000f,
+        0.014666975f,
+        0.017768230f};
+
 }// namespace
 
 int main(int argc, char **argv) {
@@ -619,26 +826,107 @@ int main(int argc, char **argv) {
             std::move(device),
             {.next_event_estimation = true,
              .max_samples_per_dispatch = 8u}};
+    if (argc > 2 &&
+        std::string_view{argv[2]} ==
+            "heterogeneous") {
+        psycles::io::MemoryOutputSink
+            sink;
+        const auto passed =
+            render_direct_fixture(
+                renderer,
+                make_heterogeneous_direct_scene(),
+                make_direct_settings(),
+                backend,
+                "heterogeneous volume-direct",
+                cycles_heterogeneous_direct,
+                sink);
+#if defined(PSYCLES_WITH_OPENIMAGEIO)
+        if (passed && argc > 3) {
+            std::string error;
+            if (!psycles::io::write_multilayer_exr(
+                    sink.images(),
+                    argv[3],
+                    "ViewLayer",
+                    &error)) {
+                std::cerr
+                    << "could not write heterogeneous "
+                       "volume-direct EXR: "
+                    << error << '\n';
+                return EXIT_FAILURE;
+            }
+        }
+#endif
+        return passed ? EXIT_SUCCESS
+                      : EXIT_FAILURE;
+    }
     auto heterogeneous = make_scene();
     heterogeneous.materials
         .at(MaterialId{1u})
         .shader = heterogeneous_volume_shader();
-    const auto rejected =
+    const auto heterogeneous_compilation =
         renderer.compile_scene(heterogeneous);
-    auto found_heterogeneous_diagnostic = false;
-    for (const auto &diagnostic :
-         rejected.diagnostics) {
-        found_heterogeneous_diagnostic =
-            found_heterogeneous_diagnostic ||
-            diagnostic.message.find(
-                "spatially varying Volume closure") !=
-                std::string::npos;
-    }
-    if (rejected.ok() ||
-        !found_heterogeneous_diagnostic) {
+    if (!heterogeneous_compilation.ok()) {
+        for (const auto &diagnostic :
+             heterogeneous_compilation
+                 .diagnostics) {
+            std::cerr << diagnostic.message
+                      << '\n';
+        }
         std::cerr
-            << "heterogeneous volume was not rejected "
-               "before homogeneous path compilation\n";
+            << "raw heterogeneous Volume graph did not "
+               "compile through the production majorant path\n";
+        return EXIT_FAILURE;
+    }
+    const auto *heterogeneous_scene =
+        dynamic_cast<
+            const psycles::luisa_backend::detail::
+                LuisaCompiledScene *>(
+            heterogeneous_compilation
+                .scene.get());
+    if (heterogeneous_scene == nullptr ||
+        heterogeneous_scene->data()
+                ->volume_majorant_root_count !=
+            1u ||
+        heterogeneous_scene->data()
+                ->volume_majorant_node_count ==
+            0u ||
+        heterogeneous_scene->data()
+                ->volume_majorant_range_count !=
+            2u) {
+        std::cerr
+            << "spatial Volume graph did not retain its "
+               "adaptive production majorant hierarchy\n";
+        return EXIT_FAILURE;
+    }
+    const auto heterogeneous_tag =
+        heterogeneous_scene->data()
+            ->material_bindings
+            .at(MaterialId{1u})
+            .surface_tag;
+    std::vector<std::uint32_t>
+        heterogeneous_flags(
+            heterogeneous_scene->data()
+                ->volume_surface_flag_count);
+    auto heterogeneous_stream =
+        heterogeneous_scene->data()
+            ->device.create_stream();
+    heterogeneous_stream
+        << heterogeneous_scene->data()
+               ->volume_surface_flag_buffer
+               .copy_to(
+                   luisa::span{
+                       heterogeneous_flags})
+        << luisa::compute::synchronize();
+    if (heterogeneous_tag >=
+            heterogeneous_flags.size() ||
+        (heterogeneous_flags[
+             heterogeneous_tag] &
+         psycles::luisa_backend::detail::
+             volume_surface_flag_heterogeneous) ==
+            0u) {
+        std::cerr
+            << "spatial Volume graph lost its "
+               "heterogeneous runtime dispatch flag\n";
         return EXIT_FAILURE;
     }
     auto compilation =
@@ -1012,6 +1300,77 @@ int main(int argc, char **argv) {
                 << '\n';
             return EXIT_FAILURE;
         }
+    }
+
+    // Blender/Cycles main b82c3f0 (intern/cycles unchanged through the
+    // checked-out 6f7add4 revision), CPU, one Tabulated Sobol sample. The
+    // original Generated-coordinate -> Volume Scatter closure remains raw in
+    // both renderers and exercises production majorant traversal, VSPG,
+    // distance NEE, and heterogeneous residual-ratio shadow transmittance.
+    psycles::io::MemoryOutputSink
+        heterogeneous_direct_sink;
+    if (!render_direct_fixture(
+            renderer,
+            make_heterogeneous_direct_scene(),
+            direct_settings,
+            backend,
+            "heterogeneous volume-direct",
+            cycles_heterogeneous_direct,
+            heterogeneous_direct_sink)) {
+        return EXIT_FAILURE;
+    }
+
+    // The splitter is behind the camera but intersects every shadow ray to
+    // the identity Sun. Cycles re-runs shader_setup_from_volume() for the two
+    // resulting intervals, so Light Path.Ray Length is zero in both and the
+    // image is exactly the homogeneous 0.5-density oracle above.
+    psycles::io::MemoryOutputSink
+        shadow_ray_length_sink;
+    if (!render_direct_fixture(
+            renderer,
+            make_shadow_ray_length_scene(),
+            direct_settings,
+            backend,
+            "split shadow Ray Length",
+            cycles_direct,
+            shadow_ray_length_sink)) {
+        return EXIT_FAILURE;
+    }
+
+    // Cycles copies the complete heterogeneous camera volume stack into the
+    // shadow state. This object remains structurally present, but
+    // volume_shader_eval_entry<true>() skips its raw closure because the
+    // Shadow visibility bit is clear. The camera path still scatters inside
+    // it, while its majorant walk and shadow RNG dimensions are retained and
+    // post-scatter shadow extinction remains exactly absent.
+    constexpr std::array cycles_shadow_invisible_volume{
+        0.063440941f,
+        0.000000000f,
+        0.060402390f,
+        0.063143238f,
+        0.072821841f,
+        0.066506855f,
+        0.000000000f,
+        0.072754756f,
+        0.056631930f,
+        0.070871197f,
+        0.065295048f,
+        0.061580677f,
+        0.000000000f,
+        0.000000000f,
+        0.077021010f,
+        0.075240009f};
+    psycles::io::MemoryOutputSink
+        shadow_invisible_volume_sink;
+    if (!render_direct_fixture(
+            renderer,
+            make_shadow_invisible_volume_scene(),
+            direct_settings,
+            backend,
+            "heterogeneous shadow-invisible volume",
+            cycles_shadow_invisible_volume,
+            shadow_invisible_volume_sink)) {
+        return EXIT_FAILURE;
     }
 
     auto point_compilation =

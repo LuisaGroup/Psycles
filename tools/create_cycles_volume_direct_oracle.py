@@ -56,6 +56,28 @@ def argument_options() -> argparse.Namespace:
         help="Cycles material volume-sampling policy",
     )
     parser.add_argument(
+        "--heterogeneous",
+        action="store_true",
+        help=(
+            "drive raw Volume Scatter density from Generated coordinates"
+        ),
+    )
+    parser.add_argument(
+        "--ray-length-density",
+        action="store_true",
+        help=(
+            "set density to 0.5 + Light Path.Ray Length"
+        ),
+    )
+    parser.add_argument(
+        "--shadow-split-plane",
+        action="store_true",
+        help=(
+            "insert a white transparent plane behind the camera so only "
+            "the volume shadow ray is split"
+        ),
+    )
+    parser.add_argument(
         "--direct-light-sampling",
         choices=(
             "MULTIPLE_IMPORTANCE_SAMPLING",
@@ -78,6 +100,12 @@ def argument_options() -> argparse.Namespace:
         help="area-light spread in radians (default: pi)",
     )
     parser.add_argument(
+        "--sun-rotation-y",
+        type=float,
+        default=0.0,
+        help="Sun Euler Y rotation in radians (default: 0)",
+    )
+    parser.add_argument(
         "--hide-world-camera",
         action="store_true",
         help="disable the World Camera visibility bit",
@@ -88,6 +116,11 @@ def argument_options() -> argparse.Namespace:
         help="disable the World Volume Scatter visibility bit",
     )
     parser.add_argument(
+        "--hide-volume-shadow",
+        action="store_true",
+        help="disable the volume object's Shadow visibility bit",
+    )
+    parser.add_argument(
         "--world-sampling",
         choices=("MANUAL", "AUTOMATIC", "NONE"),
         default=None,
@@ -96,11 +129,17 @@ def argument_options() -> argparse.Namespace:
     options = parser.parse_args(trailing)
     if options.samples <= 0:
         parser.error("--samples must be positive")
+    if options.heterogeneous and options.ray_length_density:
+        parser.error(
+            "--heterogeneous and --ray-length-density are exclusive"
+        )
     if (
         not math.isfinite(options.area_spread)
         or not 0.0 <= options.area_spread <= math.pi
     ):
         parser.error("--area-spread must be finite and within [0, pi]")
+    if not math.isfinite(options.sun_rotation_y):
+        parser.error("--sun-rotation-y must be finite")
     options.output = options.output.resolve()
     return options
 
@@ -116,9 +155,19 @@ def clear_scene() -> None:
 
 def make_volume_material(
     volume_sampling: str,
+    heterogeneous: bool,
+    ray_length_density: bool,
 ) -> bpy.types.Material:
     material = bpy.data.materials.new(
-        "Cycles homogeneous isotropic volume boundary"
+        (
+            "Cycles Generated-coordinate volume boundary"
+            if heterogeneous
+            else (
+                "Cycles Ray Length volume boundary"
+                if ray_length_density
+                else "Cycles homogeneous isotropic volume boundary"
+            )
+        )
     )
     if material.node_tree is None:
         material.use_nodes = True
@@ -129,7 +178,33 @@ def make_volume_material(
     scatter = nodes.new("ShaderNodeVolumeScatter")
     transparent.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
     scatter.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
-    scatter.inputs["Density"].default_value = 0.5
+    if ray_length_density:
+        path = nodes.new(
+            "ShaderNodeLightPath"
+        )
+        add = nodes.new(
+            "ShaderNodeMath"
+        )
+        add.operation = "ADD"
+        add.inputs[1].default_value = 0.5
+        material.node_tree.links.new(
+            path.outputs["Ray Length"],
+            add.inputs[0],
+        )
+        material.node_tree.links.new(
+            add.outputs["Value"],
+            scatter.inputs["Density"],
+        )
+    elif heterogeneous:
+        coordinates = nodes.new(
+            "ShaderNodeTexCoord"
+        )
+        material.node_tree.links.new(
+            coordinates.outputs["Generated"],
+            scatter.inputs["Density"],
+        )
+    else:
+        scatter.inputs["Density"].default_value = 0.5
     scatter.inputs["Anisotropy"].default_value = 0.0
     material.node_tree.links.new(
         transparent.outputs["BSDF"], output.inputs["Surface"]
@@ -139,6 +214,51 @@ def make_volume_material(
     )
     material.cycles.volume_sampling = volume_sampling
     return material
+
+
+def make_shadow_split_plane(
+    scene: bpy.types.Scene,
+) -> None:
+    material = bpy.data.materials.new(
+        "White transparent shadow splitter"
+    )
+    if material.node_tree is None:
+        material.use_nodes = True
+    nodes = material.node_tree.nodes
+    nodes.clear()
+    output = nodes.new("ShaderNodeOutputMaterial")
+    transparent = nodes.new("ShaderNodeBsdfTransparent")
+    transparent.inputs["Color"].default_value = (
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+    )
+    material.node_tree.links.new(
+        transparent.outputs["BSDF"],
+        output.inputs["Surface"],
+    )
+    mesh = bpy.data.meshes.new(
+        "Shadow-only interval splitter"
+    )
+    mesh.from_pydata(
+        (
+            (-3.0, -3.0, 0.0),
+            (3.0, -3.0, 0.0),
+            (3.0, 3.0, 0.0),
+            (-3.0, 3.0, 0.0),
+        ),
+        (),
+        (
+            (0, 1, 2),
+            (0, 2, 3),
+        ),
+    )
+    mesh.materials.append(material)
+    splitter = bpy.data.objects.new(
+        mesh.name, mesh
+    )
+    scene.collection.objects.link(splitter)
 
 
 def make_world(
@@ -226,6 +346,7 @@ def make_light(
     light_type: str,
     area_shape: str,
     area_spread: float,
+    sun_rotation_y: float,
 ) -> None:
     if light_type in {
         "environment",
@@ -336,6 +457,7 @@ def make_light(
     light_data.angle = 0.0
     light_data.normalize = True
     light = bpy.data.objects.new(light_data.name, light_data)
+    light.rotation_euler[1] = sun_rotation_y
     scene.collection.objects.link(light)
 
 
@@ -347,9 +469,14 @@ def configure_scene(
     direct_light_sampling: str,
     area_shape: str,
     area_spread: float,
+    sun_rotation_y: float,
     hide_world_camera: bool,
     hide_world_scatter: bool,
     world_sampling: str | None,
+    heterogeneous: bool,
+    ray_length_density: bool,
+    shadow_split_plane: bool,
+    hide_volume_shadow: bool,
 ) -> None:
     scene = bpy.context.scene
     scene.render.engine = "CYCLES"
@@ -418,15 +545,25 @@ def configure_scene(
     )
     volume = bpy.context.object
     volume.name = "Volume box"
-    volume.data.materials.append(
-        make_volume_material(volume_sampling)
+    volume.visible_shadow = (
+        not hide_volume_shadow
     )
+    volume.data.materials.append(
+        make_volume_material(
+            volume_sampling,
+            heterogeneous,
+            ray_length_density,
+        )
+    )
+    if shadow_split_plane:
+        make_shadow_split_plane(scene)
 
     make_light(
         scene,
         light_type,
         area_shape,
         area_spread,
+        sun_rotation_y,
     )
 
     camera_data = bpy.data.cameras.new(
@@ -454,16 +591,25 @@ def main() -> None:
         options.direct_light_sampling,
         options.area_shape,
         options.area_spread,
+        options.sun_rotation_y,
         options.hide_world_camera,
         options.hide_world_scatter,
         options.world_sampling,
+        options.heterogeneous,
+        options.ray_length_density,
+        options.shadow_split_plane,
+        options.hide_volume_shadow,
     )
     bpy.ops.render.render(write_still=True)
     print(
         "Cycles volume-direct oracle: "
         f"{output} ({options.samples} spp, "
         f"light={options.light}, "
-        f"volume_sampling={options.volume_sampling})"
+        f"volume_sampling={options.volume_sampling}, "
+        f"heterogeneous={options.heterogeneous}, "
+        f"ray_length_density={options.ray_length_density}, "
+        f"shadow_split_plane={options.shadow_split_plane}, "
+        f"hide_volume_shadow={options.hide_volume_shadow})"
     )
 
 

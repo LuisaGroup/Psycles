@@ -6,9 +6,23 @@
 #include <psycles/luisa/pixel_filter.h>
 #include <psycles/sampling/light_distribution.h>
 
+#include <cstdlib>
+#include <string_view>
 #include <utility>
 
 namespace psycles::luisa_backend::detail {
+namespace {
+
+[[nodiscard]] bool
+render_shader_cache_enabled() noexcept {
+    const auto *disabled =
+        std::getenv(
+            "PSYCLES_DISABLE_SHADER_CACHE");
+    return disabled == nullptr ||
+           std::string_view{disabled} != "1";
+}
+
+}// namespace
 
 void LuisaRenderSession::initialize(const RenderSettings &settings) {
     _settings = settings;
@@ -374,7 +388,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
     _render_shader = _scene->device.compile(
         kernel,
         luisa::compute::ShaderOption{
-            .enable_cache = true,
+            .enable_cache =
+                render_shader_cache_enabled(),
             .enable_fast_math = false});
 }
 
