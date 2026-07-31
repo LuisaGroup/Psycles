@@ -3,6 +3,7 @@
 #include "path_tracer_generated_coordinates.h"
 #include "path_tracer_shader_services.h"
 #include "path_tracer_surfaces.h"
+#include "path_tracer_volume_capabilities.h"
 #include "cycles_shader_identity.h"
 
 #include <psycles/compiler/core_nodes.h>
@@ -72,56 +73,6 @@ namespace {
         cross.x * cross.x +
         cross.y * cross.y +
         cross.z * cross.z);
-}
-
-[[nodiscard]] bool is_spatial_source(
-    compiler::ValueOperation operation) noexcept {
-    using compiler::ValueOperation;
-    switch (operation) {
-        case ValueOperation::surface_position:
-        case ValueOperation::shading_normal:
-        case ValueOperation::geometric_normal:
-        case ValueOperation::incoming:
-        case ValueOperation::tangent:
-        case ValueOperation::uv:
-        case ValueOperation::generated:
-        case ValueOperation::object_position:
-        case ValueOperation::object_location:
-        case ValueOperation::object_random:
-        case ValueOperation::particle_index:
-        case ValueOperation::particle_random:
-        case ValueOperation::back_facing:
-        case ValueOperation::random_per_island:
-        case ValueOperation::image_color:
-        case ValueOperation::image_alpha:
-        case ValueOperation::attribute_color:
-        case ValueOperation::attribute_alpha:
-        case ValueOperation::normal_map:
-        case ValueOperation::bump:
-        case ValueOperation::noise_factor:
-        case ValueOperation::noise_color:
-        case ValueOperation::white_noise_value:
-        case ValueOperation::white_noise_color:
-        case ValueOperation::checker_color:
-        case ValueOperation::checker_factor:
-        case ValueOperation::brick_color:
-        case ValueOperation::brick_factor:
-        case ValueOperation::gradient:
-        case ValueOperation::nishita_sky:
-            return true;
-        default:
-            return false;
-    }
-}
-
-[[nodiscard]] bool surface_is_spatially_varying(
-    const compiler::SurfaceProgram &program) noexcept {
-    return std::any_of(
-        program.value_instructions().begin(),
-        program.value_instructions().end(),
-        [](const compiler::ValueInstruction &instruction) {
-            return is_spatial_source(instruction.operation);
-        });
 }
 
 [[nodiscard]] Vec3f normalized_or_z(
@@ -414,12 +365,6 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         if (material.shader.root(
                 contract::ShaderDomain::volume)) {
             volume_materials.emplace(id);
-            diagnose(
-                result.diagnostics,
-                "Material " + std::to_string(id.value) +
-                    " ('" + material.name +
-                    "') has a Volume closure graph, but the Luisa "
-                    "volume-stack integrator is not enabled yet.");
         }
     }
     const auto volume_metadata =
@@ -455,6 +400,24 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                     std::to_string(diagnostic.material.value) +
                     ": " + diagnostic.message);
         }
+        return result;
+    }
+    const VolumeProgramCapabilityComponent
+        volume_capabilities;
+    for (const auto id : volume_materials) {
+        const auto *material = data->materials.find(id);
+        if (material != nullptr &&
+            !volume_capabilities
+                 .analyze(*material->surface_program())
+                 .homogeneous) {
+            diagnose(
+                result.diagnostics,
+                "Material " + std::to_string(id.value) +
+                    " has a spatially varying Volume closure; "
+                    "heterogeneous integration is not enabled yet.");
+        }
+    }
+    if (!result.diagnostics.empty()) {
         return result;
     }
     data->volume_metadata
@@ -1815,8 +1778,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         if (const auto *world_material =
                 data->materials.find(*snapshot.world_shader)) {
             world_is_spatially_varying =
-                surface_is_spatially_varying(
-                    *world_material->surface_program());
+                volume_capabilities
+                    .analyze(*world_material->surface_program())
+                    .has_spatial_values;
         }
     }
     const auto include_environment =

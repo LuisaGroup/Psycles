@@ -37,12 +37,12 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         auto &path_depth = sample.path_depth;
         auto &previous_delta = sample.previous_delta;
         auto &previous_bsdf_pdf = sample.previous_bsdf_pdf;
-        auto &path_diffuse_weight = sample.path_diffuse_weight;
-        auto &path_glossy_weight = sample.path_glossy_weight;
         auto &terminate_on_next_surface = sample.terminate_on_next_surface;
         auto &ray_events = sample.ray_events;
         auto &transparent_depth = sample.transparent_depth;
         auto &continuation_probability = sample.continuation_probability;
+        auto &continuation_decided_in_volume =
+            sample.continuation_decided_in_volume;
         auto &cycles_rng_offset = sample.cycles_rng_offset;
         auto &cycles_path_visibility = sample.cycles_path_visibility;
         auto &path_flags = sample.path_flags;
@@ -58,8 +58,6 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         const auto &emissive_triangle_pdf = config.emissive_triangle_pdf;
         const auto &forward_light_weight =
             config.light_transport.forward_light_weight;
-        const auto &split_scattered_light =
-            config.light_transport.split_scattered_light;
         const auto next_event_estimation = config.next_event_estimation;
         const auto path_trace_enabled = config.path_trace_enabled;
         auto surface_emission = [&](UInt tag,
@@ -69,12 +67,10 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         };
         auto clamp_contribution = [&](Float3 contribution,
                                       UInt depth) noexcept {
-            return invocation.clamp_contribution(contribution, depth);
+            return invocation
+                .clamp_emission_contribution(
+                    contribution, depth);
         };
-        auto accumulate_light_pass =
-            [&](Var<LightPassContributionCall> contribution) noexcept {
-                sample.accumulate_light_pass(std::move(contribution));
-            };
         auto trace_surface_closure = [&](UInt tag,
                                          const SurfacePoint &surface_point,
                                          UInt requested_index) noexcept {
@@ -116,17 +112,17 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         Float3 emission_contribution = clamp_contribution(
             throughput * emitted * emission_weight, path_depth);
         radiance += emission_contribution;
-        auto directly_visible_emission = path_depth == 0u;
+        auto directly_visible_emission =
+            (path_flags &
+             cycles_path_state::flag_any_pass) ==
+            0u;
         sample_emission += select(make_float3(0.0f),
                                   emission_contribution,
                                   directly_visible_emission);
-        accumulate_light_pass(
-            split_scattered_light(select(emission_contribution,
-                                         make_float3(0.0f),
-                                         directly_visible_emission),
-                                  path_diffuse_weight,
-                                  path_glossy_weight,
-                                  path_depth == 1u));
+        sample.accumulate_scattered_light(
+            select(emission_contribution,
+                   make_float3(0.0f),
+                   directly_visible_emission));
 
         // PATH_RAY_TERMINATE_ON_NEXT_SURFACE still records
         // surface emission, then stops before data passes, direct
@@ -140,29 +136,40 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         // surface-emission contributions above are therefore
         // retained even when the path does not continue
         // scattering.
-        Bool arrived_through_transparency =
-            (ray_events &
-             static_cast<std::uint32_t>(contract::event_transparent)) != 0u;
-        // Kernel parameters already contain Cycles' scene-sync
-        // representation: opaque minimums include the first
-        // direct-light bounce.
-        Bool use_roulette = select(
-            path_depth > kernel_parameters.min_bounces,
-            transparent_depth > kernel_parameters.transparent_min_bounces,
-            arrived_through_transparency);
-        $if(use_roulette) {
-            Float survival =
-                min(sqrt(max(abs(throughput.x),
-                             max(abs(throughput.y), abs(throughput.z)))),
-                    1.0f);
-            continuation_probability = survival;
-            $if(survival <= 0.0f) {
+        $if(continuation_decided_in_volume) {
+            $if(continuation_probability <= 0.0f) {
                 $break;
             };
-            $if(terminate_sample >= survival) {
+            $if(continuation_probability != 1.0f) {
+                throughput /=
+                    continuation_probability;
+            };
+        }
+        $else {
+            continuation_probability =
+                cycles_path_state::
+                    continuation_probability(
+                        path_flags,
+                        path_depth,
+                        transparent_depth,
+                        kernel_parameters
+                            .min_bounces,
+                        kernel_parameters
+                            .transparent_min_bounces,
+                        throughput);
+            $if(continuation_probability <=
+                0.0f) {
                 $break;
             };
-            throughput /= survival;
+            $if(continuation_probability !=
+                1.0f) {
+                $if(terminate_sample >=
+                    continuation_probability) {
+                    $break;
+                };
+                throughput /=
+                    continuation_probability;
+            };
         };
 
         UInt cycles_surface_runtime_flags = 0u;

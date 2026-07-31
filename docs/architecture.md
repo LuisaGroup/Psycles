@@ -203,8 +203,9 @@ the stack only when `LABEL_TRANSMIT` is present. The entry comes from the same
 effective object/shader identity plus raw graph dispatch handles; reflection,
 non-volume surfaces, duplicate entrances, and exits therefore use one formal
 boundary transition rather than path-local special cases. This call is
-absent from volume-free ASTs. The remaining free-flight stage will consume
-the same state rather than duplicating its rules.
+absent from volume-free ASTs. `PathVolumeSegmentStage` consumes that same
+state before every typed closest event, so free flight and boundary crossing
+cannot diverge into separate path-local stack rules.
 
 `VolumeSceneMetadataComponent` performs the matching host preprocessing. It
 resolves each instance's effective material slots, transforms the geometry
@@ -235,6 +236,14 @@ sampling remains a later `PRNG_VOLUME_PHASE` operation. The default entry point
 uses Cycles' unguided scatter probability, while an explicit-probability entry
 point admits the history-dependent VSPG probability without changing the
 estimator measure or duplicating its implementation.
+
+`VolumeProgramCapabilityComponent` is the host-side proof boundary for the
+currently enabled subset. It recursively follows only values reachable from
+the original Volume closure tree and admits a scene to analytic segment
+integration only when no reachable spatial value exists. This is a capability
+check, not shader preprocessing: accepted programs retain their raw closures
+and dynamic parameter buffers, while heterogeneous programs remain intact and
+receive a diagnostic.
 
 ### Scene
 
@@ -292,6 +301,12 @@ distance. `ForwardLightStage` resolves a lamp as a transparent event and the
 pipeline asks for the next event without consuming another path bounce;
 `BackgroundEventStage` terminates the path. Thus the complete free-flight
 segment is an explicit boundary before any event contribution is evaluated.
+For volume-specialized kernels, `PathVolumeSegmentStage` consumes that
+boundary first. Attenuation preserves the event, a phase collision discards it
+and restarts the outer path loop, and volume termination ends the path. The
+same stage owns the fixed Cycles Sobol dimensions, closest-event roulette
+reuse, volume emission/pass accumulation, and the atomic
+`cycles_path_state::next_volume()` transition.
 
 The pipeline owns the path loop, the top-level builder owns the sample loop,
 and the setup/film module owns accumulation. This makes `$break` scope and

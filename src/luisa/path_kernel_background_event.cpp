@@ -28,6 +28,7 @@ class BackgroundEventStageImpl final
         auto &throughput = sample.throughput;
         auto &radiance = sample.radiance;
         auto &path_depth = sample.path_depth;
+        auto &path_flags = sample.path_flags;
         auto &transparent_depth =
             sample.transparent_depth;
         auto &diffuse_depth =
@@ -38,17 +39,10 @@ class BackgroundEventStageImpl final
             sample.transmission_depth;
         auto &sample_environment =
             sample.sample_environment;
-        auto &path_diffuse_weight =
-            sample.path_diffuse_weight;
-        auto &path_glossy_weight =
-            sample.path_glossy_weight;
         auto &ray_events = sample.ray_events;
         const auto &forward_light_weight =
             config.light_transport
                 .forward_light_weight;
-        const auto &split_scattered_light =
-            config.light_transport
-                .split_scattered_light;
 
         Bool competing =
             (path_depth > 0u) &
@@ -80,7 +74,8 @@ class BackgroundEventStageImpl final
                 competing,
                 environment_pdf > 0.0f);
         Float3 environment_contribution =
-            invocation.clamp_contribution(
+            invocation
+                .clamp_emission_contribution(
                 throughput *
                     invocation
                         .evaluate_environment(
@@ -98,21 +93,19 @@ class BackgroundEventStageImpl final
                 path_depth);
         radiance += environment_contribution;
         const auto directly_visible =
-            path_depth == 0u;
+            (path_flags &
+             cycles_path_state::flag_any_pass) ==
+            0u;
         sample_environment +=
             select(
                 make_float3(0.0f),
                 environment_contribution,
                 directly_visible);
-        sample.accumulate_light_pass(
-            split_scattered_light(
-                select(
-                    environment_contribution,
-                    make_float3(0.0f),
-                    directly_visible),
-                path_diffuse_weight,
-                path_glossy_weight,
-                path_depth == 1u));
+        sample.accumulate_scattered_light(
+            select(
+                environment_contribution,
+                make_float3(0.0f),
+                directly_visible));
     }
 };
 

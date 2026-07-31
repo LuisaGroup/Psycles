@@ -16,6 +16,8 @@ class PathKernelPipeline::Impl {
     std::unique_ptr<ForwardLightStage>
         forward_light{
             make_forward_light_stage()};
+    std::unique_ptr<PathVolumeSegmentStage>
+        volume_segment;
     std::unique_ptr<BackgroundEventStage>
         background{
             make_background_event_stage()};
@@ -27,14 +29,24 @@ class PathKernelPipeline::Impl {
     std::unique_ptr<SurfaceScatterStage> surface_scatter{
         make_surface_scatter_stage()};
 
-    Impl() {
+    explicit Impl(
+        const PathKernelConfig &config) {
+        if (config.volume_state) {
+            volume_segment =
+                make_path_volume_segment_stage(
+                    config);
+        }
         direct_lighting.emplace_back(make_environment_lighting_component());
         direct_lighting.emplace_back(make_emissive_mesh_lighting_component());
         direct_lighting.emplace_back(make_analytic_lighting_component());
     }
 };
 
-PathKernelPipeline::PathKernelPipeline() : _impl{std::make_unique<Impl>()} {}
+PathKernelPipeline::PathKernelPipeline(
+    const PathKernelConfig &config)
+    : _impl{
+          std::make_unique<Impl>(
+              config)} {}
 
 PathKernelPipeline::~PathKernelPipeline() noexcept = default;
 PathKernelPipeline::PathKernelPipeline(PathKernelPipeline &&) noexcept =
@@ -57,30 +69,52 @@ void PathKernelPipeline::emit(PathSampleContext &sample) const noexcept {
             surface_ray::invalid_primitive;
         Bool search_events = true;
         Bool path_terminated = false;
+        Bool volume_scattered = false;
         $while(search_events &
                !path_terminated) {
             auto event =
                 _impl->closest_event->emit(
                     bounce,
                     previous_analytic_light);
-            $if(event.analytic_light) {
+            if (_impl->volume_segment) {
+                const auto volume =
+                    _impl->volume_segment->emit(
+                        event);
                 path_terminated =
-                    _impl->forward_light->emit(
-                        event);
-                previous_analytic_light =
-                    event.light_index;
+                    path_terminated |
+                    volume.terminated;
+                volume_scattered =
+                    volume_scattered |
+                    volume.scattered;
+                search_events =
+                    search_events &
+                    !volume.scattered &
+                    !volume.terminated;
             }
-            $else {
-                search_events = false;
-                $if(event.background) {
-                    _impl->background->emit(
-                        event);
-                    path_terminated = true;
+            $if(search_events &
+                !path_terminated) {
+                $if(event.analytic_light) {
+                    path_terminated =
+                        _impl->forward_light->emit(
+                            event);
+                    previous_analytic_light =
+                        event.light_index;
+                }
+                $else {
+                    search_events = false;
+                    $if(event.background) {
+                        _impl->background->emit(
+                            event);
+                        path_terminated = true;
+                    };
                 };
             };
         };
         $if(path_terminated) {
             $break;
+        };
+        $if(volume_scattered) {
+            $continue;
         };
 
         auto surface = _impl->surface_geometry->emit(bounce);
@@ -97,7 +131,8 @@ void PathKernelPipeline::emit(PathSampleContext &sample) const noexcept {
 }
 
 RenderKernel build_path_kernel(const PathKernelConfig &config) noexcept {
-    PathKernelPipeline pipeline;
+    PathKernelPipeline pipeline{
+        config};
     RenderKernel kernel =
         [&config, &pipeline](BufferFloat4 combined,
                              BufferFloat4 normal,

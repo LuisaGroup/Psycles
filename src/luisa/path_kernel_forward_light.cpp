@@ -29,20 +29,14 @@ class ForwardLightStageImpl final
         auto &throughput = sample.throughput;
         auto &radiance = sample.radiance;
         auto &path_depth = sample.path_depth;
+        auto &path_flags = sample.path_flags;
         auto &transparent_depth =
             sample.transparent_depth;
         auto &sample_emission =
             sample.sample_emission;
-        auto &path_diffuse_weight =
-            sample.path_diffuse_weight;
-        auto &path_glossy_weight =
-            sample.path_glossy_weight;
         const auto &forward_light_weight =
             config.light_transport
                 .forward_light_weight;
-        const auto &split_scattered_light =
-            config.light_transport
-                .split_scattered_light;
 
         Var<LightGpu> light =
             scene->light_buffer->read(
@@ -73,28 +67,27 @@ class ForwardLightStageImpl final
                 -ray->direction(),
                 event.distance);
         const auto contribution =
-            invocation.clamp_contribution(
+            invocation
+                .clamp_emission_contribution(
                 throughput *
                     light_radiance *
                     mis_weight,
                 path_depth);
         radiance += contribution;
         const auto directly_visible =
-            path_depth == 0u;
+            (path_flags &
+             cycles_path_state::flag_any_pass) ==
+            0u;
         sample_emission +=
             select(
                 make_float3(0.0f),
                 contribution,
                 directly_visible);
-        sample.accumulate_light_pass(
-            split_scattered_light(
-                select(
-                    contribution,
-                    make_float3(0.0f),
-                    directly_visible),
-                path_diffuse_weight,
-                path_glossy_weight,
-                path_depth == 1u));
+        sample.accumulate_scattered_light(
+            select(
+                contribution,
+                make_float3(0.0f),
+                directly_visible));
 
         transparent_depth += 1u;
         ray = make_ray(

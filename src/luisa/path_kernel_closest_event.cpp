@@ -1,4 +1,5 @@
 #include "path_kernel_builder.h"
+#include "path_kernel_triangle_primitive.h"
 
 #include <psycles/luisa/analytic_light_intersection.h>
 #include <psycles/luisa/surface_ray.h>
@@ -10,6 +11,11 @@ namespace {
 
 class ClosestEventStageImpl final
     : public ClosestEventStage {
+
+  private:
+    std::shared_ptr<const TrianglePrimitiveComponent>
+        _primitive{
+            make_triangle_primitive_component()};
 
   public:
     ClosestPathEvent
@@ -208,6 +214,17 @@ class ClosestEventStageImpl final
         const auto background =
             !light_hit &
             bounce.hit->miss();
+        Bool surface_may_emit = false;
+        $if(surface) {
+            const auto primitive =
+                _primitive->emit(
+                    scene,
+                    bounce.hit->inst,
+                    bounce.hit->prim);
+            surface_may_emit =
+                (primitive.material_binding.flags &
+                 material_flag_may_emit) != 0u;
+        };
         return {
             bounce,
             std::move(light_hit),
@@ -220,7 +237,8 @@ class ClosestEventStageImpl final
             std::move(light_hit_uv),
             std::move(light_hit_pdf),
             std::move(
-                light_hit_evaluation_factor)};
+                light_hit_evaluation_factor),
+            std::move(surface_may_emit)};
     }
 };
 
