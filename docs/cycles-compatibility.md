@@ -131,10 +131,12 @@ checkpoint. `GraphSurface` sends original closures to an OOP host-stage
 collector without Blender/Cycles pre-baking. The fitted Mie closure expands to
 its original HG and Draine pair. `VolumePhaseSet` matches Cycles' negative
 weight clamp, exact-parameter merging, stable first-eight truncation,
-sample-weighted evaluation, and reservoir selection/random-number rescaling.
-The combined 37-record coefficient/phase-set fixture includes the original
+monotonic allocation budget, scalar sample-weighted evaluation, and
+single-closure reservoir selection/random-number rescaling. The combined
+38-record coefficient/phase-set fixture includes the original
 Draine, fitted-Mie HG, fitted-Mie Draine, and Principled HG closures plus
-merge, capacity, truncation, empty-set, and combined single-trace regressions.
+merge, non-refunding allocation budget, capacity, truncation, empty-set, and
+combined single-trace regressions.
 Its phase values and three deterministic samples are pinned to official
 Cycles main `b82c3f0` and pass on fallback, HIP, and Vulkan. This is still not
 a render-compatibility claim.

@@ -26,7 +26,7 @@ using namespace psycles::luisa_backend;
 namespace phase =
     psycles::luisa_backend::cycles_volume_phase;
 
-inline constexpr std::size_t record_count = 37u;
+inline constexpr std::size_t record_count = 38u;
 
 class VolumeShaderServices final : public ShaderServices {
 
@@ -739,6 +739,40 @@ int main(int argc, char **argv) {
                         empty_sample.closure_index),
                     cast<float>(
                         empty_sample.closure_type)));
+
+            // Cycles' closure allocation budget is monotonically consumed:
+            // volume_shader_merge_closures() compacts num_closure but never
+            // restores num_closure_left. This must reject the fourth
+            // allocation even though merging left a free storage slot.
+            VolumePhaseSet allocation_budget{3u};
+            allocation_budget.add(
+                phase::henyey_greenstein(0.1f),
+                make_float3(1.0f));
+            allocation_budget.add(
+                phase::henyey_greenstein(0.1f),
+                make_float3(2.0f));
+            allocation_budget.merge_equal();
+            allocation_budget.add(
+                phase::draine(0.2f, 0.5f),
+                make_float3(1.0f));
+            allocation_budget.add(
+                phase::rayleigh(),
+                make_float3(1.0f));
+            records.write(
+                37u,
+                make_float4(
+                    cast<float>(
+                        allocation_budget.count()),
+                    allocation_budget.entry(0u)
+                        .sample_weight,
+                    cast<float>(
+                        allocation_budget.entry(1u)
+                            .type),
+                    select(
+                        0.0f,
+                        1.0f,
+                        allocation_budget.entry(2u)
+                            .valid)));
         };
 
     auto kernel = device.compile(evaluate);
@@ -923,6 +957,18 @@ int main(int argc, char **argv) {
                 << 34u + index << '\n';
             return EXIT_FAILURE;
         }
+    }
+    if (!approximately_equal(
+            actual[37u],
+            luisa::float4{2.0f, 3.0f, 2.0f, 0.0f})) {
+        std::cerr
+            << "volume phase allocation budget was refunded by merge on "
+            << backend << ": got {" << actual[37u].x
+            << ", " << actual[37u].y
+            << ", " << actual[37u].z
+            << ", " << actual[37u].w
+            << "}\n";
+        return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;
 }

@@ -152,9 +152,13 @@ protocol. The combined `Surface::evaluate_volume` boundary returns
 coefficients and optionally emits phases from one graph trace. `VolumePhaseSet`
 is a separate `.h`/`.cpp` AST-builder component:
 it stores closures in device-local memory, merges only exactly equal
-family-specific parameters, preserves source order, applies Cycles' explicit
-eight-phase copy limit, evaluates the sample-weighted mixture, and performs
-Cycles' reservoir selection with random-number reuse.
+family-specific parameters, preserves source order, and keeps the allocation
+budget monotonic even when merging compacts live storage, exactly like
+Cycles' separate `num_closure`/`num_closure_left` state. It then applies
+Cycles' explicit eight-phase copy limit, evaluates the scalar
+sample-weighted mixture used for direct lighting, and performs Cycles'
+single-closure reservoir selection with random-number reuse for indirect
+continuation.
 
 `StackedVolumeEvaluator` is the host-stage aggregation boundary. At one
 spatial sample it visits the runtime `VolumeStack` in order, dispatches every

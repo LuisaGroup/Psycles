@@ -14,7 +14,8 @@ VolumePhaseSet::VolumePhaseSet(
       _types{_capacity},
       _parameters{_capacity},
       _weights{_capacity},
-      _count{0u} {
+      _count{0u},
+      _allocated{0u} {
     _types.write(
         0u,
         static_cast<std::uint32_t>(
@@ -37,7 +38,7 @@ void VolumePhaseSet::add(
             3.0f);
     const auto active =
         (closure_sample_weight > 0.0f) &
-        (_count <
+        (_allocated <
          static_cast<std::uint32_t>(_capacity));
     $if(active) {
         _types.write(
@@ -53,6 +54,7 @@ void VolumePhaseSet::add(
                 allocated,
                 closure_sample_weight));
         _count += 1u;
+        _allocated += 1u;
     };
 }
 
