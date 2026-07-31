@@ -1,4 +1,5 @@
 #include "path_kernel_builder.h"
+#include "path_kernel_heterogeneous_volume.h"
 #include "path_kernel_volume_direct_light.h"
 #include "path_kernel_volume_point.h"
 #include "path_tracer_shader_services.h"
@@ -26,10 +27,27 @@ class PathVolumeSegmentStageImpl final
         _points;
     std::unique_ptr<
         HomogeneousVolumeSegmentComponent>
-        _segment;
+        _homogeneous;
+    std::unique_ptr<
+        PathHeterogeneousVolumeComponent>
+        _heterogeneous;
     std::unique_ptr<
         VolumeDirectLightingComponent>
         _direct_lighting;
+
+    [[nodiscard]] static bool
+    _has_majorant_resources(
+        const LuisaSceneData &scene) noexcept {
+        return
+            scene.volume_majorant_node_count >
+                0u &&
+            scene.volume_majorant_root_count >
+                0u &&
+            scene.volume_majorant_range_count >
+                0u &&
+            scene.volume_majorant_world_range <
+                scene.volume_majorant_range_count;
+    }
 
   public:
     explicit PathVolumeSegmentStageImpl(
@@ -38,12 +56,20 @@ class PathVolumeSegmentStageImpl final
           _points{
               make_scene_volume_stack_entry_point_provider(
                   _scene)},
-          _segment{
+          _homogeneous{
               make_homogeneous_volume_segment_component(
                   _scene->surfaces,
                   _points,
                   _scene->volume_metadata
                       .closure_allocation_budget)},
+          _heterogeneous{
+              _has_majorant_resources(*_scene)
+                  ? make_path_heterogeneous_volume_component(
+                        _scene,
+                        _points,
+                        _scene->volume_metadata
+                            .closure_allocation_budget)
+                  : nullptr},
           _direct_lighting{
               config.next_event_estimation
                   ? make_volume_direct_lighting_component(
@@ -296,51 +322,161 @@ class PathVolumeSegmentStageImpl final
                         sampling::
                             tabulated_sobol::
                                 volume_scatter_distance_dimension));
-        const auto result =
-            _segment->emit(
-                stack,
-                services,
-                state,
-                segment_length,
-                throughput,
-                scatter_random,
-                channel_random,
-                phase_random,
-                transport_terminate,
-                {.scattered_radiance =
-                     invocation
-                         .volume_guiding_scattered_radiance,
-                 .transmitted_radiance =
-                     invocation
-                         .volume_guiding_transmitted_radiance,
-                 .majorant_optical_depth =
-                     invocation
-                         .volume_guiding_majorant_optical_depth(),
-                 .enabled =
-                     inside_volume &
-                     (path_depth == 0u)},
-                {.requested_method =
-                     direct_proposal
-                         .requested_method,
-                 .light_position =
-                     direct_proposal
-                         .light_position,
-                 .interval =
-                     direct_proposal
-                         .interval,
-                 .enabled =
-                     inside_volume &
-                     direct_proposal.valid},
-                direct_direction.get());
+        const auto heterogeneous =
+            _heterogeneous
+                ? _heterogeneous
+                      ->stack_is_heterogeneous(
+                          stack)
+                : def(false);
+        Float3 result_throughput =
+            throughput;
+        Float3 result_emission =
+            make_float3(0.0f);
+        Float result_distance =
+            segment_length;
+        Float result_optical_depth = 0.0f;
+        VolumePhaseSetSample result_phase{
+            .direction =
+                ray->direction(),
+            .pdf = 0.0f,
+            .sampled_roughness = 1.0f,
+            .selection_rescaled =
+                phase_random.x,
+            .closure_index = 0u,
+            .closure_type = 0u,
+            .valid = false};
+        Bool result_scattered = false;
+        Bool result_phase_failed = false;
 
-        if (_direct_lighting) {
-            _direct_lighting->accumulate(
-                event,
-                direct_light,
-                result,
-                stack,
-                segment_position,
-                inside_volume);
+        const auto emit_homogeneous =
+            [&]() noexcept {
+                const auto result =
+                    _homogeneous->emit(
+                        stack,
+                        services,
+                        state,
+                        segment_length,
+                        throughput,
+                        scatter_random,
+                        channel_random,
+                        phase_random,
+                        transport_terminate,
+                        {.scattered_radiance =
+                             invocation
+                                 .volume_guiding_scattered_radiance,
+                         .transmitted_radiance =
+                             invocation
+                                 .volume_guiding_transmitted_radiance,
+                         .majorant_optical_depth =
+                             invocation
+                                 .volume_guiding_majorant_optical_depth(),
+                         .enabled =
+                             inside_volume &
+                             (path_depth == 0u)},
+                        {.requested_method =
+                             direct_proposal
+                                 .requested_method,
+                         .light_position =
+                             direct_proposal
+                                 .light_position,
+                         .interval =
+                             direct_proposal
+                                 .interval,
+                         .enabled =
+                             inside_volume &
+                             direct_proposal.valid},
+                        direct_direction.get());
+                if (_direct_lighting) {
+                    _direct_lighting->accumulate(
+                        event,
+                        direct_light,
+                        result,
+                        stack,
+                        segment_position,
+                        inside_volume);
+                }
+                result_throughput =
+                    result.transport
+                        .throughput;
+                result_emission =
+                    result.transport.emission;
+                result_distance =
+                    result.transport.distance;
+                result_optical_depth =
+                    max(
+                        result.coefficients
+                            .sigma_t.x,
+                        max(
+                            result.coefficients
+                                .sigma_t.y,
+                            result.coefficients
+                                .sigma_t.z)) *
+                    segment_length;
+                result_phase = result.phase;
+                result_scattered =
+                    result.scattered;
+                result_phase_failed =
+                    result.phase_failed;
+            };
+        if (_heterogeneous) {
+            $if(heterogeneous) {
+                const auto result =
+                    _heterogeneous->emit(
+                        {.stack = stack,
+                         .services = services,
+                         .state = state,
+                         .sobol_table =
+                             sobol_table,
+                         .sobol_sequence_size =
+                             parameters
+                                 .sobol_sequence_size,
+                         .sample_index =
+                             sample.sample_index,
+                         .rng_hash =
+                             sample.rng_hash,
+                         .path_rng_offset =
+                             cycles_rng_offset,
+                         .ray_origin =
+                             ray->origin(),
+                         .ray_direction =
+                             ray->direction(),
+                         .ray_minimum =
+                             segment_start,
+                         .ray_maximum =
+                             event.distance,
+                         .throughput =
+                             throughput,
+                         .reservoir_random =
+                             channel_random,
+                         .phase_random =
+                             phase_random,
+                         // VSPG supplies this scale in a later,
+                         // independent estimator component.
+                         .majorant_scale = 1.0f,
+                         .terminate =
+                             transport_terminate});
+                result_throughput =
+                    result.transport
+                        .throughput;
+                result_emission =
+                    result.transport.emission;
+                result_distance =
+                    result.transport.distance -
+                    segment_start;
+                result_optical_depth =
+                    result.transport
+                        .optical_depth;
+                result_phase = result.phase;
+                result_scattered =
+                    result.scattered;
+                result_phase_failed =
+                    result.phase_failed;
+            }
+            $else {
+                emit_homogeneous();
+            };
+        } else {
+            emit_homogeneous();
         }
 
         const auto emission =
@@ -348,7 +484,7 @@ class PathVolumeSegmentStageImpl final
                 .clamp_emission_contribution(
                 select(
                     make_float3(0.0f),
-                    result.transport.emission,
+                    result_emission,
                     inside_volume),
                 path_depth);
         sample.accumulate_radiance(
@@ -370,21 +506,13 @@ class PathVolumeSegmentStageImpl final
         optical_depth +=
             select(
                 0.0f,
-                max(
-                    result.coefficients
-                        .sigma_t.x,
-                    max(
-                        result.coefficients
-                            .sigma_t.y,
-                        result.coefficients
-                            .sigma_t.z)) *
-                    segment_length,
+                result_optical_depth,
                 inside_volume &
                     (path_depth == 0u));
         throughput =
             select(
                 throughput,
-                result.transport.throughput,
+                result_throughput,
                 inside_volume);
 
         const auto terminates_in_volume =
@@ -393,16 +521,16 @@ class PathVolumeSegmentStageImpl final
                cycles_path_state::
                    flag_terminate_in_next_volume) !=
               0u) |
-             result.phase_failed);
+             result_phase_failed);
         const auto scattered =
             inside_volume &
-            result.scattered &
+            result_scattered &
             !terminates_in_volume;
         $if(scattered) {
             const auto collision_position =
                 segment_position +
                 ray->direction() *
-                    result.transport.distance;
+                    result_distance;
             $if(continuation_probability !=
                 1.0f) {
                 throughput /=
@@ -411,20 +539,20 @@ class PathVolumeSegmentStageImpl final
             ray = make_ray(
                 collision_position,
                 normalize(
-                    result.phase.direction),
+                    result_phase.direction),
                 0.0f,
                 ray_maximum);
             ray_dP = 0.0f;
             ray_dD = max(
                 ray_dD,
-                result.phase
+                result_phase
                     .sampled_roughness);
             ray_source_instance =
                 surface_ray::invalid_primitive;
             ray_source_primitive =
                 surface_ray::invalid_primitive;
             previous_bsdf_pdf =
-                result.phase.pdf;
+                result_phase.pdf;
             previous_delta = false;
             previous_mis_origin_normal =
                 collision_position -
@@ -432,7 +560,7 @@ class PathVolumeSegmentStageImpl final
             minimum_bsdf_pdf =
                 min(
                     minimum_bsdf_pdf,
-                    result.phase.pdf);
+                    result_phase.pdf);
             ray_events = 0u;
             path_diffuse_weight =
                 select(

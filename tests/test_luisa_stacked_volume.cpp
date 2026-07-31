@@ -2,7 +2,9 @@
 #include <psycles/compiler/shader_program.h>
 #include <psycles/compiler/surface_program.h>
 #include <psycles/contract/scene.h>
+#include <psycles/luisa/cycles_sampler.h>
 #include <psycles/luisa/graph_surface.h>
+#include <psycles/luisa/heterogeneous_volume_segment.h>
 #include <psycles/luisa/homogeneous_volume_segment.h>
 #include <psycles/luisa/stacked_volume.h>
 
@@ -27,7 +29,7 @@ using namespace psycles::compiler;
 using namespace psycles::contract;
 using namespace psycles::luisa_backend;
 
-inline constexpr std::size_t record_count = 22u;
+inline constexpr std::size_t record_count = 28u;
 
 void require(bool condition, const char *message) {
     if (!condition) {
@@ -365,6 +367,62 @@ class FixturePointProvider final
     }
 };
 
+class RawGraphSegmentSequence final
+    : public VolumeMajorantSegmentSequence {
+
+  public:
+    VolumeMajorantSegment
+    current() const noexcept override {
+        return {
+            .minimum = 0.0f,
+            .maximum = 0.5f,
+            .sigma_minimum = 0.0f,
+            .sigma_maximum = 2.7f,
+            .object = 10u,
+            .shader = 110u,
+            .node = 0u,
+            .valid = true,
+            .no_overlap = true,
+            .lookup_complete = true};
+    }
+
+    Bool advance(
+        Float shade_offset) noexcept override {
+        static_cast<void>(shade_offset);
+        return false;
+    }
+};
+
+class RawGraphTrackingRandom final
+    : public HeterogeneousVolumeTrackingRandomSource {
+
+  private:
+    UInt _initial_offset;
+
+  public:
+    explicit RawGraphTrackingRandom(
+        UInt initial_offset) noexcept
+        : _initial_offset{
+              initial_offset} {}
+
+    Float scatter_distance(
+        UInt rng_offset)
+        const noexcept override {
+        return select(
+            0.9999f,
+            0.2f,
+            rng_offset ==
+                _initial_offset);
+    }
+
+    Float shade_offset(
+        UInt rng_offset)
+        const noexcept override {
+        static_cast<void>(rng_offset);
+        return 0.5f;
+    }
+};
+
 [[nodiscard]] bool approximately_equal(
     float actual,
     float expected,
@@ -475,6 +533,9 @@ int main(int argc, char **argv) {
         make_homogeneous_volume_segment_component(
             surfaces,
             point_provider,
+            64u);
+    auto heterogeneous_segment =
+        make_heterogeneous_volume_segment_component(
             64u);
     Kernel1D evaluate =
         [&](BufferFloat4 parameter_buffer,
@@ -847,6 +908,105 @@ int main(int argc, char **argv) {
                         0.0f,
                         1.0f,
                         empty_segment.scattered)));
+
+            const auto tracking_offset =
+                cycles_sampler::
+                    scramble_path_offset(
+                        16u,
+                        0xe35fad82u);
+            RawGraphSegmentSequence
+                raw_segments;
+            RawGraphTrackingRandom
+                raw_random{
+                    tracking_offset};
+            auto raw_collisions =
+                make_stacked_heterogeneous_volume_collision_provider(
+                    surfaces,
+                    point_provider,
+                    single,
+                    services,
+                    state,
+                    state.position,
+                    -state.incoming);
+            const auto heterogeneous =
+                heterogeneous_segment->emit(
+                    raw_segments,
+                    raw_random,
+                    *raw_collisions,
+                    1.0f,
+                    0.0f,
+                    0.5f,
+                    -state.incoming,
+                    make_float3(1.0f),
+                    0.01f,
+                    make_float2(
+                        0.034f, 0.83f),
+                    tracking_offset,
+                    false);
+            records.write(
+                22u,
+                make_float4(
+                    heterogeneous.transport
+                        .throughput,
+                    heterogeneous.transport
+                        .distance));
+            records.write(
+                23u,
+                make_float4(
+                    heterogeneous.transport
+                        .emission,
+                    heterogeneous.transport
+                        .null_transmittance));
+            records.write(
+                24u,
+                make_float4(
+                    heterogeneous.transport
+                        .reservoir_random,
+                    heterogeneous.transport
+                        .optical_depth,
+                    heterogeneous.coefficients
+                        .sigma_t.x,
+                    heterogeneous.coefficients
+                        .sigma_s.x));
+            records.write(
+                25u,
+                make_float4(
+                    heterogeneous.phase
+                        .direction,
+                    heterogeneous.phase.pdf));
+            records.write(
+                26u,
+                make_float4(
+                    heterogeneous.phase
+                        .sampled_roughness,
+                    heterogeneous.phase
+                        .selection_rescaled,
+                    cast<float>(
+                        heterogeneous.phase
+                            .closure_index),
+                    cast<float>(
+                        heterogeneous.phase
+                            .closure_type)));
+            records.write(
+                27u,
+                make_float4(
+                    cast<float>(
+                        heterogeneous.transport
+                            .steps),
+                    select(
+                        0.0f,
+                        1.0f,
+                        heterogeneous.transport
+                            .selected_scatter),
+                    select(
+                        0.0f,
+                        1.0f,
+                        heterogeneous.scattered),
+                    select(
+                        0.0f,
+                        1.0f,
+                        heterogeneous.transport
+                            .traversal_exhausted)));
         };
 
     auto kernel = device.compile(evaluate);
@@ -929,7 +1089,34 @@ int main(int argc, char **argv) {
             1.0f,
             0.0f},
         luisa::float4{
-            1.0f, 1.0f, 1.0f, 0.0f}};
+            1.0f, 1.0f, 1.0f, 0.0f},
+        // The same raw GraphSurface closure now feeds heterogeneous
+        // candidate evaluation and final phase recovery. Nothing is baked
+        // into the segment fixture beyond the Cycles majorant.
+        luisa::float4{
+            0.243326822f,
+            0.312848771f,
+            0.486653644f,
+            0.0826457597f},
+        luisa::float4{
+            0.037037037f,
+            0.074074074f,
+            0.111111111f,
+            0.467261239f},
+        luisa::float4{
+            0.0187709263f,
+            1.35f,
+            1.35f,
+            0.35f},
+        luisa::float4{
+            -0.117953472f,
+            -0.899912298f,
+            -0.419815481f,
+            0.044300843f},
+        luisa::float4{
+            0.58f, 0.17f, 1.0f, 0.0f},
+        luisa::float4{
+            2.0f, 1.0f, 1.0f, 1.0f}};
     for (std::size_t index = 0u;
          index < expected.size();
          ++index) {

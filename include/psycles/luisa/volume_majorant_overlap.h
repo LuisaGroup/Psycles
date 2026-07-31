@@ -99,12 +99,15 @@ class VolumeMajorantOverlapTraversal final
         Bool found;
     };
 
-    const luisa::compute::BufferVar<
-        VolumeMajorantNodeGpu> &_nodes;
-    const luisa::compute::BufferVar<
-        VolumeMajorantRootGpu> &_roots;
-    const luisa::compute::BufferVar<
-        VolumeMajorantRootRangeGpu> &_ranges;
+    luisa::compute::Expr<
+        luisa::compute::Buffer<
+            VolumeMajorantNodeGpu>> _nodes;
+    luisa::compute::Expr<
+        luisa::compute::Buffer<
+            VolumeMajorantRootGpu>> _roots;
+    luisa::compute::Expr<
+        luisa::compute::Buffer<
+            VolumeMajorantRootRangeGpu>> _ranges;
     std::uint32_t _node_count;
     std::uint32_t _root_count;
     std::uint32_t _range_count;
@@ -136,12 +139,15 @@ class VolumeMajorantOverlapTraversal final
 
   public:
     VolumeMajorantOverlapTraversal(
-        const luisa::compute::BufferVar<
-            VolumeMajorantNodeGpu> &nodes,
-        const luisa::compute::BufferVar<
-            VolumeMajorantRootGpu> &roots,
-        const luisa::compute::BufferVar<
-            VolumeMajorantRootRangeGpu> &ranges,
+        luisa::compute::Expr<
+            luisa::compute::Buffer<
+                VolumeMajorantNodeGpu>> nodes,
+        luisa::compute::Expr<
+            luisa::compute::Buffer<
+                VolumeMajorantRootGpu>> roots,
+        luisa::compute::Expr<
+            luisa::compute::Buffer<
+                VolumeMajorantRootRangeGpu>> ranges,
         std::uint32_t node_count,
         std::uint32_t root_count,
         std::uint32_t range_count,
