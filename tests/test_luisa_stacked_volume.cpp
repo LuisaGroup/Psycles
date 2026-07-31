@@ -29,7 +29,7 @@ using namespace psycles::compiler;
 using namespace psycles::contract;
 using namespace psycles::luisa_backend;
 
-inline constexpr std::size_t record_count = 28u;
+inline constexpr std::size_t record_count = 29u;
 
 void require(bool condition, const char *message) {
     if (!condition) {
@@ -309,6 +309,20 @@ class FixturePointProvider final
     : public VolumeStackEntryPointProvider {
 
   public:
+    Bool should_evaluate(
+        const VolumeStackEntry &entry,
+        const VolumeShadingState &state)
+        const noexcept override {
+        const auto shadow_ray =
+            state.ray_visibility ==
+            contract::visibility_bit(
+                RayVisibility::shadow);
+        const auto hidden_object =
+            entry.instance_id !=
+            invalid_volume_identity;
+        return !(shadow_ray & hidden_object);
+    }
+
     VolumeStackEntryShading emit(
         const VolumeStackEntry &entry,
         const VolumeShadingState &state)
@@ -1021,6 +1035,41 @@ int main(int argc, char **argv) {
                         1.0f,
                         heterogeneous.transport
                             .traversal_exhausted)));
+
+            const VolumeShadingState
+                shadow_state{
+                    .position = state.position,
+                    .incoming = state.incoming,
+                    .ray_visibility =
+                        contract::visibility_bit(
+                            RayVisibility::shadow),
+                    .ray_events =
+                        state.ray_events,
+                    .ray_depth =
+                        state.ray_depth,
+                    .diffuse_depth =
+                        state.diffuse_depth,
+                    .glossy_depth =
+                        state.glossy_depth,
+                    .transparent_depth =
+                        state.transparent_depth,
+                    .transmission_depth =
+                        state.transmission_depth,
+                    .ray_length =
+                        state.ray_length,
+                    .time = state.time};
+            const auto shadow_coefficients =
+                evaluator.evaluate(
+                    stacked,
+                    services,
+                    shadow_state,
+                    false);
+            records.write(
+                28u,
+                make_float4(
+                    shadow_coefficients.sigma_t,
+                    cast<float>(
+                        stacked.count())));
         };
 
     auto kernel = device.compile(evaluate);
@@ -1039,7 +1088,9 @@ int main(int argc, char **argv) {
     // retains the two raw equal HG closures. The second stack entry triggers
     // volume_shader_merge_closures(), so all four closures become one after
     // their independently parameterized coefficients and object-density
-    // scales have been evaluated.
+    // scales have been evaluated. The final record pins Cycles'
+    // shadow-invisible-volume rule: the object remains in the two-entry stack
+    // while only its raw closure evaluation is suppressed.
     constexpr std::array expected{
         luisa::float4{
             1.35f, 1.95f, 2.7f, 1.0f},
@@ -1130,7 +1181,9 @@ int main(int argc, char **argv) {
         luisa::float4{
             0.58f, 0.17f, 1.0f, 0.0f},
         luisa::float4{
-            2.0f, 1.0f, 1.0f, 1.0f}};
+            2.0f, 1.0f, 1.0f, 1.0f},
+        luisa::float4{
+            1.35f, 1.95f, 2.7f, 2.0f}};
     for (std::size_t index = 0u;
          index < expected.size();
          ++index) {

@@ -464,7 +464,7 @@ class PathVolumeDirectLightingComponent final
   private:
     PathKernelConfig _config;
     std::unique_ptr<
-        HomogeneousVolumeShadowComponent>
+        VolumeShadowComponent>
         _volume_shadow;
     std::unique_ptr<
         VolumeMeshLightComponent>
@@ -657,7 +657,7 @@ class PathVolumeDirectLightingComponent final
         const PathKernelConfig &config)
         : _config{config},
           _volume_shadow{
-              make_homogeneous_volume_shadow_component(
+              make_volume_shadow_component(
                   config)},
           _mesh_light{
               make_volume_mesh_light_component(

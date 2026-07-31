@@ -23,6 +23,7 @@ set(PSYCLES_LUISA_SUBMODULE_DIR
 
 if(PSYCLES_BUILD_TESTS)
     include(CTest)
+    include(cmake/PsyclesLuisaBackendTest.cmake)
 endif()
 
 add_library(psycles_core
@@ -173,6 +174,7 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/heterogeneous_volume_guiding.cpp
             src/luisa/heterogeneous_volume_reservoir.cpp
             src/luisa/heterogeneous_volume_segment.cpp
+            src/luisa/heterogeneous_volume_shadow.cpp
             src/luisa/heterogeneous_volume_tracking.cpp
             src/luisa/heterogeneous_volume_transmittance.cpp
             src/luisa/homogeneous_volume_segment.cpp
@@ -191,6 +193,7 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/volume_majorant_prepass.cpp
             src/luisa/volume_majorant_traversal.cpp
             src/luisa/volume_phase_set.cpp
+            src/luisa/volume_shadow_interval.cpp
             src/luisa/volume_stack.cpp)
         add_library(Psycles::luisa ALIAS psycles_luisa)
         target_include_directories(psycles_luisa PUBLIC
@@ -254,6 +257,7 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/path_kernel_volume_majorant_provider.cpp
             src/luisa/path_kernel_volume_mesh_light.cpp
             src/luisa/path_kernel_volume_point.cpp
+            src/luisa/path_kernel_volume_random.cpp
             src/luisa/path_kernel_volume_segment.cpp
             src/luisa/path_kernel_volume_shadow.cpp
             src/luisa/path_kernel_volume_state.cpp
@@ -577,140 +581,41 @@ if(PSYCLES_ENABLE_LUISA)
                         vk)
             endif()
 
-            add_executable(
-                psycles_luisa_heterogeneous_volume_candidate_tests
-                tests/test_luisa_heterogeneous_volume_candidate.cpp)
-            target_link_libraries(
-                psycles_luisa_heterogeneous_volume_candidate_tests
-                PRIVATE Psycles::luisa)
-            target_compile_features(
-                psycles_luisa_heterogeneous_volume_candidate_tests
-                PRIVATE cxx_std_20)
-            set_target_properties(
-                psycles_luisa_heterogeneous_volume_candidate_tests
-                PROPERTIES
-                    RUNTIME_OUTPUT_DIRECTORY
-                        "${CMAKE_BINARY_DIR}/bin")
-            if(TARGET luisa-compute-backend-fallback)
-                add_dependencies(
+            psycles_add_luisa_backend_test(
+                TARGET
                     psycles_luisa_heterogeneous_volume_candidate_tests
-                    luisa-compute-backend-fallback)
-                add_test(
-                    NAME psycles.luisa_heterogeneous_volume_candidate_fallback
-                    COMMAND
-                        psycles_luisa_heterogeneous_volume_candidate_tests
-                        fallback)
-            endif()
-            if(TARGET luisa-compute-backend-hip)
-                add_dependencies(
-                    psycles_luisa_heterogeneous_volume_candidate_tests
-                    luisa-compute-backend-hip)
-                add_test(
-                    NAME psycles.luisa_heterogeneous_volume_candidate_hip
-                    COMMAND
-                        psycles_luisa_heterogeneous_volume_candidate_tests
-                        hip)
-            endif()
-            if(TARGET luisa-compute-backend-vk)
-                add_dependencies(
-                    psycles_luisa_heterogeneous_volume_candidate_tests
-                    luisa-compute-backend-vk)
-                add_test(
-                    NAME psycles.luisa_heterogeneous_volume_candidate_vk
-                    COMMAND
-                        psycles_luisa_heterogeneous_volume_candidate_tests
-                        vk)
-            endif()
+                SOURCE
+                    tests/test_luisa_heterogeneous_volume_candidate.cpp
+                TEST_STEM
+                    luisa_heterogeneous_volume_candidate
+                LIBRARIES Psycles::luisa)
 
-            add_executable(
-                psycles_luisa_heterogeneous_volume_segment_tests
-                tests/test_luisa_heterogeneous_volume_segment.cpp)
-            target_link_libraries(
-                psycles_luisa_heterogeneous_volume_segment_tests
-                PRIVATE Psycles::luisa)
-            target_compile_features(
-                psycles_luisa_heterogeneous_volume_segment_tests
-                PRIVATE cxx_std_20)
-            set_target_properties(
-                psycles_luisa_heterogeneous_volume_segment_tests
-                PROPERTIES
-                    RUNTIME_OUTPUT_DIRECTORY
-                        "${CMAKE_BINARY_DIR}/bin")
-            if(TARGET luisa-compute-backend-fallback)
-                add_dependencies(
+            psycles_add_luisa_backend_test(
+                TARGET
                     psycles_luisa_heterogeneous_volume_segment_tests
-                    luisa-compute-backend-fallback)
-                add_test(
-                    NAME psycles.luisa_heterogeneous_volume_segment_fallback
-                    COMMAND
-                        psycles_luisa_heterogeneous_volume_segment_tests
-                        fallback)
-            endif()
-            if(TARGET luisa-compute-backend-hip)
-                add_dependencies(
-                    psycles_luisa_heterogeneous_volume_segment_tests
-                    luisa-compute-backend-hip)
-                add_test(
-                    NAME psycles.luisa_heterogeneous_volume_segment_hip
-                    COMMAND
-                        psycles_luisa_heterogeneous_volume_segment_tests
-                        hip)
-            endif()
-            if(TARGET luisa-compute-backend-vk)
-                add_dependencies(
-                    psycles_luisa_heterogeneous_volume_segment_tests
-                    luisa-compute-backend-vk)
-                add_test(
-                    NAME psycles.luisa_heterogeneous_volume_segment_vk
-                    COMMAND
-                        psycles_luisa_heterogeneous_volume_segment_tests
-                        vk)
-            endif()
+                SOURCE
+                    tests/test_luisa_heterogeneous_volume_segment.cpp
+                TEST_STEM
+                    luisa_heterogeneous_volume_segment
+                LIBRARIES Psycles::luisa)
 
-            add_executable(
-                psycles_luisa_heterogeneous_volume_transmittance_tests
-                tests/test_luisa_heterogeneous_volume_transmittance.cpp)
-            target_link_libraries(
-                psycles_luisa_heterogeneous_volume_transmittance_tests
-                PRIVATE Psycles::luisa)
-            target_compile_features(
-                psycles_luisa_heterogeneous_volume_transmittance_tests
-                PRIVATE cxx_std_20)
-            set_target_properties(
-                psycles_luisa_heterogeneous_volume_transmittance_tests
-                PROPERTIES
-                    RUNTIME_OUTPUT_DIRECTORY
-                        "${CMAKE_BINARY_DIR}/bin")
-            if(TARGET luisa-compute-backend-fallback)
-                add_dependencies(
+            psycles_add_luisa_backend_test(
+                TARGET
                     psycles_luisa_heterogeneous_volume_transmittance_tests
-                    luisa-compute-backend-fallback)
-                add_test(
-                    NAME psycles.luisa_heterogeneous_volume_transmittance_fallback
-                    COMMAND
-                        psycles_luisa_heterogeneous_volume_transmittance_tests
-                        fallback)
-            endif()
-            if(TARGET luisa-compute-backend-hip)
-                add_dependencies(
-                    psycles_luisa_heterogeneous_volume_transmittance_tests
-                    luisa-compute-backend-hip)
-                add_test(
-                    NAME psycles.luisa_heterogeneous_volume_transmittance_hip
-                    COMMAND
-                        psycles_luisa_heterogeneous_volume_transmittance_tests
-                        hip)
-            endif()
-            if(TARGET luisa-compute-backend-vk)
-                add_dependencies(
-                    psycles_luisa_heterogeneous_volume_transmittance_tests
-                    luisa-compute-backend-vk)
-                add_test(
-                    NAME psycles.luisa_heterogeneous_volume_transmittance_vk
-                    COMMAND
-                        psycles_luisa_heterogeneous_volume_transmittance_tests
-                        vk)
-            endif()
+                SOURCE
+                    tests/test_luisa_heterogeneous_volume_transmittance.cpp
+                TEST_STEM
+                    luisa_heterogeneous_volume_transmittance
+                LIBRARIES Psycles::luisa)
+
+            psycles_add_luisa_backend_test(
+                TARGET
+                    psycles_luisa_heterogeneous_volume_shadow_tests
+                SOURCE
+                    tests/test_luisa_heterogeneous_volume_shadow.cpp
+                TEST_STEM
+                    luisa_heterogeneous_volume_shadow
+                LIBRARIES Psycles::luisa)
 
             add_executable(
                 psycles_luisa_volume_majorant_tests
@@ -1608,6 +1513,26 @@ if(PSYCLES_ENABLE_LUISA)
                     COMMAND
                         psycles_luisa_surface_ray_tests
                         fallback)
+                if(TARGET luisa-compute-backend-hip)
+                    add_dependencies(
+                        psycles_luisa_surface_ray_tests
+                        luisa-compute-backend-hip)
+                    add_test(
+                        NAME psycles.luisa_surface_ray_hip
+                        COMMAND
+                            psycles_luisa_surface_ray_tests
+                            hip)
+                endif()
+                if(TARGET luisa-compute-backend-vk)
+                    add_dependencies(
+                        psycles_luisa_surface_ray_tests
+                        luisa-compute-backend-vk)
+                    add_test(
+                        NAME psycles.luisa_surface_ray_vk
+                        COMMAND
+                            psycles_luisa_surface_ray_tests
+                            vk)
+                endif()
             endif()
 
             add_executable(

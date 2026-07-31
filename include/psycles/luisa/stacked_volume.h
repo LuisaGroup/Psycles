@@ -41,6 +41,18 @@ class VolumeStackEntryPointProvider {
   public:
     virtual ~VolumeStackEntryPointProvider() noexcept = default;
 
+    // Cycles preserves every entry in a copied shadow stack, including
+    // objects hidden from shadow rays, so majorant traversal and RNG
+    // consumption retain their original structure. The visibility test is
+    // applied only when evaluating the entry's raw closure.
+    [[nodiscard]] virtual Bool should_evaluate(
+        const VolumeStackEntry &entry,
+        const VolumeShadingState &state) const noexcept {
+        static_cast<void>(entry);
+        static_cast<void>(state);
+        return true;
+    }
+
     // Cycles stores this as an entry-level object property. Keeping it
     // independently queryable lets majorant traversal apply the same scale
     // without constructing an otherwise unused shading point.
@@ -55,10 +67,12 @@ class VolumeStackEntryPointProvider {
          const VolumeShadingState &state) const noexcept = 0;
 };
 
-// Evaluates every original volume graph in stack order at one spatial point.
-// Coefficients are additive. Raw phase closures share one collector and are
-// merged only after the second and subsequent stack entries, matching
-// Cycles' volume_shader_eval() rather than pre-combining material data.
+// Visits every original volume-stack entry in order at one spatial point.
+// Entry visibility can suppress raw closure evaluation without changing the
+// stack itself. Coefficients are additive. Raw phase closures share one
+// collector and are merged only after the second and subsequent stack
+// entries, matching Cycles' volume_shader_eval() rather than pre-combining
+// material data.
 class StackedVolumeEvaluator {
 
   private:

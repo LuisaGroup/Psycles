@@ -6,16 +6,14 @@
 
 namespace psycles::luisa_backend::detail {
 
-// Host-stage shadow transport for the homogeneous subset. Surface
-// transparency remains the responsibility of TraceShadowCallable; this
-// component independently integrates extinction over the same ordered
-// boundary intervals. Multiplication is commutative, so the two traversals
-// preserve the estimator while keeping volume-stack state local to the
-// calling fused path kernel.
-class HomogeneousVolumeShadowComponent {
+// Host-stage shadow-volume transport. Surface transparency remains the
+// responsibility of TraceShadowCallable; this component independently walks
+// the same ordered boundary intervals, updates a shadow-visible stack, and
+// selects Cycles' analytic or residual-ratio estimator per interval.
+class VolumeShadowComponent {
 
   public:
-    virtual ~HomogeneousVolumeShadowComponent() noexcept =
+    virtual ~VolumeShadowComponent() noexcept =
         default;
 
     [[nodiscard]] virtual Float3
@@ -27,8 +25,8 @@ class HomogeneousVolumeShadowComponent {
 };
 
 [[nodiscard]]
-std::unique_ptr<HomogeneousVolumeShadowComponent>
-make_homogeneous_volume_shadow_component(
+std::unique_ptr<VolumeShadowComponent>
+make_volume_shadow_component(
     const PathKernelConfig &config);
 
 }// namespace psycles::luisa_backend::detail

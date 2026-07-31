@@ -21,10 +21,10 @@ struct VolumeProgramCapabilities {
     bool has_light_path{};
 };
 
-// Conservative, structural capability analysis. Homogeneous integration is
-// enabled only when every value reachable from the raw volume-closure tree is
-// independent of the shading position. This keeps unsupported heterogeneous
-// graphs out of the production path without flattening or pre-baking them.
+// Conservative, structural capability analysis. Every value reachable from
+// the raw volume-closure tree contributes to homogeneous/heterogeneous
+// dispatch and majorant construction; no closure value is flattened or
+// pre-baked at this boundary.
 class VolumeProgramCapabilityComponent {
 
   public:

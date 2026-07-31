@@ -1,4 +1,5 @@
 #include <psycles/luisa/surface_ray.h>
+#include <psycles/luisa/volume_shadow_interval.h>
 
 #include <algorithm>
 #include <array>
@@ -39,6 +40,8 @@ int main(int argc, char **argv) {
     auto neighboring_triangles_buffer =
         device.create_buffer<luisa::float4>(2u);
     auto ordered_hits_buffer =
+        device.create_buffer<luisa::float4>(2u);
+    auto volume_intervals_buffer =
         device.create_buffer<luisa::float4>(2u);
 
     const std::array shadow_vertices{
@@ -317,12 +320,43 @@ int main(int argc, char **argv) {
         };
     auto ordered_hits_shader =
         device.compile(evaluate_ordered_hits);
+    Kernel1D evaluate_volume_intervals =
+        [](BufferFloat4 output) noexcept {
+            psycles::luisa_backend::
+                VolumeShadowIntervalCursor
+                    interval{0.25f};
+            const auto first_query_minimum =
+                interval.advance(1.0f);
+            output.write(
+                0u,
+                make_float4(
+                    interval.minimum(),
+                    first_query_minimum,
+                    interval
+                        .shader_ray_length(),
+                    0.0f));
+            const auto second_query_minimum =
+                interval.advance(8.5f);
+            output.write(
+                1u,
+                make_float4(
+                    interval.minimum(),
+                    second_query_minimum,
+                    interval
+                        .shader_ray_length(),
+                    0.0f));
+        };
+    auto volume_intervals_shader =
+        device.compile(
+            evaluate_volume_intervals);
     std::array<luisa::float4, 4u> results{};
     std::array<float, 3u> offsets{};
     std::array<luisa::float4, 4u> terminators{};
     std::array<luisa::float4, 2u>
         neighboring_triangles{};
     std::array<luisa::float4, 2u> ordered_hits{};
+    std::array<luisa::float4, 2u>
+        volume_intervals{};
     stream << shadow_vertices_buffer.copy_from(
                   luisa::span{shadow_vertices})
            << shadow_triangles_buffer.copy_from(
@@ -347,6 +381,12 @@ int main(int argc, char **argv) {
                   .dispatch(1u)
            << ordered_hits_buffer.copy_to(
                   luisa::span{ordered_hits})
+           << volume_intervals_shader(
+                  volume_intervals_buffer)
+                  .dispatch(1u)
+           << volume_intervals_buffer.copy_to(
+                  luisa::span{
+                      volume_intervals})
            << synchronize();
 
     for (auto index = 0u; index < 2u; ++index) {
@@ -427,6 +467,35 @@ int main(int argc, char **argv) {
                 << std::bit_cast<std::uint32_t>(
                        expected_offsets[index])
                 << std::dec << '\n';
+            return EXIT_FAILURE;
+        }
+    }
+    const std::array committed{
+        1.0f, 8.5f};
+    for (auto index = std::size_t{0u};
+         index < committed.size();
+         ++index) {
+        const auto expected_query =
+            std::nextafter(
+                committed[index],
+                std::numeric_limits<float>::max());
+        const auto actual =
+            volume_intervals[index];
+        if (!equal_bits(
+                actual.x,
+                committed[index]) ||
+            !equal_bits(
+                actual.y,
+                expected_query) ||
+            !equal_bits(actual.z, 0.0f)) {
+            std::cerr
+                << "Cycles shadow volume interval "
+                   "contract mismatch on "
+                << backend << " for case "
+                << index << ": medium="
+                << actual.x << ", query="
+                << actual.y << ", ray_length="
+                << actual.z << '\n';
             return EXIT_FAILURE;
         }
     }
