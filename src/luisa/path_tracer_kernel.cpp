@@ -270,6 +270,13 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
             scene, light_transport.safe_normalize);
     const auto path_trace_enabled =
         _options.path_trace.has_value();
+    std::shared_ptr<
+        const PathVolumeStateComponent>
+        volume_state;
+    if (scene->volume_stack_size != 0u) {
+        volume_state =
+            make_path_volume_state_component();
+    }
 
     PathKernelConfig kernel_config{
         .scene = scene,
@@ -282,6 +289,11 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         .reflective_caustics = reflective_caustics,
         .refractive_caustics = refractive_caustics,
         .path_trace_enabled = path_trace_enabled,
+        .volume_stack_size =
+            scene->volume_stack_size,
+        .camera_may_be_inside_volume =
+            scene->camera_may_be_inside_volume,
+        .volume_state = std::move(volume_state),
         .light_transport = std::move(light_transport),
         .emissive_triangle_pdf =
             std::move(emissive_triangle_pdf_callable),

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "path_kernel_volume_state.h"
 #include "path_tracer_camera.h"
 #include "path_tracer_environment.h"
 #include "path_tracer_geometry.h"
@@ -39,6 +40,10 @@ struct PathKernelConfig {
     bool reflective_caustics{};
     bool refractive_caustics{};
     bool path_trace_enabled{};
+    std::uint32_t volume_stack_size{};
+    bool camera_may_be_inside_volume{};
+    std::shared_ptr<const PathVolumeStateComponent>
+        volume_state;
     LightTransportCallables light_transport;
     EmissiveTrianglePdfCallable emissive_triangle_pdf;
     LightDistributionSampleCallable light_distribution_sample;
@@ -184,6 +189,10 @@ struct PathSampleContext {
     UInt path_flags;
     UInt cycles_path_visibility;
     UInt cycles_rng_offset;
+    PathVolumeState volume;
+    UInt volume_bounce;
+    UInt volume_bounds_bounce;
+    Float optical_depth;
     Bool terminate_after_transparent;
     Bool terminate_on_next_surface;
 

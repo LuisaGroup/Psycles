@@ -32,7 +32,12 @@ negative-scale instance:
 
 It also seeds a world-volume entry with independently exported Cycles object
 and shader identities. The expected stack is therefore world, object 101,
-object 104, followed by the terminator.
+object 104, followed by the terminator. The fixture invokes the same
+`PathVolumeStateComponent` owned by the production path sample twice. The
+first sample takes the enclosure path above; the second disables the probe
+and must contain only the independently initialized world entry. This checks
+both host-stage branches and proves the two move-only local stacks do not
+alias.
 
 ## Backend result
 
@@ -44,12 +49,13 @@ psycles.luisa_camera_volume_stack_hip
 psycles.luisa_camera_volume_stack_vk
 ```
 
-All three pass. The ten output records check stack/intersection/enclosure
+All three pass. The thirteen output records check stack/intersection/enclosure
 counts, all retained identities and raw graph dispatch handles, volume
-candidate filtering, entrance/exit normals, negative-scale orientation, and
-the fixed probe direction. The full Psycles build used 32 parallel jobs, and
-all 62 CTest cases passed with `-j32`; the source-size gate also confirms every
-handwritten implementation file remains below 2,000 lines.
+candidate filtering, entrance/exit normals, negative-scale orientation, the
+fixed probe direction, background-only initialization, and sample-local
+ownership. The full Psycles build used 32 parallel jobs, and all 62 CTest
+cases passed with `-j32`; the source-size gate also confirms every handwritten
+implementation file remains below 2,000 lines.
 
 ## Luisa fallback defect found
 
@@ -74,7 +80,8 @@ checks tracing plus exact visibility, user-id, and all four transform columns.
 ## Visual scope
 
 There is intentionally no triptych for this checkpoint: it emits stack state,
-not radiance. A triptych would fabricate a visual claim before the component
-is connected to the path state. Volume EXR comparisons and inspected
-triptychs begin after camera initialization, surface boundary updates,
-free-flight, phase continuation, and volume NEE are active together.
+not radiance. Although the component is now owned by the real path sample,
+scene volume materials remain release-gated until the downstream transport
+stages are complete. Volume EXR comparisons and inspected triptychs begin
+after surface boundary updates, free-flight, phase continuation, and volume
+NEE are active together.

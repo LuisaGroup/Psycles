@@ -173,9 +173,17 @@ reconstructs only the geometric normal needed for front/back classification.
 volume-only any-hit filtering, exact primitive self identity, the one-ULP
 intersection offset, object-only membership tests, and duplicate front-hit
 accounting. `VolumeStackCameraInitializer` remains the storage-independent
-state machine beneath that traversal. The main path state and free-flight
-stages consume these components in later path-kernel slices rather than
-duplicating their rules.
+state machine beneath that traversal.
+
+`PathVolumeStateComponent` installs this boundary state in the real
+per-sample path context. It keeps the non-copyable Luisa `Local` arrays alive
+through the host-stage pipeline with a move-only owner and initializes
+Cycles' `volume_bounce`, `volume_bounds_bounce`, and `optical_depth` state.
+Host specialization omits both the local arrays and enclosure ray query from
+volume-free kernel ASTs. A volume-enabled path always receives the world
+medium and terminator; the +Z probe is emitted only when the camera view plane
+may overlap an object volume. Surface crossing and free-flight stages consume
+this state in later slices rather than duplicating its rules.
 
 The world entry is not identified by its shader alone. BlenderSync creates a
 background-light object and Cycles stores that object's index beside the world

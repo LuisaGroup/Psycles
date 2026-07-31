@@ -1,5 +1,5 @@
 #include "cycles_shader_identity.h"
-#include "path_kernel_volume_boundary.h"
+#include "path_kernel_volume_state.h"
 
 #include <array>
 #include <cmath>
@@ -15,7 +15,7 @@ using namespace luisa::compute;
 using namespace psycles::luisa_backend;
 using namespace psycles::luisa_backend::detail;
 
-inline constexpr std::size_t record_count = 10u;
+inline constexpr std::size_t record_count = 13u;
 
 [[nodiscard]] bool approximately_equal(
     float actual,
@@ -324,12 +324,12 @@ int main(int argc, char **argv) {
     auto output =
         device.create_buffer<luisa::float4>(
             record_count);
-    const auto camera_stack =
-        make_camera_volume_stack_component();
     const auto boundary =
         make_triangle_volume_boundary_component();
+    const auto path_volume =
+        make_path_volume_state_component();
     Kernel1D evaluate =
-        [scene, camera_stack, boundary](
+        [scene, boundary, path_volume](
             BufferFloat4 records) noexcept {
             const auto flag =
                 [](Bool value) noexcept {
@@ -347,13 +347,16 @@ int main(int argc, char **argv) {
                         cycles_shader_identity::
                             shader_mask);
                 };
-            VolumeStack stack{6u};
-            const auto initialization =
-                camera_stack->initialize(
+            auto volume =
+                path_volume->initialize(
                     scene,
                     make_float3(0.0f),
                     camera_visibility,
-                    stack);
+                    6u,
+                    true);
+            auto &stack = *volume.stack;
+            const auto &initialization =
+                volume.camera_initialization;
             records.write(
                 0u,
                 make_float4(
@@ -468,6 +471,63 @@ int main(int argc, char **argv) {
                 make_float4(
                     camera_volume_probe_direction,
                     flag(world.valid)));
+            auto background_only =
+                path_volume->initialize(
+                    scene,
+                    make_float3(0.0f),
+                    camera_visibility,
+                    6u,
+                    false);
+            auto &background_stack =
+                *background_only.stack;
+            records.write(
+                10u,
+                make_float4(
+                    number(
+                        background_stack
+                            .count()),
+                    number(
+                        background_only
+                            .camera_initialization
+                            .intersection_count),
+                    number(
+                        background_only
+                            .camera_initialization
+                            .enclosed_count),
+                    static_cast<float>(
+                        background_stack
+                            .maximum_entries())));
+            const auto background_world =
+                background_stack.entry(0u);
+            records.write(
+                11u,
+                make_float4(
+                    number(
+                        background_world
+                            .object),
+                    shader_index(
+                        background_world
+                            .shader),
+                    number(
+                        background_world
+                            .surface_tag),
+                    number(
+                        background_world
+                            .parameter_block)));
+            records.write(
+                12u,
+                make_float4(
+                    background_only.enabled()
+                        ? 1.0f
+                        : 0.0f,
+                    flag(
+                        background_stack
+                            .entry(1u)
+                            .valid),
+                    number(stack.count()),
+                    flag(
+                        background_stack
+                            .empty())));
         };
     auto shader = device.compile(evaluate);
 
@@ -537,7 +597,10 @@ int main(int argc, char **argv) {
         luisa::float4{0.0f, 0.0f, -1.0f, 0.0f},
         luisa::float4{0.0f, 0.0f, 1.0f, 1.0f},
         luisa::float4{0.0f, 0.0f, -1.0f, 0.0f},
-        luisa::float4{0.0f, 0.0f, 1.0f, 1.0f}};
+        luisa::float4{0.0f, 0.0f, 1.0f, 1.0f},
+        luisa::float4{1.0f, 0.0f, 0.0f, 5.0f},
+        luisa::float4{900.0f, 5.0f, 50.0f, 500.0f},
+        luisa::float4{1.0f, 0.0f, 3.0f, 0.0f}};
     auto failed = false;
     for (auto index = std::size_t{0u};
          index < expected.size();

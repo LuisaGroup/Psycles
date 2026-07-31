@@ -264,6 +264,10 @@ struct LuisaSceneData {
     contract::ShaderColorSpace shader_color_space;
     Accel accel;
     CameraDesc camera;
+    // Zero specializes volume-free path kernels: no device-local stack and
+    // no camera enclosure ray query are recorded into their Luisa AST.
+    std::uint32_t volume_stack_size{};
+    bool camera_may_be_inside_volume{};
 };
 
 class LuisaCompiledScene final : public contract::CompiledScene {
