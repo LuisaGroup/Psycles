@@ -1165,7 +1165,7 @@ void run_scene_build(
         make_scene_volume_stack_entry_point_provider(
             scene);
     auto provider_output =
-        device.create_buffer<luisa::float4>(6u);
+        device.create_buffer<luisa::float4>(7u);
     Kernel1D evaluate_provider =
         [scene,
          points,
@@ -1227,7 +1227,6 @@ void run_scene_build(
                     points,
                     services,
                     camera_state,
-                    0.25f,
                     true);
             auto indirect_provider =
                 make_scene_volume_majorant_entry_provider(
@@ -1235,7 +1234,6 @@ void run_scene_build(
                     points,
                     services,
                     indirect_state,
-                    0.25f,
                     true);
             const VolumeStackEntry
                 spatial_entry{
@@ -1300,6 +1298,7 @@ void run_scene_build(
                     spatial_entry,
                     leaf,
                     object_space.object_density,
+                    0.25f,
                     world_origin,
                     world_direction);
             const auto camera_extrema =
@@ -1307,6 +1306,7 @@ void run_scene_build(
                     homogeneous_entry,
                     leaf,
                     object_space.object_density,
+                    0.25f,
                     world_origin,
                     world_direction);
             const auto runtime_extrema =
@@ -1314,6 +1314,7 @@ void run_scene_build(
                     homogeneous_entry,
                     leaf,
                     object_space.object_density,
+                    0.25f,
                     world_origin,
                     world_direction);
             const auto spatial_runtime_extrema =
@@ -1321,6 +1322,15 @@ void run_scene_build(
                     spatial_light_path_entry,
                     leaf,
                     object_space.object_density,
+                    0.25f,
+                    world_origin,
+                    world_direction);
+            const auto next_spatial_runtime_extrema =
+                indirect_provider->extrema(
+                    spatial_light_path_entry,
+                    leaf,
+                    object_space.object_density,
+                    0.75f,
                     world_origin,
                     world_direction);
             output.write(
@@ -1359,6 +1369,15 @@ void run_scene_build(
                     spatial_runtime_extrema.maximum,
                     0.0f,
                     0.0f));
+            output.write(
+                6u,
+                make_float4(
+                    next_spatial_runtime_extrema
+                        .minimum,
+                    next_spatial_runtime_extrema
+                        .maximum,
+                    0.0f,
+                    0.0f));
         };
     ShaderOption provider_options;
     provider_options.enable_cache = true;
@@ -1367,7 +1386,7 @@ void run_scene_build(
         device.compile(
             evaluate_provider,
             provider_options);
-    std::array<luisa::float4, 6u>
+    std::array<luisa::float4, 7u>
         provider_values{};
     stream
         << provider_shader(provider_output)
@@ -1417,6 +1436,16 @@ void run_scene_build(
         "scene majorant provider did not preserve "
         "Cycles heterogeneous four-sample offset and "
         "1.5x safety bound on " +
+            std::string{backend});
+    expect(
+        close(
+            provider_values[6u].x,
+            1.625f) &&
+            close(
+                provider_values[6u].y,
+                3.1875f),
+        "scene majorant provider did not re-evaluate "
+        "the next Cycles tracking shade offset on " +
             std::string{backend});
 }
 

@@ -44,6 +44,7 @@ class VolumeMajorantEntryProvider {
         const VolumeStackEntry &entry,
         const VolumeMajorantLeaf &leaf,
         Float object_density,
+        Float shade_offset,
         Float3 world_ray_origin,
         Float3 world_ray_direction) const noexcept;
 };
@@ -111,7 +112,8 @@ class VolumeMajorantOverlapTraversal {
         Bool condition,
         const VolumeStackEntry &entry,
         Float object_density) noexcept;
-    [[nodiscard]] Bool _setup() noexcept;
+    [[nodiscard]] Bool _setup(
+        Float shade_offset) noexcept;
 
   public:
     VolumeMajorantOverlapTraversal(
@@ -130,11 +132,17 @@ class VolumeMajorantOverlapTraversal {
         Float3 world_ray_origin,
         Float3 world_ray_direction,
         Float ray_minimum,
-        Float ray_maximum) noexcept;
+        Float ray_maximum,
+        Float shade_offset) noexcept;
 
     [[nodiscard]] VolumeMajorantSegment
     current() const noexcept;
-    [[nodiscard]] Bool advance() noexcept;
+    // Cycles draws one shade offset from the current tracking RNG state for
+    // every setup/advance operation. All roots visited by that operation
+    // share the value; the caller advances the RNG only after a candidate
+    // collision and supplies the next value here.
+    [[nodiscard]] Bool advance(
+        Float shade_offset) noexcept;
 };
 
 }// namespace psycles::luisa_backend

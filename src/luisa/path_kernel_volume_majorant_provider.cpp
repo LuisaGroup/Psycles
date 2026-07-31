@@ -22,7 +22,6 @@ class SceneVolumeMajorantEntryProvider final
         _points;
     const ShaderServices &_services;
     const VolumeShadingState &_state;
-    Float _shade_offset;
     bool _evaluate_emission;
 
     [[nodiscard]] UInt _surface_flags(
@@ -46,13 +45,11 @@ class SceneVolumeMajorantEntryProvider final
             points,
         const ShaderServices &services,
         const VolumeShadingState &state,
-        Float shade_offset,
         bool evaluate_emission) noexcept
         : _scene{std::move(scene)},
           _points{std::move(points)},
           _services{services},
           _state{state},
-          _shade_offset{shade_offset},
           _evaluate_emission{
               evaluate_emission} {}
 
@@ -101,6 +98,7 @@ class SceneVolumeMajorantEntryProvider final
         const VolumeStackEntry &entry,
         const VolumeMajorantLeaf &leaf,
         Float object_density,
+        Float shade_offset,
         Float3 world_ray_origin,
         Float3 world_ray_direction)
         const noexcept override {
@@ -109,6 +107,7 @@ class SceneVolumeMajorantEntryProvider final
                 entry,
                 leaf,
                 object_density,
+                shade_offset,
                 world_ray_origin,
                 world_ray_direction);
         const auto flags =
@@ -127,10 +126,10 @@ class SceneVolumeMajorantEntryProvider final
                 0u;
             const auto samples =
                 select(1u, 4u, heterogeneous);
-            const auto shade_offset =
+            const auto sample_offset =
                 select(
                     0.5f,
-                    _shade_offset,
+                    shade_offset,
                     heterogeneous);
             const auto step =
                 (leaf.maximum - leaf.minimum) /
@@ -143,7 +142,7 @@ class SceneVolumeMajorantEntryProvider final
             $while(index < samples) {
                 const auto shade_t =
                     leaf.minimum +
-                    (shade_offset +
+                    (sample_offset +
                      cast<float>(index)) *
                         step;
                 const VolumeShadingState
@@ -234,7 +233,6 @@ make_scene_volume_majorant_entry_provider(
         const VolumeStackEntryPointProvider> points,
     const ShaderServices &services,
     const VolumeShadingState &state,
-    Float shade_offset,
     bool evaluate_emission) {
     return std::make_unique<
         SceneVolumeMajorantEntryProvider>(
@@ -242,7 +240,6 @@ make_scene_volume_majorant_entry_provider(
         std::move(points),
         services,
         state,
-        shade_offset,
         evaluate_emission);
 }
 

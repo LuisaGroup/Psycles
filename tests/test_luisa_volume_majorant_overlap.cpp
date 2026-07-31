@@ -59,11 +59,15 @@ class FixtureEntryProvider final
 
   private:
     UInt *_entry_space_calls;
+    Float *_last_shade_offset;
 
   public:
     explicit FixtureEntryProvider(
-        UInt *entry_space_calls = nullptr) noexcept
-        : _entry_space_calls{entry_space_calls} {}
+        UInt *entry_space_calls = nullptr,
+        Float *last_shade_offset = nullptr) noexcept
+        : _entry_space_calls{entry_space_calls},
+          _last_shade_offset{
+              last_shade_offset} {}
 
     VolumeMajorantEntrySpace entry_space(
         const VolumeStackEntry &entry,
@@ -83,6 +87,28 @@ class FixtureEntryProvider final
                     1.0f,
                     2.0f,
                     entry.object == object_b)};
+    }
+
+    VolumeMajorantRuntimeExtrema extrema(
+        const VolumeStackEntry &entry,
+        const VolumeMajorantLeaf &leaf,
+        Float object_density,
+        Float shade_offset,
+        Float3 world_ray_origin,
+        Float3 world_ray_direction)
+        const noexcept override {
+        if (_last_shade_offset != nullptr) {
+            *_last_shade_offset =
+                shade_offset;
+        }
+        return VolumeMajorantEntryProvider::
+            extrema(
+                entry,
+                leaf,
+                object_density,
+                shade_offset,
+                world_ray_origin,
+                world_ray_direction);
     }
 };
 
@@ -230,6 +256,8 @@ void run_backend(
         device.create_buffer<luisa::uint4>(10u);
     auto advances =
         device.create_buffer<luisa::uint4>(3u);
+    auto shade_offsets =
+        device.create_buffer<float>(3u);
 
     Kernel1D evaluate =
         [](BufferVar<VolumeMajorantNodeGpu>
@@ -243,7 +271,9 @@ void run_backend(
            BufferVar<luisa::uint4>
                metadata_output,
            BufferVar<luisa::uint4>
-               advance_output) noexcept {
+               advance_output,
+           BufferVar<float>
+               shade_offset_output) noexcept {
             FixtureEntryProvider provider;
             UInt rejected_provider_calls = 0u;
             FixtureEntryProvider rejected_provider{
@@ -312,23 +342,24 @@ void run_backend(
                     ray_origin,
                     ray_direction,
                     0.0f,
-                    2.0f};
+                    2.0f,
+                    0.25f};
             write_segment(
                 0u, overlap.current());
             const auto overlap_0 =
-                overlap.advance();
+                overlap.advance(0.25f);
             write_segment(
                 1u, overlap.current());
             const auto overlap_1 =
-                overlap.advance();
+                overlap.advance(0.25f);
             write_segment(
                 2u, overlap.current());
             const auto overlap_2 =
-                overlap.advance();
+                overlap.advance(0.25f);
             write_segment(
                 3u, overlap.current());
             const auto overlap_3 =
-                overlap.advance();
+                overlap.advance(0.25f);
             advance_output.write(
                 0u,
                 make_uint4(
@@ -345,6 +376,11 @@ void run_backend(
             single_stack
                 .initialize_background(
                     entry_a(), true);
+            Float last_shade_offset = 0.0f;
+            FixtureEntryProvider
+                tracked_provider{
+                    nullptr,
+                    &last_shade_offset};
             VolumeMajorantOverlapTraversal
                 single{
                     node_buffer,
@@ -355,23 +391,30 @@ void run_backend(
                     3u,
                     2u,
                     single_stack,
-                    provider,
+                    tracked_provider,
                     ray_origin,
                     ray_direction,
                     0.0f,
-                    2.0f};
+                    2.0f,
+                    0.25f};
+            shade_offset_output.write(
+                0u, last_shade_offset);
             write_segment(
                 4u, single.current());
             const auto single_0 =
-                single.advance();
+                single.advance(0.75f);
+            shade_offset_output.write(
+                1u, last_shade_offset);
             write_segment(
                 5u, single.current());
             const auto single_1 =
-                single.advance();
+                single.advance(0.125f);
+            shade_offset_output.write(
+                2u, last_shade_offset);
             write_segment(
                 6u, single.current());
             const auto single_2 =
-                single.advance();
+                single.advance(0.25f);
             advance_output.write(
                 1u,
                 make_uint4(
@@ -402,11 +445,12 @@ void run_backend(
                     ray_origin,
                     ray_direction,
                     0.0f,
-                    2.0f};
+                    2.0f,
+                    0.25f};
             write_segment(
                 7u, missing.current());
             const auto missing_advanced =
-                missing.advance();
+                missing.advance(0.25f);
 
             VolumeStack malformed_stack{2u};
             malformed_stack
@@ -427,11 +471,12 @@ void run_backend(
                     ray_origin,
                     ray_direction,
                     0.0f,
-                    2.0f};
+                    2.0f,
+                    0.25f};
             write_segment(
                 8u, malformed.current());
             const auto malformed_advanced =
-                malformed.advance();
+                malformed.advance(0.25f);
 
             VolumeStack invalid_node_stack{2u};
             invalid_node_stack
@@ -452,11 +497,12 @@ void run_backend(
                     ray_origin,
                     ray_direction,
                     0.0f,
-                    2.0f};
+                    2.0f,
+                    0.25f};
             write_segment(
                 9u, invalid_node.current());
             const auto invalid_node_advanced =
-                invalid_node.advance();
+                invalid_node.advance(0.25f);
             advance_output.write(
                 2u,
                 make_uint4(
@@ -482,6 +528,8 @@ void run_backend(
         actual_metadata{};
     std::array<luisa::uint4, 3u>
         actual_advances{};
+    std::array<float, 3u>
+        actual_shade_offsets{};
     stream
         << nodes.copy_from(
                luisa::span{host_nodes})
@@ -495,7 +543,8 @@ void run_backend(
                ranges,
                intervals,
                metadata,
-               advances)
+               advances,
+               shade_offsets)
                .dispatch(1u)
         << intervals.copy_to(
                luisa::span{
@@ -506,6 +555,9 @@ void run_backend(
         << advances.copy_to(
                luisa::span{
                    actual_advances})
+        << shade_offsets.copy_to(
+               luisa::span{
+                   actual_shade_offsets})
         << synchronize();
 
     constexpr std::array expected_intervals{
@@ -560,6 +612,13 @@ void run_backend(
                     1u, 1u, 0u, 0u}),
         "overlap or single-root advance sequence "
         "changed on " +
+            std::string{backend});
+    expect(
+        close(actual_shade_offsets[0u], 0.25f) &&
+            close(actual_shade_offsets[1u], 0.75f) &&
+            close(actual_shade_offsets[2u], 0.125f),
+        "overlap traversal did not consume the "
+        "per-advance Cycles shade offset on " +
             std::string{backend});
     for (auto index : {7u, 8u, 9u}) {
         expect(

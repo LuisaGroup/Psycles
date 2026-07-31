@@ -19,7 +19,6 @@ make_scene_volume_majorant_entry_provider(
         const VolumeStackEntryPointProvider> points,
     const ShaderServices &services,
     const VolumeShadingState &state,
-    Float shade_offset,
     bool evaluate_emission);
 
 }// namespace psycles::luisa_backend::detail
