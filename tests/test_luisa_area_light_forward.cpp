@@ -3,11 +3,13 @@
 #include <psycles/io/image.h>
 #include <psycles/luisa/path_tracer.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <iomanip>
 #include <iostream>
 #include <string>
 #include <string_view>
@@ -22,6 +24,8 @@ using namespace psycles::compiler;
 using namespace psycles::contract;
 
 constexpr auto pi = 3.14159265358979323846f;
+constexpr std::uint32_t width = 32u;
+constexpr std::uint32_t height = 32u;
 constexpr std::string_view oracle_color_attribute{
     "Cycles rectangle oracle color"};
 constexpr std::string_view point_identity_attribute{
@@ -95,7 +99,8 @@ constexpr std::string_view face_identity_attribute{
     return graph;
 }
 
-[[nodiscard]] SceneSnapshot make_scene() {
+[[nodiscard]] SceneSnapshot make_scene(
+    bool narrow_spread_ellipse = false) {
     constexpr MaterialId material_id{1u};
     constexpr GeometryId geometry_id{2u};
     constexpr InstanceId instance_id{3u};
@@ -191,7 +196,10 @@ constexpr std::string_view face_identity_attribute{
     scene.lights.emplace(
         light_id,
         LightDesc{
-            .name = "Cycles rectangle oracle light",
+            .name =
+                narrow_spread_ellipse
+                    ? "Cycles narrow ellipse oracle light"
+                    : "Cycles rectangle oracle light",
             .type = LightType::area,
             .transform = translated(
                 0.3700000047683716f,
@@ -204,9 +212,13 @@ constexpr std::string_view face_identity_attribute{
             .power = 37.0f,
             .size = 0.800000011920929f,
             .size_y = 0.5f,
-            .spread = pi,
+            .spread =
+                narrow_spread_ellipse
+                    ? 1.2f
+                    : pi,
             .normalize = true,
-            .ellipse = false,
+            .ellipse =
+                narrow_spread_ellipse,
             .is_sphere = false,
             .use_mis = true,
             .cast_shadow = true,
@@ -224,36 +236,27 @@ constexpr std::string_view face_identity_attribute{
     float actual,
     float expected,
     float tolerance = 2.0e-6f) noexcept {
-    return std::abs(actual - expected) <= tolerance;
+    // Keep a fixed zero-energy bound while scaling the float32 comparison
+    // for narrow-spread radiance above one. This is one symmetric norm for
+    // every fixture/backend, not a per-pixel exception.
+    return std::abs(actual - expected) <=
+           tolerance *
+               (1.0f +
+                std::max(
+                    std::abs(actual),
+                    std::abs(expected)));
 }
 
-}// namespace
-
-int main(int argc, char **argv) {
-    const auto backend =
-        std::string_view{argc > 1 ? argv[1] : "fallback"};
-    luisa::compute::Context context{argv[0]};
-    auto device = context.create_device(backend);
-    psycles::luisa_backend::LuisaPathTracerBackend renderer{
-        std::move(device),
-        {.next_event_estimation = true,
-         .max_samples_per_dispatch = 1u}};
-    auto compilation = renderer.compile_scene(make_scene());
-    if (!compilation.ok()) {
-        for (const auto &diagnostic : compilation.diagnostics) {
-            std::cerr << diagnostic.message << '\n';
-        }
-        return EXIT_FAILURE;
-    }
-
-    constexpr std::uint32_t width = 32u;
-    constexpr std::uint32_t height = 32u;
-    const RenderSettings settings{
-        .full_extent = {.width = width, .height = height},
+[[nodiscard]] RenderSettings make_settings() {
+    return {
+        .full_extent = {
+            .width = width,
+            .height = height},
         .window = {},
         .seed = 20903u,
         .transparent_background = false,
-        .pixel_filter = PixelFilter::blackman_harris,
+        .pixel_filter =
+            PixelFilter::blackman_harris,
         .filter_width = 1.5f,
         .pass_alpha_threshold = 0.5f,
         .integrator = {
@@ -282,93 +285,315 @@ int main(int argc, char **argv) {
              .name = "Combined",
              .light_group = {},
              .channels = 4u}}};
-    auto session =
-        renderer.create_session(*compilation.scene, settings);
-    if (!session) {
-        std::cerr << "could not create Luisa render session\n";
-        return EXIT_FAILURE;
+}
+
+[[nodiscard]] bool render_fixture(
+    psycles::luisa_backend::
+        LuisaPathTracerBackend &renderer,
+    SceneSnapshot scene,
+    const RenderSettings &settings,
+    std::string_view label,
+    psycles::io::MemoryOutputSink
+        &sink) {
+    auto compilation =
+        renderer.compile_scene(scene);
+    if (!compilation.ok()) {
+        for (const auto &diagnostic :
+             compilation.diagnostics) {
+            std::cerr << diagnostic.message
+                      << '\n';
+        }
+        return false;
     }
-    psycles::io::MemoryOutputSink sink;
+    auto session =
+        renderer.create_session(
+            *compilation.scene,
+            settings);
+    if (!session) {
+        std::cerr
+            << "could not create " << label
+            << " render session\n";
+        return false;
+    }
     if (!session->render_samples(
             {.first = 0u,
              .count = 1u,
              .offset = 0u,
              .total = 1u},
             sink)) {
-        std::cerr << "Luisa render failed\n";
-        return EXIT_FAILURE;
+        std::cerr << label
+                  << " render failed\n";
+        return false;
     }
-    const auto *combined = sink.find(PassKind::combined);
-    if (combined == nullptr || combined->channels != 4u ||
+    return true;
+}
+
+struct PixelOracle {
+    std::uint32_t x;
+    std::uint32_t y;
+    std::array<float, 4u> value;
+};
+
+template<std::size_t N>
+[[nodiscard]] bool validate_fixture(
+    const psycles::io::MemoryOutputSink
+        &sink,
+    std::string_view backend,
+    std::string_view label,
+    const std::array<double, 3u>
+        &expected_means,
+    const std::array<PixelOracle, N>
+        &pixel_oracles) {
+    const auto *combined =
+        sink.find(PassKind::combined);
+    if (combined == nullptr ||
+        combined->channels != 4u ||
         combined->pixels.size() !=
-            static_cast<std::size_t>(width) *
-                height * combined->channels) {
-        std::cerr << "Combined pass has an invalid shape\n";
-        return EXIT_FAILURE;
+            static_cast<std::size_t>(
+                width) *
+                height *
+                combined->channels) {
+        std::cerr << label
+                  << " Combined pass has an invalid shape\n";
+        return false;
     }
 
     std::array<double, 3u> means{};
+    auto passed = true;
     for (std::size_t pixel = 0u;
          pixel <
-         static_cast<std::size_t>(width) * height;
+         static_cast<std::size_t>(
+             width) *
+             height;
          ++pixel) {
-        const auto base = pixel * combined->channels;
+        const auto base =
+            pixel * combined->channels;
         for (std::size_t channel = 0u;
              channel < means.size();
              ++channel) {
             means[channel] +=
-                combined->pixels[base + channel];
+                combined->pixels[
+                    base + channel];
+        }
+        if (!approximately_equal(
+                combined->pixels[
+                    base + 3u],
+                1.0f)) {
+            std::cerr << label
+                      << " alpha regression failed on "
+                      << backend << " pixel "
+                      << pixel << '\n';
+            passed = false;
         }
     }
     for (auto &mean : means) {
-        mean /= static_cast<double>(width * height);
+        mean /=
+            static_cast<double>(
+                width * height);
     }
-    constexpr std::array cycles_means{
-        0.21808527410030365,
-        0.2884353697299957,
-        0.22472937405109406};
     for (std::size_t channel = 0u;
          channel < means.size();
          ++channel) {
-        if (std::abs(means[channel] -
-                     cycles_means[channel]) >
+        if (std::abs(
+                means[channel] -
+                expected_means[channel]) >
             2.0e-6) {
             std::cerr
-                << "Cycles full-frame mean regression failed on "
-                << backend << " channel " << channel
-                << ": got " << means[channel]
-                << ", expected " << cycles_means[channel]
+                << "Cycles " << label
+                << " full-frame mean regression failed on "
+                << backend << " channel "
+                << channel << ": got "
+                << means[channel]
+                << ", expected "
+                << expected_means[channel]
                 << '\n';
-            return EXIT_FAILURE;
+            passed = false;
         }
+    }
+    for (const auto &oracle :
+         pixel_oracles) {
+        const auto base =
+            (static_cast<std::size_t>(
+                 oracle.y) *
+                 width +
+             oracle.x) *
+            combined->channels;
+        for (std::size_t channel = 0u;
+             channel <
+             oracle.value.size();
+             ++channel) {
+            if (!approximately_equal(
+                    combined->pixels[
+                        base + channel],
+                    oracle.value[
+                        channel])) {
+                std::cerr
+                    << std::setprecision(10)
+                    << "Cycles " << label
+                    << " pixel regression failed on "
+                    << backend << " at ("
+                    << oracle.x << ", "
+                    << oracle.y << ") channel "
+                    << channel << ": got "
+                    << combined->pixels[
+                           base + channel]
+                    << ", expected "
+                    << oracle.value[channel]
+                    << '\n';
+                passed = false;
+            }
+        }
+    }
+    return passed;
+}
+
+}// namespace
+
+int main(int argc, char **argv) {
+    const auto backend =
+        std::string_view{argc > 1 ? argv[1] : "fallback"};
+    luisa::compute::Context context{argv[0]};
+    auto device = context.create_device(backend);
+    psycles::luisa_backend::LuisaPathTracerBackend renderer{
+        std::move(device),
+        {.next_event_estimation = true,
+         .max_samples_per_dispatch = 1u}};
+    const auto settings =
+        make_settings();
+
+    psycles::io::MemoryOutputSink
+        rectangle_sink;
+    if (!render_fixture(
+            renderer,
+            make_scene(),
+            settings,
+            "full-spread rectangle",
+            rectangle_sink)) {
+        return EXIT_FAILURE;
+    }
+    constexpr std::array
+        rectangle_means{
+            0.21808528017572826,
+            0.2884353661502246,
+            0.2247294618464366};
+    constexpr std::array
+        rectangle_pixels{
+            PixelOracle{
+                .x = 20u,
+                .y = 14u,
+                .value = {
+                    0.37258365750312805f,
+                    0.4927719235420227f,
+                    0.38393476605415344f,
+                    1.0f}}};
+    if (!validate_fixture(
+            rectangle_sink,
+            backend,
+            "full-spread rectangle",
+            rectangle_means,
+            rectangle_pixels)) {
+        return EXIT_FAILURE;
     }
 
-    constexpr std::uint32_t hit_x = 20u;
-    constexpr std::uint32_t hit_y = 14u;
-    const auto hit_base =
-        (static_cast<std::size_t>(hit_y) * width + hit_x) *
-        combined->channels;
-    constexpr std::array cycles_hit{
-        0.37258365750312805f,
-        0.4927719235420227f,
-        0.38393476605415344f,
-        1.0f};
-    for (std::size_t channel = 0u;
-         channel < cycles_hit.size();
-         ++channel) {
-        if (!approximately_equal(
-                combined->pixels[hit_base + channel],
-                cycles_hit[channel])) {
+    psycles::io::MemoryOutputSink
+        narrow_ellipse_sink;
+    if (!render_fixture(
+            renderer,
+            make_scene(true),
+            settings,
+            "narrow-spread ellipse",
+            narrow_ellipse_sink)) {
+        return EXIT_FAILURE;
+    }
+    // Official Blender 5.3.0 Alpha/Cycles main b82c3f0d, one Tabulated
+    // Sobol sample. These records exercise the shared spread-clamped
+    // rectangle/circle/ellipse construction from production surface NEE
+    // and its BSDF-forward complement.
+    constexpr std::array
+        narrow_ellipse_means{
+            0.5357027209195167,
+            0.7085100397669066,
+            0.552023389617716};
+    constexpr std::array
+        narrow_ellipse_pixels{
+            PixelOracle{
+                .x = 0u,
+                .y = 0u,
+                .value = {
+                    0.0f,
+                    0.0f,
+                    0.0f,
+                    1.0f}},
+            PixelOracle{
+                .x = 12u,
+                .y = 10u,
+                .value = {
+                    0.07275009155273438f,
+                    0.09621785581111908f,
+                    0.07496648281812668f,
+                    1.0f}},
+            PixelOracle{
+                .x = 17u,
+                .y = 16u,
+                .value = {
+                    0.7915834188461304f,
+                    1.0469329357147217f,
+                    0.8156996369361877f,
+                    1.0f}},
+            PixelOracle{
+                .x = 20u,
+                .y = 14u,
+                .value = {
+                    2.6395480632781982f,
+                    3.4910149574279785f,
+                    2.719963788986206f,
+                    1.0f}},
+            PixelOracle{
+                .x = 24u,
+                .y = 22u,
+                .value = {
+                    1.5788248777389526f,
+                    2.088123083114624f,
+                    1.6269252300262451f,
+                    1.0f}}};
+    if (!validate_fixture(
+            narrow_ellipse_sink,
+            backend,
+            "narrow-spread ellipse",
+            narrow_ellipse_means,
+            narrow_ellipse_pixels)) {
+        return EXIT_FAILURE;
+    }
+
+#if defined(PSYCLES_WITH_OPENIMAGEIO)
+    if (argc > 2) {
+        std::string error;
+        if (!psycles::io::write_multilayer_exr(
+                rectangle_sink.images(),
+                argv[2],
+                "ViewLayer",
+                &error)) {
             std::cerr
-                << "Cycles BSDF-forward rectangle hit regression "
-                   "failed on "
-                << backend << " channel " << channel
-                << ": got "
-                << combined->pixels[hit_base + channel]
-                << ", expected " << cycles_hit[channel]
-                << '\n';
+                << "could not write rectangle "
+                   "diagnostic EXR: "
+                << error << '\n';
             return EXIT_FAILURE;
         }
     }
+    if (argc > 3) {
+        std::string error;
+        if (!psycles::io::write_multilayer_exr(
+                narrow_ellipse_sink.images(),
+                argv[3],
+                "ViewLayer",
+                &error)) {
+            std::cerr
+                << "could not write narrow ellipse "
+                   "diagnostic EXR: "
+                << error << '\n';
+            return EXIT_FAILURE;
+        }
+    }
+#endif
     return EXIT_SUCCESS;
 }

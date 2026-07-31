@@ -480,6 +480,10 @@ intersection, distant-light background evaluation, and Cycles'
 narrow-spread clamped area construction remain the next light-transport
 gates.
 
+The finite point/spot sections below and the later
+[shared surface area-light checkpoint](../../2026-07-31/surface-area-light-mis/README.md)
+close those three finite-lamp items; distant-light behavior remains open.
+
 ## Finite point and spot light checkpoint
 
 Finite point and spot lights now use one shared Cycles-compatible geometric

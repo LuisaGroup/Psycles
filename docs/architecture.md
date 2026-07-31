@@ -337,10 +337,15 @@ remains one fused path kernel.
 contract without duplicating the transport pipeline. In particular, the spot
 segment proposal retains Cycles' zero-attenuation samples and visible-sphere
 cap, while the collision-position method delegates to the ordinary spot
-measure. `VolumeLightInterval` independently maps the original segment to its
-spot/area geometric support. This separation prevents radiometric rejection,
-proposal measure, and interval algebra from becoming emitter-specific branches
-inside the homogeneous estimator.
+measure. `AreaLightSampling` similarly owns the authored-primitive segment
+proposal, the exact spread-clamped rectangle/circle/ellipse collision
+proposal, and known-hit evaluation. Surface NEE, volume NEE, and analytic
+forward intersections all construct their AST through this object;
+`path_kernel_area_light` maps the shared `LightGpu` flags and axes once.
+`VolumeLightInterval` independently maps the original segment to spot/area
+geometric support. This separation prevents radiometric rejection, proposal
+measure, and interval algebra from becoming emitter-specific branches inside
+the homogeneous estimator.
 
 Volume-scattering probability guidance is persistent render-session state,
 not path-local policy. The path kernel accumulates Cycles' raw scatter,

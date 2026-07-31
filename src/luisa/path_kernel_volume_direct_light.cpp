@@ -1,8 +1,8 @@
 #include "path_kernel_volume_direct_light.h"
 
+#include "path_kernel_area_light.h"
 #include "path_kernel_volume_shadow.h"
 
-#include <psycles/luisa/area_light_sampling.h>
 #include <psycles/luisa/cycles_path_state.h>
 #include <psycles/luisa/spherical_geometry.h>
 #include <psycles/luisa/surface_ray.h>
@@ -51,32 +51,6 @@ volume_spot_light_input(
         .spot_angle = light.spot_angle,
         .spot_smooth =
             light.spot_smooth};
-}
-
-[[nodiscard]] AreaLightSampleInput
-area_light_input(
-    Var<LightGpu> light,
-    Float3 reference,
-    Float2 random) noexcept {
-    return {
-        .reference = std::move(reference),
-        .center = light.position,
-        .axis_u = light.axis_x,
-        .axis_v = light.axis_y,
-        .axis_z = light.axis_z,
-        .length_u = light.size_u,
-        .length_v = light.size_v,
-        .spread = light.spread,
-        .ellipse =
-            (light.flags &
-             light_flag_ellipse) != 0u,
-        .full_spread =
-            (light.flags &
-             light_flag_full_spread) != 0u,
-        .random = std::move(random),
-        .normalize_power =
-            (light.flags &
-             light_flag_normalize) != 0u};
 }
 
 class AnalyticVolumeDirectionProvider final
@@ -331,7 +305,7 @@ class AnalyticVolumeDirectionProvider final
         Bool active) const noexcept {
         const auto finite =
             _area_sampling.from_position(
-                area_light_input(
+                area_light_sample_input(
                     light,
                     std::move(position),
                     random.xy()));
@@ -560,7 +534,7 @@ class AnalyticVolumeDirectLightingComponent final
             &result) const noexcept {
         const auto sample =
             _area_sampling.from_segment(
-                area_light_input(
+                area_light_sample_input(
                     light,
                     segment_position,
                     std::move(random)));
