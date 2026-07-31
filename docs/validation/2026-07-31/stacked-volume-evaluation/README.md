@@ -62,7 +62,9 @@ object-density scaling, emission suppression, and zero-state behavior.
 
 The evaluator intentionally accepts a point provider instead of guessing
 volume coordinates from a surface hit. Production world and object point
-construction, closest-event free-flight integration, phase continuation,
-volume NEE, and heterogeneous grid attributes remain required before scene
-volume materials are enabled. EXR comparisons and triptychs begin only after
-those transport stages operate together.
+construction is now implemented and validated in
+[`../volume-shading-points`](../volume-shading-points/README.md).
+Closest-event free-flight integration, phase continuation, volume NEE, and
+heterogeneous grid attributes remain required before scene volume materials
+are enabled. EXR comparisons and triptychs begin only after those transport
+stages operate together.

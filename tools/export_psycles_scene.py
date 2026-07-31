@@ -435,6 +435,24 @@ def _geometry(
             float(texspace_location[axis]) * generated_scale[axis] - 0.5
             for axis in range(3)
         ]
+        generated_transform = [
+            generated_scale[0],
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            generated_scale[1],
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            generated_scale[2],
+            0.0,
+            -generated_location[0],
+            -generated_location[1],
+            -generated_location[2],
+            1.0,
+        ]
         generated_by_vertex = [
             tuple(
                 float(vertex.co[axis]) * generated_scale[axis]
@@ -579,6 +597,11 @@ def _geometry(
             ],
             "generated_domain": "POINT",
             "generated": _write_array(stream, generated),
+            # Cycles' ATTR_STD_GENERATED_TRANSFORM. Volume shading points
+            # use this object-space affine transform directly because there
+            # is no surface primitive whose Generated values can be
+            # interpolated.
+            "generated_transform": generated_transform,
             "color_attributes": [
                 {
                     "name": attribute.name,

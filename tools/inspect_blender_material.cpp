@@ -2,6 +2,8 @@
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/compiler/material_library.h>
 
+#include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <string_view>
@@ -39,13 +41,48 @@ void print_value(const psycles::contract::SocketValue &value) {
     }
 }
 
+[[nodiscard]] psycles::Vec3f transform_point(
+    const psycles::Mat4f &transform,
+    psycles::Vec3f point) noexcept {
+    const auto &e = transform.elements;
+    return {
+        e[0u] * point.x + e[4u] * point.y +
+            e[8u] * point.z + e[12u],
+        e[1u] * point.x + e[5u] * point.y +
+            e[9u] * point.z + e[13u],
+        e[2u] * point.x + e[6u] * point.y +
+            e[10u] * point.z + e[14u]};
+}
+
+[[nodiscard]] bool near(
+    float actual,
+    float expected) noexcept {
+    return std::abs(actual - expected) <=
+           1.0e-6f *
+               std::max(
+                   1.0f,
+                   std::max(
+                       std::abs(actual),
+                       std::abs(expected)));
+}
+
 }// namespace
 
 int main(int argc, char **argv) {
-    if (argc != 3) {
+    if (argc != 3 && argc != 4) {
         std::cerr
             << "usage: psycles_inspect_blender_material "
-               "<export-directory> <material-name>\n";
+               "<export-directory> <material-name> "
+               "[--require-generated-transform]\n";
+        return EXIT_FAILURE;
+    }
+    const auto require_generated_transform =
+        argc == 4 &&
+        std::string_view{argv[3]} ==
+            "--require-generated-transform";
+    if (argc == 4 && !require_generated_transform) {
+        std::cerr
+            << "unknown option: " << argv[3] << '\n';
         return EXIT_FAILURE;
     }
     auto imported =
@@ -61,6 +98,48 @@ int main(int argc, char **argv) {
     }
     if (!imported.ok()) {
         return EXIT_FAILURE;
+    }
+    if (require_generated_transform) {
+        for (const auto &[geometry_id, geometry] :
+             imported.scene->geometries) {
+            static_cast<void>(geometry_id);
+            if (!geometry.generated_transform) {
+                std::cerr
+                    << "geometry '" << geometry.name
+                    << "' has no volume Generated transform\n";
+                return EXIT_FAILURE;
+            }
+            if (geometry.generated.domain !=
+                    psycles::contract::
+                        MeshAttributeDomain::point ||
+                geometry.generated.values.size() !=
+                    geometry.positions.size()) {
+                std::cerr
+                    << "geometry '" << geometry.name
+                    << "' cannot validate its point-domain "
+                       "Generated transform\n";
+                return EXIT_FAILURE;
+            }
+            for (std::size_t index = 0u;
+                 index < geometry.positions.size();
+                 ++index) {
+                const auto expected = transform_point(
+                    *geometry.generated_transform,
+                    geometry.positions[index]);
+                const auto actual =
+                    geometry.generated.values[index];
+                if (!near(actual.x, expected.x) ||
+                    !near(actual.y, expected.y) ||
+                    !near(actual.z, expected.z)) {
+                    std::cerr
+                        << "geometry '" << geometry.name
+                        << "' has inconsistent surface and "
+                           "volume Generated coordinates at point "
+                        << index << '\n';
+                    return EXIT_FAILURE;
+                }
+            }
+        }
     }
     psycles::compiler::ShaderCompiler shader_compiler{
         psycles::compiler::make_core_node_registry()};

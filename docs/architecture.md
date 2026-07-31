@@ -250,6 +250,9 @@ coordinates are point attributes, UV/tangent data is corner-domain, and
 normals follow Blender/Cycles' point-versus-corner decision. Named attributes
 retain their source domain. This mirrors Cycles' triangle attribute lookup
 instead of manufacturing a different vertex for every triangle corner.
+The schema also retains Cycles' Generated affine transform separately.
+Surface shaders interpolate the point attribute; volume shaders transform
+their object-space shading point because no surface primitive exists.
 
 ### Renderer
 
@@ -267,6 +270,13 @@ pipeline invokes typed virtual stages for closest-event handling, surface
 reconstruction, surface shading, direct lighting, and closure continuation.
 Environment, emissive-mesh, and analytic-light NEE are independently
 extensible `DirectLightingComponent` objects.
+
+Volume graph aggregation follows the same host-stage component boundary.
+`StackedVolumeEvaluator` owns stack ordering and raw closure accumulation,
+while a `VolumeStackEntryPointProvider` builds exact world/object shader
+state. The production provider uses scene transforms and Generated metadata;
+fixtures can substitute a provider without branching the aggregation
+algorithm or introducing a CPU reference renderer.
 
 The stage values are explicit `PathSampleContext`, `PathBounceContext`,
 `ClosestPathEvent`, `SurfaceGeometryContext`, and `SurfaceShadingState`

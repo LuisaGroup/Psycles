@@ -12,6 +12,10 @@ struct GeometryGpu {
     luisa::uint material_offset{};
     luisa::uint material_count{};
     luisa::uint attribute_domains{};
+    // Cycles ATTR_STD_GENERATED_TRANSFORM. Surface points retain explicit
+    // per-vertex Generated values; volume points apply this transform to
+    // object-space P because they have no primitive to interpolate.
+    luisa::float4x4 generated_transform{};
 };
 
 struct AttributeBindingGpu {
@@ -271,7 +275,8 @@ LUISA_STRUCT(
     bindless_base,
     material_offset,
     material_count,
-    attribute_domains) {};
+    attribute_domains,
+    generated_transform) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::AttributeBindingGpu,
     id,

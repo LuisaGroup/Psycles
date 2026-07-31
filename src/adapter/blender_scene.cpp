@@ -894,6 +894,14 @@ BlenderSceneImport load_blender_scene_bundle(
                     generated_values[i * 3u + 1u],
                     generated_values[i * 3u + 2u]});
             }
+            if (member(
+                    geometry,
+                    "generated_transform") != nullptr) {
+                mesh.generated_transform =
+                    matrix(member(
+                        geometry,
+                        "generated_transform"));
+            }
             auto *uv_layers = member(geometry, "uv_layers");
             if (uv_layers != nullptr &&
                 yyjson_is_arr(uv_layers)) {

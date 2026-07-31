@@ -193,10 +193,11 @@ orthographic, and panorama cameras, negative-scale bounds, world-only,
 disjoint, overlapping, overridden, and saturated scenes. Details are in
 [`validation/2026-07-31/volume-scene-metadata`](validation/2026-07-31/volume-scene-metadata/README.md).
 
-Production world/object volume-point reconstruction, closest-event
-free-flight integration, heterogeneous grids, and volume direct lighting
-remain open, so scene compilation still release-gates volume materials and
-the four Blender volume nodes remain unverified in the public node matrix.
+Production world/object volume-point reconstruction is now complete.
+Closest-event free-flight integration, heterogeneous grids, and volume direct
+lighting remain open, so scene compilation still release-gates volume
+materials and the four Blender volume nodes remain unverified in the public
+node matrix.
 
 World volume identity is now complete in scene schema v2: the exporter retains
 Cycles' background-light object index separately from the default-background
@@ -215,8 +216,8 @@ and the current homogeneous control flow passes on fallback, HIP, and Vulkan.
 The Sobol contract now pins the official volume phase, reservoir, scatter
 distance, expansion, shade-offset, and phase-guiding dimensions. This
 checkpoint still does not enable volume materials in scene compilation:
-production volume-point reconstruction, closest-event free flight, VSPG
-history, volume NEE, and phase-bounce state must be integrated first.
+closest-event free flight, VSPG history, volume NEE, and phase-bounce state
+must be integrated first.
 
 The stacked-medium evaluator is the fifth internal checkpoint. It visits
 runtime stack entries in Cycles order, evaluates each original graph with its
@@ -229,6 +230,17 @@ and pins single-medium, overlapping-medium, emission-suppressed, and empty
 stack results to official Cycles main `b82c3f0`. It passes on fallback, HIP,
 and Vulkan. Details are in
 [`validation/2026-07-31/stacked-volume-evaluation`](validation/2026-07-31/stacked-volume-evaluation/README.md).
+
+The production volume-point provider is the sixth internal checkpoint. It
+reconstructs Cycles' world/object `ShaderData` state from each runtime stack
+entry, including the inverse instance transform, Object/Particle Info,
+normal transforms, `PRIM_NONE`, and zero primitive differentials. Scene
+schema v2 now preserves Cycles' `ATTR_STD_GENERATED_TRANSFORM`; volume
+Generated coordinates apply that affine transform to object-space `P` rather
+than interpolating a boundary triangle. The exporter/importer consistency
+check and a 24-record negative/non-uniform-scale fixture pass on fallback,
+HIP, and Vulkan. Details are in
+[`validation/2026-07-31/volume-shading-points`](validation/2026-07-31/volume-shading-points/README.md).
 
 Mapping now implements Cycles' four device formulas directly in Luisa:
 Point applies scale, Euler rotation, and translation; Texture applies inverse
@@ -479,7 +491,7 @@ compatible yet:
 
 - Cycles' emitter importance distribution and environment importance map;
 - light-tree construction and traversal;
-- volume transport and path-kernel integration of volume stack state;
+- closest-event volume free flight, phase continuation, and volume NEE;
 - forward intersections for analytic area and distant lights;
 - MNEE, path guiding, shadow catcher, light linking, and light groups;
 - Cycles' exact sampling sequence and random dimensions.

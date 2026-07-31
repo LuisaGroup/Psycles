@@ -103,6 +103,34 @@ def _main() -> None:
     obj = bpy.data.objects.new("Domain Object", mesh)
     scene.collection.objects.link(obj)
     mesh.update()
+    texspace_location = tuple(float(value) for value in mesh.texspace_location)
+    texspace_size = tuple(float(value) for value in mesh.texspace_size)
+    generated_scale = tuple(
+        0.5 / value if value != 0.0 else 0.0
+        for value in texspace_size
+    )
+    generated_offset = tuple(
+        0.5 - texspace_location[axis] * generated_scale[axis]
+        for axis in range(3)
+    )
+    expected_generated_transform = (
+        generated_scale[0],
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        generated_scale[1],
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        generated_scale[2],
+        0.0,
+        generated_offset[0],
+        generated_offset[1],
+        generated_offset[2],
+        1.0,
+    )
 
     with tempfile.TemporaryDirectory(
         prefix="psycles-blender-attribute-domains-"
@@ -161,6 +189,47 @@ def _main() -> None:
             raise AssertionError(
                 "primary attribute domains do not match Cycles layout"
             )
+        actual_generated_transform = tuple(
+            float(value)
+            for value in geometry["generated_transform"]
+        )
+        if len(actual_generated_transform) != 16 or any(
+            abs(actual - expected) > 1.0e-7
+            for actual, expected in zip(
+                actual_generated_transform,
+                expected_generated_transform,
+            )
+        ):
+            raise AssertionError(
+                "volume Generated transform does not match Blender "
+                f"texspace: {actual_generated_transform}, expected "
+                f"{expected_generated_transform}"
+            )
+        generated_values = struct.unpack(
+            "<12f",
+            _read_section(geometry_path, geometry["generated"]),
+        )
+        for point_index, position in enumerate(positions):
+            expected_generated = tuple(
+                position[axis] * generated_scale[axis]
+                + generated_offset[axis]
+                for axis in range(3)
+            )
+            actual_generated = generated_values[
+                point_index * 3 : point_index * 3 + 3
+            ]
+            if any(
+                abs(actual - expected) > 1.0e-6
+                for actual, expected in zip(
+                    actual_generated,
+                    expected_generated,
+                )
+            ):
+                raise AssertionError(
+                    "surface Generated values and volume transform "
+                    f"diverged at point {point_index}: "
+                    f"{actual_generated}, expected {expected_generated}"
+                )
 
         indices = struct.unpack(
             "<6I",
@@ -196,6 +265,7 @@ def _main() -> None:
                 str(inspector),
                 str(output),
                 "Domain Material",
+                "--require-generated-transform",
             ],
             check=False,
             text=True,
