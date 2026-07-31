@@ -1,0 +1,121 @@
+#include "path_kernel_builder.h"
+
+#include <psycles/luisa/surface_ray.h>
+
+#include <utility>
+
+namespace psycles::luisa_backend::detail {
+namespace {
+
+class ForwardLightStageImpl final
+    : public ForwardLightStage {
+
+  public:
+    Bool emit(ClosestPathEvent &event)
+        const noexcept override {
+        auto &bounce = event.bounce;
+        auto &sample = bounce.sample;
+        auto &invocation = sample.invocation;
+        const auto &config =
+            invocation.config;
+        const auto &scene = config.scene;
+        const auto &kernel_parameters =
+            invocation.parameters;
+        auto &ray = sample.ray;
+        auto &previous_delta =
+            sample.previous_delta;
+        auto &previous_bsdf_pdf =
+            sample.previous_bsdf_pdf;
+        auto &throughput = sample.throughput;
+        auto &radiance = sample.radiance;
+        auto &path_depth = sample.path_depth;
+        auto &transparent_depth =
+            sample.transparent_depth;
+        auto &sample_emission =
+            sample.sample_emission;
+        auto &path_diffuse_weight =
+            sample.path_diffuse_weight;
+        auto &path_glossy_weight =
+            sample.path_glossy_weight;
+        const auto &forward_light_weight =
+            config.light_transport
+                .forward_light_weight;
+        const auto &split_scattered_light =
+            config.light_transport
+                .split_scattered_light;
+
+        Var<LightGpu> light =
+            scene->light_buffer->read(
+                event.light_index);
+        const auto light_pdf =
+            event.light_pdf *
+            scene->light_selection_pdf;
+        const auto competing =
+            (path_depth > 0u) &
+            (!previous_delta);
+        const auto mis_weight =
+            forward_light_weight(
+                previous_bsdf_pdf,
+                light_pdf,
+                competing,
+                light_pdf > 0.0f);
+        auto light_radiance =
+            light.color *
+            (light.power *
+             event.light_evaluation_factor);
+        light_radiance *=
+            sample.analytic_light_shader(
+                light,
+                event.light_index,
+                event.light_position,
+                event.light_normal,
+                event.light_uv,
+                -ray->direction(),
+                event.distance);
+        const auto contribution =
+            invocation.clamp_contribution(
+                throughput *
+                    light_radiance *
+                    mis_weight,
+                path_depth);
+        radiance += contribution;
+        const auto directly_visible =
+            path_depth == 0u;
+        sample_emission +=
+            select(
+                make_float3(0.0f),
+                contribution,
+                directly_visible);
+        sample.accumulate_light_pass(
+            split_scattered_light(
+                select(
+                    contribution,
+                    make_float3(0.0f),
+                    directly_visible),
+                path_diffuse_weight,
+                path_glossy_weight,
+                path_depth == 1u));
+
+        transparent_depth += 1u;
+        ray = make_ray(
+            ray->origin(),
+            ray->direction(),
+            surface_ray::
+                intersection_t_offset(
+                    event.distance),
+            ray->t_max());
+        return transparent_depth >=
+               kernel_parameters
+                   .transparent_max_bounces;
+    }
+};
+
+}// namespace
+
+std::unique_ptr<ForwardLightStage>
+make_forward_light_stage() {
+    return std::make_unique<
+        ForwardLightStageImpl>();
+}
+
+}// namespace psycles::luisa_backend::detail

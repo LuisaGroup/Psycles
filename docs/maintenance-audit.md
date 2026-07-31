@@ -167,6 +167,15 @@ accumulation, and final film writes each own their balanced lexical scope.
 There are no new device `Callable` boundaries and no device-side virtual
 dispatch.
 
+The closest-event stage has subsequently been split at its semantic
+boundaries. `PathBounceSetupStage` owns one RNG-dimension set and one mesh
+trace, `ClosestEventStage` selects a typed analytic-light/surface/background
+event, and dedicated forward-light and background stages resolve it. A lamp
+remains a transparent event inside the same bounce. This exposes the exact
+segment distance needed by volume transport without duplicating sampling or
+retracing the mesh, while keeping every implementation in a real `.cpp`
+component.
+
 All eight path-kernel `.inl` files have been deleted. The only remaining
 first-party `.inl` is the generated Cycles 4.5.10 BSDF table. The session
 initializer is 300 lines, the internal interface is 341 lines, and the largest
