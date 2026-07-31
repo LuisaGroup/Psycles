@@ -24,6 +24,26 @@ inline constexpr float overlap_epsilon =
 
 }// namespace
 
+VolumeMajorantTraversal::
+    VolumeMajorantTraversal(
+        const BufferVar<
+            VolumeMajorantNodeGpu> &nodes,
+        Float ray_maximum) noexcept
+    : _nodes{nodes},
+      _root_node{0u},
+      _node{0u},
+      _ray_maximum{ray_maximum},
+      _minimum{ray_maximum},
+      _maximum{ray_maximum},
+      _ray_origin{make_float3(0.0f)},
+      _ray_direction{make_float3(0.0f)},
+      _current_position{make_uint3(0u)},
+      _scale{float_mantissa_bits},
+      _next_scale{float_mantissa_bits},
+      _octant_mask{0u},
+      _hierarchical{false},
+      _valid{false} {}
+
 UInt VolumeMajorantTraversal::_octant()
     const noexcept {
     const auto x =
@@ -95,6 +115,29 @@ Float VolumeMajorantTraversal::_intersect_leaf()
     _current_position = next;
     _next_scale = 32u - clz(difference);
     return min(maximum, _ray_maximum);
+}
+
+void VolumeMajorantTraversal::_select_from(
+    Bool condition,
+    const VolumeMajorantTraversal &source)
+    noexcept {
+    $if(condition) {
+        _root_node = source._root_node;
+        _node = source._node;
+        _ray_maximum = source._ray_maximum;
+        _minimum = source._minimum;
+        _maximum = source._maximum;
+        _ray_origin = source._ray_origin;
+        _ray_direction = source._ray_direction;
+        _current_position =
+            source._current_position;
+        _scale = source._scale;
+        _next_scale = source._next_scale;
+        _octant_mask = source._octant_mask;
+        _hierarchical =
+            source._hierarchical;
+        _valid = source._valid;
+    };
 }
 
 VolumeMajorantTraversal::

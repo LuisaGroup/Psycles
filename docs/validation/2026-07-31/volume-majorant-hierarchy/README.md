@@ -50,8 +50,9 @@ DDA directly in Luisa DSL:
   ends, except for the `5e-4` numerical-overlap termination.
 
 Overlapping volume roots are deliberately not folded into this class. Their
-smallest-endpoint selection and extrema sum form a separate production
-component.
+smallest-endpoint selection and extrema sum are now implemented by the
+separate
+[`VolumeMajorantOverlapTraversal`](../volume-majorant-overlap/README.md).
 
 ## Regression
 
@@ -83,5 +84,6 @@ The raw Luisa `128^3 x 16` shader-evaluation prepass and scene-side resource
 construction are complete and recorded in
 [`../volume-majorant-prepass`](../volume-majorant-prepass/README.md) and
 [`../volume-majorant-scene-resources`](../volume-majorant-scene-resources/README.md).
-Multi-root stack reduction and the collision/phase/direct-light path are the
-next connection before official Cycles image differentials can begin.
+Multi-root stack reduction is complete. The production scene-aware provider
+and collision/phase/direct-light path are the next connection before official
+Cycles image differentials can begin.

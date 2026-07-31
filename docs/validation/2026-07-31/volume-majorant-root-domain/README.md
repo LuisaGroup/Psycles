@@ -68,6 +68,7 @@ pixels, so an image triptych would be misleading. Cycles/Psycles multilayer
 EXR triptychs and direct visual inspection remain required at the first
 production heterogeneous transport render.
 
-The next formal boundary is the ordered overlapping-root interval reduction.
-Its lookup must reject any missing root rather than treating the corresponding
-medium as zero.
+The ordered overlapping-root interval reduction is now complete and recorded
+in [`../volume-majorant-overlap`](../volume-majorant-overlap/README.md). Its
+lookup rejects missing or malformed coverage rather than treating the
+corresponding medium as zero.

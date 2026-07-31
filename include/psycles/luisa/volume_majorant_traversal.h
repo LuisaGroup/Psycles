@@ -9,6 +9,8 @@
 
 namespace psycles::luisa_backend {
 
+class VolumeMajorantOverlapTraversal;
+
 struct VolumeMajorantLeaf {
     Float minimum;
     Float maximum;
@@ -40,12 +42,23 @@ class VolumeMajorantTraversal {
     Bool _hierarchical;
     Bool _valid;
 
+    VolumeMajorantTraversal(
+        const luisa::compute::BufferVar<
+            VolumeMajorantNodeGpu> &nodes,
+        Float ray_maximum) noexcept;
+
     [[nodiscard]] UInt _octant() const noexcept;
     void _descend() noexcept;
     [[nodiscard]] Float3 _floor_position()
         const noexcept;
     [[nodiscard]] Float _intersect_leaf()
         noexcept;
+    void _select_from(
+        Bool condition,
+        const VolumeMajorantTraversal &source)
+        noexcept;
+
+    friend class VolumeMajorantOverlapTraversal;
 
   public:
     VolumeMajorantTraversal(

@@ -1,0 +1,51 @@
+{
+  "date": "2026-07-31",
+  "cycles_commit": "b82c3f0da6c1813dabedc563d64e536f4d83e868",
+  "fixture": {
+    "stack_entries": 2,
+    "root_count": 4,
+    "node_count": 11,
+    "range_count": 3,
+    "expected_overlap_segments": 4,
+    "expected_single_segments": 3,
+    "rejected_resource_cases": 3,
+    "rejected_provider_callbacks": 0
+  },
+  "backends": {
+    "fallback": {
+      "wall_seconds": 0.02,
+      "result": "pass",
+      "threads": 32
+    },
+    "hip": {
+      "wall_seconds": 0.07,
+      "result": "pass",
+      "shader_cache": "hit",
+      "device": "AMD Radeon RX 9070 XT",
+      "architecture": "gfx1201"
+    },
+    "vk": {
+      "wall_seconds": 0.05,
+      "result": "pass",
+      "shader_cache": "warm",
+      "device": "AMD Radeon RX 9070 XT",
+      "driver": "RADV"
+    }
+  },
+  "focused_ctest": {
+    "passed": 3,
+    "failed": 0,
+    "wall_seconds": 1.11
+  },
+  "full_validation": {
+    "build_parallelism": 32,
+    "build_wall_seconds": 6.60,
+    "ctest_passed": 105,
+    "ctest_failed": 0,
+    "ctest_wall_seconds": 8.99
+  },
+  "visual": {
+    "applicable": false,
+    "reason": "Internal interval identities and scalar extrema; no pixels are emitted by this checkpoint."
+  }
+}
