@@ -62,6 +62,24 @@ struct VolumeMajorantSegment {
     Bool lookup_complete;
 };
 
+// Host-stage interface consumed by the heterogeneous candidate walker.
+// Implementations emit a monotone, finite segment sequence into the Luisa
+// AST. Keeping this boundary abstract lets the transport state machine remain
+// independent of hierarchy storage and gives regressions a device-side
+// segment fixture without duplicating the ordered-overlap implementation.
+class VolumeMajorantSegmentSequence {
+
+  public:
+    virtual ~VolumeMajorantSegmentSequence() noexcept =
+        default;
+
+    [[nodiscard]] virtual VolumeMajorantSegment
+    current() const noexcept = 0;
+
+    [[nodiscard]] virtual Bool advance(
+        Float shade_offset) noexcept = 0;
+};
+
 // Exact ordered reduction of the per-entry Cycles hierarchical DDA states.
 // One selected traversal persists across segments; every other stack entry is
 // reconstructed at the new minimum. Extrema are accumulated in stack order,
@@ -71,7 +89,8 @@ struct VolumeMajorantSegment {
 // every dynamic range and root-node lookup; hierarchy topology is validated
 // before upload. Missing or malformed coverage invalidates the segment rather
 // than silently treating a medium as zero.
-class VolumeMajorantOverlapTraversal {
+class VolumeMajorantOverlapTraversal final
+    : public VolumeMajorantSegmentSequence {
 
   private:
     struct RootLookup {
@@ -136,13 +155,13 @@ class VolumeMajorantOverlapTraversal {
         Float shade_offset) noexcept;
 
     [[nodiscard]] VolumeMajorantSegment
-    current() const noexcept;
+    current() const noexcept override;
     // Cycles draws one shade offset from the current tracking RNG state for
     // every setup/advance operation. All roots visited by that operation
     // share the value; the caller advances the RNG only after a candidate
     // collision and supplies the next value here.
     [[nodiscard]] Bool advance(
-        Float shade_offset) noexcept;
+        Float shade_offset) noexcept override;
 };
 
 }// namespace psycles::luisa_backend
