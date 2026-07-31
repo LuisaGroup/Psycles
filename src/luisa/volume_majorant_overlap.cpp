@@ -1,6 +1,7 @@
 #include <psycles/luisa/volume_majorant_overlap.h>
 
 #include <limits>
+#include <utility>
 
 #include <luisa/dsl/sugar.h>
 
@@ -234,12 +235,12 @@ Bool VolumeMajorantOverlapTraversal::_setup(
 
 VolumeMajorantOverlapTraversal::
     VolumeMajorantOverlapTraversal(
-        const BufferVar<
-            VolumeMajorantNodeGpu> &nodes,
-        const BufferVar<
-            VolumeMajorantRootGpu> &roots,
-        const BufferVar<
-            VolumeMajorantRootRangeGpu> &ranges,
+        Expr<Buffer<
+            VolumeMajorantNodeGpu>> nodes,
+        Expr<Buffer<
+            VolumeMajorantRootGpu>> roots,
+        Expr<Buffer<
+            VolumeMajorantRootRangeGpu>> ranges,
         std::uint32_t node_count,
         std::uint32_t root_count,
         std::uint32_t range_count,
@@ -252,9 +253,9 @@ VolumeMajorantOverlapTraversal::
         Float ray_minimum,
         Float ray_maximum,
         Float shade_offset) noexcept
-    : _nodes{nodes},
-      _roots{roots},
-      _ranges{ranges},
+    : _nodes{std::move(nodes)},
+      _roots{std::move(roots)},
+      _ranges{std::move(ranges)},
       _node_count{node_count},
       _root_count{root_count},
       _range_count{range_count},
@@ -266,7 +267,7 @@ VolumeMajorantOverlapTraversal::
       _world_ray_direction{
           world_ray_direction},
       _ray_maximum{ray_maximum},
-      _active{nodes, ray_maximum},
+      _active{_nodes, ray_maximum},
       _active_entry{
           VolumeStackEntry::none()},
       _active_object_density{0.0f},

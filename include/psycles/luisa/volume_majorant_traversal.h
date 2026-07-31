@@ -26,8 +26,9 @@ struct VolumeMajorantLeaf {
 class VolumeMajorantTraversal {
 
   private:
-    const luisa::compute::BufferVar<
-        VolumeMajorantNodeGpu> &_nodes;
+    luisa::compute::Expr<
+        luisa::compute::Buffer<
+            VolumeMajorantNodeGpu>> _nodes;
     UInt _root_node;
     UInt _node;
     Float _ray_maximum;
@@ -43,8 +44,9 @@ class VolumeMajorantTraversal {
     Bool _valid;
 
     VolumeMajorantTraversal(
-        const luisa::compute::BufferVar<
-            VolumeMajorantNodeGpu> &nodes,
+        luisa::compute::Expr<
+            luisa::compute::Buffer<
+                VolumeMajorantNodeGpu>> nodes,
         Float ray_maximum) noexcept;
 
     [[nodiscard]] UInt _octant() const noexcept;
@@ -62,8 +64,9 @@ class VolumeMajorantTraversal {
 
   public:
     VolumeMajorantTraversal(
-        const luisa::compute::BufferVar<
-            VolumeMajorantNodeGpu> &nodes,
+        luisa::compute::Expr<
+            luisa::compute::Buffer<
+                VolumeMajorantNodeGpu>> nodes,
         const luisa::compute::Var<
             VolumeMajorantRootGpu> &root,
         Float3 ray_origin,

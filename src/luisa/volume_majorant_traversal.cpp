@@ -1,6 +1,7 @@
 #include <psycles/luisa/volume_majorant_traversal.h>
 
 #include <limits>
+#include <utility>
 
 #include <luisa/dsl/builtin.h>
 #include <luisa/dsl/sugar.h>
@@ -26,10 +27,10 @@ inline constexpr float overlap_epsilon =
 
 VolumeMajorantTraversal::
     VolumeMajorantTraversal(
-        const BufferVar<
-            VolumeMajorantNodeGpu> &nodes,
+        Expr<Buffer<
+            VolumeMajorantNodeGpu>> nodes,
         Float ray_maximum) noexcept
-    : _nodes{nodes},
+    : _nodes{std::move(nodes)},
       _root_node{0u},
       _node{0u},
       _ray_maximum{ray_maximum},
@@ -142,15 +143,15 @@ void VolumeMajorantTraversal::_select_from(
 
 VolumeMajorantTraversal::
     VolumeMajorantTraversal(
-        const BufferVar<
-            VolumeMajorantNodeGpu> &nodes,
+        Expr<Buffer<
+            VolumeMajorantNodeGpu>> nodes,
         const Var<
             VolumeMajorantRootGpu> &root,
         Float3 ray_origin,
         Float3 ray_direction,
         Float ray_minimum,
         Float ray_maximum) noexcept
-    : _nodes{nodes},
+    : _nodes{std::move(nodes)},
       _root_node{root.node},
       _node{root.node},
       _ray_maximum{ray_maximum},

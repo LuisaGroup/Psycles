@@ -1,4 +1,5 @@
 #include "cycles_shader_identity.h"
+#include "path_kernel_heterogeneous_volume.h"
 #include "path_kernel_volume_majorant_provider.h"
 #include "path_tracer_generated_coordinates.h"
 #include "path_tracer_volume_capabilities.h"
@@ -8,6 +9,7 @@
 #include <psycles/compiler/shader_program.h>
 #include <psycles/compiler/surface_program.h>
 #include <psycles/luisa/graph_surface.h>
+#include <psycles/sampling/tabulated_sobol.h>
 
 #include <algorithm>
 #include <array>
@@ -1446,6 +1448,312 @@ void run_scene_build(
                 3.1875f),
         "scene majorant provider did not re-evaluate "
         "the next Cycles tracking shade offset on " +
+            std::string{backend});
+
+    const auto generated_sobol =
+        sampling::tabulated_sobol::
+            generate_table(256u);
+    std::vector<luisa::float4> sobol_values;
+    sobol_values.reserve(
+        generated_sobol.size());
+    for (const auto value : generated_sobol) {
+        sobol_values.emplace_back(
+            value.x,
+            value.y,
+            value.z,
+            value.w);
+    }
+    auto sobol_buffer =
+        device.create_buffer<luisa::float4>(
+            sobol_values.size());
+    auto transport_output =
+        device.create_buffer<luisa::float4>(
+            6u);
+    auto path_segment =
+        make_path_heterogeneous_volume_component(
+            scene,
+            points,
+            8u);
+    Kernel1D evaluate_transport =
+        [scene,
+         points,
+         path_segment =
+             path_segment.get(),
+         spatial_surface_tag](
+            BufferFloat4 sobol,
+            BufferFloat4 output) noexcept {
+            BufferShaderServices services{
+                scene->parameter_buffer,
+                scene->cycles_bsdf_table_buffer,
+                scene->texture_heap,
+                scene->heap,
+                scene->attribute_binding_slot,
+                scene->attribute_range_slot,
+                scene->nishita_texture_bindings,
+                scene->shader_color_space};
+            const auto ray_origin =
+                make_float3(
+                    2.0f, -3.0f, 5.0f);
+            const auto ray_direction =
+                make_float3(
+                    1.0f, 0.0f, 0.0f);
+            const VolumeShadingState state{
+                .position = ray_origin,
+                .incoming =
+                    -ray_direction,
+                .ray_visibility =
+                    camera_visibility,
+                .ray_events = 0u,
+                .ray_depth = 0u,
+                .diffuse_depth = 0u,
+                .glossy_depth = 0u,
+                .transparent_depth = 0u,
+                .transmission_depth = 0u,
+                .ray_length = 0.0f,
+                .time = 0.0f};
+            const VolumeStackEntry entry{
+                .object = 91u,
+                .shader =
+                    37u |
+                    cycles_shader_identity::
+                        cast_shadow,
+                .surface_tag =
+                    spatial_surface_tag,
+                .parameter_block = 0u,
+                .instance_id = 0u,
+                .sample_method =
+                    volume_sample_distance,
+                .valid = true};
+            VolumeStack stack{2u};
+            stack.initialize_background(
+                entry, true);
+            constexpr auto sequence_size =
+                std::uint32_t{256u};
+            constexpr auto sample_index =
+                std::uint32_t{63u};
+            constexpr auto path_rng_offset =
+                std::uint32_t{16u};
+            const auto rng_hash =
+                cycles_sampler::pixel_hash(
+                    17u, 29u, 0u);
+            const auto phase_random =
+                cycles_sampler::sample_2d(
+                    sobol,
+                    sequence_size,
+                    sample_index,
+                    rng_hash,
+                    cycles_sampler::
+                        path_state_dimension(
+                            path_rng_offset,
+                            sampling::
+                                tabulated_sobol::
+                                    volume_phase_dimension));
+            const auto heterogeneous =
+                path_segment
+                    ->stack_is_heterogeneous(
+                        stack);
+            const auto result =
+                path_segment->emit(
+                    {.stack = stack,
+                     .services = services,
+                     .state = state,
+                     .sobol_table = sobol,
+                     .sobol_sequence_size =
+                         sequence_size,
+                     .sample_index =
+                         sample_index,
+                     .rng_hash = rng_hash,
+                     .path_rng_offset =
+                         path_rng_offset,
+                     .ray_origin =
+                         ray_origin,
+                     .ray_direction =
+                         ray_direction,
+                     .ray_minimum = 0.0f,
+                     .ray_maximum = 0.5f,
+                     .throughput =
+                         make_float3(1.0f),
+                     .reservoir_random =
+                         0.01f,
+                     .phase_random =
+                         phase_random,
+                     .majorant_scale = 1.0f,
+                     .terminate = false});
+            output.write(
+                0u,
+                make_float4(
+                    result.transport
+                        .throughput,
+                    result.transport
+                        .distance));
+            output.write(
+                1u,
+                make_float4(
+                    result.transport
+                        .emission,
+                    result.transport
+                        .null_transmittance));
+            output.write(
+                2u,
+                make_float4(
+                    result.transport
+                        .reservoir_random,
+                    result.transport
+                        .optical_depth,
+                    cast<float>(
+                        result.transport
+                            .steps),
+                    as<float>(
+                        result.transport
+                            .next_tracking_rng_offset)));
+            output.write(
+                3u,
+                make_float4(
+                    select(
+                        0.0f,
+                        1.0f,
+                        heterogeneous),
+                    select(
+                        0.0f,
+                        1.0f,
+                        result.transport
+                            .selected_scatter),
+                    select(
+                        0.0f,
+                        1.0f,
+                        result.transport
+                            .traversal_exhausted),
+                    select(
+                        0.0f,
+                        1.0f,
+                        result.transport
+                            .active)));
+            output.write(
+                4u,
+                make_float4(
+                    result.phase.direction,
+                    result.phase.pdf));
+            output.write(
+                5u,
+                make_float4(
+                    phase_random,
+                    select(
+                        0.0f,
+                        1.0f,
+                        result.scattered),
+                    select(
+                        0.0f,
+                        1.0f,
+                        result.transport
+                            .majorant_exceeded)));
+        };
+    ShaderOption transport_options;
+    transport_options.enable_cache = true;
+    transport_options.enable_fast_math = false;
+    auto transport_shader =
+        device.compile(
+            evaluate_transport,
+            transport_options);
+    std::array<luisa::float4, 6u>
+        transport_values{};
+    stream
+        << sobol_buffer.copy_from(
+               luisa::span{sobol_values})
+        << transport_shader(
+               sobol_buffer,
+               transport_output)
+               .dispatch(1u)
+        << transport_output.copy_to(
+               luisa::span{
+                   transport_values})
+        << synchronize();
+    for (const auto &value : transport_values) {
+        expect(
+            std::isfinite(value.x) &&
+                std::isfinite(value.y) &&
+                std::isfinite(value.z) &&
+                std::isfinite(value.w),
+            "production heterogeneous segment "
+            "produced a non-finite value on " +
+                std::string{backend});
+    }
+    // Pinned to current Cycles' absolute-ray octree interval, copied and
+    // scrambled tracking RNG, weighted null recursion, and pure-emission
+    // estimator. The original spatial GraphSurface is evaluated at the
+    // candidate; the hierarchy contributes only its sampled majorant.
+    expect(
+        close(transport_values[0u].x, 1.0f) &&
+            close(
+                transport_values[0u].y,
+                1.0f) &&
+            close(
+                transport_values[0u].z,
+                1.0f) &&
+            close(
+                transport_values[0u].w,
+                0.5f) &&
+            close(
+                transport_values[1u].x,
+                0.5614846945f) &&
+            close(
+                transport_values[1u].y,
+                0.4992200434f) &&
+            close(
+                transport_values[1u].z,
+                0.4992200434f) &&
+            close(
+                transport_values[1u].w,
+                1.0f) &&
+            close(
+                transport_values[2u].x,
+                0.01f) &&
+            close(
+                transport_values[2u].y,
+                0.5007811785f) &&
+            close(
+                transport_values[2u].z,
+                2.0f) &&
+            std::bit_cast<std::uint32_t>(
+                transport_values[2u].w) ==
+                362294328u &&
+            close(
+                transport_values[3u].x,
+                1.0f) &&
+            close(
+                transport_values[3u].y,
+                0.0f) &&
+            close(
+                transport_values[3u].z,
+                1.0f) &&
+            close(
+                transport_values[3u].w,
+                1.0f) &&
+            close(
+                transport_values[4u].x,
+                1.0f) &&
+            close(
+                transport_values[4u].y,
+                0.0f) &&
+            close(
+                transport_values[4u].z,
+                0.0f) &&
+            close(
+                transport_values[4u].w,
+                0.0f) &&
+            close(
+                transport_values[5u].x,
+                0.099866651f) &&
+            close(
+                transport_values[5u].y,
+                0.01901064254f) &&
+            close(
+                transport_values[5u].z,
+                0.0f) &&
+            close(
+                transport_values[5u].w,
+                0.0f),
+        "production heterogeneous raw-graph segment "
+        "changed on " +
             std::string{backend});
 }
 

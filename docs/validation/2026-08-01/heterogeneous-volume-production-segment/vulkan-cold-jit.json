@@ -1,0 +1,50 @@
+{
+  "schema": "psycles.vulkan-cold-jit.v1",
+  "date": "2026-08-01",
+  "backend": "vk",
+  "device": "AMD RADV",
+  "luisa_path": "native XIR to SPIR-V",
+  "environment": {
+    "LUISA_LOG_LEVEL": "verbose",
+    "LUISA_SPIRV_OPT_LEVEL": "2"
+  },
+  "cold_process": {
+    "wall_seconds": 39.32,
+    "user_seconds": 48.24,
+    "system_seconds": 79.03,
+    "maximum_resident_kib": 542608
+  },
+  "kernel_variants": [
+    {
+      "ast_to_xir_ms": 28.56,
+      "structured_optimization_ms": 47.76,
+      "xir_legalization_ms": 15047.8,
+      "restructure_cfg_ms": 14854.94,
+      "spirv_words_before_optimization": 122564,
+      "spirv_words_after_optimization": 106340,
+      "pipeline_ready_after_codegen_ms": 35
+    },
+    {
+      "ast_to_xir_ms": 50.48,
+      "structured_optimization_ms": 118.53,
+      "xir_legalization_ms": 21706.09,
+      "restructure_cfg_ms": 21213.56,
+      "spirv_words_before_optimization": 189927,
+      "spirv_words_after_optimization": 176997,
+      "pipeline_ready_after_codegen_ms": 59
+    }
+  ],
+  "aggregate": {
+    "xir_legalization_ms": 36753.89,
+    "xir_legalization_fraction_of_process_wall": 0.9347,
+    "restructure_cfg_ms": 36068.5,
+    "restructure_cfg_fraction_of_process_wall": 0.9173
+  },
+  "warm_process": {
+    "wall_seconds": 1.0,
+    "user_seconds": 1.38,
+    "system_seconds": 4.08,
+    "maximum_resident_kib": 472780
+  },
+  "conclusion": "Cold Vulkan shader compilation is dominated by formal XIR CFG restructuring; AST conversion, SPIR-V processing, validation, and pipeline creation are not the dominant stages."
+}
