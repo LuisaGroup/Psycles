@@ -276,6 +276,8 @@ struct LuisaSceneData {
     Accel accel;
     CameraDesc camera;
     VolumeSceneMetadata volume_metadata;
+    Buffer<luisa::uint> volume_surface_flag_buffer;
+    std::uint32_t volume_surface_flag_count{};
     Buffer<VolumeMajorantNodeGpu>
         volume_majorant_node_buffer;
     Buffer<VolumeMajorantRootGpu>

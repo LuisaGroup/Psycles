@@ -30,6 +30,17 @@ class SceneVolumeStackEntryPointProvider final
         std::shared_ptr<LuisaSceneData> scene) noexcept
         : _scene{std::move(scene)} {}
 
+    Float object_density(
+        const VolumeStackEntry &entry)
+        const noexcept override {
+        static_cast<void>(entry);
+        // The scene contract currently represents mesh-boundary volumes.
+        // Cycles scales those by one regardless of instance transform;
+        // object-space VDB volumes will carry their explicit correction in
+        // the geometry record.
+        return 1.0f;
+    }
+
     VolumeStackEntryShading emit(
         const VolumeStackEntry &entry,
         const VolumeShadingState &state)
@@ -188,11 +199,8 @@ class SceneVolumeStackEntryPointProvider final
             .back_facing = false};
         return {
             .point = std::move(point),
-            // The scene contract currently represents mesh-boundary
-            // volumes. Cycles scales those by one regardless of instance
-            // transform; object-space VDB volumes will carry their explicit
-            // object_volume_density in a future geometry kind.
-            .object_density = 1.0f};
+            .object_density =
+                object_density(entry)};
     }
 };
 

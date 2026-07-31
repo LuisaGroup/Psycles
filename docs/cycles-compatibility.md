@@ -202,9 +202,10 @@ closure graphs, resolves attenuation/emission or a phase collision, and
 applies the total Cycles volume path-state transition. Scene compilation now
 accepts raw volume programs structurally proven homogeneous and explicitly
 rejects spatially varying volume dependencies at the production path gate.
-Heterogeneous acceleration metadata and overlap traversal are implemented,
-but runtime collision/phase/direct-light integration remains open; volume
-lighting outside the exact homogeneous analytic-light subset therefore
+Heterogeneous acceleration metadata, overlap traversal, object/World
+coordinate conversion, and runtime Light Path extrema re-evaluation are
+implemented, but collision/phase/direct-light integration remains open;
+volume lighting outside the exact homogeneous analytic-light subset therefore
 remains unverified in the public node matrix.
 
 World volume identity is now complete in scene schema v2: the exporter retains
@@ -629,6 +630,13 @@ The complete stack-root-domain correction is recorded in
 [`validation/2026-07-31/volume-majorant-root-domain`](validation/2026-07-31/volume-majorant-root-domain/README.md).
 The ordered overlap reduction is recorded in
 [`validation/2026-07-31/volume-majorant-overlap`](validation/2026-07-31/volume-majorant-overlap/README.md).
+The production provider now uploads structural heterogeneous and Light Path
+capability flags, applies exact object/World coordinate semantics, and follows
+Cycles' one/four-sample runtime extrema policy. The Light Path bit deliberately
+matches Cycles' finalized whole-shader scan, including surface-only uses;
+Volume homogeneity remains a separate complete dependency reduction.
+The exact device regression is recorded in
+[`validation/2026-07-31/volume-majorant-runtime-provider`](validation/2026-07-31/volume-majorant-runtime-provider/README.md).
 
 Adaptive sampling and denoising are exported and diagnosed but are not part of
 the path-integrator estimator. Psycles renders fixed-count, un-denoised linear
@@ -645,8 +653,7 @@ compatible yet:
 
 - Cycles' emitter importance distribution and environment importance map;
 - light-tree construction and traversal;
-- heterogeneous production transforms/runtime Light Path extrema and
-  collision/phase/direct-light path integration;
+- heterogeneous collision/phase/direct-light path integration;
 - remaining distant-light forward/background behavior;
 - MNEE, path guiding, shadow catcher, light linking, and light groups;
 - Cycles' exact sampling sequence and random dimensions.

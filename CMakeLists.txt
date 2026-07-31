@@ -244,6 +244,7 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/path_kernel_volume_boundary.cpp
             src/luisa/path_kernel_volume_direct_light.cpp
             src/luisa/path_kernel_volume_environment_light.cpp
+            src/luisa/path_kernel_volume_majorant_provider.cpp
             src/luisa/path_kernel_volume_mesh_light.cpp
             src/luisa/path_kernel_volume_point.cpp
             src/luisa/path_kernel_volume_segment.cpp

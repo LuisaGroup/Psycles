@@ -12,8 +12,12 @@ VolumeMajorantRuntimeExtrema
 VolumeMajorantEntryProvider::extrema(
     const VolumeStackEntry &entry,
     const VolumeMajorantLeaf &leaf,
-    Float object_density) const noexcept {
+    Float object_density,
+    Float3 world_ray_origin,
+    Float3 world_ray_direction) const noexcept {
     static_cast<void>(entry);
+    static_cast<void>(world_ray_origin);
+    static_cast<void>(world_ray_direction);
     return {
         .minimum =
             leaf.sigma_minimum *
@@ -166,9 +170,11 @@ Bool VolumeMajorantOverlapTraversal::_setup()
                         candidate.current();
                     const auto extrema =
                         _provider.extrema(
-                            entry,
-                            leaf,
-                            space.object_density);
+                        entry,
+                        leaf,
+                        space.object_density,
+                        _world_ray_origin,
+                        _world_ray_direction);
                     _sigma_minimum +=
                         select(
                             0.0f,
@@ -315,7 +321,9 @@ Bool VolumeMajorantOverlapTraversal::advance()
                 _provider.extrema(
                     _active_entry,
                     leaf,
-                    _active_object_density);
+                    _active_object_density,
+                    _world_ray_origin,
+                    _world_ray_direction);
             _sigma_minimum =
                 extrema.minimum;
             _sigma_maximum =

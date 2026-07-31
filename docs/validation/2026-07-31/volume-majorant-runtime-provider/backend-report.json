@@ -1,0 +1,49 @@
+{
+  "date": "2026-07-31",
+  "cycles_commit": "b82c3f0da6c1813dabedc563d64e536f4d83e868",
+  "fixture": {
+    "scene_roots": 2,
+    "scene_nodes": 10,
+    "surface_capability_cases": 4,
+    "heterogeneous_runtime_samples": 4,
+    "shade_offset": 0.25,
+    "heterogeneous_minimum": 1.54166667,
+    "heterogeneous_maximum": 3.0625
+  },
+  "backends": {
+    "fallback": {
+      "wall_seconds": 0.09,
+      "result": "pass",
+      "threads": 32
+    },
+    "hip": {
+      "wall_seconds": 0.14,
+      "result": "pass",
+      "device": "AMD Radeon RX 9070 XT",
+      "architecture": "gfx1201"
+    },
+    "vk": {
+      "wall_seconds": 0.10,
+      "result": "pass",
+      "device": "AMD Radeon RX 9070 XT",
+      "driver": "RADV"
+    }
+  },
+  "focused_ctest": {
+    "passed": 3,
+    "failed": 0,
+    "wall_seconds": 0.14
+  },
+  "full_validation": {
+    "build_parallelism": 32,
+    "build_wall_seconds": 8.17,
+    "final_incremental_build_wall_seconds": 0.28,
+    "ctest_passed": 105,
+    "ctest_failed": 0,
+    "ctest_wall_seconds": 8.96
+  },
+  "visual": {
+    "applicable": false,
+    "reason": "Internal transforms and scalar runtime extrema; no pixels are emitted by this checkpoint."
+  }
+}
