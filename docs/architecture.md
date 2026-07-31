@@ -143,6 +143,13 @@ also receives an explicit context that carries object-density scaling and
 whether emission is observable; shadow and extinction-only evaluations never
 infer that context from unrelated surface flags.
 
+Volume phase mathematics is kept outside the path integrator in
+`cycles_volume_phase.h`. It exposes normalized phase closures and samples,
+while `cycles_fast_math.h` fixes the small set of Cycles numerical
+approximations used by fitted Mie parameters. The volume-stack component is
+responsible for retaining and mixing raw graph closures; it must not collapse
+phase parameters into an averaged anisotropy.
+
 ### Scene
 
 `SceneDatabase` stores immutable logical snapshots and accepts a `SceneDelta`
