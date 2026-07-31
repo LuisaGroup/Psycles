@@ -258,8 +258,14 @@ free-flight before an ordinary spot sample from the final collision. The
 absolute error `1.1921e-7`, and Vulkan with `3.2783e-7`. Reports, EXRs, and
 visually inspected triptychs are in
 [`validation/2026-07-31/homogeneous-volume-spot-mis`](validation/2026-07-31/homogeneous-volume-spot-mis/README.md).
-Area/triangle sampling, environment volume NEE, and heterogeneous transport
-remain separate work.
+Finite rectangle/ellipse area-light MIS now preserves Cycles' separate
+authored-primitive segment proposal, spread-clamped collision proposal, and
+shared forward-hit evaluation. Full and narrow-spread official CPU EXRs match
+fallback, HIP, and Vulkan with maximum absolute error at or below
+`1.1027e-6`. Reports, EXRs, and inspected triptychs are in
+[`validation/2026-07-31/homogeneous-volume-area-mis`](validation/2026-07-31/homogeneous-volume-area-mis/README.md).
+Triangle sampling, environment volume NEE, and heterogeneous transport remain
+separate work.
 
 Accumulated VSPG history is now connected end to end. The production path
 classifies every Combined contribution into Cycles' raw scatter/transmit
@@ -531,8 +537,13 @@ Forward surface, lamp, background, and volume emission use Cycles'
 first scattered emitter as indirect.
 
 Direct-light mode weights distinguish forward-only, NEE-only, and power-
-heuristic MIS. Analytic lights currently have no forward intersection
-technique, so their NEE estimator intentionally carries full weight.
+heuristic MIS. Finite point, spot, and rectangle/ellipse area lights have
+matching production NEE and forward-intersection techniques. Surface and
+volume area-light NEE now use the same spread-clamped Cycles component; the
+32×32 narrow-ellipse CPU oracle matches all three Luisa backends with relative
+RMSE at or below `1.60e-6` against Blender/Cycles main `b82c3f0d`. The reports
+and inspected triptychs are in
+[`validation/2026-07-31/surface-area-light-mis`](validation/2026-07-31/surface-area-light-mis/README.md).
 When the light tree is disabled, the Luisa NEE path applies Cycles'
 `film_exposure / light_sampling_threshold` roulette to the unshadowed light
 sample and compensates surviving samples by the reciprocal probability.
@@ -555,8 +566,8 @@ compatible yet:
 
 - Cycles' emitter importance distribution and environment importance map;
 - light-tree construction and traversal;
-- area/triangle/environment volume NEE and heterogeneous grid integration;
-- forward intersections for analytic area and distant lights;
+- triangle/environment volume NEE and heterogeneous grid integration;
+- remaining distant-light forward/background behavior;
 - MNEE, path guiding, shadow catcher, light linking, and light groups;
 - Cycles' exact sampling sequence and random dimensions.
 

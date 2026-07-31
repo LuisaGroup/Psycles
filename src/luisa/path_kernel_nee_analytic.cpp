@@ -1,6 +1,7 @@
 #include "path_kernel_builder.h"
 
-#include <psycles/luisa/analytic_light_sampling.h>
+#include "path_kernel_area_light.h"
+
 #include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/spherical_geometry.h>
 #include <psycles/luisa/surface_ray.h>
@@ -11,6 +12,9 @@ namespace psycles::luisa_backend::detail {
 namespace {
 
 class AnalyticLightingComponent final : public DirectLightingComponent {
+
+  private:
+    AreaLightSampling _area_sampling;
 
   public:
     void emit(DirectLightingContext &context) const noexcept override {
@@ -113,61 +117,32 @@ class AnalyticLightingComponent final : public DirectLightingComponent {
             Bool light_valid = false;
 
             $if(light.type == static_cast<std::uint32_t>(LightType::area)) {
-                Float sample_x = light_sample.x;
-                Float sample_y = light_sample.y;
-                Bool ellipse = (light.flags & light_flag_ellipse) != 0u;
-                Bool solid_angle_rectangle =
-                    !ellipse & ((light.flags & light_flag_full_spread) != 0u);
-                Float rectangle_pdf = 0.0f;
-                Float2 disk = cycles_sample_mapping::sample_uniform_disk(
-                    light_sample.xy());
-                Float u = select(sample_x - 0.5f, 0.5f * disk.x, ellipse);
-                Float v = select(sample_y - 0.5f, 0.5f * disk.y, ellipse);
-                light_position = light.position +
-                                 light.axis_x * (u * light.size_u) +
-                                 light.axis_y * (v * light.size_v);
-                $if(solid_angle_rectangle) {
-                    const auto rectangle_sample =
-                        analytic_light_sampling::sample_rectangle_solid_angle(
+                const auto finite_sample =
+                    _area_sampling.from_position(
+                        area_light_sample_input(
+                            light,
                             hit_position,
-                            light.position,
-                            light.axis_x,
-                            light.size_u,
-                            light.axis_y,
-                            light.size_v,
-                            light_sample.xy());
-                    light_position = rectangle_sample.position;
-                    rectangle_pdf = rectangle_sample.pdf;
-                };
-                Float3 inplane = light_position - light.position;
-                u = dot(inplane, light.axis_x) / max(light.size_u, 1.0e-20f);
-                v = dot(inplane, light.axis_y) / max(light.size_v, 1.0e-20f);
-                Float3 offset = light_position - hit_position;
-                Float distance2 = length_squared(offset);
-                light_distance = sqrt(max(distance2, 1.0e-20f));
-                wi = offset / light_distance;
-                Float cosine = max(dot(-light.axis_z, -wi), 0.0f);
-                Float area = light.size_u * light.size_v;
-                area *= select(1.0f, 0.25f * pi, ellipse);
-                area = max(area, 1.0e-12f);
-                const auto area_pdf = distance2 / max(cosine * area, 1.0e-20f);
+                            light_sample.xy()));
+                wi = finite_sample.direction;
+                light_position =
+                    finite_sample.position;
+                light_normal =
+                    finite_sample.normal;
+                light_uv = finite_sample.uv;
+                light_distance =
+                    finite_sample.distance;
                 light_pdf =
-                    select(area_pdf, rectangle_pdf, solid_angle_rectangle);
-                Bool normalize_power =
-                    (light.flags & light_flag_normalize) != 0u;
-                Float inverse_area = select(1.0f, 1.0f / area, normalize_power);
-                Float spread_attenuation =
-                    analytic_light_sampling::area_spread_attenuation(
-                        wi, -light.axis_z, light.spread);
-                light_radiance =
-                    light.color * (light.power * inverse_area * (1.0f / pi) *
-                                   spread_attenuation);
+                    finite_sample
+                        .conditional_pdf;
                 light_eval_factor =
-                    inverse_area * (1.0f / pi) * spread_attenuation;
-                light_normal = -light.axis_z;
-                light_uv = make_float2(v + 0.5f, -u - v);
-                light_valid = (distance2 > 1.0e-12f) & (cosine > 0.0f) &
-                              (spread_attenuation > 0.0f);
+                    finite_sample
+                        .evaluation_factor;
+                light_radiance =
+                    light.color *
+                    (light.power *
+                     light_eval_factor);
+                light_valid =
+                    finite_sample.valid;
             }
             $elif(light.type ==
                   static_cast<std::uint32_t>(LightType::distant)) {
