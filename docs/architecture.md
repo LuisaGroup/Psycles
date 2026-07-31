@@ -154,9 +154,23 @@ is a separate `.h`/`.cpp` AST-builder component:
 it stores closures in device-local memory, merges only exactly equal
 family-specific parameters, preserves source order, applies Cycles' explicit
 eight-phase copy limit, evaluates the sample-weighted mixture, and performs
-Cycles' reservoir selection with random-number reuse. The future volume-stack
-component will aggregate these raw sets across participating media; neither
-component may collapse phase parameters into an averaged anisotropy.
+Cycles' reservoir selection with random-number reuse. The path integrator will
+aggregate these raw sets across the media named by its volume stack; neither
+stage may collapse phase parameters into an averaged anisotropy.
+
+`VolumeStack` is the device-local boundary-state component. Its fixed storage
+contains Cycles' mandatory terminator slot, is capped at
+`MAX_VOLUME_STACK_SIZE == 32`, and identifies media by the exact
+`(object, shader)` pair. Enter transitions append in order, exit transitions
+swap the last active entry into the removed slot, and updates are gated by
+volume capability plus a transmitted surface label. The same component owns
+the extra Psycles dispatch handles needed to evaluate the original volume
+graph; those handles do not replace Cycles identity. Camera enclosure discovery
+is a separate host-stage `VolumeStackCameraInitializer`: it models Cycles'
+bounded +Z probe, including object-only membership tests and duplicate
+front-hit accounting. Camera traversal and free-flight integration consume
+these components in later path-kernel slices rather than duplicating their
+state rules.
 
 ### Scene
 

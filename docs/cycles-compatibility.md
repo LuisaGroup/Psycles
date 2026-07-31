@@ -132,7 +132,18 @@ Draine, fitted-Mie HG, fitted-Mie Draine, and Principled HG closures plus
 merge, capacity, truncation, empty-set, and combined single-trace regressions.
 Its phase values and three deterministic samples are pinned to official
 Cycles main `b82c3f0` and pass on fallback, HIP, and Vulkan. This is still not
-a render-compatibility claim: volume-stack tracking, free-flight integration,
+a render-compatibility claim.
+
+Volume boundary state is the third internal checkpoint. The device-local
+`VolumeStack` matches Cycles' terminator-reserved capacity, exact
+`(object, shader)` identity, stable enter, swap-last exit, volume/transmission
+guards, shadow-stack copy, and fixed 32-slot bound. Its camera initializer
+matches the bounded +Z enclosure probe, including object-only membership and
+the otherwise easy-to-miss duplicate front-hit accounting. A 23-record
+fixture pinned to official Cycles main `b82c3f0` passes on fallback, HIP, and
+Vulkan. The entries additionally retain the raw Psycles surface dispatch
+handles required to evaluate each medium without changing Cycles identity
+semantics. Path-kernel traversal and boundary hookup, free-flight integration,
 heterogeneous grids, and volume direct lighting remain open, so the four
 Blender volume nodes remain unverified in the public node matrix.
 
@@ -385,7 +396,7 @@ compatible yet:
 
 - Cycles' emitter importance distribution and environment importance map;
 - light-tree construction and traversal;
-- volume transport and volume stack state;
+- volume transport and path-kernel integration of volume stack state;
 - forward intersections for analytic area and distant lights;
 - MNEE, path guiding, shadow catcher, light linking, and light groups;
 - Cycles' exact sampling sequence and random dimensions.
