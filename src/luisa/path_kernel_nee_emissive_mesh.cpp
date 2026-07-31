@@ -1,4 +1,5 @@
 #include "path_kernel_builder.h"
+#include "path_kernel_triangle_geometry.h"
 
 #include <psycles/luisa/spherical_geometry.h>
 #include <psycles/luisa/surface_ray.h>
@@ -10,7 +11,15 @@ namespace {
 
 class EmissiveMeshLightingComponent final : public DirectLightingComponent {
 
+private:
+    std::shared_ptr<const TriangleGeometryComponent>
+        _triangle_geometry;
+
   public:
+    EmissiveMeshLightingComponent()
+        : _triangle_geometry{
+              make_triangle_geometry_component()} {}
+
     void emit(DirectLightingContext &context) const noexcept override {
         auto &bounce = context.bounce;
         auto &sample = bounce.sample;
@@ -73,74 +82,34 @@ class EmissiveMeshLightingComponent final : public DirectLightingComponent {
                 sampling::LightDistributionEmitterKind::emissive_triangle)) {
             Var<EmissiveTriangleGpu> emitter =
                 scene->emissive_triangle_buffer->read(selected_light.index);
-            Var<GeometryGpu> light_geometry =
-                scene->geometry_buffer->read(emitter.geometry_index);
-            Var<Triangle> light_triangle =
-                scene->heap->buffer<Triangle>(light_geometry.bindless_base)
-                    .read(emitter.primitive_index);
-            Float3 lp0 =
-                scene->heap
-                    ->buffer<luisa::float3>(light_geometry.bindless_base + 1u)
-                    .read(light_triangle.i0);
-            Float3 lp1 =
-                scene->heap
-                    ->buffer<luisa::float3>(light_geometry.bindless_base + 1u)
-                    .read(light_triangle.i1);
-            Float3 lp2 =
-                scene->heap
-                    ->buffer<luisa::float3>(light_geometry.bindless_base + 1u)
-                    .read(light_triangle.i2);
-            Float3 ln0 =
-                scene->heap
-                    ->buffer<luisa::float3>(light_geometry.bindless_base + 2u)
-                    .read(light_triangle.i0);
-            Float3 ln1 =
-                scene->heap
-                    ->buffer<luisa::float3>(light_geometry.bindless_base + 2u)
-                    .read(light_triangle.i1);
-            Float3 ln2 =
-                scene->heap
-                    ->buffer<luisa::float3>(light_geometry.bindless_base + 2u)
-                    .read(light_triangle.i2);
-            Float2 luv0 =
-                scene->heap
-                    ->buffer<luisa::float2>(light_geometry.bindless_base + 3u)
-                    .read(light_triangle.i0);
-            Float2 luv1 =
-                scene->heap
-                    ->buffer<luisa::float2>(light_geometry.bindless_base + 3u)
-                    .read(light_triangle.i1);
-            Float2 luv2 =
-                scene->heap
-                    ->buffer<luisa::float2>(light_geometry.bindless_base + 3u)
-                    .read(light_triangle.i2);
-            Float4 light_tangent0 =
-                scene->heap
-                    ->buffer<luisa::float4>(light_geometry.bindless_base + 7u)
-                    .read(light_triangle.i0);
-            Float4 light_tangent1 =
-                scene->heap
-                    ->buffer<luisa::float4>(light_geometry.bindless_base + 7u)
-                    .read(light_triangle.i1);
-            Float4 light_tangent2 =
-                scene->heap
-                    ->buffer<luisa::float4>(light_geometry.bindless_base + 7u)
-                    .read(light_triangle.i2);
-            Float3 light_generated0 =
-                scene->heap
-                    ->buffer<luisa::float3>(light_geometry.bindless_base + 5u)
-                    .read(light_triangle.i0);
-            Float3 light_generated1 =
-                scene->heap
-                    ->buffer<luisa::float3>(light_geometry.bindless_base + 5u)
-                    .read(light_triangle.i1);
-            Float3 light_generated2 =
-                scene->heap
-                    ->buffer<luisa::float3>(light_geometry.bindless_base + 5u)
-                    .read(light_triangle.i2);
-            Float light_random_per_island =
-                scene->heap->buffer<float>(light_geometry.bindless_base + 6u)
-                    .read(emitter.primitive_index);
+            auto light_attributes =
+                _triangle_geometry->emit(
+                    scene,
+                    emitter.geometry_index,
+                    emitter.primitive_index);
+            auto &lp0 = light_attributes.p0;
+            auto &lp1 = light_attributes.p1;
+            auto &lp2 = light_attributes.p2;
+            auto &ln0 = light_attributes.n0;
+            auto &ln1 = light_attributes.n1;
+            auto &ln2 = light_attributes.n2;
+            auto &luv0 = light_attributes.uv0;
+            auto &luv1 = light_attributes.uv1;
+            auto &luv2 = light_attributes.uv2;
+            auto &light_tangent0 =
+                light_attributes.tangent0;
+            auto &light_tangent1 =
+                light_attributes.tangent1;
+            auto &light_tangent2 =
+                light_attributes.tangent2;
+            auto &light_generated0 =
+                light_attributes.generated0;
+            auto &light_generated1 =
+                light_attributes.generated1;
+            auto &light_generated2 =
+                light_attributes.generated2;
+            auto &light_random_per_island =
+                light_attributes.random_per_island;
             Var<InstanceGpu> light_instance =
                 scene->instance_buffer->read(emitter.instance_index);
             Float3 local_lp0 = lp0;
@@ -165,8 +134,11 @@ class EmissiveMeshLightingComponent final : public DirectLightingComponent {
                  make_float4(light_object_geometric_normal, 0.0f))
                     .xyz(),
                 make_float3(0.0f, 0.0f, 1.0f));
-            Float3 light_object_shading_normal =
-                triangle_interpolate(light_barycentric, ln0, ln1, ln2);
+            Float3 light_object_shading_normal = select(
+                light_object_geometric_normal,
+                triangle_interpolate(
+                    light_barycentric, ln0, ln1, ln2),
+                light_attributes.smooth);
             Float4 light_object_tangent =
                 triangle_interpolate(light_barycentric,
                                      light_tangent0,

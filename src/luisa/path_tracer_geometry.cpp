@@ -1,5 +1,6 @@
 #include "path_tracer_geometry.h"
 
+#include "path_kernel_triangle_geometry.h"
 #include "path_tracer_shader_services.h"
 
 #include <psycles/luisa/surface_ray.h>
@@ -16,8 +17,10 @@ using EvaluateShadowSurfaceCallable =
 make_evaluate_shadow_surface_callable(
     const std::shared_ptr<LuisaSceneData> &scene,
     const SafeNormalizeCallable &safe_normalize) noexcept {
+    const auto triangle_geometry =
+        make_triangle_geometry_component();
     EvaluateShadowSurfaceCallable evaluate_shadow_surface =
-        [scene, safe_normalize](
+        [scene, safe_normalize, triangle_geometry](
             Var<luisa::compute::Ray> candidate_ray,
             Var<luisa::compute::CommittedHit> hit,
             Var<ShaderEvaluationStateCall>
@@ -37,116 +40,38 @@ make_evaluate_shadow_surface_callable(
                                 Var<InstanceGpu> instance =
                                     scene->instance_buffer->read(
                                         hit->inst);
-                                Var<GeometryGpu> geometry =
-                                    scene->geometry_buffer->read(
-                                        instance.geometry_index);
-                                Var<Triangle> triangle =
-                                    scene->heap
-                                        ->buffer<Triangle>(
-                                            geometry.bindless_base)
-                                        .read(hit->prim);
-                                Float3 p0 =
-                                    scene->heap
-                                        ->buffer<luisa::float3>(
-                                            geometry.bindless_base +
-                                            1u)
-                                        .read(triangle.i0);
-                                Float3 p1 =
-                                    scene->heap
-                                        ->buffer<luisa::float3>(
-                                            geometry.bindless_base +
-                                            1u)
-                                        .read(triangle.i1);
-                                Float3 p2 =
-                                    scene->heap
-                                        ->buffer<luisa::float3>(
-                                            geometry.bindless_base +
-                                            1u)
-                                        .read(triangle.i2);
-                                Float3 n0 =
-                                    scene->heap
-                                        ->buffer<luisa::float3>(
-                                            geometry.bindless_base +
-                                            2u)
-                                        .read(triangle.i0);
-                                Float3 n1 =
-                                    scene->heap
-                                        ->buffer<luisa::float3>(
-                                            geometry.bindless_base +
-                                            2u)
-                                        .read(triangle.i1);
-                                Float3 n2 =
-                                    scene->heap
-                                        ->buffer<luisa::float3>(
-                                            geometry.bindless_base +
-                                            2u)
-                                        .read(triangle.i2);
-                                Float2 uv0 =
-                                    scene->heap
-                                        ->buffer<luisa::float2>(
-                                            geometry.bindless_base +
-                                            3u)
-                                        .read(triangle.i0);
-                                Float2 uv1 =
-                                    scene->heap
-                                        ->buffer<luisa::float2>(
-                                            geometry.bindless_base +
-                                            3u)
-                                        .read(triangle.i1);
-                                Float2 uv2 =
-                                    scene->heap
-                                        ->buffer<luisa::float2>(
-                                            geometry.bindless_base +
-                                            3u)
-                                        .read(triangle.i2);
-                                Float4 tangent0 =
-                                    scene->heap
-                                        ->buffer<luisa::float4>(
-                                            geometry.bindless_base +
-                                            7u)
-                                        .read(triangle.i0);
-                                Float4 tangent1 =
-                                    scene->heap
-                                        ->buffer<luisa::float4>(
-                                            geometry.bindless_base +
-                                            7u)
-                                        .read(triangle.i1);
-                                Float4 tangent2 =
-                                    scene->heap
-                                        ->buffer<luisa::float4>(
-                                            geometry.bindless_base +
-                                            7u)
-                                        .read(triangle.i2);
-                                Float3 generated0 =
-                                    scene->heap
-                                        ->buffer<luisa::float3>(
-                                            geometry.bindless_base +
-                                            5u)
-                                        .read(triangle.i0);
-                                Float3 generated1 =
-                                    scene->heap
-                                        ->buffer<luisa::float3>(
-                                            geometry.bindless_base +
-                                            5u)
-                                        .read(triangle.i1);
-                                Float3 generated2 =
-                                    scene->heap
-                                        ->buffer<luisa::float3>(
-                                            geometry.bindless_base +
-                                            5u)
-                                        .read(triangle.i2);
-                                Float random_per_island =
-                                    scene->heap
-                                        ->buffer<float>(
-                                            geometry.bindless_base +
-                                            6u)
-                                        .read(hit->prim);
-                                UInt material_slot =
-                                    scene->heap
-                                        ->buffer<luisa::uint>(
-                                            geometry.bindless_base +
-                                            4u)
-                                        .read(hit->prim);
+                                auto attributes =
+                                    triangle_geometry->emit(
+                                        scene,
+                                        instance.geometry_index,
+                                        hit->prim);
+                                auto &geometry =
+                                    attributes.geometry;
+                                auto &p0 = attributes.p0;
+                                auto &p1 = attributes.p1;
+                                auto &p2 = attributes.p2;
+                                auto &n0 = attributes.n0;
+                                auto &n1 = attributes.n1;
+                                auto &n2 = attributes.n2;
+                                auto &uv0 = attributes.uv0;
+                                auto &uv1 = attributes.uv1;
+                                auto &uv2 = attributes.uv2;
+                                auto &tangent0 =
+                                    attributes.tangent0;
+                                auto &tangent1 =
+                                    attributes.tangent1;
+                                auto &tangent2 =
+                                    attributes.tangent2;
+                                auto &generated0 =
+                                    attributes.generated0;
+                                auto &generated1 =
+                                    attributes.generated1;
+                                auto &generated2 =
+                                    attributes.generated2;
+                                auto &random_per_island =
+                                    attributes.random_per_island;
+                                auto &material_slot =
+                                    attributes.material_slot;
 
                                 auto object_to_world =
                                     scene->accel
@@ -187,11 +112,14 @@ make_evaluate_shadow_surface_callable(
                                         -candidate_ray
                                              ->direction());
                                 Float3 object_shading_normal =
-                                    triangle_interpolate(
-                                        hit->bary,
-                                        n0,
-                                        n1,
-                                        n2);
+                                    select(
+                                        object_geometric_normal,
+                                        triangle_interpolate(
+                                            hit->bary,
+                                            n0,
+                                            n1,
+                                            n2),
+                                        attributes.smooth);
                                 Float4 object_tangent =
                                     triangle_interpolate(
                                         hit->bary,

@@ -99,33 +99,44 @@ struct ImageDesc {
     std::vector<std::uint8_t> encoded_data;
 };
 
+enum class MeshAttributeDomain : std::uint8_t {
+    point,
+    corner,
+    face
+};
+
+template<typename T>
+struct MeshAttribute {
+    MeshAttributeDomain domain{MeshAttributeDomain::point};
+    std::vector<T> values;
+};
+
 struct TriangleMeshDesc {
     std::string name;
     std::vector<Vec3f> positions;
-    std::vector<Vec3f> normals;
-    std::vector<Vec2f> uv;
-    // Blender's evaluated MikkTSpace tangent attribute, flattened to the
-    // same triangle-corner indexing as positions. xyz is the unnormalized
-    // tangent and w is Cycles' tangent sign. A zero entry means the mesh has
-    // no usable UV tangent attribute; tangent-space Normal Map then falls
-    // back to the unperturbed shading normal exactly as Cycles does.
-    std::vector<Vec4f> uv_tangents;
+    MeshAttribute<Vec3f> normals;
+    MeshAttribute<Vec2f> uv;
+    // Blender's evaluated MikkTSpace tangent attribute. xyz is the
+    // unnormalized tangent and w is Cycles' tangent sign. A zero entry means
+    // the mesh has no usable UV tangent attribute; tangent-space Normal Map
+    // then falls back to the unperturbed shading normal exactly as Cycles
+    // does.
+    MeshAttribute<Vec4f> uv_tangents;
     // Every evaluated Blender UV layer is retained by name. The active layer
     // is also present in `uv`/`uv_tangents` for the unnamed Cycles contract.
     // Named UV Map and Normal Map nodes select these immutable attributes by
     // their structure-time layer name.
-    std::map<std::string, std::vector<Vec2f>, std::less<>>
+    std::map<std::string, MeshAttribute<Vec2f>, std::less<>>
         uv_layers;
-    std::map<std::string, std::vector<Vec4f>, std::less<>>
+    std::map<std::string, MeshAttribute<Vec4f>, std::less<>>
         uv_tangent_layers;
     // Cycles' Generated attribute is evaluated from the undeformed position
     // in Blender texture space. Keeping it explicit avoids reconstructing a
     // subtly different bounding-box mapping in a device backend.
-    std::vector<Vec3f> generated;
-    // Named vertex/corner attributes are flattened to the same triangle-
-    // corner indexing as positions. Values are stored in scene-linear space;
+    MeshAttribute<Vec3f> generated;
+    // Named vertex/corner values are stored in scene-linear space;
     // BYTE_COLOR conversion therefore matches Cycles before device upload.
-    std::map<std::string, std::vector<Vec4f>, std::less<>>
+    std::map<std::string, MeshAttribute<Vec4f>, std::less<>>
         color_attributes;
     std::vector<std::array<std::uint32_t, 3u>> triangles;
     std::vector<MaterialId> material_slots;

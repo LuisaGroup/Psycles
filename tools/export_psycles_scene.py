@@ -443,6 +443,38 @@ def _geometry(
             )
             for vertex in mesh.vertices
         ]
+        positions.extend(
+            component
+            for vertex in mesh.vertices
+            for component in vertex.co
+        )
+        generated.extend(
+            component
+            for value in generated_by_vertex
+            for component in value
+        )
+        normal_domain = (
+            "CORNER"
+            if str(getattr(mesh, "normals_domain", "CORNER")) == "CORNER"
+            else "POINT"
+        )
+        if normal_domain == "POINT":
+            normals.extend(
+                component
+                for vertex in mesh.vertices
+                for component in vertex.normal
+            )
+        for attribute in color_layers:
+            if attribute.domain != "POINT":
+                continue
+            for vertex in mesh.vertices:
+                # Blender's .color accessor is scene-linear for both
+                # FLOAT_COLOR and BYTE_COLOR. Cycles likewise decodes
+                # ATTR_ELEMENT_CORNER_BYTE from sRGB before shading.
+                color_values[attribute.name].extend(
+                    float(value)
+                    for value in attribute.data[vertex.index].color
+                )
 
         # Match Blender's DisjointSet union-by-rank and Cycles'
         # attr_create_random_per_island. The result is a face-domain value,
@@ -475,28 +507,20 @@ def _geometry(
         for edge in mesh.edges:
             join_vertices(int(edge.vertices[0]), int(edge.vertices[1]))
 
-        next_index = 0
         for triangle in mesh.loop_triangles:
             for loop_index in triangle.loops:
                 loop = mesh.loops[loop_index]
-                vertex = mesh.vertices[loop.vertex_index]
-                positions.extend(float(value) for value in vertex.co)
-                normals.extend(float(value) for value in loop.normal)
-                generated.extend(generated_by_vertex[loop.vertex_index])
+                if normal_domain == "CORNER":
+                    normals.extend(float(value) for value in loop.normal)
                 for attribute in color_layers:
-                    attribute_index = (
-                        loop_index
-                        if attribute.domain == "CORNER"
-                        else loop.vertex_index
-                    )
+                    if attribute.domain != "CORNER":
+                        continue
                     # Blender's .color accessor is scene-linear for both
                     # FLOAT_COLOR and BYTE_COLOR. Cycles likewise decodes
                     # ATTR_ELEMENT_CORNER_BYTE from sRGB before shading.
                     color_values[attribute.name].extend(
                         float(value)
-                        for value in attribute.data[
-                            attribute_index
-                        ].color
+                        for value in attribute.data[loop_index].color
                     )
                 if active_uv_name not in uv_by_layer:
                     uvs.extend((0.0, 0.0))
@@ -517,8 +541,7 @@ def _geometry(
                     uv_tangent_values[layer_name].extend(
                         tangent_by_layer[layer_name][loop_index]
                     )
-                indices.append(next_index)
-                next_index += 1
+                indices.append(int(loop.vertex_index))
             materials.append(int(triangle.material_index))
             smooth.append(
                 int(mesh.polygons[triangle.polygon_index].use_smooth)
@@ -531,15 +554,20 @@ def _geometry(
             )
         return {
             "name": obj.name,
-            "vertex_count": next_index,
+            "point_count": len(mesh.vertices),
+            "corner_count": len(mesh.loop_triangles) * 3,
             "triangle_count": len(mesh.loop_triangles),
             "positions": _write_array(stream, positions),
+            "normal_domain": normal_domain,
             "normals": _write_array(stream, normals),
+            "uv_domain": "CORNER",
             "uv": _write_array(stream, uvs),
+            "uv_tangent_domain": "CORNER",
             "uv_tangents": _write_array(stream, uv_tangents),
             "uv_layers": [
                 {
                     "name": name,
+                    "domain": "CORNER",
                     "values": _write_array(
                         stream, uv_layer_values[name]
                     ),
@@ -549,6 +577,7 @@ def _geometry(
                 }
                 for name in uv_layer_values
             ],
+            "generated_domain": "POINT",
             "generated": _write_array(stream, generated),
             "color_attributes": [
                 {
@@ -869,8 +898,8 @@ def _export_scene(
     }
     cycles_object_index = 0
     with (output / "geometry.bin").open("wb") as stream:
-        stream.write(b"PSYGEO1\0")
-        stream.write(struct.pack("<II", 1, 0))
+        stream.write(b"PSYGEO2\0")
+        stream.write(struct.pack("<II", 2, 0))
         for object_instance in depsgraph.object_instances:
             source_object_index: int | None = None
             if _cycles_object_is_geometry(object_instance):
@@ -1069,7 +1098,7 @@ def _export_scene(
     )
 
     payload = {
-        "schema": "psycles.blender-scene.v1",
+        "schema": "psycles.blender-scene.v2",
         "source": bpy.data.filepath,
         "blender": bpy.app.version_string,
         "frame": scene.frame_current,

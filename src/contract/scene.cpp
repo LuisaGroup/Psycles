@@ -56,33 +56,80 @@ template<typename Id>
                 SceneDiagnosticCode::invalid_mesh,
                 "mesh '" + mesh.name + "' has no positions or triangles");
         }
-        if (!mesh.normals.empty() &&
-            mesh.normals.size() != mesh.positions.size()) {
-            diagnose(
-                SceneDiagnosticCode::invalid_mesh,
-                "mesh '" + mesh.name + "' has a mismatched normal count");
-        }
-        if (!mesh.uv.empty() && mesh.uv.size() != mesh.positions.size()) {
-            diagnose(
-                SceneDiagnosticCode::invalid_mesh,
-                "mesh '" + mesh.name + "' has a mismatched UV count");
-        }
-        if (!mesh.generated.empty() &&
-            mesh.generated.size() != mesh.positions.size()) {
-            diagnose(
-                SceneDiagnosticCode::invalid_mesh,
-                "mesh '" + mesh.name +
-                    "' has a mismatched Generated attribute count");
-        }
-        for (const auto &[name, values] :
-             mesh.color_attributes) {
-            if (name.empty() ||
-                values.size() != mesh.positions.size()) {
+        const auto domain_size =
+            [&](MeshAttributeDomain domain) noexcept {
+                switch (domain) {
+                    case MeshAttributeDomain::point:
+                        return mesh.positions.size();
+                    case MeshAttributeDomain::corner:
+                        return mesh.triangles.size() * 3u;
+                    case MeshAttributeDomain::face:
+                        return mesh.triangles.size();
+                }
+                return std::size_t{0u};
+            };
+        const auto validate_attribute =
+            [&]<typename T>(
+                std::string_view name,
+                const MeshAttribute<T> &attribute,
+                bool required) {
+                if ((!required && attribute.values.empty()) ||
+                    attribute.values.size() ==
+                        domain_size(attribute.domain)) {
+                    return;
+                }
                 diagnose(
                     SceneDiagnosticCode::invalid_mesh,
                     "mesh '" + mesh.name +
-                        "' has an invalid color attribute '" +
-                        name + "'");
+                        "' has a mismatched " +
+                        std::string{name} + " count");
+            };
+        validate_attribute("normal attribute", mesh.normals, false);
+        validate_attribute("UV attribute", mesh.uv, false);
+        validate_attribute(
+            "UV tangent attribute", mesh.uv_tangents, false);
+        validate_attribute(
+            "Generated attribute", mesh.generated, false);
+        for (const auto &[name, attribute] :
+             mesh.color_attributes) {
+            if (name.empty()) {
+                diagnose(
+                    SceneDiagnosticCode::invalid_mesh,
+                    "mesh '" + mesh.name +
+                        "' has an unnamed color attribute");
+            } else {
+                validate_attribute(
+                    "color attribute '" + name + "'",
+                    attribute,
+                    true);
+            }
+        }
+        for (const auto &[name, attribute] :
+             mesh.uv_layers) {
+            if (name.empty()) {
+                diagnose(
+                    SceneDiagnosticCode::invalid_mesh,
+                    "mesh '" + mesh.name +
+                        "' has an unnamed UV layer");
+            } else {
+                validate_attribute(
+                    "UV layer '" + name + "'",
+                    attribute,
+                    true);
+            }
+        }
+        for (const auto &[name, attribute] :
+             mesh.uv_tangent_layers) {
+            if (name.empty()) {
+                diagnose(
+                    SceneDiagnosticCode::invalid_mesh,
+                    "mesh '" + mesh.name +
+                        "' has an unnamed UV tangent layer");
+            } else {
+                validate_attribute(
+                    "UV tangent layer '" + name + "'",
+                    attribute,
+                    true);
             }
         }
         for (const auto &triangle : mesh.triangles) {

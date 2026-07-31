@@ -1,4 +1,5 @@
 #include "path_kernel_builder.h"
+#include "path_kernel_triangle_geometry.h"
 
 #include "cycles_shader_identity.h"
 
@@ -9,7 +10,15 @@ namespace {
 
 class SurfaceGeometryStageImpl final : public SurfaceGeometryStage {
 
+private:
+    std::shared_ptr<const TriangleGeometryComponent>
+        _triangle_geometry;
+
   public:
+    SurfaceGeometryStageImpl()
+        : _triangle_geometry{
+              make_triangle_geometry_component()} {}
+
     SurfaceGeometryContext
     emit(PathBounceContext &bounce) const noexcept override {
         auto &sample = bounce.sample;
@@ -39,65 +48,33 @@ class SurfaceGeometryStageImpl final : public SurfaceGeometryStage {
             return invocation.surface_shading_normal(surface_tag, point);
         };
         Var<InstanceGpu> instance = scene->instance_buffer->read(hit->inst);
-        Var<GeometryGpu> geometry =
-            scene->geometry_buffer->read(instance.geometry_index);
-        Var<Triangle> triangle =
-            scene->heap->buffer<Triangle>(geometry.bindless_base)
-                .read(hit->prim);
-        Float3 p0 =
-            scene->heap->buffer<luisa::float3>(geometry.bindless_base + 1u)
-                .read(triangle.i0);
-        Float3 p1 =
-            scene->heap->buffer<luisa::float3>(geometry.bindless_base + 1u)
-                .read(triangle.i1);
-        Float3 p2 =
-            scene->heap->buffer<luisa::float3>(geometry.bindless_base + 1u)
-                .read(triangle.i2);
-        Float3 n0 =
-            scene->heap->buffer<luisa::float3>(geometry.bindless_base + 2u)
-                .read(triangle.i0);
-        Float3 n1 =
-            scene->heap->buffer<luisa::float3>(geometry.bindless_base + 2u)
-                .read(triangle.i1);
-        Float3 n2 =
-            scene->heap->buffer<luisa::float3>(geometry.bindless_base + 2u)
-                .read(triangle.i2);
-        Float2 uv0 =
-            scene->heap->buffer<luisa::float2>(geometry.bindless_base + 3u)
-                .read(triangle.i0);
-        Float2 uv1 =
-            scene->heap->buffer<luisa::float2>(geometry.bindless_base + 3u)
-                .read(triangle.i1);
-        Float2 uv2 =
-            scene->heap->buffer<luisa::float2>(geometry.bindless_base + 3u)
-                .read(triangle.i2);
-        Float4 tangent0 =
-            scene->heap->buffer<luisa::float4>(geometry.bindless_base + 7u)
-                .read(triangle.i0);
-        Float4 tangent1 =
-            scene->heap->buffer<luisa::float4>(geometry.bindless_base + 7u)
-                .read(triangle.i1);
-        Float4 tangent2 =
-            scene->heap->buffer<luisa::float4>(geometry.bindless_base + 7u)
-                .read(triangle.i2);
-        Float3 generated0 =
-            scene->heap->buffer<luisa::float3>(geometry.bindless_base + 5u)
-                .read(triangle.i0);
-        Float3 generated1 =
-            scene->heap->buffer<luisa::float3>(geometry.bindless_base + 5u)
-                .read(triangle.i1);
-        Float3 generated2 =
-            scene->heap->buffer<luisa::float3>(geometry.bindless_base + 5u)
-                .read(triangle.i2);
-        Float random_per_island =
-            scene->heap->buffer<float>(geometry.bindless_base + 6u)
-                .read(hit->prim);
-        UInt material_slot =
-            scene->heap->buffer<luisa::uint>(geometry.bindless_base + 4u)
-                .read(hit->prim);
-        Bool triangle_smooth =
-            scene->heap->buffer<luisa::uint>(geometry.bindless_base + 8u)
-                .read(hit->prim) != 0u;
+        auto triangle_attributes =
+            _triangle_geometry->emit(
+                scene,
+                instance.geometry_index,
+                hit->prim);
+        auto &geometry = triangle_attributes.geometry;
+        auto &p0 = triangle_attributes.p0;
+        auto &p1 = triangle_attributes.p1;
+        auto &p2 = triangle_attributes.p2;
+        auto &n0 = triangle_attributes.n0;
+        auto &n1 = triangle_attributes.n1;
+        auto &n2 = triangle_attributes.n2;
+        auto &uv0 = triangle_attributes.uv0;
+        auto &uv1 = triangle_attributes.uv1;
+        auto &uv2 = triangle_attributes.uv2;
+        auto &tangent0 = triangle_attributes.tangent0;
+        auto &tangent1 = triangle_attributes.tangent1;
+        auto &tangent2 = triangle_attributes.tangent2;
+        auto &generated0 = triangle_attributes.generated0;
+        auto &generated1 = triangle_attributes.generated1;
+        auto &generated2 = triangle_attributes.generated2;
+        auto &random_per_island =
+            triangle_attributes.random_per_island;
+        auto &material_slot =
+            triangle_attributes.material_slot;
+        auto &triangle_smooth =
+            triangle_attributes.smooth;
 
         auto object_to_world = scene->accel->instance_transform(hit->inst);
         auto world_to_object = inverse(object_to_world);
@@ -111,8 +88,10 @@ class SurfaceGeometryStageImpl final : public SurfaceGeometryStage {
             (normal_to_world * make_float4(object_geometric_normal, 0.0f))
                 .xyz(),
             -ray->direction());
-        Float3 object_shading_normal =
-            triangle_interpolate(hit->bary, n0, n1, n2);
+        Float3 object_shading_normal = select(
+            object_geometric_normal,
+            triangle_interpolate(hit->bary, n0, n1, n2),
+            triangle_smooth);
         Float4 object_tangent =
             triangle_interpolate(hit->bary, tangent0, tangent1, tangent2);
         Float3 shading_normal = safe_normalize(

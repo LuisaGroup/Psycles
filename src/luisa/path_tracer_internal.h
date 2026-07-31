@@ -121,6 +121,13 @@ using luisa::compute::triangle_interpolate;
 constexpr auto pi = 3.14159265358979323846f;
 constexpr auto ray_maximum = 1.0e30f;
 constexpr std::uint32_t geometry_bindless_stride = 9u;
+constexpr std::uint32_t geometry_normal_corner = 1u << 0u;
+constexpr std::uint32_t geometry_uv_corner = 1u << 1u;
+constexpr std::uint32_t geometry_uv_tangent_corner = 1u << 2u;
+constexpr std::uint32_t geometry_generated_corner = 1u << 3u;
+constexpr std::uint32_t attribute_domain_point = 0u;
+constexpr std::uint32_t attribute_domain_corner = 1u;
+constexpr std::uint32_t attribute_domain_face = 2u;
 constexpr auto camera_visibility =
     contract::visibility_bit(RayVisibility::camera);
 constexpr auto diffuse_visibility =
@@ -172,10 +179,12 @@ struct GeometryResource {
 
 struct AttributeUpload {
     std::uint64_t id{};
+    std::uint32_t domain{};
     luisa::vector<luisa::float4> values;
 };
 
 struct GeometryUpload {
+    std::uint32_t attribute_domains{};
     luisa::vector<luisa::float3> positions;
     luisa::vector<luisa::float3> normals;
     luisa::vector<luisa::float2> uv;
