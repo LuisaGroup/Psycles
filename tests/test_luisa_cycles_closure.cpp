@@ -228,6 +228,52 @@ public:
     return graph;
 }
 
+[[nodiscard]] ShaderGraph make_tangent_normal_graph() {
+    ShaderGraph graph;
+    const auto normal_map =
+        graph.add_node(node_type::normal_map, "Normal Map");
+    const auto diffuse =
+        graph.add_node(node_type::diffuse_bsdf, "Diffuse");
+    const auto configured =
+        graph.set_input(
+            normal_map,
+            "Strength",
+            SocketValue::floating(1.0f)) &&
+        graph.set_input(
+            normal_map,
+            "Color",
+            SocketValue::color(
+                {0.8f, 0.3f, 0.9f})) &&
+        graph.set_property(
+            normal_map,
+            "Space",
+            SocketValue::string("TANGENT")) &&
+        graph.set_input(
+            diffuse,
+            "Color",
+            SocketValue::color(
+                {0.5f, 0.5f, 0.5f})) &&
+        graph.set_input(
+            diffuse,
+            "Roughness",
+            SocketValue::floating(0.0f)) &&
+        graph.connect(
+            {.node = normal_map,
+             .socket = "Normal"},
+            diffuse,
+            "Normal");
+    if (!configured) {
+        throw std::runtime_error{
+            "failed to configure tangent-normal oracle graph"};
+    }
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{
+            .node = diffuse,
+            .socket = "Closure"});
+    return graph;
+}
+
 [[nodiscard]] std::vector<luisa::float4> parameter_data(
     const SurfaceProgram &program) {
     std::vector<luisa::float4> result;
@@ -345,11 +391,30 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
+    auto tangent_normal_shader =
+        compiler.compile(make_tangent_normal_graph());
+    if (!tangent_normal_shader.ok()) {
+        std::cerr
+            << "failed to compile tangent-normal shader graph\n";
+        return EXIT_FAILURE;
+    }
+    auto tangent_normal_program =
+        compile_surface_program(
+            *tangent_normal_shader.program);
+    if (!tangent_normal_program.ok()) {
+        std::cerr
+            << "failed to lower tangent-normal surface program\n";
+        return EXIT_FAILURE;
+    }
+
     SurfaceDispatch surfaces;
     const auto surface_tag =
         surfaces.create<GraphSurface>(program.program);
     const auto physical_surface_tag =
         surfaces.create<GraphSurface>(physical_program.program);
+    const auto tangent_normal_surface_tag =
+        surfaces.create<GraphSurface>(
+            tangent_normal_program.program);
     auto color_parameter = std::uint32_t{~std::uint32_t{0u}};
     const auto &parameters = program.program->parameters();
     for (std::uint32_t index = 0u; index < parameters.size(); ++index) {
@@ -440,6 +505,34 @@ int main(int argc, char **argv) {
                     cast<float>(closure.runtime_flags)));
         };
 
+    Kernel1D trace_tangent_normal =
+        [&](BufferFloat4 parameters,
+            BufferFloat4 output) noexcept {
+            ParameterShaderServices services{parameters};
+            auto point = make_surface_point();
+            const auto requested = dispatch_x();
+            point.object_shading_normal =
+                select(
+                    make_float3(
+                        0.0f, 0.0f, 0.5f),
+                    make_float3(0.0f),
+                    requested != 0u);
+            const auto closure =
+                surfaces.closure_trace(
+                    UInt{tangent_normal_surface_tag},
+                    services,
+                    point,
+                    0u);
+            output.write(
+                requested,
+                make_float4(
+                    closure.normal,
+                    select(
+                        0.0f,
+                        1.0f,
+                        closure.valid)));
+        };
+
     Context context{argv[0]};
     auto device = context.create_device(backend);
     auto stream = device.create_stream();
@@ -449,18 +542,39 @@ int main(int argc, char **argv) {
     auto physical_parameter_buffer =
         device.create_buffer<luisa::float4>(physical_parameters.size());
     auto physical_output = device.create_buffer<luisa::float4>(8u);
+    const auto tangent_normal_parameters =
+        parameter_data(*tangent_normal_program.program);
+    auto tangent_normal_parameter_buffer =
+        device.create_buffer<luisa::float4>(
+            tangent_normal_parameters.size());
+    auto tangent_normal_output =
+        device.create_buffer<luisa::float4>(2u);
     auto kernel = device.compile(evaluate);
     auto physical_kernel = device.compile(trace_physical_closures);
+    auto tangent_normal_kernel =
+        device.compile(trace_tangent_normal);
     std::array<luisa::float4, 11u> actual{};
     std::array<luisa::float4, 8u> physical_actual{};
+    std::array<luisa::float4, 2u>
+        tangent_normal_actual{};
     stream << physical_parameter_buffer.copy_from(
                   luisa::span{physical_parameters})
+           << tangent_normal_parameter_buffer.copy_from(
+                  luisa::span{
+                      tangent_normal_parameters})
            << kernel(output).dispatch(1u)
            << output.copy_to(luisa::span{actual})
            << physical_kernel(
                   physical_parameter_buffer, physical_output)
                   .dispatch(4u)
            << physical_output.copy_to(luisa::span{physical_actual})
+           << tangent_normal_kernel(
+                  tangent_normal_parameter_buffer,
+                  tangent_normal_output)
+                  .dispatch(2u)
+           << tangent_normal_output.copy_to(
+                  luisa::span{
+                      tangent_normal_actual})
            << synchronize();
 
     constexpr std::array expected{
@@ -531,6 +645,39 @@ int main(int argc, char **argv) {
         std::cerr << "Cycles physical closure weights failed on "
                   << backend << '\n';
         return EXIT_FAILURE;
+    }
+
+    // Current Cycles normalizes the interpolated object-space normal
+    // before constructing the MikkTSpace frame. A unit-only fixture
+    // cannot distinguish that contract from the old scale-dependent
+    // behavior, so retain an explicitly non-unit base normal here.
+    constexpr std::array tangent_normal_expected{
+        luisa::float4{
+            0.557086014f,
+            -0.371390671f,
+            0.742781341f,
+            1.0f},
+        luisa::float4{
+            0.0f,
+            0.0f,
+            1.0f,
+            1.0f}};
+    for (std::size_t index = 0u;
+         index < tangent_normal_expected.size();
+         ++index) {
+        if (!approximately_equal(
+                tangent_normal_actual[index],
+                tangent_normal_expected[index])) {
+            const auto value =
+                tangent_normal_actual[index];
+            std::cerr
+                << "Cycles tangent-normal frame failed on "
+                << backend << " at record " << index
+                << ": got {" << value.x << ", "
+                << value.y << ", " << value.z << ", "
+                << value.w << "}\n";
+            return EXIT_FAILURE;
+        }
     }
     return EXIT_SUCCESS;
 }

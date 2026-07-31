@@ -1,0 +1,106 @@
+{
+  "actual_label": "After Cycles contract",
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.DiffCol.R",
+    "ViewLayer.DiffCol.G",
+    "ViewLayer.DiffCol.B",
+    "ViewLayer.DiffDir.R",
+    "ViewLayer.DiffDir.G",
+    "ViewLayer.DiffDir.B",
+    "ViewLayer.DiffInd.R",
+    "ViewLayer.DiffInd.G",
+    "ViewLayer.DiffInd.B",
+    "ViewLayer.Emit.R",
+    "ViewLayer.Emit.G",
+    "ViewLayer.Emit.B",
+    "ViewLayer.Env.R",
+    "ViewLayer.Env.G",
+    "ViewLayer.Env.B",
+    "ViewLayer.GlossCol.R",
+    "ViewLayer.GlossCol.G",
+    "ViewLayer.GlossCol.B",
+    "ViewLayer.GlossDir.R",
+    "ViewLayer.GlossDir.G",
+    "ViewLayer.GlossDir.B",
+    "ViewLayer.GlossInd.R",
+    "ViewLayer.GlossInd.G",
+    "ViewLayer.GlossInd.B",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.TransCol.R",
+    "ViewLayer.TransCol.G",
+    "ViewLayer.TransCol.B",
+    "ViewLayer.TransDir.R",
+    "ViewLayer.TransDir.G",
+    "ViewLayer.TransDir.B",
+    "ViewLayer.TransInd.R",
+    "ViewLayer.TransInd.G",
+    "ViewLayer.TransInd.B",
+    "ViewLayer.VolumeDir.R",
+    "ViewLayer.VolumeDir.G",
+    "ViewLayer.VolumeDir.B",
+    "ViewLayer.VolumeInd.R",
+    "ViewLayer.VolumeInd.G",
+    "ViewLayer.VolumeInd.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        0.9992833733558655,
+        0.9997239708900452,
+        0.9996037483215332
+      ],
+      "cycles": "/var/tmp/psycles-lone-monk-trace-current/fallback-physical-closures-x404-y178.exr",
+      "cycles_channel_mean": [
+        0.6217930316925049,
+        0.4589654505252838,
+        0.38298916816711426
+      ],
+      "cycles_luminance_mean": 0.4881047010421753,
+      "cycles_rms": 2.4408416748046875,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9995999530103536,
+      "maximum_absolute_error": 44.4730224609375,
+      "mean_absolute_error": 0.041030656546354294,
+      "orientation_rmse": {
+        "flip_x": 2.8124685287475586,
+        "flip_xy": 3.2303829193115234,
+        "flip_y": 3.1989588737487793,
+        "identity": 0.3736991882324219
+      },
+      "p95_pixel_rmse": 0.16329684853553772,
+      "p99_pixel_rmse": 0.9123793840408325,
+      "psycles": "/var/tmp/psycles-lone-monk-normal-base-current/fallback-x404-y178.exr",
+      "psycles_channel_mean": [
+        0.6213474273681641,
+        0.4588387608528137,
+        0.3828374147415161
+      ],
+      "psycles_luminance_mean": 0.4879094362258911,
+      "psycles_rms": 2.440618916014294,
+      "relative_rmse": 0.15310259247450972,
+      "rmse": 0.3736991882324219,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 0.5752564396209673,
+        "display_scale": 0.05226856780159489,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-lone-monk-normal-base-current/triptychs-before-after/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    }
+  },
+  "reference_label": "Before normalization",
+  "schema": "psycles.cycles-differential.v1"
+}

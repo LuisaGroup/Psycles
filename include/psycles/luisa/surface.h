@@ -62,8 +62,10 @@ struct SurfacePoint {
     Float3 shading_normal;
     // Cycles tangent-space Normal Map is constructed in object space from
     // Blender's evaluated MikkTSpace attributes and only then transformed as
-    // a normal. Keeping these values explicit avoids an invalid world-space
-    // shortcut under non-uniform instance transforms.
+    // a normal. The interpolated shading normal remains raw here: the Normal
+    // Map node owns Cycles' normalization-before-frame contract. Keeping
+    // these values explicit avoids an invalid world-space shortcut under
+    // non-uniform instance transforms.
     Float3 object_shading_normal;
     Float3 object_tangent;
     Float tangent_sign;
