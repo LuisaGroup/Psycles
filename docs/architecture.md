@@ -180,7 +180,13 @@ swap the last active entry into the removed slot, and updates are gated by
 volume capability plus a transmitted surface label. The same component owns
 the extra Psycles dispatch handles needed to evaluate the original volume
 graph; those handles do not replace Cycles identity. Camera enclosure discovery
-is split between two host-stage components. `TriangleVolumeBoundaryComponent`
+is split between two host-stage components. Each entry also retains its
+material's raw Cycles volume-sampling policy. `VolumeStack::sample_method()`
+reduces those two-bit technique sets by union: an all-distance or
+all-equiangular stack keeps that estimator, while either authored MIS or a
+mixed stack produces MIS independent of entry order. This is the exact
+algebra implemented by Cycles' `volume_stack_sample_method()`, not a
+light-type heuristic. `TriangleVolumeBoundaryComponent`
 reuses `TrianglePrimitiveComponent` for exact material/object identity and
 reconstructs only the geometric normal needed for front/back classification.
 `CameraVolumeStackComponent` performs Cycles' bounded +Z TLAS probe with

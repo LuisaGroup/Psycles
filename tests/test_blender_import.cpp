@@ -76,6 +76,7 @@ void test_integrator_settings_round_trip() {
     {
       "name": "Raw Emissive",
       "emission_sampling": "BACK",
+      "volume_sampling": "EQUIANGULAR",
       "cycles_sync": {
         "shader_index": 6
       },
@@ -557,9 +558,12 @@ void test_integrator_settings_round_trip() {
             imported.scene->materials.end() &&
             imported_material->second.emission_sampling ==
                 EmissionSampling::back &&
+            imported_material->second.volume_sampling ==
+                psycles::contract::VolumeSampling::
+                    equiangular &&
             imported_material->second.cycles_shader_index ==
                 std::optional<std::uint32_t>{6u},
-        "material emission-sampling policy did not round-trip");
+        "material sampling policies did not round-trip");
     expect(
         imported_material->second.shader.root(
             psycles::contract::ShaderDomain::volume)

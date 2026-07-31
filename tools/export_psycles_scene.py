@@ -1067,6 +1067,13 @@ def _export_scene(
                 "emission_sampling": str(
                     getattr(cycles, "emission_sampling", "AUTO")
                 ),
+                "volume_sampling": str(
+                    getattr(
+                        cycles,
+                        "volume_sampling",
+                        "MULTIPLE_IMPORTANCE",
+                    )
+                ),
                 "surface_render_method": getattr(
                     material, "surface_render_method", None
                 ),

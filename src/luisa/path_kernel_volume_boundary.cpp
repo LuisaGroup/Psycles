@@ -140,6 +140,9 @@ class CameraVolumeStackComponentImpl final
                     binding.parameter_block,
                 .instance_id =
                     invalid_volume_identity,
+                .sample_method =
+                    static_cast<std::uint32_t>(
+                        binding.volume_sampling),
                 .valid = true},
             true);
     }

@@ -210,6 +210,12 @@ Cycles' background-light object index separately from the default-background
 shader index, and both round-trip through the contract adapter. This is the
 same `(object, shader)` pair that Cycles writes before its camera enclosure
 probe; the stack does not infer it from object counts or sentinels.
+Blender's `DISTANCE`, `EQUIANGULAR`, and `MULTIPLE_IMPORTANCE` material
+settings now round-trip beside each raw closure graph and reach every runtime
+stack entry through the effective material binding. Their exact
+`1`, `2`, and `3` technique-bit representation makes the whole-stack sampling
+method an order-independent union. The empty, single-technique, mixed,
+explicit-MIS, and copied-stack cases pass on fallback, HIP, and Vulkan.
 
 The analytic homogeneous segment estimator is the fourth checkpoint.
 Its Luisa `.h`/`.cpp` component matches Cycles' per-channel transmittance,

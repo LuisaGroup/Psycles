@@ -44,6 +44,7 @@ using contract::ShaderDomain;
 using contract::ShaderGraph;
 using contract::SocketValue;
 using contract::TriangleMeshDesc;
+using contract::VolumeSampling;
 using contract::WorldSampling;
 
 using detail::Document;
@@ -154,6 +155,22 @@ template<typename T>
     }
     throw std::runtime_error(
         "unsupported Cycles emission sampling method: " +
+        std::string{name});
+}
+
+[[nodiscard]] VolumeSampling volume_sampling(
+    std::string_view name) {
+    if (name == "DISTANCE") {
+        return VolumeSampling::distance;
+    }
+    if (name == "EQUIANGULAR") {
+        return VolumeSampling::equiangular;
+    }
+    if (name == "MULTIPLE_IMPORTANCE") {
+        return VolumeSampling::multiple_importance;
+    }
+    throw std::runtime_error(
+        "unsupported Cycles volume sampling method: " +
         std::string{name});
 }
 
@@ -370,6 +387,12 @@ BlenderSceneImport load_blender_scene_bundle(
                                 material,
                                 "emission_sampling"),
                             "AUTO")),
+                    .volume_sampling =
+                        volume_sampling(text(
+                            member(
+                                material,
+                                "volume_sampling"),
+                            "MULTIPLE_IMPORTANCE")),
                     .cycles_shader_index =
                         optional_unsigned_number(member(
                             cycles_sync,

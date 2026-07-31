@@ -465,7 +465,10 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                          : 0u) |
                     (capabilities.may_emit
                          ? material_flag_may_emit
-                         : 0u)});
+                         : 0u),
+                .volume_sampling =
+                    snapshot.materials.at(id)
+                        .volume_sampling});
         const auto &program = *material.surface_program();
         const auto scalar_parameter =
             [&](compiler::ValueExpressionId expression)
