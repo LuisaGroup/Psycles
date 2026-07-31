@@ -162,6 +162,7 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/graph_surface.cpp
             src/luisa/graph_surface_closures.cpp
             src/luisa/graph_surface_implementation.cpp
+            src/luisa/graph_surface_physical_closures.cpp
             src/luisa/graph_surface_scattering.cpp
             src/luisa/graph_surface_state.cpp
             src/luisa/graph_surface_values.cpp
@@ -1358,6 +1359,26 @@ if(PSYCLES_ENABLE_LUISA)
                     COMMAND
                         psycles_luisa_cycles_sample_mapping_tests
                         fallback)
+                if(TARGET luisa-compute-backend-hip)
+                    add_dependencies(
+                        psycles_luisa_cycles_sample_mapping_tests
+                        luisa-compute-backend-hip)
+                    add_test(
+                        NAME psycles.luisa_cycles_sample_mapping_hip
+                        COMMAND
+                            psycles_luisa_cycles_sample_mapping_tests
+                            hip)
+                endif()
+                if(TARGET luisa-compute-backend-vk)
+                    add_dependencies(
+                        psycles_luisa_cycles_sample_mapping_tests
+                        luisa-compute-backend-vk)
+                    add_test(
+                        NAME psycles.luisa_cycles_sample_mapping_vk
+                        COMMAND
+                            psycles_luisa_cycles_sample_mapping_tests
+                            vk)
+                endif()
 
                 add_executable(
                     psycles_luisa_cycles_closure_tests
@@ -1381,6 +1402,26 @@ if(PSYCLES_ENABLE_LUISA)
                     COMMAND
                         psycles_luisa_cycles_closure_tests
                         fallback)
+                if(TARGET luisa-compute-backend-hip)
+                    add_dependencies(
+                        psycles_luisa_cycles_closure_tests
+                        luisa-compute-backend-hip)
+                    add_test(
+                        NAME psycles.luisa_cycles_closure_hip
+                        COMMAND
+                            psycles_luisa_cycles_closure_tests
+                            hip)
+                endif()
+                if(TARGET luisa-compute-backend-vk)
+                    add_dependencies(
+                        psycles_luisa_cycles_closure_tests
+                        luisa-compute-backend-vk)
+                    add_test(
+                        NAME psycles.luisa_cycles_closure_vk
+                        COMMAND
+                            psycles_luisa_cycles_closure_tests
+                            vk)
+                endif()
 
                 add_executable(
                     psycles_luisa_cycles_path_state_tests
