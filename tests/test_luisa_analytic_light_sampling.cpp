@@ -68,7 +68,7 @@ int main(int argc, char **argv) {
     auto rectangle_output =
         device.create_buffer<luisa::float4>(2u);
     auto intersection_output =
-        device.create_buffer<luisa::float4>(2u);
+        device.create_buffer<luisa::float4>(4u);
     constexpr std::size_t finite_case_count = 3u;
     auto finite_direction_output =
         device.create_buffer<luisa::float4>(
@@ -229,6 +229,52 @@ int main(int argc, char **argv) {
                         intersection.valid)));
             intersection_result.write(
                 1u,
+                make_float4(
+                    intersection.conditional_pdf,
+                    intersection.evaluation_factor,
+                    intersection.uv));
+        };
+        $if (index == 2u) {
+            // Cycles 5.3 collision-position oracle for the narrow-spread
+            // elliptical area light used by the volume direct-light fixture.
+            // The hit geometry is the authored ellipse, while its PDF is the
+            // spread-clamped collision measure.
+            const auto intersection =
+                analytic_intersection::
+                    intersect_area(
+                        make_float3(
+                            0.1251223087310791f,
+                            -0.3748776912689209f,
+                            -0.7516117095947266f),
+                        make_float3(
+                            0.23187683522701263f,
+                            0.16386552155017853f,
+                            0.9588436484336853f),
+                        0.0f,
+                        1.0e10f,
+                        make_float3(
+                            0.2f,
+                            -0.1f,
+                            -0.4f),
+                        make_float3(1.0f, 0.0f, 0.0f),
+                        1.0f,
+                        make_float3(0.0f, 1.0f, 0.0f),
+                        0.6f,
+                        make_float3(0.0f, 0.0f, 1.0f),
+                        true,
+                        false,
+                        1.2f,
+                        true);
+            intersection_result.write(
+                2u,
+                make_float4(
+                    intersection.position,
+                    select(
+                        -1.0f,
+                        intersection.distance,
+                        intersection.valid)));
+            intersection_result.write(
+                3u,
                 make_float4(
                     intersection.conditional_pdf,
                     intersection.evaluation_factor,
@@ -408,7 +454,7 @@ int main(int argc, char **argv) {
             .enable_fast_math = false});
     std::array<luisa::float4, point_cases.size()> results{};
     std::array<luisa::float4, 2u> rectangle_result{};
-    std::array<luisa::float4, 2u> intersection_result{};
+    std::array<luisa::float4, 4u> intersection_result{};
     std::array<luisa::float4, finite_case_count>
         finite_direction_result{};
     std::array<luisa::float4, finite_case_count>
@@ -626,6 +672,49 @@ int main(int argc, char **argv) {
             << intersection_measure.y << ", "
             << intersection_measure.z << ", "
             << intersection_measure.w << "}\n";
+        return EXIT_FAILURE;
+    }
+    const auto narrow_intersection_position =
+        intersection_result[2u];
+    const auto narrow_intersection_measure =
+        intersection_result[3u];
+    if (!approximately_equal(
+            narrow_intersection_position.x,
+            0.21015244722366333) ||
+        !approximately_equal(
+            narrow_intersection_position.y,
+            -0.3147875666618347) ||
+        !approximately_equal(
+            narrow_intersection_position.z,
+            -0.4000000059604645) ||
+        !approximately_equal(
+            narrow_intersection_position.w,
+            0.36670389771461487) ||
+        !approximately_equal(
+            narrow_intersection_measure.x,
+            1.3708510398864746) ||
+        !approximately_equal(
+            narrow_intersection_measure.y,
+            3.115095615386963) ||
+        !approximately_equal(
+            narrow_intersection_measure.z,
+            0.14202071726322174) ||
+        !approximately_equal(
+            narrow_intersection_measure.w,
+            0.34782683849334717)) {
+        std::cerr
+            << std::setprecision(10)
+            << "Cycles narrow-spread ellipse intersection regression failed on "
+            << backend << ": position/distance={"
+            << narrow_intersection_position.x << ", "
+            << narrow_intersection_position.y << ", "
+            << narrow_intersection_position.z << ", "
+            << narrow_intersection_position.w
+            << "}, measure/uv={"
+            << narrow_intersection_measure.x << ", "
+            << narrow_intersection_measure.y << ", "
+            << narrow_intersection_measure.z << ", "
+            << narrow_intersection_measure.w << "}\n";
         return EXIT_FAILURE;
     }
 

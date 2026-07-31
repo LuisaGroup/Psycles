@@ -383,6 +383,53 @@ make_spot_direct_scene() {
     return scene;
 }
 
+[[nodiscard]] SceneSnapshot
+make_area_direct_scene() {
+    auto scene = make_direct_scene();
+    scene.revision = 5u;
+    scene.materials
+        .at(MaterialId{1u})
+        .volume_sampling =
+        VolumeSampling::
+            multiple_importance;
+    scene.lights.clear();
+    scene.lights.emplace(
+        LightId{6u},
+        LightDesc{
+            .name =
+                "Cycles finite-volume area light",
+            .type = LightType::area,
+            .transform = translated(
+                0.2f, -0.1f, -0.4f),
+            .color = {1.0f, 1.0f, 1.0f},
+            .power = 10.0f,
+            .size = 1.0f,
+            .size_y = 0.6f,
+            .spread = 3.1415926535897932f,
+            .normalize = true,
+            .ellipse = false,
+            .use_mis = true,
+            .cast_shadow = true,
+            .visibility_mask =
+                all_ray_visibility,
+            .cycles_shader_index = 2u,
+            .cycles_object_index = 1u});
+    return scene;
+}
+
+[[nodiscard]] SceneSnapshot
+make_narrow_ellipse_area_direct_scene() {
+    auto scene = make_area_direct_scene();
+    scene.revision = 6u;
+    auto &light =
+        scene.lights.at(LightId{6u});
+    light.name =
+        "Cycles narrow-spread ellipse volume light";
+    light.spread = 1.2f;
+    light.ellipse = true;
+    return scene;
+}
+
 [[nodiscard]] RenderSettings make_settings() {
     return {
         .full_extent = {
@@ -444,6 +491,117 @@ make_spot_direct_scene() {
     float tolerance = 3.0e-6f) noexcept {
     return std::abs(actual - expected) <=
            tolerance;
+}
+
+template<std::size_t N>
+[[nodiscard]] bool
+render_direct_fixture(
+    psycles::luisa_backend::
+        LuisaPathTracerBackend &renderer,
+    SceneSnapshot scene,
+    const RenderSettings &settings,
+    std::string_view backend,
+    std::string_view label,
+    const std::array<float, N> &expected,
+    psycles::io::MemoryOutputSink
+        &sink) {
+    const auto compilation =
+        renderer.compile_scene(scene);
+    if (!compilation.ok()) {
+        for (const auto &diagnostic :
+             compilation.diagnostics) {
+            std::cerr << diagnostic.message
+                      << '\n';
+        }
+        return false;
+    }
+    auto session =
+        renderer.create_session(
+            *compilation.scene,
+            settings);
+    if (!session) {
+        std::cerr
+            << "could not create " << label
+            << " render session\n";
+        return false;
+    }
+    if (!session->render_samples(
+            {.first = 0u,
+             .count = 1u,
+             .offset = 0u,
+             .total = 1u},
+            sink)) {
+        std::cerr << label
+                  << " render failed\n";
+        return false;
+    }
+    const auto *combined =
+        sink.find(PassKind::combined);
+    const auto *volume =
+        sink.find(PassKind::volume_direct);
+    if (combined == nullptr ||
+        volume == nullptr) {
+        std::cerr << label
+                  << " passes were not produced\n";
+        return false;
+    }
+    const auto pixel_count =
+        static_cast<std::size_t>(
+            settings.full_extent.width) *
+            settings.full_extent.height;
+    if (N != pixel_count) {
+        std::cerr << label
+                  << " oracle extent mismatch\n";
+        return false;
+    }
+    auto passed = true;
+    for (auto pixel = std::size_t{0u};
+         pixel < pixel_count;
+         ++pixel) {
+        const auto combined_base =
+            pixel * combined->channels;
+        const auto pass_base =
+            pixel * volume->channels;
+        for (auto channel = std::size_t{0u};
+             channel < 3u;
+             ++channel) {
+            const auto combined_value =
+                combined->pixels[
+                    combined_base + channel];
+            const auto direct_value =
+                volume->pixels[
+                    pass_base + channel];
+            if (!approximately_equal(
+                    combined_value,
+                    expected[pixel]) ||
+                !approximately_equal(
+                    direct_value,
+                    expected[pixel])) {
+                std::cerr
+                    << "Cycles " << label
+                    << " regression failed on "
+                    << backend << " pixel "
+                    << pixel << " channel "
+                    << channel << ": got "
+                    << combined_value
+                    << ", expected "
+                    << expected[pixel]
+                    << '\n';
+                passed = false;
+            }
+        }
+        if (!approximately_equal(
+                combined->pixels[
+                    combined_base + 3u],
+                1.0f)) {
+            std::cerr << label
+                      << " alpha regression failed on "
+                      << backend << " pixel "
+                      << pixel << '\n';
+            passed = false;
+        }
+    }
+    return passed;
 }
 
 }// namespace
@@ -1064,6 +1222,74 @@ int main(int argc, char **argv) {
         }
     }
 
+    // Official Blender 5.2.0/Cycles CPU, one Tabulated Sobol sample. The
+    // proposal samples the original rectangle in area measure, clips the
+    // volume segment to the conservative spread cone, and reuses
+    // PRNG_LIGHT.xy for exact rectangle solid-angle sampling at collision.
+    constexpr std::array cycles_area_mis{
+        0.069141351f,
+        0.050144672f,
+        0.069812223f,
+        0.042181641f,
+        0.171983257f,
+        0.160600409f,
+        0.193816572f,
+        0.054484077f,
+        0.070333518f,
+        0.298683465f,
+        0.530478656f,
+        0.423035175f,
+        0.078750096f,
+        0.089415811f,
+        0.527464509f,
+        0.281799853f};
+    psycles::io::MemoryOutputSink
+        area_sink;
+    if (!render_direct_fixture(
+            renderer,
+            make_area_direct_scene(),
+            direct_settings,
+            backend,
+            "finite area-volume",
+            cycles_area_mis,
+            area_sink)) {
+        return EXIT_FAILURE;
+    }
+
+    // The same official Cycles oracle with an ellipse primitive and 1.2-rad
+    // spread. This exercises the spread-circle/ellipse/rectangle minimum-area
+    // selection and the ellipse area-to-solid-angle conversion.
+    constexpr std::array
+        cycles_narrow_ellipse_area_mis{
+            0.0f,
+            0.0f,
+            0.0f,
+            0.0f,
+            0.0f,
+            0.313531458f,
+            0.412553906f,
+            0.102035478f,
+            0.004782537f,
+            1.085163474f,
+            0.603740752f,
+            0.247645363f,
+            0.090779223f,
+            0.0f,
+            0.708359420f,
+            0.0f};
+    psycles::io::MemoryOutputSink
+        narrow_ellipse_area_sink;
+    if (!render_direct_fixture(
+            renderer,
+            make_narrow_ellipse_area_direct_scene(),
+            direct_settings,
+            backend,
+            "narrow ellipse area-volume",
+            cycles_narrow_ellipse_area_mis,
+            narrow_ellipse_area_sink)) {
+        return EXIT_FAILURE;
+    }
+
     auto guided_session =
         renderer.create_session(
             *direct_compilation.scene,
@@ -1281,6 +1507,34 @@ int main(int argc, char **argv) {
         }
     }
 #if defined(PSYCLES_WITH_OPENIMAGEIO)
+    if (argc > 7) {
+        std::string error;
+        if (!psycles::io::write_multilayer_exr(
+                narrow_ellipse_area_sink.images(),
+                argv[7],
+                "ViewLayer",
+                &error)) {
+            std::cerr
+                << "could not write narrow ellipse "
+                   "area-volume diagnostic EXR: "
+                << error << '\n';
+            return EXIT_FAILURE;
+        }
+    }
+    if (argc > 6) {
+        std::string error;
+        if (!psycles::io::write_multilayer_exr(
+                area_sink.images(),
+                argv[6],
+                "ViewLayer",
+                &error)) {
+            std::cerr
+                << "could not write area-volume "
+                   "diagnostic EXR: "
+                << error << '\n';
+            return EXIT_FAILURE;
+        }
+    }
     if (argc > 5) {
         std::string error;
         if (!psycles::io::write_multilayer_exr(

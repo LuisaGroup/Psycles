@@ -4,7 +4,7 @@
 #error "Include <psycles/luisa/analytic_light_intersection.h> through the Psycles::luisa target."
 #endif
 
-#include <psycles/luisa/analytic_light_sampling.h>
+#include <psycles/luisa/area_light_sampling.h>
 
 #include <luisa/dsl/sugar.h>
 
@@ -270,9 +270,8 @@ intersect_spot(
 
 // Intersect and evaluate one Cycles area-light primitive in a common
 // directional measure. Intersection is strictly inside the ray interval,
-// matching ray_quad_intersect. A full-spread rectangle uses its solid-angle
-// PDF; ellipse and currently unclamped narrow-spread shapes use the
-// area-to-solid-angle Jacobian.
+// matching ray_quad_intersect. Evaluation delegates to the shared Cycles
+// collision-position area measure, including its exact spread clamp.
 [[nodiscard]] inline AreaIntersection
 intersect_area(
     luisa::compute::Float3 ray_origin,
@@ -314,53 +313,32 @@ intersect_area(
         (!ellipse |
          (u * u + v * v <= 0.25f));
 
-    auto area = length_u * length_v;
-    area *= select(
-        1.0f,
-        0.25f * sampling::pi,
-        ellipse);
-    const auto positive_area = area > 0.0f;
-    area = max(area, 1.0e-20f);
-    const auto cosine = max(
-        dot(normal, -ray_direction),
-        0.0f);
-    const auto area_pdf =
-        distance * distance /
-        max(cosine * area, 1.0e-20f);
-    const auto solid_angle_rectangle =
-        !ellipse & full_spread;
-    Float conditional_pdf = area_pdf;
-    $if (solid_angle_rectangle) {
-        conditional_pdf =
-            sampling::rectangle_solid_angle_pdf(
-                ray_origin,
-                center,
-                axis_u,
-                length_u,
-                axis_v,
-                length_v);
-    };
-
-    const auto inverse_area = select(
-        1.0f,
-        1.0f / area,
-        normalize_power);
-    const auto spread_attenuation =
-        sampling::area_spread_attenuation(
+    const AreaLightSampling
+        area_sampling;
+    const auto evaluation =
+        area_sampling.from_intersection(
+            {.reference = ray_origin,
+             .center = center,
+             .axis_u = axis_u,
+             .axis_v = axis_v,
+             .axis_z = axis_z,
+             .length_u = length_u,
+             .length_v = length_v,
+             .spread = spread,
+             .ellipse = ellipse,
+             .full_spread = full_spread,
+             .random =
+                 make_float2(0.0f),
+             .normalize_power =
+                 normalize_power},
             ray_direction,
-            normal,
-            spread);
-    const auto evaluation_factor =
-        inverse_area *
-        sampling::inverse_pi *
-        spread_attenuation;
+            distance);
     const auto valid =
         (direction_normal < 0.0f) &
         (distance > ray_minimum) &
         (distance < ray_maximum) &
-        positive_area &
         inside_shape &
-        (evaluation_factor > 0.0f);
+        evaluation.valid;
     return {
         .valid = valid,
         .distance = distance,
@@ -368,8 +346,10 @@ intersect_area(
         .normal = normal,
         // Cycles exposes lamp UV in Embree/OptiX barycentric notation.
         .uv = make_float2(v + 0.5f, -u - v),
-        .conditional_pdf = conditional_pdf,
-        .evaluation_factor = evaluation_factor};
+        .conditional_pdf =
+            evaluation.conditional_pdf,
+        .evaluation_factor =
+            evaluation.evaluation_factor};
 }
 
 }// namespace psycles::luisa_backend::analytic_light_intersection
