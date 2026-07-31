@@ -41,6 +41,15 @@ class VolumeStackEntryPointProvider {
   public:
     virtual ~VolumeStackEntryPointProvider() noexcept = default;
 
+    // Cycles stores this as an entry-level object property. Keeping it
+    // independently queryable lets majorant traversal apply the same scale
+    // without constructing an otherwise unused shading point.
+    [[nodiscard]] virtual Float object_density(
+        const VolumeStackEntry &entry) const noexcept {
+        static_cast<void>(entry);
+        return 1.0f;
+    }
+
     [[nodiscard]] virtual VolumeStackEntryShading
     emit(const VolumeStackEntry &entry,
          const VolumeShadingState &state) const noexcept = 0;

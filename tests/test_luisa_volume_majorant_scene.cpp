@@ -1,5 +1,7 @@
 #include "cycles_shader_identity.h"
+#include "path_kernel_volume_majorant_provider.h"
 #include "path_tracer_generated_coordinates.h"
+#include "path_tracer_volume_capabilities.h"
 #include "path_tracer_volume_majorant_scene.h"
 
 #include <psycles/compiler/core_nodes.h>
@@ -488,8 +490,15 @@ void test_flatten_contract() {
         "accepted");
 }
 
+enum class VolumeGraphKind {
+    spatial,
+    homogeneous_light_path,
+    spatial_light_path,
+    surface_light_path,
+};
+
 [[nodiscard]] ShaderGraph
-make_volume_graph(bool spatial) {
+make_volume_graph(VolumeGraphKind kind) {
     ShaderGraph graph;
     const auto surface =
         graph.add_node(
@@ -507,6 +516,109 @@ make_volume_graph(bool spatial) {
         OutputRef{
             .node = surface,
             .socket = "Closure"});
+    if (kind ==
+        VolumeGraphKind::surface_light_path) {
+        const auto surface_path =
+            graph.add_node(
+                node_type::light_path,
+                "Surface-only Light Path");
+        expect(
+            graph.connect(
+                {.node = surface_path,
+                 .socket = "RayDepth"},
+                surface,
+                "Roughness"),
+            "failed to construct surface-only Light "
+            "Path dependency");
+    }
+
+    if (kind ==
+        VolumeGraphKind::homogeneous_light_path) {
+        const auto absorption =
+            graph.add_node(
+                node_type::volume_absorption,
+                "Light Path volume absorption");
+        const auto path =
+            graph.add_node(
+                node_type::light_path,
+                "Runtime majorant Light Path");
+        expect(
+            graph.set_input(
+                absorption,
+                "Color",
+                SocketValue::color(
+                    {0.0f, 0.0f, 0.0f})) &&
+                graph.connect(
+                    {.node = path,
+                     .socket = "IsCameraRay"},
+                    absorption,
+                    "Density"),
+            "failed to construct Light Path volume graph");
+        graph.set_root(
+            ShaderDomain::volume,
+            OutputRef{
+                .node = absorption,
+                .socket = "Volume"});
+        return graph;
+    }
+
+    if (kind ==
+        VolumeGraphKind::spatial_light_path) {
+        const auto absorption =
+            graph.add_node(
+                node_type::volume_absorption,
+                "Spatial Light Path volume absorption");
+        const auto coordinates =
+            graph.add_node(
+                node_type::texture_coordinate,
+                "Spatial runtime coordinates");
+        const auto scalar =
+            graph.add_node(
+                node_type::vector_to_scalar,
+                "Generated coordinate average");
+        const auto path =
+            graph.add_node(
+                node_type::light_path,
+                "Runtime majorant Light Path");
+        const auto density =
+            graph.add_node(
+                node_type::multiply_float,
+                "Spatial runtime density");
+        expect(
+            graph.set_input(
+                absorption,
+                "Color",
+                SocketValue::color(
+                    {0.0f, 0.0f, 0.0f})) &&
+                graph.connect(
+                    {.node = coordinates,
+                     .socket = "Generated"},
+                    scalar,
+                    "Vector") &&
+                graph.connect(
+                    {.node = scalar,
+                     .socket = "Value"},
+                    density,
+                    "A") &&
+                graph.connect(
+                    {.node = path,
+                     .socket = "RayDepth"},
+                    density,
+                    "B") &&
+                graph.connect(
+                    {.node = density,
+                     .socket = "Value"},
+                    absorption,
+                    "Density"),
+            "failed to construct spatial Light Path "
+            "volume graph");
+        graph.set_root(
+            ShaderDomain::volume,
+            OutputRef{
+                .node = absorption,
+                .socket = "Volume"});
+        return graph;
+    }
 
     const auto coefficients =
         graph.add_node(
@@ -524,7 +636,7 @@ make_volume_graph(bool spatial) {
                 SocketValue::vector(
                     {0.0f, 0.0f, 0.0f})),
         "failed to construct raw volume graph");
-    if (spatial) {
+    if (kind == VolumeGraphKind::spatial) {
         const auto coordinates =
             graph.add_node(
                 node_type::texture_coordinate,
@@ -596,8 +708,19 @@ void run_scene_build(
     constexpr MaterialId homogeneous_material{62u};
     constexpr GeometryId geometry_id{71u};
 
-    auto spatial_graph = make_volume_graph(true);
-    auto homogeneous_graph = make_volume_graph(false);
+    auto spatial_graph =
+        make_volume_graph(
+            VolumeGraphKind::spatial);
+    auto homogeneous_graph =
+        make_volume_graph(
+            VolumeGraphKind::
+                homogeneous_light_path);
+    auto spatial_light_path_graph =
+        make_volume_graph(
+            VolumeGraphKind::spatial_light_path);
+    auto surface_light_path_graph =
+        make_volume_graph(
+            VolumeGraphKind::surface_light_path);
     ShaderCompiler compiler{
         make_core_node_registry()};
     const auto spatial_shader_program =
@@ -622,6 +745,77 @@ void run_scene_build(
     expect(
         homogeneous_lowered.ok(),
         "failed to lower raw homogeneous volume graph");
+    const auto spatial_light_path_shader_program =
+        compiler.compile(
+            spatial_light_path_graph);
+    expect(
+        spatial_light_path_shader_program.ok(),
+        "failed to compile raw spatial Light Path "
+        "volume graph");
+    const auto spatial_light_path_lowered =
+        compile_surface_program(
+            *spatial_light_path_shader_program
+                 .program);
+    expect(
+        spatial_light_path_lowered.ok(),
+        "failed to lower raw spatial Light Path "
+        "volume graph");
+    const auto surface_light_path_shader_program =
+        compiler.compile(
+            surface_light_path_graph);
+    expect(
+        surface_light_path_shader_program.ok(),
+        "failed to compile surface-only Light Path "
+        "graph");
+    const auto surface_light_path_lowered =
+        compile_surface_program(
+            *surface_light_path_shader_program
+                 .program);
+    expect(
+        surface_light_path_lowered.ok(),
+        "failed to lower surface-only Light Path "
+        "graph");
+    const VolumeProgramCapabilityComponent
+        capabilities;
+    const auto spatial_capabilities =
+        capabilities.analyze(
+            *spatial_lowered.program);
+    const auto homogeneous_capabilities =
+        capabilities.analyze(
+            *homogeneous_lowered.program);
+    const auto spatial_light_path_capabilities =
+        capabilities.analyze(
+            *spatial_light_path_lowered.program);
+    const auto surface_light_path_capabilities =
+        capabilities.analyze(
+            *surface_light_path_lowered.program);
+    const auto program_has_surface_light_path =
+        std::any_of(
+            surface_light_path_lowered.program
+                ->value_instructions()
+                .begin(),
+            surface_light_path_lowered.program
+                ->value_instructions()
+                .end(),
+            [](const auto &instruction) {
+                return instruction.operation ==
+                       ValueOperation::path_ray_depth;
+            });
+    expect(
+        program_has_surface_light_path &&
+            !spatial_capabilities.homogeneous &&
+            !spatial_capabilities.has_light_path &&
+            homogeneous_capabilities.homogeneous &&
+            homogeneous_capabilities.has_light_path &&
+            !spatial_light_path_capabilities
+                 .homogeneous &&
+            spatial_light_path_capabilities
+                .has_light_path &&
+            surface_light_path_capabilities
+                .homogeneous &&
+            surface_light_path_capabilities
+                .has_light_path,
+        "volume-root capability analysis changed");
 
     SceneSnapshot snapshot;
     TriangleMeshDesc geometry{
@@ -640,7 +834,9 @@ void run_scene_build(
         snapshot,
         81u,
         geometry_id,
-        transform({2.0f, -3.0f, 5.0f}),
+        transform(
+            {2.0f, -3.0f, 5.0f},
+            {0.5f, 0.5f, 0.5f}),
         {},
         91u);
 
@@ -658,6 +854,9 @@ void run_scene_build(
     const auto homogeneous_surface_tag =
         scene->surfaces.create<GraphSurface>(
             homogeneous_lowered.program);
+    const auto spatial_light_path_surface_tag =
+        scene->surfaces.create<GraphSurface>(
+            spatial_light_path_lowered.program);
     auto host_parameters =
         parameter_data(*spatial_lowered.program);
     const auto homogeneous_parameter_block =
@@ -670,11 +869,56 @@ void run_scene_build(
         host_parameters.end(),
         homogeneous_parameters.begin(),
         homogeneous_parameters.end());
+    const auto spatial_light_path_parameter_block =
+        static_cast<std::uint32_t>(
+            host_parameters.size());
+    const auto spatial_light_path_parameters =
+        parameter_data(
+            *spatial_light_path_lowered.program);
+    host_parameters.insert(
+        host_parameters.end(),
+        spatial_light_path_parameters.begin(),
+        spatial_light_path_parameters.end());
     scene->parameter_buffer =
         device.create_buffer<luisa::float4>(
             host_parameters.size());
     scene->cycles_bsdf_table_buffer =
         device.create_buffer<float>(1u);
+    std::vector<std::uint32_t>
+        volume_surface_flags;
+    capabilities.merge_surface_flags(
+        volume_surface_flags,
+        spatial_surface_tag,
+        *spatial_lowered.program);
+    capabilities.merge_surface_flags(
+        volume_surface_flags,
+        homogeneous_surface_tag,
+        *homogeneous_lowered.program);
+    capabilities.merge_surface_flags(
+        volume_surface_flags,
+        spatial_light_path_surface_tag,
+        *spatial_light_path_lowered.program);
+    expect(
+        volume_surface_flags.size() ==
+                spatial_light_path_surface_tag +
+                    1u &&
+            volume_surface_flags[
+                spatial_surface_tag] ==
+                volume_surface_flag_heterogeneous &&
+            volume_surface_flags[
+                homogeneous_surface_tag] ==
+                volume_surface_flag_light_path &&
+            volume_surface_flags[
+                spatial_light_path_surface_tag] ==
+                (volume_surface_flag_heterogeneous |
+                 volume_surface_flag_light_path),
+        "volume surface capability flag table changed");
+    scene->volume_surface_flag_count =
+        static_cast<std::uint32_t>(
+            volume_surface_flags.size());
+    scene->volume_surface_flag_buffer =
+        device.create_buffer<luisa::uint>(
+            volume_surface_flags.size());
 
     const auto generated_mapping =
         make_generated_coordinate_mapping(
@@ -761,6 +1005,10 @@ void run_scene_build(
         << scene->cycles_bsdf_table_buffer
                .copy_from(
                    luisa::span{cycles_table})
+        << scene->volume_surface_flag_buffer
+               .copy_from(
+                   luisa::span{
+                       volume_surface_flags})
         << scene->geometry_buffer.copy_from(
                luisa::span{geometry_records})
         << scene->instance_buffer.copy_from(
@@ -907,10 +1155,268 @@ void run_scene_build(
     expect(
         nodes[9u].parent == -1 &&
             nodes[9u].first_child == -1 &&
-            close(nodes[9u].sigma_minimum, 0.35f) &&
-            close(nodes[9u].sigma_maximum, 0.35f),
+            close(nodes[9u].sigma_minimum, 1.0f) &&
+            close(nodes[9u].sigma_maximum, 1.0f),
         "Cycles 1^3 homogeneous root was not evaluated "
         "as a single raw-graph cell on " +
+            std::string{backend});
+
+    auto points =
+        make_scene_volume_stack_entry_point_provider(
+            scene);
+    auto provider_output =
+        device.create_buffer<luisa::float4>(6u);
+    Kernel1D evaluate_provider =
+        [scene,
+         points,
+         spatial_surface_tag,
+         homogeneous_surface_tag,
+         homogeneous_parameter_block,
+         spatial_light_path_surface_tag,
+         spatial_light_path_parameter_block](
+            BufferVar<luisa::float4> output)
+            noexcept {
+            BufferShaderServices services{
+                scene->parameter_buffer,
+                scene->cycles_bsdf_table_buffer,
+                scene->texture_heap,
+                scene->heap,
+                scene->attribute_binding_slot,
+                scene->attribute_range_slot,
+                scene->nishita_texture_bindings,
+                scene->shader_color_space};
+            const auto world_origin =
+                make_float3(
+                    2.5f, -2.0f, 6.5f);
+            const auto world_direction =
+                make_float3(
+                    1.0f, 0.0f, 0.0f);
+            const VolumeShadingState
+                camera_state{
+                    .position = world_origin,
+                    .incoming =
+                        -world_direction,
+                    .ray_visibility =
+                        camera_visibility,
+                    .ray_events = 0u,
+                    .ray_depth = 0u,
+                    .diffuse_depth = 0u,
+                    .glossy_depth = 0u,
+                    .transparent_depth = 0u,
+                    .transmission_depth = 0u,
+                    .ray_length = 0.0f,
+                    .time = 0.0f};
+            const VolumeShadingState
+                indirect_state{
+                    .position = world_origin,
+                    .incoming =
+                        -world_direction,
+                    .ray_visibility =
+                        diffuse_visibility,
+                    .ray_events = 0u,
+                    .ray_depth = 1u,
+                    .diffuse_depth = 1u,
+                    .glossy_depth = 0u,
+                    .transparent_depth = 0u,
+                    .transmission_depth = 0u,
+                    .ray_length = 0.0f,
+                    .time = 0.0f};
+            auto camera_provider =
+                make_scene_volume_majorant_entry_provider(
+                    scene,
+                    points,
+                    services,
+                    camera_state,
+                    0.25f,
+                    true);
+            auto indirect_provider =
+                make_scene_volume_majorant_entry_provider(
+                    scene,
+                    points,
+                    services,
+                    indirect_state,
+                    0.25f,
+                    true);
+            const VolumeStackEntry
+                spatial_entry{
+                    .object = 91u,
+                    .shader = 37u,
+                    .surface_tag =
+                        spatial_surface_tag,
+                    .parameter_block = 0u,
+                    .instance_id = 0u,
+                    .sample_method =
+                        volume_sample_distance,
+                    .valid = true};
+            const VolumeStackEntry
+                homogeneous_entry{
+                    .object = 91u,
+                    .shader = 38u,
+                    .surface_tag =
+                        homogeneous_surface_tag,
+                    .parameter_block =
+                        homogeneous_parameter_block,
+                    .instance_id = 0u,
+                    .sample_method =
+                        volume_sample_distance,
+                    .valid = true};
+            const VolumeStackEntry
+                spatial_light_path_entry{
+                    .object = 91u,
+                    .shader = 39u,
+                    .surface_tag =
+                        spatial_light_path_surface_tag,
+                    .parameter_block =
+                        spatial_light_path_parameter_block,
+                    .instance_id = 0u,
+                    .sample_method =
+                        volume_sample_distance,
+                    .valid = true};
+            auto world_entry =
+                homogeneous_entry;
+            world_entry.object =
+                invalid_volume_identity;
+            world_entry.instance_id =
+                invalid_volume_identity;
+            const VolumeMajorantLeaf leaf{
+                .minimum = 0.0f,
+                .maximum = 2.0f,
+                .sigma_minimum = 0.25f,
+                .sigma_maximum = 0.75f,
+                .node = 0u,
+                .valid = true};
+            const auto object_space =
+                indirect_provider->entry_space(
+                    spatial_entry,
+                    world_origin,
+                    world_direction);
+            const auto world_space =
+                indirect_provider->entry_space(
+                    world_entry,
+                    world_origin,
+                    world_direction);
+            const auto spatial_extrema =
+                indirect_provider->extrema(
+                    spatial_entry,
+                    leaf,
+                    object_space.object_density,
+                    world_origin,
+                    world_direction);
+            const auto camera_extrema =
+                camera_provider->extrema(
+                    homogeneous_entry,
+                    leaf,
+                    object_space.object_density,
+                    world_origin,
+                    world_direction);
+            const auto runtime_extrema =
+                indirect_provider->extrema(
+                    homogeneous_entry,
+                    leaf,
+                    object_space.object_density,
+                    world_origin,
+                    world_direction);
+            const auto spatial_runtime_extrema =
+                indirect_provider->extrema(
+                    spatial_light_path_entry,
+                    leaf,
+                    object_space.object_density,
+                    world_origin,
+                    world_direction);
+            output.write(
+                0u,
+                make_float4(
+                    object_space.ray_origin,
+                    object_space.object_density));
+            output.write(
+                1u,
+                make_float4(
+                    object_space.ray_direction,
+                    spatial_extrema.minimum));
+            output.write(
+                2u,
+                make_float4(
+                    spatial_extrema.maximum,
+                    camera_extrema.minimum,
+                    camera_extrema.maximum,
+                    runtime_extrema.minimum));
+            output.write(
+                3u,
+                make_float4(
+                    runtime_extrema.maximum,
+                    world_space.ray_origin.x,
+                    world_space.ray_origin.y,
+                    world_space.ray_origin.z));
+            output.write(
+                4u,
+                make_float4(
+                    world_space.ray_direction,
+                    world_space.object_density));
+            output.write(
+                5u,
+                make_float4(
+                    spatial_runtime_extrema.minimum,
+                    spatial_runtime_extrema.maximum,
+                    0.0f,
+                    0.0f));
+        };
+    ShaderOption provider_options;
+    provider_options.enable_cache = true;
+    provider_options.enable_fast_math = false;
+    auto provider_shader =
+        device.compile(
+            evaluate_provider,
+            provider_options);
+    std::array<luisa::float4, 6u>
+        provider_values{};
+    stream
+        << provider_shader(provider_output)
+               .dispatch(1u)
+        << provider_output.copy_to(
+               luisa::span{provider_values})
+        << synchronize();
+    expect(
+        close(provider_values[0u].x, 1.0f) &&
+            close(provider_values[0u].y, 2.0f) &&
+            close(provider_values[0u].z, 3.0f) &&
+            close(provider_values[0u].w, 1.0f) &&
+            close(provider_values[1u].x, 2.0f) &&
+            close(provider_values[1u].y, 0.0f) &&
+            close(provider_values[1u].z, 0.0f),
+        "scene majorant provider did not apply the "
+        "inverse TLAS transform on " +
+            std::string{backend});
+    expect(
+        close(provider_values[1u].w, 0.25f) &&
+            close(provider_values[2u].x, 0.75f) &&
+            close(provider_values[2u].y, 0.25f) &&
+            close(provider_values[2u].z, 0.75f) &&
+            close(provider_values[2u].w, 0.0f) &&
+            close(provider_values[3u].x, 0.0f),
+        "scene majorant provider did not preserve baked "
+        "extrema or re-evaluate Light Path on " +
+            std::string{backend});
+    expect(
+        close(provider_values[3u].y, 2.5f) &&
+            close(provider_values[3u].z, -2.0f) &&
+            close(provider_values[3u].w, 6.5f) &&
+            close(provider_values[4u].x, 1.0f) &&
+            close(provider_values[4u].y, 0.0f) &&
+            close(provider_values[4u].z, 0.0f) &&
+            close(provider_values[4u].w, 1.0f),
+        "scene majorant provider transformed the World "
+        "entry on " +
+            std::string{backend});
+    expect(
+        close(
+            provider_values[5u].x,
+            1.54166667f) &&
+            close(
+                provider_values[5u].y,
+                3.0625f),
+        "scene majorant provider did not preserve "
+        "Cycles heterogeneous four-sample offset and "
+        "1.5x safety bound on " +
             std::string{backend});
 }
 

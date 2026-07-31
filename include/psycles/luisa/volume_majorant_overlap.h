@@ -43,7 +43,9 @@ class VolumeMajorantEntryProvider {
     extrema(
         const VolumeStackEntry &entry,
         const VolumeMajorantLeaf &leaf,
-        Float object_density) const noexcept;
+        Float object_density,
+        Float3 world_ray_origin,
+        Float3 world_ray_direction) const noexcept;
 };
 
 struct VolumeMajorantSegment {

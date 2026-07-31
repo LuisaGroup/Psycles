@@ -428,6 +428,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             data->materials);
 
     luisa::vector<luisa::float4> parameters;
+    std::vector<std::uint32_t>
+        volume_surface_flags;
     std::map<std::uint64_t, std::uint32_t>
         surface_tags_by_signature;
     for (const auto &[id, material] :
@@ -446,6 +448,13 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         const auto capabilities =
             data->surfaces.capabilities(
                 surface_iter->second);
+        if (capabilities.may_have_volume) {
+            volume_capabilities
+                .merge_surface_flags(
+                    volume_surface_flags,
+                    surface_iter->second,
+                    *material.surface_program());
+        }
         data->material_bindings.emplace(
             id,
             MaterialBinding{
@@ -578,6 +587,15 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     data->parameter_buffer =
         data->device.create_buffer<luisa::float4>(
             parameters.size());
+    data->volume_surface_flag_count =
+        static_cast<std::uint32_t>(
+            volume_surface_flags.size());
+    if (volume_surface_flags.empty()) {
+        volume_surface_flags.emplace_back(0u);
+    }
+    data->volume_surface_flag_buffer =
+        data->device.create_buffer<luisa::uint>(
+            volume_surface_flags.size());
 
     using namespace cycles45_tables;
     static_assert(
@@ -682,7 +700,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     stream << data->parameter_buffer.copy_from(
                   luisa::span{parameters})
            << data->cycles_bsdf_table_buffer.copy_from(
-                  luisa::span{cycles_bsdf_values});
+                  luisa::span{cycles_bsdf_values})
+           << data->volume_surface_flag_buffer.copy_from(
+                  luisa::span{volume_surface_flags});
 
     std::size_t texture_slot_count = 1u;
     for (const auto &[image_id, image] : snapshot.images) {

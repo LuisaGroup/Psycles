@@ -262,9 +262,9 @@ contract, not permission to continue with an estimated bound. Majorant
 construction, octree traversal, overlapping-stack reduction, VSPG reservoir
 selection, and direct-light MIS are separate components so that none can
 silently alter this local measure. The first three acceleration stages are
-now complete; the scene capability gate continues to reject heterogeneous
-material graphs until their production coordinate/extrema provider and
-collision/phase/direct-light path are connected.
+now complete and the production coordinate/extrema provider composes with
+them. The scene capability gate continues to reject heterogeneous material
+graphs until the collision/phase/direct-light path is connected.
 
 `VolumeMajorantSceneComponent` owns the next host-stage boundary. It maps each
 internal instance and its effective material overrides to one object/shader
@@ -423,13 +423,22 @@ shader identity. Missing, malformed, or invalid root coverage fails the whole
 segment closed and cannot invoke the coordinate/extrema provider. The
 host-stage-polymorphic `VolumeMajorantEntryProvider` keeps object transforms
 and runtime Light Path extrema evaluation outside the interval algebra; its
-default policy is the baked leaf extrema times object density.
+default policy is the baked leaf extrema times object density. The production
+scene provider transforms object entries through the inverse TLAS transform
+while leaving the World entry untouched. A compact per-surface capability
+buffer selects Cycles' camera/baked path or exact raw-closure re-evaluation:
+one midpoint for homogeneous closures, four shade-offset samples for
+heterogeneous closures, followed by the `max(0.5, 1.5 * maximum)` safety
+expansion. Capability analysis visits every reachable dependency edge, so
+Volume homogeneity is independent of expression order. The Light Path flag
+separately matches current Cycles' deliberately broad finalized-shader scan,
+including a surface-only Light Path dependency.
 
 `HeterogeneousVolumeTracking` independently owns exponential candidate
 distance and the throughput/albedo-weighted real/null collision measure.
 Scene-side prepass resources, hierarchy traversal, and multi-root reduction
-now compose the acceleration stages. Production transport still needs the
-scene-aware provider and collision/phase/direct-light connection.
+now compose the acceleration stages with the production scene-aware provider.
+Production transport still needs the collision/phase/direct-light connection.
 
 Volume-scattering probability guidance is persistent render-session state,
 not path-local policy. The path kernel accumulates Cycles' raw scatter,

@@ -47,6 +47,30 @@ namespace {
     }
 }
 
+[[nodiscard]] bool is_light_path_source(
+    compiler::ValueOperation operation) noexcept {
+    using compiler::ValueOperation;
+    switch (operation) {
+        case ValueOperation::path_is_camera:
+        case ValueOperation::path_is_shadow:
+        case ValueOperation::path_is_diffuse:
+        case ValueOperation::path_is_glossy:
+        case ValueOperation::path_is_singular:
+        case ValueOperation::path_is_reflection:
+        case ValueOperation::path_is_transmission:
+        case ValueOperation::path_is_volume_scatter:
+        case ValueOperation::path_ray_length:
+        case ValueOperation::path_ray_depth:
+        case ValueOperation::path_diffuse_depth:
+        case ValueOperation::path_glossy_depth:
+        case ValueOperation::path_transparent_depth:
+        case ValueOperation::path_transmission_depth:
+            return true;
+        default:
+            return false;
+    }
+}
+
 class HomogeneousVolumeAnalysis {
 
   private:
@@ -94,8 +118,11 @@ class HomogeneousVolumeAnalysis {
             instruction.i,
             instruction.j};
         for (const auto dependency : dependencies) {
+            const auto dependency_homogeneous =
+                value(dependency);
             homogeneous =
-                homogeneous && value(dependency);
+                homogeneous &&
+                dependency_homogeneous;
         }
         visit = homogeneous
                     ? Visit::homogeneous
@@ -142,13 +169,20 @@ class HomogeneousVolumeAnalysis {
             instruction.factor};
         auto homogeneous = true;
         for (const auto dependency : values) {
+            const auto dependency_homogeneous =
+                value(dependency);
             homogeneous =
-                homogeneous && value(dependency);
+                homogeneous &&
+                dependency_homogeneous;
         }
+        const auto a_homogeneous =
+            volume(instruction.a);
+        const auto b_homogeneous =
+            volume(instruction.b);
         homogeneous =
             homogeneous &&
-            volume(instruction.a) &&
-            volume(instruction.b);
+            a_homogeneous &&
+            b_homogeneous;
         visit = homogeneous
                     ? Visit::homogeneous
                     : Visit::varying;
@@ -178,18 +212,53 @@ VolumeProgramCapabilityComponent::analyze(
     const compiler::SurfaceProgram &program)
     const noexcept {
     auto has_spatial_values = false;
+    auto has_light_path = false;
     for (const auto &instruction :
          program.value_instructions()) {
         has_spatial_values =
             has_spatial_values ||
             is_spatial_source(instruction.operation);
+        has_light_path =
+            has_light_path ||
+            is_light_path_source(
+                instruction.operation);
     }
     HomogeneousVolumeAnalysis homogeneous{program};
+    const auto is_homogeneous =
+        homogeneous.analyze();
     return {
         .has_spatial_values =
             has_spatial_values,
         .homogeneous =
-            homogeneous.analyze()};
+            is_homogeneous,
+        .has_light_path =
+            has_light_path};
+}
+
+void VolumeProgramCapabilityComponent::
+    merge_surface_flags(
+        std::vector<std::uint32_t> &flags,
+        std::uint32_t surface_tag,
+        const compiler::SurfaceProgram &program) const {
+    if (flags.size() <= surface_tag) {
+        flags.resize(
+            static_cast<std::size_t>(
+                surface_tag) +
+                1u,
+            0u);
+    }
+    const auto capabilities =
+        analyze(program);
+    auto &surface_flags =
+        flags[surface_tag];
+    surface_flags |=
+        capabilities.homogeneous
+            ? 0u
+            : volume_surface_flag_heterogeneous;
+    surface_flags |=
+        capabilities.has_light_path
+            ? volume_surface_flag_light_path
+            : 0u;
 }
 
 }// namespace psycles::luisa_backend::detail
