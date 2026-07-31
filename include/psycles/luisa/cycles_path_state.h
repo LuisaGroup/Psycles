@@ -189,7 +189,6 @@ inline void apply_shader_state(
     return {
         .flag =
             flag_mis_skip |
-            flag_single_pass_done |
             flag_transparent_background,
         .visibility = visibility_camera,
         .bounce = 0u,

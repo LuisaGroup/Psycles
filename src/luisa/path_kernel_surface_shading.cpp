@@ -188,6 +188,33 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
             };
         };
 
+        // Cycles writes camera data passes before recording/sampling the
+        // surface. SINGLE_PASS_DONE therefore describes whether this exact
+        // surface crossed the View Layer alpha threshold; transparent
+        // surfaces below the threshold must preserve the unset bit.
+        $if(path_depth == 0u) {
+            auto aov = surface_aov(surface_tag, point);
+            sample_albedo += throughput * aov.albedo;
+            sample_glossy_color += throughput * aov.glossy_albedo;
+            sample_transmission_color += throughput * aov.transmission_albedo;
+            auto surface_alpha = clamp(make_float3(1.0f) - aov.transparency,
+                                       make_float3(0.0f),
+                                       make_float3(1.0f));
+            auto average_alpha =
+                (surface_alpha.x + surface_alpha.y + surface_alpha.z) *
+                (1.0f / 3.0f);
+            auto writes_normal =
+                (!primary_recorded) &
+                ((kernel_parameters.pass_alpha_threshold == 0.0f) |
+                 (average_alpha >= kernel_parameters.pass_alpha_threshold));
+            sample_normal = select(sample_normal, aov.normal, writes_normal);
+            primary_recorded = primary_recorded | writes_normal;
+            path_flags |= select(
+                0u,
+                cycles_path_state::flag_single_pass_done,
+                writes_normal);
+        };
+
         UInt cycles_surface_runtime_flags = 0u;
         if (path_trace_enabled) {
             const auto closure_summary =
@@ -285,29 +312,6 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
             }
         }
 
-        // Cycles writes camera data passes only along the
-        // transparent-background chain. Diffuse Color is
-        // throughput-weighted at every surface in that chain;
-        // Normal is captured once, after skipping transparent
-        // surfaces below the View Layer alpha threshold.
-        $if(path_depth == 0u) {
-            auto aov = surface_aov(surface_tag, point);
-            sample_albedo += throughput * aov.albedo;
-            sample_glossy_color += throughput * aov.glossy_albedo;
-            sample_transmission_color += throughput * aov.transmission_albedo;
-            auto surface_alpha = clamp(make_float3(1.0f) - aov.transparency,
-                                       make_float3(0.0f),
-                                       make_float3(1.0f));
-            auto average_alpha =
-                (surface_alpha.x + surface_alpha.y + surface_alpha.z) *
-                (1.0f / 3.0f);
-            auto writes_normal =
-                (!primary_recorded) &
-                ((kernel_parameters.pass_alpha_threshold == 0.0f) |
-                 (average_alpha >= kernel_parameters.pass_alpha_threshold));
-            sample_normal = select(sample_normal, aov.normal, writes_normal);
-            primary_recorded = primary_recorded | writes_normal;
-        };
         return {std::move(cycles_surface_runtime_flags)};
     }
 };

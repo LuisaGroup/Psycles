@@ -490,8 +490,9 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
     UInt transparent_depth = 0u;
     UInt transmission_depth = 0u;
     UInt path_depth = 0u;
-    // By the time Cycles records a surface event, its primary data
-    // pass has marked PATH_RAY_SINGLE_PASS_DONE.
+    // PATH_RAY_SINGLE_PASS_DONE is not an initial camera-path property.
+    // Cycles sets it only when a surface actually passes the film alpha
+    // threshold and writes the first single-value data passes.
     const auto initial_cycles_path_state = cycles_path_state::initial_state();
     UInt path_flags = initial_cycles_path_state.flag;
     UInt cycles_path_visibility = initial_cycles_path_state.visibility;

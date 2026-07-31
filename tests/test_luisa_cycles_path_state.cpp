@@ -18,7 +18,6 @@ using namespace psycles::luisa_backend;
 constexpr auto expected_diffuse_flag =
     cycles_path_state::flag_reflect |
     cycles_path_state::flag_diffuse_ancestor |
-    cycles_path_state::flag_single_pass_done |
     cycles_path_state::flag_terminate_after_transparent |
     cycles_path_state::flag_surface_pass;
 
@@ -26,7 +25,6 @@ constexpr auto expected_singular_flag =
     cycles_path_state::flag_reflect |
     cycles_path_state::flag_singular |
     cycles_path_state::flag_mis_skip |
-    cycles_path_state::flag_single_pass_done |
     cycles_path_state::flag_terminate_after_transparent |
     cycles_path_state::flag_surface_pass;
 
@@ -313,15 +311,22 @@ int main(int argc, char **argv) {
                                 -0.81f,
                                 0.04f,
                                 0.01f))));
+            output.write(
+                18u,
+                make_float4(
+                    cast<float>(initial.flag),
+                    cast<float>(initial.visibility),
+                    cast<float>(initial.bounce),
+                    cast<float>(initial.rng_offset)));
         };
 
     Context context{argv[0]};
     auto device = context.create_device(backend);
     auto stream = device.create_stream();
     auto output =
-        device.create_buffer<luisa::float4>(18u);
+        device.create_buffer<luisa::float4>(19u);
     auto kernel = device.compile(evaluate);
-    std::array<luisa::float4, 18u> actual{};
+    std::array<luisa::float4, 19u> actual{};
     stream << kernel(output).dispatch(1u)
            << output.copy_to(luisa::span{actual})
            << synchronize();
@@ -334,7 +339,7 @@ int main(int argc, char **argv) {
             32.0f},
         luisa::float4{1.0f, 0.0f, 0.0f, 0.0f},
         luisa::float4{2.0f, 0.0f, 0.0f, 0.0f},
-        luisa::float4{1924.0f, 1.0f, 0.0f, 1.0f},
+        luisa::float4{1668.0f, 1.0f, 0.0f, 1.0f},
         luisa::float4{32.0f, 1.0f, 0.0f, 0.0f},
         luisa::float4{
             static_cast<float>(expected_singular_flag),
@@ -366,8 +371,6 @@ int main(int argc, char **argv) {
         luisa::float4{
             static_cast<float>(
                 cycles_path_state::
-                    flag_single_pass_done |
-                cycles_path_state::
                     flag_mis_had_transmission |
                 cycles_path_state::
                     flag_volume_pass |
@@ -381,7 +384,11 @@ int main(int argc, char **argv) {
         // Minimum-bounce decisions are exact predicates; after them Cycles
         // uses sqrt(max(abs(throughput))) and clamps only the upper bound.
         luisa::float4{
-            1.0f, 1.0f, 0.5f, 0.9f}};
+            1.0f, 1.0f, 0.5f, 0.9f},
+        // Camera initialization has MIS_SKIP and TRANSPARENT_BACKGROUND.
+        // SINGLE_PASS_DONE belongs to film data-pass evaluation, not
+        // transport initialization.
+        luisa::float4{640.0f, 1.0f, 0.0f, 16.0f}};
     for (std::size_t index = 0u;
          index < expected.size();
          ++index) {
