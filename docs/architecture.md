@@ -370,6 +370,30 @@ or one-sided triangle geometric support. This separation prevents
 radiometric rejection, proposal measure, and interval algebra from becoming
 emitter-specific branches inside the homogeneous estimator.
 
+Heterogeneous transport is split at the same semantic boundaries.
+`VolumeMajorantHierarchyBuilder` consumes the 128-cubed cell extrema produced
+by a raw Luisa volume-graph evaluation pass and reduces them into Cycles'
+eight-contiguous-child hierarchy. It applies the current depth-seven and
+`range * node_diagonal * volume_scale > 1.442` split rule and records the
+object-bounds-to-`[1, 2)` transform. The builder is host acceleration-metadata
+code only: it neither evaluates a material nor acts as a CPU transport
+oracle. Cycles obtains each cell's extrema from sixteen padded Sobol samples,
+so this hierarchy is a sampled estimate rather than a mathematical proof of
+an upper bound. The transport contract detects a sampled extinction above the
+stored estimate and follows the explicit Cycles correction path.
+
+`VolumeMajorantTraversal` records a single-root Luisa hierarchical DDA. It
+mirrors positive ray axes, derives octants and common ancestors from IEEE-754
+mantissa bits, walks parent links without a device stack, and preserves
+Cycles' root-extrema tail for an implicit medium whose active segment extends
+beyond the root bounds. Overlapping volume-stack reduction remains a separate
+component so single-root adjacency, multi-root interval selection, and
+coefficient accumulation cannot silently acquire different traversal rules.
+`HeterogeneousVolumeTracking` independently owns exponential candidate
+distance and the throughput/albedo-weighted real/null collision measure.
+These components will be composed only after the raw shader-evaluation
+prepass and multi-root interval reducer are connected.
+
 Volume-scattering probability guidance is persistent render-session state,
 not path-local policy. The path kernel accumulates Cycles' raw scatter,
 primary-transmit, and optical-depth statistics in dedicated per-pixel buffers.
