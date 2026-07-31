@@ -10,6 +10,7 @@ namespace psycles::luisa_backend::detail {
 struct SampleDispatchBatch {
     std::uint32_t first{};
     std::uint32_t count{};
+    bool filter_volume_guiding{};
 };
 
 // A valid partition of [first, first + count) satisfies:
@@ -28,16 +29,27 @@ private:
     std::uint64_t _cursor{};
     std::uint64_t _end{};
     std::uint32_t _max_samples_per_dispatch{};
+    std::uint64_t _completed_samples{};
+    std::uint64_t _total_samples{};
+    bool _split_volume_guiding{};
 
 private:
     SampleDispatchPartition(
         std::uint64_t first,
         std::uint64_t end,
-        std::uint32_t max_samples_per_dispatch) noexcept
+        std::uint32_t max_samples_per_dispatch,
+        std::uint64_t completed_samples,
+        std::uint64_t total_samples,
+        bool split_volume_guiding) noexcept
         : _cursor{first},
           _end{end},
           _max_samples_per_dispatch{
-              max_samples_per_dispatch} {}
+              max_samples_per_dispatch},
+          _completed_samples{
+              completed_samples},
+          _total_samples{total_samples},
+          _split_volume_guiding{
+              split_volume_guiding} {}
 
 public:
     [[nodiscard]] static std::optional<
@@ -56,7 +68,50 @@ public:
             return std::nullopt;
         }
         return SampleDispatchPartition{
-            first, end, max_samples_per_dispatch};
+            first,
+            end,
+            max_samples_per_dispatch,
+            0u,
+            0u,
+            false};
+    }
+
+    // Cycles updates VSPG history after cumulative sample counts 1, 2, 4,
+    // 8, ... while more samples remain. This constructor preserves the
+    // requested sample interval but also makes every such update point a
+    // dispatch boundary, independent of the ordinary batch-size limit.
+    [[nodiscard]] static std::optional<
+        SampleDispatchPartition>
+    make_volume_guided(
+        std::uint32_t first,
+        std::uint32_t count,
+        std::uint32_t max_samples_per_dispatch,
+        std::uint32_t completed_samples,
+        std::uint32_t total_samples) noexcept {
+        const auto end =
+            static_cast<std::uint64_t>(first) +
+            static_cast<std::uint64_t>(count);
+        const auto completed_end =
+            static_cast<std::uint64_t>(
+                completed_samples) +
+            static_cast<std::uint64_t>(count);
+        if (max_samples_per_dispatch == 0u ||
+            total_samples == 0u ||
+            end > static_cast<std::uint64_t>(
+                      std::numeric_limits<
+                          std::uint32_t>::max()) ||
+            completed_end >
+                static_cast<std::uint64_t>(
+                    total_samples)) {
+            return std::nullopt;
+        }
+        return SampleDispatchPartition{
+            first,
+            end,
+            max_samples_per_dispatch,
+            completed_samples,
+            total_samples,
+            true};
     }
 
     [[nodiscard]] std::optional<SampleDispatchBatch>
@@ -64,15 +119,41 @@ public:
         if (_cursor == _end) {
             return std::nullopt;
         }
-        const auto batch_count = std::min(
+        auto batch_count = std::min(
             _end - _cursor,
             static_cast<std::uint64_t>(
                 _max_samples_per_dispatch));
+        if (_split_volume_guiding) {
+            auto next_power_of_two =
+                std::uint64_t{1u};
+            while (next_power_of_two <=
+                   _completed_samples) {
+                next_power_of_two <<= 1u;
+            }
+            batch_count = std::min(
+                batch_count,
+                next_power_of_two -
+                    _completed_samples);
+        }
+        const auto completed_after =
+            _completed_samples +
+            batch_count;
+        const auto power_of_two =
+            completed_after != 0u &&
+            (completed_after &
+             (completed_after - 1u)) == 0u;
         const SampleDispatchBatch batch{
             .first = static_cast<std::uint32_t>(_cursor),
             .count =
-                static_cast<std::uint32_t>(batch_count)};
+                static_cast<std::uint32_t>(batch_count),
+            .filter_volume_guiding =
+                _split_volume_guiding &&
+                power_of_two &&
+                completed_after <
+                    _total_samples};
         _cursor += batch_count;
+        _completed_samples =
+            completed_after;
         return batch;
     }
 };

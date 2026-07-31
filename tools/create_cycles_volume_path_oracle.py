@@ -8,20 +8,38 @@ Run through Blender:
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 import sys
 
 import bpy
 
 
-def argument_path() -> Path:
+def argument_options() -> argparse.Namespace:
     arguments = sys.argv
     if "--" not in arguments:
-        raise RuntimeError("expected an EXR output path after --")
+        raise RuntimeError("expected arguments after --")
     trailing = arguments[arguments.index("--") + 1 :]
-    if len(trailing) != 1:
-        raise RuntimeError("expected exactly one EXR output path")
-    return Path(trailing[0]).resolve()
+    parser = argparse.ArgumentParser(
+        description=__doc__
+    )
+    parser.add_argument("output", type=Path)
+    parser.add_argument(
+        "--samples",
+        type=int,
+        default=1,
+        help="Cycles AA sample count (default: 1)",
+    )
+    parser.add_argument(
+        "--transparent",
+        action="store_true",
+        help="enable Cycles transparent film",
+    )
+    options = parser.parse_args(trailing)
+    if options.samples <= 0:
+        parser.error("--samples must be positive")
+    options.output = options.output.resolve()
+    return options
 
 
 def clear_scene() -> None:
@@ -69,11 +87,15 @@ def make_world() -> bpy.types.World:
     return world
 
 
-def configure_scene(output: Path) -> None:
+def configure_scene(
+    output: Path,
+    samples: int,
+    transparent: bool,
+) -> None:
     scene = bpy.context.scene
     scene.render.engine = "CYCLES"
     scene.cycles.device = "CPU"
-    scene.cycles.samples = 1
+    scene.cycles.samples = samples
     scene.cycles.use_denoising = False
     scene.cycles.seed = 11939
     scene.cycles.sampling_pattern = "TABULATED_SOBOL"
@@ -96,7 +118,7 @@ def configure_scene(output: Path) -> None:
     scene.render.image_settings.file_format = "OPEN_EXR"
     scene.render.image_settings.color_mode = "RGBA"
     scene.render.image_settings.color_depth = "32"
-    scene.render.film_transparent = False
+    scene.render.film_transparent = transparent
     scene.cycles.pixel_filter_type = "BOX"
     scene.cycles.filter_width = 1.0
     scene.render.filepath = str(output)
@@ -123,12 +145,21 @@ def configure_scene(output: Path) -> None:
 
 
 def main() -> None:
-    output = argument_path()
+    options = argument_options()
+    output = options.output
     output.parent.mkdir(parents=True, exist_ok=True)
     clear_scene()
-    configure_scene(output)
+    configure_scene(
+        output,
+        options.samples,
+        options.transparent,
+    )
     bpy.ops.render.render(write_still=True)
-    print(f"Cycles volume-path oracle: {output}")
+    print(
+        "Cycles volume-path oracle: "
+        f"{output} ({options.samples} spp, "
+        f"transparent={options.transparent})"
+    )
 
 
 if __name__ == "__main__":

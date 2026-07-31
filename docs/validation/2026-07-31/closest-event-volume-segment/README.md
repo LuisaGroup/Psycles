@@ -112,11 +112,13 @@ NaN or infinity is present. A triptych would contain three uniform swatches
 and add no visual evidence, so the first meaningful volume triptych remains
 the lit/scattering scene after volume NEE is connected.
 
-## Remaining release gate
+## Status after later checkpoints
 
 Closest-event free flight, phase continuation, volume emission/pass routing,
 roulette reuse at an attenuated emissive surface, and the terminate-on-next
-surface exception are active. Volume NEE, VSPG history, and heterogeneous grid
-transport still remain. Until volume NEE is complete, complex Blender volume
-scenes stay outside the compatibility claim even though homogeneous materials
-now execute in production.
+surface exception are active. Homogeneous distant-light
+[`volume NEE`](../homogeneous-volume-direct/README.md) and
+[`VSPG history`](../volume-guiding-history/README.md) are now connected.
+Finite-light/environment volume NEE and heterogeneous grid transport remain;
+complex Blender volume scenes therefore stay outside the compatibility claim
+even though the homogeneous subset executes in production.

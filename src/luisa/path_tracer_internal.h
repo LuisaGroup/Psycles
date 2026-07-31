@@ -9,6 +9,7 @@
 
 #include "path_tracer_types.h"
 #include "path_tracer_volume_metadata.h"
+#include "volume_guiding_filter.h"
 
 #include <algorithm>
 #include <array>
@@ -322,6 +323,8 @@ using RenderShader = Shader1D<
     Buffer<luisa::float4>,
     Buffer<luisa::uint>,
     Buffer<luisa::float4>,
+    Buffer<luisa::uint>,
+    Buffer<luisa::float4>,
     std::uint32_t,
     std::uint32_t,
     Buffer<luisa::float4>,
@@ -341,13 +344,19 @@ private:
     Buffer<luisa::float4> _albedo;
     Buffer<luisa::float4> _light_passes;
     Buffer<luisa::uint> _sample_count;
+    Buffer<luisa::float4> _volume_guiding_raw;
+    Buffer<luisa::uint> _volume_guiding_denoised;
+    Buffer<luisa::uint> _volume_guiding_intermediate;
     Buffer<luisa::float4> _path_trace;
     Buffer<luisa::float4> _sobol_table;
     Buffer<float> _pixel_filter_table;
     std::uint32_t _sobol_sequence_size{};
     std::uint32_t _total_aa_samples{};
+    std::uint32_t _rendered_samples{};
     RenderKernelParameters _kernel_parameters{};
     RenderShader _render_shader;
+    std::unique_ptr<VolumeGuidingFilter>
+        _volume_guiding_filter;
     bool _path_trace_delivered{false};
     std::atomic_bool _cancelled{false};
 

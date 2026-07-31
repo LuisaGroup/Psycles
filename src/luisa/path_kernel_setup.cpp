@@ -13,6 +13,8 @@ begin_path_kernel(const PathKernelConfig &config,
                   const BufferFloat4 &albedo,
                   const BufferFloat4 &light_passes,
                   const BufferUInt &sample_count,
+                  const BufferFloat4 &volume_guiding_raw,
+                  const BufferUInt &volume_guiding_denoised,
                   const BufferFloat4 &path_trace,
                   const UInt &sample_first,
                   const UInt &samples,
@@ -60,6 +62,53 @@ begin_path_kernel(const PathKernelConfig &config,
         light_pass_base +
         light_pass_index(LightPassBuffer::transmission_color));
     UInt completed = sample_count.read(pixel);
+    UInt volume_guiding_raw_base = 0u;
+    Float4 volume_guiding_scatter_sum =
+        make_float4(0.0f);
+    Float4 volume_guiding_transmit_sum =
+        make_float4(0.0f);
+    Float4 volume_guiding_optical_depth_sum =
+        make_float4(0.0f);
+    Float3 volume_guiding_scattered_radiance =
+        make_float3(0.0f);
+    Float3 volume_guiding_transmitted_radiance =
+        make_float3(0.0f);
+    if (config.volume_state) {
+        volume_guiding_raw_base =
+            pixel *
+            volume_guiding::raw_pixel_stride;
+        volume_guiding_scatter_sum =
+            volume_guiding_raw.read(
+                volume_guiding_raw_base +
+                volume_guiding::
+                    raw_scatter_slot);
+        volume_guiding_transmit_sum =
+            volume_guiding_raw.read(
+                volume_guiding_raw_base +
+                volume_guiding::
+                    raw_transmit_slot);
+        volume_guiding_optical_depth_sum =
+            volume_guiding_raw.read(
+                volume_guiding_raw_base +
+                volume_guiding::
+                    optical_depth_slot);
+        const auto denoised_base =
+            pixel *
+            volume_guiding::
+                denoised_pixel_stride;
+        volume_guiding_scattered_radiance =
+            volume_guiding::decode_rgbe(
+                volume_guiding_denoised.read(
+                    denoised_base +
+                    volume_guiding::
+                        denoised_scatter_slot));
+        volume_guiding_transmitted_radiance =
+            volume_guiding::decode_rgbe(
+                volume_guiding_denoised.read(
+                    denoised_base +
+                    volume_guiding::
+                        denoised_transmit_slot));
+    }
     SurfaceQuery surface_query{
         .lobe_mask = static_cast<std::uint32_t>(
             contract::event_diffuse | contract::event_glossy |
@@ -74,6 +123,8 @@ begin_path_kernel(const PathKernelConfig &config,
             albedo,
             light_passes,
             sample_count,
+            volume_guiding_raw,
+            volume_guiding_denoised,
             path_trace,
             sample_first,
             samples,
@@ -102,6 +153,15 @@ begin_path_kernel(const PathKernelConfig &config,
             std::move(glossy_color_sum),
             std::move(transmission_color_sum),
             std::move(completed),
+            std::move(volume_guiding_raw_base),
+            std::move(volume_guiding_scatter_sum),
+            std::move(volume_guiding_transmit_sum),
+            std::move(
+                volume_guiding_optical_depth_sum),
+            std::move(
+                volume_guiding_scattered_radiance),
+            std::move(
+                volume_guiding_transmitted_radiance),
             std::move(surface_query)};
 }
 
@@ -131,6 +191,22 @@ Float PathKernelInvocation::sample_light_roulette(
     Float3 unshadowed_contribution, Float random) const noexcept {
     return config.light_transport.light_sample_roulette_weight(
         unshadowed_contribution, random, parameters.light_inv_rr_threshold);
+}
+
+Float PathKernelInvocation::
+volume_guiding_majorant_optical_depth()
+    const noexcept {
+    // Unlike the denoised RGBE radiance guide, Cycles reads this raw running
+    // statistic for every sample. Deriving it here preserves equivalence
+    // between one fused multi-sample dispatch and several smaller dispatches.
+    return select(
+        std::numeric_limits<float>::max(),
+        volume_guiding_optical_depth_sum.x /
+            max(
+                volume_guiding_optical_depth_sum.y,
+                1.0f),
+        volume_guiding_optical_depth_sum.y >
+            0.0f);
 }
 
 SurfaceEvaluation PathKernelInvocation::evaluate_surface(
@@ -394,8 +470,11 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
     Float3 sample_volume_indirect = make_float3(0.0f);
     Float3 sample_emission = make_float3(0.0f);
     Float3 sample_environment = make_float3(0.0f);
-    Float sample_alpha =
-        select(1.0f, 0.0f, kernel_parameters.transparent_background != 0u);
+    Float3 volume_guiding_scatter =
+        make_float3(0.0f);
+    Float3 volume_guiding_transmit =
+        make_float3(0.0f);
+    Float sample_transparency = 0.0f;
     Bool primary_recorded = false;
     Float previous_bsdf_pdf = 0.0f;
     Float3 previous_mis_origin_normal = make_float3(0.0f);
@@ -463,7 +542,9 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
             std::move(sample_volume_indirect),
             std::move(sample_emission),
             std::move(sample_environment),
-            std::move(sample_alpha),
+            std::move(volume_guiding_scatter),
+            std::move(volume_guiding_transmit),
+            std::move(sample_transparency),
             std::move(primary_recorded),
             std::move(previous_bsdf_pdf),
             std::move(previous_mis_origin_normal),
@@ -530,6 +611,65 @@ void PathSampleContext::accumulate_scattered_light(
                 make_float3(0.0f),
                 path_depth == 1u);
     };
+}
+
+void PathSampleContext::accumulate_radiance(
+    Float3 contribution,
+    Bool primary_volume_scatter_override) noexcept {
+    radiance += contribution;
+    if (!invocation.config.volume_state) {
+        return;
+    }
+
+    // This is the exact priority used by
+    // film_write_volume_scattering_guiding_pass(): primary transmission
+    // wins over volume-scatter visibility. A primary volume NEE shadow path
+    // is the one exception; Cycles clears PRIMARY_TRANSMIT and injects
+    // VOLUME_SCATTER into the copied shadow state before writing Combined.
+    const auto primary_volume_direct =
+        primary_volume_scatter_override &
+        (path_depth == 0u);
+    const auto primary_transmit =
+        ((path_flags &
+          cycles_path_state::
+              flag_volume_primary_transmit) !=
+         0u) &
+        !primary_volume_direct;
+    const auto volume_scatter =
+        !primary_transmit &
+        (primary_volume_direct |
+         ((cycles_path_visibility &
+           cycles_path_state::
+               visibility_volume_scatter) !=
+          0u));
+    volume_guiding_transmit +=
+        select(
+            make_float3(0.0f),
+            contribution,
+            primary_transmit);
+    volume_guiding_scatter +=
+        select(
+            make_float3(0.0f),
+            contribution,
+            volume_scatter);
+}
+
+void PathSampleContext::accumulate_transparency(
+    Float transparency) noexcept {
+    sample_transparency += transparency;
+    if (!invocation.config.volume_state) {
+        return;
+    }
+    const auto primary_transmit =
+        (path_flags &
+         cycles_path_state::
+             flag_volume_primary_transmit) !=
+        0u;
+    volume_guiding_transmit +=
+        select(
+            make_float3(0.0f),
+            make_float3(transparency),
+            primary_transmit);
 }
 
 Float3
@@ -612,7 +752,8 @@ PathSampleContext::analytic_light_shader(Var<LightGpu> light,
 void accumulate_path_sample(PathSampleContext &sample) noexcept {
     auto &invocation = sample.invocation;
     auto &radiance = sample.radiance;
-    auto &sample_alpha = sample.sample_alpha;
+    auto &sample_transparency =
+        sample.sample_transparency;
     auto &sample_normal = sample.sample_normal;
     auto &sample_albedo = sample.sample_albedo;
     auto &sample_glossy_color = sample.sample_glossy_color;
@@ -627,6 +768,10 @@ void accumulate_path_sample(PathSampleContext &sample) noexcept {
     auto &sample_volume_indirect = sample.sample_volume_indirect;
     auto &sample_emission = sample.sample_emission;
     auto &sample_environment = sample.sample_environment;
+    auto &volume_guiding_scatter =
+        sample.volume_guiding_scatter;
+    auto &volume_guiding_transmit =
+        sample.volume_guiding_transmit;
     auto &combined_sum = invocation.combined_sum;
     auto &normal_sum = invocation.normal_sum;
     auto &albedo_sum = invocation.albedo_sum;
@@ -642,10 +787,20 @@ void accumulate_path_sample(PathSampleContext &sample) noexcept {
     auto &volume_indirect_sum = invocation.volume_indirect_sum;
     auto &emission_sum = invocation.emission_sum;
     auto &environment_sum = invocation.environment_sum;
+    auto &volume_guiding_scatter_sum =
+        invocation.volume_guiding_scatter_sum;
+    auto &volume_guiding_transmit_sum =
+        invocation.volume_guiding_transmit_sum;
+    auto &volume_guiding_optical_depth_sum =
+        invocation
+            .volume_guiding_optical_depth_sum;
     auto &completed = invocation.completed;
     radiance = select(
         radiance, make_float3(0.0f), any(luisa::compute::dsl::isnan(radiance)));
-    combined_sum += make_float4(radiance, sample_alpha);
+    combined_sum +=
+        make_float4(
+            radiance,
+            sample_transparency);
     normal_sum += make_float4(sample_normal, 1.0f);
     albedo_sum += make_float4(sample_albedo, 1.0f);
     glossy_color_sum += make_float4(sample_glossy_color, 1.0f);
@@ -663,6 +818,30 @@ void accumulate_path_sample(PathSampleContext &sample) noexcept {
         make_float4(sample_volume_indirect, 1.0f);
     emission_sum += make_float4(sample_emission, 1.0f);
     environment_sum += make_float4(sample_environment, 1.0f);
+    if (invocation.config.volume_state) {
+        volume_guiding_scatter_sum +=
+            make_float4(
+                volume_guiding_scatter,
+                0.0f);
+        volume_guiding_transmit_sum +=
+            make_float4(
+                volume_guiding_transmit,
+                0.0f);
+        const auto primary_volume_transmit =
+            (sample.path_flags &
+             cycles_path_state::
+                 flag_volume_primary_transmit) !=
+            0u;
+        volume_guiding_optical_depth_sum +=
+            select(
+                make_float4(0.0f),
+                make_float4(
+                    sample.optical_depth,
+                    1.0f,
+                    0.0f,
+                    0.0f),
+                primary_volume_transmit);
+    }
     completed += 1u;
 }
 
@@ -712,6 +891,23 @@ void PathKernelInvocation::write_film() noexcept {
     light_passes.write(
         light_pass_base + light_pass_index(LightPassBuffer::transmission_color),
         transmission_color_sum);
+    if (config.volume_state) {
+        volume_guiding_raw.write(
+            volume_guiding_raw_base +
+                volume_guiding::
+                    raw_scatter_slot,
+            volume_guiding_scatter_sum);
+        volume_guiding_raw.write(
+            volume_guiding_raw_base +
+                volume_guiding::
+                    raw_transmit_slot,
+            volume_guiding_transmit_sum);
+        volume_guiding_raw.write(
+            volume_guiding_raw_base +
+                volume_guiding::
+                    optical_depth_slot,
+            volume_guiding_optical_depth_sum);
+    }
     sample_count.write(pixel, completed);
 }
 

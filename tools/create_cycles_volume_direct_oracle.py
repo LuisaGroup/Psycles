@@ -8,20 +8,33 @@ Run through Blender:
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 import sys
 
 import bpy
 
 
-def argument_path() -> Path:
+def argument_options() -> argparse.Namespace:
     arguments = sys.argv
     if "--" not in arguments:
-        raise RuntimeError("expected an EXR output path after --")
+        raise RuntimeError("expected arguments after --")
     trailing = arguments[arguments.index("--") + 1 :]
-    if len(trailing) != 1:
-        raise RuntimeError("expected exactly one EXR output path")
-    return Path(trailing[0]).resolve()
+    parser = argparse.ArgumentParser(
+        description=__doc__
+    )
+    parser.add_argument("output", type=Path)
+    parser.add_argument(
+        "--samples",
+        type=int,
+        default=1,
+        help="Cycles AA sample count (default: 1)",
+    )
+    options = parser.parse_args(trailing)
+    if options.samples <= 0:
+        parser.error("--samples must be positive")
+    options.output = options.output.resolve()
+    return options
 
 
 def clear_scene() -> None:
@@ -85,11 +98,11 @@ def make_sun(scene: bpy.types.Scene) -> None:
     scene.collection.objects.link(light)
 
 
-def configure_scene(output: Path) -> None:
+def configure_scene(output: Path, samples: int) -> None:
     scene = bpy.context.scene
     scene.render.engine = "CYCLES"
     scene.cycles.device = "CPU"
-    scene.cycles.samples = 1
+    scene.cycles.samples = samples
     scene.cycles.use_denoising = False
     scene.cycles.seed = 11939
     # Psycles currently implements Cycles' explicit Tabulated Sobol mode.
@@ -148,12 +161,16 @@ def configure_scene(output: Path) -> None:
 
 
 def main() -> None:
-    output = argument_path()
+    options = argument_options()
+    output = options.output
     output.parent.mkdir(parents=True, exist_ok=True)
     clear_scene()
-    configure_scene(output)
+    configure_scene(output, options.samples)
     bpy.ops.render.render(write_still=True)
-    print(f"Cycles volume-direct oracle: {output}")
+    print(
+        "Cycles volume-direct oracle: "
+        f"{output} ({options.samples} spp)"
+    )
 
 
 if __name__ == "__main__":

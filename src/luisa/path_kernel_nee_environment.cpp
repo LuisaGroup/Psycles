@@ -26,7 +26,6 @@ class EnvironmentLightingComponent final : public DirectLightingComponent {
         auto &point = surface.point;
         auto &path_surface_query = surface.path_surface_query;
         auto &throughput = sample.throughput;
-        auto &radiance = sample.radiance;
         auto &path_depth = sample.path_depth;
         auto &diffuse_depth = sample.diffuse_depth;
         auto &glossy_depth = sample.glossy_depth;
@@ -126,7 +125,8 @@ class EnvironmentLightingComponent final : public DirectLightingComponent {
                         throughput * unshadowed_contribution *
                             shadow_transmittance * roulette_weight,
                         path_depth);
-                    radiance += contribution;
+                    sample.accumulate_radiance(
+                        contribution);
                     accumulate_light_pass(split_nee_light(contribution,
                                                           evaluation.f,
                                                           evaluation.diffuse_f,

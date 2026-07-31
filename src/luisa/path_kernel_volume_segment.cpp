@@ -63,7 +63,6 @@ class PathVolumeSegmentStageImpl final
         auto &stack = *sample.volume.stack;
         auto &ray = sample.ray;
         auto &throughput = sample.throughput;
-        auto &radiance = sample.radiance;
         auto &sample_emission =
             sample.sample_emission;
         auto &path_flags = sample.path_flags;
@@ -121,6 +120,13 @@ class PathVolumeSegmentStageImpl final
         };
         const auto inside_volume =
             !stack.empty();
+        path_flags |=
+            select(
+                0u,
+                cycles_path_state::
+                    flag_volume_primary_transmit,
+                inside_volume &
+                    (path_depth == 0u));
         continuation_decided =
             inside_volume;
 
@@ -271,12 +277,14 @@ class PathVolumeSegmentStageImpl final
                 phase_random,
                 transport_terminate,
                 {.scattered_radiance =
-                     make_float3(0.0f),
+                     invocation
+                         .volume_guiding_scattered_radiance,
                  .transmitted_radiance =
-                     make_float3(0.0f),
+                     invocation
+                         .volume_guiding_transmitted_radiance,
                  .majorant_optical_depth =
-                     std::numeric_limits<
-                         float>::max(),
+                     invocation
+                         .volume_guiding_majorant_optical_depth(),
                  .enabled =
                      inside_volume &
                      (path_depth == 0u)},
@@ -302,7 +310,8 @@ class PathVolumeSegmentStageImpl final
                     result.transport.emission,
                     inside_volume),
                 path_depth);
-        radiance += emission;
+        sample.accumulate_radiance(
+            emission);
         const auto directly_visible =
             (path_flags &
              cycles_path_state::

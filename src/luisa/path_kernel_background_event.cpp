@@ -26,7 +26,6 @@ class BackgroundEventStageImpl final
         auto &previous_bsdf_pdf =
             sample.previous_bsdf_pdf;
         auto &throughput = sample.throughput;
-        auto &radiance = sample.radiance;
         auto &path_depth = sample.path_depth;
         auto &path_flags = sample.path_flags;
         auto &transparent_depth =
@@ -91,7 +90,25 @@ class BackgroundEventStageImpl final
                                     transmission_depth)) *
                     environment_weight,
                 path_depth);
-        radiance += environment_contribution;
+        const auto transparent_background_ray =
+            (invocation.parameters
+                 .transparent_background !=
+             0u) &
+            ((path_flags &
+              cycles_path_state::
+                  flag_transparent_background) !=
+             0u);
+        $if(transparent_background_ray) {
+            sample.accumulate_transparency(
+                (throughput.x +
+                 throughput.y +
+                 throughput.z) *
+                (1.0f / 3.0f));
+        }
+        $else {
+            sample.accumulate_radiance(
+                environment_contribution);
+        };
         const auto directly_visible =
             (path_flags &
              cycles_path_state::flag_any_pass) ==

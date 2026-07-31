@@ -32,7 +32,6 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         auto &light_terminate_sample = bounce.light_terminate_sample;
         auto &bsdf_sample = bounce.bsdf_sample;
         auto &throughput = sample.throughput;
-        auto &radiance = sample.radiance;
         auto &sample_emission = sample.sample_emission;
         auto &path_depth = sample.path_depth;
         auto &previous_delta = sample.previous_delta;
@@ -54,7 +53,6 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         auto &sample_transmission_color = sample.sample_transmission_color;
         auto &sample_normal = sample.sample_normal;
         auto &primary_recorded = sample.primary_recorded;
-        auto &sample_alpha = sample.sample_alpha;
         const auto &emissive_triangle_pdf = config.emissive_triangle_pdf;
         const auto &forward_light_weight =
             config.light_transport.forward_light_weight;
@@ -111,7 +109,8 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         }
         Float3 emission_contribution = clamp_contribution(
             throughput * emitted * emission_weight, path_depth);
-        radiance += emission_contribution;
+        sample.accumulate_radiance(
+            emission_contribution);
         auto directly_visible_emission =
             (path_flags &
              cycles_path_state::flag_any_pass) ==
@@ -291,7 +290,6 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                  (average_alpha >= kernel_parameters.pass_alpha_threshold));
             sample_normal = select(sample_normal, aov.normal, writes_normal);
             primary_recorded = primary_recorded | writes_normal;
-            sample_alpha = select(sample_alpha, 1.0f, average_alpha > 0.0f);
         };
         return {std::move(cycles_surface_runtime_flags)};
     }

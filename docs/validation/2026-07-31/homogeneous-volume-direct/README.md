@@ -89,11 +89,12 @@ The complete machine-readable measurements are
 [`hip-report.json`](hip-report.json), and
 [`vk-report.json`](vk-report.json).
 
-## Scope still open
+## Scope after this checkpoint
 
 This is an exact distant-light homogeneous sub-contract, not a claim that
 volume lighting is finished. Finite point/spot/area emitters still need
 equiangular and distance MIS, environment NEE remains to be connected, and
-the VSPG accumulated/denoised history buffers still need their power-of-two
-update schedule. Heterogeneous grid/null-collision transport is also open.
-Those gates precede complex volume-scene quality claims.
+heterogeneous grid/null-collision transport is also open. The accumulated
+VSPG history and power-of-two filter schedule were completed in the subsequent
+[`volume-guiding-history`](../volume-guiding-history/README.md) checkpoint.
+The remaining gates precede complex volume-scene quality claims.
