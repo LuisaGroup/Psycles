@@ -1181,6 +1181,50 @@ def _export_scene(
                         1024,
                     )
                 ),
+                "visibility": {
+                    "camera": bool(
+                        getattr(
+                            scene.world.cycles_visibility,
+                            "camera",
+                            True,
+                        )
+                    ),
+                    "diffuse": bool(
+                        getattr(
+                            scene.world.cycles_visibility,
+                            "diffuse",
+                            True,
+                        )
+                    ),
+                    "glossy": bool(
+                        getattr(
+                            scene.world.cycles_visibility,
+                            "glossy",
+                            True,
+                        )
+                    ),
+                    "transmission": bool(
+                        getattr(
+                            scene.world.cycles_visibility,
+                            "transmission",
+                            True,
+                        )
+                    ),
+                    "shadow": bool(
+                        getattr(
+                            scene.world.cycles_visibility,
+                            "shadow",
+                            True,
+                        )
+                    ),
+                    "volume_scatter": bool(
+                        getattr(
+                            scene.world.cycles_visibility,
+                            "scatter",
+                            True,
+                        )
+                    ),
+                },
                 "cycles_sync": {
                     "shader_index": _CYCLES_BACKGROUND_SHADER_INDEX,
                     # BlenderSync creates the background-light object after

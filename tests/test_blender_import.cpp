@@ -289,6 +289,14 @@ void test_integrator_settings_round_trip() {
     "color": [0.05, 0.05, 0.05],
     "sampling_method": "MANUAL",
     "sample_map_resolution": 2048,
+    "visibility": {
+      "camera": true,
+      "diffuse": false,
+      "glossy": true,
+      "transmission": false,
+      "shadow": true,
+      "volume_scatter": false
+    },
     "cycles_sync": {
       "shader_index": 3,
       "object_index": 12
@@ -550,6 +558,15 @@ void test_integrator_settings_round_trip() {
     expect(
         imported.scene->world_sample_map_resolution == 2048u,
         "world sample-map resolution did not round-trip");
+    expect(
+        imported.scene->world_visibility_mask ==
+            (psycles::contract::visibility_bit(
+                 psycles::contract::RayVisibility::camera) |
+             psycles::contract::visibility_bit(
+                 psycles::contract::RayVisibility::glossy) |
+             psycles::contract::visibility_bit(
+                 psycles::contract::RayVisibility::shadow)),
+        "world ray visibility did not round-trip");
     const auto imported_material =
         imported.scene->materials.find(
             psycles::contract::MaterialId{2u});

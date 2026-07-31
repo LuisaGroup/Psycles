@@ -1,6 +1,7 @@
 #include "path_kernel_volume_direct_light.h"
 
 #include "path_kernel_area_light.h"
+#include "path_kernel_volume_environment_light.h"
 #include "path_kernel_volume_mesh_light.h"
 #include "path_kernel_volume_shadow.h"
 
@@ -468,6 +469,9 @@ class PathVolumeDirectLightingComponent final
     std::unique_ptr<
         VolumeMeshLightComponent>
         _mesh_light;
+    std::unique_ptr<
+        VolumeEnvironmentLightComponent>
+        _environment_light;
     VolumeAnalyticLightSampling
         _light_sampling;
     AreaLightSampling
@@ -657,6 +661,9 @@ class PathVolumeDirectLightingComponent final
                   config)},
           _mesh_light{
               make_volume_mesh_light_component(
+                  config)},
+          _environment_light{
+              make_volume_environment_light_component(
                   config)} {}
 
     VolumeDirectLightProposal propose(
@@ -770,6 +777,11 @@ class PathVolumeDirectLightingComponent final
             segment_direction,
             segment_length,
             result);
+        _environment_light->propose(
+            event,
+            path_stack,
+            segment_length,
+            result);
         return result;
     }
 
@@ -797,6 +809,14 @@ class PathVolumeDirectLightingComponent final
                     result));
         providers.emplace_back(
             _mesh_light
+                ->make_direction_provider(
+                    event,
+                    proposal,
+                    segment_position,
+                    segment_direction,
+                    result));
+        providers.emplace_back(
+            _environment_light
                 ->make_direction_provider(
                     event,
                     proposal,

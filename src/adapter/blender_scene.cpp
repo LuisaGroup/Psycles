@@ -1243,6 +1243,9 @@ BlenderSceneImport load_blender_scene_bundle(
                             world,
                             "sample_map_resolution"),
                         1024u));
+            scene.world_visibility_mask =
+                ray_visibility_mask(
+                    member(world, "visibility"));
             Vec3f world_color =
                 float3(member(world, "color"), {0.05f, 0.05f, 0.05f});
             auto *tree = member(world, "node_tree");

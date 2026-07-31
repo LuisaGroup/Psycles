@@ -386,6 +386,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             .value_or(
                 cycles_shader_identity::
                     invalid_index);
+    data->world_visibility_mask =
+        snapshot.world_visibility_mask;
 
     ShaderCompiler shader_compiler{
         compiler::make_core_node_registry()};
@@ -1795,13 +1797,16 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                     .has_spatial_values;
         }
     }
+    // Cycles LightManager::test_enabled_lights only enables a background
+    // emitter when MIS is requested and the raw surface graph is spatially
+    // varying (or a portal exists). MANUAL controls map resolution; it does
+    // not force a constant graph into the distribution. Portals are outside
+    // the currently supported subset.
     const auto include_environment =
         data->world_surface.has_value() &&
-        (snapshot.world_sampling ==
-             contract::WorldSampling::manual ||
-         (snapshot.world_sampling ==
-              contract::WorldSampling::automatic &&
-          world_is_spatially_varying));
+        snapshot.world_sampling !=
+            contract::WorldSampling::none &&
+        world_is_spatially_varying;
     const auto light_distribution =
         sampling::build_cycles_light_distribution(
             emissive_triangle_areas,
