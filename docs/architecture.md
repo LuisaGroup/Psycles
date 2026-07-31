@@ -182,8 +182,15 @@ Cycles' `volume_bounce`, `volume_bounds_bounce`, and `optical_depth` state.
 Host specialization omits both the local arrays and enclosure ray query from
 volume-free kernel ASTs. A volume-enabled path always receives the world
 medium and terminator; the +Z probe is emitted only when the camera view plane
-may overlap an object volume. Surface crossing and free-flight stages consume
-this state in later slices rather than duplicating its rules.
+may overlap an object volume. After a successful surface sample, the
+host-stage component consumes the exact Cycles continuation label and updates
+the stack only when `LABEL_TRANSMIT` is present. The entry comes from the same
+`TrianglePrimitiveComponent` used by camera traversal and carries the
+effective object/shader identity plus raw graph dispatch handles; reflection,
+non-volume surfaces, duplicate entrances, and exits therefore use one formal
+boundary transition rather than path-local special cases. This call is
+absent from volume-free ASTs. The remaining free-flight stage will consume
+the same state rather than duplicating its rules.
 
 `VolumeSceneMetadataComponent` performs the matching host preprocessing. It
 resolves each instance's effective material slots, transforms the geometry

@@ -259,6 +259,8 @@ struct SurfaceGeometryContext {
     UInt surface_tag;
     UInt cycles_surface_shader;
     UInt cycles_object_index;
+    VolumeStackEntry volume_stack_entry;
+    Bool surface_has_volume;
     SurfacePoint point;
     SurfaceQuery path_surface_query;
 

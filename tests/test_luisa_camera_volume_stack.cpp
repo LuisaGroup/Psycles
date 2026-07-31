@@ -1,6 +1,8 @@
 #include "cycles_shader_identity.h"
 #include "path_kernel_volume_state.h"
 
+#include <psycles/luisa/cycles_closure.h>
+
 #include <array>
 #include <cmath>
 #include <cstdlib>
@@ -15,7 +17,7 @@ using namespace luisa::compute;
 using namespace psycles::luisa_backend;
 using namespace psycles::luisa_backend::detail;
 
-inline constexpr std::size_t record_count = 13u;
+inline constexpr std::size_t record_count = 18u;
 
 [[nodiscard]] bool approximately_equal(
     float actual,
@@ -528,6 +530,137 @@ int main(int argc, char **argv) {
                     flag(
                         background_stack
                             .empty())));
+            const VolumeStackEntry
+                crossing_entry{
+                    .object = 700u,
+                    .shader =
+                        cycles_shader_identity::
+                            surface(7u, false),
+                    .surface_tag = 70u,
+                    .parameter_block = 700u,
+                    .instance_id = 7u,
+                    .valid = true};
+            const auto reflection_label =
+                cycles_closure::
+                    label_from_events(
+                        UInt{
+                            psycles::contract::
+                                event_diffuse |
+                            psycles::contract::
+                                event_reflection});
+            path_volume->cross_surface(
+                background_only,
+                crossing_entry,
+                false,
+                true,
+                reflection_label);
+            records.write(
+                13u,
+                make_float4(
+                    number(
+                        background_stack
+                            .count()),
+                    flag(
+                        background_stack
+                            .entry(1u)
+                            .valid),
+                    number(reflection_label),
+                    0.0f));
+            const auto transparent_label =
+                cycles_closure::
+                    label_from_events(
+                        UInt{
+                            psycles::contract::
+                                event_transmission |
+                            psycles::contract::
+                                event_transparent});
+            path_volume->cross_surface(
+                background_only,
+                crossing_entry,
+                false,
+                true,
+                transparent_label);
+            const auto entered =
+                background_stack.entry(1u);
+            records.write(
+                14u,
+                make_float4(
+                    number(
+                        background_stack
+                            .count()),
+                    number(entered.object),
+                    shader_index(
+                        entered.shader),
+                    flag(entered.valid)));
+            path_volume->cross_surface(
+                background_only,
+                crossing_entry,
+                false,
+                true,
+                transparent_label);
+            records.write(
+                15u,
+                make_float4(
+                    number(
+                        background_stack
+                            .count()),
+                    number(
+                        background_stack
+                            .entry(1u)
+                            .surface_tag),
+                    number(
+                        background_stack
+                            .entry(1u)
+                            .parameter_block),
+                    number(
+                        background_stack
+                            .entry(1u)
+                            .instance_id)));
+            path_volume->cross_surface(
+                background_only,
+                crossing_entry,
+                true,
+                true,
+                transparent_label);
+            records.write(
+                16u,
+                make_float4(
+                    number(
+                        background_stack
+                            .count()),
+                    flag(
+                        background_stack
+                            .entry(1u)
+                            .valid),
+                    flag(
+                        background_stack
+                            .entry(0u)
+                            .valid),
+                    0.0f));
+            path_volume->cross_surface(
+                background_only,
+                crossing_entry,
+                false,
+                false,
+                transparent_label);
+            records.write(
+                17u,
+                make_float4(
+                    number(
+                        background_stack
+                            .count()),
+                    flag(
+                        background_stack
+                            .entry(1u)
+                            .valid),
+                    number(
+                        background_stack
+                            .entry(0u)
+                            .object),
+                    shader_index(
+                        background_stack
+                            .entry(0u)
+                            .shader)));
         };
     auto shader = device.compile(evaluate);
 
@@ -600,7 +733,12 @@ int main(int argc, char **argv) {
         luisa::float4{0.0f, 0.0f, 1.0f, 1.0f},
         luisa::float4{1.0f, 0.0f, 0.0f, 5.0f},
         luisa::float4{900.0f, 5.0f, 50.0f, 500.0f},
-        luisa::float4{1.0f, 0.0f, 3.0f, 0.0f}};
+        luisa::float4{1.0f, 0.0f, 3.0f, 0.0f},
+        luisa::float4{1.0f, 0.0f, 6.0f, 0.0f},
+        luisa::float4{2.0f, 700.0f, 7.0f, 1.0f},
+        luisa::float4{2.0f, 70.0f, 700.0f, 7.0f},
+        luisa::float4{1.0f, 0.0f, 1.0f, 0.0f},
+        luisa::float4{1.0f, 0.0f, 900.0f, 5.0f}};
     auto failed = false;
     for (auto index = std::size_t{0u};
          index < expected.size();

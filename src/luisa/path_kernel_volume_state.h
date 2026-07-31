@@ -33,6 +33,13 @@ class PathVolumeStateComponent {
         Expr<std::uint32_t> visibility,
         std::size_t stack_size,
         bool probe_camera_enclosures) const noexcept = 0;
+
+    virtual void cross_surface(
+        PathVolumeState &state,
+        const VolumeStackEntry &entry,
+        Bool back_facing,
+        Bool has_volume,
+        UInt cycles_label) const noexcept = 0;
 };
 
 // Host-specialized disabled state. It emits no Local arrays and no ray query,

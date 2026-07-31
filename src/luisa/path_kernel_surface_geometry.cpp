@@ -185,6 +185,10 @@ private:
             primitive.cycles_surface_shader;
         UInt cycles_object_index =
             primitive.cycles_object_index;
+        auto volume_stack_entry =
+            primitive.volume_stack_entry();
+        Bool surface_has_volume =
+            primitive.has_volume;
 
         SurfacePoint point{
             .position = hit_position,
@@ -301,6 +305,8 @@ private:
                 std::move(surface_tag),
                 std::move(cycles_surface_shader),
                 std::move(cycles_object_index),
+                std::move(volume_stack_entry),
+                std::move(surface_has_volume),
                 std::move(point),
                 std::move(path_surface_query)};
     }

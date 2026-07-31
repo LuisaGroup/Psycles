@@ -37,7 +37,12 @@ object 104, followed by the terminator. The fixture invokes the same
 first sample takes the enclosure path above; the second disables the probe
 and must contain only the independently initialized world entry. This checks
 both host-stage branches and proves the two move-only local stacks do not
-alias.
+alias. The fixture then exercises the production surface-crossing call with
+labels produced by `cycles_closure::label_from_events`: diffuse reflection
+must not mutate the stack, transparent transmission must enter the medium,
+repeating the same front crossing must not duplicate it, the matching
+back-facing transmission must remove it, and a non-volume surface must remain
+a no-op.
 
 ## Backend result
 
@@ -49,11 +54,14 @@ psycles.luisa_camera_volume_stack_hip
 psycles.luisa_camera_volume_stack_vk
 ```
 
-All three pass. The thirteen output records check stack/intersection/enclosure
+All three pass. The eighteen output records check stack/intersection/enclosure
 counts, all retained identities and raw graph dispatch handles, volume
 candidate filtering, entrance/exit normals, negative-scale orientation, the
 fixed probe direction, background-only initialization, and sample-local
-ownership. The full Psycles build used 32 parallel jobs, and all 62 CTest
+ownership. They additionally pin the reflection, transmitted entrance,
+duplicate entrance, transmitted exit, and non-volume crossing guards used by
+the main path-scatter stage. The full Psycles build used 32 parallel jobs, and
+all 63 CTest
 cases passed with `-j32`; the source-size gate also confirms every handwritten
 implementation file remains below 2,000 lines.
 
@@ -83,5 +91,4 @@ There is intentionally no triptych for this checkpoint: it emits stack state,
 not radiance. Although the component is now owned by the real path sample,
 scene volume materials remain release-gated until the downstream transport
 stages are complete. Volume EXR comparisons and inspected triptychs begin
-after surface boundary updates, free-flight, phase continuation, and volume
-NEE are active together.
+after free-flight, phase continuation, and volume NEE are active together.
