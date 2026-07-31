@@ -264,6 +264,17 @@ MIS are separate components so that none can silently alter this local
 measure. Until a sound majorant provider and traversal are connected, the
 scene capability gate continues to reject heterogeneous material graphs.
 
+`VolumeMajorantSceneComponent` owns the next host-stage boundary. It maps each
+internal instance and its effective material overrides to one heterogeneous
+object/shader root, appends the distinct World range, dispatches the raw
+`GraphSurface` prepass, reduces each result through the Cycles hierarchy
+builder, formally validates each full eight-child tree, relocates all local
+indices, and uploads compact node/root/range buffers. The ranges form an exact
+ordered partition and the World range is always last, so later overlapping
+traversal does not depend on host pointer or map ordering. This component
+builds acceleration metadata only; it neither evaluates transport on the CPU
+nor replaces the original closure graph.
+
 ### Scene
 
 `SceneDatabase` stores immutable logical snapshots and accepts a `SceneDelta`
@@ -401,8 +412,9 @@ component so single-root adjacency, multi-root interval selection, and
 coefficient accumulation cannot silently acquire different traversal rules.
 `HeterogeneousVolumeTracking` independently owns exponential candidate
 distance and the throughput/albedo-weighted real/null collision measure.
-These components will be composed only after scene-side prepass resource
-construction and the multi-root interval reducer are connected.
+Scene-side prepass resources now compose the first two stages; production
+transport will consume them only after the multi-root interval reducer is
+connected.
 
 Volume-scattering probability guidance is persistent render-session state,
 not path-local policy. The path kernel accumulates Cycles' raw scatter,

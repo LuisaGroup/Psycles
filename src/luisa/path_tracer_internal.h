@@ -6,6 +6,7 @@
 #include <psycles/luisa/cycles_path_state.h>
 #include <psycles/luisa/cycles_sampler.h>
 #include <psycles/luisa/graph_surface.h>
+#include <psycles/luisa/volume_majorant_hierarchy.h>
 
 #include "path_tracer_types.h"
 #include "path_tracer_volume_metadata.h"
@@ -275,6 +276,17 @@ struct LuisaSceneData {
     Accel accel;
     CameraDesc camera;
     VolumeSceneMetadata volume_metadata;
+    Buffer<VolumeMajorantNodeGpu>
+        volume_majorant_node_buffer;
+    Buffer<VolumeMajorantRootGpu>
+        volume_majorant_root_buffer;
+    Buffer<VolumeMajorantRootRangeGpu>
+        volume_majorant_range_buffer;
+    std::uint32_t volume_majorant_root_count{};
+    std::uint32_t volume_majorant_node_count{};
+    std::uint32_t volume_majorant_range_count{};
+    std::uint32_t volume_majorant_world_range{
+        ~std::uint32_t{0u}};
 };
 
 class LuisaCompiledScene final : public contract::CompiledScene {

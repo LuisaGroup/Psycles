@@ -592,20 +592,30 @@ Blender direct clamp 2; both Cycles and Luisa/fallback produce linear RGB
 The heterogeneous-volume foundation now includes Cycles' local real/null
 collision measure, exact path-offset hash, raw volume-graph extrema prepass,
 depth-seven 128-cubed majorant hierarchy reduction, and single-root bitwise
-hierarchical DDA. The prepass evaluates the original `GraphSurface` closure at
-sixteen twenty-percent-padded Sobol-Burley positions per cell with Cycles'
-camera/zero-direction/time-`0.5` bake state. Its 3D sampler is bit-pinned to
-official Cycles, while raw-graph extrema for three distant cells pass on
+hierarchical DDA. Scene resource construction now applies effective instance
+material overrides, creates one root per heterogeneous object/shader pair plus
+the final World range, evaluates the original `GraphSurface` closure at all
+`128^3 x 16` points, and uploads formally validated flattened root/node/range
+buffers. The prepass uses Cycles' camera/zero-direction/time-`0.5` bake state.
+Its 3D sampler is bit-pinned to official Cycles, while raw-graph extrema for
+three distant cells and the complete scene-resource composition pass on
 fallback, HIP, and Vulkan. The hierarchy matches Cycles main `b82c3f0d`:
 eight siblings are contiguous, subdivision uses
 `range * diagonal * volume_scale > 1.442`, object bounds map to `[1, 2)`, and
 traversal retains the root-extrema tail outside an implicit volume bound.
+Partially collapsed bounds and zero instance scale follow Cycles' root-only
+semantics; only a fully collapsed bound is discarded. Flattening rejects
+gapped/overlapping ranges, wrong root identities, incomplete child blocks,
+mismatched parents, shared/cyclic children, unreachable nodes, and invalid
+extrema before any device buffer becomes visible.
 Focused device regressions cover forward/reverse adjacency, parent ascent,
 root exit, and the outside-root path. Cycles' hierarchy extrema come from
 finite padded Sobol samples; they are not claimed as a mathematically
 guaranteed bound. Runtime majorant violations remain explicit. Prepass
 details are in
-[`validation/2026-07-31/volume-majorant-prepass`](validation/2026-07-31/volume-majorant-prepass/README.md).
+[`validation/2026-07-31/volume-majorant-prepass`](validation/2026-07-31/volume-majorant-prepass/README.md);
+scene-resource details are in
+[`validation/2026-07-31/volume-majorant-scene-resources`](validation/2026-07-31/volume-majorant-scene-resources/README.md).
 
 Adaptive sampling and denoising are exported and diagnosed but are not part of
 the path-integrator estimator. Psycles renders fixed-count, un-denoised linear
@@ -622,8 +632,7 @@ compatible yet:
 
 - Cycles' emitter importance distribution and environment importance map;
 - light-tree construction and traversal;
-- heterogeneous scene-side prepass resource construction,
-  overlapping-octree reduction, and production path integration;
+- heterogeneous overlapping-octree reduction and production path integration;
 - remaining distant-light forward/background behavior;
 - MNEE, path guiding, shadow catcher, light linking, and light groups;
 - Cycles' exact sampling sequence and random dimensions.

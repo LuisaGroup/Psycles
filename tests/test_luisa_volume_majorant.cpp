@@ -163,15 +163,29 @@ test_host_hierarchy() {
     expect(
         !invalid_grid.ok(),
         "short extrema grid was accepted");
-    const auto invalid_bounds =
+    const auto partially_degenerate =
         builder.build(
             VolumeMajorantBounds{
                 .minimum = {0.0f, 0.0f, 0.0f},
                 .maximum = {0.0f, 1.0f, 1.0f}},
             partitioned);
     expect(
-        !invalid_bounds.ok(),
-        "degenerate majorant bounds were accepted");
+        partially_degenerate.ok(),
+        "partially degenerate Cycles majorant bounds were rejected");
+    expect(
+        std::isinf(
+            partially_degenerate
+                .hierarchy.root.scale.x),
+        "partially degenerate root did not retain its non-finite scale");
+    const auto fully_degenerate =
+        builder.build(
+            VolumeMajorantBounds{
+                .minimum = {0.0f, 0.0f, 0.0f},
+                .maximum = {0.0f, 0.0f, 0.0f}},
+            partitioned);
+    expect(
+        !fully_degenerate.ok(),
+        "fully degenerate majorant bounds were accepted");
     const auto original_extrema =
         partitioned[0u];
     partitioned[0u].maximum =
@@ -185,14 +199,16 @@ test_host_hierarchy() {
         !builder.build(bounds, partitioned).ok(),
         "non-finite majorant extrema were accepted");
     partitioned[0u] = original_extrema;
+    const auto zero_scale =
+        builder.build(
+            bounds,
+            partitioned,
+            0.0f);
     expect(
-        !builder
-             .build(
-                 bounds,
-                 partitioned,
-                 0.0f)
-             .ok(),
-        "zero majorant density scale was accepted");
+        zero_scale.ok() &&
+            zero_scale.hierarchy.nodes.size() ==
+                1u,
+        "zero Cycles majorant scale did not retain a root-only hierarchy");
     return std::move(result.hierarchy);
 }
 
@@ -207,11 +223,20 @@ void test_device_traversal(
         device.create_buffer<VolumeMajorantNodeGpu>(
             hierarchy.nodes.size());
     auto roots =
-        device.create_buffer<VolumeMajorantRootGpu>(1u);
+        device.create_buffer<VolumeMajorantRootGpu>(2u);
     auto output =
-        device.create_buffer<luisa::float4>(9u);
+        device.create_buffer<luisa::float4>(10u);
+    auto ordinary_root = hierarchy.root;
+    ordinary_root.shader = 17u;
+    auto degenerate_root = hierarchy.root;
+    degenerate_root.scale.x =
+        std::numeric_limits<float>::infinity();
+    degenerate_root.translation.x =
+        std::numeric_limits<float>::quiet_NaN();
+    degenerate_root.shader = 23u;
     const std::array root_upload{
-        hierarchy.root};
+        ordinary_root,
+        degenerate_root};
 
     Kernel1D trace =
         [](BufferVar<VolumeMajorantNodeGpu> node_buffer,
@@ -320,13 +345,37 @@ void test_device_traversal(
                     outside_leaf.maximum,
                     outside_leaf.sigma_minimum,
                     flag(outside_leaf.valid)));
+
+            const auto degenerate_root =
+                root_buffer.read(1u);
+            VolumeMajorantTraversal degenerate{
+                node_buffer,
+                degenerate_root,
+                make_float3(
+                    0.0f, 0.0f, 0.0f),
+                make_float3(
+                    1.0f, 0.0f, 0.0f),
+                0.25f,
+                1.5f};
+            const auto degenerate_leaf =
+                degenerate.current();
+            records.write(
+                9u,
+                make_float4(
+                    degenerate_leaf.minimum,
+                    degenerate_leaf.maximum,
+                    degenerate_leaf.sigma_maximum,
+                    flag(
+                        degenerate_leaf.valid &
+                        (degenerate_root.shader ==
+                         23u))));
         };
     auto shader = device.compile(
         trace,
         ShaderOption{
             .enable_cache = false,
             .enable_fast_math = false});
-    std::array<luisa::float4, 9u> actual{};
+    std::array<luisa::float4, 10u> actual{};
     stream
         << nodes.copy_from(
                luisa::span{
@@ -343,7 +392,7 @@ void test_device_traversal(
                luisa::span{actual})
         << synchronize();
 
-    const std::array<luisa::float4, 9u>
+    const std::array<luisa::float4, 10u>
         expected{{
             {0.0f, 0.75f, 0.2f, 0.2f},
             {0.75f, 1.75f, 0.8f, 0.8f},
@@ -354,6 +403,7 @@ void test_device_traversal(
             {1.75f, 2.0f, 0.2f, 0.8f},
             {1.0f, 1.0f, 0.0f, 8.0f},
             {0.0f, 1.0f, 0.2f, 1.0f},
+            {0.25f, 1.5f, 0.8f, 1.0f},
         }};
     for (auto index = std::size_t{0u};
          index < actual.size();

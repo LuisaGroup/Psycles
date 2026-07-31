@@ -44,7 +44,18 @@ struct VolumeMajorantRootGpu {
     luisa::float3 scale{};
     std::uint32_t node{};
     luisa::float3 translation{};
-    std::uint32_t padding{};
+    // Low Cycles shader identity. Stack entries may carry high surface
+    // flags; production root lookup compares their masked identity.
+    std::uint32_t shader{~std::uint32_t{0u}};
+};
+
+// Contiguous roots belonging to one internal scene instance. A separate final
+// range represents the World entry. Keeping the range explicit avoids
+// coupling production lookup to host pointer ordering while preserving
+// Cycles' one-root-per-object-per-shader identity.
+struct VolumeMajorantRootRangeGpu {
+    std::uint32_t offset{};
+    std::uint32_t count{};
 };
 
 struct VolumeMajorantHierarchy {
@@ -95,4 +106,8 @@ LUISA_STRUCT(
     scale,
     node,
     translation,
-    padding) {};
+    shader) {};
+LUISA_STRUCT(
+    psycles::luisa_backend::VolumeMajorantRootRangeGpu,
+    offset,
+    count) {};
