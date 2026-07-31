@@ -14,6 +14,8 @@ class HomogeneousVolumeSegmentComponentImpl final
     std::shared_ptr<const VolumeStackEntryPointProvider> _points;
     std::size_t _closure_allocation_budget;
     HomogeneousVolumeTransport _transport;
+    HomogeneousVolumeScatterProbability
+        _scatter_probability;
 
   public:
     HomogeneousVolumeSegmentComponentImpl(
@@ -36,7 +38,10 @@ class HomogeneousVolumeSegmentComponentImpl final
          Float scatter_random,
          Float channel_random,
          Float2 phase_random,
-         Bool terminate) const noexcept override {
+         Bool terminate,
+         const VolumeScatterProbabilityGuidingState &guiding,
+         Bool direct_enabled,
+         Float3 direct_direction) const noexcept override {
         VolumePhaseSet phases{
             _closure_allocation_budget};
         const StackedVolumeEvaluator evaluator{
@@ -48,14 +53,34 @@ class HomogeneousVolumeSegmentComponentImpl final
                 state,
                 true,
                 &phases);
+        const auto scatter_probability =
+            _scatter_probability.evaluate(
+                coefficients,
+                distance,
+                terminate,
+                guiding);
         const auto transport =
-            _transport.sample(
+            _transport.sample_with_probability(
                 coefficients,
                 distance,
                 throughput,
                 scatter_random,
                 channel_random,
+                scatter_probability,
                 terminate);
+        const auto direct_transport =
+            _transport.sample_direct_distance(
+                coefficients,
+                distance,
+                throughput,
+                transport.scatter_random,
+                transport.reservoir_random,
+                direct_enabled &
+                    !terminate);
+        const auto direct_phase =
+            phases.evaluate(
+                -state.incoming,
+                direct_direction);
 
         // Cycles phase functions use -sd->wi as their axis. Volume ShaderData
         // stores sd->wi = -ray.D, so the sampling axis here is the propagation
@@ -73,6 +98,10 @@ class HomogeneousVolumeSegmentComponentImpl final
             .transport =
                 transport,
             .phase = phase,
+            .direct_transport =
+                direct_transport,
+            .direct_phase =
+                direct_phase,
             .scattered =
                 scattered,
             .phase_failed =

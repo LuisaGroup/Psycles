@@ -113,6 +113,16 @@ def _find_cycles_channels(
                 for alias in aliases
             )
         ]
+        # Blender's single-pass OpenEXR writer uses bare R/G/B/A channel
+        # names. Accept that canonical representation only for Combined;
+        # named render passes still require an unambiguous pass-qualified
+        # channel.
+        if not candidates and pass_name == "Combined":
+            candidates = [
+                index
+                for index, name in enumerate(channel_names)
+                if name == suffix
+            ]
         if len(candidates) != 1:
             raise RuntimeError(
                 f"could not uniquely resolve {pass_name}.{suffix}; "
@@ -301,7 +311,7 @@ def _write_triptych(
     pixel_scale = max(
         1,
         min(
-            8,
+            64,
             max(1, 512 // max(width, 1)),
             max(1, 512 // max(height, 1)),
         ),

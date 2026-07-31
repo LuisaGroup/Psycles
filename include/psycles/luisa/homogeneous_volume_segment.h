@@ -9,6 +9,7 @@
 
 #include <psycles/luisa/homogeneous_volume_transport.h>
 #include <psycles/luisa/stacked_volume.h>
+#include <psycles/luisa/volume_scatter_probability.h>
 
 namespace psycles::luisa_backend {
 
@@ -16,6 +17,8 @@ struct HomogeneousVolumeSegmentResult {
     VolumeCoefficients coefficients;
     HomogeneousVolumeSample transport;
     VolumePhaseSetSample phase;
+    HomogeneousVolumeDirectSample direct_transport;
+    VolumePhaseSetEvaluation direct_phase;
     Bool scattered;
     Bool phase_failed;
 };
@@ -39,7 +42,10 @@ class HomogeneousVolumeSegmentComponent {
          Float scatter_random,
          Float channel_random,
          Float2 phase_random,
-         Bool terminate) const noexcept = 0;
+         Bool terminate,
+         const VolumeScatterProbabilityGuidingState &guiding,
+         Bool direct_enabled,
+         Float3 direct_direction) const noexcept = 0;
 };
 
 [[nodiscard]] std::unique_ptr<HomogeneousVolumeSegmentComponent>

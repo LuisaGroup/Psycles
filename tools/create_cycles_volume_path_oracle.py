@@ -76,6 +76,7 @@ def configure_scene(output: Path) -> None:
     scene.cycles.samples = 1
     scene.cycles.use_denoising = False
     scene.cycles.seed = 11939
+    scene.cycles.sampling_pattern = "TABULATED_SOBOL"
     scene.cycles.max_bounces = 1
     scene.cycles.min_light_bounces = 0
     scene.cycles.diffuse_bounces = 0

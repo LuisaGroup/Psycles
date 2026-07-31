@@ -342,10 +342,116 @@ HomogeneousVolumeTransport::sample_with_probability(
             transmit_rescaled,
             rescaled_scatter,
             scattered),
+        .reservoir_random =
+            channel_sample.random,
         .channel = channel,
         .scattered = scattered,
         .active = active};
 }
 
-}// namespace psycles::luisa_backend
+HomogeneousVolumeDirectSample
+HomogeneousVolumeTransport::
+    sample_direct_distance(
+        const VolumeCoefficients &coefficients,
+        Float distance,
+        Float3 throughput,
+        Float scatter_random,
+        Float reservoir_random,
+        Bool enabled) const noexcept {
+    const auto segment_transmittance =
+        transmittance(
+            coefficients.sigma_t,
+            distance);
+    const auto has_scatter =
+        coefficients.has_scatter &
+        any(
+            coefficients.sigma_s !=
+            make_float3(0.0f));
+    const auto scattered =
+        enabled &
+        has_scatter &
+        (distance > 0.0f);
 
+    const auto albedo = _safe_divide(
+        coefficients.sigma_s,
+        coefficients.sigma_t);
+    // volume_integrate_homogeneous stores this throughput-weighted quantity
+    // in vstate.albedo before reusing the reservoir dimension for the direct
+    // channel selection. Preserve that apparently redundant second
+    // throughput factor in volume_sample_channel_pdf: it is part of the
+    // Cycles estimator measure.
+    const auto volume_albedo =
+        albedo *
+        (make_float3(1.0f) -
+         segment_transmittance) *
+        throughput;
+    const auto channel_sample =
+        sample_channel(
+            volume_albedo,
+            throughput,
+            reservoir_random);
+    const auto channel =
+        channel_sample.channel;
+    const auto rate =
+        select(
+            coefficients.sigma_t.z,
+            select(
+                coefficients.sigma_t.y,
+                coefficients.sigma_t.x,
+                channel == 0u),
+            channel < 2u);
+    const auto sampled_distance =
+        bounded_exponential_sample(
+            scatter_random,
+            rate,
+            0.0f,
+            distance);
+    const auto distance_pdf =
+        dot(
+            bounded_exponential_pdf(
+                sampled_distance,
+                coefficients.sigma_t,
+                0.0f,
+                distance),
+            channel_sample.pdf);
+    const auto valid =
+        scattered &
+        (distance_pdf > 0.0f);
+    const auto direct_throughput =
+        throughput *
+        _safe_divide(
+            coefficients.sigma_s *
+                transmittance(
+                    coefficients.sigma_t,
+                    sampled_distance),
+            distance_pdf);
+    return {
+        .transmittance =
+            select(
+                make_float3(1.0f),
+                transmittance(
+                    coefficients.sigma_t,
+                    sampled_distance),
+                valid),
+        .throughput =
+            select(
+                make_float3(0.0f),
+                direct_throughput,
+                valid),
+        .channel_pdf =
+            channel_sample.pdf,
+        .distance =
+            select(
+                0.0f,
+                sampled_distance,
+                valid),
+        .distance_pdf =
+            select(
+                0.0f,
+                distance_pdf,
+                valid),
+        .channel = channel,
+        .scattered = valid};
+}
+
+}// namespace psycles::luisa_backend
