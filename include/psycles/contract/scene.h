@@ -329,6 +329,11 @@ struct SceneSnapshot {
     std::map<LightId, LightDesc> lights;
     std::optional<CameraId> active_camera;
     std::optional<MaterialId> world_shader;
+    // Cycles represents the world as a background-light object. Volume-stack
+    // identity needs that exact object index independently of the world
+    // shader index retained by MaterialDesc.
+    std::optional<std::uint32_t>
+        cycles_background_object_index;
     std::optional<EnvironmentDesc> environment;
     ShaderColorSpace shader_color_space;
     // Preserve Cycles' world-light policy independently from the raw world

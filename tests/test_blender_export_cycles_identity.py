@@ -142,11 +142,10 @@ def _main() -> None:
             )
 
     if payload["world"] is not None and payload["world"]["cycles_sync"] != {
-        "shader_index": 3
+        "shader_index": 3,
+        "object_index": 3,
     }:
-        raise AssertionError(
-            "world did not retain Cycles' default-background shader"
-        )
+        raise AssertionError("world Cycles identity changed")
 
     print("Psycles Blender Cycles-identity regression passed")
 

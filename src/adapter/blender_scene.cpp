@@ -1242,6 +1242,10 @@ BlenderSceneImport load_blender_scene_bundle(
                             world_cycles_sync,
                             "shader_index"))});
             scene.world_shader = world_id;
+            scene.cycles_background_object_index =
+                optional_unsigned_number(member(
+                    world_cycles_sync,
+                    "object_index"));
             if (auto nishita =
                     find_simple_world_nishita(world)) {
                 scene.environment = EnvironmentDesc{

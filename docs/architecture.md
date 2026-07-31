@@ -172,6 +172,12 @@ front-hit accounting. Camera traversal and free-flight integration consume
 these components in later path-kernel slices rather than duplicating their
 state rules.
 
+The world entry is not identified by its shader alone. BlenderSync creates a
+background-light object and Cycles stores that object's index beside the world
+volume shader in kernel data. Scene schema v2 therefore exports and imports the
+background object index independently of the world material's exact Cycles
+shader index; the camera stack never guesses either half of the pair.
+
 `HomogeneousVolumeTransport` is another host-stage AST component. It owns the
 analytic segment measure independently of scene traversal: Cycles' weighted
 RGB channel choice, bounded exponential sampling and density, scatter-versus-

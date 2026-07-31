@@ -289,7 +289,8 @@ void test_integrator_settings_round_trip() {
     "sampling_method": "MANUAL",
     "sample_map_resolution": 2048,
     "cycles_sync": {
-      "shader_index": 3
+      "shader_index": 3,
+      "object_index": 12
     },
     "node_tree": {
       "name": "World Nodes",
@@ -611,8 +612,11 @@ void test_integrator_settings_round_trip() {
     expect(
         imported_world != imported.scene->materials.end() &&
             imported_world->second.cycles_shader_index ==
-                std::optional<std::uint32_t>{3u},
-        "world shader identity did not round-trip");
+                std::optional<std::uint32_t>{3u} &&
+            imported.scene
+                    ->cycles_background_object_index ==
+                std::optional<std::uint32_t>{12u},
+        "world object/shader identity did not round-trip");
     expect(
         imported.scene->environment->nishita.has_value(),
         "Nishita world was not kept procedural");
