@@ -54,6 +54,7 @@ class VolumePhaseSet final : public VolumePhaseCollector {
     luisa::compute::Local<luisa::float4> _parameters;
     luisa::compute::Local<luisa::float4> _weights;
     UInt _count;
+    UInt _allocated;
 
   public:
     explicit VolumePhaseSet(std::size_t capacity) noexcept;
@@ -74,7 +75,8 @@ class VolumePhaseSet final : public VolumePhaseCollector {
     // Cycles merges after each stack entry. Equality is exact and closure
     // family-specific setup has already canonicalized unused parameters to
     // zero, so an exact three-component comparison matches
-    // volume_phase_equal().
+    // volume_phase_equal(). Merging compacts live storage but must not refund
+    // the closure-allocation budget consumed by closure_alloc().
     void merge_equal() noexcept;
 
     void truncate(

@@ -19,6 +19,15 @@ render or visual-parity claim.
 - Cycles does not call `volume_shader_merge_closures()` after entry zero. It
   calls it after every later entry, then copies the first eight phase closures
   in stable order.
+- Closure allocation and live closure count are separate state. Every
+  successful `closure_alloc()` permanently consumes `num_closure_left` for
+  that evaluation; merging compacts `num_closure` but never refunds the
+  allocation budget.
+- Direct phase evaluation uses Cycles' scalar `sample_weight` mixture.
+  Indirect continuation reservoir-selects one closure and samples that
+  closure directly; it does not RGB-reweight or re-evaluate the full mixture.
+  RGB scattering coefficients have already entered the free-flight
+  throughput estimator.
 - Extinction-only evaluation suppresses emission without changing the source
   graph or coefficient path.
 
@@ -54,9 +63,14 @@ psycles.luisa_stacked_volume_hip
 psycles.luisa_stacked_volume_vk
 ```
 
-All three pass. The fifteen records pin coefficient flags and values, raw
-phase count/order/parameters/weights, the distinct parameter blocks and
-object-density scaling, emission suppression, and zero-state behavior.
+All three pass. The fifteen stacked-volume records pin coefficient flags and
+values, raw phase count/order/parameters/weights, the distinct parameter
+blocks and object-density scaling, emission suppression, and zero-state
+behavior. The companion coefficient/phase-set fixture contains a
+merge-budget regression: two equal closures consume two of three allocations,
+merge to one live entry, and leave room for exactly one later closure. A
+fourth attempted allocation must remain rejected even though compacted
+storage has a free slot.
 
 ## Remaining render gate
 
