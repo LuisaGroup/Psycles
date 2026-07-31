@@ -38,6 +38,8 @@ inline constexpr std::uint32_t flag_terminate =
     flag_terminate_after_volume;
 inline constexpr std::uint32_t flag_surface_pass = 1u << 18u;
 inline constexpr std::uint32_t flag_volume_pass = 1u << 19u;
+inline constexpr std::uint32_t
+    flag_volume_primary_transmit = 1u << 24u;
 inline constexpr std::uint32_t flag_any_pass =
     flag_surface_pass | flag_volume_pass;
 
@@ -387,6 +389,11 @@ next_volume(
           flag_transparent_background);
     state.flag |=
         flag_mis_had_transmission;
+    state.flag = select(
+        state.flag,
+        state.flag &
+            ~flag_volume_primary_transmit,
+        state.bounce == 1u);
     state.flag |= select(
         0u,
         flag_volume_pass,

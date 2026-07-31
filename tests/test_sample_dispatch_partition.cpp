@@ -1,5 +1,6 @@
 #include "../src/luisa/sample_dispatch_partition.h"
 
+#include <array>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
@@ -40,6 +41,33 @@ collect(
     require(
         !partition->next().has_value(),
         "an exhausted partition produced another batch");
+    return batches;
+}
+
+[[nodiscard]] std::optional<
+    std::vector<SampleDispatchBatch>>
+collect_volume_guided(
+    std::uint32_t first,
+    std::uint32_t count,
+    std::uint32_t limit,
+    std::uint32_t completed,
+    std::uint32_t total) {
+    auto partition =
+        SampleDispatchPartition::
+            make_volume_guided(
+                first,
+                count,
+                limit,
+                completed,
+                total);
+    if (!partition) {
+        return std::nullopt;
+    }
+    std::vector<SampleDispatchBatch> batches;
+    while (const auto batch =
+               partition->next()) {
+        batches.emplace_back(*batch);
+    }
     return batches;
 }
 
@@ -101,6 +129,12 @@ int main() {
              max_sample - 3u, 4u, 1u)
              .has_value(),
         "overflowing half-open interval was accepted");
+    require(
+        !SampleDispatchPartition::
+             make_volume_guided(
+                 0u, 2u, 8u, 7u, 8u)
+             .has_value(),
+        "volume-guided partition exceeded total samples");
 
     for (auto first = 0u; first <= 16u; ++first) {
         for (auto count = 0u; count <= 16u; ++count) {
@@ -125,6 +159,74 @@ int main() {
             quality_batches->back().first == 248u &&
             quality_batches->back().count == 8u,
         "quality partition endpoints changed");
+
+    const auto guided =
+        collect_volume_guided(
+            0u, 8u, 8u, 0u, 8u);
+    require(
+        guided &&
+            guided->size() == 4u,
+        "power-of-two VSPG schedule was not split");
+    constexpr std::array expected_counts{
+        1u, 1u, 2u, 4u};
+    constexpr std::array expected_filter{
+        true, true, true, false};
+    auto guided_first = 0u;
+    for (std::size_t index = 0u;
+         index < expected_counts.size();
+         ++index) {
+        require(
+            (*guided)[index].first ==
+                    guided_first &&
+                (*guided)[index].count ==
+                    expected_counts[index] &&
+                (*guided)[index]
+                        .filter_volume_guiding ==
+                    expected_filter[index],
+            "canonical VSPG update schedule changed");
+        guided_first +=
+            expected_counts[index];
+    }
+
+    const auto resumed =
+        collect_volume_guided(
+            17u, 5u, 8u, 3u, 8u);
+    require(
+        resumed &&
+            resumed->size() == 2u &&
+            (*resumed)[0].first == 17u &&
+            (*resumed)[0].count == 1u &&
+            (*resumed)[0]
+                .filter_volume_guiding &&
+            (*resumed)[1].first == 18u &&
+            (*resumed)[1].count == 4u &&
+            !(*resumed)[1]
+                 .filter_volume_guiding,
+        "resumed VSPG schedule lost its cumulative boundary");
+
+    const auto limited =
+        collect_volume_guided(
+            0u, 9u, 3u, 0u, 9u);
+    constexpr std::array limited_counts{
+        1u, 1u, 2u, 3u, 1u, 1u};
+    constexpr std::array limited_filter{
+        true, true, true, false, true, false};
+    require(
+        limited &&
+            limited->size() ==
+                limited_counts.size(),
+        "dispatch limit and VSPG boundaries did not compose");
+    for (std::size_t index = 0u;
+         index < limited_counts.size();
+         ++index) {
+        require(
+            (*limited)[index].count ==
+                    limited_counts[index] &&
+                (*limited)[index]
+                        .filter_volume_guiding ==
+                    limited_filter[index],
+            "bounded VSPG schedule changed");
+    }
 
     std::cout
         << "All sample-dispatch partition invariants passed.\n";

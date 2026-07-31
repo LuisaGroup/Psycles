@@ -232,8 +232,26 @@ the exact empty-history VSPG defensive probability. The official Blender
 5.2.0 one-sample EXR matches fallback, HIP, and Vulkan with maximum absolute
 error `3.7253e-9`; reports and inspected triptychs are in
 [`validation/2026-07-31/homogeneous-volume-direct`](validation/2026-07-31/homogeneous-volume-direct/README.md).
-Finite-light equiangular/MIS, environment volume NEE, accumulated VSPG
-history, and heterogeneous transport remain separate work.
+Finite-light equiangular/MIS, environment volume NEE, and heterogeneous
+transport remain separate work.
+
+Accumulated VSPG history is now connected end to end. The production path
+classifies every Combined contribution into Cycles' raw scatter/transmit
+passes, accumulates primary optical depth, runs the exact signed-RGBE
+horizontal/vertical filter after cumulative power-of-two sample counts, and
+feeds the resulting history into subsequent primary volume segments. The
+majorant optical-depth mean remains a live raw statistic within a fused
+multi-sample dispatch, while denoised radiance remains fixed until the next
+scheduled filter. Chunked and single-call 4-sample renders both match the
+official Cycles CPU EXR; maximum absolute error is `3.7253e-9` across
+fallback, HIP, and Vulkan. Reports, EXRs, and visually inspected triptychs are
+in [`validation/2026-07-31/volume-guiding-history`](validation/2026-07-31/volume-guiding-history/README.md).
+
+Transparent-film termination now uses Cycles' film representation as well:
+the render buffer accumulates transparency and converts it to clamped alpha
+only after sample normalization. The finite absorption oracle produces zero
+Combined RGB, alpha `0.361163139`, and retains the attenuated Environment
+pass on all three Luisa backends.
 
 The stacked-medium evaluator is the fifth internal checkpoint. It visits
 runtime stack entries in Cycles order, evaluates each original graph with its
@@ -511,8 +529,7 @@ compatible yet:
 
 - Cycles' emitter importance distribution and environment importance map;
 - light-tree construction and traversal;
-- finite-light/environment volume NEE, VSPG history, and heterogeneous grid
-  integration;
+- finite-light/environment volume NEE and heterogeneous grid integration;
 - forward intersections for analytic area and distant lights;
 - MNEE, path guiding, shadow catcher, light linking, and light groups;
 - Cycles' exact sampling sequence and random dimensions.

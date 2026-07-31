@@ -118,9 +118,17 @@ void LuisaRenderSession::write_passes(
             luisa::float4 value{};
             switch (pass.kind) {
                 case PassKind::combined:
-                    value =
-                        combined[i] *
-                        (exposure / denominator);
+                    value = luisa::make_float4(
+                        luisa::make_float3(
+                            combined[i]) *
+                            (exposure /
+                             denominator),
+                        std::clamp(
+                            1.0f -
+                                combined[i].w /
+                                    denominator,
+                            0.0f,
+                            1.0f));
                     break;
                 case PassKind::normal:
                 case PassKind::denoising_normal:
@@ -270,10 +278,24 @@ bool LuisaRenderSession::render_samples(
     }
     _total_aa_samples = samples.total;
     prepare_sobol_table(samples.total);
-    auto dispatches = SampleDispatchPartition::make(
-        static_cast<std::uint32_t>(sample_begin),
-        samples.count,
-        _options.max_samples_per_dispatch);
+    auto dispatches =
+        _volume_guiding_filter
+            ? SampleDispatchPartition::
+                  make_volume_guided(
+                      static_cast<
+                          std::uint32_t>(
+                          sample_begin),
+                      samples.count,
+                      _options
+                          .max_samples_per_dispatch,
+                      _rendered_samples,
+                      samples.total)
+            : SampleDispatchPartition::make(
+                  static_cast<std::uint32_t>(
+                      sample_begin),
+                  samples.count,
+                  _options
+                      .max_samples_per_dispatch);
     if (!dispatches) {
         return false;
     }
@@ -291,6 +313,8 @@ bool LuisaRenderSession::render_samples(
                    _albedo,
                    _light_passes,
                    _sample_count,
+                   _volume_guiding_raw,
+                   _volume_guiding_denoised,
                    _path_trace,
                    batch->first,
                    batch->count,
@@ -299,6 +323,25 @@ bool LuisaRenderSession::render_samples(
                    _kernel_parameters)
                    .dispatch(dispatch_size)
             << synchronize();
+        _rendered_samples +=
+            batch->count;
+        if (batch->
+                filter_volume_guiding) {
+            _volume_guiding_filter
+                ->dispatch(
+                    _stream,
+                    _volume_guiding_raw,
+                    _sample_count,
+                    _volume_guiding_intermediate,
+                    _volume_guiding_denoised,
+                    std::max(
+                        _window.width,
+                        1u),
+                    std::max(
+                        _window.height,
+                        1u));
+            _stream << synchronize();
+        }
         if (
             _options.path_trace &&
             !_path_trace_delivered &&

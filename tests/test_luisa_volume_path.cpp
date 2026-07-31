@@ -381,7 +381,7 @@ int main(int argc, char **argv) {
         renderer{
             std::move(device),
             {.next_event_estimation = true,
-             .max_samples_per_dispatch = 1u}};
+             .max_samples_per_dispatch = 8u}};
     auto heterogeneous = make_scene();
     heterogeneous.materials
         .at(MaterialId{1u})
@@ -513,6 +513,101 @@ int main(int argc, char **argv) {
                     << '\n';
                 return EXIT_FAILURE;
             }
+        }
+    }
+
+    auto transparent_settings = settings;
+    transparent_settings.transparent_background =
+        true;
+    auto transparent_session =
+        renderer.create_session(
+            *compilation.scene,
+            transparent_settings);
+    if (!transparent_session) {
+        std::cerr
+            << "could not create transparent volume "
+               "render session\n";
+        return EXIT_FAILURE;
+    }
+    psycles::io::MemoryOutputSink
+        transparent_sink;
+    if (!transparent_session->render_samples(
+            {.first = 0u,
+             .count = 1u,
+             .offset = 0u,
+             .total = 1u},
+            transparent_sink)) {
+        std::cerr
+            << "transparent volume render failed\n";
+        return EXIT_FAILURE;
+    }
+    const auto *transparent_combined =
+        transparent_sink.find(
+            PassKind::combined);
+    const auto *transparent_environment =
+        transparent_sink.find(
+            PassKind::environment);
+    if (transparent_combined == nullptr ||
+        transparent_environment == nullptr) {
+        std::cerr
+            << "transparent volume passes were not "
+               "produced\n";
+        return EXIT_FAILURE;
+    }
+    // Cycles stores average(throughput) as raw Combined transparency and
+    // converts it to alpha only after sample normalization. The environment
+    // remains available as a pass, but transparent-film rays do not write it
+    // to Combined RGB.
+    constexpr auto cycles_transparent_alpha =
+        0.361163139f;
+    for (auto pixel = std::size_t{0u};
+         pixel < pixel_count;
+         ++pixel) {
+        const auto combined_base =
+            pixel *
+            transparent_combined->channels;
+        const auto pass_base =
+            pixel *
+            transparent_environment->channels;
+        for (auto channel = std::size_t{0u};
+             channel < 3u;
+             ++channel) {
+            if (!approximately_equal(
+                    transparent_combined
+                        ->pixels[
+                            combined_base +
+                            channel],
+                    0.0f) ||
+                !approximately_equal(
+                    transparent_environment
+                        ->pixels[
+                            pass_base +
+                            channel],
+                    cycles_combined[channel])) {
+                std::cerr
+                    << "transparent volume routing "
+                       "regression failed on "
+                    << backend << " pixel " << pixel
+                    << " channel " << channel
+                    << '\n';
+                return EXIT_FAILURE;
+            }
+        }
+        if (!approximately_equal(
+                transparent_combined->pixels[
+                    combined_base + 3u],
+                cycles_transparent_alpha)) {
+            std::cerr
+                << "Cycles transparent volume alpha "
+                   "regression failed on "
+                << backend << " pixel " << pixel
+                << ": got "
+                << transparent_combined->pixels[
+                       combined_base + 3u]
+                << ", expected "
+                << cycles_transparent_alpha
+                << '\n';
+            return EXIT_FAILURE;
         }
     }
 
@@ -651,6 +746,223 @@ int main(int argc, char **argv) {
                 1.0f)) {
             std::cerr
                 << "volume-direct alpha regression "
+                   "failed on "
+                << backend << " pixel " << pixel
+                << '\n';
+            return EXIT_FAILURE;
+        }
+    }
+
+    auto guided_session =
+        renderer.create_session(
+            *direct_compilation.scene,
+            direct_settings);
+    if (!guided_session) {
+        std::cerr
+            << "could not create VSPG history "
+               "render session\n";
+        return EXIT_FAILURE;
+    }
+    psycles::io::MemoryOutputSink
+        guided_sink;
+    psycles::io::MemoryOutputSink
+        guided_partial_sink;
+    if (!guided_session->render_samples(
+            {.first = 0u,
+             .count = 3u,
+             .offset = 0u,
+             .total = 4u},
+            guided_partial_sink) ||
+        !guided_session->render_samples(
+            {.first = 3u,
+             .count = 1u,
+             .offset = 0u,
+             .total = 4u},
+            guided_sink)) {
+        std::cerr
+            << "VSPG history render failed\n";
+        return EXIT_FAILURE;
+    }
+    const auto *guided_combined =
+        guided_sink.find(
+            PassKind::combined);
+    const auto *guided_volume =
+        guided_sink.find(
+            PassKind::volume_direct);
+    const auto *guided_partial_combined =
+        guided_partial_sink.find(
+            PassKind::combined);
+    if (guided_combined == nullptr ||
+        guided_partial_combined == nullptr ||
+        guided_volume == nullptr) {
+        std::cerr
+            << "VSPG history passes were not "
+               "produced\n";
+        return EXIT_FAILURE;
+    }
+    constexpr auto diagnostic_pixel = 14u;
+    constexpr auto cycles_partial_diagnostic =
+        0.010638036f;
+    const auto partial_diagnostic =
+        guided_partial_combined->pixels[
+            diagnostic_pixel *
+            guided_partial_combined->channels];
+    if (!approximately_equal(
+            partial_diagnostic,
+            cycles_partial_diagnostic,
+            1.0e-6f)) {
+        std::cerr
+            << "Cycles VSPG partial-history "
+               "regression failed on "
+            << backend << ": got "
+            << partial_diagnostic
+            << ", expected "
+            << cycles_partial_diagnostic
+            << '\n';
+        return EXIT_FAILURE;
+    }
+    auto fused_session =
+        renderer.create_session(
+            *direct_compilation.scene,
+            direct_settings);
+    if (!fused_session) {
+        std::cerr
+            << "could not create fused VSPG "
+               "render session\n";
+        return EXIT_FAILURE;
+    }
+    psycles::io::MemoryOutputSink
+        fused_sink;
+    if (!fused_session->render_samples(
+            {.first = 0u,
+             .count = 4u,
+             .offset = 0u,
+             .total = 4u},
+            fused_sink)) {
+        std::cerr
+            << "fused VSPG render failed\n";
+        return EXIT_FAILURE;
+    }
+    const auto *fused_combined =
+        fused_sink.find(
+            PassKind::combined);
+    const auto *fused_volume =
+        fused_sink.find(
+            PassKind::volume_direct);
+    if (fused_combined == nullptr ||
+        fused_volume == nullptr) {
+        std::cerr
+            << "fused VSPG passes were not "
+               "produced\n";
+        return EXIT_FAILURE;
+    }
+#if defined(PSYCLES_WITH_OPENIMAGEIO)
+    if (argc > 3) {
+        std::string error;
+        if (!psycles::io::write_multilayer_exr(
+                guided_sink.images(),
+                argv[3],
+                "ViewLayer",
+                &error)) {
+            std::cerr
+                << "could not write VSPG history "
+                   "diagnostic EXR: "
+                << error << '\n';
+            return EXIT_FAILURE;
+        }
+    }
+#endif
+    // Official Blender 5.2.0/Cycles CPU, four Tabulated Sobol samples.
+    // Cycles filters VSPG history after cumulative samples one and two,
+    // then uses those quantized spatial guides for later primary segments.
+    // The renderer dispatch limit is deliberately eight, so this also
+    // regresses the independent power-of-two history update schedule.
+    constexpr std::array cycles_guided{
+        0.013084637f,
+        0.012581268f,
+        0.012184560f,
+        0.013252687f,
+        0.014589819f,
+        0.012482958f,
+        0.011810919f,
+        0.011361255f,
+        0.013536201f,
+        0.012845095f,
+        0.012335613f,
+        0.011992678f,
+        0.011454757f,
+        0.011619815f,
+        0.011370411f,
+        0.012845693f};
+    for (auto pixel = std::size_t{0u};
+         pixel < pixel_count;
+         ++pixel) {
+        const auto combined_base =
+            pixel *
+            guided_combined->channels;
+        const auto volume_base =
+            pixel *
+            guided_volume->channels;
+        for (auto channel = std::size_t{0u};
+             channel < 3u;
+             ++channel) {
+            const auto combined_value =
+                guided_combined->pixels[
+                    combined_base + channel];
+            const auto volume_value =
+                guided_volume->pixels[
+                    volume_base + channel];
+            const auto fused_combined_value =
+                fused_combined->pixels[
+                    combined_base + channel];
+            const auto fused_volume_value =
+                fused_volume->pixels[
+                    volume_base + channel];
+            if (!approximately_equal(
+                    combined_value,
+                    cycles_guided[pixel],
+                    1.0e-6f) ||
+                !approximately_equal(
+                    volume_value,
+                    cycles_guided[pixel],
+                    1.0e-6f) ||
+                !approximately_equal(
+                    fused_combined_value,
+                    cycles_guided[pixel],
+                    1.0e-6f) ||
+                !approximately_equal(
+                    fused_volume_value,
+                    cycles_guided[pixel],
+                    1.0e-6f)) {
+                std::cerr
+                    << "Cycles VSPG history regression "
+                       "failed on "
+                    << backend << " pixel " << pixel
+                    << " channel " << channel
+                    << ": got combined "
+                    << combined_value
+                    << ", direct "
+                    << volume_value
+                    << ", fused combined "
+                    << fused_combined_value
+                    << ", fused direct "
+                    << fused_volume_value
+                    << ", expected "
+                    << cycles_guided[pixel]
+                    << '\n';
+                return EXIT_FAILURE;
+            }
+        }
+        if (!approximately_equal(
+                guided_combined->pixels[
+                    combined_base + 3u],
+                1.0f) ||
+            !approximately_equal(
+                fused_combined->pixels[
+                    combined_base + 3u],
+                1.0f)) {
+            std::cerr
+                << "VSPG history alpha regression "
                    "failed on "
                 << backend << " pixel " << pixel
                 << '\n';

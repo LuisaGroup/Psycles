@@ -27,7 +27,6 @@ class ForwardLightStageImpl final
         auto &previous_bsdf_pdf =
             sample.previous_bsdf_pdf;
         auto &throughput = sample.throughput;
-        auto &radiance = sample.radiance;
         auto &path_depth = sample.path_depth;
         auto &path_flags = sample.path_flags;
         auto &transparent_depth =
@@ -73,7 +72,8 @@ class ForwardLightStageImpl final
                     light_radiance *
                     mis_weight,
                 path_depth);
-        radiance += contribution;
+        sample.accumulate_radiance(
+            contribution);
         const auto directly_visible =
             (path_flags &
              cycles_path_state::flag_any_pass) ==

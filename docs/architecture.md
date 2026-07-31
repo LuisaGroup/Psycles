@@ -319,6 +319,27 @@ transparency stays in the shared shadow component. These objects are ordinary
 C++ abstractions while the resulting device work remains one fused path
 kernel.
 
+Volume-scattering probability guidance is persistent render-session state,
+not path-local policy. The path kernel accumulates Cycles' raw scatter,
+primary-transmit, and optical-depth statistics in dedicated per-pixel buffers.
+All Combined contributions pass through one classification method so the
+`PRIMARY_TRANSMIT` priority and primary-volume shadow-state override cannot
+diverge between emitters. `VolumeGuidingFilter` owns two independently
+compiled Luisa passes that implement the signed-RGBE horizontal and vertical
+filter. `SampleDispatchPartition` composes ordinary dispatch limits with the
+Cycles cumulative 1, 2, 4, 8, ... history boundaries; the session filters
+after a boundary only when another sample remains. Denoised RGBE history is
+constant during a dispatch, while the raw optical-depth mean is derived again
+for every sample from the mutable running sum/count. That distinction makes
+fused and split sample batches the same estimator.
+
+The Combined buffer also follows Cycles' internal film convention: its fourth
+component stores accumulated transparency, not alpha. Session readback first
+normalizes all samples and only then computes
+`saturate(1 - transparency)`, independently of exposure. Transparent
+background termination and volume-primary-transmit guiding therefore share
+one source value without per-event alpha approximations.
+
 The pipeline owns the path loop, the top-level builder owns the sample loop,
 and the setup/film module owns accumulation. This makes `$break` scope and
 cross-stage lifetime formal while retaining one fused device kernel, the

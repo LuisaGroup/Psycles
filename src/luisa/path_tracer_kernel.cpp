@@ -13,6 +13,7 @@ namespace psycles::luisa_backend::detail {
 void LuisaRenderSession::initialize(const RenderSettings &settings) {
     _settings = settings;
     _total_aa_samples = 0u;
+    _rendered_samples = 0u;
     _path_trace_delivered = false;
     _window = effective_window(settings);
     const auto count = std::max<std::size_t>(pixel_count(), 1u);
@@ -27,6 +28,20 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
             count * light_pass_buffer_count);
     _sample_count =
         _scene->device.create_buffer<luisa::uint>(count);
+    _volume_guiding_raw =
+        _scene->device.create_buffer<luisa::float4>(
+            count *
+            volume_guiding::raw_pixel_stride);
+    _volume_guiding_denoised =
+        _scene->device.create_buffer<luisa::uint>(
+            count *
+            volume_guiding::
+                denoised_pixel_stride);
+    _volume_guiding_intermediate =
+        _scene->device.create_buffer<luisa::uint>(
+            count *
+            volume_guiding::
+                denoised_pixel_stride);
     _path_trace =
         _scene->device.create_buffer<luisa::float4>(
             _options.path_trace
@@ -51,6 +66,16 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
     luisa::vector<luisa::float4> zeros_light_passes(
         count * light_pass_buffer_count);
     luisa::vector<luisa::uint> zeros_uint(count);
+    luisa::vector<luisa::float4>
+        zeros_volume_guiding_raw(
+            count *
+            volume_guiding::
+                raw_pixel_stride);
+    luisa::vector<luisa::uint>
+        zeros_volume_guiding_denoised(
+            count *
+            volume_guiding::
+                denoised_pixel_stride);
     luisa::vector<luisa::float4> zeros_path_trace(
         _options.path_trace
             ? path_trace_schema::slot_count
@@ -61,11 +86,26 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
             << _light_passes.copy_from(
                    luisa::span{zeros_light_passes})
             << _sample_count.copy_from(luisa::span{zeros_uint})
+            << _volume_guiding_raw.copy_from(
+                   luisa::span{
+                       zeros_volume_guiding_raw})
+            << _volume_guiding_denoised.copy_from(
+                   luisa::span{
+                       zeros_volume_guiding_denoised})
+            << _volume_guiding_intermediate.copy_from(
+                   luisa::span{
+                       zeros_volume_guiding_denoised})
             << _path_trace.copy_from(
                    luisa::span{zeros_path_trace})
             << _pixel_filter_table.copy_from(
                    luisa::span{filter_table})
             << synchronize();
+    _volume_guiding_filter =
+        _scene->volume_metadata.has_volumes()
+            ? std::make_unique<
+                  VolumeGuidingFilter>(
+                  _scene->device)
+            : nullptr;
 
     auto scene = _scene;
     const auto render_settings = _settings;

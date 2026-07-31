@@ -9,6 +9,7 @@
 #include "path_tracer_surfaces.h"
 
 #include <psycles/luisa/surface_ray.h>
+#include <psycles/luisa/volume_guiding.h>
 #include <psycles/sampling/light_distribution.h>
 
 #include <memory>
@@ -18,6 +19,8 @@ namespace psycles::luisa_backend::detail {
 using RenderKernel = Kernel1D<Buffer<luisa::float4>,
                               Buffer<luisa::float4>,
                               Buffer<luisa::float4>,
+                              Buffer<luisa::float4>,
+                              Buffer<luisa::uint>,
                               Buffer<luisa::float4>,
                               Buffer<luisa::uint>,
                               Buffer<luisa::float4>,
@@ -59,6 +62,8 @@ struct PathKernelInvocation {
     const BufferFloat4 &albedo;
     const BufferFloat4 &light_passes;
     const BufferUInt &sample_count;
+    const BufferFloat4 &volume_guiding_raw;
+    const BufferUInt &volume_guiding_denoised;
     const BufferFloat4 &path_trace;
     const UInt &sample_first;
     const UInt &samples;
@@ -88,6 +93,12 @@ struct PathKernelInvocation {
     Float4 glossy_color_sum;
     Float4 transmission_color_sum;
     UInt completed;
+    UInt volume_guiding_raw_base;
+    Float4 volume_guiding_scatter_sum;
+    Float4 volume_guiding_transmit_sum;
+    Float4 volume_guiding_optical_depth_sum;
+    Float3 volume_guiding_scattered_radiance;
+    Float3 volume_guiding_transmitted_radiance;
     SurfaceQuery surface_query;
 
     [[nodiscard]] Float3 clamp_contribution(Float3 contribution,
@@ -98,6 +109,9 @@ struct PathKernelInvocation {
         UInt path_depth) const noexcept;
     [[nodiscard]] Float sample_light_roulette(Float3 unshadowed_contribution,
                                               Float random) const noexcept;
+    [[nodiscard]] Float
+    volume_guiding_majorant_optical_depth()
+        const noexcept;
     [[nodiscard]] SurfaceEvaluation
     evaluate_surface(UInt surface_tag,
                      const SurfacePoint &point,
@@ -142,6 +156,8 @@ begin_path_kernel(const PathKernelConfig &config,
                   const BufferFloat4 &albedo,
                   const BufferFloat4 &light_passes,
                   const BufferUInt &sample_count,
+                  const BufferFloat4 &volume_guiding_raw,
+                  const BufferUInt &volume_guiding_denoised,
                   const BufferFloat4 &path_trace,
                   const UInt &sample_first,
                   const UInt &samples,
@@ -179,7 +195,12 @@ struct PathSampleContext {
     Float3 sample_volume_indirect;
     Float3 sample_emission;
     Float3 sample_environment;
-    Float sample_alpha;
+    Float3 volume_guiding_scatter;
+    Float3 volume_guiding_transmit;
+    // Matches Cycles' render-buffer representation: the Combined fourth
+    // component accumulates transparency, and alpha is derived only after
+    // sample normalization.
+    Float sample_transparency;
     Bool primary_recorded;
     Float previous_bsdf_pdf;
     Float3 previous_mis_origin_normal;
@@ -223,6 +244,12 @@ struct PathSampleContext {
     accumulate_light_pass(Var<LightPassContributionCall> contribution) noexcept;
     void accumulate_scattered_light(
         Float3 contribution) noexcept;
+    void accumulate_radiance(
+        Float3 contribution,
+        Bool primary_volume_scatter_override =
+            false) noexcept;
+    void accumulate_transparency(
+        Float transparency) noexcept;
     [[nodiscard]] Float3
     analytic_light_shader(Var<LightGpu> light,
                           UInt light_index,

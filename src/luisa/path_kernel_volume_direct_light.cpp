@@ -327,8 +327,9 @@ class DistantVolumeDirectLightingComponent final
                             volume_transmittance *
                             roulette_weight,
                         sample.path_depth);
-            sample.radiance +=
-                contribution;
+            sample.accumulate_radiance(
+                contribution,
+                true);
             const auto primary_volume =
                 (sample.path_flags &
                  cycles_path_state::

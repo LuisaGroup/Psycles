@@ -237,9 +237,13 @@ int main(int argc, char **argv) {
             write_shader_state(11u, light_shader_state);
             write_shader_state(13u, shadow_shader_state);
 
+            auto primary_volume = initial;
+            primary_volume.flag |=
+                cycles_path_state::
+                    flag_volume_primary_transmit;
             const auto volume =
                 cycles_path_state::next_volume(
-                    initial,
+                    primary_volume,
                     0u,
                     1u,
                     8u);
@@ -357,7 +361,8 @@ int main(int argc, char **argv) {
         luisa::float4{1.0f, 4.0f, 5.0f, 0.0f},
         // A volume collision is one ordinary bounce and consumes the next
         // complete Sobol block. It clears camera/background MIS state,
-        // establishes the first volume pass, and reaches the synced limit.
+        // clears PRIMARY_TRANSMIT exactly at bounce one, establishes the
+        // first volume pass, and reaches the synced limit.
         luisa::float4{
             static_cast<float>(
                 cycles_path_state::
