@@ -223,9 +223,40 @@ selection-exit draining and construct-exit fixup account for `5.666 s` and
 Thus the Vulkan cold delay is still a Luisa XIR CFG-restructuring complexity
 problem, not RADV pipeline creation. The earlier formal dominance-based
 selection-reentry fix remains effective, but this larger kernel exposes a
-separate remaining cost in the post-restructure fixed point. That issue is the
-next Luisa `next` task; it must be optimized through equivalent CFG relations
-and structural regressions, not kernel-shape special cases.
+separate cost in the post-restructure fixed point. The following optimization
+addresses part of that cost through an equivalent tree relation and structural
+regressions, without kernel-shape special cases.
+
+### Constant-time dominance-query follow-up
+
+Luisa `next` commit
+`d0dd9ae50cca2f29d091962ccc164a9f29cf3f48` replaces each dominator-tree
+parent-chain walk with a DFS half-open subtree-interval test. Formally, for
+dominator-tree nodes `u` and `v`,
+`u` dominates `v` exactly when
+`preorder(u) <= preorder(v) < subtree_end(u)`. The tree is numbered once after
+construction, so the query changes from linear in tree depth to constant time
+without changing the dominance relation.
+
+The same cold command, fixture, device, and environment were used before and
+after the change:
+
+| Metric | Before | After | Reduction |
+| --- | ---: | ---: | ---: |
+| Whole focused process | `24.180 s` | `20.050 s` | `17.08%` |
+| SPIR-V XIR legalization | `20.874 s` | `17.696 s` | `15.23%` |
+| `restructure-cfg` | `19.698 s` | `16.453 s` | `16.48%` |
+| Selection-exit draining | `5.666 s` | `3.294 s` | `41.86%` |
+| Construct-exit fixup | `4.951 s` | `4.623 s` | `6.63%` |
+| Selection-reentry counting | `2.137 s` | `1.621 s` | `24.17%` |
+
+The transformation result remained identical: 2374 input blocks and 56,979
+instructions still become 3528 blocks and 58,313 instructions after the fixed
+point; 6375 phi nodes, 131 loops, 665 selections, and 38 switches are handled;
+all selection-query counters match; and SPIR-V optimization remains exactly
+`317927 -> 291630` words. Luisa's 48 `unit_xir` tests and all 119 Psycles tests
+pass. The complete bounded A/B record is
+[vulkan-cold-jit-dominance-interval-ab.json](vulkan-cold-jit-dominance-interval-ab.json).
 
 ## Validation and honest boundary
 

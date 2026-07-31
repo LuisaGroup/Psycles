@@ -1,0 +1,73 @@
+{
+  "schema": "psycles.vulkan-cold-jit-ab.v1",
+  "date": "2026-08-01",
+  "device": "AMD Radeon RX 9070 XT (RADV GFX1201)",
+  "psycles_base_commit": "6f80f743dfb9a1ebcb366d4143455ccb22759242",
+  "luisa_before_commit": "21612b45beccff433aa93eb3a3a981afc48f53e1",
+  "luisa_after_commit": "d0dd9ae50cca2f29d091962ccc164a9f29cf3f48",
+  "fixture": "psycles_luisa_volume_path_tests vk heterogeneous",
+  "environment": {
+    "PSYCLES_DISABLE_SHADER_CACHE": "1",
+    "LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV": "1",
+    "LUISA_XIR_TRACE_PASSES": "1",
+    "LUISA_LOG_LEVEL": "verbose"
+  },
+  "before_ms": {
+    "process_wall": 24180.0,
+    "spirv_xir_legalization": 20874.362272,
+    "restructure_cfg": 19698.158,
+    "post_restructure_fixed_point": 12912.7,
+    "drain_selection_exits": 5665.589,
+    "fixup_construct_exits": 4950.798,
+    "post_count_selection_reentries": 2137.419
+  },
+  "after_ms": {
+    "process_wall": 20050.0,
+    "spirv_xir_legalization": 17695.620722,
+    "restructure_cfg": 16452.59,
+    "post_restructure_fixed_point": 10272.753,
+    "drain_selection_exits": 3294.154,
+    "fixup_construct_exits": 4622.613,
+    "post_count_selection_reentries": 1620.783
+  },
+  "relative_reduction": {
+    "process_wall": 0.170802,
+    "spirv_xir_legalization": 0.15228,
+    "restructure_cfg": 0.164765,
+    "drain_selection_exits": 0.418568,
+    "fixup_construct_exits": 0.066289,
+    "post_count_selection_reentries": 0.24171
+  },
+  "speedup": {
+    "process_wall": 1.205985,
+    "spirv_xir_legalization": 1.179634,
+    "restructure_cfg": 1.197268
+  },
+  "unchanged_structure": {
+    "input_blocks": 2374,
+    "input_instructions": 56979,
+    "post_fixed_point_blocks": 3528,
+    "post_fixed_point_instructions": 58313,
+    "lowered_phi": 6375,
+    "restructured_loops": 131,
+    "restructured_ifs": 665,
+    "restructured_switches": 38,
+    "selection_exit_site_queries": 14989,
+    "selection_exit_enclosing_loop_queries": 12653,
+    "selection_reentry_edge_queries": 96,
+    "selection_reentry_owner_queries": 1419,
+    "spirv_words_before_optimization": 317927,
+    "spirv_words_after_optimization": 291630
+  },
+  "validation": {
+    "luisa_unit_xir": "48/48 passed",
+    "psycles_ctest": "119/119 passed",
+    "focused_fixture": "passed"
+  },
+  "method": "Dominator-tree DFS half-open subtree intervals replace parent-chain dominance queries. For tree nodes u and v, u dominates v iff preorder(u) <= preorder(v) < subtree_end(u).",
+  "notes": [
+    "The before and after runs use the same executable fixture, environment, device, and cold Psycles shader-cache policy.",
+    "Nested restructure timers overlap enclosing timers and must not be summed.",
+    "The unchanged structural counters and identical final SPIR-V word counts confirm that only dominance-query cost changed."
+  ]
+}
