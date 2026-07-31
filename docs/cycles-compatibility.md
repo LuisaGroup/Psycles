@@ -277,7 +277,27 @@ matches fallback/HIP/Vulkan with maximum absolute errors
 Volume Scatter visibility exclusion. Reports, EXRs, and inspected triptychs
 are in
 [`validation/2026-07-31/homogeneous-volume-triangle-mis`](validation/2026-07-31/homogeneous-volume-triangle-mis/README.md).
-Environment volume NEE and heterogeneous transport remain separate work.
+Environment volume NEE now shares the background-map sampling, forward PDF,
+and raw World-closure component with surface lighting. Its latest-Cycles
+4×4 oracle matches fallback, HIP, and Vulkan with maximum Combined errors
+`1.4901e-8`, `1.1921e-7`, and `6.1691e-6`, including Camera and Volume
+Scatter World visibility controls. Reports, EXRs, and inspected triptychs are
+in
+[`validation/2026-07-31/homogeneous-volume-environment-mis`](validation/2026-07-31/homogeneous-volume-environment-mis/README.md).
+
+The first heterogeneous transport checkpoint now isolates the formal
+null-collision transition in a Luisa `.h`/`.cpp` component. It pins current
+Cycles main `b82c3f0` scalar-majorant exponential free flight, Hash Prospector
+path-offset scrambling, null coefficients, throughput/albedo channel
+probabilities, real/null continuation weights, deterministic absorption-only
+continuation, and the defensive majorant-violation correction. The component
+also exposes that violation as a predicate so an unsound preprocessing bound
+cannot be mistaken for supported rendering. A 16-record fixture plus exact
+32-bit hash checks passes on fallback, HIP, and Vulkan. Spatial majorant
+construction, octree traversal, VSPG reservoirs, and production path
+connection remain open, so heterogeneous scenes are still rejected rather
+than falling back to homogeneous integration. Details are in
+[`validation/2026-07-31/heterogeneous-volume-collision`](validation/2026-07-31/heterogeneous-volume-collision/README.md).
 
 Accumulated VSPG history is now connected end to end. The production path
 classifies every Combined contribution into Cycles' raw scatter/transmit
@@ -582,7 +602,8 @@ compatible yet:
 
 - Cycles' emitter importance distribution and environment importance map;
 - light-tree construction and traversal;
-- environment volume NEE and heterogeneous grid integration;
+- heterogeneous volume majorant construction, octree traversal, and path
+  integration;
 - remaining distant-light forward/background behavior;
 - MNEE, path guiding, shadow catcher, light linking, and light groups;
 - Cycles' exact sampling sequence and random dimensions.

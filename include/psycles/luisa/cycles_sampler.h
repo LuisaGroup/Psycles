@@ -74,6 +74,34 @@ using luisa::compute::make_float3;
     return value;
 }
 
+// Current Cycles uses Hash Prospector to decorrelate variable-length random
+// walks from the enclosing path dimensions. Heterogeneous volume tracking
+// applies this once with seed 0xe35fad82 before advancing by one complete
+// PRNG_BOUNCE_NUM block per candidate collision.
+[[nodiscard]] inline UInt hash_hp_uint(UInt value) noexcept {
+    value ^= value >> 16u;
+    value *= 0x21f0aaadu;
+    value ^= value >> 15u;
+    value *= 0xd35a2d97u;
+    value ^= value >> 15u;
+    return value ^ 0xe6fe3bebu;
+}
+
+[[nodiscard]] inline UInt hash_hp_seeded_uint(
+    UInt value,
+    UInt seed) noexcept {
+    seed ^= seed << 19u;
+    return hash_hp_uint(value ^ seed);
+}
+
+[[nodiscard]] inline UInt scramble_path_offset(
+    UInt rng_offset,
+    UInt seed) noexcept {
+    return hash_hp_seeded_uint(
+               rng_offset, seed) &
+           ~0x3u;
+}
+
 [[nodiscard]] inline UInt shuffled_pattern_index(
     UInt dimension,
     UInt seed) noexcept {

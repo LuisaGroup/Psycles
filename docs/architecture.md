@@ -251,6 +251,19 @@ check, not shader preprocessing: accepted programs retain their raw closures
 and dynamic parameter buffers, while heterogeneous programs remain intact and
 receive a diagnostic.
 
+`HeterogeneousVolumeTracking` is the first component beyond that gate. It
+records the local weighted-delta-tracking transition independently of spatial
+acceleration: scalar-majorant exponential free flight, Hash Prospector path
+offset scrambling, null coefficients, Cycles' throughput/albedo channel
+measure, real-versus-null probabilities, absorption-only deterministic
+continuation, and both continuation weights. Its result carries an explicit
+`majorant_exceeded` predicate. That predicate is a failed preprocessing
+contract, not permission to continue with an estimated bound. Majorant
+construction, octree traversal, VSPG reservoir selection, and direct-light
+MIS are separate components so that none can silently alter this local
+measure. Until a sound majorant provider and traversal are connected, the
+scene capability gate continues to reject heterogeneous material graphs.
+
 ### Scene
 
 `SceneDatabase` stores immutable logical snapshots and accepts a `SceneDelta`
