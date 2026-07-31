@@ -198,6 +198,14 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
         transmission_depth = next_cycles_path_state.transmission_bounce;
         transparent_depth = next_cycles_path_state.transparent_bounce;
         cycles_rng_offset = next_cycles_path_state.rng_offset;
+        if (config.volume_state) {
+            config.volume_state->cross_surface(
+                sample.volume,
+                surface.volume_stack_entry,
+                point.back_facing,
+                surface.surface_has_volume,
+                cycles_label);
+        }
         ray_visibility =
             cycles_path_state::contract_visibility(cycles_path_visibility);
         terminate_on_next_surface =

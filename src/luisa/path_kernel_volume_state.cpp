@@ -1,5 +1,7 @@
 #include "path_kernel_volume_state.h"
 
+#include <psycles/luisa/cycles_closure.h>
+
 #include <utility>
 
 namespace psycles::luisa_backend::detail {
@@ -51,6 +53,26 @@ class PathVolumeStateComponentImpl final
             .camera_initialization =
                 std::move(
                     camera_initialization)};
+    }
+
+    void cross_surface(
+        PathVolumeState &state,
+        const VolumeStackEntry &entry,
+        Bool back_facing,
+        Bool has_volume,
+        UInt cycles_label)
+        const noexcept override {
+        if (!state.enabled()) {
+            return;
+        }
+        const auto transmitted =
+            (cycles_label &
+             cycles_closure::label_transmit) != 0u;
+        state.stack->cross_boundary(
+            entry,
+            back_facing,
+            has_volume,
+            transmitted);
     }
 };
 
