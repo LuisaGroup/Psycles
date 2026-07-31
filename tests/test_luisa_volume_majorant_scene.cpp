@@ -1,0 +1,862 @@
+#include "cycles_shader_identity.h"
+#include "path_tracer_generated_coordinates.h"
+#include "path_tracer_volume_majorant_scene.h"
+
+#include <psycles/compiler/core_nodes.h>
+#include <psycles/compiler/shader_program.h>
+#include <psycles/compiler/surface_program.h>
+#include <psycles/luisa/graph_surface.h>
+
+#include <algorithm>
+#include <array>
+#include <bit>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
+#include <iostream>
+#include <limits>
+#include <map>
+#include <optional>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <variant>
+#include <vector>
+
+#include <luisa/luisa-compute.h>
+
+namespace {
+
+using namespace luisa::compute;
+using namespace psycles;
+using namespace psycles::compiler;
+using namespace psycles::contract;
+using namespace psycles::luisa_backend;
+using namespace psycles::luisa_backend::detail;
+
+void expect(
+    bool condition,
+    const std::string &message) {
+    if (!condition) {
+        throw std::runtime_error{message};
+    }
+}
+
+[[nodiscard]] bool close(
+    float actual,
+    float expected,
+    float tolerance = 3.0e-6f) noexcept {
+    return std::abs(actual - expected) <=
+           tolerance *
+               std::max(
+                   1.0f,
+                   std::max(
+                       std::abs(actual),
+                       std::abs(expected)));
+}
+
+[[nodiscard]] Mat4f transform(
+    Vec3f translation,
+    Vec3f scale = {1.0f, 1.0f, 1.0f})
+    noexcept {
+    Mat4f result;
+    result.elements = {
+        scale.x, 0.0f, 0.0f, 0.0f,
+        0.0f, scale.y, 0.0f, 0.0f,
+        0.0f, 0.0f, scale.z, 0.0f,
+        translation.x,
+        translation.y,
+        translation.z,
+        1.0f};
+    return result;
+}
+
+[[nodiscard]] TriangleMeshDesc bounds_geometry(
+    std::string name,
+    Vec3f minimum,
+    Vec3f maximum,
+    std::vector<MaterialId> materials) {
+    return {
+        .name = std::move(name),
+        .positions = {minimum, maximum},
+        .material_slots = std::move(materials)};
+}
+
+void add_instance(
+    SceneSnapshot &scene,
+    std::uint64_t id,
+    GeometryId geometry,
+    Mat4f matrix,
+    std::vector<MaterialId> overrides = {},
+    std::optional<std::uint32_t> cycles_object =
+        std::nullopt) {
+    scene.instances.emplace(
+        InstanceId{id},
+        InstanceDesc{
+            .name =
+                "majorant-instance-" +
+                std::to_string(id),
+            .geometry = geometry,
+            .transform = std::move(matrix),
+            .material_overrides =
+                std::move(overrides),
+            .cycles_object_index =
+                cycles_object});
+}
+
+void test_scene_plan() {
+    constexpr MaterialId heterogeneous_a{1u};
+    constexpr MaterialId heterogeneous_b{2u};
+    constexpr MaterialId homogeneous{3u};
+    constexpr MaterialId surface_only{4u};
+    constexpr MaterialId world{5u};
+    constexpr GeometryId ordinary_geometry{10u};
+    constexpr GeometryId partial_geometry{11u};
+    constexpr GeometryId collapsed_geometry{12u};
+
+    const std::map<MaterialId, VolumeMajorantSceneMaterial>
+        materials{
+            {heterogeneous_a,
+             {.surface_tag = 101u,
+              .parameter_block = 201u,
+              .shader =
+                  17u |
+                  cycles_shader_identity::
+                      smooth_normal |
+                  cycles_shader_identity::
+                      cast_shadow,
+              .has_volume = true,
+              .heterogeneous = true}},
+            {heterogeneous_b,
+             {.surface_tag = 102u,
+              .parameter_block = 202u,
+              .shader = 18u,
+              .has_volume = true,
+              .heterogeneous = true}},
+            {homogeneous,
+             {.surface_tag = 103u,
+              .parameter_block = 203u,
+              .shader = 19u,
+              .has_volume = true,
+              .heterogeneous = false}},
+            {surface_only,
+             {.surface_tag = 104u,
+              .parameter_block = 204u,
+              .shader = 20u,
+              .has_volume = false,
+              .heterogeneous = false}},
+            {world,
+             {.surface_tag = 105u,
+              .parameter_block = 205u,
+              .shader = 21u,
+              .has_volume = true,
+              .heterogeneous = true}}};
+
+    SceneSnapshot scene;
+    scene.geometries.emplace(
+        ordinary_geometry,
+        bounds_geometry(
+            "ordinary bounds",
+            {-2.0f, -1.0f, 0.0f},
+            {4.0f, 5.0f, 6.0f},
+            {heterogeneous_a,
+             homogeneous,
+             heterogeneous_b}));
+    scene.geometries.emplace(
+        partial_geometry,
+        bounds_geometry(
+            "partially degenerate bounds",
+            {2.0f, -3.0f, -4.0f},
+            {2.0f, 7.0f, 8.0f},
+            {heterogeneous_a}));
+    scene.geometries.emplace(
+        collapsed_geometry,
+        bounds_geometry(
+            "fully collapsed bounds",
+            {3.0f, 3.0f, 3.0f},
+            {3.0f, 3.0f, 3.0f},
+            {heterogeneous_a}));
+
+    Mat4f sheared;
+    sheared.elements = {
+        2.0f, 0.0f, 0.0f, 0.0f,
+        1.0f, 3.0f, 0.0f, 0.0f,
+        0.0f, 2.0f, 4.0f, 0.0f,
+        7.0f, -8.0f, 9.0f, 1.0f};
+    add_instance(
+        scene,
+        10u,
+        ordinary_geometry,
+        sheared,
+        {},
+        77u);
+    add_instance(
+        scene,
+        20u,
+        ordinary_geometry,
+        transform({1.0f, 2.0f, 3.0f}),
+        {surface_only, heterogeneous_b},
+        88u);
+    add_instance(
+        scene,
+        30u,
+        partial_geometry,
+        transform({4.0f, 5.0f, 6.0f}));
+    add_instance(
+        scene,
+        40u,
+        collapsed_geometry,
+        transform({7.0f, 8.0f, 9.0f}));
+    scene.world_shader = world;
+    scene.cycles_background_object_index = 99u;
+
+    const VolumeMajorantSceneComponent component;
+    const auto plan =
+        component.plan(scene, materials);
+    expect(plan.ok(), plan.diagnostic);
+    expect(
+        plan.ranges.size() == 5u &&
+            plan.world_range == 4u,
+        "scene plan did not reserve one range per "
+        "instance plus World");
+    constexpr std::array expected_ranges{
+        VolumeMajorantRootRangeGpu{0u, 2u},
+        VolumeMajorantRootRangeGpu{2u, 1u},
+        VolumeMajorantRootRangeGpu{3u, 1u},
+        VolumeMajorantRootRangeGpu{4u, 0u},
+        VolumeMajorantRootRangeGpu{4u, 1u}};
+    for (auto index = std::size_t{0u};
+         index < expected_ranges.size();
+         ++index) {
+        expect(
+            plan.ranges[index].offset ==
+                    expected_ranges[index].offset &&
+                plan.ranges[index].count ==
+                    expected_ranges[index].count,
+            "scene plan changed the ordered root "
+            "partition at range " +
+                std::to_string(index));
+    }
+    expect(
+        plan.roots.size() == 5u,
+        "scene plan did not select exactly the "
+        "heterogeneous effective materials");
+
+    const auto &first = plan.roots[0u];
+    expect(
+        first.material == heterogeneous_a &&
+            first.range_index == 0u &&
+            first.object == 77u &&
+            first.instance_id == 0u &&
+            first.shader == 17u &&
+            first.surface_tag == 101u &&
+            first.parameter_block == 201u,
+        "first object root lost Cycles object/shader "
+        "identity");
+    expect(
+        first.bounds.minimum.x == -2.0f &&
+            first.bounds.minimum.y == -1.0f &&
+            first.bounds.minimum.z == 0.0f &&
+            first.bounds.maximum.x == 4.0f &&
+            first.bounds.maximum.y == 5.0f &&
+            first.bounds.maximum.z == 6.0f,
+        "object root did not retain mesh-space bounds");
+    expect(
+        close(
+            first.volume_scale,
+            std::sqrt(50.0f / 3.0f)),
+        "object root did not use Cycles' diagonal "
+        "transform-direction scale");
+    expect(
+        close(first.object_to_world[3u].x, 7.0f) &&
+            close(
+                first.object_to_world[3u].y,
+                -8.0f) &&
+            close(first.object_to_world[3u].z, 9.0f),
+        "object root transform was not retained");
+
+    expect(
+        plan.roots[1u].material ==
+            heterogeneous_b,
+        "ordinary geometry lost its second "
+        "heterogeneous shader");
+    expect(
+        plan.roots[2u].material ==
+                heterogeneous_b &&
+            plan.roots[2u].range_index == 1u &&
+            plan.roots[2u].object == 88u,
+        "instance override did not replace the "
+        "geometry material slots");
+    expect(
+        plan.roots[3u].range_index == 2u &&
+            plan.roots[3u].bounds.minimum.x ==
+                plan.roots[3u].bounds.maximum.x,
+        "partially degenerate Cycles bounds were "
+        "discarded");
+
+    const auto &world_root = plan.roots[4u];
+    expect(
+        world_root.material == world &&
+            world_root.range_index == 4u &&
+            world_root.object == 99u &&
+            world_root.instance_id ==
+                invalid_volume_identity &&
+            world_root.bounds.minimum.x ==
+                -10000.0f &&
+            world_root.bounds.maximum.z ==
+                10000.0f,
+        "World root did not match Cycles' finite "
+        "majorant domain");
+
+    SceneSnapshot invalid_transform;
+    invalid_transform.geometries.emplace(
+        ordinary_geometry,
+        bounds_geometry(
+            "invalid transform bounds",
+            {-1.0f, -1.0f, -1.0f},
+            {1.0f, 1.0f, 1.0f},
+            {heterogeneous_a}));
+    auto nonfinite = Mat4f{};
+    nonfinite.elements[12u] =
+        std::numeric_limits<float>::infinity();
+    add_instance(
+        invalid_transform,
+        1u,
+        ordinary_geometry,
+        nonfinite);
+    expect(
+        !component
+             .plan(invalid_transform, materials)
+             .ok(),
+        "non-finite scene transform entered the "
+        "majorant prepass");
+}
+
+[[nodiscard]] VolumeMajorantHierarchy leaf_hierarchy(
+    float minimum,
+    float maximum) {
+    VolumeMajorantHierarchy result;
+    result.root = {
+        .scale = {1.0f, 2.0f, 3.0f},
+        .node = 0u,
+        .translation = {4.0f, 5.0f, 6.0f},
+        .shader = 999u};
+    result.nodes.emplace_back(
+        VolumeMajorantNodeGpu{
+            .parent = -1,
+            .first_child = -1,
+            .sigma_minimum = minimum,
+            .sigma_maximum = maximum});
+    return result;
+}
+
+[[nodiscard]] VolumeMajorantHierarchy
+one_level_hierarchy() {
+    auto result = leaf_hierarchy(0.1f, 2.0f);
+    result.nodes[0u].first_child = 1;
+    result.nodes.resize(9u);
+    for (auto child = std::size_t{1u};
+         child < result.nodes.size();
+         ++child) {
+        result.nodes[child] = {
+            .parent = 0,
+            .first_child = -1,
+            .sigma_minimum =
+                0.1f *
+                static_cast<float>(child),
+            .sigma_maximum =
+                0.1f *
+                    static_cast<float>(child) +
+                0.25f};
+    }
+    return result;
+}
+
+[[nodiscard]] VolumeMajorantScenePlan
+flatten_plan() {
+    VolumeMajorantScenePlan plan;
+    plan.world_range = 1u;
+    plan.ranges = {
+        {0u, 1u},
+        {1u, 1u}};
+    plan.roots = {
+        {.material = MaterialId{31u},
+         .range_index = 0u,
+         .shader = 41u},
+        {.material = MaterialId{32u},
+         .range_index = 1u,
+         .shader = 42u}};
+    return plan;
+}
+
+void test_flatten_contract() {
+    const VolumeMajorantSceneComponent component;
+    const auto plan = flatten_plan();
+    const std::array hierarchies{
+        leaf_hierarchy(0.25f, 0.5f),
+        one_level_hierarchy()};
+    const auto flattened =
+        component.flatten(plan, hierarchies);
+    expect(flattened.ok(), flattened.diagnostic);
+    expect(
+        flattened.nodes.size() == 10u &&
+            flattened.roots.size() == 2u &&
+            flattened.ranges.size() == 2u,
+        "flattened scene resource counts changed");
+    expect(
+        flattened.roots[0u].node == 0u &&
+            flattened.roots[0u].shader == 41u &&
+            flattened.roots[1u].node == 1u &&
+            flattened.roots[1u].shader == 42u,
+        "flattening did not relocate roots or replace "
+        "their shader identities");
+    expect(
+        flattened.nodes[1u].parent == -1 &&
+            flattened.nodes[1u].first_child == 2,
+        "flattening did not relocate the second "
+        "hierarchy root");
+    for (auto child = std::size_t{2u};
+         child < flattened.nodes.size();
+         ++child) {
+        expect(
+            flattened.nodes[child].parent == 1,
+            "flattening did not relocate a child "
+            "parent index");
+    }
+
+    auto partition_gap = plan;
+    partition_gap.ranges[1u].offset = 2u;
+    expect(
+        !component
+             .flatten(
+                 partition_gap, hierarchies)
+             .ok(),
+        "a gapped root partition was accepted");
+
+    auto wrong_identity = plan;
+    wrong_identity.roots[1u].range_index = 0u;
+    expect(
+        !component
+             .flatten(
+                 wrong_identity, hierarchies)
+             .ok(),
+        "a root assigned to the wrong range was "
+        "accepted");
+
+    auto incomplete = one_level_hierarchy();
+    incomplete.nodes.pop_back();
+    std::array malformed{
+        hierarchies[0u], incomplete};
+    expect(
+        !component.flatten(plan, malformed).ok(),
+        "an incomplete eight-child block was accepted");
+
+    auto wrong_parent = one_level_hierarchy();
+    wrong_parent.nodes[8u].parent = 7;
+    malformed = {hierarchies[0u], wrong_parent};
+    expect(
+        !component.flatten(plan, malformed).ok(),
+        "a child with the wrong parent was accepted");
+
+    auto unreachable = hierarchies[0u];
+    unreachable.nodes.emplace_back(
+        VolumeMajorantNodeGpu{
+            .parent = -1,
+            .first_child = -1,
+            .sigma_minimum = 0.0f,
+            .sigma_maximum = 0.0f});
+    malformed = {unreachable, hierarchies[1u]};
+    expect(
+        !component.flatten(plan, malformed).ok(),
+        "an unreachable local node was accepted");
+
+    auto invalid_extrema = hierarchies[0u];
+    invalid_extrema.nodes[0u].sigma_minimum =
+        -1.0f;
+    malformed = {
+        invalid_extrema, hierarchies[1u]};
+    expect(
+        !component.flatten(plan, malformed).ok(),
+        "negative local majorant extrema were "
+        "accepted");
+}
+
+[[nodiscard]] ShaderGraph
+make_spatial_volume_graph() {
+    ShaderGraph graph;
+    const auto surface =
+        graph.add_node(
+            node_type::diffuse_bsdf,
+            "Zero-contribution surface");
+    expect(
+        graph.set_input(
+            surface,
+            "Color",
+            SocketValue::color(
+                {0.0f, 0.0f, 0.0f})),
+        "failed to construct companion surface root");
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{
+            .node = surface,
+            .socket = "Closure"});
+
+    const auto coordinates =
+        graph.add_node(
+            node_type::texture_coordinate,
+            "Raw volume coordinates");
+    const auto coefficients =
+        graph.add_node(
+            node_type::volume_coefficients,
+            "Raw volume coefficients");
+    expect(
+        graph.set_input(
+            coefficients,
+            "ScatterCoefficients",
+            SocketValue::vector(
+                {0.0f, 0.0f, 0.0f})) &&
+            graph.set_input(
+                coefficients,
+                "AbsorptionCoefficients",
+                SocketValue::vector(
+                    {0.0f, 0.0f, 0.0f})) &&
+            graph.connect(
+                {.node = coordinates,
+                 .socket = "Generated"},
+                coefficients,
+                "EmissionCoefficients"),
+        "failed to construct raw spatial volume graph");
+    graph.set_root(
+        ShaderDomain::volume,
+        OutputRef{
+            .node = coefficients,
+            .socket = "Volume"});
+    return graph;
+}
+
+[[nodiscard]] std::vector<luisa::float4>
+parameter_data(const SurfaceProgram &program) {
+    std::vector<luisa::float4> result;
+    result.reserve(program.parameters().size());
+    for (const auto &parameter :
+         program.parameters()) {
+        const auto &value =
+            parameter.default_value;
+        if (const auto *scalar =
+                std::get_if<float>(
+                    &value.value)) {
+            result.emplace_back(
+                *scalar, 0.0f, 0.0f, 0.0f);
+        } else if (
+            const auto *vector =
+                std::get_if<Vec3f>(
+                    &value.value)) {
+            result.emplace_back(
+                vector->x,
+                vector->y,
+                vector->z,
+                0.0f);
+        } else {
+            throw std::runtime_error{
+                "scene-majorant fixture has an "
+                "unsupported parameter type"};
+        }
+    }
+    if (result.empty()) {
+        result.emplace_back(
+            0.0f, 0.0f, 0.0f, 0.0f);
+    }
+    return result;
+}
+
+void run_scene_build(
+    std::string_view backend,
+    const char *program) {
+    constexpr MaterialId volume_material{61u};
+    constexpr GeometryId geometry_id{71u};
+
+    auto graph = make_spatial_volume_graph();
+    ShaderCompiler compiler{
+        make_core_node_registry()};
+    const auto shader_program =
+        compiler.compile(graph);
+    expect(
+        shader_program.ok(),
+        "failed to compile raw spatial volume graph");
+    const auto lowered =
+        compile_surface_program(
+            *shader_program.program);
+    expect(
+        lowered.ok(),
+        "failed to lower raw spatial volume graph");
+
+    SceneSnapshot snapshot;
+    TriangleMeshDesc geometry{
+        .name = "scene-majorant triangle",
+        .positions = {
+            {-1.0f, -1.0f, -1.0f},
+            {1.0f, -1.0f, -1.0f},
+            {0.0f, 1.0f, 1.0f}},
+        .triangles = {{0u, 1u, 2u}},
+        .material_slots = {volume_material}};
+    snapshot.geometries.emplace(
+        geometry_id, geometry);
+    add_instance(
+        snapshot,
+        81u,
+        geometry_id,
+        transform({2.0f, -3.0f, 5.0f}),
+        {},
+        91u);
+
+    Context context{program};
+    auto device = context.create_device(backend);
+    auto stream = device.create_stream();
+    auto scene =
+        std::make_shared<LuisaSceneData>();
+    scene->device =
+        Device{device.impl_shared()};
+
+    const auto surface_tag =
+        scene->surfaces.create<GraphSurface>(
+            lowered.program);
+    const auto host_parameters =
+        parameter_data(*lowered.program);
+    scene->parameter_buffer =
+        device.create_buffer<luisa::float4>(
+            host_parameters.size());
+    scene->cycles_bsdf_table_buffer =
+        device.create_buffer<float>(1u);
+
+    const auto generated_mapping =
+        make_generated_coordinate_mapping(
+            geometry);
+    const std::array geometry_records{
+        GeometryGpu{
+            .generated_transform =
+                to_luisa(
+                    generated_mapping
+                        .object_to_generated)}};
+    constexpr std::array instance_records{
+        InstanceGpu{
+            .geometry_index = 0u,
+            .cycles_object_index = 91u}};
+    scene->geometry_buffer =
+        device.create_buffer<GeometryGpu>(1u);
+    scene->instance_buffer =
+        device.create_buffer<InstanceGpu>(1u);
+
+    constexpr std::array positions{
+        luisa::float3{-1.0f, -1.0f, -1.0f},
+        luisa::float3{1.0f, -1.0f, -1.0f},
+        luisa::float3{0.0f, 1.0f, 1.0f}};
+    constexpr std::array triangles{
+        Triangle{0u, 1u, 2u}};
+    auto position_buffer =
+        device.create_buffer<luisa::float3>(
+            positions.size());
+    auto triangle_buffer =
+        device.create_buffer<Triangle>(
+            triangles.size());
+    auto mesh = device.create_mesh(
+        position_buffer, triangle_buffer);
+    scene->accel = device.create_accel();
+    scene->accel.emplace_back(
+        mesh,
+        to_luisa(
+            snapshot.instances.begin()
+                ->second.transform),
+        0xffu,
+        false,
+        0u);
+
+    scene->attribute_binding_slot = 0u;
+    scene->attribute_range_slot = 1u;
+    scene->attribute_binding_buffer =
+        device.create_buffer<
+            AttributeBindingGpu>(1u);
+    scene->attribute_range_buffer =
+        device.create_buffer<
+            AttributeRangeGpu>(1u);
+    scene->heap =
+        device.create_bindless_array(2u);
+    scene->heap.emplace_on_update(
+        scene->attribute_binding_slot,
+        scene->attribute_binding_buffer);
+    scene->heap.emplace_on_update(
+        scene->attribute_range_slot,
+        scene->attribute_range_buffer);
+
+    scene->texture_heap =
+        device.create_bindless_array(1u);
+    scene->images.emplace_back(
+        device.create_image<float>(
+            PixelStorage::BYTE4, 1u, 1u));
+    scene->texture_heap.emplace_on_update(
+        0u,
+        scene->images.back(),
+        Sampler::linear_point_repeat());
+
+    constexpr std::array cycles_table{1.0f};
+    constexpr std::array attribute_bindings{
+        AttributeBindingGpu{}};
+    constexpr std::array attribute_ranges{
+        AttributeRangeGpu{}};
+    constexpr std::array dummy_pixel{
+        std::byte{255u},
+        std::byte{0u},
+        std::byte{255u},
+        std::byte{255u}};
+    stream
+        << scene->parameter_buffer.copy_from(
+               luisa::span{host_parameters})
+        << scene->cycles_bsdf_table_buffer
+               .copy_from(
+                   luisa::span{cycles_table})
+        << scene->geometry_buffer.copy_from(
+               luisa::span{geometry_records})
+        << scene->instance_buffer.copy_from(
+               luisa::span{instance_records})
+        << scene->attribute_binding_buffer
+               .copy_from(
+                   luisa::span{
+                       attribute_bindings})
+        << scene->attribute_range_buffer
+               .copy_from(
+                   luisa::span{attribute_ranges})
+        << position_buffer.copy_from(
+               luisa::span{positions})
+        << triangle_buffer.copy_from(
+               luisa::span{triangles})
+        << scene->images.back().copy_from(
+               luisa::span{dummy_pixel})
+        << mesh.build()
+        << scene->texture_heap.update()
+        << scene->heap.update()
+        << scene->accel.build()
+        << synchronize();
+
+    const std::map<MaterialId, VolumeMajorantSceneMaterial>
+        materials{
+            {volume_material,
+             {.surface_tag = surface_tag,
+              .parameter_block = 0u,
+              .shader =
+                  37u |
+                  cycles_shader_identity::
+                      cast_shadow,
+              .has_volume = true,
+              .heterogeneous = true}}};
+    const VolumeMajorantSceneComponent component;
+    const auto plan =
+        component.plan(snapshot, materials);
+    expect(plan.ok(), plan.diagnostic);
+    expect(
+        plan.roots.size() == 1u,
+        "backend scene fixture did not plan one root");
+
+    const auto built =
+        component.build(scene, stream, plan);
+    expect(
+        built.ok(),
+        "scene majorant build failed on " +
+            std::string{backend} + ": " +
+            built.diagnostic);
+    expect(
+        built.root_count == 1u &&
+            built.range_count == 2u &&
+            built.node_count == 9u,
+        "scene majorant resource counts changed on " +
+            std::string{backend});
+
+    std::vector<VolumeMajorantRootGpu> roots(
+        built.root_count);
+    std::vector<VolumeMajorantNodeGpu> nodes(
+        built.node_count);
+    std::vector<VolumeMajorantRootRangeGpu> ranges(
+        built.range_count);
+    stream
+        << scene->volume_majorant_root_buffer
+               .copy_to(luisa::span{roots})
+        << scene->volume_majorant_node_buffer
+               .copy_to(luisa::span{nodes})
+        << scene->volume_majorant_range_buffer
+               .copy_to(luisa::span{ranges})
+        << synchronize();
+
+    expect(
+        roots[0u].shader == 37u &&
+            roots[0u].node == 0u &&
+            close(roots[0u].scale.x, 0.5f) &&
+            close(roots[0u].scale.y, 0.5f) &&
+            close(roots[0u].scale.z, 0.5f) &&
+            close(
+                roots[0u].translation.x,
+                1.5f) &&
+            close(
+                roots[0u].translation.y,
+                1.5f) &&
+            close(
+                roots[0u].translation.z,
+                1.5f),
+        "uploaded root transform/identity changed on " +
+            std::string{backend});
+    expect(
+        ranges[0u].offset == 0u &&
+            ranges[0u].count == 1u &&
+            ranges[1u].offset == 1u &&
+            ranges[1u].count == 0u &&
+            scene->volume_majorant_world_range == 1u,
+        "uploaded instance/World range partition "
+        "changed on " +
+            std::string{backend});
+    expect(
+        nodes[0u].parent == -1 &&
+            nodes[0u].first_child == 1 &&
+            nodes[0u].sigma_minimum >= 0.0f &&
+            nodes[0u].sigma_minimum < 0.02f &&
+            nodes[0u].sigma_maximum > 0.99f &&
+            nodes[0u].sigma_maximum < 1.02f,
+        "uploaded root extrema/topology changed on " +
+            std::string{backend});
+    for (auto child = std::size_t{1u};
+         child < nodes.size();
+         ++child) {
+        expect(
+            nodes[child].parent == 0 &&
+                nodes[child].first_child == -1 &&
+                nodes[child].sigma_minimum >= 0.0f &&
+                nodes[child].sigma_maximum >=
+                    nodes[child].sigma_minimum,
+            "uploaded child topology/extrema changed "
+            "on " +
+                std::string{backend});
+    }
+}
+
+}// namespace
+
+int main(int argc, char **argv) {
+    try {
+        const auto backend =
+            std::string_view{
+                argc > 1
+                    ? argv[1]
+                    : "fallback"};
+        test_scene_plan();
+        test_flatten_contract();
+        run_scene_build(backend, argv[0]);
+        std::cout
+            << "All current-Cycles volume-majorant "
+               "scene resource fixtures passed on "
+            << backend << ".\n";
+        return EXIT_SUCCESS;
+    } catch (const std::exception &error) {
+        std::cerr
+            << "Volume-majorant scene fixture failure: "
+            << error.what() << '\n';
+        return EXIT_FAILURE;
+    }
+}

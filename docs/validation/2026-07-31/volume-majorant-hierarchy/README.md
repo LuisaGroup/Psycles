@@ -22,8 +22,11 @@ and
 
 Each internal node owns eight contiguous child records. Every child stores its
 parent, and the root stores the affine transform from object bounds to
-`[1, 2)`. Invalid grid size, non-finite or unordered extrema, degenerate
-bounds, and non-positive density scale are rejected before construction.
+`[1, 2)`. Invalid grid size, non-finite or unordered extrema, fully collapsed
+bounds, and negative density scale are rejected before construction. Matching
+current Cycles, a bound with only one or two collapsed axes is retained and
+uses the root extrema during traversal; a zero density scale is valid and
+prevents subdivision.
 
 Cycles obtains each cell extrema from sixteen Sobol-Burley positions in a
 voxel padded by twenty percent on every side. This is a finite sampled
@@ -76,10 +79,9 @@ connected to the production scene path.
 
 ## Remaining connection
 
-The raw Luisa `128^3 x 16` shader-evaluation prepass is complete and recorded
-in
-[`../volume-majorant-prepass`](../volume-majorant-prepass/README.md).
-Scene-side buffer construction must now dispatch it over each heterogeneous
-object/shader root and feed the resulting extrema into this builder. After
-that, multi-root stack reduction and the collision/phase/direct-light path can
-be composed and validated against official Cycles images.
+The raw Luisa `128^3 x 16` shader-evaluation prepass and scene-side resource
+construction are complete and recorded in
+[`../volume-majorant-prepass`](../volume-majorant-prepass/README.md) and
+[`../volume-majorant-scene-resources`](../volume-majorant-scene-resources/README.md).
+Multi-root stack reduction and the collision/phase/direct-light path are the
+next connection before official Cycles image differentials can begin.

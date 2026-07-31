@@ -222,20 +222,21 @@ class HierarchyBuildState {
             subtract(
                 _bounds.maximum,
                 _bounds.minimum);
+        const luisa::float3 scale{
+            1.0f / size.x,
+            1.0f / size.y,
+            1.0f / size.z};
         _hierarchy.root = {
-            .scale = {
-                1.0f / size.x,
-                1.0f / size.y,
-                1.0f / size.z},
+            .scale = scale,
             .node = 0u,
             .translation = {
-                -_bounds.minimum.x / size.x +
+                -_bounds.minimum.x * scale.x +
                     1.0f,
-                -_bounds.minimum.y / size.y +
+                -_bounds.minimum.y * scale.y +
                     1.0f,
-                -_bounds.minimum.z / size.z +
+                -_bounds.minimum.z * scale.z +
                     1.0f},
-            .padding = 0u};
+            .shader = ~std::uint32_t{0u}};
         return std::move(_hierarchy);
     }
 };
@@ -258,22 +259,28 @@ VolumeMajorantHierarchyBuilder::build(
     }
     if (!finite(bounds.minimum) ||
         !finite(bounds.maximum) ||
-        !(bounds.maximum.x >
-          bounds.minimum.x) ||
-        !(bounds.maximum.y >
-          bounds.minimum.y) ||
-        !(bounds.maximum.z >
-          bounds.minimum.z)) {
+        bounds.maximum.x <
+            bounds.minimum.x ||
+        bounds.maximum.y <
+            bounds.minimum.y ||
+        bounds.maximum.z <
+            bounds.minimum.z ||
+        (bounds.maximum.x ==
+             bounds.minimum.x &&
+         bounds.maximum.y ==
+             bounds.minimum.y &&
+         bounds.maximum.z ==
+             bounds.minimum.z)) {
         result.diagnostic =
             "volume majorant bounds must be finite and "
-            "non-degenerate";
+            "not fully degenerate";
         return result;
     }
     if (!std::isfinite(volume_scale) ||
-        !(volume_scale > 0.0f)) {
+        volume_scale < 0.0f) {
         result.diagnostic =
             "volume majorant density scale must be finite "
-            "and positive";
+            "and nonnegative";
         return result;
     }
     const auto valid_extrema =

@@ -106,9 +106,9 @@ EXR triptych or visual judgement would be misleading at this checkpoint.
 Cycles/Psycles triptychs remain mandatory when the heterogeneous estimator is
 connected to the production render path.
 
-The next slice is scene-side resource construction: dispatch this pass for
-each heterogeneous object/shader root, read or reduce its extrema into the
-existing hierarchy builder, and retain the root buffers for traversal.
+Scene-side dispatch, hierarchy flattening, and retained root/node/range buffers
+are now complete and recorded in
+[`../volume-majorant-scene-resources`](../volume-majorant-scene-resources/README.md).
 Overlapping-root interval reduction and full collision/phase/direct-light
 transport follow. Cycles' per-cell LCG state for stochastic texture sampling
 also remains an explicit prerequisite before arbitrary stochastic volume
