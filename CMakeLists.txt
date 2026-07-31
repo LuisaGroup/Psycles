@@ -169,6 +169,7 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/graph_surface_value_context.cpp
             src/luisa/graph_surface_value_image.cpp
             src/luisa/graph_surface_value_math.cpp
+            src/luisa/graph_surface_value_normal.cpp
             src/luisa/graph_surface_value_procedural.cpp
             src/luisa/heterogeneous_volume_candidate.cpp
             src/luisa/heterogeneous_volume_collision.cpp

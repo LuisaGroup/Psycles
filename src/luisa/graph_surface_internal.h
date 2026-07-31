@@ -257,6 +257,8 @@ public:
     const compiler::ValueInstruction &instruction) noexcept;
 [[nodiscard]] std::unique_ptr<ValueNode> try_make_image_value_node(
     const compiler::ValueInstruction &instruction) noexcept;
+[[nodiscard]] std::unique_ptr<ValueNode> try_make_normal_value_node(
+    const compiler::ValueInstruction &instruction) noexcept;
 [[nodiscard]] std::unique_ptr<ValueNode> try_make_procedural_value_node(
     const compiler::ValueInstruction &instruction) noexcept;
 

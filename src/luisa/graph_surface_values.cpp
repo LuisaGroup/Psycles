@@ -9,10 +9,11 @@ std::unique_ptr<ValueNode> make_value_node(
     const compiler::ValueInstruction &instruction) noexcept {
     using Factory = std::unique_ptr<ValueNode> (*)(
         const compiler::ValueInstruction &) noexcept;
-    constexpr std::array<Factory, 4u> factories{
+    constexpr std::array<Factory, 5u> factories{
         try_make_math_value_node,
         try_make_context_value_node,
         try_make_image_value_node,
+        try_make_normal_value_node,
         try_make_procedural_value_node};
     for (const auto factory : factories) {
         if (auto node = factory(instruction)) {
