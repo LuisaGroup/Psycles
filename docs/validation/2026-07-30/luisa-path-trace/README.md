@@ -427,6 +427,15 @@ means and the same BSDF-forward hit pixel. It also passes on all three Luisa
 backends. Removing only the integrator event loop, while leaving the
 intersection helper intact, therefore still fails the regression.
 
+The production control flow now represents this contract with host-stage
+components rather than one monolithic event routine. A bounce setup records
+the Sobol dimensions and closest mesh once; each `ClosestPathEvent` is exactly
+one analytic light, surface, or background and carries its absolute ray
+distance. Forward-light resolution advances only `tmin` and requests the next
+event in the same bounce. The unchanged Cycles full-frame means and hit pixel
+pass on fallback, HIP, and Vulkan after the refactor, making this also the
+regression gate for the free-flight insertion boundary.
+
 The corrected one-sample 32×32 comparison against the pinned Cycles CPU EXR is:
 
 | Luisa backend | Combined RMSE | Mean absolute error | Maximum absolute error | Luminance ratio | Invalid pixels |

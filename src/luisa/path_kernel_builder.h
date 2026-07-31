@@ -236,6 +236,23 @@ struct PathBounceContext {
     Float closest_surface_distance;
 };
 
+// Exactly one of analytic_light, surface, and background is true. The
+// distance is measured on the current ray and identifies the complete
+// free-flight segment which must be resolved before the event itself.
+struct ClosestPathEvent {
+    PathBounceContext &bounce;
+    Bool analytic_light;
+    Bool surface;
+    Bool background;
+    Float distance;
+    UInt light_index;
+    Float3 light_position;
+    Float3 light_normal;
+    Float2 light_uv;
+    Float light_pdf;
+    Float light_evaluation_factor;
+};
+
 struct SurfaceGeometryContext {
     PathBounceContext &bounce;
     Var<InstanceGpu> instance;
@@ -279,12 +296,37 @@ struct DirectLightingContext {
     SurfaceShadingState &shading;
 };
 
+class PathBounceSetupStage {
+
+  public:
+    virtual ~PathBounceSetupStage() noexcept = default;
+    [[nodiscard]] virtual PathBounceContext
+    emit(PathSampleContext &sample, const UInt &path_step) const noexcept = 0;
+};
+
 class ClosestEventStage {
 
   public:
     virtual ~ClosestEventStage() noexcept = default;
-    [[nodiscard]] virtual PathBounceContext
-    emit(PathSampleContext &sample, const UInt &path_step) const noexcept = 0;
+    [[nodiscard]] virtual ClosestPathEvent
+    emit(PathBounceContext &bounce,
+         Expr<std::uint32_t> excluded_analytic_light) const noexcept = 0;
+};
+
+class ForwardLightStage {
+
+  public:
+    virtual ~ForwardLightStage() noexcept = default;
+    // Returns whether Cycles' transparent-bounce limit terminates the path.
+    [[nodiscard]] virtual Bool
+    emit(ClosestPathEvent &event) const noexcept = 0;
+};
+
+class BackgroundEventStage {
+
+  public:
+    virtual ~BackgroundEventStage() noexcept = default;
+    virtual void emit(ClosestPathEvent &event) const noexcept = 0;
 };
 
 class SurfaceGeometryStage {
@@ -317,7 +359,14 @@ class SurfaceScatterStage {
     virtual void emit(DirectLightingContext &context) const noexcept = 0;
 };
 
-[[nodiscard]] std::unique_ptr<ClosestEventStage> make_closest_event_stage();
+[[nodiscard]] std::unique_ptr<PathBounceSetupStage>
+make_path_bounce_setup_stage();
+[[nodiscard]] std::unique_ptr<ClosestEventStage>
+make_closest_event_stage();
+[[nodiscard]] std::unique_ptr<ForwardLightStage>
+make_forward_light_stage();
+[[nodiscard]] std::unique_ptr<BackgroundEventStage>
+make_background_event_stage();
 [[nodiscard]] std::unique_ptr<SurfaceGeometryStage>
 make_surface_geometry_stage();
 [[nodiscard]] std::unique_ptr<SurfaceShadingStage> make_surface_shading_stage();

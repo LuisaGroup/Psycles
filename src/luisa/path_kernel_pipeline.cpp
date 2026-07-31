@@ -8,8 +8,17 @@ namespace psycles::luisa_backend::detail {
 class PathKernelPipeline::Impl {
 
   public:
+    std::unique_ptr<PathBounceSetupStage>
+        bounce_setup{
+            make_path_bounce_setup_stage()};
     std::unique_ptr<ClosestEventStage> closest_event{
         make_closest_event_stage()};
+    std::unique_ptr<ForwardLightStage>
+        forward_light{
+            make_forward_light_stage()};
+    std::unique_ptr<BackgroundEventStage>
+        background{
+            make_background_event_stage()};
     std::unique_ptr<SurfaceGeometryStage> surface_geometry{
         make_surface_geometry_stage()};
     std::unique_ptr<SurfaceShadingStage> surface_shading{
@@ -35,7 +44,45 @@ PathKernelPipeline::operator=(PathKernelPipeline &&) noexcept = default;
 
 void PathKernelPipeline::emit(PathSampleContext &sample) const noexcept {
     $for(path_step, sample.invocation.parameters.max_path_steps) {
-        auto bounce = _impl->closest_event->emit(sample, path_step);
+        auto bounce =
+            _impl->bounce_setup->emit(
+                sample, path_step);
+
+        // A Cycles lamp is a transparent closest event. Resolve every lamp
+        // before the already-known mesh/background event without consuming
+        // another path bounce or another set of Sobol dimensions. Keeping
+        // the event distance explicit also establishes the segment boundary
+        // at which volume transport is inserted.
+        UInt previous_analytic_light =
+            surface_ray::invalid_primitive;
+        Bool search_events = true;
+        Bool path_terminated = false;
+        $while(search_events &
+               !path_terminated) {
+            auto event =
+                _impl->closest_event->emit(
+                    bounce,
+                    previous_analytic_light);
+            $if(event.analytic_light) {
+                path_terminated =
+                    _impl->forward_light->emit(
+                        event);
+                previous_analytic_light =
+                    event.light_index;
+            }
+            $else {
+                search_events = false;
+                $if(event.background) {
+                    _impl->background->emit(
+                        event);
+                    path_terminated = true;
+                };
+            };
+        };
+        $if(path_terminated) {
+            $break;
+        };
+
         auto surface = _impl->surface_geometry->emit(bounce);
         auto shading = _impl->surface_shading->emit(surface);
         DirectLightingContext lighting{

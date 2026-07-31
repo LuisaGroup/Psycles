@@ -209,7 +209,10 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/path_tracer_common.cpp
             src/luisa/path_tracer_environment.cpp
             src/luisa/path_tracer_geometry.cpp
+            src/luisa/path_kernel_background_event.cpp
+            src/luisa/path_kernel_bounce_setup.cpp
             src/luisa/path_kernel_closest_event.cpp
+            src/luisa/path_kernel_forward_light.cpp
             src/luisa/path_kernel_nee_analytic.cpp
             src/luisa/path_kernel_nee_emissive_mesh.cpp
             src/luisa/path_kernel_nee_environment.cpp

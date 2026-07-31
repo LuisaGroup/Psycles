@@ -259,14 +259,23 @@ Environment, emissive-mesh, and analytic-light NEE are independently
 extensible `DirectLightingComponent` objects.
 
 The stage values are explicit `PathSampleContext`, `PathBounceContext`,
-`SurfaceGeometryContext`, and `SurfaceShadingState` objects. These are C++
-AST-builder state, not a device ABI or a wavefront queue. The pipeline owns the
-path loop, the top-level builder owns the sample loop, and the setup/film
-module owns accumulation. This makes `$break` scope and cross-stage lifetime
-formal while retaining one fused device kernel, the original expression
-construction order, and the original Cycles RNG-dimension order. A new
-transport feature extends a component or a typed context instead of relying
-on textual inclusion into another function's lexical scope.
+`ClosestPathEvent`, `SurfaceGeometryContext`, and `SurfaceShadingState`
+objects. These are C++ AST-builder state, not a device ABI or a wavefront
+queue. `PathBounceSetupStage` consumes one Cycles set of Sobol dimensions and
+records the closest mesh once. `ClosestEventStage` then produces exactly one
+of analytic light, mesh surface, or background, with the event's absolute ray
+distance. `ForwardLightStage` resolves a lamp as a transparent event and the
+pipeline asks for the next event without consuming another path bounce;
+`BackgroundEventStage` terminates the path. Thus the complete free-flight
+segment is an explicit boundary before any event contribution is evaluated.
+
+The pipeline owns the path loop, the top-level builder owns the sample loop,
+and the setup/film module owns accumulation. This makes `$break` scope and
+cross-stage lifetime formal while retaining one fused device kernel, the
+original expression construction order, and the original Cycles
+RNG-dimension order. A new transport feature extends a component or a typed
+context instead of relying on textual inclusion into another function's
+lexical scope.
 
 Triangle reconstruction is a pair of composable host-stage components.
 `TrianglePrimitiveComponent` is the shared semantic boundary for instance and
