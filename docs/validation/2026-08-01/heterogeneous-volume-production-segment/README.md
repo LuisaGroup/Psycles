@@ -114,8 +114,8 @@ after direct volume lighting and VSPG complete the pixel estimator.
 ## Vulkan cold-JIT diagnosis
 
 A strict native Vulkan cache miss was profiled with verbose Luisa stage timing
-and the production SPIR-V optimization level. The complete process took
-`39.32 s`; two large production path-kernel variants spent a combined
+and the production SPIR-V optimization level. The original diagnostic process
+took `39.32 s`; two large production path-kernel variants spent a combined
 `36.0685 s`, or `91.73%` of process wall time, in XIR
 `restructure-cfg`. Full XIR legalization accounted for `36.7539 s`
 (`93.47%`). AST-to-XIR conversion, SPIR-V optimization/validation, and RADV
@@ -123,11 +123,13 @@ pipeline creation were not the dominant stages.
 
 A warm validated-cache rerun took `1.00 s`. The detailed bounded measurements
 are retained in
-[vulkan-cold-jit.json](vulkan-cold-jit.json). This confirms that the remaining
-cold Vulkan delay is a formal CFG-restructuring scalability problem in Luisa,
-not CMake compilation or Psycles rendering. It will be addressed in Luisa
-`next` with structural regression coverage rather than by weakening
-verification or adding shader-specific patches.
+[vulkan-cold-jit.json](vulkan-cold-jit.json). This identified a formal
+CFG-restructuring scalability problem in Luisa rather than CMake compilation or
+Psycles rendering. The width-dependent query was subsequently fixed and pushed
+to Luisa `next` as `21612b45b`; an isolated before/after run reduced process
+wall time from `40.49 s` to `9.86 s`. The proof, bounded measurements, and
+structural regression are recorded in the
+[XIR selection-reentry scale checkpoint](../xir-selection-reentry-scale/README.md).
 
 ## Reproduction
 

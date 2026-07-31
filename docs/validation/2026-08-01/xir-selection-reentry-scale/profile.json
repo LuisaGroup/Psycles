@@ -1,0 +1,63 @@
+{
+  "schema": "psycles.xir-selection-reentry-scale.v1",
+  "date": "2026-08-01",
+  "device": "AMD RADV GFX1201",
+  "workload": "psycles_luisa_volume_path_tests vk",
+  "environment": {
+    "LUISA_LOG_LEVEL": "verbose",
+    "LUISA_XIR_TRACE_PASSES": "1",
+    "LUISA_SPIRV_OPT_LEVEL": "2",
+    "runtime_cache": "isolated empty directory"
+  },
+  "before": {
+    "luisa_commit": "9516ee30165c913cb809e497e7cd28006d99e598",
+    "process": {
+      "wall_seconds": 40.49,
+      "user_seconds": 50.01,
+      "system_seconds": 81.18,
+      "maximum_resident_kib": 542352
+    },
+    "six_module_runs": {
+      "restructure_cfg_ms": 36533.716,
+      "restructure_cfg_max_ms": 21688.138,
+      "selection_reentry_query_ms": 30399.418,
+      "selection_reentry_query_max_ms": 9148.684,
+      "post_restructure_fixed_point_ms": 34712.211,
+      "drain_selection_exits_ms": 2062.491,
+      "fixup_construct_exits_ms": 1250.157,
+      "main_loop_iteration_ms": 1067.396
+    }
+  },
+  "after": {
+    "luisa_commit": "21612b45b",
+    "process": {
+      "wall_seconds": 9.86,
+      "user_seconds": 12.19,
+      "system_seconds": 22.35,
+      "maximum_resident_kib": 543744
+    },
+    "six_module_runs": {
+      "restructure_cfg_ms": 6269.162,
+      "restructure_cfg_max_ms": 3943.95,
+      "selection_reentry_query_ms": 168.987,
+      "selection_reentry_query_max_ms": 42.115,
+      "post_restructure_fixed_point_ms": 4436.663,
+      "drain_selection_exits_ms": 2005.966,
+      "fixup_construct_exits_ms": 1263.686,
+      "main_loop_iteration_ms": 1073.869
+    }
+  },
+  "speedup": {
+    "process": 4.11,
+    "restructure_cfg": 5.83,
+    "selection_reentry_query": 179.89,
+    "selection_reentry_query_max": 217.23
+  },
+  "validation": {
+    "luisa_build_steps": "625/625",
+    "luisa_xir_tests": "48/48",
+    "restructure_tests": 57,
+    "restructure_assertions": 1076,
+    "psycles_tests": "111/111"
+  }
+}
