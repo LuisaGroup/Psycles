@@ -31,6 +31,11 @@ inline constexpr std::uint32_t flag_terminate_on_next_surface = 1u << 10u;
 inline constexpr std::uint32_t flag_terminate_in_next_volume = 1u << 11u;
 inline constexpr std::uint32_t flag_terminate_after_transparent = 1u << 12u;
 inline constexpr std::uint32_t flag_terminate_after_volume = 1u << 13u;
+inline constexpr std::uint32_t flag_terminate =
+    flag_terminate_on_next_surface |
+    flag_terminate_in_next_volume |
+    flag_terminate_after_transparent |
+    flag_terminate_after_volume;
 inline constexpr std::uint32_t flag_surface_pass = 1u << 18u;
 inline constexpr std::uint32_t flag_volume_pass = 1u << 19u;
 inline constexpr std::uint32_t flag_any_pass =

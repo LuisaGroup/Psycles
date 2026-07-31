@@ -193,6 +193,20 @@ void LuisaRenderSession::write_passes(
                             LightPassBuffer::
                                 transmission_color));
                     break;
+                case PassKind::volume_direct:
+                    value =
+                        read_light_pass(
+                            LightPassBuffer::
+                                volume_direct) *
+                        (exposure / denominator);
+                    break;
+                case PassKind::volume_indirect:
+                    value =
+                        read_light_pass(
+                            LightPassBuffer::
+                                volume_indirect) *
+                        (exposure / denominator);
+                    break;
                 case PassKind::sample_count:
                     value = luisa::make_float4(
                         static_cast<float>(samples[i]));

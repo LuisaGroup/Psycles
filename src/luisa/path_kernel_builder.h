@@ -81,6 +81,8 @@ struct PathKernelInvocation {
     Float4 glossy_indirect_sum;
     Float4 transmission_direct_sum;
     Float4 transmission_indirect_sum;
+    Float4 volume_direct_sum;
+    Float4 volume_indirect_sum;
     Float4 emission_sum;
     Float4 environment_sum;
     Float4 glossy_color_sum;
@@ -90,6 +92,10 @@ struct PathKernelInvocation {
 
     [[nodiscard]] Float3 clamp_contribution(Float3 contribution,
                                             UInt depth) const noexcept;
+    [[nodiscard]] Float3
+    clamp_emission_contribution(
+        Float3 contribution,
+        UInt path_depth) const noexcept;
     [[nodiscard]] Float sample_light_roulette(Float3 unshadowed_contribution,
                                               Float random) const noexcept;
     [[nodiscard]] SurfaceEvaluation
@@ -169,6 +175,8 @@ struct PathSampleContext {
     Float3 sample_glossy_indirect;
     Float3 sample_transmission_direct;
     Float3 sample_transmission_indirect;
+    Float3 sample_volume_direct;
+    Float3 sample_volume_indirect;
     Float3 sample_emission;
     Float3 sample_environment;
     Float sample_alpha;
@@ -178,6 +186,10 @@ struct PathSampleContext {
     Float minimum_bsdf_pdf;
     Bool previous_delta;
     Float continuation_probability;
+    // The closest-event volume stage performs Cycles' roulette before
+    // integrating the segment. An attenuated surface must reuse that exact
+    // decision and divide only after recording surface emission.
+    Bool continuation_decided_in_volume;
     Float3 path_diffuse_weight;
     Float3 path_glossy_weight;
     UInt ray_events;
@@ -209,6 +221,8 @@ struct PathSampleContext {
                              Float3 value) const noexcept;
     void
     accumulate_light_pass(Var<LightPassContributionCall> contribution) noexcept;
+    void accumulate_scattered_light(
+        Float3 contribution) noexcept;
     [[nodiscard]] Float3
     analytic_light_shader(Var<LightGpu> light,
                           UInt light_index,
@@ -251,6 +265,12 @@ struct ClosestPathEvent {
     Float2 light_uv;
     Float light_pdf;
     Float light_evaluation_factor;
+    Bool surface_may_emit;
+};
+
+struct VolumeSegmentEvent {
+    Bool scattered;
+    Bool terminated;
 };
 
 struct SurfaceGeometryContext {
@@ -322,6 +342,15 @@ class ForwardLightStage {
     emit(ClosestPathEvent &event) const noexcept = 0;
 };
 
+class PathVolumeSegmentStage {
+
+  public:
+    virtual ~PathVolumeSegmentStage() noexcept =
+        default;
+    [[nodiscard]] virtual VolumeSegmentEvent
+    emit(ClosestPathEvent &event) const noexcept = 0;
+};
+
 class BackgroundEventStage {
 
   public:
@@ -365,6 +394,9 @@ make_path_bounce_setup_stage();
 make_closest_event_stage();
 [[nodiscard]] std::unique_ptr<ForwardLightStage>
 make_forward_light_stage();
+[[nodiscard]] std::unique_ptr<PathVolumeSegmentStage>
+make_path_volume_segment_stage(
+    const PathKernelConfig &config);
 [[nodiscard]] std::unique_ptr<BackgroundEventStage>
 make_background_event_stage();
 [[nodiscard]] std::unique_ptr<SurfaceGeometryStage>
@@ -385,7 +417,8 @@ class PathKernelPipeline {
     std::unique_ptr<Impl> _impl;
 
   public:
-    PathKernelPipeline();
+    explicit PathKernelPipeline(
+        const PathKernelConfig &config);
     ~PathKernelPipeline() noexcept;
     PathKernelPipeline(PathKernelPipeline &&) noexcept;
     PathKernelPipeline &operator=(PathKernelPipeline &&) noexcept;

@@ -228,6 +228,7 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/path_kernel_triangle_primitive.cpp
             src/luisa/path_kernel_volume_boundary.cpp
             src/luisa/path_kernel_volume_point.cpp
+            src/luisa/path_kernel_volume_segment.cpp
             src/luisa/path_kernel_volume_state.cpp
             src/luisa/path_tracer_kernel.cpp
             src/luisa/path_tracer_light_distribution.cpp
@@ -235,6 +236,7 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/path_tracer_scene.cpp
             src/luisa/path_tracer_session.cpp
             src/luisa/path_tracer_surfaces.cpp
+            src/luisa/path_tracer_volume_capabilities.cpp
             src/luisa/path_tracer_volume_metadata.cpp)
         add_library(
             Psycles::luisa_runtime
@@ -792,6 +794,49 @@ if(PSYCLES_ENABLE_LUISA)
                         NAME psycles.luisa_area_light_forward_vk
                         COMMAND
                             psycles_luisa_area_light_forward_tests
+                            vk)
+                endif()
+
+                add_executable(
+                    psycles_luisa_volume_path_tests
+                    tests/test_luisa_volume_path.cpp)
+                target_link_libraries(
+                    psycles_luisa_volume_path_tests
+                    PRIVATE Psycles::luisa_runtime)
+                target_compile_features(
+                    psycles_luisa_volume_path_tests
+                    PRIVATE cxx_std_20)
+                add_dependencies(
+                    psycles_luisa_volume_path_tests
+                    luisa-compute-backend-fallback)
+                set_target_properties(
+                    psycles_luisa_volume_path_tests
+                    PROPERTIES
+                        RUNTIME_OUTPUT_DIRECTORY
+                            "${CMAKE_BINARY_DIR}/bin")
+                add_test(
+                    NAME psycles.luisa_volume_path_fallback
+                    COMMAND
+                        psycles_luisa_volume_path_tests
+                        fallback)
+                if(TARGET luisa-compute-backend-hip)
+                    add_dependencies(
+                        psycles_luisa_volume_path_tests
+                        luisa-compute-backend-hip)
+                    add_test(
+                        NAME psycles.luisa_volume_path_hip
+                        COMMAND
+                            psycles_luisa_volume_path_tests
+                            hip)
+                endif()
+                if(TARGET luisa-compute-backend-vk)
+                    add_dependencies(
+                        psycles_luisa_volume_path_tests
+                        luisa-compute-backend-vk)
+                    add_test(
+                        NAME psycles.luisa_volume_path_vk
+                        COMMAND
+                            psycles_luisa_volume_path_tests
                             vk)
                 endif()
 

@@ -176,6 +176,13 @@ segment distance needed by volume transport without duplicating sampling or
 retracing the mesh, while keeping every implementation in a real `.cpp`
 component.
 
+`PathVolumeSegmentStage` now consumes that boundary through another real
+`.h + .cpp` host-stage interface. It composes the stacked raw-closure
+evaluator, homogeneous estimator, phase sampler, roulette policy, film routing,
+and total path-state transition without moving device logic back into the
+pipeline coordinator. `VolumeProgramCapabilityComponent` keeps the
+homogeneous/heterogeneous scene gate structural and independently testable.
+
 All eight path-kernel `.inl` files have been deleted. The only remaining
 first-party `.inl` is the generated Cycles 4.5.10 BSDF table. The session
 initializer is 300 lines, the internal interface is 341 lines, and the largest

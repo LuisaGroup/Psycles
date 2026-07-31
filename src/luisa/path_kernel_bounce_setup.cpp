@@ -28,6 +28,8 @@ class PathBounceSetupStageImpl final
             sample.cycles_rng_offset;
         auto &continuation_probability =
             sample.continuation_probability;
+        auto &continuation_decided_in_volume =
+            sample.continuation_decided_in_volume;
         auto &ray = sample.ray;
         auto &ray_visibility =
             sample.ray_visibility;
@@ -37,6 +39,8 @@ class PathBounceSetupStageImpl final
             sample.ray_source_primitive;
 
         continuation_probability = 1.0f;
+        continuation_decided_in_volume =
+            false;
         const auto terminate_sample =
             cycles_sampler::sample_1d(
                 sobol_table,

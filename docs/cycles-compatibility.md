@@ -195,11 +195,15 @@ orthographic, and panorama cameras, negative-scale bounds, world-only,
 disjoint, overlapping, overridden, and saturated scenes. Details are in
 [`validation/2026-07-31/volume-scene-metadata`](validation/2026-07-31/volume-scene-metadata/README.md).
 
-Production world/object volume-point reconstruction is now complete.
-Closest-event free-flight integration, heterogeneous grids, and volume direct
-lighting remain open, so scene compilation still release-gates volume
-materials and the four Blender volume nodes remain unverified in the public
-node matrix.
+Production world/object volume-point reconstruction and closest-event
+homogeneous free flight are now connected. Before every mesh, analytic lamp,
+or background event, `PathVolumeSegmentStage` evaluates the original stacked
+closure graphs, resolves attenuation/emission or a phase collision, and
+applies the total Cycles volume path-state transition. Scene compilation now
+accepts raw volume programs structurally proven homogeneous and explicitly
+rejects spatially varying volume dependencies. Heterogeneous grids and volume
+direct lighting remain open, so the four Blender volume nodes remain
+unverified in the public node matrix.
 
 World volume identity is now complete in scene schema v2: the exporter retains
 Cycles' background-light object index separately from the default-background
@@ -207,7 +211,7 @@ shader index, and both round-trip through the contract adapter. This is the
 same `(object, shader)` pair that Cycles writes before its camera enclosure
 probe; the stack does not infer it from object counts or sentinels.
 
-The analytic homogeneous segment estimator is the fourth internal checkpoint.
+The analytic homogeneous segment estimator is the fourth checkpoint.
 Its Luisa `.h`/`.cpp` component matches Cycles' per-channel transmittance,
 second-order small-optical-depth emission integral, throughput/albedo-weighted
 RGB channel selection, bounded exponential density, random-number rescaling,
@@ -217,9 +221,9 @@ fixture generated from official Cycles main `b82c3f0` `volume.h`, `mapping.h`,
 and the current homogeneous control flow passes on fallback, HIP, and Vulkan.
 The Sobol contract now pins the official volume phase, reservoir, scatter
 distance, expansion, shade-offset, and phase-guiding dimensions. This
-checkpoint still does not enable volume materials in scene compilation:
-closest-event free flight, VSPG history, volume NEE, and phase-bounce state
-must be integrated first.
+The production path now composes this estimator before its typed closest-event
+stages and enables the homogeneous subset. VSPG history, volume NEE, and
+heterogeneous transport remain separate work.
 
 The stacked-medium evaluator is the fifth internal checkpoint. It visits
 runtime stack entries in Cycles order, evaluates each original graph with its
@@ -468,6 +472,9 @@ evaluated after the next surface hit and after surface emission, matching
 Cycles' continuation placement. Contribution clamping uses the Cycles
 sum-of-absolute-RGB rule per contribution, including the scene-sync conversion
 from Blender's per-channel UI value to a device sum limit (`clamp * 3`).
+Forward surface, lamp, background, and volume emission use Cycles'
+`path.bounce - 1` direct/indirect classification rather than treating the
+first scattered emitter as indirect.
 
 Direct-light mode weights distinguish forward-only, NEE-only, and power-
 heuristic MIS. Analytic lights currently have no forward intersection
@@ -484,16 +491,17 @@ the path-integrator estimator. Psycles renders fixed-count, un-denoised linear
 passes; authoritative Cycles differential renders disable both. A connected
 Displacement root and an enabled Cycles light tree remain hard scene
 capability errors rather than silently ignored settings. A connected Volume
-root is preserved through Blender import and material compilation, then
-explicitly rejected by scene compilation until the Luisa volume-stack
-integrator is enabled.
+root is preserved through Blender import and material compilation. Its raw
+dependency tree is accepted only when the homogeneous segment integrator can
+represent it; a spatial dependency remains an explicit scene capability
+error.
 
 The following integrator work remains explicit and is not considered Cycles
 compatible yet:
 
 - Cycles' emitter importance distribution and environment importance map;
 - light-tree construction and traversal;
-- closest-event volume free flight, phase continuation, and volume NEE;
+- volume NEE, VSPG history, and heterogeneous grid integration;
 - forward intersections for analytic area and distant lights;
 - MNEE, path guiding, shadow catcher, light linking, and light groups;
 - Cycles' exact sampling sequence and random dimensions.

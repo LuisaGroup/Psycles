@@ -42,6 +42,14 @@ begin_path_kernel(const PathKernelConfig &config,
     Float4 transmission_indirect_sum = light_passes.read(
         light_pass_base +
         light_pass_index(LightPassBuffer::transmission_indirect));
+    Float4 volume_direct_sum = light_passes.read(
+        light_pass_base +
+        light_pass_index(
+            LightPassBuffer::volume_direct));
+    Float4 volume_indirect_sum = light_passes.read(
+        light_pass_base +
+        light_pass_index(
+            LightPassBuffer::volume_indirect));
     Float4 emission_sum = light_passes.read(
         light_pass_base + light_pass_index(LightPassBuffer::emission));
     Float4 environment_sum = light_passes.read(
@@ -87,6 +95,8 @@ begin_path_kernel(const PathKernelConfig &config,
             std::move(glossy_indirect_sum),
             std::move(transmission_direct_sum),
             std::move(transmission_indirect_sum),
+            std::move(volume_direct_sum),
+            std::move(volume_indirect_sum),
             std::move(emission_sum),
             std::move(environment_sum),
             std::move(glossy_color_sum),
@@ -102,6 +112,19 @@ Float3 PathKernelInvocation::clamp_contribution(Float3 contribution,
         depth,
         parameters.sample_clamp_direct,
         parameters.sample_clamp_indirect);
+}
+
+Float3 PathKernelInvocation::
+clamp_emission_contribution(
+    Float3 contribution,
+    UInt path_depth) const noexcept {
+    // Cycles passes `path.bounce - 1` to film_clamp_light for forward
+    // emitters (surface, lamp, background, and volume). Only its `> 0`
+    // classification matters; avoid unsigned underflow at the camera.
+    const auto clamp_depth =
+        select(0u, 1u, path_depth > 1u);
+    return clamp_contribution(
+        contribution, clamp_depth);
 }
 
 Float PathKernelInvocation::sample_light_roulette(
@@ -367,6 +390,8 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
     Float3 sample_glossy_indirect = make_float3(0.0f);
     Float3 sample_transmission_direct = make_float3(0.0f);
     Float3 sample_transmission_indirect = make_float3(0.0f);
+    Float3 sample_volume_direct = make_float3(0.0f);
+    Float3 sample_volume_indirect = make_float3(0.0f);
     Float3 sample_emission = make_float3(0.0f);
     Float3 sample_environment = make_float3(0.0f);
     Float sample_alpha =
@@ -377,6 +402,7 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
     Float minimum_bsdf_pdf = std::numeric_limits<float>::max();
     Bool previous_delta = true;
     Float continuation_probability = 1.0f;
+    Bool continuation_decided_in_volume = false;
     Float3 path_diffuse_weight = make_float3(0.0f);
     Float3 path_glossy_weight = make_float3(0.0f);
     UInt ray_events = 0u;
@@ -433,6 +459,8 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
             std::move(sample_glossy_indirect),
             std::move(sample_transmission_direct),
             std::move(sample_transmission_indirect),
+            std::move(sample_volume_direct),
+            std::move(sample_volume_indirect),
             std::move(sample_emission),
             std::move(sample_environment),
             std::move(sample_alpha),
@@ -442,6 +470,8 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
             std::move(minimum_bsdf_pdf),
             std::move(previous_delta),
             std::move(continuation_probability),
+            std::move(
+                continuation_decided_in_volume),
             std::move(path_diffuse_weight),
             std::move(path_glossy_weight),
             std::move(ray_events),
@@ -469,6 +499,37 @@ void PathSampleContext::accumulate_light_pass(
     sample_glossy_indirect += contribution.glossy_indirect;
     sample_transmission_direct += contribution.transmission_direct;
     sample_transmission_indirect += contribution.transmission_indirect;
+}
+
+void PathSampleContext::accumulate_scattered_light(
+    Float3 contribution) noexcept {
+    const auto surface_pass =
+        (path_flags &
+         cycles_path_state::flag_surface_pass) != 0u;
+    const auto volume_pass =
+        (path_flags &
+         cycles_path_state::flag_volume_pass) != 0u;
+    $if(surface_pass) {
+        accumulate_light_pass(
+            invocation.config.light_transport
+                .split_scattered_light(
+                    contribution,
+                    path_diffuse_weight,
+                    path_glossy_weight,
+                    path_depth == 1u));
+    };
+    $if(volume_pass) {
+        sample_volume_direct +=
+            select(
+                make_float3(0.0f),
+                contribution,
+                path_depth == 1u);
+        sample_volume_indirect +=
+            select(
+                contribution,
+                make_float3(0.0f),
+                path_depth == 1u);
+    };
 }
 
 Float3
@@ -562,6 +623,8 @@ void accumulate_path_sample(PathSampleContext &sample) noexcept {
     auto &sample_glossy_indirect = sample.sample_glossy_indirect;
     auto &sample_transmission_direct = sample.sample_transmission_direct;
     auto &sample_transmission_indirect = sample.sample_transmission_indirect;
+    auto &sample_volume_direct = sample.sample_volume_direct;
+    auto &sample_volume_indirect = sample.sample_volume_indirect;
     auto &sample_emission = sample.sample_emission;
     auto &sample_environment = sample.sample_environment;
     auto &combined_sum = invocation.combined_sum;
@@ -575,6 +638,8 @@ void accumulate_path_sample(PathSampleContext &sample) noexcept {
     auto &glossy_indirect_sum = invocation.glossy_indirect_sum;
     auto &transmission_direct_sum = invocation.transmission_direct_sum;
     auto &transmission_indirect_sum = invocation.transmission_indirect_sum;
+    auto &volume_direct_sum = invocation.volume_direct_sum;
+    auto &volume_indirect_sum = invocation.volume_indirect_sum;
     auto &emission_sum = invocation.emission_sum;
     auto &environment_sum = invocation.environment_sum;
     auto &completed = invocation.completed;
@@ -592,6 +657,10 @@ void accumulate_path_sample(PathSampleContext &sample) noexcept {
     transmission_direct_sum += make_float4(sample_transmission_direct, 1.0f);
     transmission_indirect_sum +=
         make_float4(sample_transmission_indirect, 1.0f);
+    volume_direct_sum +=
+        make_float4(sample_volume_direct, 1.0f);
+    volume_indirect_sum +=
+        make_float4(sample_volume_indirect, 1.0f);
     emission_sum += make_float4(sample_emission, 1.0f);
     environment_sum += make_float4(sample_environment, 1.0f);
     completed += 1u;
@@ -621,6 +690,16 @@ void PathKernelInvocation::write_film() noexcept {
         light_pass_base +
             light_pass_index(LightPassBuffer::transmission_indirect),
         transmission_indirect_sum);
+    light_passes.write(
+        light_pass_base +
+            light_pass_index(
+                LightPassBuffer::volume_direct),
+        volume_direct_sum);
+    light_passes.write(
+        light_pass_base +
+            light_pass_index(
+                LightPassBuffer::volume_indirect),
+        volume_indirect_sum);
     light_passes.write(light_pass_base +
                            light_pass_index(LightPassBuffer::emission),
                        emission_sum);

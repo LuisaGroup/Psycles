@@ -312,6 +312,18 @@ int main(int argc, char **argv) {
                      transmission_indirect,
              .name = "TransInd",
              .light_group = {},
+             .channels = 3u},
+            {.kind =
+                 psycles::contract::PassKind::
+                     volume_direct,
+             .name = "VolumeDir",
+             .light_group = {},
+             .channels = 3u},
+            {.kind =
+                 psycles::contract::PassKind::
+                     volume_indirect,
+             .name = "VolumeInd",
+             .light_group = {},
              .channels = 3u}}};
     const auto session_begin =
         std::chrono::steady_clock::now();
@@ -417,7 +429,13 @@ int main(int argc, char **argv) {
             std::string_view{"transmission-direct"}},
         std::pair{
             psycles::contract::PassKind::transmission_indirect,
-            std::string_view{"transmission-indirect"}}};
+            std::string_view{"transmission-indirect"}},
+        std::pair{
+            psycles::contract::PassKind::volume_direct,
+            std::string_view{"volume-direct"}},
+        std::pair{
+            psycles::contract::PassKind::volume_indirect,
+            std::string_view{"volume-indirect"}}};
     for (const auto &[kind, suffix] : component_passes) {
         const auto *pass = sink.find(kind);
         const auto path = std::filesystem::path{

@@ -448,6 +448,8 @@ unpack_surface_sample_trace(
         case PassKind::glossy_indirect:
         case PassKind::transmission_direct:
         case PassKind::transmission_indirect:
+        case PassKind::volume_direct:
+        case PassKind::volume_indirect:
         case PassKind::denoising_normal:
         case PassKind::denoising_albedo:
         case PassKind::sample_count:

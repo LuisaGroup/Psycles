@@ -297,6 +297,8 @@ enum class LightPassBuffer : std::uint32_t {
     glossy_indirect,
     transmission_direct,
     transmission_indirect,
+    volume_direct,
+    volume_indirect,
     emission,
     environment,
     glossy_color,
