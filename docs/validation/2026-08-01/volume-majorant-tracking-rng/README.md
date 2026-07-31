@@ -10,25 +10,28 @@ used.
 ## Formal state contract
 
 Cycles evaluates Light Path-dependent heterogeneous extrema with
-`PRNG_VOLUME_SHADE_OFFSET` from the current local tracking `RNGState`. The
-state transition is attached to a candidate, not to an octree leaf:
+`PRNG_VOLUME_SHADE_OFFSET` from an explicit `RNGState`. The exact ordering has
+two domains:
 
-1. sample one shade offset from the current tracking RNG offset;
-2. use that same value for every root and leaf visited while searching for the
-   candidate, including overlap reconstruction and residual free-flight
-   continuation;
-3. after finding the candidate, advance the local RNG offset by
+1. initial `volume_octree_setup` runs before tracking scramble and therefore
+   uses the enclosing path RNG offset;
+2. Cycles samples the reservoir from that same enclosing state, then scrambles
+   a copied offset with seed `0xe35fad82`;
+3. every later octree-boundary advance uses the current copied tracking
+   offset, and all roots reconstructed by that one ordered-overlap operation
+   share its shade sample;
+4. after finding a candidate, Cycles advances the copied offset by
    `PRNG_BOUNCE_NUM`, currently 16; and
-4. sample and pass the new shade offset to the next traversal operation.
+5. subsequent boundary advances use the newly addressed shade sample.
 
 The previous production provider captured one value when it was constructed.
-That representation could not express step 4 and would silently reuse the
-first candidate's extrema samples after a collision. The provider is now
-stateless with respect to tracking RNG. `VolumeMajorantOverlapTraversal`
-accepts the initial shade offset and requires an explicit shade offset for
-every `advance`. Its internal setup passes that single value through the
-ordered overlap reduction, so provider call count and root ordering cannot
-alter the random dimension.
+That representation could express neither the post-scramble transition nor
+step 5 and would silently reuse the initial extrema samples after a boundary
+or collision. The provider is now stateless with respect to tracking RNG.
+`VolumeMajorantOverlapTraversal` accepts the pre-scramble initial shade offset
+and requires an explicit shade offset for every `advance`. Its internal setup
+passes that one operation's value through the ordered overlap reduction, so
+provider call count and root ordering cannot alter the random dimension.
 
 Homogeneous roots retain Cycles' deterministic midpoint (`0.5`) policy.
 Heterogeneous roots evaluate four points using the supplied offset and retain
@@ -39,8 +42,8 @@ null-collision integrator.
 ## Regression
 
 The overlap regression records the actual offset observed by the entry
-provider and pins the constructor/advance sequence to `0.25`, `0.75`, and
-`0.125`. The production graph regression evaluates the same raw
+provider and pins an explicit constructor/advance sequence to `0.25`, `0.75`,
+and `0.125`. The production graph regression evaluates the same raw
 Light Path-dependent Volume graph twice:
 
 | shade offset | minimum | maximum |
