@@ -1,0 +1,126 @@
+{
+  "artifacts": {
+    "pipeline_cache": {
+      "bytes": 6846776,
+      "key": "ada35993da15a04141220d1d57601e44.vk"
+    },
+    "spirv": {
+      "bytes": 6834784,
+      "key": "7fd3a4ba6e60823033105981cddfbadd.spv",
+      "sha256": "10840657fcb78b5e5ba5e759ddf8987dc29de717af1e606976f5c4412f872cc7"
+    }
+  },
+  "cold_compile_ms": {
+    "baseline": {
+      "ast_to_xir": 1402.011286,
+      "handoff_validation": 751.993,
+      "native_ast_to_spirv_total": 75476.64,
+      "restructure_cfg": 34336.31,
+      "shader_artifact_serialization": 542.533,
+      "spirv_emission": 835.6,
+      "spirv_optimizer_commit_validation": 744.287,
+      "spirv_optimizer_execution": 4144.546,
+      "spirv_post_optimization_validation": 733.34,
+      "spirv_pre_optimization_validation": 835.832,
+      "structured_optimization": 3826.786389,
+      "xir_legalization": 59494.996369
+    },
+    "verified_in_place": {
+      "ast_to_xir": 1368.374487,
+      "handoff_validation": 759.942,
+      "native_ast_to_spirv_total": 58758.916,
+      "pipeline_cache_serialization": 7.024,
+      "restructure_cfg": 17684.16,
+      "shader_artifact_serialization": 537.919,
+      "spirv_emission": 830.691,
+      "spirv_optimizer_commit_validation": 728.574,
+      "spirv_optimizer_execution": 4170.264,
+      "spirv_post_optimization_validation": 718.585,
+      "spirv_pre_optimization_validation": 825.893,
+      "structured_optimization": 3778.987432,
+      "xir_legalization": 42961.47056
+    }
+  },
+  "cold_verified_in_place_process": {
+    "render_seconds": 0.120055,
+    "shader_jit_seconds": 59.6371,
+    "wall_seconds": 60.99
+  },
+  "command": [
+    "build/bin/psycles_render_blender_scene",
+    "/var/tmp/psycles-lone-monk-five-way-20260801-current/export",
+    "/var/tmp/psycles-vk-inplace-profile-20260801/vk.ppm",
+    "vk",
+    "640",
+    "480",
+    "1",
+    "8"
+  ],
+  "device": "AMD Radeon RX 9070 XT (RADV GFX1201)",
+  "hot_pso_cache": {
+    "mesa_shader_cache_disabled": true,
+    "pipeline_creation_ms": 1.702,
+    "prior_pipeline_creation_ms": 41287.313,
+    "prior_shader_jit_seconds": 42.7102,
+    "shader_jit_seconds": 1.39577,
+    "wall_seconds": 3.05
+  },
+  "pixel_equivalence": {
+    "combined_pfm_sha256": "6f7750f9a0811209d54e642570e225182d647470d8bdf8a959aefb5805fda5f3",
+    "maximum_absolute_error": 0.0,
+    "mean_absolute_error": 0.0,
+    "relative_rmse": 0.0,
+    "rmse": 0.0,
+    "valid_pixels": 307200
+  },
+  "revisions": {
+    "luisa_baseline_xir": "d0dd9ae50cca2f29d091962ccc164a9f29cf3f48",
+    "luisa_profiling_and_pso_persistence": "f72451482b68a2ab8d23d074e07aa6b5da380d35",
+    "luisa_verified_in_place": "5018c341fcd4d03d320efb10f868ac453414244c",
+    "psycles_source": "374b116341f1beb87c496c27d7739baf49569d5d"
+  },
+  "scene": {
+    "geometries": 348,
+    "instances": 87541,
+    "materials": 37,
+    "name": "Lone Monk",
+    "resolution": [
+      640,
+      480
+    ],
+    "samples": 1
+  },
+  "schema": "psycles.vulkan-native-compile-profile.v1",
+  "validation": {
+    "luisa_unit_xir": {
+      "passed": 48,
+      "total": 48
+    },
+    "psycles_ctest": {
+      "passed": 123,
+      "total": 123
+    },
+    "vk_shader_cache": {
+      "assertions": 8,
+      "tests": 1
+    },
+    "vk_spirv_codegen_path": {
+      "assertions": 2029,
+      "tests": 86
+    },
+    "xir_mutation_safety": {
+      "assertions": 172,
+      "tests": 26
+    },
+    "xir_restructure_cfg": {
+      "assertions": 1076,
+      "tests": 57
+    }
+  },
+  "xir_contract": {
+    "boundary_verifier_count": 2,
+    "definition_count": 15,
+    "transactional_transform_invocations": 30,
+    "verified_in_place_transform_invocations": 15
+  }
+}

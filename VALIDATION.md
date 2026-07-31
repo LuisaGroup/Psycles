@@ -19,6 +19,16 @@ triptychs, and cold HIP/Vulkan compilation diagnosis. It remains an
 intermediate parity checkpoint rather than a replacement for the high-sample
 1080p validation below.
 
+The accompanying
+[Vulkan CFG disposable-compilation checkpoint](docs/validation/2026-08-01/vulkan-cfg-disposable-compile/README.md)
+pins Luisa `next@5018c341f`, preserves the default transactional XIR contract,
+and uses the explicit disposable-module policy only for fresh SPIR-V
+legalization input. On the exact Lone Monk production kernel this reduces
+`restructure-cfg` from 34.336 s to 17.684 s and complete native AST-to-SPIR-V
+from 75.477 s to 58.759 s. The generated SPIR-V and linear Combined pixels are
+byte-identical; the committed zero-difference triptych was inspected at
+original resolution.
+
 ## Verdict
 
 - Psycles configures and builds the Luisa fallback, HIP, and Vulkan backends
