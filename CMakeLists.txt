@@ -172,6 +172,7 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/homogeneous_volume_transport.cpp
             src/luisa/volume_scatter_probability.cpp
             src/luisa/volume_direct_sampling.cpp
+            src/luisa/volume_light_interval.cpp
             src/luisa/volume_guiding.cpp
             src/luisa/stacked_volume.cpp
             src/luisa/volume_phase_set.cpp
