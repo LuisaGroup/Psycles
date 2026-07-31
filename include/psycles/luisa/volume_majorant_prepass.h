@@ -20,6 +20,7 @@ struct VolumeMajorantGrid {
     Float3 minimum;
     Float3 maximum;
     luisa::compute::Float4x4 object_to_world;
+    UInt resolution;
 };
 
 struct VolumeMajorantCellExtrema {

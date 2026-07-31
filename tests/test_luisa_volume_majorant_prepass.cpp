@@ -422,7 +422,9 @@ void run_fixture(
                                 2.0f,
                                 -3.0f,
                                 5.0f,
-                                1.0f))};
+                                1.0f)),
+                    .resolution =
+                        volume_majorant_grid_resolution};
                 const auto value =
                     prepass.evaluate_cell(
                         entry,

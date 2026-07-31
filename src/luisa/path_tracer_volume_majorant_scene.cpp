@@ -243,8 +243,7 @@ VolumeMajorantSceneComponent::plan(
             const auto material =
                 materials.find(material_id);
             if (material == materials.end() ||
-                !material->second.has_volume ||
-                !material->second.heterogeneous) {
+                !material->second.has_volume) {
                 return true;
             }
             if (result.roots.size() >=
@@ -272,7 +271,10 @@ VolumeMajorantSceneComponent::plan(
                     .bounds = bounds,
                     .object_to_world =
                         to_luisa(object_to_world),
-                    .volume_scale = volume_scale});
+                    .volume_scale = volume_scale,
+                    .heterogeneous =
+                        material->second
+                            .heterogeneous});
             return true;
         };
 
@@ -555,7 +557,8 @@ VolumeMajorantSceneComponent::build(
             Float3 grid_minimum,
             Float3 grid_maximum,
             luisa::compute::Float4x4
-                object_to_world) noexcept {
+                object_to_world,
+            UInt grid_resolution) noexcept {
             set_block_size(64u, 1u, 1u);
             BufferShaderServices services{
                 scene->parameter_buffer,
@@ -582,7 +585,9 @@ VolumeMajorantSceneComponent::build(
                 .minimum = grid_minimum,
                 .maximum = grid_maximum,
                 .object_to_world =
-                    object_to_world};
+                    object_to_world,
+                .resolution =
+                    grid_resolution};
             const auto extrema =
                 prepass.evaluate_cell(
                     entry,
@@ -609,6 +614,14 @@ VolumeMajorantSceneComponent::build(
         extrema(extrema_count);
     const VolumeMajorantHierarchyBuilder builder;
     for (const auto &root : plan.roots) {
+        const auto resolution =
+            root.heterogeneous
+                ? volume_majorant_grid_resolution
+                : volume_majorant_homogeneous_resolution;
+        const auto root_extrema_count =
+            VolumeMajorantHierarchyBuilder::
+                required_extrema_count(
+                    resolution);
         stream
             << shader(
                    extrema_buffer,
@@ -619,13 +632,20 @@ VolumeMajorantSceneComponent::build(
                    root.instance_id,
                    root.bounds.minimum,
                    root.bounds.maximum,
-                   root.object_to_world)
-                   .dispatch(extrema_count)
-            << extrema_buffer.copy_to(
-                   luisa::span{readback})
+                   root.object_to_world,
+                   resolution)
+                   .dispatch(root_extrema_count)
+            << extrema_buffer
+                   .view(
+                       0u,
+                       root_extrema_count)
+                   .copy_to(
+                       luisa::span{
+                           readback.data(),
+                           root_extrema_count})
             << synchronize();
         for (auto index = std::size_t{0u};
-             index < extrema_count;
+             index < root_extrema_count;
              ++index) {
             extrema[index] = {
                 .minimum =
@@ -636,8 +656,11 @@ VolumeMajorantSceneComponent::build(
         auto built =
             builder.build(
                 root.bounds,
-                extrema,
-                root.volume_scale);
+                std::span{
+                    extrema.data(),
+                    root_extrema_count},
+                root.volume_scale,
+                resolution);
         if (!built.ok()) {
             result.diagnostic =
                 root_label(root) + ": " +

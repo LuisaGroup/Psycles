@@ -222,11 +222,11 @@ void test_scene_plan() {
         "scene plan did not reserve one range per "
         "instance plus World");
     constexpr std::array expected_ranges{
-        VolumeMajorantRootRangeGpu{0u, 2u},
-        VolumeMajorantRootRangeGpu{2u, 1u},
+        VolumeMajorantRootRangeGpu{0u, 3u},
         VolumeMajorantRootRangeGpu{3u, 1u},
-        VolumeMajorantRootRangeGpu{4u, 0u},
-        VolumeMajorantRootRangeGpu{4u, 1u}};
+        VolumeMajorantRootRangeGpu{4u, 1u},
+        VolumeMajorantRootRangeGpu{5u, 0u},
+        VolumeMajorantRootRangeGpu{5u, 1u}};
     for (auto index = std::size_t{0u};
          index < expected_ranges.size();
          ++index) {
@@ -240,9 +240,9 @@ void test_scene_plan() {
                 std::to_string(index));
     }
     expect(
-        plan.roots.size() == 5u,
-        "scene plan did not select exactly the "
-        "heterogeneous effective materials");
+        plan.roots.size() == 6u,
+        "scene plan did not select every effective "
+        "volume material");
 
     const auto &first = plan.roots[0u];
     expect(
@@ -252,7 +252,8 @@ void test_scene_plan() {
             first.instance_id == 0u &&
             first.shader == 17u &&
             first.surface_tag == 101u &&
-            first.parameter_block == 201u,
+            first.parameter_block == 201u &&
+            first.heterogeneous,
         "first object root lost Cycles object/shader "
         "identity");
     expect(
@@ -279,24 +280,28 @@ void test_scene_plan() {
 
     expect(
         plan.roots[1u].material ==
-            heterogeneous_b,
-        "ordinary geometry lost its second "
-        "heterogeneous shader");
-    expect(
-        plan.roots[2u].material ==
                 heterogeneous_b &&
-            plan.roots[2u].range_index == 1u &&
-            plan.roots[2u].object == 88u,
+            plan.roots[1u].heterogeneous &&
+            plan.roots[2u].material ==
+                homogeneous &&
+            !plan.roots[2u].heterogeneous,
+        "ordinary geometry lost its second "
+        "heterogeneous shader or homogeneous root");
+    expect(
+        plan.roots[3u].material ==
+                heterogeneous_b &&
+            plan.roots[3u].range_index == 1u &&
+            plan.roots[3u].object == 88u,
         "instance override did not replace the "
         "geometry material slots");
     expect(
-        plan.roots[3u].range_index == 2u &&
-            plan.roots[3u].bounds.minimum.x ==
-                plan.roots[3u].bounds.maximum.x,
+        plan.roots[4u].range_index == 2u &&
+            plan.roots[4u].bounds.minimum.x ==
+                plan.roots[4u].bounds.maximum.x,
         "partially degenerate Cycles bounds were "
         "discarded");
 
-    const auto &world_root = plan.roots[4u];
+    const auto &world_root = plan.roots[5u];
     expect(
         world_root.material == world &&
             world_root.range_index == 4u &&
@@ -484,7 +489,7 @@ void test_flatten_contract() {
 }
 
 [[nodiscard]] ShaderGraph
-make_spatial_volume_graph() {
+make_volume_graph(bool spatial) {
     ShaderGraph graph;
     const auto surface =
         graph.add_node(
@@ -503,10 +508,6 @@ make_spatial_volume_graph() {
             .node = surface,
             .socket = "Closure"});
 
-    const auto coordinates =
-        graph.add_node(
-            node_type::texture_coordinate,
-            "Raw volume coordinates");
     const auto coefficients =
         graph.add_node(
             node_type::volume_coefficients,
@@ -521,13 +522,30 @@ make_spatial_volume_graph() {
                 coefficients,
                 "AbsorptionCoefficients",
                 SocketValue::vector(
-                    {0.0f, 0.0f, 0.0f})) &&
+                    {0.0f, 0.0f, 0.0f})),
+        "failed to construct raw volume graph");
+    if (spatial) {
+        const auto coordinates =
+            graph.add_node(
+                node_type::texture_coordinate,
+                "Raw volume coordinates");
+        expect(
             graph.connect(
                 {.node = coordinates,
                  .socket = "Generated"},
                 coefficients,
                 "EmissionCoefficients"),
-        "failed to construct raw spatial volume graph");
+            "failed to construct raw spatial volume graph");
+    } else {
+        expect(
+            graph.set_input(
+                coefficients,
+                "EmissionCoefficients",
+                SocketValue::vector(
+                    {0.35f, 0.2f, 0.1f})),
+            "failed to construct raw homogeneous "
+            "volume graph");
+    }
     graph.set_root(
         ShaderDomain::volume,
         OutputRef{
@@ -574,23 +592,36 @@ parameter_data(const SurfaceProgram &program) {
 void run_scene_build(
     std::string_view backend,
     const char *program) {
-    constexpr MaterialId volume_material{61u};
+    constexpr MaterialId spatial_material{61u};
+    constexpr MaterialId homogeneous_material{62u};
     constexpr GeometryId geometry_id{71u};
 
-    auto graph = make_spatial_volume_graph();
+    auto spatial_graph = make_volume_graph(true);
+    auto homogeneous_graph = make_volume_graph(false);
     ShaderCompiler compiler{
         make_core_node_registry()};
-    const auto shader_program =
-        compiler.compile(graph);
+    const auto spatial_shader_program =
+        compiler.compile(spatial_graph);
     expect(
-        shader_program.ok(),
+        spatial_shader_program.ok(),
         "failed to compile raw spatial volume graph");
-    const auto lowered =
+    const auto spatial_lowered =
         compile_surface_program(
-            *shader_program.program);
+            *spatial_shader_program.program);
     expect(
-        lowered.ok(),
+        spatial_lowered.ok(),
         "failed to lower raw spatial volume graph");
+    const auto homogeneous_shader_program =
+        compiler.compile(homogeneous_graph);
+    expect(
+        homogeneous_shader_program.ok(),
+        "failed to compile raw homogeneous volume graph");
+    const auto homogeneous_lowered =
+        compile_surface_program(
+            *homogeneous_shader_program.program);
+    expect(
+        homogeneous_lowered.ok(),
+        "failed to lower raw homogeneous volume graph");
 
     SceneSnapshot snapshot;
     TriangleMeshDesc geometry{
@@ -600,7 +631,9 @@ void run_scene_build(
             {1.0f, -1.0f, -1.0f},
             {0.0f, 1.0f, 1.0f}},
         .triangles = {{0u, 1u, 2u}},
-        .material_slots = {volume_material}};
+        .material_slots = {
+            spatial_material,
+            homogeneous_material}};
     snapshot.geometries.emplace(
         geometry_id, geometry);
     add_instance(
@@ -619,11 +652,24 @@ void run_scene_build(
     scene->device =
         Device{device.impl_shared()};
 
-    const auto surface_tag =
+    const auto spatial_surface_tag =
         scene->surfaces.create<GraphSurface>(
-            lowered.program);
-    const auto host_parameters =
-        parameter_data(*lowered.program);
+            spatial_lowered.program);
+    const auto homogeneous_surface_tag =
+        scene->surfaces.create<GraphSurface>(
+            homogeneous_lowered.program);
+    auto host_parameters =
+        parameter_data(*spatial_lowered.program);
+    const auto homogeneous_parameter_block =
+        static_cast<std::uint32_t>(
+            host_parameters.size());
+    const auto homogeneous_parameters =
+        parameter_data(
+            *homogeneous_lowered.program);
+    host_parameters.insert(
+        host_parameters.end(),
+        homogeneous_parameters.begin(),
+        homogeneous_parameters.end());
     scene->parameter_buffer =
         device.create_buffer<luisa::float4>(
             host_parameters.size());
@@ -740,22 +786,36 @@ void run_scene_build(
 
     const std::map<MaterialId, VolumeMajorantSceneMaterial>
         materials{
-            {volume_material,
-             {.surface_tag = surface_tag,
+            {spatial_material,
+             {.surface_tag = spatial_surface_tag,
               .parameter_block = 0u,
               .shader =
                   37u |
                   cycles_shader_identity::
                       cast_shadow,
               .has_volume = true,
-              .heterogeneous = true}}};
+              .heterogeneous = true}},
+            {homogeneous_material,
+             {.surface_tag =
+                  homogeneous_surface_tag,
+              .parameter_block =
+                  homogeneous_parameter_block,
+              .shader =
+                  38u |
+                  cycles_shader_identity::
+                      smooth_normal,
+              .has_volume = true,
+              .heterogeneous = false}}};
     const VolumeMajorantSceneComponent component;
     const auto plan =
         component.plan(snapshot, materials);
     expect(plan.ok(), plan.diagnostic);
     expect(
-        plan.roots.size() == 1u,
-        "backend scene fixture did not plan one root");
+        plan.roots.size() == 2u &&
+            plan.roots[0u].heterogeneous &&
+            !plan.roots[1u].heterogeneous,
+        "backend scene fixture did not plan one root "
+        "per Cycles volume class");
 
     const auto built =
         component.build(scene, stream, plan);
@@ -765,9 +825,9 @@ void run_scene_build(
             std::string{backend} + ": " +
             built.diagnostic);
     expect(
-        built.root_count == 1u &&
+        built.root_count == 2u &&
             built.range_count == 2u &&
-            built.node_count == 9u,
+            built.node_count == 10u,
         "scene majorant resource counts changed on " +
             std::string{backend});
 
@@ -804,9 +864,19 @@ void run_scene_build(
         "uploaded root transform/identity changed on " +
             std::string{backend});
     expect(
+        roots[1u].shader == 38u &&
+            roots[1u].node == 9u &&
+            close(roots[1u].scale.x, 0.5f) &&
+            close(
+                roots[1u].translation.x,
+                1.5f),
+        "uploaded homogeneous root transform/identity "
+        "changed on " +
+            std::string{backend});
+    expect(
         ranges[0u].offset == 0u &&
-            ranges[0u].count == 1u &&
-            ranges[1u].offset == 1u &&
+            ranges[0u].count == 2u &&
+            ranges[1u].offset == 2u &&
             ranges[1u].count == 0u &&
             scene->volume_majorant_world_range == 1u,
         "uploaded instance/World range partition "
@@ -822,7 +892,7 @@ void run_scene_build(
         "uploaded root extrema/topology changed on " +
             std::string{backend});
     for (auto child = std::size_t{1u};
-         child < nodes.size();
+         child < 9u;
          ++child) {
         expect(
             nodes[child].parent == 0 &&
@@ -834,6 +904,14 @@ void run_scene_build(
             "on " +
                 std::string{backend});
     }
+    expect(
+        nodes[9u].parent == -1 &&
+            nodes[9u].first_child == -1 &&
+            close(nodes[9u].sigma_minimum, 0.35f) &&
+            close(nodes[9u].sigma_maximum, 0.35f),
+        "Cycles 1^3 homogeneous root was not evaluated "
+        "as a single raw-graph cell on " +
+            std::string{backend});
 }
 
 }// namespace

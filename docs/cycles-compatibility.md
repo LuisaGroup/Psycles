@@ -593,10 +593,12 @@ The heterogeneous-volume foundation now includes Cycles' local real/null
 collision measure, exact path-offset hash, raw volume-graph extrema prepass,
 depth-seven 128-cubed majorant hierarchy reduction, and single-root bitwise
 hierarchical DDA. Scene resource construction now applies effective instance
-material overrides, creates one root per heterogeneous object/shader pair plus
-the final World range, evaluates the original `GraphSurface` closure at all
-`128^3 x 16` points, and uploads formally validated flattened root/node/range
-buffers. The prepass uses Cycles' camera/zero-direction/time-`0.5` bake state.
+material overrides, creates one root per volume object/shader pair plus the
+final World range, and uploads formally validated flattened root/node/range
+buffers. Matching `Octree::evaluate_volume_density`, homogeneous roots
+evaluate the original `GraphSurface` at `1^3 x 16` points and spatially
+varying roots at `128^3 x 16`; neither class is omitted from later overlap
+lookup. The prepass uses Cycles' camera/zero-direction/time-`0.5` bake state.
 Its 3D sampler is bit-pinned to official Cycles, while raw-graph extrema for
 three distant cells and the complete scene-resource composition pass on
 fallback, HIP, and Vulkan. The hierarchy matches Cycles main `b82c3f0d`:
@@ -616,6 +618,8 @@ details are in
 [`validation/2026-07-31/volume-majorant-prepass`](validation/2026-07-31/volume-majorant-prepass/README.md);
 scene-resource details are in
 [`validation/2026-07-31/volume-majorant-scene-resources`](validation/2026-07-31/volume-majorant-scene-resources/README.md).
+The complete stack-root-domain correction is recorded in
+[`validation/2026-07-31/volume-majorant-root-domain`](validation/2026-07-31/volume-majorant-root-domain/README.md).
 
 Adaptive sampling and denoising are exported and diagnosed but are not part of
 the path-integrator estimator. Psycles renders fixed-count, un-denoised linear

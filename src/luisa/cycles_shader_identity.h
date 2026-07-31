@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include <psycles/contract/cycles_abi.h>
 #include <psycles/contract/scene.h>
 
 namespace psycles::luisa_backend::detail::cycles_shader_identity {
@@ -27,6 +28,9 @@ inline constexpr std::uint32_t exclude_any =
     exclude_shadow_catcher;
 inline constexpr std::uint32_t shader_mask =
     ~(smooth_normal | cast_shadow | use_mis | exclude_any);
+static_assert(
+    shader_mask ==
+    contract::cycles_abi::shader_mask);
 inline constexpr std::uint32_t invalid_index = ~std::uint32_t{0u};
 
 // Cycles' KernelLightType order is a stable device ABI and differs from the
