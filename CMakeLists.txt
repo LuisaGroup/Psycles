@@ -169,6 +169,7 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/graph_surface_value_math.cpp
             src/luisa/graph_surface_value_procedural.cpp
             src/luisa/homogeneous_volume_transport.cpp
+            src/luisa/stacked_volume.cpp
             src/luisa/volume_phase_set.cpp
             src/luisa/volume_stack.cpp)
         add_library(Psycles::luisa ALIAS psycles_luisa)
@@ -314,6 +315,51 @@ if(PSYCLES_ENABLE_LUISA)
                     NAME psycles.luisa_volume_coefficients_vk
                     COMMAND
                         psycles_luisa_volume_coefficients_tests
+                        vk)
+            endif()
+
+            add_executable(
+                psycles_luisa_stacked_volume_tests
+                tests/test_luisa_stacked_volume.cpp)
+            target_link_libraries(
+                psycles_luisa_stacked_volume_tests
+                PRIVATE Psycles::luisa)
+            target_compile_features(
+                psycles_luisa_stacked_volume_tests
+                PRIVATE cxx_std_20)
+            set_target_properties(
+                psycles_luisa_stacked_volume_tests
+                PROPERTIES
+                    RUNTIME_OUTPUT_DIRECTORY
+                        "${CMAKE_BINARY_DIR}/bin")
+            if(TARGET luisa-compute-backend-fallback)
+                add_dependencies(
+                    psycles_luisa_stacked_volume_tests
+                    luisa-compute-backend-fallback)
+                add_test(
+                    NAME psycles.luisa_stacked_volume_fallback
+                    COMMAND
+                        psycles_luisa_stacked_volume_tests
+                        fallback)
+            endif()
+            if(TARGET luisa-compute-backend-hip)
+                add_dependencies(
+                    psycles_luisa_stacked_volume_tests
+                    luisa-compute-backend-hip)
+                add_test(
+                    NAME psycles.luisa_stacked_volume_hip
+                    COMMAND
+                        psycles_luisa_stacked_volume_tests
+                        hip)
+            endif()
+            if(TARGET luisa-compute-backend-vk)
+                add_dependencies(
+                    psycles_luisa_stacked_volume_tests
+                    luisa-compute-backend-vk)
+                add_test(
+                    NAME psycles.luisa_stacked_volume_vk
+                    COMMAND
+                        psycles_luisa_stacked_volume_tests
                         vk)
             endif()
 

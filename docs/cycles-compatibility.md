@@ -193,10 +193,10 @@ orthographic, and panorama cameras, negative-scale bounds, world-only,
 disjoint, overlapping, overridden, and saturated scenes. Details are in
 [`validation/2026-07-31/volume-scene-metadata`](validation/2026-07-31/volume-scene-metadata/README.md).
 
-Stacked-medium evaluation, free-flight integration, heterogeneous grids, and
-volume direct lighting remain open, so scene compilation still release-gates
-volume materials and the four Blender volume nodes remain unverified in the
-public node matrix.
+Production world/object volume-point reconstruction, closest-event
+free-flight integration, heterogeneous grids, and volume direct lighting
+remain open, so scene compilation still release-gates volume materials and
+the four Blender volume nodes remain unverified in the public node matrix.
 
 World volume identity is now complete in scene schema v2: the exporter retains
 Cycles' background-light object index separately from the default-background
@@ -215,8 +215,20 @@ and the current homogeneous control flow passes on fallback, HIP, and Vulkan.
 The Sobol contract now pins the official volume phase, reservoir, scatter
 distance, expansion, shade-offset, and phase-guiding dimensions. This
 checkpoint still does not enable volume materials in scene compilation:
-stacked graph evaluation, main-path camera/boundary hookup, VSPG history,
-volume NEE, and phase-bounce state must be integrated first.
+production volume-point reconstruction, closest-event free flight, VSPG
+history, volume NEE, and phase-bounce state must be integrated first.
+
+The stacked-medium evaluator is the fifth internal checkpoint. It visits
+runtime stack entries in Cycles order, evaluates each original graph with its
+own parameter block and object-density scale, adds coefficients, and retains
+raw phase closures in one device-local set. In particular it preserves equal
+closures produced inside stack entry zero: only the second and subsequent
+entries invoke exact phase merging, as in `volume_shader_eval()`. A 15-record
+fixture uses two independently parameterized instances of the same raw graph
+and pins single-medium, overlapping-medium, emission-suppressed, and empty
+stack results to official Cycles main `b82c3f0`. It passes on fallback, HIP,
+and Vulkan. Details are in
+[`validation/2026-07-31/stacked-volume-evaluation`](validation/2026-07-31/stacked-volume-evaluation/README.md).
 
 Mapping now implements Cycles' four device formulas directly in Luisa:
 Point applies scale, Euler rotation, and translation; Texture applies inverse
