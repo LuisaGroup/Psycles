@@ -1,5 +1,6 @@
 #include "path_tracer_internal.h"
 #include "path_tracer_environment.h"
+#include "path_tracer_generated_coordinates.h"
 #include "path_tracer_shader_services.h"
 #include "path_tracer_surfaces.h"
 #include "cycles_shader_identity.h"
@@ -1029,32 +1030,13 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         }
         auto &upload = uploads.emplace_back();
         upload.positions.reserve(geometry.positions.size());
-        auto bounds_min = geometry.positions.front();
-        auto bounds_max = geometry.positions.front();
-        for (const auto position : geometry.positions) {
-            bounds_min.x = std::min(bounds_min.x, position.x);
-            bounds_min.y = std::min(bounds_min.y, position.y);
-            bounds_min.z = std::min(bounds_min.z, position.z);
-            bounds_max.x = std::max(bounds_max.x, position.x);
-            bounds_max.y = std::max(bounds_max.y, position.y);
-            bounds_max.z = std::max(bounds_max.z, position.z);
-        }
-        const auto generated_fallback = [&](
-                                            Vec3f position) noexcept {
-            const auto map_axis = [](
-                                      float value,
-                                      float minimum,
-                                      float maximum) noexcept {
-                const auto extent = maximum - minimum;
-                return std::abs(extent) > 1.0e-20f
-                           ? (value - minimum) / extent
-                           : 0.5f;
-            };
-            return Vec3f{
-                map_axis(position.x, bounds_min.x, bounds_max.x),
-                map_axis(position.y, bounds_min.y, bounds_max.y),
-                map_axis(position.z, bounds_min.z, bounds_max.z)};
-        };
+        const auto generated_mapping =
+            make_generated_coordinate_mapping(
+                geometry);
+        upload.generated_transform =
+            to_luisa(
+                generated_mapping
+                    .object_to_generated);
         for (const auto position : geometry.positions) {
             upload.positions.emplace_back(
                 to_luisa(position));
@@ -1165,7 +1147,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             for (const auto position :
                  geometry.positions) {
                 upload.generated.emplace_back(
-                    to_luisa(generated_fallback(position)));
+                    to_luisa(
+                        generated_mapping.apply(
+                            position)));
             }
         } else {
             upload.generated.reserve(
@@ -1426,7 +1410,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                     std::max<std::size_t>(
                         geometry.material_slots.size(), 1u)),
             .attribute_domains =
-                upload.attribute_domains});
+                upload.attribute_domains,
+            .generated_transform =
+                upload.generated_transform});
     }
     if (!result.diagnostics.empty()) {
         return result;

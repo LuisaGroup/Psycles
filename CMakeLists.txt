@@ -209,6 +209,7 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/path_tracer_camera.cpp
             src/luisa/path_tracer_common.cpp
             src/luisa/path_tracer_environment.cpp
+            src/luisa/path_tracer_generated_coordinates.cpp
             src/luisa/path_tracer_geometry.cpp
             src/luisa/path_kernel_background_event.cpp
             src/luisa/path_kernel_bounce_setup.cpp
@@ -225,6 +226,7 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/path_kernel_triangle_geometry.cpp
             src/luisa/path_kernel_triangle_primitive.cpp
             src/luisa/path_kernel_volume_boundary.cpp
+            src/luisa/path_kernel_volume_point.cpp
             src/luisa/path_kernel_volume_state.cpp
             src/luisa/path_tracer_kernel.cpp
             src/luisa/path_tracer_light_distribution.cpp
@@ -597,6 +599,55 @@ if(PSYCLES_ENABLE_LUISA)
             endif()
 
             add_executable(
+                psycles_luisa_volume_point_tests
+                tests/test_luisa_volume_point.cpp)
+            target_link_libraries(
+                psycles_luisa_volume_point_tests
+                PRIVATE Psycles::luisa_runtime)
+            target_include_directories(
+                psycles_luisa_volume_point_tests
+                PRIVATE
+                    "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
+            target_compile_features(
+                psycles_luisa_volume_point_tests
+                PRIVATE cxx_std_20)
+            set_target_properties(
+                psycles_luisa_volume_point_tests
+                PROPERTIES
+                    RUNTIME_OUTPUT_DIRECTORY
+                        "${CMAKE_BINARY_DIR}/bin")
+            if(TARGET luisa-compute-backend-fallback)
+                add_dependencies(
+                    psycles_luisa_volume_point_tests
+                    luisa-compute-backend-fallback)
+                add_test(
+                    NAME psycles.luisa_volume_point_fallback
+                    COMMAND
+                        psycles_luisa_volume_point_tests
+                        fallback)
+            endif()
+            if(TARGET luisa-compute-backend-hip)
+                add_dependencies(
+                    psycles_luisa_volume_point_tests
+                    luisa-compute-backend-hip)
+                add_test(
+                    NAME psycles.luisa_volume_point_hip
+                    COMMAND
+                        psycles_luisa_volume_point_tests
+                        hip)
+            endif()
+            if(TARGET luisa-compute-backend-vk)
+                add_dependencies(
+                    psycles_luisa_volume_point_tests
+                    luisa-compute-backend-vk)
+                add_test(
+                    NAME psycles.luisa_volume_point_vk
+                    COMMAND
+                        psycles_luisa_volume_point_tests
+                        vk)
+            endif()
+
+            add_executable(
                 psycles_volume_scene_metadata_tests
                 tests/test_volume_scene_metadata.cpp)
             target_link_libraries(
@@ -613,6 +664,24 @@ if(PSYCLES_ENABLE_LUISA)
                 NAME psycles.volume_scene_metadata
                 COMMAND
                     psycles_volume_scene_metadata_tests)
+
+            add_executable(
+                psycles_generated_coordinates_tests
+                tests/test_generated_coordinates.cpp)
+            target_link_libraries(
+                psycles_generated_coordinates_tests
+                PRIVATE Psycles::luisa_runtime)
+            target_include_directories(
+                psycles_generated_coordinates_tests
+                PRIVATE
+                    "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
+            target_compile_features(
+                psycles_generated_coordinates_tests
+                PRIVATE cxx_std_20)
+            add_test(
+                NAME psycles.generated_coordinates
+                COMMAND
+                    psycles_generated_coordinates_tests)
 
             if(TARGET luisa-compute-backend-fallback)
                 add_executable(

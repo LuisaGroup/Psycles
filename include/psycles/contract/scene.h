@@ -134,6 +134,12 @@ struct TriangleMeshDesc {
     // in Blender texture space. Keeping it explicit avoids reconstructing a
     // subtly different bounding-box mapping in a device backend.
     MeshAttribute<Vec3f> generated;
+    // Volume shaders do not have a surface primitive from which Generated
+    // can be interpolated. Cycles instead transforms the object-space
+    // shading position with ATTR_STD_GENERATED_TRANSFORM. Blender bundles
+    // preserve that affine transform explicitly; programmatic scenes may
+    // omit it and let the runtime derive the ordinary bounds mapping.
+    std::optional<Mat4f> generated_transform;
     // Named vertex/corner values are stored in scene-linear space;
     // BYTE_COLOR conversion therefore matches Cycles before device upload.
     std::map<std::string, MeshAttribute<Vec4f>, std::less<>>

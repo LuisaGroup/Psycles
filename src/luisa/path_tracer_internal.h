@@ -191,6 +191,7 @@ struct AttributeUpload {
 
 struct GeometryUpload {
     std::uint32_t attribute_domains{};
+    luisa::float4x4 generated_transform{};
     luisa::vector<luisa::float3> positions;
     luisa::vector<luisa::float3> normals;
     luisa::vector<luisa::float2> uv;
