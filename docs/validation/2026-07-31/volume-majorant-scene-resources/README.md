@@ -13,8 +13,10 @@ The reference construction is anchored in
 `VolumeManager::flatten_octree`. The Luisa scene component preserves the same
 semantic identities:
 
-- one root for every heterogeneous effective shader on every internal object
+- one root for every volume-bearing effective shader on every internal object
   instance;
+- structurally homogeneous shaders use Cycles' `1^3` density grid, while
+  spatially varying shaders use `128^3`;
 - instance material overrides replace their corresponding geometry slots,
   and duplicate effective shaders create only one root;
 - mesh-space bounds are used without transforming or pre-baking the closure;
@@ -49,31 +51,32 @@ relocated into the shared array. Node cardinality remains within Cycles'
 signed 32-bit index contract.
 
 This is acceleration metadata, not a density or radiance bake. The exact same
-raw `GraphSurface` closure is evaluated again by future heterogeneous
-transport.
+raw `GraphSurface` closure is evaluated again by runtime transport.
 
 ## End-to-end backend regression
 
-The backend fixture builds a raw graph:
+The backend fixture builds two raw graphs:
 
 ```text
 Texture Coordinate.Generated -> Volume Coefficients.EmissionCoefficients
+constant RGB(0.35, 0.2, 0.1) -> Volume Coefficients.EmissionCoefficients
 ```
 
 It constructs a translated object, real BLAS/TLAS resources, production
 `BufferShaderServices`, the production volume point provider, and the actual
-scene component. Every backend evaluates all `128^3 * 16 = 33,554,432`
-closure samples, performs host hierarchy reduction, uploads the three
-resource buffers, reads them back, and verifies:
+scene component. Every backend evaluates
+`(128^3 + 1^3) * 16 = 33,554,448` closure samples, performs host hierarchy
+reduction, uploads the three resource buffers, reads them back, and verifies:
 
-- one object root and an empty final World range;
-- a root plus eight children;
+- one heterogeneous and one homogeneous object root plus an empty final World
+  range;
+- a heterogeneous root plus eight children and a homogeneous leaf root;
 - exact root/node/range relocation and shader masking;
 - object bounds mapped to `[1, 2)`; and
 - conservative root extrema spanning the authored Generated field.
 
-The host regression separately covers material overrides, homogeneous and
-surface-only exclusion, duplicate shaders, object and World identity,
+The host regression separately covers material overrides, homogeneous
+inclusion, surface-only exclusion, duplicate shaders, object and World identity,
 partially and fully collapsed bounds, non-finite transforms, range partition
 failures, incomplete octrees, parent mismatches, unreachable records, and
 invalid extrema.
@@ -82,8 +85,8 @@ Focused manual fixture wall times on the local RX 9070 XT workstation were:
 
 | backend | wall time | result |
 | --- | ---: | --- |
-| fallback (LLVM/Embree, 32 threads) | `0.10 s` | pass |
-| HIP (first shader compile in this run) | `0.17 s` | pass |
+| fallback (LLVM/Embree, 32 threads) | `0.08 s` | pass |
+| HIP (cached shader) | `0.10 s` | pass |
 | Vulkan/RADV | `0.07 s` | pass |
 
 These are small fixture timings, not full-scene rendering benchmarks.
@@ -102,7 +105,7 @@ ctest --test-dir build --output-on-failure \
 The combined hierarchy, prepass, and scene-resource selection completed
 `9/9` focused tests on fallback, HIP, and Vulkan. A subsequent full
 `cmake --build build --parallel 32` and serial CTest run completed `102/102`
-tests in `8.79 s`.
+tests in `8.91 s`.
 
 ## Visual status and next connection
 

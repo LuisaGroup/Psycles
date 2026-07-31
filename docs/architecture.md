@@ -265,15 +265,18 @@ measure. Until a sound majorant provider and traversal are connected, the
 scene capability gate continues to reject heterogeneous material graphs.
 
 `VolumeMajorantSceneComponent` owns the next host-stage boundary. It maps each
-internal instance and its effective material overrides to one heterogeneous
-object/shader root, appends the distinct World range, dispatches the raw
-`GraphSurface` prepass, reduces each result through the Cycles hierarchy
-builder, formally validates each full eight-child tree, relocates all local
-indices, and uploads compact node/root/range buffers. The ranges form an exact
-ordered partition and the World range is always last, so later overlapping
-traversal does not depend on host pointer or map ordering. This component
-builds acceleration metadata only; it neither evaluates transport on the CPU
-nor replaces the original closure graph.
+internal instance and its effective material overrides to one object/shader
+root for every volume stack candidate, appends the distinct World range,
+dispatches the raw `GraphSurface` prepass, reduces each result through the
+Cycles hierarchy builder, formally validates each full eight-child tree,
+relocates all local indices, and uploads compact node/root/range buffers.
+Structurally homogeneous closures use Cycles' one-cell grid; spatially varying
+closures use the depth-seven 128-cubed grid. Both evaluate the same sixteen
+padded Sobol points per cell and both remain available to the unified
+overlapping-root traversal. The ranges form an exact ordered partition and the
+World range is always last, so traversal does not depend on host pointer or
+map ordering. This component builds acceleration metadata only; it neither
+evaluates transport on the CPU nor replaces the original closure graph.
 
 ### Scene
 

@@ -10,6 +10,8 @@
 #include <string>
 #include <vector>
 
+#include <psycles/contract/cycles_abi.h>
+
 #include <luisa/core/basic_types.h>
 #include <luisa/dsl/sugar.h>
 
@@ -20,8 +22,15 @@ inline constexpr std::uint32_t
 inline constexpr std::uint32_t
     volume_majorant_grid_resolution =
         1u << volume_majorant_maximum_depth;
+inline constexpr std::uint32_t
+    volume_majorant_homogeneous_resolution = 1u;
 inline constexpr float
     volume_majorant_split_threshold = 1.442f;
+// Current Cycles ShaderFlag ABI. Keeping the mask beside the root contract
+// makes host planning and device lookup share one authoritative identity.
+inline constexpr std::uint32_t
+    volume_majorant_cycles_shader_mask =
+        contract::cycles_abi::shader_mask;
 
 struct VolumeMajorantExtrema {
     float minimum{};
@@ -79,18 +88,21 @@ class VolumeMajorantHierarchyBuilder {
 
   public:
     [[nodiscard]] static constexpr std::size_t
-    required_extrema_count() noexcept {
-        return static_cast<std::size_t>(
-                   volume_majorant_grid_resolution) *
-               volume_majorant_grid_resolution *
-               volume_majorant_grid_resolution;
+    required_extrema_count(
+        std::uint32_t resolution =
+            volume_majorant_grid_resolution) noexcept {
+        return static_cast<std::size_t>(resolution) *
+               static_cast<std::size_t>(resolution) *
+               static_cast<std::size_t>(resolution);
     }
 
     [[nodiscard]] VolumeMajorantBuildResult build(
         const VolumeMajorantBounds &bounds,
         std::span<const VolumeMajorantExtrema>
             extrema,
-        float volume_scale = 1.0f) const;
+        float volume_scale = 1.0f,
+        std::uint32_t resolution =
+            volume_majorant_grid_resolution) const;
 };
 
 }// namespace psycles::luisa_backend

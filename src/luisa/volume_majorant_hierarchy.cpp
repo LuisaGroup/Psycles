@@ -47,16 +47,16 @@ class HierarchyBuildState {
         _grid;
     VolumeMajorantBounds _bounds;
     float _volume_scale;
+    std::uint32_t _resolution;
     VolumeMajorantHierarchy _hierarchy;
 
-    [[nodiscard]] static std::size_t
+    [[nodiscard]] std::size_t
     flatten(
         std::uint32_t x,
         std::uint32_t y,
-        std::uint32_t z) noexcept {
-        constexpr auto resolution =
-            static_cast<std::size_t>(
-                volume_majorant_grid_resolution);
+        std::uint32_t z) const noexcept {
+        const auto resolution =
+            static_cast<std::size_t>(_resolution);
         return static_cast<std::size_t>(x) +
                resolution *
                    (static_cast<std::size_t>(y) +
@@ -95,10 +95,9 @@ class HierarchyBuildState {
             subtract(
                 _bounds.maximum,
                 _bounds.minimum);
-        constexpr auto inverse_resolution =
+        const auto inverse_resolution =
             1.0f /
-            static_cast<float>(
-                volume_majorant_grid_resolution);
+            static_cast<float>(_resolution);
         const auto x =
             root_size.x *
             static_cast<float>(
@@ -202,10 +201,12 @@ class HierarchyBuildState {
         std::span<const VolumeMajorantExtrema>
             grid,
         VolumeMajorantBounds bounds,
-        float volume_scale) noexcept
+        float volume_scale,
+        std::uint32_t resolution) noexcept
         : _grid{grid},
           _bounds{bounds},
-          _volume_scale{volume_scale} {}
+          _volume_scale{volume_scale},
+          _resolution{resolution} {}
 
     [[nodiscard]] VolumeMajorantHierarchy
     build() {
@@ -213,9 +214,9 @@ class HierarchyBuildState {
         const GridBox root_box{
             .minimum = {0u, 0u, 0u},
             .maximum = {
-                volume_majorant_grid_resolution,
-                volume_majorant_grid_resolution,
-                volume_majorant_grid_resolution}};
+                _resolution,
+                _resolution,
+                _resolution}};
         build_node(0u, root_box, 0u);
 
         const auto size =
@@ -248,13 +249,24 @@ VolumeMajorantHierarchyBuilder::build(
     const VolumeMajorantBounds &bounds,
     std::span<const VolumeMajorantExtrema>
         extrema,
-    float volume_scale) const {
+    float volume_scale,
+    std::uint32_t resolution) const {
     VolumeMajorantBuildResult result;
-    if (extrema.size() !=
-        required_extrema_count()) {
+    if (resolution !=
+            volume_majorant_homogeneous_resolution &&
+        resolution !=
+            volume_majorant_grid_resolution) {
         result.diagnostic =
-            "volume majorant extrema grid must contain "
-            "exactly 128^3 cells";
+            "volume majorant resolution must match "
+            "Cycles' homogeneous 1^3 or heterogeneous "
+            "128^3 grid";
+        return result;
+    }
+    if (extrema.size() !=
+        required_extrema_count(resolution)) {
+        result.diagnostic =
+            "volume majorant extrema grid cardinality "
+            "does not match its Cycles resolution";
         return result;
     }
     if (!finite(bounds.minimum) ||
@@ -306,7 +318,8 @@ VolumeMajorantHierarchyBuilder::build(
         HierarchyBuildState{
             extrema,
             bounds,
-            volume_scale}
+            volume_scale,
+            resolution}
             .build();
     return result;
 }

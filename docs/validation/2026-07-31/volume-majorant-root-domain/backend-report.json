@@ -2,9 +2,9 @@
   "date": "2026-07-31",
   "cycles_commit": "b82c3f0da6c1813dabedc563d64e536f4d83e868",
   "fixture": {
-    "grid_resolution": 128,
+    "heterogeneous_resolution": 128,
+    "homogeneous_resolution": 1,
     "samples_per_cell": 16,
-    "homogeneous_grid_resolution": 1,
     "closure_evaluations": 33554448,
     "root_count": 2,
     "node_count": 10,
@@ -13,7 +13,8 @@
   "backends": {
     "fallback": {
       "wall_seconds": 0.08,
-      "result": "pass"
+      "result": "pass",
+      "threads": 32
     },
     "hip": {
       "wall_seconds": 0.10,
@@ -31,7 +32,8 @@
   },
   "focused_ctest": {
     "passed": 9,
-    "failed": 0
+    "failed": 0,
+    "wall_seconds": 0.35
   },
   "full_validation": {
     "build_parallelism": 32,
@@ -41,6 +43,6 @@
   },
   "visual": {
     "applicable": false,
-    "reason": "Internal scalar acceleration metadata; production heterogeneous transport is not connected yet."
+    "reason": "Internal scalar acceleration metadata; no pixels are emitted by this checkpoint."
   }
 }

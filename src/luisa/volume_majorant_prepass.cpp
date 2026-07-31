@@ -21,8 +21,7 @@ VolumeMajorantPrepass::evaluate_cell(
     const ShaderServices &services,
     const VolumeMajorantGrid &grid,
     UInt cell_index) const noexcept {
-    constexpr auto resolution =
-        volume_majorant_grid_resolution;
+    const auto resolution = grid.resolution;
     const auto xy = cell_index / resolution;
     const auto coordinate = make_uint3(
         cell_index % resolution,
@@ -30,7 +29,7 @@ VolumeMajorantPrepass::evaluate_cell(
         xy / resolution);
     const auto cell_size =
         (grid.maximum - grid.minimum) /
-        static_cast<float>(resolution);
+        cast<float>(resolution);
     const auto cell_minimum =
         grid.minimum +
         make_float3(

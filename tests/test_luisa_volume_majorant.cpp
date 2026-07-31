@@ -111,6 +111,37 @@ test_host_hierarchy() {
                 0.3f,
         "constant root extrema changed");
 
+    constexpr std::array homogeneous_extrema{
+        VolumeMajorantExtrema{
+            .minimum = 0.45f,
+            .maximum = 0.45f}};
+    const auto homogeneous_result =
+        builder.build(
+            bounds,
+            homogeneous_extrema,
+            1.0f,
+            volume_majorant_homogeneous_resolution);
+    expect(
+        homogeneous_result.ok() &&
+            homogeneous_result.hierarchy.nodes.size() ==
+                1u &&
+            homogeneous_result.hierarchy.nodes[0u]
+                    .sigma_minimum ==
+                0.45f &&
+            homogeneous_result.hierarchy.nodes[0u]
+                    .sigma_maximum ==
+                0.45f,
+        "Cycles 1^3 homogeneous root contract changed");
+    expect(
+        !builder
+             .build(
+                 bounds,
+                 homogeneous_extrema,
+                 1.0f,
+                 2u)
+             .ok(),
+        "non-Cycles majorant resolution was accepted");
+
     auto partitioned = x_partitioned_grid();
     auto result =
         builder.build(bounds, partitioned);

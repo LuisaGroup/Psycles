@@ -32,6 +32,7 @@ struct VolumeMajorantSceneRoot {
     VolumeMajorantBounds bounds;
     luisa::float4x4 object_to_world{};
     float volume_scale{1.0f};
+    bool heterogeneous{};
 };
 
 struct VolumeMajorantScenePlan {
