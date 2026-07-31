@@ -1,0 +1,64 @@
+{
+  "actual_label": "Psycles hip",
+  "cycles_channels": [
+    "R",
+    "G",
+    "B",
+    "A"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        0.9999999403953552,
+        0.9999999403953552,
+        0.9999999403953552
+      ],
+      "cycles": "/home/mike/Projects/Psycles/docs/validation/2026-07-31/homogeneous-volume-area-mis/exr/narrow/cycles-cpu.exr",
+      "cycles_channel_mean": [
+        0.223036989569664,
+        0.223036989569664,
+        0.223036989569664
+      ],
+      "cycles_luminance_mean": 0.2230369746685028,
+      "cycles_rms": 0.38668152689933777,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 4.76837158203125e-07,
+      "mean_absolute_error": 8.998904377222061e-08,
+      "orientation_rmse": {
+        "flip_x": 0.3203475773334503,
+        "flip_xy": 0.3737354278564453,
+        "flip_y": 0.381314754486084,
+        "identity": 1.6145558845437336e-07
+      },
+      "p95_pixel_rmse": 3.427267074584961e-07,
+      "p99_pixel_rmse": 4.50015079422883e-07,
+      "psycles": "/home/mike/Projects/Psycles/docs/validation/2026-07-31/homogeneous-volume-area-mis/exr/narrow/psycles-hip.exr",
+      "psycles_channel_mean": [
+        0.2230369746685028,
+        0.2230369746685028,
+        0.2230369746685028
+      ],
+      "psycles_luminance_mean": 0.2230369746685028,
+      "psycles_rms": 0.3866815260109228,
+      "relative_rmse": 4.1754150954411643e-07,
+      "rmse": 1.6145558845437336e-07,
+      "shape": [
+        4,
+        4,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1887436.8,
+        "display_scale": 0.8293681288531893,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles/docs/validation/2026-07-31/homogeneous-volume-area-mis/triptychs/narrow/hip/combined.png",
+        "pixel_scale": 64
+      },
+      "valid_pixels": 16
+    }
+  },
+  "reference_label": "Cycles 5.2 CPU",
+  "schema": "psycles.cycles-differential.v1"
+}

@@ -9,6 +9,7 @@ Run through Blender:
 from __future__ import annotations
 
 import argparse
+import math
 from pathlib import Path
 import sys
 
@@ -32,7 +33,7 @@ def argument_options() -> argparse.Namespace:
     )
     parser.add_argument(
         "--light",
-        choices=("distant", "point", "spot"),
+        choices=("distant", "point", "spot", "area"),
         default="distant",
         help="analytic emitter family (default: distant)",
     )
@@ -46,9 +47,26 @@ def argument_options() -> argparse.Namespace:
         default="DISTANCE",
         help="Cycles material volume-sampling policy",
     )
+    parser.add_argument(
+        "--area-shape",
+        choices=("RECTANGLE", "ELLIPSE"),
+        default="RECTANGLE",
+        help="area-light primitive (default: RECTANGLE)",
+    )
+    parser.add_argument(
+        "--area-spread",
+        type=float,
+        default=math.pi,
+        help="area-light spread in radians (default: pi)",
+    )
     options = parser.parse_args(trailing)
     if options.samples <= 0:
         parser.error("--samples must be positive")
+    if (
+        not math.isfinite(options.area_spread)
+        or not 0.0 <= options.area_spread <= math.pi
+    ):
+        parser.error("--area-spread must be finite and within [0, pi]")
     options.output = options.output.resolve()
     return options
 
@@ -107,7 +125,27 @@ def make_world() -> bpy.types.World:
 def make_light(
     scene: bpy.types.Scene,
     light_type: str,
+    area_shape: str,
+    area_spread: float,
 ) -> None:
+    if light_type == "area":
+        light_data = bpy.data.lights.new(
+            "Cycles finite-volume area light",
+            type="AREA",
+        )
+        light_data.color = (1.0, 1.0, 1.0)
+        light_data.energy = 10.0
+        light_data.shape = area_shape
+        light_data.size = 1.0
+        light_data.size_y = 0.6
+        light_data.spread = area_spread
+        light_data.normalize = True
+        light = bpy.data.objects.new(
+            light_data.name, light_data
+        )
+        light.location = (0.2, -0.1, -0.4)
+        scene.collection.objects.link(light)
+        return
     if light_type == "point":
         light_data = bpy.data.lights.new(
             "Cycles finite-volume point light",
@@ -158,6 +196,8 @@ def configure_scene(
     samples: int,
     light_type: str,
     volume_sampling: str,
+    area_shape: str,
+    area_spread: float,
 ) -> None:
     scene = bpy.context.scene
     scene.render.engine = "CYCLES"
@@ -208,7 +248,12 @@ def configure_scene(
         make_volume_material(volume_sampling)
     )
 
-    make_light(scene, light_type)
+    make_light(
+        scene,
+        light_type,
+        area_shape,
+        area_spread,
+    )
 
     camera_data = bpy.data.cameras.new(
         "Inside-volume orthographic camera"
@@ -232,6 +277,8 @@ def main() -> None:
         options.samples,
         options.light,
         options.volume_sampling,
+        options.area_shape,
+        options.area_spread,
     )
     bpy.ops.render.render(write_still=True)
     print(
