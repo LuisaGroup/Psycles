@@ -637,6 +637,13 @@ matches Cycles' finalized whole-shader scan, including surface-only uses;
 Volume homogeneity remains a separate complete dependency reduction.
 The exact device regression is recorded in
 [`validation/2026-07-31/volume-majorant-runtime-provider`](validation/2026-07-31/volume-majorant-runtime-provider/README.md).
+The runtime shade offset is an explicit traversal input rather than provider
+construction state. Every root and leaf extrema evaluation participating in
+one candidate search observes the same Cycles tracking RNG state; after a
+candidate, the caller advances by the 16-dimension bounce block and supplies
+the newly sampled offset to the next traversal advance. The state contract and
+three-backend regression are recorded in
+[`validation/2026-08-01/volume-majorant-tracking-rng`](validation/2026-08-01/volume-majorant-tracking-rng/README.md).
 Production `compile_scene` now derives the same root identities directly from
 retained runtime material bindings, executes the raw-closure prepass after
 TLAS/resource completion, and owns the flattened buffers in `LuisaSceneData`.

@@ -13,9 +13,11 @@ VolumeMajorantEntryProvider::extrema(
     const VolumeStackEntry &entry,
     const VolumeMajorantLeaf &leaf,
     Float object_density,
+    Float shade_offset,
     Float3 world_ray_origin,
     Float3 world_ray_direction) const noexcept {
     static_cast<void>(entry);
+    static_cast<void>(shade_offset);
     static_cast<void>(world_ray_origin);
     static_cast<void>(world_ray_direction);
     return {
@@ -122,8 +124,8 @@ void VolumeMajorantOverlapTraversal::_select_entry(
     };
 }
 
-Bool VolumeMajorantOverlapTraversal::_setup()
-    noexcept {
+Bool VolumeMajorantOverlapTraversal::_setup(
+    Float shade_offset) noexcept {
     Bool valid = false;
     $if(_no_overlap) {
         const auto leaf = _active.current();
@@ -170,11 +172,12 @@ Bool VolumeMajorantOverlapTraversal::_setup()
                         candidate.current();
                     const auto extrema =
                         _provider.extrema(
-                        entry,
-                        leaf,
-                        space.object_density,
-                        _world_ray_origin,
-                        _world_ray_direction);
+                            entry,
+                            leaf,
+                            space.object_density,
+                            shade_offset,
+                            _world_ray_origin,
+                            _world_ray_direction);
                     _sigma_minimum +=
                         select(
                             0.0f,
@@ -247,7 +250,8 @@ VolumeMajorantOverlapTraversal::
         Float3 world_ray_origin,
         Float3 world_ray_direction,
         Float ray_minimum,
-        Float ray_maximum) noexcept
+        Float ray_maximum,
+        Float shade_offset) noexcept
     : _nodes{nodes},
       _roots{roots},
       _ranges{ranges},
@@ -281,7 +285,7 @@ VolumeMajorantOverlapTraversal::
     _active._minimum = ray_minimum;
     _active._maximum =
         std::numeric_limits<float>::max();
-    static_cast<void>(_setup());
+    static_cast<void>(_setup(shade_offset));
 }
 
 VolumeMajorantSegment
@@ -307,8 +311,8 @@ VolumeMajorantOverlapTraversal::current()
             _lookup_complete};
 }
 
-Bool VolumeMajorantOverlapTraversal::advance()
-    noexcept {
+Bool VolumeMajorantOverlapTraversal::advance(
+    Float shade_offset) noexcept {
     Bool advanced = false;
     const auto segment = current();
     $if(segment.valid) {
@@ -322,6 +326,7 @@ Bool VolumeMajorantOverlapTraversal::advance()
                     _active_entry,
                     leaf,
                     _active_object_density,
+                    shade_offset,
                     _world_ray_origin,
                     _world_ray_direction);
             _sigma_minimum =
@@ -329,7 +334,8 @@ Bool VolumeMajorantOverlapTraversal::advance()
             _sigma_maximum =
                 extrema.maximum;
             _active_valid = leaf.valid;
-            advanced = _setup();
+            advanced = _setup(
+                shade_offset);
         };
     };
     return advanced;
