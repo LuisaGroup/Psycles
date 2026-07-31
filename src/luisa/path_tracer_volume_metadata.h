@@ -1,6 +1,8 @@
 #pragma once
 
+#include <psycles/compiler/material_library.h>
 #include <psycles/contract/scene.h>
+#include <psycles/luisa/volume_stack.h>
 
 #include <cstdint>
 #include <set>
@@ -29,9 +31,27 @@ struct VolumeSceneMetadata {
     // Zero is Psycles' host-specialization sentinel. A volume-enabled scene
     // stores Cycles' actual size, including background and terminator slots.
     std::uint32_t stack_size{};
+    // Cycles' kernel_data.max_closures, specialized from reachable shader
+    // graphs and capped by MAX_CLOSURE. Volume evaluation consumes this
+    // global budget across every active stack entry.
+    std::uint32_t closure_allocation_budget{1u};
 
     [[nodiscard]] bool has_volumes() const noexcept;
 };
+
+inline constexpr std::uint32_t
+    cycles_max_closure_allocations = 64u;
+inline constexpr std::uint32_t
+    cycles_volume_node_closure_allocations =
+        maximum_volume_stack_size;
+
+[[nodiscard]] std::uint32_t
+cycles_program_closure_allocation_count(
+    const compiler::SurfaceProgram &program) noexcept;
+
+[[nodiscard]] std::uint32_t
+cycles_scene_closure_allocation_budget(
+    const compiler::MaterialLibrary &materials) noexcept;
 
 struct CameraVolumeBoundsQuery {
     contract::CameraProjection projection{

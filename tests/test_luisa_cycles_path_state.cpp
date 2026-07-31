@@ -236,15 +236,88 @@ int main(int argc, char **argv) {
                 9u, background_shader_state);
             write_shader_state(11u, light_shader_state);
             write_shader_state(13u, shadow_shader_state);
+
+            const auto volume =
+                cycles_path_state::next_volume(
+                    initial,
+                    0u,
+                    1u,
+                    8u);
+            output.write(
+                15u,
+                make_float4(
+                    cast<float>(
+                        volume.state.flag),
+                    cast<float>(
+                        volume.state.visibility),
+                    cast<float>(
+                        volume.state.bounce),
+                    cast<float>(
+                        volume.state.rng_offset)));
+            output.write(
+                16u,
+                make_float4(
+                    cast<float>(
+                        volume.volume_bounce),
+                    cast<float>(
+                        volume.state.diffuse_bounce),
+                    cast<float>(
+                        volume.state.glossy_bounce),
+                    cast<float>(
+                        volume.state
+                            .transmission_bounce)));
+            output.write(
+                17u,
+                make_float4(
+                    cycles_path_state::
+                        continuation_probability(
+                            initial.flag,
+                            0u,
+                            0u,
+                            0u,
+                            0u,
+                            make_float3(0.0f)),
+                    cycles_path_state::
+                        continuation_probability(
+                            initial.flag |
+                                cycles_path_state::
+                                    flag_transparent,
+                            99u,
+                            2u,
+                            0u,
+                            2u,
+                            make_float3(0.0f)),
+                    cycles_path_state::
+                        continuation_probability(
+                            initial.flag,
+                            3u,
+                            0u,
+                            0u,
+                            0u,
+                            make_float3(
+                                0.25f,
+                                0.04f,
+                                0.01f)),
+                    cycles_path_state::
+                        continuation_probability(
+                            initial.flag,
+                            3u,
+                            0u,
+                            0u,
+                            0u,
+                            make_float3(
+                                -0.81f,
+                                0.04f,
+                                0.01f))));
         };
 
     Context context{argv[0]};
     auto device = context.create_device(backend);
     auto stream = device.create_stream();
     auto output =
-        device.create_buffer<luisa::float4>(15u);
+        device.create_buffer<luisa::float4>(18u);
     auto kernel = device.compile(evaluate);
-    std::array<luisa::float4, 15u> actual{};
+    std::array<luisa::float4, 18u> actual{};
     stream << kernel(output).dispatch(1u)
            << output.copy_to(luisa::span{actual})
            << synchronize();
@@ -281,7 +354,29 @@ int main(int argc, char **argv) {
         // Transparent-shadow evaluation exposes only shadow visibility and
         // the same effective one-bounce-deeper Ray Depth.
         luisa::float4{16.0f, 0.0f, 4.0f, 2.0f},
-        luisa::float4{1.0f, 4.0f, 5.0f, 0.0f}};
+        luisa::float4{1.0f, 4.0f, 5.0f, 0.0f},
+        // A volume collision is one ordinary bounce and consumes the next
+        // complete Sobol block. It clears camera/background MIS state,
+        // establishes the first volume pass, and reaches the synced limit.
+        luisa::float4{
+            static_cast<float>(
+                cycles_path_state::
+                    flag_single_pass_done |
+                cycles_path_state::
+                    flag_mis_had_transmission |
+                cycles_path_state::
+                    flag_volume_pass |
+                cycles_path_state::
+                    flag_terminate_after_transparent),
+            16.0f,
+            1.0f,
+            32.0f},
+        luisa::float4{
+            1.0f, 0.0f, 0.0f, 0.0f},
+        // Minimum-bounce decisions are exact predicates; after them Cycles
+        // uses sqrt(max(abs(throughput))) and clamps only the upper bound.
+        luisa::float4{
+            1.0f, 1.0f, 0.5f, 0.9f}};
     for (std::size_t index = 0u;
          index < expected.size();
          ++index) {

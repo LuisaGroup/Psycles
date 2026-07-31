@@ -1,5 +1,9 @@
 #include "path_tracer_volume_metadata.h"
 
+#include <psycles/compiler/core_nodes.h>
+#include <psycles/compiler/shader_program.h>
+#include <psycles/compiler/surface_program.h>
+
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -86,6 +90,99 @@ int main() {
                 std::cerr << message << '\n';
             }
         };
+
+    ShaderGraph closure_graph;
+    const auto diffuse =
+        closure_graph.add_node(
+            compiler::node_type::diffuse_bsdf,
+            "Surface");
+    const auto scatter =
+        closure_graph.add_node(
+            compiler::node_type::volume_scatter,
+            "Scatter");
+    closure_graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{
+            .node = diffuse,
+            .socket = "Closure"});
+    closure_graph.set_root(
+        ShaderDomain::volume,
+        OutputRef{
+            .node = scatter,
+            .socket = "Volume"});
+    compiler::ShaderCompiler shader_compiler{
+        compiler::make_core_node_registry()};
+    const auto one_volume_shader =
+        shader_compiler.compile(
+            closure_graph);
+    const auto one_volume_program =
+        one_volume_shader.ok()
+            ? compiler::compile_surface_program(
+                  *one_volume_shader.program)
+            : compiler::SurfaceProgramCompilation{};
+    const auto one_volume_count =
+        one_volume_program.ok()
+            ? cycles_program_closure_allocation_count(
+                  *one_volume_program.program)
+            : 0u;
+    require(
+        one_volume_count == 33u,
+        "one volume node did not reserve a 32-slot Cycles block");
+    if (one_volume_count != 33u) {
+        std::cerr
+            << "observed one-volume allocation count: "
+            << one_volume_count << '\n';
+    }
+
+    const auto absorption =
+        closure_graph.add_node(
+            compiler::node_type::
+                volume_absorption,
+            "Absorption");
+    const auto add =
+        closure_graph.add_node(
+            compiler::node_type::add_volume,
+            "Add");
+    require(
+        closure_graph.connect(
+            {.node = scatter,
+             .socket = "Volume"},
+            add,
+            "A") &&
+            closure_graph.connect(
+                {.node = absorption,
+                 .socket = "Volume"},
+                add,
+                "B"),
+        "failed to build closure-budget graph");
+    closure_graph.set_root(
+        ShaderDomain::volume,
+        OutputRef{
+            .node = add,
+            .socket = "Volume"});
+    const auto two_volume_shader =
+        shader_compiler.compile(
+            closure_graph);
+    const auto two_volume_program =
+        two_volume_shader.ok()
+            ? compiler::compile_surface_program(
+                  *two_volume_shader.program)
+            : compiler::SurfaceProgramCompilation{};
+    const auto two_volume_count =
+        two_volume_program.ok()
+            ? cycles_program_closure_allocation_count(
+                  *two_volume_program.program)
+            : 0u;
+    require(
+        two_volume_count ==
+            cycles_max_closure_allocations,
+        "closure allocation did not saturate at Cycles MAX_CLOSURE");
+    if (two_volume_count !=
+        cycles_max_closure_allocations) {
+        std::cerr
+            << "observed two-volume allocation count: "
+            << two_volume_count << '\n';
+    }
 
     SceneSnapshot scene;
     scene.world_shader = world;

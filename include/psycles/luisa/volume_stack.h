@@ -81,6 +81,11 @@ class VolumeStack {
     void initialize_background(
         const VolumeStackEntry &entry,
         luisa::compute::Bool active) noexcept;
+    // A miss may retain only the world entry. Object volumes are closed
+    // manifolds; keeping leaked object entries to infinity creates the same
+    // artifacts that Cycles' volume_stack_clean() explicitly prevents.
+    void clean_for_background(
+        bool keep_background) noexcept;
     void cross_boundary(
         const VolumeStackEntry &entry,
         luisa::compute::Bool back_facing,

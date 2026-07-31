@@ -14,7 +14,7 @@ namespace {
 using namespace luisa::compute;
 using namespace psycles::luisa_backend;
 
-inline constexpr std::size_t record_count = 23u;
+inline constexpr std::size_t record_count = 25u;
 
 [[nodiscard]] bool approximately_equal(
     float actual,
@@ -377,6 +377,55 @@ int main(int argc, char **argv) {
                         oversized.maximum_entries()),
                     as_float(oversized.count()),
                     flag(oversized.entry(0u).valid)));
+
+            VolumeStack leaked_with_world{4u};
+            leaked_with_world.initialize_background(
+                background, true);
+            leaked_with_world.cross_boundary(
+                a, false, true, true);
+            leaked_with_world.cross_boundary(
+                b, false, true, true);
+            leaked_with_world.clean_for_background(
+                true);
+            records.write(
+                23u,
+                make_float4(
+                    as_float(
+                        leaked_with_world.count()),
+                    as_float(
+                        leaked_with_world
+                            .entry(0u)
+                            .object),
+                    flag(
+                        leaked_with_world
+                            .entry(0u)
+                            .valid),
+                    flag(
+                        leaked_with_world
+                            .entry(1u)
+                            .valid)));
+
+            VolumeStack leaked_without_world{4u};
+            leaked_without_world.cross_boundary(
+                a, false, true, true);
+            leaked_without_world.cross_boundary(
+                b, false, true, true);
+            leaked_without_world
+                .clean_for_background(false);
+            records.write(
+                24u,
+                make_float4(
+                    as_float(
+                        leaked_without_world
+                            .count()),
+                    flag(
+                        leaked_without_world
+                            .empty()),
+                    flag(
+                        leaked_without_world
+                            .entry(0u)
+                            .valid),
+                    0.0f));
         };
 
     auto shader = device.compile(evaluate);
@@ -417,7 +466,9 @@ int main(int argc, char **argv) {
         luisa::float4{3.0f, 900.0f, 20.0f, 40.0f},
         luisa::float4{3.0f, 20.0f, 40.0f, 0.0f},
         luisa::float4{0.0f, 1.0f, 0.0f, 0.0f},
-        luisa::float4{32.0f, 31.0f, 0.0f, 0.0f}};
+        luisa::float4{32.0f, 31.0f, 0.0f, 0.0f},
+        luisa::float4{1.0f, 900.0f, 1.0f, 0.0f},
+        luisa::float4{0.0f, 1.0f, 0.0f, 0.0f}};
     for (auto index = std::size_t{0u};
          index < expected.size();
          ++index) {

@@ -63,10 +63,17 @@ psycles.luisa_stacked_volume_hip
 psycles.luisa_stacked_volume_vk
 ```
 
-All three pass. The fifteen stacked-volume records pin coefficient flags and
-values, raw phase count/order/parameters/weights, the distinct parameter
+All three pass. The twenty-two stacked-volume records pin coefficient flags
+and values, raw phase count/order/parameters/weights, the distinct parameter
 blocks and object-density scaling, emission suppression, and zero-state
-behavior. The companion coefficient/phase-set fixture contains a
+behavior. Seven of those records exercise the host-polymorphic
+`HomogeneousVolumeSegmentComponent` from the original graph through
+coefficient aggregation, distance sampling, and phase continuation. Its
+reservoir input selects the second raw HG closure and rescales `0.034` to the
+official oracle input `0.17`; the resulting direction and PDF match Cycles
+main exactly on fallback, HIP, and Vulkan. This catches propagation-axis,
+reservoir-rescaling, or composition-order regressions that isolated component
+tests cannot catch. The companion coefficient/phase-set fixture contains a
 merge-budget regression: two equal closures consume two of three allocations,
 merge to one live entry, and leave room for exactly one later closure. A
 fourth attempted allocation must remain rejected even though compacted
@@ -78,7 +85,8 @@ The evaluator intentionally accepts a point provider instead of guessing
 volume coordinates from a surface hit. Production world and object point
 construction is now implemented and validated in
 [`../volume-shading-points`](../volume-shading-points/README.md).
-Closest-event free-flight integration, phase continuation, volume NEE, and
-heterogeneous grid attributes remain required before scene volume materials
-are enabled. EXR comparisons and triptychs begin only after those transport
-stages operate together.
+The reusable free-flight and phase continuation component is complete, but
+its closest-event path-state stage, volume NEE, and heterogeneous grid
+attributes remain required before scene volume materials are enabled. EXR
+comparisons and triptychs begin only after those transport stages operate
+together.

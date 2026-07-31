@@ -44,6 +44,8 @@ struct InstanceGpu {
 
 inline constexpr std::uint32_t material_flag_has_volume =
     1u << 0u;
+inline constexpr std::uint32_t material_flag_may_emit =
+    1u << 1u;
 
 struct MaterialBindingGpu {
     luisa::uint surface_tag{};
@@ -241,6 +243,7 @@ struct RenderKernelParameters {
     luisa::uint max_diffuse_bounces{};
     luisa::uint max_glossy_bounces{};
     luisa::uint max_transmission_bounces{};
+    luisa::uint max_volume_bounces{};
     luisa::uint transparent_min_bounces{};
     luisa::uint transparent_max_bounces{};
     luisa::uint max_path_steps{};
@@ -481,6 +484,7 @@ LUISA_STRUCT(
     max_diffuse_bounces,
     max_glossy_bounces,
     max_transmission_bounces,
+    max_volume_bounces,
     transparent_min_bounces,
     transparent_max_bounces,
     max_path_steps,

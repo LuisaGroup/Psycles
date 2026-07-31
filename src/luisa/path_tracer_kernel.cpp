@@ -81,6 +81,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                 integrator.glossy_bounces,
             .maximum_transmission =
                 integrator.transmission_bounces,
+            .maximum_volume =
+                integrator.volume_bounces,
             .transparent_minimum =
                 integrator.transparent_min_bounces,
             .transparent_maximum =
@@ -93,6 +95,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         bounce_limits.maximum_glossy;
     const auto max_transmission_bounces =
         bounce_limits.maximum_transmission;
+    const auto max_volume_bounces =
+        bounce_limits.maximum_volume;
     const auto transparent_min_bounces =
         bounce_limits.transparent_minimum;
     const auto transparent_max_bounces =
@@ -230,6 +234,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         .max_glossy_bounces = max_glossy_bounces,
         .max_transmission_bounces =
             max_transmission_bounces,
+        .max_volume_bounces =
+            max_volume_bounces,
         .transparent_min_bounces =
             transparent_min_bounces,
         .transparent_max_bounces =

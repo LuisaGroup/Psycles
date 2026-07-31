@@ -64,6 +64,11 @@ struct Limits {
     luisa::compute::UInt maximum_transparent;
 };
 
+struct VolumeTransition {
+    State state;
+    luisa::compute::UInt volume_bounce;
+};
+
 // Canonical state observed by a Cycles Light Path node. Keep evaluation
 // context separate from transport state: surface, background emission, lamp
 // emission, and transparent-shadow evaluation deliberately expose different
@@ -348,6 +353,85 @@ inline void apply_shader_state(
             surface_state.rng_offset,
             transparent_state.rng_offset,
             transparent)};
+}
+
+// The volume arm of Cycles' path_state_next() is kept as a total transition
+// for the same reason as next_surface(): visibility, flags, bounce counters,
+// and the 16-dimensional RNG block must advance atomically.
+[[nodiscard]] inline VolumeTransition
+next_volume(
+    const State &before,
+    luisa::compute::UInt volume_bounce,
+    luisa::compute::UInt maximum_volume,
+    luisa::compute::UInt maximum) noexcept {
+    using namespace luisa::compute;
+
+    auto state = before;
+    state.bounce += 1u;
+    state.rng_offset +=
+        bounce_dimension_count;
+    state.visibility =
+        visibility_volume_scatter;
+    state.flag &=
+        ~(flag_reflect |
+          flag_singular |
+          flag_transparent |
+          flag_importance_bake |
+          flag_mis_skip |
+          flag_mis_had_transmission |
+          flag_transparent_background);
+    state.flag |=
+        flag_mis_had_transmission;
+    state.flag |= select(
+        0u,
+        flag_volume_pass,
+        (state.flag & flag_any_pass) == 0u);
+
+    volume_bounce += 1u;
+    state.flag |= select(
+        0u,
+        flag_terminate_after_transparent,
+        (state.bounce >= maximum) |
+            (volume_bounce >= maximum_volume));
+    return {
+        .state = state,
+        .volume_bounce =
+            volume_bounce};
+}
+
+// Exact path_state_continuation_probability() policy. Keeping this shared
+// prevents the surface and pre-event volume stages from drifting on the
+// transparent minimum-bounce rule or the sqrt(max(abs(throughput))) measure.
+[[nodiscard]] inline luisa::compute::Float
+continuation_probability(
+    luisa::compute::UInt flag,
+    luisa::compute::UInt bounce,
+    luisa::compute::UInt transparent_bounce,
+    luisa::compute::UInt minimum,
+    luisa::compute::UInt transparent_minimum,
+    luisa::compute::Float3 throughput) noexcept {
+    using namespace luisa::compute;
+    const auto transparent =
+        (flag & flag_transparent) != 0u;
+    const auto before_minimum =
+        select(
+            bounce <= minimum,
+            transparent_bounce <=
+                transparent_minimum,
+            transparent);
+    const auto roulette =
+        min(
+            sqrt(
+                max(
+                    abs(throughput.x),
+                    max(
+                        abs(throughput.y),
+                        abs(throughput.z)))),
+            1.0f);
+    return select(
+        roulette,
+        1.0f,
+        before_minimum);
 }
 
 [[nodiscard]] inline luisa::compute::UInt

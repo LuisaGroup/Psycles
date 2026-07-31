@@ -20,6 +20,9 @@ The implementation is pinned to official Blender/Cycles main
 - `scene/camera.cpp::viewplane_bounds_get()` conservatively expands the active
   near view plane by the near clip and maximum aperture radius before testing
   object-volume bounds.
+- `scene/shader_graph.cpp::get_num_closures()` counts ordinary surface
+  allocations and reserves one `MAX_VOLUME_STACK_SIZE == 32` block per
+  reachable volume closure node, saturating at `MAX_CLOSURE == 64`.
 
 Psycles resolves instance material overrides before classifying a boundary,
 transforms all eight corners of the object-space AABB so negative scale is
@@ -47,9 +50,10 @@ specialized Luisa AST.
 - saturation at 32 stack slots;
 - perspective, orthographic, and panorama camera overlap;
 - camera translation, near-plane extent, and anamorphic aperture expansion.
+- closure-allocation budgeting for one and multiple reachable volume nodes.
 
 The focused test passes. The full build uses 32 parallel jobs; the complete
-63-test CTest suite and the handwritten-source-size gate are run before the
+72-test CTest suite and the handwritten-source-size gate are run before the
 checkpoint is committed.
 
 ## Visual scope
