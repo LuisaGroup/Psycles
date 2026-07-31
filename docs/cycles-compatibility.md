@@ -587,6 +587,18 @@ The versioned `integrator_clamp_direct` probe uses a white emission of 10 and
 Blender direct clamp 2; both Cycles and Luisa/fallback produce linear RGB
 `(2, 2, 2)`, with zero RMSE and maximum absolute error in all recorded passes.
 
+The heterogeneous-volume foundation now includes Cycles' local real/null
+collision measure, exact path-offset hash, depth-seven 128-cubed majorant
+hierarchy reduction, and single-root bitwise hierarchical DDA. The hierarchy
+matches Cycles main `b82c3f0d`: eight siblings are contiguous, subdivision
+uses `range * diagonal * volume_scale > 1.442`, object bounds map to
+`[1, 2)`, and traversal retains the root-extrema tail outside an implicit
+volume bound. Focused fallback, HIP, and Vulkan device regressions cover
+forward/reverse adjacency, parent ascent, root exit, and the outside-root
+path. Cycles' hierarchy extrema come from finite padded Sobol samples; they
+are not claimed as a mathematically guaranteed bound. Runtime majorant
+violations remain explicit.
+
 Adaptive sampling and denoising are exported and diagnosed but are not part of
 the path-integrator estimator. Psycles renders fixed-count, un-denoised linear
 passes; authoritative Cycles differential renders disable both. A connected
@@ -602,8 +614,8 @@ compatible yet:
 
 - Cycles' emitter importance distribution and environment importance map;
 - light-tree construction and traversal;
-- heterogeneous volume majorant construction, octree traversal, and path
-  integration;
+- heterogeneous raw volume-graph extrema evaluation, overlapping-octree
+  reduction, and production path integration;
 - remaining distant-light forward/background behavior;
 - MNEE, path guiding, shadow catcher, light linking, and light groups;
 - Cycles' exact sampling sequence and random dimensions.

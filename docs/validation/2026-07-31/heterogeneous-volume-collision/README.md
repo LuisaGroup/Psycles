@@ -77,9 +77,11 @@ and official Blender/Cycles EXR oracle.
 
 ## Remaining connection
 
-This component deliberately does not invent a density bound. The next
-checkpoint must provide a sound Cycles-compatible majorant hierarchy from raw
-Luisa shader evaluation, then compose traversal, candidate RNG advancement,
-VSPG reservoir selection, phase recovery, and direct-light MIS. Until those
-pieces are present, the existing scene capability diagnostic continues to
-reject heterogeneous volume graphs.
+This component deliberately does not invent a density bound. The subsequent
+majorant-hierarchy checkpoint reproduces Cycles' sampled hierarchy and
+single-root traversal. Its finite shader samples estimate rather than prove a
+bound, while this component keeps the formal violation visible. Raw Luisa
+shader evaluation, overlapping-root reduction, candidate RNG advancement,
+VSPG reservoir selection, phase recovery, and direct-light MIS still have to
+be composed. Until those pieces are present, the existing scene capability
+diagnostic continues to reject heterogeneous volume graphs.

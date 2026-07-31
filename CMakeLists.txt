@@ -180,6 +180,8 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/volume_light_interval.cpp
             src/luisa/volume_guiding.cpp
             src/luisa/stacked_volume.cpp
+            src/luisa/volume_majorant_hierarchy.cpp
+            src/luisa/volume_majorant_traversal.cpp
             src/luisa/volume_phase_set.cpp
             src/luisa/volume_stack.cpp)
         add_library(Psycles::luisa ALIAS psycles_luisa)
@@ -561,6 +563,51 @@ if(PSYCLES_ENABLE_LUISA)
                     NAME psycles.luisa_heterogeneous_volume_vk
                     COMMAND
                         psycles_luisa_heterogeneous_volume_tests
+                        vk)
+            endif()
+
+            add_executable(
+                psycles_luisa_volume_majorant_tests
+                tests/test_luisa_volume_majorant.cpp)
+            target_link_libraries(
+                psycles_luisa_volume_majorant_tests
+                PRIVATE Psycles::luisa)
+            target_compile_features(
+                psycles_luisa_volume_majorant_tests
+                PRIVATE cxx_std_20)
+            set_target_properties(
+                psycles_luisa_volume_majorant_tests
+                PROPERTIES
+                    RUNTIME_OUTPUT_DIRECTORY
+                        "${CMAKE_BINARY_DIR}/bin")
+            if(TARGET luisa-compute-backend-fallback)
+                add_dependencies(
+                    psycles_luisa_volume_majorant_tests
+                    luisa-compute-backend-fallback)
+                add_test(
+                    NAME psycles.luisa_volume_majorant_fallback
+                    COMMAND
+                        psycles_luisa_volume_majorant_tests
+                        fallback)
+            endif()
+            if(TARGET luisa-compute-backend-hip)
+                add_dependencies(
+                    psycles_luisa_volume_majorant_tests
+                    luisa-compute-backend-hip)
+                add_test(
+                    NAME psycles.luisa_volume_majorant_hip
+                    COMMAND
+                        psycles_luisa_volume_majorant_tests
+                        hip)
+            endif()
+            if(TARGET luisa-compute-backend-vk)
+                add_dependencies(
+                    psycles_luisa_volume_majorant_tests
+                    luisa-compute-backend-vk)
+                add_test(
+                    NAME psycles.luisa_volume_majorant_vk
+                    COMMAND
+                        psycles_luisa_volume_majorant_tests
                         vk)
             endif()
 
