@@ -1,6 +1,7 @@
 #include "path_kernel_volume_direct_light.h"
 
 #include "path_kernel_area_light.h"
+#include "path_kernel_volume_mesh_light.h"
 #include "path_kernel_volume_shadow.h"
 
 #include <psycles/luisa/cycles_path_state.h>
@@ -11,9 +12,16 @@
 #include <psycles/sampling/light_distribution.h>
 
 #include <utility>
+#include <vector>
 
 namespace psycles::luisa_backend::detail {
 namespace {
+
+inline constexpr auto analytic_emitter_kind =
+    static_cast<std::uint32_t>(
+        sampling::
+            LightDistributionEmitterKind::
+                analytic_light);
 
 [[nodiscard]] VolumePointLightSampleInput
 volume_point_light_input(
@@ -342,9 +350,18 @@ class AnalyticVolumeDirectionProvider final
                 distance;
         const auto random =
             _event.bounce.light_sample;
+        const auto active =
+            _proposal.valid &
+            (_proposal.emitter_kind ==
+             analytic_emitter_kind);
+        const auto light_index =
+            select(
+                0u,
+                _proposal.emitter_index,
+                active);
         Var<LightGpu> light =
             _config.scene->light_buffer->read(
-                _proposal.light_index);
+                light_index);
         const auto distant =
             light.type ==
             static_cast<std::uint32_t>(
@@ -365,33 +382,33 @@ class AnalyticVolumeDirectionProvider final
             static_cast<std::uint32_t>(
                 contract::LightType::
                     area);
-        $if(_proposal.valid & distant) {
+        $if(active & distant) {
             _sample_distant(
                 light,
-                _proposal.light_index,
+                light_index,
                 random,
                 true);
         }
-        $elif(_proposal.valid & point) {
+        $elif(active & point) {
             _sample_point(
                 light,
-                _proposal.light_index,
+                light_index,
                 position,
                 random,
                 true);
         }
-        $elif(_proposal.valid & spot) {
+        $elif(active & spot) {
             _sample_spot(
                 light,
-                _proposal.light_index,
+                light_index,
                 position,
                 random,
                 true);
         }
-        $elif(_proposal.valid & area) {
+        $elif(active & area) {
             _sample_area(
                 light,
-                _proposal.light_index,
+                light_index,
                 position,
                 random,
                 true);
@@ -403,7 +420,44 @@ class AnalyticVolumeDirectionProvider final
     }
 };
 
-class AnalyticVolumeDirectLightingComponent final
+class CombinedVolumeDirectionProvider final
+    : public VolumeDirectDirectionProvider {
+
+  private:
+    std::vector<std::unique_ptr<
+        VolumeDirectDirectionProvider>>
+        _providers;
+    VolumeDirectLightSample &_result;
+
+  public:
+    CombinedVolumeDirectionProvider(
+        std::vector<std::unique_ptr<
+            VolumeDirectDirectionProvider>>
+            providers,
+        VolumeDirectLightSample
+            &result) noexcept
+        : _providers{
+              std::move(providers)},
+          _result{result} {}
+
+    VolumeDirectDirectionSample emit(
+        Float distance)
+        const noexcept override {
+        for (const auto &provider :
+             _providers) {
+            static_cast<void>(
+                provider->emit(
+                    distance));
+        }
+        return {
+            .direction =
+                _result.direction,
+            .valid =
+                _result.valid};
+    }
+};
+
+class PathVolumeDirectLightingComponent final
     : public VolumeDirectLightingComponent {
 
   private:
@@ -411,6 +465,9 @@ class AnalyticVolumeDirectLightingComponent final
     std::unique_ptr<
         HomogeneousVolumeShadowComponent>
         _volume_shadow;
+    std::unique_ptr<
+        VolumeMeshLightComponent>
+        _mesh_light;
     VolumeAnalyticLightSampling
         _light_sampling;
     AreaLightSampling
@@ -423,7 +480,10 @@ class AnalyticVolumeDirectLightingComponent final
         Float segment_length,
         VolumeDirectLightProposal
             &result) const noexcept {
-        result.light_index = light_index;
+        result.emitter_kind =
+            analytic_emitter_kind;
+        result.emitter_index =
+            light_index;
         result.requested_method =
             volume_sample_distance;
         result.light_position =
@@ -451,7 +511,9 @@ class AnalyticVolumeDirectLightingComponent final
                         segment_position),
                     std::move(random)));
         $if(sample.valid) {
-            result.light_index =
+            result.emitter_kind =
+                analytic_emitter_kind;
+            result.emitter_index =
                 light_index;
             result.requested_method =
                 path_stack.sample_method();
@@ -508,7 +570,9 @@ class AnalyticVolumeDirectLightingComponent final
                      .spot_angle =
                          light.spot_angle});
             $if(interval.valid) {
-                result.light_index =
+                result.emitter_kind =
+                    analytic_emitter_kind;
+                result.emitter_index =
                     light_index;
                 result.requested_method =
                     path_stack
@@ -568,7 +632,9 @@ class AnalyticVolumeDirectLightingComponent final
                           light_flag_ellipse) !=
                          0u});
             $if(interval.valid) {
-                result.light_index =
+                result.emitter_kind =
+                    analytic_emitter_kind;
+                result.emitter_index =
                     light_index;
                 result.requested_method =
                     path_stack
@@ -583,11 +649,14 @@ class AnalyticVolumeDirectLightingComponent final
     }
 
   public:
-    explicit AnalyticVolumeDirectLightingComponent(
+    explicit PathVolumeDirectLightingComponent(
         const PathKernelConfig &config)
         : _config{config},
           _volume_shadow{
               make_homogeneous_volume_shadow_component(
+                  config)},
+          _mesh_light{
+              make_volume_mesh_light_component(
                   config)} {}
 
     VolumeDirectLightProposal propose(
@@ -601,12 +670,11 @@ class AnalyticVolumeDirectLightingComponent final
             event.bounce.selected_light;
         const auto selected_analytic =
             selected.kind ==
-            static_cast<std::uint32_t>(
-                sampling::
-                    LightDistributionEmitterKind::
-                        analytic_light);
+            analytic_emitter_kind;
         VolumeDirectLightProposal result{
-            .light_index = 0u,
+            .emitter_kind =
+                ~0u,
+            .emitter_index = 0u,
             .requested_method =
                 volume_sample_none,
             .light_position =
@@ -695,6 +763,13 @@ class AnalyticVolumeDirectLightingComponent final
                     result);
             };
         };
+        _mesh_light->propose(
+            event,
+            path_stack,
+            segment_position,
+            segment_direction,
+            segment_length,
+            result);
         return result;
     }
 
@@ -708,13 +783,31 @@ class AnalyticVolumeDirectLightingComponent final
         Float3 segment_direction,
         VolumeDirectLightSample &result)
         const override {
+        std::vector<std::unique_ptr<
+            VolumeDirectDirectionProvider>>
+            providers;
+        providers.emplace_back(
+            std::make_unique<
+                AnalyticVolumeDirectionProvider>(
+                    _config,
+                    event,
+                    proposal,
+                    segment_position,
+                    segment_direction,
+                    result));
+        providers.emplace_back(
+            _mesh_light
+                ->make_direction_provider(
+                    event,
+                    proposal,
+                    std::move(
+                        segment_position),
+                    std::move(
+                        segment_direction),
+                    result));
         return std::make_unique<
-            AnalyticVolumeDirectionProvider>(
-                _config,
-                event,
-                proposal,
-                std::move(segment_position),
-                std::move(segment_direction),
+            CombinedVolumeDirectionProvider>(
+                std::move(providers),
                 result);
     }
 
@@ -854,7 +947,7 @@ std::unique_ptr<
 make_volume_direct_lighting_component(
     const PathKernelConfig &config) {
     return std::make_unique<
-        AnalyticVolumeDirectLightingComponent>(
+        PathVolumeDirectLightingComponent>(
         config);
 }
 

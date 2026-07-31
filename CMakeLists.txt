@@ -223,6 +223,7 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/path_kernel_background_event.cpp
             src/luisa/path_kernel_bounce_setup.cpp
             src/luisa/path_kernel_closest_event.cpp
+            src/luisa/path_kernel_emissive_triangle.cpp
             src/luisa/path_kernel_forward_light.cpp
             src/luisa/path_kernel_nee_analytic.cpp
             src/luisa/path_kernel_nee_emissive_mesh.cpp
@@ -236,6 +237,7 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/path_kernel_triangle_primitive.cpp
             src/luisa/path_kernel_volume_boundary.cpp
             src/luisa/path_kernel_volume_direct_light.cpp
+            src/luisa/path_kernel_volume_mesh_light.cpp
             src/luisa/path_kernel_volume_point.cpp
             src/luisa/path_kernel_volume_segment.cpp
             src/luisa/path_kernel_volume_shadow.cpp
@@ -960,6 +962,49 @@ if(PSYCLES_ENABLE_LUISA)
                         NAME psycles.luisa_volume_path_vk
                         COMMAND
                             psycles_luisa_volume_path_tests
+                            vk)
+                endif()
+
+                add_executable(
+                    psycles_luisa_volume_triangle_tests
+                    tests/test_luisa_volume_triangle.cpp)
+                target_link_libraries(
+                    psycles_luisa_volume_triangle_tests
+                    PRIVATE Psycles::luisa_runtime)
+                target_compile_features(
+                    psycles_luisa_volume_triangle_tests
+                    PRIVATE cxx_std_20)
+                add_dependencies(
+                    psycles_luisa_volume_triangle_tests
+                    luisa-compute-backend-fallback)
+                set_target_properties(
+                    psycles_luisa_volume_triangle_tests
+                    PROPERTIES
+                        RUNTIME_OUTPUT_DIRECTORY
+                            "${CMAKE_BINARY_DIR}/bin")
+                add_test(
+                    NAME psycles.luisa_volume_triangle_fallback
+                    COMMAND
+                        psycles_luisa_volume_triangle_tests
+                        fallback)
+                if(TARGET luisa-compute-backend-hip)
+                    add_dependencies(
+                        psycles_luisa_volume_triangle_tests
+                        luisa-compute-backend-hip)
+                    add_test(
+                        NAME psycles.luisa_volume_triangle_hip
+                        COMMAND
+                            psycles_luisa_volume_triangle_tests
+                            hip)
+                endif()
+                if(TARGET luisa-compute-backend-vk)
+                    add_dependencies(
+                        psycles_luisa_volume_triangle_tests
+                        luisa-compute-backend-vk)
+                    add_test(
+                        NAME psycles.luisa_volume_triangle_vk
+                        COMMAND
+                            psycles_luisa_volume_triangle_tests
                             vk)
                 endif()
 

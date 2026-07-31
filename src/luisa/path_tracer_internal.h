@@ -140,6 +140,8 @@ constexpr auto transmission_visibility =
     contract::visibility_bit(RayVisibility::transmission);
 constexpr auto shadow_visibility =
     contract::visibility_bit(RayVisibility::shadow);
+constexpr auto volume_scatter_visibility =
+    contract::visibility_bit(RayVisibility::volume_scatter);
 constexpr std::uint32_t light_flag_normalize = 1u << 0u;
 constexpr std::uint32_t light_flag_ellipse = 1u << 1u;
 constexpr std::uint32_t light_flag_sphere = 1u << 2u;

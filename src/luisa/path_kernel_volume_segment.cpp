@@ -184,7 +184,9 @@ class PathVolumeSegmentStageImpl final
                  flag_terminate) != 0u;
         VolumeDirectLightProposal
             direct_proposal{
-                .light_index = 0u,
+                .emitter_kind =
+                    ~0u,
+                .emitter_index = 0u,
                 .requested_method =
                     volume_sample_none,
                 .light_position =

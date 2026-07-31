@@ -1,7 +1,5 @@
 #include "path_tracer_lighting.h"
 
-#include <psycles/luisa/spherical_geometry.h>
-
 namespace psycles::luisa_backend::detail {
 
 LightTransportCallables make_light_transport_callables(
@@ -207,91 +205,6 @@ LightTransportCallables make_light_transport_callables(
         std::move(light_component_ratio),
         std::move(split_scattered_light),
         std::move(split_nee_light)};
-}
-
-EmissiveTrianglePdfCallable
-make_emissive_triangle_pdf_callable(
-    const std::shared_ptr<LuisaSceneData> &scene) noexcept {
-    return [scene](
-               UInt instance_index,
-               UInt primitive_index,
-               Float3 reference_position,
-               Float3 light_position,
-               Float3 p0,
-               Float3 p1,
-               Float3 p2) noexcept {
-        Bool found = false;
-        UInt emission_sampling =
-            static_cast<std::uint32_t>(
-                contract::EmissionSampling::none);
-        $for (emissive_index,
-              scene->emissive_triangle_count) {
-            Var<EmissiveTriangleGpu> emitter =
-                scene->emissive_triangle_buffer->read(
-                    emissive_index);
-            Bool matches =
-                (emitter.instance_index ==
-                 instance_index) &
-                (emitter.primitive_index ==
-                 primitive_index);
-            emission_sampling = select(
-                emission_sampling,
-                emitter.emission_sampling,
-                matches);
-            found =
-                found |
-                matches;
-        };
-        Float3 edge01 = p1 - p0;
-        Float3 edge02 = p2 - p0;
-        Float3 unnormalized_normal =
-            cross(edge01, edge02);
-        Float doubled_area = sqrt(max(
-            length_squared(unnormalized_normal),
-            0.0f));
-        Float area = 0.5f * doubled_area;
-        auto directional_pdf =
-            spherical_geometry::triangle_directional_pdf(
-                reference_position,
-                light_position,
-                p0,
-                p1,
-                p2);
-        Float3 offset =
-            light_position - reference_position;
-        Float3 wi = offset / sqrt(max(length_squared(offset), 1.0e-20f));
-        Float3 light_normal =
-            unnormalized_normal /
-            max(doubled_area, 1.0e-20f);
-        Float signed_cosine =
-            dot(light_normal, -wi);
-        Bool back_facing = signed_cosine < 0.0f;
-        Bool side_is_sampled =
-            (emission_sampling ==
-             static_cast<std::uint32_t>(
-                 contract::EmissionSampling::automatic)) |
-            (emission_sampling ==
-             static_cast<std::uint32_t>(
-                 contract::EmissionSampling::front_back)) |
-            ((emission_sampling ==
-              static_cast<std::uint32_t>(
-                  contract::EmissionSampling::front)) &
-             !back_facing) |
-            ((emission_sampling ==
-              static_cast<std::uint32_t>(
-                  contract::EmissionSampling::back)) &
-             back_facing);
-        Float pdf =
-            directional_pdf.value *
-            area *
-            scene->triangle_area_pdf;
-        return select(
-            0.0f,
-            pdf,
-            found &
-                side_is_sampled & directional_pdf.valid &
-                (area > 0.0f));
-    };
 }
 
 }// namespace psycles::luisa_backend::detail

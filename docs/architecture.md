@@ -319,19 +319,22 @@ objects. `HomogeneousVolumeScatterProbability` owns the VSPG sampling
 probability without changing transport weights. `VolumeDirectSampling` owns
 the exact Distance/Equiangular/MIS technique algebra, equiangular geometry,
 and power heuristic independently of light shape.
-`AnalyticVolumeDirectLightingComponent` first proposes an emitter and its
-valid ray interval. After the segment component has selected a collision
-distance, a polymorphic `VolumeDirectDirectionProvider` samples that same
-emitter again from the collision point with the original light random
-coordinates. This proposal/re-sample protocol preserves Cycles' coupled RNG
-measure while allowing point, spot, area, triangle, and future light-tree
-implementations to supply geometry without branching the homogeneous
-estimator. The component then owns phase/light MIS, roulette, clamping, and
-pass routing. `HomogeneousVolumeShadowComponent` copies the active volume
-stack and walks ordered closest boundary events to integrate shadow
-transmittance. Surface transparency stays in the shared shadow component.
-These objects are ordinary C++ abstractions while the resulting device work
-remains one fused path kernel.
+`PathVolumeDirectLightingComponent` first asks the selected emitter family
+for a proposal and its valid ray interval. After the segment component has
+selected a collision distance, a polymorphic
+`VolumeDirectDirectionProvider` samples that same emitter again from the
+collision point with the original light random coordinates. Analytic and
+mesh-emitter providers are composed at the host stage and are selected in the
+recorded AST by an explicit emitter kind/index pair. This proposal/re-sample
+protocol preserves Cycles' coupled RNG measure while allowing point, spot,
+area, triangle, and future light-tree implementations to supply geometry
+without branching the homogeneous estimator itself. The component then owns
+phase/light MIS, roulette, clamping, and pass routing.
+`HomogeneousVolumeShadowComponent` copies the active volume stack and walks
+ordered closest boundary events to integrate shadow transmittance. Surface
+transparency stays in the shared shadow component. These objects are ordinary
+C++ abstractions while the resulting device work remains one fused path
+kernel.
 
 `VolumeAnalyticLightSampling` specializes the host-stage point/spot geometry
 contract without duplicating the transport pipeline. In particular, the spot
@@ -342,10 +345,17 @@ proposal, the exact spread-clamped rectangle/circle/ellipse collision
 proposal, and known-hit evaluation. Surface NEE, volume NEE, and analytic
 forward intersections all construct their AST through this object;
 `path_kernel_area_light` maps the shared `LightGpu` flags and axes once.
-`VolumeLightInterval` independently maps the original segment to spot/area
-geometric support. This separation prevents radiometric rejection, proposal
-measure, and interval algebra from becoming emitter-specific branches inside
-the homogeneous estimator.
+`TriangleLightSampling` owns the corresponding three triangle measures:
+area sampling for the volume-segment proposal, position-dependent
+solid-angle/area sampling at the final collision, and known-hit PDF
+evaluation. `EmissiveTriangleComponent` adds instance geometry, Cycles'
+negative-scale orientation convention, side selection, and evaluation of the
+original raw emission closure; surface NEE, forward-hit MIS, and
+`VolumeMeshLightComponent` all construct their AST through that boundary.
+`VolumeLightInterval` independently maps the original segment to spot, area,
+or one-sided triangle geometric support. This separation prevents
+radiometric rejection, proposal measure, and interval algebra from becoming
+emitter-specific branches inside the homogeneous estimator.
 
 Volume-scattering probability guidance is persistent render-session state,
 not path-local policy. The path kernel accumulates Cycles' raw scatter,

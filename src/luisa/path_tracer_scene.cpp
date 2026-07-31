@@ -1492,7 +1492,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             (instance.visibility_mask &
              (diffuse_visibility |
               glossy_visibility |
-              transmission_visibility)) != 0u;
+              transmission_visibility |
+              volume_scatter_visibility)) != 0u;
         if (light_visible) {
             for (std::size_t primitive_index = 0u;
                  primitive_index < geometry.triangles.size();
@@ -1561,7 +1562,15 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                         .emission_sampling =
                             static_cast<std::uint32_t>(
                                 material_emission_sampling
-                                    .at(*material_id))});
+                                    .at(*material_id)),
+                        .visibility_mask =
+                            instance.visibility_mask ==
+                                    ~std::uint32_t{0u}
+                                ? contract::
+                                      all_ray_visibility
+                                : instance
+                                      .visibility_mask,
+                        .padding = 0u});
                 emissive_triangle_areas.emplace_back(
                     world_triangle_area(
                         instance.transform,

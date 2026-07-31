@@ -47,8 +47,10 @@ struct VolumeTriangleIntervalInput {
     luisa::compute::Float3 ray_direction;
     VolumeDirectSampleInterval interval;
     luisa::compute::Float3 plane_point;
-    // Oriented geometric normal after applying the instance transform,
-    // including its determinant sign.
+    // Cycles' authored orientation in world space: transform the local
+    // normal by the inverse transpose. This is equivalent to taking the
+    // transformed-edge cross product and then applying
+    // SD_OBJECT_NEGATIVE_SCALE.
     luisa::compute::Float3 normal;
     luisa::compute::Bool sample_front;
     luisa::compute::Bool sample_back;
