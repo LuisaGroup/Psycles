@@ -171,6 +171,7 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/homogeneous_volume_segment.cpp
             src/luisa/homogeneous_volume_transport.cpp
             src/luisa/volume_scatter_probability.cpp
+            src/luisa/volume_guiding.cpp
             src/luisa/stacked_volume.cpp
             src/luisa/volume_phase_set.cpp
             src/luisa/volume_stack.cpp)
@@ -240,7 +241,8 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/path_tracer_session.cpp
             src/luisa/path_tracer_surfaces.cpp
             src/luisa/path_tracer_volume_capabilities.cpp
-            src/luisa/path_tracer_volume_metadata.cpp)
+            src/luisa/path_tracer_volume_metadata.cpp
+            src/luisa/volume_guiding_filter.cpp)
         add_library(
             Psycles::luisa_runtime
             ALIAS psycles_luisa_runtime)
@@ -503,6 +505,55 @@ if(PSYCLES_ENABLE_LUISA)
                     NAME psycles.luisa_homogeneous_volume_vk
                     COMMAND
                         psycles_luisa_homogeneous_volume_tests
+                        vk)
+            endif()
+
+            add_executable(
+                psycles_luisa_volume_guiding_tests
+                tests/test_luisa_volume_guiding.cpp)
+            target_link_libraries(
+                psycles_luisa_volume_guiding_tests
+                PRIVATE Psycles::luisa_runtime)
+            target_include_directories(
+                psycles_luisa_volume_guiding_tests
+                PRIVATE
+                    "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
+            target_compile_features(
+                psycles_luisa_volume_guiding_tests
+                PRIVATE cxx_std_20)
+            set_target_properties(
+                psycles_luisa_volume_guiding_tests
+                PROPERTIES
+                    RUNTIME_OUTPUT_DIRECTORY
+                        "${CMAKE_BINARY_DIR}/bin")
+            if(TARGET luisa-compute-backend-fallback)
+                add_dependencies(
+                    psycles_luisa_volume_guiding_tests
+                    luisa-compute-backend-fallback)
+                add_test(
+                    NAME psycles.luisa_volume_guiding_fallback
+                    COMMAND
+                        psycles_luisa_volume_guiding_tests
+                        fallback)
+            endif()
+            if(TARGET luisa-compute-backend-hip)
+                add_dependencies(
+                    psycles_luisa_volume_guiding_tests
+                    luisa-compute-backend-hip)
+                add_test(
+                    NAME psycles.luisa_volume_guiding_hip
+                    COMMAND
+                        psycles_luisa_volume_guiding_tests
+                        hip)
+            endif()
+            if(TARGET luisa-compute-backend-vk)
+                add_dependencies(
+                    psycles_luisa_volume_guiding_tests
+                    luisa-compute-backend-vk)
+                add_test(
+                    NAME psycles.luisa_volume_guiding_vk
+                    COMMAND
+                        psycles_luisa_volume_guiding_tests
                         vk)
             endif()
 
