@@ -471,7 +471,18 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                         .cycles_shader_index
                         .value_or(
                             cycles_shader_identity::
-                                invalid_index)});
+                                invalid_index),
+                .material_identity =
+                    static_cast<std::uint32_t>(
+                        data->material_bindings
+                            .size()),
+                .flags =
+                    data->surfaces
+                            .capabilities(
+                                surface_iter->second)
+                            .may_have_volume
+                        ? material_flag_has_volume
+                        : 0u});
         const auto &program = *material.surface_program();
         const auto scalar_parameter =
             [&](compiler::ValueExpressionId expression)

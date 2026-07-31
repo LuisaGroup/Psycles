@@ -152,6 +152,11 @@ struct MaterialBinding {
     std::uint32_t parameter_block{};
     std::uint32_t cycles_shader_index{
         ~std::uint32_t{0u}};
+    // Stable path-stack fallback for renderer-neutral scenes which do not
+    // carry Blender's exact Cycles shader index.
+    std::uint32_t material_identity{
+        ~std::uint32_t{0u}};
+    std::uint32_t flags{};
 };
 
 struct NishitaTextureBinding {

@@ -1,23 +1,30 @@
 #include "path_kernel_triangle_geometry.h"
 
+#include <utility>
+
 namespace psycles::luisa_backend::detail {
 namespace {
 
 class BindlessTriangleGeometryComponent final
     : public TriangleGeometryComponent {
 
+  private:
+    std::shared_ptr<const TrianglePrimitiveComponent>
+        _primitive{
+            make_triangle_primitive_component()};
+
 public:
     TriangleGeometryContext emit(
         const std::shared_ptr<LuisaSceneData> &scene,
-        Expr<std::uint32_t> geometry_index,
+        Expr<std::uint32_t> instance_id,
         Expr<std::uint32_t> primitive_index)
         const noexcept override {
-        Var<GeometryGpu> geometry =
-            scene->geometry_buffer->read(geometry_index);
-        Var<Triangle> triangle =
-            scene->heap
-                ->buffer<Triangle>(geometry.bindless_base)
-                .read(primitive_index);
+        auto primitive = _primitive->emit(
+            scene,
+            instance_id,
+            primitive_index);
+        auto &geometry = primitive.geometry;
+        auto &triangle = primitive.triangle;
         const auto corner = primitive_index * 3u;
         const auto attribute_index =
             [&](UInt point_index,
@@ -69,8 +76,7 @@ public:
             scene->heap->buffer<luisa::float4>(
                 geometry.bindless_base + 7u);
         return {
-            .geometry = geometry,
-            .triangle = triangle,
+            .primitive = std::move(primitive),
             .p0 = positions.read(triangle.i0),
             .p1 = positions.read(triangle.i1),
             .p2 = positions.read(triangle.i2),
@@ -86,21 +92,11 @@ public:
             .generated0 = generated.read(generated_i0),
             .generated1 = generated.read(generated_i1),
             .generated2 = generated.read(generated_i2),
-            .material_slot =
-                scene->heap
-                    ->buffer<luisa::uint>(
-                        geometry.bindless_base + 4u)
-                    .read(primitive_index),
             .random_per_island =
                 scene->heap
                     ->buffer<float>(
                         geometry.bindless_base + 6u)
-                    .read(primitive_index),
-            .smooth =
-                scene->heap
-                    ->buffer<luisa::uint>(
-                        geometry.bindless_base + 8u)
-                    .read(primitive_index) != 0u};
+                    .read(primitive_index)};
     }
 };
 

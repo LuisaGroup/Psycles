@@ -9,7 +9,9 @@ namespace psycles::luisa_backend::detail {
         .parameter_block = binding.parameter_block,
         .cycles_shader_index =
             binding.cycles_shader_index,
-        .padding = 0u};
+        .material_identity =
+            binding.material_identity,
+        .flags = binding.flags};
 }
 
 [[nodiscard]] Var<ShaderEvaluationStateCall>

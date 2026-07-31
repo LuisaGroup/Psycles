@@ -1,14 +1,13 @@
 #pragma once
 
-#include "path_tracer_internal.h"
+#include "path_kernel_triangle_primitive.h"
 
 #include <memory>
 
 namespace psycles::luisa_backend::detail {
 
 struct TriangleGeometryContext {
-    Var<GeometryGpu> geometry;
-    Var<Triangle> triangle;
+    TrianglePrimitiveContext primitive;
     Float3 p0;
     Float3 p1;
     Float3 p2;
@@ -24,9 +23,7 @@ struct TriangleGeometryContext {
     Float3 generated0;
     Float3 generated1;
     Float3 generated2;
-    UInt material_slot;
     Float random_per_island;
-    Bool smooth;
 };
 
 class TriangleGeometryComponent {
@@ -36,7 +33,7 @@ public:
 
     [[nodiscard]] virtual TriangleGeometryContext emit(
         const std::shared_ptr<LuisaSceneData> &scene,
-        Expr<std::uint32_t> geometry_index,
+        Expr<std::uint32_t> instance_id,
         Expr<std::uint32_t> primitive_index)
         const noexcept = 0;
 };

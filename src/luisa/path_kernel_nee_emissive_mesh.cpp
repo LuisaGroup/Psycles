@@ -85,8 +85,10 @@ private:
             auto light_attributes =
                 _triangle_geometry->emit(
                     scene,
-                    emitter.geometry_index,
+                    emitter.instance_index,
                     emitter.primitive_index);
+            auto &light_primitive =
+                light_attributes.primitive;
             auto &lp0 = light_attributes.p0;
             auto &lp1 = light_attributes.p1;
             auto &lp2 = light_attributes.p2;
@@ -110,8 +112,8 @@ private:
                 light_attributes.generated2;
             auto &light_random_per_island =
                 light_attributes.random_per_island;
-            Var<InstanceGpu> light_instance =
-                scene->instance_buffer->read(emitter.instance_index);
+            auto &light_instance =
+                light_primitive.instance;
             Float3 local_lp0 = lp0;
             Float3 local_lp1 = lp1;
             Float3 local_lp2 = lp2;
@@ -138,7 +140,7 @@ private:
                 light_object_geometric_normal,
                 triangle_interpolate(
                     light_barycentric, ln0, ln1, ln2),
-                light_attributes.smooth);
+                light_primitive.smooth);
             Float4 light_object_tangent =
                 triangle_interpolate(light_barycentric,
                                      light_tangent0,

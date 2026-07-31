@@ -37,16 +37,15 @@ make_evaluate_shadow_surface_callable(
                 scene->attribute_range_slot,
                 scene->nishita_texture_bindings,
                 scene->shader_color_space};
-                                Var<InstanceGpu> instance =
-                                    scene->instance_buffer->read(
-                                        hit->inst);
                                 auto attributes =
                                     triangle_geometry->emit(
                                         scene,
-                                        instance.geometry_index,
+                                        hit->inst,
                                         hit->prim);
-                                auto &geometry =
-                                    attributes.geometry;
+                                auto &primitive =
+                                    attributes.primitive;
+                                auto &instance =
+                                    primitive.instance;
                                 auto &p0 = attributes.p0;
                                 auto &p1 = attributes.p1;
                                 auto &p2 = attributes.p2;
@@ -70,8 +69,6 @@ make_evaluate_shadow_surface_callable(
                                     attributes.generated2;
                                 auto &random_per_island =
                                     attributes.random_per_island;
-                                auto &material_slot =
-                                    attributes.material_slot;
 
                                 auto object_to_world =
                                     scene->accel
@@ -119,7 +116,7 @@ make_evaluate_shadow_surface_callable(
                                             n0,
                                             n1,
                                             n2),
-                                        attributes.smooth);
+                                        primitive.smooth);
                                 Float4 object_tangent =
                                     triangle_interpolate(
                                         hit->bary,
@@ -176,29 +173,9 @@ make_evaluate_shadow_surface_callable(
                                                 1.0f,
                                                 0.0f,
                                                 0.0f)));
-                                Var<MaterialBindingGpu>
-                                    material_binding =
-                                    scene
-                                        ->geometry_material_buffer
-                                        ->read(
-                                            geometry.material_offset +
-                                            min(
-                                                material_slot,
-                                                max(
-                                                    geometry
-                                                        .material_count,
-                                                    1u) -
-                                                    1u));
-                                $if (material_slot <
-                                     instance.override_count) {
-                                    material_binding =
-                                        scene
-                                            ->override_material_buffer
-                                            ->read(
-                                                instance
-                                                    .override_offset +
-                                                material_slot);
-                                };
+                                auto &material_binding =
+                                    primitive
+                                        .material_binding;
                                 UInt surface_tag =
                                     material_binding
                                         .surface_tag;

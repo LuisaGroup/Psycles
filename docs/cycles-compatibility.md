@@ -51,9 +51,14 @@ instead of flattening every corner into a synthetic vertex:
 The exporter writes actual shared triangle indices. Luisa uploads every
 attribute once at its natural cardinality, and a common shader-service lookup
 maps `(primitive, barycentric, domain)` to the same point/corner/face elements
-used by Cycles. Surface, emissive-mesh, and transparent-shadow paths share one
-host-stage triangle-geometry component, so the contract cannot silently drift
-between path estimators.
+used by Cycles. A lower-level host-stage triangle-primitive component resolves
+face material slots, instance overrides, smooth flags, exact Cycles
+shader/object identities, and the graph-derived volume capability bit.
+Surface, emissive-mesh, transparent-shadow, and the pending volume-only
+traversal then share that primitive boundary and one triangle-geometry
+component, so resource or material semantics cannot silently drift between
+path estimators. Its material/override and volume-entry records pass on Luisa
+fallback, HIP, and Vulkan.
 
 The historical v1 reader remains available only to make same-binary
 regression comparisons possible. Production exports use v2. The full
