@@ -151,24 +151,31 @@ handles required to evaluate each medium without changing Cycles identity
 semantics.
 
 The camera traversal itself is now a separate OOP host-stage component rather
-than a synthetic stack test. A 10-record fixture builds real triangle BLASes
+than a synthetic stack test. A 13-record fixture builds real triangle BLASes
 and a TLAS, filters a nearer non-volume primitive in any-hit, distinguishes
 open enclosing media from a closed entered/exited object, seeds the exact
 world `(object, shader)` entry, advances with Cycles'
 `intersection_t_offset`, and checks front/back orientation under a
-negative-scale instance. It passes on fallback, HIP, and Vulkan. This exposed
-a general Luisa fallback defect: shader arguments submitted after an
-asynchronous TLAS build captured the pre-build instance-array pointer. Luisa
-`next` commit `c55b8d57b` replaces that snapshot with a stable descriptor
-indirection, bumps the fallback shader-cache ABI, and adds a same-stream
-trace/visibility/user-id/transform regression.
+negative-scale instance. The same fixture now constructs the real move-only
+per-sample state twice: one sample performs the enclosure probe and a second
+uses the background-only fast path. Their independent counts and terminators
+prove that sample-local stacks neither alias nor leak state. It passes on
+fallback, HIP, and Vulkan. This exposed a general Luisa fallback defect:
+shader arguments submitted after an asynchronous TLAS build captured the
+pre-build instance-array pointer. Luisa `next` commit `c55b8d57b` replaces
+that snapshot with a stable descriptor indirection, bumps the fallback
+shader-cache ABI, and adds a same-stream trace/visibility/user-id/transform
+regression.
 The implementation and focused evidence are recorded in
 [`validation/2026-07-31/camera-volume-stack`](validation/2026-07-31/camera-volume-stack/README.md).
 
-The camera component is not yet installed in the main per-sample path state.
-Surface-boundary hookup, stacked-medium evaluation, free-flight integration,
-heterogeneous grids, and volume direct lighting remain open, so the four
-Blender volume nodes remain unverified in the public node matrix.
+The camera component is installed in the main per-sample path state together
+with Cycles' zero-initialized volume-bounce, volume-bounds-bounce, and optical
+depth fields. Host specialization emits no volume locals or ray query for
+volume-free scenes. Surface-boundary hookup, stacked-medium evaluation,
+free-flight integration, heterogeneous grids, and volume direct lighting
+remain open, so scene compilation still release-gates volume materials and
+the four Blender volume nodes remain unverified in the public node matrix.
 
 World volume identity is now complete in scene schema v2: the exporter retains
 Cycles' background-light object index separately from the default-background

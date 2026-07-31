@@ -221,6 +221,7 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/path_kernel_triangle_geometry.cpp
             src/luisa/path_kernel_triangle_primitive.cpp
             src/luisa/path_kernel_volume_boundary.cpp
+            src/luisa/path_kernel_volume_state.cpp
             src/luisa/path_tracer_kernel.cpp
             src/luisa/path_tracer_light_distribution.cpp
             src/luisa/path_tracer_lighting.cpp

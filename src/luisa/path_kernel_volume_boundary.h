@@ -48,6 +48,13 @@ class CameraVolumeStackComponent {
     virtual ~CameraVolumeStackComponent() noexcept =
         default;
 
+    // Cycles seeds every volume-enabled path with the world medium, even
+    // when the camera view plane cannot overlap an object volume and the
+    // enclosure probe can be skipped.
+    virtual void initialize_background(
+        const std::shared_ptr<LuisaSceneData> &scene,
+        VolumeStack &stack) const noexcept = 0;
+
     [[nodiscard]]
     virtual CameraVolumeStackInitialization
     initialize(

@@ -391,6 +391,21 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
     UInt path_flags = initial_cycles_path_state.flag;
     UInt cycles_path_visibility = initial_cycles_path_state.visibility;
     UInt cycles_rng_offset = initial_cycles_path_state.rng_offset;
+    auto volume =
+        make_disabled_path_volume_state();
+    if (config.volume_state) {
+        volume =
+            config.volume_state->initialize(
+                config.scene,
+                ray->origin(),
+                ray_visibility,
+                config.volume_stack_size,
+                config
+                    .camera_may_be_inside_volume);
+    }
+    UInt volume_bounce = 0u;
+    UInt volume_bounds_bounce = 0u;
+    Float optical_depth = 0.0f;
     Bool terminate_after_transparent = false;
     Bool terminate_on_next_surface = false;
     return {invocation,
@@ -438,6 +453,10 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
             std::move(path_flags),
             std::move(cycles_path_visibility),
             std::move(cycles_rng_offset),
+            std::move(volume),
+            std::move(volume_bounce),
+            std::move(volume_bounds_bounce),
+            std::move(optical_depth),
             std::move(terminate_after_transparent),
             std::move(terminate_on_next_surface)};
 }

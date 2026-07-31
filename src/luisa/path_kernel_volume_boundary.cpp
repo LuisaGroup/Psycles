@@ -151,6 +151,12 @@ class CameraVolumeStackComponentImpl final
             boundary) noexcept
         : _boundary{std::move(boundary)} {}
 
+    void initialize_background(
+        const std::shared_ptr<LuisaSceneData> &scene,
+        VolumeStack &stack) const noexcept override {
+        _initialize_background(scene, stack);
+    }
+
     CameraVolumeStackInitialization
     initialize(
         const std::shared_ptr<LuisaSceneData> &scene,
