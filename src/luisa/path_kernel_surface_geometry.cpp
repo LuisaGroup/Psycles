@@ -1,8 +1,6 @@
 #include "path_kernel_builder.h"
 #include "path_kernel_triangle_geometry.h"
 
-#include "cycles_shader_identity.h"
-
 #include <utility>
 
 namespace psycles::luisa_backend::detail {
@@ -47,13 +45,14 @@ private:
                                           const SurfacePoint &point) noexcept {
             return invocation.surface_shading_normal(surface_tag, point);
         };
-        Var<InstanceGpu> instance = scene->instance_buffer->read(hit->inst);
         auto triangle_attributes =
             _triangle_geometry->emit(
                 scene,
-                instance.geometry_index,
+                hit->inst,
                 hit->prim);
-        auto &geometry = triangle_attributes.geometry;
+        auto &primitive =
+            triangle_attributes.primitive;
+        auto &instance = primitive.instance;
         auto &p0 = triangle_attributes.p0;
         auto &p1 = triangle_attributes.p1;
         auto &p2 = triangle_attributes.p2;
@@ -71,10 +70,8 @@ private:
         auto &generated2 = triangle_attributes.generated2;
         auto &random_per_island =
             triangle_attributes.random_per_island;
-        auto &material_slot =
-            triangle_attributes.material_slot;
         auto &triangle_smooth =
-            triangle_attributes.smooth;
+            primitive.smooth;
 
         auto object_to_world = scene->accel->instance_transform(hit->inst);
         auto world_to_object = inverse(object_to_world);
@@ -181,24 +178,13 @@ private:
         Float2 uv_dy =
             (uv1 - uv0) * barycentric_dy.x + (uv2 - uv0) * barycentric_dy.y;
 
-        Var<MaterialBindingGpu> material_binding =
-            scene->geometry_material_buffer->read(
-                geometry.material_offset +
-                min(material_slot, max(geometry.material_count, 1u) - 1u));
-        $if(material_slot < instance.override_count) {
-            material_binding = scene->override_material_buffer->read(
-                instance.override_offset + material_slot);
-        };
+        auto &material_binding =
+            primitive.material_binding;
         UInt surface_tag = material_binding.surface_tag;
         UInt cycles_surface_shader =
-            material_binding.cycles_shader_index |
-            cycles_shader_identity::cast_shadow |
-            select(0u, cycles_shader_identity::smooth_normal, triangle_smooth);
+            primitive.cycles_surface_shader;
         UInt cycles_object_index =
-            select(hit->inst,
-                   instance.cycles_object_index,
-                   instance.cycles_object_index !=
-                       cycles_shader_identity::invalid_index);
+            primitive.cycles_object_index;
 
         SurfacePoint point{
             .position = hit_position,

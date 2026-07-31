@@ -38,11 +38,15 @@ struct InstanceGpu {
     std::int32_t cycles_light_group{};
 };
 
+inline constexpr std::uint32_t material_flag_has_volume =
+    1u << 0u;
+
 struct MaterialBindingGpu {
     luisa::uint surface_tag{};
     luisa::uint parameter_block{};
     luisa::uint cycles_shader_index{};
-    luisa::uint padding{};
+    luisa::uint material_identity{};
+    luisa::uint flags{};
 };
 
 struct LightGpu {
@@ -294,7 +298,8 @@ LUISA_STRUCT(
     surface_tag,
     parameter_block,
     cycles_shader_index,
-    padding) {};
+    material_identity,
+    flags) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::LightGpu,
     type,

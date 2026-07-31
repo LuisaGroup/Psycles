@@ -229,14 +229,21 @@ construction order, and the original Cycles RNG-dimension order. A new
 transport feature extends a component or a typed context instead of relying
 on textual inclusion into another function's lexical scope.
 
-Triangle reconstruction is itself a host-stage component.
-`TriangleGeometryComponent` emits the bindless reads and domain-index
-selection once while Luisa records the kernel. Closest-hit shading,
-emissive-mesh evaluation, and transparent-shadow evaluation depend on that
-interface rather than duplicating resource-slot arithmetic. Generic named
-attributes use the same domain model through `ShaderServices`; individual
-shader nodes never decide whether an attribute index is a point, corner, or
-face index.
+Triangle reconstruction is a pair of composable host-stage components.
+`TrianglePrimitiveComponent` is the shared semantic boundary for instance and
+geometry lookup, face material selection, instance overrides, smooth flags,
+Cycles shader/object identity, and material capability bits. It produces the
+same `VolumeStackEntry` identity that camera and path boundary traversal
+consume. Exact exported Cycles shader indices take precedence; a stable
+per-scene material identity keeps renderer-neutral contract scenes usable when
+that optional diagnostic identity is absent. `TriangleGeometryComponent`
+builds on the primitive component and emits the remaining bindless attribute
+reads and domain-index selection once while Luisa records the kernel.
+Closest-hit shading, emissive-mesh evaluation, and transparent-shadow
+evaluation depend on these interfaces rather than duplicating resource-slot
+arithmetic. Generic named attributes use the same domain model through
+`ShaderServices`; individual shader nodes never decide whether an attribute
+index is a point, corner, or face index.
 
 ### Cycles differential contract
 
