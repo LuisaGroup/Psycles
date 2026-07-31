@@ -166,11 +166,16 @@ swap the last active entry into the removed slot, and updates are gated by
 volume capability plus a transmitted surface label. The same component owns
 the extra Psycles dispatch handles needed to evaluate the original volume
 graph; those handles do not replace Cycles identity. Camera enclosure discovery
-is a separate host-stage `VolumeStackCameraInitializer`: it models Cycles'
-bounded +Z probe, including object-only membership tests and duplicate
-front-hit accounting. Camera traversal and free-flight integration consume
-these components in later path-kernel slices rather than duplicating their
-state rules.
+is split between two host-stage components. `TriangleVolumeBoundaryComponent`
+reuses `TrianglePrimitiveComponent` for exact material/object identity and
+reconstructs only the geometric normal needed for front/back classification.
+`CameraVolumeStackComponent` performs Cycles' bounded +Z TLAS probe with
+volume-only any-hit filtering, exact primitive self identity, the one-ULP
+intersection offset, object-only membership tests, and duplicate front-hit
+accounting. `VolumeStackCameraInitializer` remains the storage-independent
+state machine beneath that traversal. The main path state and free-flight
+stages consume these components in later path-kernel slices rather than
+duplicating their rules.
 
 The world entry is not identified by its shader alone. BlenderSync creates a
 background-light object and Cycles stores that object's index beside the world

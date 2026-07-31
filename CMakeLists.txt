@@ -220,6 +220,7 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/path_kernel_surface_shading.cpp
             src/luisa/path_kernel_triangle_geometry.cpp
             src/luisa/path_kernel_triangle_primitive.cpp
+            src/luisa/path_kernel_volume_boundary.cpp
             src/luisa/path_tracer_kernel.cpp
             src/luisa/path_tracer_light_distribution.cpp
             src/luisa/path_tracer_lighting.cpp
@@ -492,6 +493,55 @@ if(PSYCLES_ENABLE_LUISA)
                     NAME psycles.luisa_triangle_primitive_vk
                     COMMAND
                         psycles_luisa_triangle_primitive_tests
+                        vk)
+            endif()
+
+            add_executable(
+                psycles_luisa_camera_volume_stack_tests
+                tests/test_luisa_camera_volume_stack.cpp)
+            target_link_libraries(
+                psycles_luisa_camera_volume_stack_tests
+                PRIVATE Psycles::luisa_runtime)
+            target_include_directories(
+                psycles_luisa_camera_volume_stack_tests
+                PRIVATE
+                    "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
+            target_compile_features(
+                psycles_luisa_camera_volume_stack_tests
+                PRIVATE cxx_std_20)
+            set_target_properties(
+                psycles_luisa_camera_volume_stack_tests
+                PROPERTIES
+                    RUNTIME_OUTPUT_DIRECTORY
+                        "${CMAKE_BINARY_DIR}/bin")
+            if(TARGET luisa-compute-backend-fallback)
+                add_dependencies(
+                    psycles_luisa_camera_volume_stack_tests
+                    luisa-compute-backend-fallback)
+                add_test(
+                    NAME psycles.luisa_camera_volume_stack_fallback
+                    COMMAND
+                        psycles_luisa_camera_volume_stack_tests
+                        fallback)
+            endif()
+            if(TARGET luisa-compute-backend-hip)
+                add_dependencies(
+                    psycles_luisa_camera_volume_stack_tests
+                    luisa-compute-backend-hip)
+                add_test(
+                    NAME psycles.luisa_camera_volume_stack_hip
+                    COMMAND
+                        psycles_luisa_camera_volume_stack_tests
+                        hip)
+            endif()
+            if(TARGET luisa-compute-backend-vk)
+                add_dependencies(
+                    psycles_luisa_camera_volume_stack_tests
+                    luisa-compute-backend-vk)
+                add_test(
+                    NAME psycles.luisa_camera_volume_stack_vk
+                    COMMAND
+                        psycles_luisa_camera_volume_stack_tests
                         vk)
             endif()
 
