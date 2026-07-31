@@ -645,4 +645,41 @@ VolumeLightInterval::area(
             positive_side.valid};
 }
 
+VolumeLightIntervalResult
+VolumeLightInterval::triangle(
+    const VolumeTriangleIntervalInput
+        &input) const noexcept {
+    const auto samples_both =
+        input.sample_front &
+        input.sample_back;
+    const auto samples_one =
+        input.sample_front ^
+        input.sample_back;
+    const auto oriented_normal =
+        select(
+            -input.normal,
+            input.normal,
+            input.sample_front);
+    const auto clipped =
+        intersect_plane(
+            oriented_normal,
+            input.ray_origin -
+                input.plane_point,
+            input.ray_direction,
+            input.interval);
+    return {
+        .interval =
+            select_interval(
+                clipped.interval,
+                input.interval,
+                samples_both),
+        .valid =
+            select(
+                clipped.valid &
+                    samples_one,
+                input.interval.minimum <
+                    input.interval.maximum,
+                samples_both)};
+}
+
 }// namespace psycles::luisa_backend

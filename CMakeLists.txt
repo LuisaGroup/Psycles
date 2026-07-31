@@ -173,6 +173,7 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/volume_scatter_probability.cpp
             src/luisa/volume_direct_sampling.cpp
             src/luisa/area_light_sampling.cpp
+            src/luisa/triangle_light_sampling.cpp
             src/luisa/path_kernel_area_light.cpp
             src/luisa/volume_analytic_light_sampling.cpp
             src/luisa/volume_light_interval.cpp
@@ -789,6 +790,69 @@ if(PSYCLES_ENABLE_LUISA)
                     COMMAND
                         psycles_luisa_spherical_geometry_tests
                         fallback)
+                if(TARGET luisa-compute-backend-hip)
+                    add_dependencies(
+                        psycles_luisa_spherical_geometry_tests
+                        luisa-compute-backend-hip)
+                    add_test(
+                        NAME psycles.luisa_spherical_geometry_hip
+                        COMMAND
+                            psycles_luisa_spherical_geometry_tests
+                            hip)
+                endif()
+                if(TARGET luisa-compute-backend-vk)
+                    add_dependencies(
+                        psycles_luisa_spherical_geometry_tests
+                        luisa-compute-backend-vk)
+                    add_test(
+                        NAME psycles.luisa_spherical_geometry_vk
+                        COMMAND
+                            psycles_luisa_spherical_geometry_tests
+                            vk)
+                endif()
+
+                add_executable(
+                    psycles_luisa_triangle_light_sampling_tests
+                    tests/test_luisa_triangle_light_sampling.cpp)
+                target_link_libraries(
+                    psycles_luisa_triangle_light_sampling_tests
+                    PRIVATE Psycles::luisa)
+                target_compile_features(
+                    psycles_luisa_triangle_light_sampling_tests
+                    PRIVATE cxx_std_20)
+                add_dependencies(
+                    psycles_luisa_triangle_light_sampling_tests
+                    luisa-compute-backend-fallback)
+                set_target_properties(
+                    psycles_luisa_triangle_light_sampling_tests
+                    PROPERTIES
+                        RUNTIME_OUTPUT_DIRECTORY
+                            "${CMAKE_BINARY_DIR}/bin")
+                add_test(
+                    NAME psycles.luisa_triangle_light_sampling_fallback
+                    COMMAND
+                        psycles_luisa_triangle_light_sampling_tests
+                        fallback)
+                if(TARGET luisa-compute-backend-hip)
+                    add_dependencies(
+                        psycles_luisa_triangle_light_sampling_tests
+                        luisa-compute-backend-hip)
+                    add_test(
+                        NAME psycles.luisa_triangle_light_sampling_hip
+                        COMMAND
+                            psycles_luisa_triangle_light_sampling_tests
+                            hip)
+                endif()
+                if(TARGET luisa-compute-backend-vk)
+                    add_dependencies(
+                        psycles_luisa_triangle_light_sampling_tests
+                        luisa-compute-backend-vk)
+                    add_test(
+                        NAME psycles.luisa_triangle_light_sampling_vk
+                        COMMAND
+                            psycles_luisa_triangle_light_sampling_tests
+                            vk)
+                endif()
 
                 add_executable(
                     psycles_luisa_analytic_light_sampling_tests

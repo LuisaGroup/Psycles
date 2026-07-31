@@ -42,6 +42,18 @@ struct VolumeAreaIntervalInput {
     luisa::compute::Bool ellipse;
 };
 
+struct VolumeTriangleIntervalInput {
+    luisa::compute::Float3 ray_origin;
+    luisa::compute::Float3 ray_direction;
+    VolumeDirectSampleInterval interval;
+    luisa::compute::Float3 plane_point;
+    // Oriented geometric normal after applying the instance transform,
+    // including its determinant sign.
+    luisa::compute::Float3 normal;
+    luisa::compute::Bool sample_front;
+    luisa::compute::Bool sample_back;
+};
+
 // Host-stage Luisa AST component for Cycles' volume_valid_direct_ray_segment
 // geometry. It clips one closed ray interval to the region that can receive
 // energy from a selected finite emitter. Sampling and radiometric evaluation
@@ -54,6 +66,9 @@ class VolumeLightInterval {
 
     [[nodiscard]] VolumeLightIntervalResult area(
         const VolumeAreaIntervalInput &input) const noexcept;
+
+    [[nodiscard]] VolumeLightIntervalResult triangle(
+        const VolumeTriangleIntervalInput &input) const noexcept;
 };
 
 }// namespace psycles::luisa_backend
