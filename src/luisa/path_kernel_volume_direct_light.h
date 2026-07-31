@@ -20,7 +20,8 @@ struct VolumeDirectLightSample {
 };
 
 struct VolumeDirectLightProposal {
-    UInt light_index;
+    UInt emitter_kind;
+    UInt emitter_index;
     UInt requested_method;
     Float3 light_position;
     VolumeDirectSampleInterval interval;

@@ -89,6 +89,8 @@ struct EmissiveTriangleGpu {
     luisa::uint surface_tag{};
     luisa::uint parameter_block{};
     luisa::uint emission_sampling{};
+    luisa::uint visibility_mask{};
+    luisa::uint padding{};
 };
 
 struct LightDistributionGpu {
@@ -342,7 +344,9 @@ LUISA_STRUCT(
     primitive_index,
     surface_tag,
     parameter_block,
-    emission_sampling) {};
+    emission_sampling,
+    visibility_mask,
+    padding) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::LightDistributionGpu,
     cumulative,

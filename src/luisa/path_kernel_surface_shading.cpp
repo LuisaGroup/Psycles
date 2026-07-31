@@ -1,4 +1,5 @@
 #include "path_kernel_builder.h"
+#include "path_kernel_emissive_triangle.h"
 
 #include <utility>
 
@@ -6,6 +7,12 @@ namespace psycles::luisa_backend::detail {
 namespace {
 
 class SurfaceShadingStageImpl final : public SurfaceShadingStage {
+
+  private:
+    std::shared_ptr<
+        const EmissiveTriangleComponent>
+        _emissive_triangle{
+            make_emissive_triangle_component()};
 
   public:
     SurfaceShadingState
@@ -53,7 +60,6 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         auto &sample_transmission_color = sample.sample_transmission_color;
         auto &sample_normal = sample.sample_normal;
         auto &primary_recorded = sample.primary_recorded;
-        const auto &emissive_triangle_pdf = config.emissive_triangle_pdf;
         const auto &forward_light_weight =
             config.light_transport.forward_light_weight;
         const auto next_event_estimation = config.next_event_estimation;
@@ -97,13 +103,24 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         Float emission_weight = 1.0f;
         if (next_event_estimation && scene->emissive_triangle_count > 0u) {
             Bool competing = (path_depth > 0u) & (!previous_delta);
-            Float light_pdf = emissive_triangle_pdf(hit->inst,
-                                                    hit->prim,
-                                                    ray->origin(),
-                                                    hit_position,
-                                                    wp0,
-                                                    wp1,
-                                                    wp2);
+            const auto oriented_geometric_normal =
+                select(
+                    point.geometric_normal,
+                    -point.geometric_normal,
+                    point.back_facing);
+            const auto light_pdf =
+                _emissive_triangle
+                    ->from_intersection(
+                        scene,
+                        hit->inst,
+                        hit->prim,
+                        ray->origin(),
+                        hit_position,
+                        wp0,
+                        wp1,
+                        wp2,
+                        oriented_geometric_normal)
+                    .value;
             emission_weight = forward_light_weight(
                 previous_bsdf_pdf, light_pdf, competing, light_pdf > 0.0f);
         }

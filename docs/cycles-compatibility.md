@@ -264,8 +264,20 @@ shared forward-hit evaluation. Full and narrow-spread official CPU EXRs match
 fallback, HIP, and Vulkan with maximum absolute error at or below
 `1.1027e-6`. Reports, EXRs, and inspected triptychs are in
 [`validation/2026-07-31/homogeneous-volume-area-mis`](validation/2026-07-31/homogeneous-volume-area-mis/README.md).
-Triangle sampling, environment volume NEE, and heterogeneous transport remain
-separate work.
+Mesh-emitter volume MIS now uses Cycles' distinct
+`triangle_light_sample<true>` segment-area proposal and
+`triangle_light_sample<false>` collision-position measure. A shared
+host-stage component also owns surface NEE and forward-hit PDF evaluation,
+raw emission-closure evaluation, authored front/back support, and the
+inverse-transpose orientation equivalent to Cycles'
+`SD_OBJECT_NEGATIVE_SCALE` correction. The latest official Cycles main
+`b82c3f0d` 4×4 one-sample CPU EXR uses a reflected FRONT-only emitter and
+matches fallback/HIP/Vulkan with maximum absolute errors
+`6.5565e-7`, `6.4820e-7`, and `2.3451e-6`. A second production render pins
+Volume Scatter visibility exclusion. Reports, EXRs, and inspected triptychs
+are in
+[`validation/2026-07-31/homogeneous-volume-triangle-mis`](validation/2026-07-31/homogeneous-volume-triangle-mis/README.md).
+Environment volume NEE and heterogeneous transport remain separate work.
 
 Accumulated VSPG history is now connected end to end. The production path
 classifies every Combined contribution into Cycles' raw scatter/transmit
@@ -544,6 +556,10 @@ volume area-light NEE now use the same spread-clamped Cycles component; the
 RMSE at or below `1.60e-6` against Blender/Cycles main `b82c3f0d`. The reports
 and inspected triptychs are in
 [`validation/2026-07-31/surface-area-light-mis`](validation/2026-07-31/surface-area-light-mis/README.md).
+Surface and volume mesh-light NEE plus emissive forward-hit MIS now use the
+same triangle geometry, position-dependent sampling measure, side selection,
+and raw closure-evaluation component. The volume fixture above additionally
+pins its segment-only area proposal and one-sided plane interval.
 When the light tree is disabled, the Luisa NEE path applies Cycles'
 `film_exposure / light_sampling_threshold` roulette to the unshadowed light
 sample and compensates surviving samples by the reciprocal probability.
@@ -566,7 +582,7 @@ compatible yet:
 
 - Cycles' emitter importance distribution and environment importance map;
 - light-tree construction and traversal;
-- triangle/environment volume NEE and heterogeneous grid integration;
+- environment volume NEE and heterogeneous grid integration;
 - remaining distant-light forward/background behavior;
 - MNEE, path guiding, shadow catcher, light linking, and light groups;
 - Cycles' exact sampling sequence and random dimensions.

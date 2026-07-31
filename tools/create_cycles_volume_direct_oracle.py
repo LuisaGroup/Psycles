@@ -33,9 +33,9 @@ def argument_options() -> argparse.Namespace:
     )
     parser.add_argument(
         "--light",
-        choices=("distant", "point", "spot", "area"),
+        choices=("distant", "point", "spot", "area", "mesh"),
         default="distant",
-        help="analytic emitter family (default: distant)",
+        help="emitter family (default: distant)",
     )
     parser.add_argument(
         "--volume-sampling",
@@ -86,7 +86,8 @@ def make_volume_material(
     material = bpy.data.materials.new(
         "Cycles homogeneous isotropic volume boundary"
     )
-    material.use_nodes = True
+    if material.node_tree is None:
+        material.use_nodes = True
     nodes = material.node_tree.nodes
     nodes.clear()
     output = nodes.new("ShaderNodeOutputMaterial")
@@ -108,7 +109,8 @@ def make_volume_material(
 
 def make_world() -> bpy.types.World:
     world = bpy.data.worlds.new("Cycles black world")
-    world.use_nodes = True
+    if world.node_tree is None:
+        world.use_nodes = True
     nodes = world.node_tree.nodes
     nodes.clear()
     output = nodes.new("ShaderNodeOutputWorld")
@@ -128,6 +130,50 @@ def make_light(
     area_shape: str,
     area_spread: float,
 ) -> None:
+    if light_type == "mesh":
+        material = bpy.data.materials.new(
+            "Cycles raw mesh emission closure"
+        )
+        if material.node_tree is None:
+            material.use_nodes = True
+        nodes = material.node_tree.nodes
+        nodes.clear()
+        output = nodes.new("ShaderNodeOutputMaterial")
+        emission = nodes.new("ShaderNodeEmission")
+        emission.inputs["Color"].default_value = (
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+        )
+        emission.inputs["Strength"].default_value = 10.0
+        material.node_tree.links.new(
+            emission.outputs["Emission"],
+            output.inputs["Surface"],
+        )
+        material.cycles.emission_sampling = "FRONT"
+
+        mesh = bpy.data.meshes.new(
+            "Cycles finite-volume triangle mesh"
+        )
+        mesh.from_pydata(
+            (
+                (0.6, -0.6, -0.8),
+                (1.4, -0.6, -0.8),
+                (1.0, 0.2, -0.8),
+            ),
+            (),
+            ((0, 1, 2),),
+        )
+        mesh.materials.append(material)
+        light = bpy.data.objects.new(mesh.name, mesh)
+        # The authored local triangle has +Z orientation. Reflection changes
+        # the world-space cross product, so this exercises Cycles'
+        # SD_OBJECT_NEGATIVE_SCALE correction while keeping the emitting
+        # front oriented toward the camera-side half-space.
+        light.scale.x = -1.0
+        scene.collection.objects.link(light)
+        return
     if light_type == "area":
         light_data = bpy.data.lights.new(
             "Cycles finite-volume area light",

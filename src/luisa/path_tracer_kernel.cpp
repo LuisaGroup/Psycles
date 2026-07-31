@@ -324,8 +324,6 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
     auto light_transport =
         make_light_transport_callables(
             direct_light_sampling);
-    auto emissive_triangle_pdf_callable =
-        make_emissive_triangle_pdf_callable(scene);
     auto light_distribution_sample_callable =
         make_light_distribution_sample_callable(scene);
 
@@ -366,8 +364,6 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
             camera_may_be_inside_volume,
         .volume_state = std::move(volume_state),
         .light_transport = std::move(light_transport),
-        .emissive_triangle_pdf =
-            std::move(emissive_triangle_pdf_callable),
         .light_distribution_sample =
             std::move(light_distribution_sample_callable),
         .surfaces = std::move(surface_callables),

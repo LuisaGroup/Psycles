@@ -31,15 +31,6 @@ using SplitNeeLightCallable =
         luisa::float3,
         luisa::float3,
         luisa::uint)>;
-using EmissiveTrianglePdfCallable = Callable<float(
-    luisa::uint,
-    luisa::uint,
-    luisa::float3,
-    luisa::float3,
-    luisa::float3,
-    luisa::float3,
-    luisa::float3)>;
-
 struct LightTransportCallables {
     SafeNormalizeCallable safe_normalize;
     ForwardLightWeightCallable forward_light_weight;
@@ -54,8 +45,5 @@ struct LightTransportCallables {
 [[nodiscard]] LightTransportCallables
 make_light_transport_callables(
     contract::DirectLightSampling mode) noexcept;
-[[nodiscard]] EmissiveTrianglePdfCallable
-make_emissive_triangle_pdf_callable(
-    const std::shared_ptr<LuisaSceneData> &scene) noexcept;
 
 }// namespace psycles::luisa_backend::detail

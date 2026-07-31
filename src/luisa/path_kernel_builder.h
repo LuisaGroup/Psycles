@@ -48,7 +48,6 @@ struct PathKernelConfig {
     std::shared_ptr<const PathVolumeStateComponent>
         volume_state;
     LightTransportCallables light_transport;
-    EmissiveTrianglePdfCallable emissive_triangle_pdf;
     LightDistributionSampleCallable light_distribution_sample;
     SurfaceCallables surfaces;
     EnvironmentCallables environment;
