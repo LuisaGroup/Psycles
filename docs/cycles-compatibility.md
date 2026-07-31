@@ -36,6 +36,31 @@ encoded from their pixel buffers without mutating the source scene. Both
 linked-library and generated-image paths have Blender-side regressions and
 were exercised by the official Classroom asset.
 
+## Geometry attribute contract
+
+Blender scene schema v2 uses Cycles' native triangle attribute cardinalities
+instead of flattening every corner into a synthetic vertex:
+
+- positions and Generated coordinates are indexed by Blender point;
+- evaluated UVs and MikkTSpace tangents/signs are indexed by triangle corner;
+- normals use point storage unless Blender/Cycles selects corner normals;
+- arbitrary named color, UV, and tangent attributes retain point, corner, or
+  face domains;
+- triangle material, smooth, and random-per-island values remain face-domain.
+
+The exporter writes actual shared triangle indices. Luisa uploads every
+attribute once at its natural cardinality, and a common shader-service lookup
+maps `(primitive, barycentric, domain)` to the same point/corner/face elements
+used by Cycles. Surface, emissive-mesh, and transparent-shadow paths share one
+host-stage triangle-geometry component, so the contract cannot silently drift
+between path estimators.
+
+The historical v1 reader remains available only to make same-binary
+regression comparisons possible. Production exports use v2. The full
+Lone Monk, Classroom, and Blender 4.1 Splash measurements and visual A/B are
+recorded in
+[the compact-geometry checkpoint](validation/2026-07-31/compact-geometry/README.md).
+
 Unknown nodes, modes, sockets, or properties produce named coverage
 diagnostics and keep the release gate red. Missing material slots use an
 explicit magenta coverage material; an unconnected Cycles Surface follows the

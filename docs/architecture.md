@@ -154,6 +154,14 @@ command order without temporarily exposing dangling references.
 The scene contract uses stable typed identifiers. It contains no Luisa resource
 handles and no Cycles device pointers.
 
+Triangle attributes retain their semantic domain in the contract:
+`MeshAttribute<T>` is explicitly point-, corner-, or face-domain. Blender
+scene schema v2 preserves shared vertex indices; positions and Generated
+coordinates are point attributes, UV/tangent data is corner-domain, and
+normals follow Blender/Cycles' point-versus-corner decision. Named attributes
+retain their source domain. This mirrors Cycles' triangle attribute lookup
+instead of manufacturing a different vertex for every triangle corner.
+
 ### Renderer
 
 `contract::RendererBackend` compiles a snapshot into an opaque
@@ -180,6 +188,15 @@ formal while retaining one fused device kernel, the original expression
 construction order, and the original Cycles RNG-dimension order. A new
 transport feature extends a component or a typed context instead of relying
 on textual inclusion into another function's lexical scope.
+
+Triangle reconstruction is itself a host-stage component.
+`TriangleGeometryComponent` emits the bindless reads and domain-index
+selection once while Luisa records the kernel. Closest-hit shading,
+emissive-mesh evaluation, and transparent-shadow evaluation depend on that
+interface rather than duplicating resource-slot arithmetic. Generic named
+attributes use the same domain model through `ShaderServices`; individual
+shader nodes never decide whether an attribute index is a point, corner, or
+face index.
 
 ### Cycles differential contract
 
