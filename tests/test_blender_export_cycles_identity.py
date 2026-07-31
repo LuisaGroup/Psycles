@@ -54,6 +54,7 @@ def _main() -> None:
 
     material = bpy.data.materials.new("Middle Material")
     material.use_nodes = True
+    material.cycles.volume_sampling = "EQUIANGULAR"
     mesh = bpy.data.meshes.new("Surface Mesh")
     mesh.from_pydata(
         [(-1.0, -1.0, 0.0), (1.0, -1.0, 0.0), (0.0, 1.0, 0.0)],
@@ -93,6 +94,11 @@ def _main() -> None:
         raise AssertionError(
             "material shader identity did not follow five defaults and "
             f"two dependency-graph light shaders: {material_sync}"
+        )
+    if materials["Middle Material"]["volume_sampling"] != "EQUIANGULAR":
+        raise AssertionError(
+            "material volume-sampling policy did not round-trip through "
+            "the Blender exporter"
         )
 
     instances = payload["instances"]

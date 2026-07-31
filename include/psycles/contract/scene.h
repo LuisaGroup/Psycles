@@ -61,6 +61,16 @@ enum class EmissionSampling : std::uint8_t {
     front_back
 };
 
+// Cycles represents volume direct-light sampling as two independent
+// techniques. Keeping the same bit algebra makes a stack of authored media
+// composable: mixing distance and equiangular necessarily yields MIS.
+enum class VolumeSampling : std::uint8_t {
+    distance = 1u << 0u,
+    equiangular = 1u << 1u,
+    multiple_importance =
+        (1u << 0u) | (1u << 1u)
+};
+
 struct MaterialDesc {
     std::string name;
     ShaderGraph shader;
@@ -69,6 +79,12 @@ struct MaterialDesc {
     // never replaces or pre-evaluates the closure graph above.
     EmissionSampling emission_sampling{
         EmissionSampling::automatic};
+    // The original Cycles volume-sampling policy. Blender's current default
+    // is Multiple Importance; this remains metadata beside the raw closure
+    // graph and is interpreted only when the material is active in a volume
+    // stack.
+    VolumeSampling volume_sampling{
+        VolumeSampling::multiple_importance};
     // Index in Cycles' Scene::shaders vector, before per-hit shader flags
     // such as SHADER_CAST_SHADOW and SHADER_SMOOTH_NORMAL are applied.
     // This source identity is optional for programmatically built scenes;

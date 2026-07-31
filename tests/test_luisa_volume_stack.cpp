@@ -14,7 +14,7 @@ namespace {
 using namespace luisa::compute;
 using namespace psycles::luisa_backend;
 
-inline constexpr std::size_t record_count = 25u;
+inline constexpr std::size_t record_count = 28u;
 
 [[nodiscard]] bool approximately_equal(
     float actual,
@@ -70,6 +70,8 @@ int main(int argc, char **argv) {
                         .parameter_block =
                             parameter_block,
                         .instance_id = instance_id,
+                        .sample_method =
+                            volume_sample_distance,
                         .valid = true};
                 };
             const auto flag =
@@ -426,6 +428,65 @@ int main(int argc, char **argv) {
                             .entry(0u)
                             .valid),
                     0.0f));
+
+            VolumeStack sampling{5u};
+            records.write(
+                25u,
+                make_float4(
+                    as_float(sampling.sample_method()),
+                    0.0f,
+                    0.0f,
+                    0.0f));
+            auto distance = a;
+            distance.sample_method =
+                volume_sample_distance;
+            auto equiangular = b;
+            equiangular.sample_method =
+                volume_sample_equiangular;
+            auto mis = c;
+            mis.sample_method =
+                volume_sample_mis;
+            sampling.cross_boundary(
+                distance, false, true, true);
+            const auto distance_only =
+                sampling.sample_method();
+            sampling.cross_boundary(
+                equiangular, false, true, true);
+            const auto mixed =
+                sampling.sample_method();
+            sampling.clear();
+            sampling.cross_boundary(
+                equiangular, false, true, true);
+            const auto equiangular_only =
+                sampling.sample_method();
+            sampling.cross_boundary(
+                mis, false, true, true);
+            records.write(
+                26u,
+                make_float4(
+                    as_float(distance_only),
+                    as_float(equiangular_only),
+                    as_float(mixed),
+                    as_float(
+                        sampling.sample_method())));
+
+            VolumeStack sampling_copy{5u};
+            sampling_copy.copy_from(sampling);
+            records.write(
+                27u,
+                make_float4(
+                    as_float(
+                        sampling_copy.sample_method()),
+                    as_float(
+                        sampling_copy
+                            .entry(0u)
+                            .sample_method),
+                    as_float(
+                        sampling_copy
+                            .entry(1u)
+                            .sample_method),
+                    as_float(
+                        sampling_copy.count())));
         };
 
     auto shader = device.compile(evaluate);
@@ -442,7 +503,8 @@ int main(int argc, char **argv) {
     // capacity and duplicate rejection, transmission/volume guards, shadow
     // copy, the camera +Z enclosure probe's object-only membership checks
     // (including Cycles' duplicate front-hit accounting), and the fixed
-    // MAX_VOLUME_STACK_SIZE bound.
+    // MAX_VOLUME_STACK_SIZE bound, and the order-independent two-bit
+    // reduction used by volume_stack_sample_method().
     constexpr std::array expected{
         luisa::float4{0.0f, 1.0f, 0.0f, 3.0f},
         luisa::float4{1.0f, 900.0f, 90.0f, 190.0f},
@@ -468,7 +530,10 @@ int main(int argc, char **argv) {
         luisa::float4{0.0f, 1.0f, 0.0f, 0.0f},
         luisa::float4{32.0f, 31.0f, 0.0f, 0.0f},
         luisa::float4{1.0f, 900.0f, 1.0f, 0.0f},
-        luisa::float4{0.0f, 1.0f, 0.0f, 0.0f}};
+        luisa::float4{0.0f, 1.0f, 0.0f, 0.0f},
+        luisa::float4{0.0f, 0.0f, 0.0f, 0.0f},
+        luisa::float4{1.0f, 2.0f, 3.0f, 3.0f},
+        luisa::float4{3.0f, 2.0f, 3.0f, 2.0f}};
     for (auto index = std::size_t{0u};
          index < expected.size();
          ++index) {

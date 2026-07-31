@@ -159,6 +159,9 @@ struct MaterialBinding {
     std::uint32_t material_identity{
         ~std::uint32_t{0u}};
     std::uint32_t flags{};
+    contract::VolumeSampling volume_sampling{
+        contract::VolumeSampling::
+            multiple_importance};
 };
 
 struct NishitaTextureBinding {

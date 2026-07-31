@@ -13,6 +13,7 @@ VolumeStackEntry VolumeStackEntry::none() noexcept {
         .surface_tag = invalid_volume_identity,
         .parameter_block = 0u,
         .instance_id = invalid_volume_identity,
+        .sample_method = volume_sample_none,
         .valid = false};
 }
 
@@ -26,6 +27,7 @@ VolumeStack::VolumeStack(
                   maximum_volume_stack_size))},
       _identity{_storage_size},
       _instances{_storage_size},
+      _sample_methods{_storage_size},
       _count{0u} {
     _write(0u, VolumeStackEntry::none());
 }
@@ -57,6 +59,7 @@ void VolumeStack::_write(
             entry.surface_tag,
             entry.parameter_block));
     _instances.write(index, entry.instance_id);
+    _sample_methods.write(index, entry.sample_method);
 }
 
 VolumeStackEntry VolumeStack::_read(
@@ -68,6 +71,8 @@ VolumeStackEntry VolumeStack::_read(
         .surface_tag = identity.z,
         .parameter_block = identity.w,
         .instance_id = _instances.read(index),
+        .sample_method =
+            _sample_methods.read(index),
         .valid =
             identity.y != invalid_volume_identity};
 }
@@ -96,7 +101,23 @@ VolumeStackEntry VolumeStack::entry(
             none.instance_id,
             value.instance_id,
             valid),
+        .sample_method = select(
+            none.sample_method,
+            value.sample_method,
+            valid),
         .valid = valid & value.valid};
+}
+
+UInt VolumeStack::sample_method() const noexcept {
+    UInt method = volume_sample_none;
+    UInt index = 0u;
+    $while(index < _count) {
+        const auto entry_method =
+            _read(index).sample_method;
+        method |= entry_method;
+        index += 1u;
+    };
+    return method;
 }
 
 Bool VolumeStack::_contains_pair(

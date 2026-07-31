@@ -53,6 +53,7 @@ struct MaterialBindingGpu {
     luisa::uint cycles_shader_index{};
     luisa::uint material_identity{};
     luisa::uint flags{};
+    luisa::uint volume_sampling{};
 };
 
 struct LightGpu {
@@ -307,7 +308,8 @@ LUISA_STRUCT(
     parameter_block,
     cycles_shader_index,
     material_identity,
-    flags) {};
+    flags,
+    volume_sampling) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::LightGpu,
     type,

@@ -11,7 +11,10 @@ namespace psycles::luisa_backend::detail {
             binding.cycles_shader_index,
         .material_identity =
             binding.material_identity,
-        .flags = binding.flags};
+        .flags = binding.flags,
+        .volume_sampling =
+            static_cast<std::uint32_t>(
+                binding.volume_sampling)};
 }
 
 [[nodiscard]] Var<ShaderEvaluationStateCall>

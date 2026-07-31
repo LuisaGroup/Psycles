@@ -16,6 +16,13 @@ namespace psycles::luisa_backend {
 inline constexpr std::uint32_t invalid_volume_identity =
     ~std::uint32_t{0u};
 inline constexpr std::uint32_t maximum_volume_stack_size = 32u;
+inline constexpr std::uint32_t volume_sample_none = 0u;
+inline constexpr std::uint32_t volume_sample_distance =
+    1u << 0u;
+inline constexpr std::uint32_t volume_sample_equiangular =
+    1u << 1u;
+inline constexpr std::uint32_t volume_sample_mis =
+    volume_sample_distance | volume_sample_equiangular;
 inline constexpr luisa::float3 camera_volume_probe_direction{
     0.0f, 0.0f, 1.0f};
 
@@ -25,6 +32,7 @@ struct VolumeStackEntry {
     luisa::compute::UInt surface_tag;
     luisa::compute::UInt parameter_block;
     luisa::compute::UInt instance_id;
+    luisa::compute::UInt sample_method;
     luisa::compute::Bool valid;
 
     [[nodiscard]] static VolumeStackEntry none() noexcept;
@@ -39,6 +47,7 @@ class VolumeStack {
     std::size_t _storage_size;
     luisa::compute::Local<luisa::uint4> _identity;
     luisa::compute::Local<luisa::uint> _instances;
+    luisa::compute::Local<luisa::uint> _sample_methods;
     luisa::compute::UInt _count;
 
     void _write(
@@ -74,6 +83,11 @@ class VolumeStack {
     [[nodiscard]] std::size_t maximum_entries() const noexcept;
     [[nodiscard]] luisa::compute::UInt count() const noexcept;
     [[nodiscard]] luisa::compute::Bool empty() const noexcept;
+    // Exact Cycles volume_stack_sample_method reduction. The method is a
+    // two-bit set of available estimators, so heterogeneous authored policies
+    // compose without depending on stack order.
+    [[nodiscard]] luisa::compute::UInt
+    sample_method() const noexcept;
     [[nodiscard]] VolumeStackEntry entry(
         luisa::compute::UInt index) const noexcept;
 

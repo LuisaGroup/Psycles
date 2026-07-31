@@ -123,6 +123,8 @@ TrianglePrimitiveContext::
         .parameter_block =
             material_binding.parameter_block,
         .instance_id = instance_id,
+        .sample_method =
+            material_binding.volume_sampling,
         .valid = valid};
 }
 
