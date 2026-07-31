@@ -349,6 +349,40 @@ make_point_direct_scene() {
     return scene;
 }
 
+[[nodiscard]] SceneSnapshot
+make_spot_direct_scene() {
+    auto scene = make_direct_scene();
+    scene.revision = 4u;
+    scene.materials
+        .at(MaterialId{1u})
+        .volume_sampling =
+        VolumeSampling::
+            multiple_importance;
+    scene.lights.clear();
+    scene.lights.emplace(
+        LightId{6u},
+        LightDesc{
+            .name =
+                "Cycles finite-volume spot light",
+            .type = LightType::spot,
+            .transform = translated(
+                0.2f, -0.1f, -0.4f),
+            .color = {1.0f, 1.0f, 1.0f},
+            .power = 10.0f,
+            .size = 0.0f,
+            .spot_angle = 0.9f,
+            .spot_smooth = 0.35f,
+            .normalize = true,
+            .is_sphere = true,
+            .use_mis = true,
+            .cast_shadow = true,
+            .visibility_mask =
+                all_ray_visibility,
+            .cycles_shader_index = 2u,
+            .cycles_object_index = 1u});
+    return scene;
+}
+
 [[nodiscard]] RenderSettings make_settings() {
     return {
         .full_extent = {
@@ -913,6 +947,123 @@ int main(int argc, char **argv) {
         }
     }
 
+    auto spot_compilation =
+        renderer.compile_scene(
+            make_spot_direct_scene());
+    if (!spot_compilation.ok()) {
+        for (const auto &diagnostic :
+             spot_compilation.diagnostics) {
+            std::cerr << diagnostic.message
+                      << '\n';
+        }
+        return EXIT_FAILURE;
+    }
+    auto spot_session =
+        renderer.create_session(
+            *spot_compilation.scene,
+            direct_settings);
+    if (!spot_session) {
+        std::cerr
+            << "could not create spot-volume "
+               "render session\n";
+        return EXIT_FAILURE;
+    }
+    psycles::io::MemoryOutputSink
+        spot_sink;
+    if (!spot_session->render_samples(
+            {.first = 0u,
+             .count = 1u,
+             .offset = 0u,
+             .total = 1u},
+            spot_sink)) {
+        std::cerr
+            << "spot-volume render failed\n";
+        return EXIT_FAILURE;
+    }
+    const auto *spot_combined =
+        spot_sink.find(PassKind::combined);
+    const auto *spot_volume =
+        spot_sink.find(
+            PassKind::volume_direct);
+    if (spot_combined == nullptr ||
+        spot_volume == nullptr) {
+        std::cerr
+            << "spot-volume passes were not "
+               "produced\n";
+        return EXIT_FAILURE;
+    }
+    // Official Blender 5.2.0/Cycles CPU, one Tabulated Sobol sample. The
+    // proposal uses spot_light_sample<true>, clips the volume interval to the
+    // enclosing cone, and reuses PRNG_LIGHT.xy with spot_light_sample<false>
+    // at the selected collision.
+    constexpr std::array cycles_spot_mis{
+        0.0f,
+        0.0f,
+        0.00207081134f,
+        0.0f,
+        0.0f,
+        0.00470471708f,
+        0.000760584546f,
+        0.00427631568f,
+        0.0f,
+        0.00933369156f,
+        0.205294624f,
+        0.0373432599f,
+        0.000263685535f,
+        0.00348850037f,
+        0.0109063750f,
+        0.00531436736f};
+    for (auto pixel = std::size_t{0u};
+         pixel < pixel_count;
+         ++pixel) {
+        const auto combined_base =
+            pixel *
+            spot_combined->channels;
+        const auto pass_base =
+            pixel *
+            spot_volume->channels;
+        for (auto channel = std::size_t{0u};
+             channel < 3u;
+             ++channel) {
+            const auto expected =
+                cycles_spot_mis[pixel];
+            const auto combined_value =
+                spot_combined->pixels[
+                    combined_base + channel];
+            const auto direct_value =
+                spot_volume->pixels[
+                    pass_base + channel];
+            if (!approximately_equal(
+                    combined_value,
+                    expected) ||
+                !approximately_equal(
+                    direct_value,
+                    expected)) {
+                std::cerr
+                    << "Cycles finite spot-volume "
+                       "regression failed on "
+                    << backend << " pixel "
+                    << pixel << " channel "
+                    << channel << ": got "
+                    << combined_value
+                    << ", expected "
+                    << expected << '\n';
+                return EXIT_FAILURE;
+            }
+        }
+        if (!approximately_equal(
+                spot_combined->pixels[
+                    combined_base + 3u],
+                1.0f)) {
+            std::cerr
+                << "spot-volume alpha regression "
+                   "failed on "
+                << backend << " pixel "
+                << pixel << '\n';
+            return EXIT_FAILURE;
+        }
+    }
+
     auto guided_session =
         renderer.create_session(
             *direct_compilation.scene,
@@ -1130,6 +1281,20 @@ int main(int argc, char **argv) {
         }
     }
 #if defined(PSYCLES_WITH_OPENIMAGEIO)
+    if (argc > 5) {
+        std::string error;
+        if (!psycles::io::write_multilayer_exr(
+                spot_sink.images(),
+                argv[5],
+                "ViewLayer",
+                &error)) {
+            std::cerr
+                << "could not write spot-volume "
+                   "diagnostic EXR: "
+                << error << '\n';
+            return EXIT_FAILURE;
+        }
+    }
     if (argc > 4) {
         std::string error;
         if (!psycles::io::write_multilayer_exr(

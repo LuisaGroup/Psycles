@@ -32,7 +32,7 @@ def argument_options() -> argparse.Namespace:
     )
     parser.add_argument(
         "--light",
-        choices=("distant", "point"),
+        choices=("distant", "point", "spot"),
         default="distant",
         help="analytic emitter family (default: distant)",
     )
@@ -121,6 +121,24 @@ def make_light(
             light_data.name, light_data
         )
         light.location = (0.6, -0.25, -0.8)
+        scene.collection.objects.link(light)
+        return
+    if light_type == "spot":
+        light_data = bpy.data.lights.new(
+            "Cycles finite-volume spot light",
+            type="SPOT",
+        )
+        light_data.color = (1.0, 1.0, 1.0)
+        light_data.energy = 10.0
+        light_data.shadow_soft_size = 0.0
+        light_data.spot_size = 0.9
+        light_data.spot_blend = 0.35
+        light_data.use_soft_falloff = False
+        light_data.normalize = True
+        light = bpy.data.objects.new(
+            light_data.name, light_data
+        )
+        light.location = (0.2, -0.1, -0.4)
         scene.collection.objects.link(light)
         return
 

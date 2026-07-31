@@ -2,16 +2,55 @@
 
 #include "path_kernel_volume_shadow.h"
 
-#include <psycles/luisa/analytic_light_sampling.h>
 #include <psycles/luisa/cycles_path_state.h>
 #include <psycles/luisa/spherical_geometry.h>
 #include <psycles/luisa/surface_ray.h>
+#include <psycles/luisa/volume_analytic_light_sampling.h>
+#include <psycles/luisa/volume_light_interval.h>
 #include <psycles/sampling/light_distribution.h>
 
 #include <utility>
 
 namespace psycles::luisa_backend::detail {
 namespace {
+
+[[nodiscard]] VolumePointLightSampleInput
+volume_point_light_input(
+    Var<LightGpu> light,
+    Float3 reference,
+    Float2 random) noexcept {
+    return {
+        .reference = std::move(reference),
+        .center = light.position,
+        .radius = light.radius,
+        .sphere =
+            (light.flags &
+             light_flag_sphere) != 0u,
+        .axis_x = light.axis_x,
+        .axis_y = light.axis_y,
+        .axis_z = light.axis_z,
+        .axis_scale = light.axis_scale,
+        .random = std::move(random),
+        .normalize_power =
+            (light.flags &
+             light_flag_normalize) != 0u};
+}
+
+[[nodiscard]] VolumeSpotLightSampleInput
+volume_spot_light_input(
+    Var<LightGpu> light,
+    Float3 reference,
+    Float2 random) noexcept {
+    return {
+        .point =
+            volume_point_light_input(
+                light,
+                std::move(reference),
+                std::move(random)),
+        .spot_angle = light.spot_angle,
+        .spot_smooth =
+            light.spot_smooth};
+}
 
 class AnalyticVolumeDirectionProvider final
     : public VolumeDirectDirectionProvider {
@@ -23,6 +62,8 @@ class AnalyticVolumeDirectionProvider final
     Float3 _segment_position;
     Float3 _segment_direction;
     VolumeDirectLightSample &_result;
+    VolumeAnalyticLightSampling
+        _light_sampling;
 
     void _sample_distant(
         Var<LightGpu> light,
@@ -157,31 +198,12 @@ class AnalyticVolumeDirectionProvider final
         _result.valid |= valid;
     }
 
-    void _sample_point(
+    void _commit_finite_sample(
         Var<LightGpu> light,
         UInt light_index,
-        Float3 position,
-        Float3 random,
+        const analytic_light_sampling::
+            FiniteLightSample &finite,
         Bool active) const noexcept {
-        const auto normalize_power =
-            (light.flags &
-             light_flag_normalize) != 0u;
-        const auto finite =
-            analytic_light_sampling::
-                sample_point_light(
-                    position,
-                    make_float3(0.0f),
-                    true,
-                    light.position,
-                    light.radius,
-                    (light.flags &
-                     light_flag_sphere) != 0u,
-                    light.axis_x,
-                    light.axis_y,
-                    light.axis_z,
-                    light.axis_scale,
-                    random.xy(),
-                    normalize_power);
         auto radiance =
             light.color *
             (light.power *
@@ -233,6 +255,45 @@ class AnalyticVolumeDirectionProvider final
         _result.valid |= valid;
     }
 
+    void _sample_point(
+        Var<LightGpu> light,
+        UInt light_index,
+        Float3 position,
+        Float3 random,
+        Bool active) const noexcept {
+        const auto finite =
+            _light_sampling.point(
+                volume_point_light_input(
+                    light,
+                    std::move(position),
+                    random.xy()));
+        _commit_finite_sample(
+            light,
+            light_index,
+            finite,
+            active);
+    }
+
+    void _sample_spot(
+        Var<LightGpu> light,
+        UInt light_index,
+        Float3 position,
+        Float3 random,
+        Bool active) const noexcept {
+        const auto finite =
+            _light_sampling
+                .spot_from_position(
+                    volume_spot_light_input(
+                        light,
+                        std::move(position),
+                        random.xy()));
+        _commit_finite_sample(
+            light,
+            light_index,
+            finite,
+            active);
+    }
+
   public:
     AnalyticVolumeDirectionProvider(
         const PathKernelConfig &config,
@@ -272,17 +333,34 @@ class AnalyticVolumeDirectionProvider final
             static_cast<std::uint32_t>(
                 contract::LightType::
                     point);
-        _sample_distant(
-            light,
-            _proposal.light_index,
-            random,
-            _proposal.valid & distant);
-        _sample_point(
-            light,
-            _proposal.light_index,
-            position,
-            random,
-            _proposal.valid & point);
+        const auto spot =
+            light.type ==
+            static_cast<std::uint32_t>(
+                contract::LightType::
+                    spot);
+        $if(_proposal.valid & distant) {
+            _sample_distant(
+                light,
+                _proposal.light_index,
+                random,
+                true);
+        }
+        $elif(_proposal.valid & point) {
+            _sample_point(
+                light,
+                _proposal.light_index,
+                position,
+                random,
+                true);
+        }
+        $elif(_proposal.valid & spot) {
+            _sample_spot(
+                light,
+                _proposal.light_index,
+                position,
+                random,
+                true);
+        };
         return {
             .direction =
                 _result.direction,
@@ -298,6 +376,114 @@ class AnalyticVolumeDirectLightingComponent final
     std::unique_ptr<
         HomogeneousVolumeShadowComponent>
         _volume_shadow;
+    VolumeAnalyticLightSampling
+        _light_sampling;
+    VolumeLightInterval
+        _light_interval;
+
+    void _propose_distant(
+        UInt light_index,
+        Float segment_length,
+        VolumeDirectLightProposal
+            &result) const noexcept {
+        result.light_index = light_index;
+        result.requested_method =
+            volume_sample_distance;
+        result.light_position =
+            make_float3(0.0f);
+        result.interval = {
+            .minimum = 0.0f,
+            .maximum = segment_length};
+        result.valid = true;
+    }
+
+    void _propose_point(
+        Var<LightGpu> light,
+        UInt light_index,
+        const VolumeStack &path_stack,
+        Float3 segment_position,
+        Float2 random,
+        Float segment_length,
+        VolumeDirectLightProposal
+            &result) const noexcept {
+        const auto sample =
+            _light_sampling.point(
+                volume_point_light_input(
+                    light,
+                    std::move(
+                        segment_position),
+                    std::move(random)));
+        $if(sample.valid) {
+            result.light_index =
+                light_index;
+            result.requested_method =
+                path_stack.sample_method();
+            result.light_position =
+                sample.position;
+            result.interval = {
+                .minimum = 0.0f,
+                .maximum =
+                    segment_length};
+            result.valid = true;
+        };
+    }
+
+    void _propose_spot(
+        Var<LightGpu> light,
+        UInt light_index,
+        const VolumeStack &path_stack,
+        Float3 segment_position,
+        Float3 segment_direction,
+        Float2 random,
+        Float segment_length,
+        VolumeDirectLightProposal
+            &result) const noexcept {
+        const auto sample =
+            _light_sampling
+                .spot_from_segment(
+                    volume_spot_light_input(
+                        light,
+                        segment_position,
+                        std::move(random)));
+        $if(sample.valid) {
+            const auto interval =
+                _light_interval.spot(
+                    {.ray_origin =
+                         segment_position,
+                     .ray_direction =
+                         segment_direction,
+                     .interval =
+                         {.minimum = 0.0f,
+                          .maximum =
+                              segment_length},
+                     .center =
+                         light.position,
+                     .axis_x =
+                         light.axis_x,
+                     .axis_y =
+                         light.axis_y,
+                     .axis_z =
+                         light.axis_z,
+                     .axis_scale =
+                         light.axis_scale,
+                     .radius =
+                         light.radius,
+                     .spot_angle =
+                         light.spot_angle});
+            $if(interval.valid) {
+                result.light_index =
+                    light_index;
+                result.requested_method =
+                    path_stack
+                        .sample_method();
+                result.light_position =
+                    sample.position;
+                result.interval =
+                    interval.interval;
+                result.valid = true;
+            };
+        };
+    }
 
   public:
     explicit AnalyticVolumeDirectLightingComponent(
@@ -350,8 +536,11 @@ class AnalyticVolumeDirectLightingComponent final
                 static_cast<std::uint32_t>(
                     contract::LightType::
                         point);
-            const auto supported =
-                distant | point;
+            const auto spot =
+                light.type ==
+                static_cast<std::uint32_t>(
+                    contract::LightType::
+                        spot);
             const auto visible_to_volume =
                 (light.visibility_mask &
                  contract::visibility_bit(
@@ -359,55 +548,38 @@ class AnalyticVolumeDirectLightingComponent final
                          RayVisibility::
                              volume_scatter)) !=
                 0u;
-            const auto normalize_power =
-                (light.flags &
-                 light_flag_normalize) != 0u;
-            const auto point_sample =
-                analytic_light_sampling::
-                    sample_point_light(
-                        segment_position,
-                        segment_direction,
-                        true,
-                        light.position,
-                        light.radius,
-                        (light.flags &
-                         light_flag_sphere) !=
-                            0u,
-                        light.axis_x,
-                        light.axis_y,
-                        light.axis_z,
-                        light.axis_scale,
-                        event.bounce
-                            .light_sample.xy(),
-                        normalize_power);
-            const auto finite_valid =
-                !point |
-                point_sample.valid;
-            const auto valid =
-                supported &
+            const auto eligible =
                 visible_to_volume &
-                finite_valid &
                 (segment_length > 0.0f);
-            result.light_index =
-                select(
-                    0u,
+            $if(eligible & distant) {
+                _propose_distant(
                     light_index,
-                    valid);
-            result.requested_method =
-                select(
-                    volume_sample_none,
-                    select(
-                        path_stack
-                            .sample_method(),
-                        volume_sample_distance,
-                        distant),
-                    valid);
-            result.light_position =
-                select(
-                    make_float3(0.0f),
-                    point_sample.position,
-                    valid & point);
-            result.valid = valid;
+                    segment_length,
+                    result);
+            }
+            $elif(eligible & point) {
+                _propose_point(
+                    light,
+                    light_index,
+                    path_stack,
+                    segment_position,
+                    event.bounce
+                        .light_sample.xy(),
+                    segment_length,
+                    result);
+            }
+            $elif(eligible & spot) {
+                _propose_spot(
+                    light,
+                    light_index,
+                    path_stack,
+                    segment_position,
+                    segment_direction,
+                    event.bounce
+                        .light_sample.xy(),
+                    segment_length,
+                    result);
+            };
         };
         return result;
     }

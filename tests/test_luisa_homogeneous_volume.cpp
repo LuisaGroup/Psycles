@@ -1,4 +1,5 @@
 #include <psycles/luisa/homogeneous_volume_transport.h>
+#include <psycles/luisa/volume_analytic_light_sampling.h>
 #include <psycles/luisa/volume_direct_sampling.h>
 #include <psycles/luisa/volume_light_interval.h>
 #include <psycles/luisa/volume_scatter_probability.h>
@@ -18,7 +19,7 @@ namespace {
 using namespace luisa::compute;
 using namespace psycles::luisa_backend;
 
-inline constexpr std::size_t record_count = 57u;
+inline constexpr std::size_t record_count = 59u;
 
 [[nodiscard]] bool approximately_equal(
     float actual,
@@ -942,6 +943,98 @@ int main(int argc, char **argv) {
                          make_float3(1.0f),
                      .radius = 0.0f,
                      .spot_angle = half_pi}));
+
+            VolumeAnalyticLightSampling
+                analytic_light_sampling;
+            const VolumeSpotLightSampleInput
+                zero_attenuation_spot{
+                    .point =
+                        {.reference =
+                             make_float3(
+                                 0.0f, 0.0f, 2.0f),
+                         .center =
+                             make_float3(0.0f),
+                         .radius = 0.0f,
+                         .sphere = true,
+                         .axis_x =
+                             make_float3(
+                                 1.0f, 0.0f, 0.0f),
+                         .axis_y =
+                             make_float3(
+                                 0.0f, 1.0f, 0.0f),
+                         .axis_z =
+                             make_float3(
+                                 0.0f, 0.0f, 1.0f),
+                         .axis_scale =
+                             make_float3(1.0f),
+                         .random =
+                             make_float2(
+                                 0.37f, 0.61f),
+                         .normalize_power = true},
+                    .spot_angle = 0.9f,
+                    .spot_smooth = 0.35f};
+            const auto segment_spot =
+                analytic_light_sampling
+                    .spot_from_segment(
+                        zero_attenuation_spot);
+            const auto position_spot =
+                analytic_light_sampling
+                    .spot_from_position(
+                        zero_attenuation_spot);
+            records.write(
+                57u,
+                make_float4(
+                    flag(segment_spot.valid),
+                    segment_spot
+                        .evaluation_factor,
+                    flag(position_spot.valid),
+                    position_spot
+                        .evaluation_factor));
+
+            const VolumeSpotLightSampleInput
+                finite_sphere_spot{
+                    .point =
+                        {.reference =
+                             make_float3(
+                                 0.0f, 0.0f, -2.0f),
+                         .center =
+                             make_float3(0.0f),
+                         .radius = 0.8f,
+                         .sphere = true,
+                         .axis_x =
+                             make_float3(
+                                 1.0f, 0.0f, 0.0f),
+                         .axis_y =
+                             make_float3(
+                                 0.0f, 1.0f, 0.0f),
+                         .axis_z =
+                             make_float3(
+                                 0.0f, 0.0f, 1.0f),
+                         .axis_scale =
+                             make_float3(1.0f),
+                         .random =
+                             make_float2(
+                                 0.37f, 0.61f),
+                         .normalize_power = true},
+                    .spot_angle = 0.2f,
+                    .spot_smooth = 0.35f};
+            const auto segment_sphere =
+                analytic_light_sampling
+                    .spot_from_segment(
+                        finite_sphere_spot);
+            const auto position_sphere =
+                analytic_light_sampling
+                    .spot_from_position(
+                        finite_sphere_spot);
+            records.write(
+                58u,
+                make_float4(
+                    segment_sphere
+                        .conditional_pdf,
+                    position_sphere
+                        .conditional_pdf,
+                    flag(segment_sphere.valid),
+                    flag(position_sphere.valid)));
         };
 
     auto shader = device.compile(evaluate);
@@ -1046,7 +1139,19 @@ int main(int argc, char **argv) {
             1.0f,
             0.0f},
         luisa::float4{0.0f, 2.0f, 1.0f, 0.0f},
-        luisa::float4{1.0f, 5.0f, 1.0f, 0.0f}};
+        luisa::float4{1.0f, 5.0f, 1.0f, 0.0f},
+        // Cycles spot_light_sample<true> keeps a geometrically valid volume
+        // proposal outside the attenuation cone. The final
+        // spot_light_sample<false> at the collision rejects zero eval_fac.
+        luisa::float4{1.0f, 0.0f, 0.0f, 0.0f},
+        // The finite sphere subtends a larger cone than the narrow spot.
+        // Cycles' segment proposal therefore uses the visible-sphere PDF,
+        // while the collision-position sampler uses the spread-cone PDF.
+        luisa::float4{
+            1.90639286f,
+            31.857528f,
+            1.0f,
+            1.0f}};
     auto passed = true;
     for (auto index = std::size_t{0u};
          index < expected.size();
