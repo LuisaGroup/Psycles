@@ -24,6 +24,15 @@ inline constexpr std::uint32_t surface_bsdf_dimension = 3u;
 inline constexpr std::uint32_t surface_ao_dimension = 4u;
 inline constexpr std::uint32_t surface_bevel_dimension = 5u;
 inline constexpr std::uint32_t surface_bsdf_guiding_dimension = 6u;
+inline constexpr std::uint32_t volume_phase_dimension = 3u;
+inline constexpr std::uint32_t volume_reservoir_dimension = 4u;
+inline constexpr std::uint32_t volume_scatter_distance_dimension = 5u;
+inline constexpr std::uint32_t volume_expansion_order_dimension = 6u;
+inline constexpr std::uint32_t volume_shade_offset_dimension = 7u;
+inline constexpr std::uint32_t
+    volume_phase_guiding_distance_dimension = 8u;
+inline constexpr std::uint32_t
+    volume_phase_guiding_equiangular_dimension = 9u;
 inline constexpr std::uint32_t bounce_dimension_count = 16u;
 inline constexpr std::uint32_t first_bounce_offset =
     bounce_dimension_count;
