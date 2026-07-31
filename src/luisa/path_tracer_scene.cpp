@@ -4,6 +4,7 @@
 #include "path_tracer_shader_services.h"
 #include "path_tracer_surfaces.h"
 #include "path_tracer_volume_capabilities.h"
+#include "path_tracer_volume_majorant_scene.h"
 #include "cycles_shader_identity.h"
 
 #include <psycles/compiler/core_nodes.h>
@@ -1970,6 +1971,14 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
            << data->heap.update()
            << data->accel.build()
            << synchronize();
+
+    const auto majorants =
+        VolumeMajorantSceneComponent{}.build(
+            data, stream, snapshot);
+    if (!majorants.ok()) {
+        diagnose(result.diagnostics, majorants.diagnostic);
+        return result;
+    }
 
     configure_background_sampling(
         *data,

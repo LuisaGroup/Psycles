@@ -1,0 +1,64 @@
+{
+  "actual_label": "Psycles fallback",
+  "cycles_channels": [
+    "R",
+    "G",
+    "B",
+    "A"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        0.9999999403953552,
+        0.9999999403953552,
+        0.9999999403953552
+      ],
+      "cycles": "/home/mike/Projects/Psycles/docs/validation/2026-07-31/homogeneous-volume-direct/exr/cycles-cpu.exr",
+      "cycles_channel_mean": [
+        0.013332479633390903,
+        0.013332479633390903,
+        0.013332479633390903
+      ],
+      "cycles_luminance_mean": 0.013332478702068329,
+      "cycles_rms": 0.01367109827697277,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 3.725290298461914e-09,
+      "mean_absolute_error": 5.820766091346741e-10,
+      "orientation_rmse": {
+        "flip_x": 0.005296546500176191,
+        "flip_xy": 0.004987241700291634,
+        "flip_y": 0.003425704315304756,
+        "identity": 1.2320239273222455e-09
+      },
+      "p95_pixel_rmse": 2.3283064365386963e-09,
+      "p99_pixel_rmse": 3.4458935704861915e-09,
+      "psycles": "/home/mike/Projects/Psycles/docs/validation/2026-08-01/volume-majorant-production-scene/exr/psycles-fallback.exr",
+      "psycles_channel_mean": [
+        0.013332478702068329,
+        0.013332478702068329,
+        0.013332478702068329
+      ],
+      "psycles_luminance_mean": 0.013332478702068329,
+      "psycles_rms": 0.013671097456586153,
+      "relative_rmse": 9.011886992264794e-08,
+      "rmse": 1.2320239273222455e-09,
+      "shape": [
+        4,
+        4,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 241591910.4,
+        "display_scale": 52.925736833734454,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles/docs/validation/2026-08-01/volume-majorant-production-scene/triptychs/fallback/combined.png",
+        "pixel_scale": 64
+      },
+      "valid_pixels": 16
+    }
+  },
+  "reference_label": "Cycles CPU",
+  "schema": "psycles.cycles-differential.v1"
+}

@@ -3,6 +3,7 @@
 #include "cycles_shader_identity.h"
 #include "path_kernel_volume_point.h"
 #include "path_tracer_shader_services.h"
+#include "path_tracer_volume_capabilities.h"
 
 #include <psycles/luisa/volume_majorant_prepass.h>
 
@@ -720,6 +721,63 @@ VolumeMajorantSceneComponent::build(
     result.range_count =
         scene->volume_majorant_range_count;
     return result;
+}
+
+VolumeMajorantSceneBuildResult
+VolumeMajorantSceneComponent::build(
+    const std::shared_ptr<LuisaSceneData> &scene,
+    Stream &stream,
+    const SceneSnapshot &snapshot) const {
+    VolumeMajorantSceneBuildResult result;
+    if (!scene) {
+        result.diagnostic =
+            "volume majorant scene resource is null";
+        return result;
+    }
+    std::map<
+        contract::MaterialId,
+        VolumeMajorantSceneMaterial>
+        materials;
+    const VolumeProgramCapabilityComponent
+        capabilities;
+    for (const auto &[id, binding] :
+         scene->material_bindings) {
+        const auto *material =
+            scene->materials.find(id);
+        if (material == nullptr) {
+            result.diagnostic =
+                "volume majorant material binding has "
+                "no retained program";
+            return result;
+        }
+        const auto base_shader =
+            binding.cycles_shader_index !=
+                    cycles_shader_identity::
+                        invalid_index
+                ? binding.cycles_shader_index
+                : binding.material_identity;
+        materials.emplace(
+            id,
+            VolumeMajorantSceneMaterial{
+                .surface_tag =
+                    binding.surface_tag,
+                .parameter_block =
+                    binding.parameter_block,
+                .shader = base_shader,
+                .has_volume =
+                    (binding.flags &
+                     material_flag_has_volume) !=
+                    0u,
+                .heterogeneous =
+                    !capabilities
+                         .analyze(
+                             *material
+                                  ->surface_program())
+                         .homogeneous});
+    }
+    const auto planned =
+        plan(snapshot, materials);
+    return build(scene, stream, planned);
 }
 
 }// namespace psycles::luisa_backend::detail
