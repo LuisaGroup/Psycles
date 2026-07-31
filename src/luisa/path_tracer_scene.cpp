@@ -457,6 +457,10 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         }
         return result;
     }
+    data->volume_metadata
+        .closure_allocation_budget =
+        cycles_scene_closure_allocation_budget(
+            data->materials);
 
     luisa::vector<luisa::float4> parameters;
     std::map<std::uint64_t, std::uint32_t>
@@ -474,6 +478,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 data->surfaces.create<GraphSurface>(
                     material.surface_program());
         }
+        const auto capabilities =
+            data->surfaces.capabilities(
+                surface_iter->second);
         data->material_bindings.emplace(
             id,
             MaterialBinding{
@@ -490,12 +497,12 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                         data->material_bindings
                             .size()),
                 .flags =
-                    data->surfaces
-                            .capabilities(
-                                surface_iter->second)
-                            .may_have_volume
-                        ? material_flag_has_volume
-                        : 0u});
+                    (capabilities.may_have_volume
+                         ? material_flag_has_volume
+                         : 0u) |
+                    (capabilities.may_emit
+                         ? material_flag_may_emit
+                         : 0u)});
         const auto &program = *material.surface_program();
         const auto scalar_parameter =
             [&](compiler::ValueExpressionId expression)

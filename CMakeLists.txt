@@ -168,6 +168,7 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/graph_surface_value_image.cpp
             src/luisa/graph_surface_value_math.cpp
             src/luisa/graph_surface_value_procedural.cpp
+            src/luisa/homogeneous_volume_segment.cpp
             src/luisa/homogeneous_volume_transport.cpp
             src/luisa/stacked_volume.cpp
             src/luisa/volume_phase_set.cpp
@@ -862,6 +863,26 @@ if(PSYCLES_ENABLE_LUISA)
                     COMMAND
                         psycles_luisa_cycles_path_state_tests
                         fallback)
+                if(TARGET luisa-compute-backend-hip)
+                    add_dependencies(
+                        psycles_luisa_cycles_path_state_tests
+                        luisa-compute-backend-hip)
+                    add_test(
+                        NAME psycles.luisa_cycles_path_state_hip
+                        COMMAND
+                            psycles_luisa_cycles_path_state_tests
+                            hip)
+                endif()
+                if(TARGET luisa-compute-backend-vk)
+                    add_dependencies(
+                        psycles_luisa_cycles_path_state_tests
+                        luisa-compute-backend-vk)
+                    add_test(
+                        NAME psycles.luisa_cycles_path_state_vk
+                        COMMAND
+                            psycles_luisa_cycles_path_state_tests
+                            vk)
+                endif()
 
                 add_executable(
                     psycles_luisa_camera_sampling_tests

@@ -231,6 +231,85 @@ void grow(
 
 }// namespace
 
+std::uint32_t
+cycles_program_closure_allocation_count(
+    const compiler::SurfaceProgram &program) noexcept {
+    auto count = std::uint32_t{0u};
+    const auto add =
+        [&](std::uint32_t amount) noexcept {
+            count = std::min(
+                cycles_max_closure_allocations,
+                count + std::min(
+                            amount,
+                            cycles_max_closure_allocations -
+                                count));
+        };
+    for (const auto &closure :
+         program.closure_instructions()) {
+        switch (closure.operation) {
+            case compiler::ClosureOperation::
+                null_closure:
+            case compiler::ClosureOperation::add:
+            case compiler::ClosureOperation::mix:
+                break;
+            case compiler::ClosureOperation::principled:
+                add(12u);
+                break;
+            case compiler::ClosureOperation::diffuse:
+            case compiler::ClosureOperation::translucent:
+            case compiler::ClosureOperation::emission:
+            case compiler::ClosureOperation::transparent:
+                add(1u);
+                break;
+            case compiler::ClosureOperation::glossy:
+                // Cycles counts MULTI_GGX as a two-closure family. The
+                // lowered instruction retains this static Distribution
+                // property as preserve_ggx_energy.
+                add(
+                    closure.preserve_ggx_energy
+                        ? 2u
+                        : 1u);
+                break;
+        }
+    }
+    for (const auto &volume :
+         program.volume_instructions()) {
+        switch (volume.operation) {
+            case compiler::VolumeOperation::null_volume:
+            case compiler::VolumeOperation::add:
+            case compiler::VolumeOperation::mix:
+                break;
+            case compiler::VolumeOperation::absorption:
+            case compiler::VolumeOperation::scatter:
+            case compiler::VolumeOperation::coefficients:
+            case compiler::VolumeOperation::principled:
+                // Official ShaderGraph::get_num_closures() reserves one
+                // MAX_VOLUME_STACK_SIZE block for every volume closure node.
+                add(
+                    cycles_volume_node_closure_allocations);
+                break;
+        }
+    }
+    return count;
+}
+
+std::uint32_t
+cycles_scene_closure_allocation_budget(
+    const compiler::MaterialLibrary &materials) noexcept {
+    auto maximum = std::uint32_t{1u};
+    for (const auto &[id, material] :
+         materials.materials()) {
+        static_cast<void>(id);
+        maximum = std::max(
+            maximum,
+            cycles_program_closure_allocation_count(
+                *material.surface_program()));
+    }
+    return std::min(
+        maximum,
+        cycles_max_closure_allocations);
+}
+
 bool WorldBounds::intersects(
     const WorldBounds &other) const noexcept {
     return valid && other.valid &&

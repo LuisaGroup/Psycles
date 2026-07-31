@@ -29,6 +29,7 @@ struct CyclesSceneBounceLimits {
   std::uint32_t maximum_diffuse{};
   std::uint32_t maximum_glossy{};
   std::uint32_t maximum_transmission{};
+  std::uint32_t maximum_volume{};
   std::uint32_t transparent_minimum{};
   std::uint32_t transparent_maximum{};
 };
@@ -39,6 +40,7 @@ struct CyclesKernelBounceLimits {
   std::uint32_t maximum_diffuse{};
   std::uint32_t maximum_glossy{};
   std::uint32_t maximum_transmission{};
+  std::uint32_t maximum_volume{};
   std::uint32_t transparent_minimum{};
   std::uint32_t transparent_maximum{};
   std::uint32_t maximum_path_steps{};
@@ -68,6 +70,8 @@ cycles_kernel_bounce_limits(CyclesSceneBounceLimits scene) noexcept {
           .maximum_glossy = cycles_synced_bounce_limit(scene.maximum_glossy),
           .maximum_transmission =
               cycles_synced_bounce_limit(scene.maximum_transmission),
+          .maximum_volume =
+              cycles_synced_bounce_limit(scene.maximum_volume),
           .transparent_minimum =
               cycles_synced_bounce_limit(scene.transparent_minimum),
           // Cycles deliberately does not add one to the transparent maximum.

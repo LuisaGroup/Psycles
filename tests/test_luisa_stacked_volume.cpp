@@ -3,6 +3,7 @@
 #include <psycles/compiler/surface_program.h>
 #include <psycles/contract/scene.h>
 #include <psycles/luisa/graph_surface.h>
+#include <psycles/luisa/homogeneous_volume_segment.h>
 #include <psycles/luisa/stacked_volume.h>
 
 #include <algorithm>
@@ -10,6 +11,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
@@ -25,7 +27,7 @@ using namespace psycles::compiler;
 using namespace psycles::contract;
 using namespace psycles::luisa_backend;
 
-inline constexpr std::size_t record_count = 15u;
+inline constexpr std::size_t record_count = 22u;
 
 void require(bool condition, const char *message) {
     if (!condition) {
@@ -67,7 +69,7 @@ struct GraphFixture {
             graph.set_input(
                 primary,
                 "Anisotropy",
-                SocketValue::floating(0.25f)) &&
+                SocketValue::floating(0.42f)) &&
             graph.set_property(
                 primary,
                 "Phase",
@@ -92,7 +94,7 @@ struct GraphFixture {
             graph.set_input(
                 secondary,
                 "Anisotropy",
-                SocketValue::floating(0.25f)) &&
+                SocketValue::floating(0.42f)) &&
             graph.set_property(
                 secondary,
                 "Phase",
@@ -464,9 +466,16 @@ int main(int argc, char **argv) {
         device.create_buffer<luisa::float4>(
             record_count);
 
-    FixturePointProvider point_provider;
+    auto point_provider =
+        std::make_shared<
+            FixturePointProvider>();
     StackedVolumeEvaluator evaluator{
-        surfaces, point_provider};
+        surfaces, *point_provider};
+    auto segment =
+        make_homogeneous_volume_segment_component(
+            surfaces,
+            point_provider,
+            64u);
     Kernel1D evaluate =
         [&](BufferFloat4 parameter_buffer,
             BufferFloat4 records) noexcept {
@@ -477,8 +486,11 @@ int main(int argc, char **argv) {
                     make_float3(
                         2.0f, 4.0f, 6.0f),
                 .incoming =
-                    make_float3(
-                        0.0f, 0.0f, 1.0f),
+                    -normalize(
+                        make_float3(
+                            0.2f,
+                            -0.3f,
+                            0.9327379f)),
                 .ray_visibility = 17u,
                 .ray_events =
                     static_cast<std::uint32_t>(
@@ -714,6 +726,95 @@ int main(int argc, char **argv) {
                         empty_coefficients
                             .has_emission),
                     cast<float>(empty.count())));
+
+            const auto collision =
+                segment->emit(
+                    single,
+                    services,
+                    state,
+                    0.5f,
+                    make_float3(1.0f),
+                    0.2f,
+                    0.2f,
+                    make_float2(
+                        0.034f, 0.83f),
+                    false);
+            records.write(
+                15u,
+                make_float4(
+                    collision.transport
+                        .throughput,
+                    select(
+                        0.0f,
+                        1.0f,
+                        collision.scattered)));
+            records.write(
+                16u,
+                make_float4(
+                    collision.transport.emission,
+                    collision.transport.distance));
+            records.write(
+                17u,
+                make_float4(
+                    collision.transport
+                        .transmittance,
+                    collision.transport
+                        .event_pdf));
+            records.write(
+                18u,
+                make_float4(
+                    collision.phase.direction,
+                    collision.phase.pdf));
+            records.write(
+                19u,
+                make_float4(
+                    collision.phase
+                        .sampled_roughness,
+                    collision.phase
+                        .selection_rescaled,
+                    cast<float>(
+                        collision.phase
+                            .closure_index),
+                    cast<float>(
+                        collision.phase
+                            .closure_type)));
+            records.write(
+                20u,
+                make_float4(
+                    collision.transport
+                        .scatter_random,
+                    cast<float>(
+                        collision.transport.channel),
+                    select(
+                        0.0f,
+                        1.0f,
+                        collision.transport.active),
+                    select(
+                        0.0f,
+                        1.0f,
+                        collision.phase_failed)));
+
+            const auto empty_segment =
+                segment->emit(
+                    empty,
+                    services,
+                    state,
+                    0.5f,
+                    make_float3(1.0f),
+                    0.2f,
+                    0.2f,
+                    make_float2(
+                        0.034f, 0.83f),
+                    false);
+            records.write(
+                21u,
+                make_float4(
+                    empty_segment.transport
+                        .throughput,
+                    select(
+                        0.0f,
+                        1.0f,
+                        empty_segment.scattered)));
         };
 
     auto kernel = device.compile(evaluate);
@@ -747,7 +848,7 @@ int main(int argc, char **argv) {
         luisa::float4{
             0.15f, 0.05f, 0.1f, 0.1f},
         luisa::float4{
-            0.25f, 0.25f, 1.0f, 1.0f},
+            0.42f, 0.42f, 1.0f, 1.0f},
         luisa::float4{
             4.45f, 6.65f, 9.3f, 1.0f},
         luisa::float4{
@@ -755,7 +856,7 @@ int main(int argc, char **argv) {
         luisa::float4{
             0.3f, 0.6f, 0.9f, 1.0f},
         luisa::float4{
-            1.0f, 2.0f, 0.0f, 0.25f},
+            1.0f, 2.0f, 0.0f, 0.42f},
         luisa::float4{
             1.45f, 2.15f, 3.3f, 2.3f},
         luisa::float4{
@@ -763,7 +864,40 @@ int main(int argc, char **argv) {
         luisa::float4{
             0.0f, 0.0f, 0.0f, 0.0f},
         luisa::float4{
-            0.0f, 0.0f, 0.0f, 0.0f}};
+            0.0f, 0.0f, 0.0f, 0.0f},
+        // Full raw-graph -> homogeneous estimator -> phase continuation.
+        // Values are pinned to official Cycles main b82c3f0. The phase input
+        // deliberately reservoir-selects closure one and rescales 0.034 to
+        // 0.17, reproducing the HG oracle's first direction sample.
+        luisa::float4{
+            0.204449043f,
+            0.238044649f,
+            0.327118456f,
+            1.0f},
+        luisa::float4{
+            0.0363587849f,
+            0.0638777092f,
+            0.0823066384f,
+            0.165291518f},
+        luisa::float4{
+            0.509156406f,
+            0.377192348f,
+            0.25924027f,
+            1.36953449f},
+        luisa::float4{
+            -0.117953472f,
+            -0.899912298f,
+            -0.419815481f,
+            0.044300843f},
+        luisa::float4{
+            0.58f, 0.17f, 1.0f, 0.0f},
+        luisa::float4{
+            0.407461792f,
+            0.0f,
+            1.0f,
+            0.0f},
+        luisa::float4{
+            1.0f, 1.0f, 1.0f, 0.0f}};
     for (std::size_t index = 0u;
          index < expected.size();
          ++index) {

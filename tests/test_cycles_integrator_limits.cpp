@@ -47,6 +47,7 @@ void test_structural_mapping() {
                                           .maximum_diffuse = 2u,
                                           .maximum_glossy = 3u,
                                           .maximum_transmission = 4u,
+                                          .maximum_volume = 6u,
                                           .transparent_minimum = 5u,
                                           .transparent_maximum = 9u};
   constexpr auto kernel = cycles_kernel_bounce_limits(scene);
@@ -55,6 +56,7 @@ void test_structural_mapping() {
   static_assert(kernel.maximum_diffuse == 3u);
   static_assert(kernel.maximum_glossy == 4u);
   static_assert(kernel.maximum_transmission == 5u);
+  static_assert(kernel.maximum_volume == 7u);
   static_assert(kernel.transparent_minimum == 6u);
   static_assert(kernel.transparent_maximum == 9u);
   static_assert(kernel.maximum_path_steps == 19u);

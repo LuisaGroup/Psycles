@@ -186,6 +186,18 @@ void VolumeStack::initialize_background(
         _contains_pair(entry.object, entry.shader));
 }
 
+void VolumeStack::clean_for_background(
+    bool keep_background) noexcept {
+    if (keep_background) {
+        _count = min(_count, 1u);
+        _write(
+            _count,
+            VolumeStackEntry::none());
+    } else {
+        clear();
+    }
+}
+
 void VolumeStack::cross_boundary(
     const VolumeStackEntry &entry,
     Bool back_facing,
