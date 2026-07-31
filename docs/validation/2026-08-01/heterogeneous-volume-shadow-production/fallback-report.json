@@ -1,0 +1,65 @@
+{
+  "actual_label": "Psycles fallback",
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.Volume Direct.R",
+    "ViewLayer.Volume Direct.G",
+    "ViewLayer.Volume Direct.B",
+    "ViewLayer.Volume Indirect.R",
+    "ViewLayer.Volume Indirect.G",
+    "ViewLayer.Volume Indirect.B",
+    "ViewLayer.Environment.R",
+    "ViewLayer.Environment.G",
+    "ViewLayer.Environment.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        0.9999998211860657,
+        0.9999998211860657,
+        0.9999998211860657
+      ],
+      "cycles": "/home/mike/Projects/Psycles/docs/validation/2026-08-01/heterogeneous-volume-shadow-production/exr/cycles-cpu.exr",
+      "cycles_channel_mean": [
+        0.010230273008346558,
+        0.010230273008346558,
+        0.010230273008346558
+      ],
+      "cycles_luminance_mean": 0.010230273008346558,
+      "cycles_rms": 0.012094845995306969,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999999089640547,
+      "maximum_absolute_error": 4.6566128730773926e-09,
+      "mean_absolute_error": 1.3969838619232178e-09,
+      "orientation_rmse": {
+        "flip_x": 0.010754618793725967,
+        "flip_xy": 0.009461880661547184,
+        "flip_y": 0.008245714008808136,
+        "identity": 2.002884968987928e-09
+      },
+      "p95_pixel_rmse": 3.958120942115784e-09,
+      "p99_pixel_rmse": 4.516914398067229e-09,
+      "psycles": "/home/mike/Projects/Psycles/docs/validation/2026-08-01/heterogeneous-volume-shadow-production/exr/psycles-fallback.exr",
+      "psycles_channel_mean": [
+        0.010230271145701408,
+        0.010230271145701408,
+        0.010230271145701408
+      ],
+      "psycles_luminance_mean": 0.010230272077023983,
+      "psycles_rms": 0.012094844042515849,
+      "relative_rmse": 1.655982200819329e-07,
+      "rmse": 2.002884968987928e-09,
+      "shape": [
+        4,
+        4,
+        3
+      ],
+      "valid_pixels": 16
+    }
+  },
+  "reference_label": "Cycles CPU",
+  "schema": "psycles.cycles-differential.v1"
+}

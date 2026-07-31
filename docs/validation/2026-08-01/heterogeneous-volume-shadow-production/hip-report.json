@@ -1,0 +1,73 @@
+{
+  "actual_label": "Psycles HIP",
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.Volume Direct.R",
+    "ViewLayer.Volume Direct.G",
+    "ViewLayer.Volume Direct.B",
+    "ViewLayer.Volume Indirect.R",
+    "ViewLayer.Volume Indirect.G",
+    "ViewLayer.Volume Indirect.B",
+    "ViewLayer.Environment.R",
+    "ViewLayer.Environment.G",
+    "ViewLayer.Environment.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        1.0000001192092896,
+        1.0000001192092896,
+        1.0000001192092896
+      ],
+      "cycles": "/home/mike/Projects/Psycles/docs/validation/2026-08-01/heterogeneous-volume-shadow-production/exr/cycles-cpu.exr",
+      "cycles_channel_mean": [
+        0.010230273008346558,
+        0.010230273008346558,
+        0.010230273008346558
+      ],
+      "cycles_luminance_mean": 0.010230273008346558,
+      "cycles_rms": 0.012094845995306969,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 7.450580596923828e-09,
+      "mean_absolute_error": 1.862645149230957e-09,
+      "orientation_rmse": {
+        "flip_x": 0.010754619725048542,
+        "flip_xy": 0.009461881592869759,
+        "flip_y": 0.00824571494013071,
+        "identity": 2.7939677238464355e-09
+      },
+      "p95_pixel_rmse": 5.3551048040390015e-09,
+      "p99_pixel_rmse": 7.031485615982547e-09,
+      "psycles": "/home/mike/Projects/Psycles/docs/validation/2026-08-01/heterogeneous-volume-shadow-production/exr/psycles-hip.exr",
+      "psycles_channel_mean": [
+        0.010230273939669132,
+        0.010230273939669132,
+        0.010230273939669132
+      ],
+      "psycles_luminance_mean": 0.010230273008346558,
+      "psycles_rms": 0.012094845847241163,
+      "relative_rmse": 2.3100482014657718e-07,
+      "rmse": 2.7939677238464355e-09,
+      "shape": [
+        4,
+        4,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 120795955.2,
+        "display_scale": 46.65137001471614,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles/docs/validation/2026-08-01/heterogeneous-volume-shadow-production/triptychs/combined.png",
+        "pixel_scale": 64
+      },
+      "valid_pixels": 16
+    }
+  },
+  "reference_label": "Cycles CPU",
+  "schema": "psycles.cycles-differential.v1"
+}

@@ -1,0 +1,61 @@
+{
+  "schema": "psycles.vulkan-cold-jit.v1",
+  "date": "2026-08-01",
+  "device": "AMD Radeon RX 9070 XT (RADV GFX1201)",
+  "psycles_commit": "8f413cbecfb1dba152d1d533d359c7facc17b88d",
+  "luisa_commit": "21612b45beccff433aa93eb3a3a981afc48f53e1",
+  "fixture": "psycles_luisa_volume_path_tests vk heterogeneous",
+  "environment": {
+    "PSYCLES_DISABLE_SHADER_CACHE": "1",
+    "LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV": "1",
+    "LUISA_XIR_TRACE_PASSES": "1",
+    "LUISA_LOG_LEVEL": "verbose"
+  },
+  "process": {
+    "wall_ms": 24180.0,
+    "max_rss_kib": 674632
+  },
+  "stages_ms": {
+    "xir_translation": 127.082513,
+    "spirv_structured_optimization": 240.15304,
+    "spirv_xir_legalization": 20874.362272,
+    "restructure_cfg": 19698.158,
+    "spirv_optimization_and_emission": 2568.0,
+    "spirv_reflection": 101.0,
+    "vulkan_pipeline_creation": 28.0
+  },
+  "restructure_nested_timers_ms": {
+    "post_restructure_fixed_point": 12912.7,
+    "drain_selection_exits": 5665.589,
+    "fixup_construct_exits": 4950.798,
+    "main_loop_iteration": 3998.514,
+    "try_restructure_if_batch": 2969.258,
+    "post_count_selection_reentries": 2137.419,
+    "normalize_structured_loop_continues": 1329.351,
+    "compute_post_dom": 1204.341
+  },
+  "structure": {
+    "input_blocks_before_post_fixed_point": 3311,
+    "output_blocks_after_post_fixed_point": 3528,
+    "lowered_phi": 6375,
+    "restructured_loops": 131,
+    "restructured_ifs": 665,
+    "restructured_switches": 38,
+    "selection_exit_site_queries": 14989,
+    "selection_exit_enclosing_loop_queries": 12653,
+    "selection_reentry_edge_queries": 96,
+    "selection_reentry_owner_queries": 1419,
+    "spirv_words_before_optimization": 317927,
+    "spirv_words_after_optimization": 291630
+  },
+  "ratios": {
+    "restructure_cfg_over_process": 0.814647,
+    "restructure_cfg_over_legalization": 0.943649,
+    "legalization_over_process": 0.863291
+  },
+  "notes": [
+    "Nested restructure timers overlap their enclosing fixed-point timers and must not be summed.",
+    "Stage boundaries after legalization are derived from adjacent timestamped trace records.",
+    "The focused fixture renders and validates the complete heterogeneous production pixel kernel."
+  ]
+}
