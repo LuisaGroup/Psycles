@@ -227,7 +227,8 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/path_tracer_lighting.cpp
             src/luisa/path_tracer_scene.cpp
             src/luisa/path_tracer_session.cpp
-            src/luisa/path_tracer_surfaces.cpp)
+            src/luisa/path_tracer_surfaces.cpp
+            src/luisa/path_tracer_volume_metadata.cpp)
         add_library(
             Psycles::luisa_runtime
             ALIAS psycles_luisa_runtime)
@@ -545,6 +546,24 @@ if(PSYCLES_ENABLE_LUISA)
                         psycles_luisa_camera_volume_stack_tests
                         vk)
             endif()
+
+            add_executable(
+                psycles_volume_scene_metadata_tests
+                tests/test_volume_scene_metadata.cpp)
+            target_link_libraries(
+                psycles_volume_scene_metadata_tests
+                PRIVATE Psycles::luisa_runtime)
+            target_include_directories(
+                psycles_volume_scene_metadata_tests
+                PRIVATE
+                    "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
+            target_compile_features(
+                psycles_volume_scene_metadata_tests
+                PRIVATE cxx_std_20)
+            add_test(
+                NAME psycles.volume_scene_metadata
+                COMMAND
+                    psycles_volume_scene_metadata_tests)
 
             if(TARGET luisa-compute-backend-fallback)
                 add_executable(

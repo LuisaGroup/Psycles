@@ -172,10 +172,21 @@ The implementation and focused evidence are recorded in
 The camera component is installed in the main per-sample path state together
 with Cycles' zero-initialized volume-bounce, volume-bounds-bounce, and optical
 depth fields. Host specialization emits no volume locals or ray query for
-volume-free scenes. Surface-boundary hookup, stacked-medium evaluation,
-free-flight integration, heterogeneous grids, and volume direct lighting
-remain open, so scene compilation still release-gates volume materials and
-the four Blender volume nodes remain unverified in the public node matrix.
+volume-free scenes. The scene-side specialization now follows Cycles'
+preprocessing as well: effective instance material overrides determine volume
+objects, transformed object AABBs determine pairwise overlap, and stack
+capacity starts with the world/terminator pair before applying the same
+conservative intersecting-object count and 32-slot cap. The current render
+aspect and camera near-view-plane/aperture bound decide whether the +Z
+enclosure query is needed. The host-only regression covers perspective,
+orthographic, and panorama cameras, negative-scale bounds, world-only,
+disjoint, overlapping, overridden, and saturated scenes. Details are in
+[`validation/2026-07-31/volume-scene-metadata`](validation/2026-07-31/volume-scene-metadata/README.md).
+
+Surface-boundary hookup, stacked-medium evaluation, free-flight integration,
+heterogeneous grids, and volume direct lighting remain open, so scene
+compilation still release-gates volume materials and the four Blender volume
+nodes remain unverified in the public node matrix.
 
 World volume identity is now complete in scene schema v2: the exporter retains
 Cycles' background-light object index separately from the default-background
