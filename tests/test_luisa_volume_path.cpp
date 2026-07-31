@@ -20,6 +20,17 @@ using namespace psycles;
 using namespace psycles::compiler;
 using namespace psycles::contract;
 
+[[nodiscard]] Mat4f translated(
+    float x,
+    float y,
+    float z) noexcept {
+    auto result = Mat4f{};
+    result.elements[12u] = x;
+    result.elements[13u] = y;
+    result.elements[14u] = z;
+    return result;
+}
+
 [[nodiscard]] ShaderGraph volume_boundary_shader() {
     ShaderGraph graph;
     const auto transparent =
@@ -297,6 +308,38 @@ using namespace psycles::contract;
             .power = 1.0f,
             .angle = 0.0f,
             .normalize = true,
+            .use_mis = true,
+            .cast_shadow = true,
+            .visibility_mask =
+                all_ray_visibility,
+            .cycles_shader_index = 2u,
+            .cycles_object_index = 1u});
+    return scene;
+}
+
+[[nodiscard]] SceneSnapshot
+make_point_direct_scene() {
+    auto scene = make_direct_scene();
+    scene.revision = 3u;
+    scene.materials
+        .at(MaterialId{1u})
+        .volume_sampling =
+        VolumeSampling::
+            multiple_importance;
+    scene.lights.clear();
+    scene.lights.emplace(
+        LightId{6u},
+        LightDesc{
+            .name =
+                "Cycles finite-volume point light",
+            .type = LightType::point,
+            .transform = translated(
+                0.6f, -0.25f, -0.8f),
+            .color = {1.0f, 1.0f, 1.0f},
+            .power = 10.0f,
+            .size = 0.0f,
+            .normalize = true,
+            .is_sphere = true,
             .use_mis = true,
             .cast_shadow = true,
             .visibility_mask =
@@ -753,6 +796,123 @@ int main(int argc, char **argv) {
         }
     }
 
+    auto point_compilation =
+        renderer.compile_scene(
+            make_point_direct_scene());
+    if (!point_compilation.ok()) {
+        for (const auto &diagnostic :
+             point_compilation.diagnostics) {
+            std::cerr << diagnostic.message
+                      << '\n';
+        }
+        return EXIT_FAILURE;
+    }
+    auto point_session =
+        renderer.create_session(
+            *point_compilation.scene,
+            direct_settings);
+    if (!point_session) {
+        std::cerr
+            << "could not create point-volume "
+               "render session\n";
+        return EXIT_FAILURE;
+    }
+    psycles::io::MemoryOutputSink
+        point_sink;
+    if (!point_session->render_samples(
+            {.first = 0u,
+             .count = 1u,
+             .offset = 0u,
+             .total = 1u},
+            point_sink)) {
+        std::cerr
+            << "point-volume render failed\n";
+        return EXIT_FAILURE;
+    }
+    const auto *point_combined =
+        point_sink.find(PassKind::combined);
+    const auto *point_volume =
+        point_sink.find(
+            PassKind::volume_direct);
+    if (point_combined == nullptr ||
+        point_volume == nullptr) {
+        std::cerr
+            << "point-volume passes were not "
+               "produced\n";
+        return EXIT_FAILURE;
+    }
+    // Official Blender 5.2.0/Cycles CPU. The finite emitter is sampled once
+    // for the equiangular reference point, MIS remaps the volume scatter
+    // dimension before indirect free flight, and the same emitter/random.xy
+    // pair is sampled again from the resulting direct collision point.
+    constexpr std::array cycles_point_mis{
+        0.0151212150f,
+        0.0245463103f,
+        0.0328574479f,
+        0.0312816277f,
+        0.0163814686f,
+        0.0329394266f,
+        0.0488485657f,
+        0.0545895584f,
+        0.0167177897f,
+        0.0477123372f,
+        0.1035088152f,
+        0.3427364230f,
+        0.0208319221f,
+        0.0349823460f,
+        0.0848462731f,
+        0.1400486678f};
+    for (auto pixel = std::size_t{0u};
+         pixel < pixel_count;
+         ++pixel) {
+        const auto combined_base =
+            pixel *
+            point_combined->channels;
+        const auto pass_base =
+            pixel *
+            point_volume->channels;
+        for (auto channel = std::size_t{0u};
+             channel < 3u;
+             ++channel) {
+            const auto expected =
+                cycles_point_mis[pixel];
+            const auto combined_value =
+                point_combined->pixels[
+                    combined_base + channel];
+            const auto direct_value =
+                point_volume->pixels[
+                    pass_base + channel];
+            if (!approximately_equal(
+                    combined_value,
+                    expected) ||
+                !approximately_equal(
+                    direct_value,
+                    expected)) {
+                std::cerr
+                    << "Cycles finite point-volume "
+                       "regression failed on "
+                    << backend << " pixel "
+                    << pixel << " channel "
+                    << channel << ": got "
+                    << combined_value
+                    << ", expected "
+                    << expected << '\n';
+                return EXIT_FAILURE;
+            }
+        }
+        if (!approximately_equal(
+                point_combined->pixels[
+                    combined_base + 3u],
+                1.0f)) {
+            std::cerr
+                << "point-volume alpha regression "
+                   "failed on "
+                << backend << " pixel "
+                << pixel << '\n';
+            return EXIT_FAILURE;
+        }
+    }
+
     auto guided_session =
         renderer.create_session(
             *direct_compilation.scene,
@@ -970,6 +1130,20 @@ int main(int argc, char **argv) {
         }
     }
 #if defined(PSYCLES_WITH_OPENIMAGEIO)
+    if (argc > 4) {
+        std::string error;
+        if (!psycles::io::write_multilayer_exr(
+                point_sink.images(),
+                argv[4],
+                "ViewLayer",
+                &error)) {
+            std::cerr
+                << "could not write point-volume "
+                   "diagnostic EXR: "
+                << error << '\n';
+            return EXIT_FAILURE;
+        }
+    }
     if (argc > 2) {
         std::string error;
         if (!psycles::io::write_multilayer_exr(

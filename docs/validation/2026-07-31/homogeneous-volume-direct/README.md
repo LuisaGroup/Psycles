@@ -34,7 +34,7 @@ oracle is Blender 5.2.0 LTS `fbe6228777e7`.
 
 `HomogeneousVolumeScatterProbability`,
 `HomogeneousVolumeSegmentComponent`,
-`DistantVolumeDirectLightingComponent`, and
+`AnalyticVolumeDirectLightingComponent`, and
 `HomogeneousVolumeShadowComponent` are separate host-stage C++ components.
 Their virtual composition builds one fused Luisa device AST.
 
@@ -92,9 +92,11 @@ The complete machine-readable measurements are
 ## Scope after this checkpoint
 
 This is an exact distant-light homogeneous sub-contract, not a claim that
-volume lighting is finished. Finite point/spot/area emitters still need
-equiangular and distance MIS, environment NEE remains to be connected, and
-heterogeneous grid/null-collision transport is also open. The accumulated
-VSPG history and power-of-two filter schedule were completed in the subsequent
-[`volume-guiding-history`](../volume-guiding-history/README.md) checkpoint.
-The remaining gates precede complex volume-scene quality claims.
+volume lighting is finished. The subsequent
+[`finite-point MIS`](../homogeneous-volume-point-mis/README.md) checkpoint
+connects point emitters, equiangular sampling, and distance/equiangular MIS.
+Spot/area/triangle visible intervals, environment NEE, and heterogeneous
+grid/null-collision transport remain open. The accumulated VSPG history and
+power-of-two filter schedule were completed in
+[`volume-guiding-history`](../volume-guiding-history/README.md). The remaining
+gates precede complex volume-scene quality claims.

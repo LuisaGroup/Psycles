@@ -182,21 +182,50 @@ class PathVolumeSegmentStageImpl final
             (path_flags &
              cycles_path_state::
                  flag_terminate) != 0u;
-        VolumeDirectLightSample direct_light{
+        VolumeDirectLightProposal
+            direct_proposal{
+                .light_index = 0u,
+                .requested_method =
+                    volume_sample_none,
+                .light_position =
+                    make_float3(0.0f),
+                .interval =
+                    {.minimum = 0.0f,
+                     .maximum =
+                         segment_length},
+                .valid = false};
+        VolumeDirectLightSample
+            direct_light{
             .direction = make_float3(0.0f),
             .radiance = make_float3(0.0f),
             .pdf = 0.0f,
-            .maximum_distance = 0.0f,
+            .maximum_distance =
+                ray_maximum,
             .light_instance =
                 surface_ray::invalid_primitive,
             .light_primitive =
                 surface_ray::invalid_primitive,
             .use_mis = false,
             .valid = false};
+        std::unique_ptr<
+            VolumeDirectDirectionProvider>
+            direct_direction;
         if (_direct_lighting) {
-            direct_light =
-                _direct_lighting->sample(
-                    event);
+            direct_proposal =
+                _direct_lighting->propose(
+                    event,
+                    stack,
+                    segment_position,
+                    ray->direction(),
+                    segment_length);
+            direct_direction =
+                _direct_lighting
+                    ->make_direction_provider(
+                        event,
+                        direct_proposal,
+                        segment_position,
+                        ray->direction(),
+                        direct_light);
         }
 
         BufferShaderServices services{
@@ -288,9 +317,19 @@ class PathVolumeSegmentStageImpl final
                  .enabled =
                      inside_volume &
                      (path_depth == 0u)},
-                inside_volume &
-                    direct_light.valid,
-                direct_light.direction);
+                {.requested_method =
+                     direct_proposal
+                         .requested_method,
+                 .light_position =
+                     direct_proposal
+                         .light_position,
+                 .interval =
+                     direct_proposal
+                         .interval,
+                 .enabled =
+                     inside_volume &
+                     direct_proposal.valid},
+                direct_direction.get());
 
         if (_direct_lighting) {
             _direct_lighting->accumulate(

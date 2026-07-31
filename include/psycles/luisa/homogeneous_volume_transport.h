@@ -5,6 +5,7 @@
 #endif
 
 #include <psycles/luisa/surface.h>
+#include <psycles/luisa/volume_direct_sampling.h>
 
 namespace psycles::luisa_backend {
 
@@ -36,7 +37,11 @@ struct HomogeneousVolumeDirectSample {
     Float3 channel_pdf;
     Float distance;
     Float distance_pdf;
+    Float equiangular_pdf;
+    Float mis_weight;
     UInt channel;
+    UInt sample_method;
+    Bool use_mis;
     Bool scattered;
 };
 
@@ -124,6 +129,24 @@ class HomogeneousVolumeTransport {
         Float scatter_random,
         Float reservoir_random,
         Bool enabled) const noexcept;
+
+    // General finite-emitter direct estimator. `sampling.random` is the
+    // technique-rescaled PRNG_VOLUME_SCATTER_DISTANCE value saved before
+    // indirect free-flight sampling; `scatter_random` and `reservoir_random`
+    // are the values left after that sampling. This distinction is required
+    // by Cycles' coupled random-number measure.
+    [[nodiscard]] HomogeneousVolumeDirectSample
+    sample_direct(
+        const VolumeCoefficients &coefficients,
+        Float distance,
+        Float3 throughput,
+        Float scatter_random,
+        Float reservoir_random,
+        const VolumeDirectSamplingState &sampling,
+        Float3 ray_origin,
+        Float3 ray_direction,
+        const VolumeEquiangularCoefficients
+            &equiangular) const noexcept;
 };
 
 }// namespace psycles::luisa_backend

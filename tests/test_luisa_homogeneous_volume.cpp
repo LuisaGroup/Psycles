@@ -1,5 +1,6 @@
 #include <psycles/luisa/homogeneous_volume_transport.h>
 #include <psycles/luisa/volume_scatter_probability.h>
+#include <psycles/luisa/volume_direct_sampling.h>
 
 #include <algorithm>
 #include <array>
@@ -16,7 +17,7 @@ namespace {
 using namespace luisa::compute;
 using namespace psycles::luisa_backend;
 
-inline constexpr std::size_t record_count = 35u;
+inline constexpr std::size_t record_count = 46u;
 
 [[nodiscard]] bool approximately_equal(
     float actual,
@@ -478,6 +479,166 @@ int main(int argc, char **argv) {
                              0.0f,
                          .enabled = true}),
                     0.0f));
+
+            VolumeDirectSampling
+                direct_sampling;
+            const auto write_sampling_state =
+                [&](std::uint32_t index,
+                    const VolumeDirectSamplingState
+                        &sampling) noexcept {
+                    records.write(
+                        index,
+                        make_float4(
+                            cast<float>(
+                                sampling.method),
+                            sampling.random,
+                            flag(
+                                sampling.use_mis),
+                            flag(
+                                sampling.enabled)));
+                };
+            write_sampling_state(
+                35u,
+                direct_sampling.prepare(
+                    volume_sample_distance,
+                    0.37f,
+                    true));
+            write_sampling_state(
+                36u,
+                direct_sampling.prepare(
+                    volume_sample_equiangular,
+                    0.37f,
+                    true));
+            write_sampling_state(
+                37u,
+                direct_sampling.prepare(
+                    volume_sample_mis,
+                    0.2f,
+                    true));
+            write_sampling_state(
+                38u,
+                direct_sampling.prepare(
+                    volume_sample_mis,
+                    0.8f,
+                    true));
+            write_sampling_state(
+                39u,
+                direct_sampling.prepare(
+                    volume_sample_mis,
+                    0.8f,
+                    false));
+
+            const VolumeEquiangularCoefficients
+                symmetric{
+                    .light_position =
+                        make_float3(
+                            1.0f, 0.0f, 0.0f),
+                    .interval =
+                        {.minimum = -1.0f,
+                         .maximum = 1.0f}};
+            const auto symmetric_middle =
+                direct_sampling
+                    .sample_equiangular(
+                        make_float3(0.0f),
+                        make_float3(
+                            0.0f, 0.0f, 1.0f),
+                        symmetric,
+                        0.5f);
+            records.write(
+                40u,
+                make_float4(
+                    symmetric_middle.distance,
+                    symmetric_middle.pdf,
+                    flag(
+                        symmetric_middle.valid),
+                    0.0f));
+            const auto symmetric_minimum =
+                direct_sampling
+                    .sample_equiangular(
+                        make_float3(0.0f),
+                        make_float3(
+                            0.0f, 0.0f, 1.0f),
+                        symmetric,
+                        0.0f);
+            records.write(
+                41u,
+                make_float4(
+                    symmetric_minimum.distance,
+                    symmetric_minimum.pdf,
+                    flag(
+                        symmetric_minimum.valid),
+                    0.0f));
+            records.write(
+                42u,
+                make_float4(
+                    direct_sampling
+                        .equiangular_pdf(
+                            make_float3(0.0f),
+                            make_float3(
+                                0.0f,
+                                0.0f,
+                                1.0f),
+                            symmetric,
+                            0.5f),
+                    0.0f,
+                    0.0f,
+                    0.0f));
+            const auto parallel =
+                direct_sampling
+                    .sample_equiangular(
+                        make_float3(0.0f),
+                        make_float3(
+                            0.0f, 0.0f, 1.0f),
+                        {.light_position =
+                             make_float3(
+                                 0.0f,
+                                 0.0f,
+                                 2.0f),
+                         .interval =
+                             {.minimum = 0.0f,
+                              .maximum = 3.0f}},
+                        0.4f);
+            records.write(
+                43u,
+                make_float4(
+                    parallel.distance,
+                    parallel.pdf,
+                    flag(parallel.valid),
+                    0.0f));
+            records.write(
+                44u,
+                make_float4(
+                    direct_sampling
+                        .power_heuristic(
+                            3.0f, 4.0f),
+                    0.0f,
+                    0.0f,
+                    0.0f));
+            const auto empty_interval =
+                direct_sampling
+                    .sample_equiangular(
+                        make_float3(0.0f),
+                        make_float3(
+                            0.0f, 0.0f, 1.0f),
+                        {.light_position =
+                             make_float3(
+                                 1.0f,
+                                 0.0f,
+                                 0.0f),
+                         .interval =
+                             {.minimum = 2.0f,
+                              .maximum = 2.0f}},
+                        0.5f);
+            records.write(
+                45u,
+                make_float4(
+                    direct_sampling
+                        .power_heuristic(
+                            0.0f, 0.0f),
+                    empty_interval.distance,
+                    empty_interval.pdf,
+                    flag(
+                        empty_interval.valid)));
         };
 
     auto shader = device.compile(evaluate);
@@ -532,6 +693,20 @@ int main(int argc, char **argv) {
             0.269488543f, 0.631867051f, 0.456431597f, 0.0f},
         luisa::float4{
             0.477954209f, 0.727468193f, 0.925726414f, 0.0f},
+        luisa::float4{0.0f, 0.0f, 0.0f, 0.0f},
+        luisa::float4{1.0f, 0.37f, 0.0f, 1.0f},
+        luisa::float4{2.0f, 0.37f, 0.0f, 1.0f},
+        luisa::float4{1.0f, 0.4f, 1.0f, 1.0f},
+        luisa::float4{2.0f, 0.6f, 1.0f, 1.0f},
+        luisa::float4{0.0f, 0.6f, 0.0f, 0.0f},
+        luisa::float4{
+            0.0f, 0.636619747f, 1.0f, 0.0f},
+        luisa::float4{
+            -1.0f, 0.318309873f, 1.0f, 0.0f},
+        luisa::float4{
+            0.509295821f, 0.0f, 0.0f, 0.0f},
+        luisa::float4{0.0f, 0.0f, 0.0f, 0.0f},
+        luisa::float4{0.36f, 0.0f, 0.0f, 0.0f},
         luisa::float4{0.0f, 0.0f, 0.0f, 0.0f}};
     for (auto index = std::size_t{0u};
          index < expected.size();

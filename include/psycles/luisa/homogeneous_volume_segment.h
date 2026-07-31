@@ -13,6 +13,32 @@
 
 namespace psycles::luisa_backend {
 
+struct VolumeDirectDirectionSample {
+    Float3 direction;
+    Bool valid;
+};
+
+// A scene-light component implements this host-stage callback. The volume
+// segment chooses a collision distance first, then invokes the provider so
+// finite emitters are sampled again from that exact point with the original
+// PRNG_LIGHT coordinates, as Cycles requires.
+class VolumeDirectDirectionProvider {
+
+  public:
+    virtual ~VolumeDirectDirectionProvider() noexcept =
+        default;
+
+    [[nodiscard]] virtual VolumeDirectDirectionSample
+    emit(Float distance) const noexcept = 0;
+};
+
+struct HomogeneousVolumeDirectInput {
+    UInt requested_method;
+    Float3 light_position;
+    VolumeDirectSampleInterval interval;
+    Bool enabled;
+};
+
 struct HomogeneousVolumeSegmentResult {
     VolumeCoefficients coefficients;
     HomogeneousVolumeSample transport;
@@ -44,8 +70,9 @@ class HomogeneousVolumeSegmentComponent {
          Float2 phase_random,
          Bool terminate,
          const VolumeScatterProbabilityGuidingState &guiding,
-         Bool direct_enabled,
-         Float3 direct_direction) const noexcept = 0;
+         const HomogeneousVolumeDirectInput &direct,
+         const VolumeDirectDirectionProvider
+             *direct_direction) const noexcept = 0;
 };
 
 [[nodiscard]] std::unique_ptr<HomogeneousVolumeSegmentComponent>

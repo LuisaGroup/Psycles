@@ -128,8 +128,10 @@ The exact inputs and machine-readable results are retained in
 ## Remaining scope
 
 This validates history-dependent homogeneous distant-light transport, not
-complete volume rendering. Finite point/spot/area lights still require
-equiangular/distance MIS, environment volume NEE remains open, and
-heterogeneous grid/null-collision transport is not implemented. Those are the
-next gates before Blender 4.1 Splash, Classroom, and other complex volume
-scenes can be treated as parity tests rather than diagnostics.
+complete volume rendering. The subsequent
+[`finite-point MIS`](../homogeneous-volume-point-mis/README.md) checkpoint
+connects point emitters and equiangular/distance MIS. Spot/area/triangle
+visible intervals, environment volume NEE, and heterogeneous
+grid/null-collision transport remain open. Those are the next gates before
+Blender 4.1 Splash, Classroom, and other complex volume scenes can be treated
+as parity tests rather than diagnostics.

@@ -19,6 +19,14 @@ struct VolumeDirectLightSample {
     Bool valid;
 };
 
+struct VolumeDirectLightProposal {
+    UInt light_index;
+    UInt requested_method;
+    Float3 light_position;
+    VolumeDirectSampleInterval interval;
+    Bool valid;
+};
+
 // The light is sampled before volume-distance integration because Cycles
 // chooses distance/equiangular transport from the selected emitter. The
 // contribution is completed afterwards, once the direct collision point and
@@ -29,8 +37,23 @@ class VolumeDirectLightingComponent {
     virtual ~VolumeDirectLightingComponent() noexcept =
         default;
 
-    [[nodiscard]] virtual VolumeDirectLightSample
-    sample(const ClosestPathEvent &event) const noexcept = 0;
+    [[nodiscard]] virtual VolumeDirectLightProposal
+    propose(
+        const ClosestPathEvent &event,
+        const VolumeStack &path_stack,
+        Float3 segment_position,
+        Float3 segment_direction,
+        Float segment_length) const noexcept = 0;
+
+    [[nodiscard]] virtual std::unique_ptr<
+        VolumeDirectDirectionProvider>
+    make_direction_provider(
+        ClosestPathEvent &event,
+        const VolumeDirectLightProposal &proposal,
+        Float3 segment_position,
+        Float3 segment_direction,
+        VolumeDirectLightSample &result)
+        const = 0;
 
     virtual void accumulate(
         ClosestPathEvent &event,
