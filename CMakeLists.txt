@@ -295,6 +295,7 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/path_kernel_volume_shadow.cpp
             src/luisa/path_kernel_volume_state.cpp
             src/luisa/path_tracer_kernel.cpp
+            src/luisa/path_tracer_image_decode.cpp
             src/luisa/path_tracer_light_distribution.cpp
             src/luisa/path_tracer_lighting.cpp
             src/luisa/path_tracer_scene.cpp

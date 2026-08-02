@@ -1,6 +1,7 @@
 #include "path_tracer_internal.h"
 #include "path_tracer_environment.h"
 #include "path_tracer_generated_coordinates.h"
+#include "path_tracer_image_decode.h"
 #include "path_tracer_shader_services.h"
 #include "path_tracer_surfaces.h"
 #include "path_tracer_volume_capabilities.h"
@@ -8,7 +9,6 @@
 #include "cycles_shader_identity.h"
 
 #include <psycles/compiler/core_nodes.h>
-#include <psycles/io/image.h>
 #include <psycles/luisa/background_sampling.h>
 #include <psycles/luisa/cycles_bsdf_tables.h>
 #include <psycles/luisa/cycles_nishita.h>
@@ -16,8 +16,6 @@
 #include <psycles/sampling/light_distribution.h>
 
 #include "cycles_shader_tables_4_5_10.inl"
-
-#include <stb/stb_image.h>
 
 namespace psycles::luisa_backend {
 
@@ -789,52 +787,19 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                     "' has no decodable payload.");
             continue;
         }
-        int width = 0;
-        int height = 0;
-        int channels = 0;
-        auto *stbi_decoded = stbi_load_from_memory(
-            image.encoded_data.data(),
-            static_cast<int>(image.encoded_data.size()),
-            &width,
-            &height,
-            &channels,
-            STBI_rgb_alpha);
-        std::vector<std::uint8_t> oiio_pixels;
-        const std::uint8_t *decoded = stbi_decoded;
-#if defined(PSYCLES_WITH_OPENIMAGEIO)
-        if (decoded == nullptr) {
-            io::DecodedImageRgba8 oiio_image;
-            if (io::decode_image_rgba8(
-                    image.encoded_data,
-                    image.name,
-                    oiio_image) &&
-                oiio_image.width <=
-                    static_cast<std::uint32_t>(
-                        std::numeric_limits<int>::max()) &&
-                oiio_image.height <=
-                    static_cast<std::uint32_t>(
-                        std::numeric_limits<int>::max())) {
-                width = static_cast<int>(oiio_image.width);
-                height = static_cast<int>(oiio_image.height);
-                oiio_pixels = std::move(oiio_image.pixels);
-                decoded = oiio_pixels.data();
-            }
-        }
-#endif
-        if (decoded == nullptr || width <= 0 || height <= 0) {
+        auto decoded = decode_scene_image_rgba8(
+            image.encoded_data, image.name);
+        if (!decoded) {
             diagnose(
                 result.diagnostics,
                 "Failed to decode image '" + image.name + "'.");
-            stbi_image_free(stbi_decoded);
             continue;
         }
-        const auto pixel_bytes =
-            static_cast<std::size_t>(width) *
-            static_cast<std::size_t>(height) * 4u;
+        const auto pixel_bytes = decoded->pixels.size();
         auto &pixels =
             texture_uploads.emplace_back(pixel_bytes);
-        std::memcpy(pixels.data(), decoded, pixel_bytes);
-        stbi_image_free(stbi_decoded);
+        std::memcpy(
+            pixels.data(), decoded->pixels.data(), pixel_bytes);
         if (image.alpha_type ==
                 contract::ImageAlphaType::straight &&
             image.color_space !=
@@ -872,8 +837,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         auto &resource = data->images.emplace_back(
             data->device.create_image<float>(
                 luisa::compute::PixelStorage::BYTE4,
-                static_cast<std::uint32_t>(width),
-                static_cast<std::uint32_t>(height)));
+                decoded->width,
+                decoded->height));
         data->texture_heap.emplace_on_update(
             static_cast<std::uint32_t>(image_id.value),
             resource,
