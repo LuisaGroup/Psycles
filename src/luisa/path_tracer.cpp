@@ -5,11 +5,9 @@ namespace psycles::luisa_backend {
 using namespace detail;
 namespace {
 
-// Apple Metal can abort a long fused path-tracing command without surfacing
-// an error through the current Luisa stream synchronization path. Keep each
-// command comfortably below the empirically observed watchdog boundary; the
-// session preserves exact sample indices while splitting the image into row
-// bands.
+// Apple Metal can abort a long fused path-tracing command at the OS watchdog
+// boundary. Keep each command comfortably below that boundary; the session
+// preserves exact sample indices while splitting the image into row bands.
 constexpr auto metal_max_pixel_samples_per_dispatch =
     std::uint32_t{131072u};
 

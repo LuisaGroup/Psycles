@@ -1,0 +1,92 @@
+{
+  "schema": "psycles.metal-dispatch-sweep.v1",
+  "scene": "classroom",
+  "backend": "metal",
+  "device": "Apple M1 Max",
+  "settings": {
+    "width": 320,
+    "height": 180,
+    "samples": 64,
+    "max_pixel_samples_per_dispatch": 131072
+  },
+  "results": [
+    {
+      "samples_per_dispatch": 1,
+      "submitted_row_bands": 64,
+      "scene_compile_seconds": 0.973759,
+      "shader_jit_seconds": 1348.2,
+      "shader_cache": "cold",
+      "render_seconds": 27.9566,
+      "combined_pfm_sha256": "1b0b13c27bc3475561737db614a8dfb7046eb8c0fb84e3ed0d79df8b7d1c267d",
+      "normal_pfm_sha256": "3d12121937a144b0375db3faa2bf7a35b3cb93f0539fcd2ac8b8749dc2cb12ae",
+      "albedo_pfm_sha256": "1cd0e6911a02510de39d11ae89bdd7556cc119b6a2a8d4c0d9ceeef2d25cf898"
+    },
+    {
+      "samples_per_dispatch": 2,
+      "submitted_row_bands": 32,
+      "scene_compile_seconds": 1.00793,
+      "shader_jit_seconds": 0.821964,
+      "shader_cache": "warm",
+      "render_seconds": 27.5919,
+      "combined_pfm_sha256": "1b0b13c27bc3475561737db614a8dfb7046eb8c0fb84e3ed0d79df8b7d1c267d",
+      "normal_pfm_sha256": "3d12121937a144b0375db3faa2bf7a35b3cb93f0539fcd2ac8b8749dc2cb12ae",
+      "albedo_pfm_sha256": "1cd0e6911a02510de39d11ae89bdd7556cc119b6a2a8d4c0d9ceeef2d25cf898"
+    },
+    {
+      "samples_per_dispatch": 4,
+      "submitted_row_bands": 32,
+      "scene_compile_seconds": 1.04943,
+      "shader_jit_seconds": 0.827499,
+      "shader_cache": "warm",
+      "render_seconds": 21.7015,
+      "combined_pfm_sha256": "1b0b13c27bc3475561737db614a8dfb7046eb8c0fb84e3ed0d79df8b7d1c267d",
+      "normal_pfm_sha256": "3d12121937a144b0375db3faa2bf7a35b3cb93f0539fcd2ac8b8749dc2cb12ae",
+      "albedo_pfm_sha256": "1cd0e6911a02510de39d11ae89bdd7556cc119b6a2a8d4c0d9ceeef2d25cf898"
+    },
+    {
+      "samples_per_dispatch": 8,
+      "submitted_row_bands": 32,
+      "scene_compile_seconds": 1.07384,
+      "shader_jit_seconds": 0.834119,
+      "shader_cache": "warm",
+      "render_seconds": 21.9877,
+      "combined_pfm_sha256": "1b0b13c27bc3475561737db614a8dfb7046eb8c0fb84e3ed0d79df8b7d1c267d",
+      "normal_pfm_sha256": "7fbcdb99129849626aaec98959c07711c21717d1deac20b1f6131b0e5365f3f3",
+      "albedo_pfm_sha256": "1cd0e6911a02510de39d11ae89bdd7556cc119b6a2a8d4c0d9ceeef2d25cf898"
+    }
+  ],
+  "default_verification": {
+    "samples_per_dispatch": 4,
+    "scene_compile_seconds": 1.0056,
+    "shader_jit_seconds": 0.827366,
+    "render_seconds": 21.4295,
+    "combined_matches_explicit_4_bitwise": true,
+    "normal_maximum_absolute_error_vs_explicit_4": 1.6574720262951814e-08,
+    "normal_rmse_vs_explicit_4": 3.987257746196349e-11,
+    "invalid_pixels": 0
+  },
+  "comparisons_to_1_spp": {
+    "2": {
+      "combined_maximum_absolute_error": 0.0,
+      "normal_maximum_absolute_error": 0.0
+    },
+    "4": {
+      "combined_maximum_absolute_error": 0.0,
+      "normal_maximum_absolute_error": 0.0
+    },
+    "8": {
+      "combined_maximum_absolute_error": 0.0,
+      "normal_maximum_absolute_error": 1.6574720262951814e-08,
+      "normal_rmse": 3.987257746196349e-11
+    }
+  },
+  "unbounded_diagnostic": {
+    "samples_per_dispatch": 8,
+    "max_pixel_samples_per_dispatch": 4294967295,
+    "process_wall_seconds": 3.159468375,
+    "exit_code": 134,
+    "error": "Impacting Interactivity (0000000e:kIOGPUCommandBufferCallbackErrorImpactingInteractivity)"
+  },
+  "selected_default_samples_per_dispatch": 4,
+  "status": "complete"
+}

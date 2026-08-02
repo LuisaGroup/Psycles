@@ -1,0 +1,146 @@
+{
+  "commands": {
+    "cycles_metal": {
+      "command": [
+        "/opt/homebrew/Caskroom/blender/5.2.0/.homebrew-command-wrappers/blender",
+        "/Users/mike/CLionProjects/Psycles/assets/official-blender-scenes/monster-under-the-bed/monster_under_the_bed_sss_demo_by_metin_seven.blend",
+        "--background",
+        "--python-exit-code",
+        "1",
+        "--python",
+        "/Users/mike/CLionProjects/Psycles/tools/render_cycles_golden.py",
+        "--",
+        "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/cycles/metal.exr",
+        "512",
+        "512",
+        "256",
+        "--cycles-device",
+        "METAL",
+        "--device-name",
+        "Apple M1 Max"
+      ],
+      "log": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/logs/cycles-metal.log",
+      "returncode": 0,
+      "wall_seconds": 14.905560874845833
+    },
+    "export": {
+      "reused": true
+    },
+    "psycles_fallback": {
+      "command": [
+        "/Users/mike/CLionProjects/Psycles/build-macos/bin/psycles_render_blender_scene",
+        "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/monster-under-the-bed",
+        "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/psycles/fallback.ppm",
+        "fallback",
+        "512",
+        "512",
+        "256",
+        "8"
+      ],
+      "log": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/logs/psycles-fallback.log",
+      "returncode": 0,
+      "wall_seconds": 55.364746833220124
+    },
+    "psycles_metal": {
+      "command": [
+        "/Users/mike/CLionProjects/Psycles/build-macos/bin/psycles_render_blender_scene",
+        "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/monster-under-the-bed",
+        "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/psycles/metal.ppm",
+        "metal",
+        "512",
+        "512",
+        "256",
+        "8"
+      ],
+      "log": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/logs/psycles-metal.log",
+      "returncode": 0,
+      "wall_seconds": 494.0373834162019
+    }
+  },
+  "comparisons": {
+    "psycles-fallback-vs-cycles-metal": {
+      "actual": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/psycles/fallback.exr",
+      "process_wall_seconds": 2.0301877502352,
+      "reference": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/cycles/metal.exr",
+      "report": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/comparisons/psycles-fallback-vs-cycles-metal/report.json"
+    },
+    "psycles-metal-vs-cycles-metal": {
+      "actual": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/psycles/metal.exr",
+      "process_wall_seconds": 2.084379875101149,
+      "reference": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/cycles/metal.exr",
+      "report": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/comparisons/psycles-metal-vs-cycles-metal/report.json"
+    }
+  },
+  "matrix": {
+    "cycles": [
+      "metal"
+    ],
+    "psycles": [
+      "fallback",
+      "metal"
+    ]
+  },
+  "relative_performance": {
+    "fallback": {
+      "slowdown_vs_cycles_metal": 3.8805219543174143,
+      "speedup_over_cycles_metal": 0.2576972922128205
+    },
+    "metal": {
+      "slowdown_vs_cycles_metal": 4.3200367823492,
+      "speedup_over_cycles_metal": 0.2314795105647708
+    }
+  },
+  "renderers": {
+    "cycles": {
+      "metal": {
+        "device": [
+          {
+            "id": "METAL_Apple M1 Max (GPU - 32 cores)",
+            "name": "Apple M1 Max (GPU - 32 cores)",
+            "type": "METAL"
+          }
+        ],
+        "metadata": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/cycles/metal.json",
+        "output": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/cycles/metal.exr",
+        "process_wall_seconds": 14.905560874845833,
+        "render_seconds": 13.680994625203311,
+        "sha256": "1947ffcfa3c90c5741d02ff718ec9d5c61f76b081b0b7b4a10e76a8ccb765ed4"
+      }
+    },
+    "psycles": {
+      "fallback": {
+        "output": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/psycles/fallback.exr",
+        "process_wall_seconds": 55.364746833220124,
+        "render_seconds": 53.0894,
+        "scene_compile_seconds": 1.07379,
+        "sha256": "ae39d8129c1a34d0d34662c328cf73fa64fcf65f12096c00dd26bff459848719",
+        "shader_jit_seconds": 0.279524
+      },
+      "metal": {
+        "output": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/psycles/metal.exr",
+        "process_wall_seconds": 494.0373834162019,
+        "render_seconds": 59.1024,
+        "scene_compile_seconds": 1.01656,
+        "sha256": "06c0cb753640835f51fdbf2190cca7ac82853b9b722b88e6030d54348c97c728",
+        "shader_jit_seconds": 433.466
+      }
+    }
+  },
+  "scene": {
+    "blend": "/Users/mike/CLionProjects/Psycles/assets/official-blender-scenes/monster-under-the-bed/monster_under_the_bed_sss_demo_by_metin_seven.blend",
+    "bundle": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/monster-under-the-bed",
+    "geometry_bin_sha256": "598a58d29f453c0dca27166a67238ddd88eb93aad30debf283a058209f94527b",
+    "scene_json_sha256": "ab2a1a02cd8e47aea713b97a4069eabc126613abf27d5e97d087afcc7ac27d93",
+    "sha256": "9463082f8d365ad8ae19c1ba86429deb3b532c5a2d0db0b9492c3c759f64d28d"
+  },
+  "schema": "psycles.scene-benchmark.v1",
+  "settings": {
+    "cycles_gpu_device": "METAL",
+    "cycles_gpu_device_name": "Apple M1 Max",
+    "height": 512,
+    "max_samples_per_dispatch": 8,
+    "samples": 256,
+    "width": 512
+  },
+  "status": "complete"
+}

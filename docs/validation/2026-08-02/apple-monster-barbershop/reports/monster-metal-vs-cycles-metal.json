@@ -1,0 +1,714 @@
+{
+  "actual_label": "Psycles metal",
+  "cycles_channels": [
+    "View Layer.Combined.R",
+    "View Layer.Combined.G",
+    "View Layer.Combined.B",
+    "View Layer.Combined.A",
+    "View Layer.Debug Sample Count.X",
+    "View Layer.Depth.Z",
+    "View Layer.Diffuse Color.R",
+    "View Layer.Diffuse Color.G",
+    "View Layer.Diffuse Color.B",
+    "View Layer.Diffuse Direct.R",
+    "View Layer.Diffuse Direct.G",
+    "View Layer.Diffuse Direct.B",
+    "View Layer.Diffuse Indirect.R",
+    "View Layer.Diffuse Indirect.G",
+    "View Layer.Diffuse Indirect.B",
+    "View Layer.Emission.R",
+    "View Layer.Emission.G",
+    "View Layer.Emission.B",
+    "View Layer.Environment.R",
+    "View Layer.Environment.G",
+    "View Layer.Environment.B",
+    "View Layer.Glossy Color.R",
+    "View Layer.Glossy Color.G",
+    "View Layer.Glossy Color.B",
+    "View Layer.Glossy Direct.R",
+    "View Layer.Glossy Direct.G",
+    "View Layer.Glossy Direct.B",
+    "View Layer.Glossy Indirect.R",
+    "View Layer.Glossy Indirect.G",
+    "View Layer.Glossy Indirect.B",
+    "View Layer.Normal.X",
+    "View Layer.Normal.Y",
+    "View Layer.Normal.Z",
+    "View Layer.Transmission Color.R",
+    "View Layer.Transmission Color.G",
+    "View Layer.Transmission Color.B",
+    "View Layer.Transmission Direct.R",
+    "View Layer.Transmission Direct.G",
+    "View Layer.Transmission Direct.B",
+    "View Layer.Transmission Indirect.R",
+    "View Layer.Transmission Indirect.G",
+    "View Layer.Transmission Indirect.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        0.7770633101463318,
+        0.7734267115592957,
+        0.700072169303894
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/cycles/metal.exr",
+      "cycles_channel_mean": [
+        0.1507495939731598,
+        0.07012827694416046,
+        0.05075325071811676
+      ],
+      "cycles_luminance_mean": 0.08586906641721725,
+      "cycles_rms": 0.14073072373867035,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.7716625144434116,
+      "maximum_absolute_error": 3.26700758934021,
+      "mean_absolute_error": 0.028196459636092186,
+      "orientation_rmse": {
+        "flip_x": 0.10586130619049072,
+        "flip_xy": 0.12673594057559967,
+        "flip_y": 0.1263381838798523,
+        "identity": 0.06273385137319565
+      },
+      "p95_pixel_rmse": 0.0957631915807724,
+      "p99_pixel_rmse": 0.25366994738578796,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/psycles/metal.exr",
+      "psycles_channel_mean": [
+        0.1171419769525528,
+        0.05423908308148384,
+        0.0355309396982193
+      ],
+      "psycles_luminance_mean": 0.06626193970441818,
+      "psycles_rms": 0.10756432451671281,
+      "relative_rmse": 0.4457722500574157,
+      "rmse": 0.06273385137319565,
+      "shape": [
+        512,
+        512,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 2.555165181307309,
+        "display_scale": 1.4421222484985907,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/comparisons/psycles-metal-vs-cycles-metal/triptychs/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 262144
+    },
+    "DiffCol": {
+      "channel_mean_ratio": [
+        1.010985255241394,
+        1.0076159238815308,
+        1.014070749282837
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/cycles/metal.exr",
+      "cycles_channel_mean": [
+        0.3313197195529938,
+        0.2605597674846649,
+        0.3087638318538666
+      ],
+      "cycles_luminance_mean": 0.279036283493042,
+      "cycles_rms": 0.3509579002857208,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.009156560827709,
+      "maximum_absolute_error": 0.46400055289268494,
+      "mean_absolute_error": 0.006632454693317413,
+      "orientation_rmse": {
+        "flip_x": 0.16596746444702148,
+        "flip_xy": 0.25347644090652466,
+        "flip_y": 0.25807905197143555,
+        "identity": 0.01242173369973898
+      },
+      "p95_pixel_rmse": 0.025936495512723923,
+      "p99_pixel_rmse": 0.0335649810731411,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/psycles/metal.exr",
+      "psycles_channel_mean": [
+        0.33495935797691345,
+        0.262544184923172,
+        0.3131083548069
+      ],
+      "psycles_luminance_mean": 0.2815912961959839,
+      "psycles_rms": 0.35586705790997614,
+      "relative_rmse": 0.03539379991054834,
+      "rmse": 0.01242173369973898,
+      "shape": [
+        512,
+        512,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 19.414734669801845,
+        "display_scale": 1.1296398161243904,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/comparisons/psycles-metal-vs-cycles-metal/triptychs/diffcol.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 262144
+    },
+    "DiffDir": {
+      "channel_mean_ratio": [
+        0.8054885864257812,
+        0.7902084589004517,
+        0.797166645526886
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/cycles/metal.exr",
+      "cycles_channel_mean": [
+        0.3139250576496124,
+        0.19793759286403656,
+        0.12466155737638474
+      ],
+      "cycles_luminance_mean": 0.2173054814338684,
+      "cycles_rms": 0.3098652958869934,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.7951853114600136,
+      "maximum_absolute_error": 9.452224731445312,
+      "mean_absolute_error": 0.06295239180326462,
+      "orientation_rmse": {
+        "flip_x": 0.2244744598865509,
+        "flip_xy": 0.268364280462265,
+        "flip_y": 0.2619129717350006,
+        "identity": 0.162735715508461
+      },
+      "p95_pixel_rmse": 0.21634681522846222,
+      "p99_pixel_rmse": 0.6851816773414612,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/psycles/metal.exr",
+      "psycles_channel_mean": [
+        0.2528630495071411,
+        0.15641196072101593,
+        0.09937603771686554
+      ],
+      "psycles_luminance_mean": 0.17279812693595886,
+      "psycles_rms": 0.23607809065333082,
+      "relative_rmse": 0.5251821280683527,
+      "rmse": 0.162735715508461,
+      "shape": [
+        512,
+        512,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 0.9547150465853316,
+        "display_scale": 0.7607304062537157,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/comparisons/psycles-metal-vs-cycles-metal/triptychs/diffdir.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 262144
+    },
+    "DiffInd": {
+      "channel_mean_ratio": [
+        0.6709224581718445,
+        0.5715612769126892,
+        0.4711138606071472
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/cycles/metal.exr",
+      "cycles_channel_mean": [
+        0.09581034630537033,
+        0.034704506397247314,
+        0.03017989918589592
+      ],
+      "cycles_luminance_mean": 0.047369010746479034,
+      "cycles_rms": 0.08534161746501923,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.6097284091050292,
+      "maximum_absolute_error": 2.3465769290924072,
+      "mean_absolute_error": 0.025859327986836433,
+      "orientation_rmse": {
+        "flip_x": 0.05964706838130951,
+        "flip_xy": 0.07535091787576675,
+        "flip_y": 0.07468525320291519,
+        "identity": 0.04772169515490532
+      },
+      "p95_pixel_rmse": 0.08577816933393478,
+      "p99_pixel_rmse": 0.18009518086910248,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/psycles/metal.exr",
+      "psycles_channel_mean": [
+        0.06428131461143494,
+        0.01983575150370598,
+        0.014218169264495373
+      ],
+      "psycles_luminance_mean": 0.028882231563329697,
+      "psycles_rms": 0.06003600564160084,
+      "relative_rmse": 0.5591843296673633,
+      "rmse": 0.04772169515490532,
+      "shape": [
+        512,
+        512,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 3.426744228664541,
+        "display_scale": 2.2648187326879934,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/comparisons/psycles-metal-vs-cycles-metal/triptychs/diffind.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 262144
+    },
+    "Emit": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/cycles/metal.exr",
+      "cycles_channel_mean": [
+        0.00044083024840801954,
+        0.00044083024840801954,
+        0.00044083024840801954
+      ],
+      "cycles_luminance_mean": 0.0004408292006701231,
+      "cycles_rms": 0.003127662232145667,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.02351999282836914,
+      "mean_absolute_error": 0.0004408292006701231,
+      "orientation_rmse": {
+        "flip_x": 0.003127662232145667,
+        "flip_xy": 0.003127662232145667,
+        "flip_y": 0.003127662232145667,
+        "identity": 0.003127662232145667
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.02344454638659954,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/psycles/metal.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 1.0,
+      "rmse": 0.003127662232145667,
+      "shape": [
+        512,
+        512,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 38.27375018792946,
+        "display_scale": 38.38843122075485,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/comparisons/psycles-metal-vs-cycles-metal/triptychs/emit.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 262144
+    },
+    "Env": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/cycles/metal.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/psycles/metal.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        512,
+        512,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/comparisons/psycles-metal-vs-cycles-metal/triptychs/env.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 262144
+    },
+    "GlossCol": {
+      "channel_mean_ratio": [
+        0.789889931678772,
+        0.7911964654922485,
+        0.7922240495681763
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/cycles/metal.exr",
+      "cycles_channel_mean": [
+        0.047691140323877335,
+        0.047976523637771606,
+        0.04820232465863228
+      ],
+      "cycles_luminance_mean": 0.04793235659599304,
+      "cycles_rms": 0.0703347772359848,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.7909174224652329,
+      "maximum_absolute_error": 0.1444881111383438,
+      "mean_absolute_error": 0.01767188310623169,
+      "orientation_rmse": {
+        "flip_x": 0.05598004162311554,
+        "flip_xy": 0.07240939885377884,
+        "flip_y": 0.07298462092876434,
+        "identity": 0.0298472810536623
+      },
+      "p95_pixel_rmse": 0.08709219843149185,
+      "p99_pixel_rmse": 0.092896468937397,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/psycles/metal.exr",
+      "psycles_channel_mean": [
+        0.03767075017094612,
+        0.03795885667204857,
+        0.038187041878700256
+      ],
+      "psycles_luminance_mean": 0.03791053593158722,
+      "psycles_rms": 0.05981729267153365,
+      "relative_rmse": 0.4243602130638694,
+      "rmse": 0.0298472810536623,
+      "shape": [
+        512,
+        512,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 9.648702401768647,
+        "display_scale": 3.7272599507133592,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/comparisons/psycles-metal-vs-cycles-metal/triptychs/glosscol.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 262144
+    },
+    "GlossDir": {
+      "channel_mean_ratio": [
+        0.9473637342453003,
+        0.946308434009552,
+        0.9404699206352234
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/cycles/metal.exr",
+      "cycles_channel_mean": [
+        0.2596514821052551,
+        0.1894950419664383,
+        0.1261339783668518
+      ],
+      "cycles_luminance_mean": 0.1998375654220581,
+      "cycles_rms": 0.34290948510169983,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9463373448050209,
+      "maximum_absolute_error": 7.876811981201172,
+      "mean_absolute_error": 0.0991828441619873,
+      "orientation_rmse": {
+        "flip_x": 0.41199660301208496,
+        "flip_xy": 0.4244181215763092,
+        "flip_y": 0.4191668629646301,
+        "identity": 0.2059301882982254
+      },
+      "p95_pixel_rmse": 0.3010229170322418,
+      "p99_pixel_rmse": 0.8502850532531738,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/psycles/metal.exr",
+      "psycles_channel_mean": [
+        0.24598439037799835,
+        0.17932075262069702,
+        0.1186252161860466
+      ],
+      "psycles_luminance_mean": 0.18911375105381012,
+      "psycles_rms": 0.38128092984293244,
+      "relative_rmse": 0.6005380348028309,
+      "rmse": 0.2059301882982254,
+      "shape": [
+        512,
+        512,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 0.7402959831861876,
+        "display_scale": 0.4303395064895091,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/comparisons/psycles-metal-vs-cycles-metal/triptychs/glossdir.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 262144
+    },
+    "GlossInd": {
+      "channel_mean_ratio": [
+        0.5384871959686279,
+        0.49394890666007996,
+        0.40993642807006836
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/cycles/metal.exr",
+      "cycles_channel_mean": [
+        0.08545178174972534,
+        0.0378090962767601,
+        0.03262414410710335
+      ],
+      "cycles_luminance_mean": 0.04756394028663635,
+      "cycles_rms": 0.08870140463113785,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.5068292244707174,
+      "maximum_absolute_error": 4.158105850219727,
+      "mean_absolute_error": 0.03530869260430336,
+      "orientation_rmse": {
+        "flip_x": 0.08048871159553528,
+        "flip_xy": 0.08543486148118973,
+        "flip_y": 0.08521269261837006,
+        "identity": 0.06920091807842255
+      },
+      "p95_pixel_rmse": 0.12326537072658539,
+      "p99_pixel_rmse": 0.2422264665365219,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/psycles/metal.exr",
+      "psycles_channel_mean": [
+        0.0460146926343441,
+        0.01867576129734516,
+        0.013373824767768383
+      ],
+      "psycles_luminance_mean": 0.024106794968247414,
+      "psycles_rms": 0.05087086216750031,
+      "relative_rmse": 0.7801558314233298,
+      "rmse": 0.06920091807842255,
+      "shape": [
+        512,
+        512,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 2.6104550149514063,
+        "display_scale": 2.585266466858257,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/comparisons/psycles-metal-vs-cycles-metal/triptychs/glossind.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 262144
+    },
+    "Normal": {
+      "channel_mean_ratio": [
+        2.636883497238159,
+        0.9575321078300476,
+        0.9565197229385376
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/cycles/metal.exr",
+      "cycles_channel_mean": [
+        -0.010073589161038399,
+        -0.7518857717514038,
+        0.21829934418201447
+      ],
+      "cycles_luminance_mean": -0.5240961313247681,
+      "cycles_rms": 0.5698807239532471,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": -0.9645060306789339,
+      "maximum_absolute_error": 0.7567037343978882,
+      "mean_absolute_error": 0.18319369852542877,
+      "orientation_rmse": {
+        "flip_x": 0.4056496322154999,
+        "flip_xy": 0.5167123675346375,
+        "flip_y": 0.49769333004951477,
+        "identity": 0.25019171833992004
+      },
+      "p95_pixel_rmse": 0.38765981793403625,
+      "p99_pixel_rmse": 0.4086821675300598,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/psycles/metal.exr",
+      "psycles_channel_mean": [
+        -0.026562880724668503,
+        -0.719954788684845,
+        0.20880763232707977
+      ],
+      "psycles_luminance_mean": -0.5054938793182373,
+      "psycles_rms": 0.5711952328044242,
+      "relative_rmse": 0.4390247078447344,
+      "rmse": 0.25019171833992004,
+      "shape": [
+        512,
+        512,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.5385739937236307,
+        "display_scale": 1.0,
+        "mapping": "normal_xyz_to_rgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/comparisons/psycles-metal-vs-cycles-metal/triptychs/normal.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 262144
+    },
+    "TransCol": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/cycles/metal.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/psycles/metal.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        512,
+        512,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/comparisons/psycles-metal-vs-cycles-metal/triptychs/transcol.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 262144
+    },
+    "TransDir": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/cycles/metal.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/psycles/metal.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        512,
+        512,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/comparisons/psycles-metal-vs-cycles-metal/triptychs/transdir.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 262144
+    },
+    "TransInd": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/cycles/metal.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/psycles/metal.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        512,
+        512,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/monster-under-the-bed-apple-512x512-256-subsurface/comparisons/psycles-metal-vs-cycles-metal/triptychs/transind.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 262144
+    }
+  },
+  "reference_label": "Cycles METAL",
+  "schema": "psycles.cycles-differential.v1"
+}

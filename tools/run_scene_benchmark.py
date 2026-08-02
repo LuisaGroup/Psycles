@@ -194,7 +194,7 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument(
         "--max-samples-per-dispatch",
         type=_positive_integer,
-        default=8,
+        default=4,
     )
     parser.add_argument(
         "--compiler-tmp",

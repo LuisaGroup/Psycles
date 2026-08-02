@@ -1,0 +1,717 @@
+{
+  "actual_label": "Psycles fallback",
+  "cycles_channels": [
+    "RenderLayer.Ambient Occlusion.R",
+    "RenderLayer.Ambient Occlusion.G",
+    "RenderLayer.Ambient Occlusion.B",
+    "RenderLayer.Combined.R",
+    "RenderLayer.Combined.G",
+    "RenderLayer.Combined.B",
+    "RenderLayer.Combined.A",
+    "RenderLayer.Debug Sample Count.X",
+    "RenderLayer.Depth.Z",
+    "RenderLayer.Diffuse Color.R",
+    "RenderLayer.Diffuse Color.G",
+    "RenderLayer.Diffuse Color.B",
+    "RenderLayer.Diffuse Direct.R",
+    "RenderLayer.Diffuse Direct.G",
+    "RenderLayer.Diffuse Direct.B",
+    "RenderLayer.Diffuse Indirect.R",
+    "RenderLayer.Diffuse Indirect.G",
+    "RenderLayer.Diffuse Indirect.B",
+    "RenderLayer.Emission.R",
+    "RenderLayer.Emission.G",
+    "RenderLayer.Emission.B",
+    "RenderLayer.Environment.R",
+    "RenderLayer.Environment.G",
+    "RenderLayer.Environment.B",
+    "RenderLayer.Glossy Color.R",
+    "RenderLayer.Glossy Color.G",
+    "RenderLayer.Glossy Color.B",
+    "RenderLayer.Glossy Direct.R",
+    "RenderLayer.Glossy Direct.G",
+    "RenderLayer.Glossy Direct.B",
+    "RenderLayer.Glossy Indirect.R",
+    "RenderLayer.Glossy Indirect.G",
+    "RenderLayer.Glossy Indirect.B",
+    "RenderLayer.Normal.X",
+    "RenderLayer.Normal.Y",
+    "RenderLayer.Normal.Z",
+    "RenderLayer.Transmission Color.R",
+    "RenderLayer.Transmission Color.G",
+    "RenderLayer.Transmission Color.B",
+    "RenderLayer.Transmission Direct.R",
+    "RenderLayer.Transmission Direct.G",
+    "RenderLayer.Transmission Direct.B",
+    "RenderLayer.Transmission Indirect.R",
+    "RenderLayer.Transmission Indirect.G",
+    "RenderLayer.Transmission Indirect.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        1.2063772678375244,
+        1.3053953647613525,
+        1.4393268823623657
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/cycles/metal.exr",
+      "cycles_channel_mean": [
+        0.12422515451908112,
+        0.08870347589254379,
+        0.0690537542104721
+      ],
+      "cycles_luminance_mean": 0.09483709931373596,
+      "cycles_rms": 0.2184380739927292,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.284874481688012,
+      "maximum_absolute_error": 9.425270080566406,
+      "mean_absolute_error": 0.07220852375030518,
+      "orientation_rmse": {
+        "flip_x": 0.2773262560367584,
+        "flip_xy": 0.2947162091732025,
+        "flip_y": 0.2863181233406067,
+        "identity": 0.1735379844903946
+      },
+      "p95_pixel_rmse": 0.2976931035518646,
+      "p99_pixel_rmse": 0.6528741121292114,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/psycles/fallback.exr",
+      "psycles_channel_mean": [
+        0.1498624086380005,
+        0.11579310148954391,
+        0.0993909239768982
+      ],
+      "psycles_luminance_mean": 0.121853768825531,
+      "psycles_rms": 0.2588083943757825,
+      "relative_rmse": 0.794449343552493,
+      "rmse": 0.1735379844903946,
+      "shape": [
+        214,
+        512,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0171861304789012,
+        "display_scale": 0.7465911730586076,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/comparisons/psycles-fallback-vs-cycles-metal/triptychs/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 109568
+    },
+    "DiffCol": {
+      "channel_mean_ratio": [
+        1.2471200227737427,
+        1.2864151000976562,
+        1.3614474534988403
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/cycles/metal.exr",
+      "cycles_channel_mean": [
+        0.21022389829158783,
+        0.1860475391149521,
+        0.16154706478118896
+      ],
+      "cycles_luminance_mean": 0.18942296504974365,
+      "cycles_rms": 0.24358154833316803,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.281770002422915,
+      "maximum_absolute_error": 0.7368841171264648,
+      "mean_absolute_error": 0.07347388565540314,
+      "orientation_rmse": {
+        "flip_x": 0.2487001270055771,
+        "flip_xy": 0.2714064121246338,
+        "flip_y": 0.2574494481086731,
+        "identity": 0.1279778629541397
+      },
+      "p95_pixel_rmse": 0.30744045972824097,
+      "p99_pixel_rmse": 0.3809194266796112,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/psycles/fallback.exr",
+      "psycles_channel_mean": [
+        0.26217442750930786,
+        0.2393343597650528,
+        0.21993783116340637
+      ],
+      "psycles_luminance_mean": 0.24279667437076569,
+      "psycles_rms": 0.3160130093988502,
+      "relative_rmse": 0.5254004822199958,
+      "rmse": 0.1279778629541397,
+      "shape": [
+        214,
+        512,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 2.2444602932760556,
+        "display_scale": 1.1005252232063791,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/comparisons/psycles-fallback-vs-cycles-metal/triptychs/diffcol.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 109568
+    },
+    "DiffDir": {
+      "channel_mean_ratio": [
+        0.9228084683418274,
+        0.9282574653625488,
+        0.934055745601654
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/cycles/metal.exr",
+      "cycles_channel_mean": [
+        0.3447154462337494,
+        0.2911223769187927,
+        0.28224602341651917
+      ],
+      "cycles_luminance_mean": 0.30187803506851196,
+      "cycles_rms": 0.7206627130508423,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9273188022207949,
+      "maximum_absolute_error": 134.70419311523438,
+      "mean_absolute_error": 0.18642544746398926,
+      "orientation_rmse": {
+        "flip_x": 0.7636096477508545,
+        "flip_xy": 0.7787452936172485,
+        "flip_y": 0.76907879114151,
+        "identity": 0.5979433655738831
+      },
+      "p95_pixel_rmse": 0.7490102648735046,
+      "p99_pixel_rmse": 2.114109992980957,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/psycles/fallback.exr",
+      "psycles_channel_mean": [
+        0.3181063234806061,
+        0.2702365219593048,
+        0.26363351941108704
+      ],
+      "psycles_luminance_mean": 0.27993717789649963,
+      "psycles_rms": 0.6361995991078097,
+      "relative_rmse": 0.829713199733283,
+      "rmse": 0.5979433655738831,
+      "shape": [
+        214,
+        512,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 0.30261928769932855,
+        "display_scale": 0.26141481604748756,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/comparisons/psycles-fallback-vs-cycles-metal/triptychs/diffdir.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 109568
+    },
+    "DiffInd": {
+      "channel_mean_ratio": [
+        1.1925528049468994,
+        1.2628817558288574,
+        1.3821250200271606
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/cycles/metal.exr",
+      "cycles_channel_mean": [
+        0.09890348464250565,
+        0.07108482718467712,
+        0.05736875906586647
+      ],
+      "cycles_luminance_mean": 0.07600945979356766,
+      "cycles_rms": 0.18314440548419952,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.2499111677851111,
+      "maximum_absolute_error": 41.74819564819336,
+      "mean_absolute_error": 0.09300380945205688,
+      "orientation_rmse": {
+        "flip_x": 0.26302868127822876,
+        "flip_xy": 0.26622483134269714,
+        "flip_y": 0.2614317238330841,
+        "identity": 0.25282058119773865
+      },
+      "p95_pixel_rmse": 0.3560972213745117,
+      "p99_pixel_rmse": 0.7732397317886353,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/psycles/fallback.exr",
+      "psycles_channel_mean": [
+        0.11794762313365936,
+        0.08977173268795013,
+        0.07929079979658127
+      ],
+      "psycles_luminance_mean": 0.09500507265329361,
+      "psycles_rms": 0.2339215740441184,
+      "relative_rmse": 1.3804439209012602,
+      "rmse": 0.25282058119773865,
+      "shape": [
+        214,
+        512,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 0.8460685520021229,
+        "display_scale": 0.9745078538282209,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/comparisons/psycles-fallback-vs-cycles-metal/triptychs/diffind.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 109568
+    },
+    "Emit": {
+      "channel_mean_ratio": [
+        0.5926831364631653,
+        0.7063400149345398,
+        0.8054163455963135
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/cycles/metal.exr",
+      "cycles_channel_mean": [
+        0.019802093505859375,
+        0.0124460244551301,
+        0.0064147282391786575
+      ],
+      "cycles_luminance_mean": 0.013574456796050072,
+      "cycles_rms": 0.07626194506883621,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.6744714507162792,
+      "maximum_absolute_error": 0.34158575534820557,
+      "mean_absolute_error": 0.00471015740185976,
+      "orientation_rmse": {
+        "flip_x": 0.10039792954921722,
+        "flip_xy": 0.10308733582496643,
+        "flip_y": 0.1015227660536766,
+        "identity": 0.015695057809352875
+      },
+      "p95_pixel_rmse": 0.03890406712889671,
+      "p99_pixel_rmse": 0.04945078119635582,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/psycles/fallback.exr",
+      "psycles_channel_mean": [
+        0.011736366897821426,
+        0.008791125379502773,
+        0.005166526883840561
+      ],
+      "psycles_luminance_mean": 0.009155583567917347,
+      "psycles_rms": 0.06998646499385773,
+      "relative_rmse": 0.20580458307463922,
+      "rmse": 0.015695057809352875,
+      "shape": [
+        214,
+        512,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 11.263679366766073,
+        "display_scale": 1.4427445244817578,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/comparisons/psycles-fallback-vs-cycles-metal/triptychs/emit.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 109568
+    },
+    "Env": {
+      "channel_mean_ratio": [
+        0.9622183442115784,
+        0.9622183442115784,
+        0.9622183442115784
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/cycles/metal.exr",
+      "cycles_channel_mean": [
+        0.00028789439238607883,
+        0.00028789439238607883,
+        0.00028789439238607883
+      ],
+      "cycles_luminance_mean": 0.0002878945670090616,
+      "cycles_rms": 0.01012973953038454,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9622180873357836,
+      "maximum_absolute_error": 0.2181408405303955,
+      "mean_absolute_error": 5.480061736307107e-05,
+      "orientation_rmse": {
+        "flip_x": 0.014226973056793213,
+        "flip_xy": 0.014226973988115788,
+        "flip_y": 0.014226973988115788,
+        "identity": 0.0021825453732162714
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/psycles/fallback.exr",
+      "psycles_channel_mean": [
+        0.00027701727231033146,
+        0.00027701727231033146,
+        0.00027701727231033146
+      ],
+      "psycles_luminance_mean": 0.00027701735962182283,
+      "psycles_rms": 0.009989752985686533,
+      "relative_rmse": 0.2154591800381089,
+      "rmse": 0.0021825453732162714,
+      "shape": [
+        214,
+        512,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/comparisons/psycles-fallback-vs-cycles-metal/triptychs/env.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 109568
+    },
+    "GlossCol": {
+      "channel_mean_ratio": [
+        0.8746419548988342,
+        0.9380263686180115,
+        0.9440067410469055
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/cycles/metal.exr",
+      "cycles_channel_mean": [
+        0.08689411729574203,
+        0.08265477418899536,
+        0.07931046932935715
+      ],
+      "cycles_luminance_mean": 0.08331215381622314,
+      "cycles_rms": 0.19415290653705597,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9243954194825097,
+      "maximum_absolute_error": 0.6863274574279785,
+      "mean_absolute_error": 0.018683739006519318,
+      "orientation_rmse": {
+        "flip_x": 0.24686215817928314,
+        "flip_xy": 0.24893376231193542,
+        "flip_y": 0.24581605195999146,
+        "identity": 0.05873388797044754
+      },
+      "p95_pixel_rmse": 0.11545567959547043,
+      "p99_pixel_rmse": 0.28723278641700745,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/psycles/fallback.exr",
+      "psycles_channel_mean": [
+        0.07600124180316925,
+        0.07753235846757889,
+        0.07486961781978607
+      ],
+      "psycles_luminance_mean": 0.07701337337493896,
+      "psycles_rms": 0.18884352305977994,
+      "relative_rmse": 0.3025135653029104,
+      "rmse": 0.05873388797044754,
+      "shape": [
+        214,
+        512,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 2.5851438620808675,
+        "display_scale": 0.9026873123946705,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/comparisons/psycles-fallback-vs-cycles-metal/triptychs/glosscol.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 109568
+    },
+    "GlossDir": {
+      "channel_mean_ratio": [
+        4.214971542358398,
+        3.3894898891448975,
+        3.0155694484710693
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/cycles/metal.exr",
+      "cycles_channel_mean": [
+        0.20948410034179688,
+        0.22465668618679047,
+        0.25169140100479126
+      ],
+      "cycles_luminance_mean": 0.22338855266571045,
+      "cycles_rms": 3.6446335315704346,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 3.523741954694947,
+      "maximum_absolute_error": 555.36767578125,
+      "mean_absolute_error": 0.7675465941429138,
+      "orientation_rmse": {
+        "flip_x": 6.0514020919799805,
+        "flip_xy": 6.057982921600342,
+        "flip_y": 6.0311408042907715,
+        "identity": 5.584660530090332
+      },
+      "p95_pixel_rmse": 3.4368088245391846,
+      "p99_pixel_rmse": 11.353778839111328,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/psycles/fallback.exr",
+      "psycles_channel_mean": [
+        0.8829695582389832,
+        0.7614715695381165,
+        0.7589929103851318
+      ],
+      "psycles_luminance_mean": 0.7871636152267456,
+      "psycles_rms": 4.883126943000262,
+      "relative_rmse": 1.5322968637902972,
+      "rmse": 5.584660530090332,
+      "shape": [
+        214,
+        512,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 0.050918841362925724,
+        "display_scale": 0.07282281806078708,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/comparisons/psycles-fallback-vs-cycles-metal/triptychs/glossdir.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 109568
+    },
+    "GlossInd": {
+      "channel_mean_ratio": [
+        1.4319816827774048,
+        1.553399920463562,
+        1.718360185623169
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/cycles/metal.exr",
+      "cycles_channel_mean": [
+        0.1051328182220459,
+        0.07649575918912888,
+        0.06114340201020241
+      ],
+      "cycles_luminance_mean": 0.08147692680358887,
+      "cycles_rms": 0.5810597538948059,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.5290449180514953,
+      "maximum_absolute_error": 116.612060546875,
+      "mean_absolute_error": 0.15994122624397278,
+      "orientation_rmse": {
+        "flip_x": 0.9844414591789246,
+        "flip_xy": 0.9983718991279602,
+        "flip_y": 1.004518985748291,
+        "identity": 0.9984615445137024
+      },
+      "p95_pixel_rmse": 0.5751252770423889,
+      "p99_pixel_rmse": 2.327587366104126,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/psycles/fallback.exr",
+      "psycles_channel_mean": [
+        0.15054826438426971,
+        0.11882850527763367,
+        0.10506638884544373
+      ],
+      "psycles_luminance_mean": 0.12458188086748123,
+      "psycles_rms": 0.8329314256104399,
+      "relative_rmse": 1.7183457257555343,
+      "rmse": 0.9984615445137024,
+      "shape": [
+        214,
+        512,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 0.24008470090264059,
+        "display_scale": 0.4003250217773499,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/comparisons/psycles-fallback-vs-cycles-metal/triptychs/glossind.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 109568
+    },
+    "Normal": {
+      "channel_mean_ratio": [
+        0.9809360504150391,
+        0.9937313795089722,
+        0.8264082074165344
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/cycles/metal.exr",
+      "cycles_channel_mean": [
+        0.16745111346244812,
+        0.32953327894210815,
+        0.036388326436281204
+      ],
+      "cycles_luminance_mean": 0.2739015519618988,
+      "cycles_rms": 0.5400671362876892,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9904815903969824,
+      "maximum_absolute_error": 0.8314207196235657,
+      "mean_absolute_error": 0.02496512047946453,
+      "orientation_rmse": {
+        "flip_x": 0.7407276034355164,
+        "flip_xy": 0.8344545960426331,
+        "flip_y": 0.6450802087783813,
+        "identity": 0.05585644021630287
+      },
+      "p95_pixel_rmse": 0.10713811963796616,
+      "p99_pixel_rmse": 0.25761568546295166,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/psycles/fallback.exr",
+      "psycles_channel_mean": [
+        0.16425883769989014,
+        0.32746756076812744,
+        0.03007161058485508
+      ],
+      "psycles_luminance_mean": 0.2712944447994232,
+      "psycles_rms": 0.540546696014088,
+      "relative_rmse": 0.10342499378919554,
+      "rmse": 0.05585644021630287,
+      "shape": [
+        214,
+        512,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 2.5000090069565495,
+        "display_scale": 1.0,
+        "mapping": "normal_xyz_to_rgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/comparisons/psycles-fallback-vs-cycles-metal/triptychs/normal.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 109568
+    },
+    "TransCol": {
+      "channel_mean_ratio": [
+        0.8702188730239868,
+        0.8596503138542175,
+        0.8567934036254883
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/cycles/metal.exr",
+      "cycles_channel_mean": [
+        0.009093957021832466,
+        0.009422908537089825,
+        0.008795254863798618
+      ],
+      "cycles_luminance_mean": 0.009307662025094032,
+      "cycles_rms": 0.06292908638715744,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.8616504499788173,
+      "maximum_absolute_error": 0.5978091359138489,
+      "mean_absolute_error": 0.0014734470751136541,
+      "orientation_rmse": {
+        "flip_x": 0.08576134592294693,
+        "flip_xy": 0.07895439863204956,
+        "flip_y": 0.08576134592294693,
+        "identity": 0.014754382893443108
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.046794772148132324,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/psycles/fallback.exr",
+      "psycles_channel_mean": [
+        0.007913732901215553,
+        0.008100406266748905,
+        0.0075357165187597275
+      ],
+      "psycles_luminance_mean": 0.008019951172173023,
+      "psycles_rms": 0.0582661031178872,
+      "relative_rmse": 0.2344604655893142,
+      "rmse": 0.014754382893443108,
+      "shape": [
+        214,
+        512,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 8.158143835863456,
+        "display_scale": 2.988667898197417,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/comparisons/psycles-fallback-vs-cycles-metal/triptychs/transcol.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 109568
+    },
+    "TransDir": {
+      "channel_mean_ratio": [
+        1.200449241878232e-05,
+        -2.6232773961964995e-06,
+        -5.3249605116434395e-06
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/cycles/metal.exr",
+      "cycles_channel_mean": [
+        1.1835579243779648e-05,
+        1.106687977880938e-05,
+        8.890353456081357e-06
+      ],
+      "cycles_luminance_mean": 1.10731489257887e-05,
+      "cycles_rms": 0.00044060402433387935,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 5.441041002581354e-07,
+      "maximum_absolute_error": 0.11663030087947845,
+      "mean_absolute_error": 1.0597907930787187e-05,
+      "orientation_rmse": {
+        "flip_x": 0.00044060402433387935,
+        "flip_xy": 0.00044060402433387935,
+        "flip_y": 0.00044060402433387935,
+        "identity": 0.00044060402433387935
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 1.8923602684850493e-09,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/psycles/fallback.exr",
+      "psycles_channel_mean": [
+        1.4208012544258963e-10,
+        -2.9031495957232423e-11,
+        -4.7340780601201615e-11
+      ],
+      "psycles_luminance_mean": 6.024945733290599e-12,
+      "psycles_rms": 1.6324214523454764e-08,
+      "relative_rmse": 1.0,
+      "rmse": 0.00044060402433387935,
+      "shape": [
+        214,
+        512,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 208036395.4723038,
+        "display_scale": 1469885996.1505067,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/comparisons/psycles-fallback-vs-cycles-metal/triptychs/transdir.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 109568
+    },
+    "TransInd": {
+      "channel_mean_ratio": [
+        1.0619730949401855,
+        0.8958805203437805,
+        0.736621618270874
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/cycles/metal.exr",
+      "cycles_channel_mean": [
+        0.0008193256799131632,
+        0.0006560661131516099,
+        0.0005847917054779828
+      ],
+      "cycles_luminance_mean": 0.0006856289692223072,
+      "cycles_rms": 0.018637843430042267,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9282704939020373,
+      "maximum_absolute_error": 5.654010772705078,
+      "mean_absolute_error": 0.0009830673225224018,
+      "orientation_rmse": {
+        "flip_x": 0.022115474566817284,
+        "flip_xy": 0.022102607414126396,
+        "flip_y": 0.022115474566817284,
+        "identity": 0.02107454463839531
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.02323962189257145,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/psycles/fallback.exr",
+      "psycles_channel_mean": [
+        0.0008701018523424864,
+        0.0005877568619325757,
+        0.00043077021837234497
+      ],
+      "psycles_luminance_mean": 0.0006364491418935359,
+      "psycles_rms": 0.011904831660895555,
+      "relative_rmse": 1.1307394397586437,
+      "rmse": 0.02107454463839531,
+      "shape": [
+        214,
+        512,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 20.75063560826951,
+        "display_scale": 31.012787606382172,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/comparisons/psycles-fallback-vs-cycles-metal/triptychs/transind.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 109568
+    }
+  },
+  "reference_label": "Cycles METAL",
+  "schema": "psycles.cycles-differential.v1"
+}

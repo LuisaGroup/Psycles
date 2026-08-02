@@ -47,7 +47,7 @@ struct LuisaPathTracerOptions {
     // Each batch is submitted and synchronized independently. Keeping this
     // finite bounds GPU progress and error-detection latency without changing
     // the device sampler's global sample indices. Zero is invalid.
-    std::uint32_t max_samples_per_dispatch{8u};
+    std::uint32_t max_samples_per_dispatch{4u};
     // Upper bound on pixel/sample work submitted in one kernel dispatch.
     // Backends without a practical watchdog use the unbounded default;
     // the Metal backend applies a conservative device-safe cap.

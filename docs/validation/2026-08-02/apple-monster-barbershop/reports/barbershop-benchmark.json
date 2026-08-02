@@ -1,0 +1,112 @@
+{
+  "commands": {
+    "cycles_metal": {
+      "command": [
+        "/opt/homebrew/Caskroom/blender/5.2.0/.homebrew-command-wrappers/blender",
+        "/Users/mike/CLionProjects/Psycles/assets/official-blender-scenes/barbershop-interior/barbershop_interior.blend",
+        "--background",
+        "--python-exit-code",
+        "1",
+        "--python",
+        "/Users/mike/CLionProjects/Psycles/tools/render_cycles_golden.py",
+        "--",
+        "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/cycles/metal.exr",
+        "512",
+        "214",
+        "32",
+        "--cycles-device",
+        "METAL",
+        "--device-name",
+        "Apple M1 Max"
+      ],
+      "log": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/logs/cycles-metal.log",
+      "returncode": 0,
+      "wall_seconds": 15.81838074978441
+    },
+    "export": {
+      "reused": true
+    },
+    "psycles_fallback": {
+      "command": [
+        "/Users/mike/CLionProjects/Psycles/build-macos/bin/psycles_render_blender_scene",
+        "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/barbershop-interior",
+        "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/psycles/fallback.ppm",
+        "fallback",
+        "512",
+        "214",
+        "32",
+        "4"
+      ],
+      "log": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/logs/psycles-fallback.log",
+      "returncode": 0,
+      "wall_seconds": 2031.7509652501903
+    }
+  },
+  "comparisons": {
+    "psycles-fallback-vs-cycles-metal": {
+      "actual": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/psycles/fallback.exr",
+      "process_wall_seconds": 1.0701632918789983,
+      "reference": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/cycles/metal.exr",
+      "report": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/comparisons/psycles-fallback-vs-cycles-metal/report.json"
+    }
+  },
+  "matrix": {
+    "cycles": [
+      "metal"
+    ],
+    "psycles": [
+      "fallback"
+    ]
+  },
+  "relative_performance": {
+    "fallback": {
+      "slowdown_vs_cycles_metal": 152.0718461091103,
+      "speedup_over_cycles_metal": 0.006575839154885436
+    }
+  },
+  "renderers": {
+    "cycles": {
+      "metal": {
+        "device": [
+          {
+            "id": "METAL_Apple M1 Max (GPU - 32 cores)",
+            "name": "Apple M1 Max (GPU - 32 cores)",
+            "type": "METAL"
+          }
+        ],
+        "metadata": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/cycles/metal.json",
+        "output": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/cycles/metal.exr",
+        "process_wall_seconds": 15.81838074978441,
+        "render_seconds": 13.2821429586038,
+        "sha256": "6d158ca8250e759e273f45bf91305afc6e8bc0a0b5ef41764bd585b27ef752d9"
+      }
+    },
+    "psycles": {
+      "fallback": {
+        "output": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/barbershop-interior-apple-512x214-32/psycles/fallback.exr",
+        "process_wall_seconds": 2031.7509652501903,
+        "render_seconds": 2019.84,
+        "scene_compile_seconds": 5.67527,
+        "sha256": "ea606522e6c103e4543ade05e536be6be62a09fdb9d29f6e69998e970b0354e5",
+        "shader_jit_seconds": 3.29182
+      }
+    }
+  },
+  "scene": {
+    "blend": "/Users/mike/CLionProjects/Psycles/assets/official-blender-scenes/barbershop-interior/barbershop_interior.blend",
+    "bundle": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/barbershop-interior",
+    "geometry_bin_sha256": "5e6e617fe49a093a85e8a37e209d3c9ff1c278c16493715f0543ae8dc3a75ac6",
+    "scene_json_sha256": "1d2ce807a39924e1ddc0850b9135ad5bb7b8f52fd6dc2935c8fdff0951060ac6",
+    "sha256": "95972b56180462cac47ec82f3a755bd9111ec18ca37a6196a319c013db994130"
+  },
+  "schema": "psycles.scene-benchmark.v1",
+  "settings": {
+    "cycles_gpu_device": "METAL",
+    "cycles_gpu_device_name": "Apple M1 Max",
+    "height": 214,
+    "max_samples_per_dispatch": 4,
+    "samples": 32,
+    "width": 512
+  },
+  "status": "complete"
+}

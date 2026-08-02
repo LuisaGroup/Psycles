@@ -149,11 +149,15 @@ one. Readback additionally requires every pixel's sample counter to equal the
 session's completed sample count, so a backend can no longer turn incomplete
 coverage into a successful image.
 
-The repaired default eight-sample dispatch is pixel-identical to the known-safe
-four-sample-dispatch Metal reference: Combined RMSE and maximum absolute error
-are both zero. Two repeated repaired frames are also pixel-identical and took
-25.6995 and 23.4594 seconds. The normal benchmark run took 25.4340 seconds and
-has no black bands or invalid pixels.
+The repaired eight-sample dispatch used for this checkpoint is pixel-identical
+to the known-safe four-sample-dispatch Metal reference: Combined RMSE and
+maximum absolute error are both zero. Two repeated repaired frames are also
+pixel-identical and took 25.6995 and 23.4594 seconds. The normal benchmark run
+took 25.4340 seconds and has no black bands or invalid pixels.
+
+A subsequent controlled 1/2/4/8-sample sweep selected four samples as the new
+default while retaining the independent row-band work cap; see the
+[Monster and Barbershop checkpoint](../apple-monster-barbershop/README.md#metal-samples-per-dispatch-sweep).
 
 ## Focused Hosek regression
 
@@ -183,7 +187,7 @@ Direct relative RMSE rather than hiding that sampling-distribution difference.
 
 The matched checkpoint is 320x180, 16 fixed samples, seed 1. Cycles selected
 only `METAL_Apple M1 Max (GPU - 32 cores)`. Psycles used the production Luisa
-fallback backend and the default exact partition of at most eight samples per
+fallback backend and the recorded exact partition of at most eight samples per
 dispatch.
 
 | Metric | Before repairs | Hosek only | Default-slot repair | Current Glass |

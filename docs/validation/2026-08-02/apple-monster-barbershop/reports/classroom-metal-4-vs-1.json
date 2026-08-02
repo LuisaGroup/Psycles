@@ -1,0 +1,141 @@
+{
+  "actual_label": "Psycles Metal 4 spp",
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.DiffCol.R",
+    "ViewLayer.DiffCol.G",
+    "ViewLayer.DiffCol.B",
+    "ViewLayer.DiffDir.R",
+    "ViewLayer.DiffDir.G",
+    "ViewLayer.DiffDir.B",
+    "ViewLayer.DiffInd.R",
+    "ViewLayer.DiffInd.G",
+    "ViewLayer.DiffInd.B",
+    "ViewLayer.Emit.R",
+    "ViewLayer.Emit.G",
+    "ViewLayer.Emit.B",
+    "ViewLayer.Env.R",
+    "ViewLayer.Env.G",
+    "ViewLayer.Env.B",
+    "ViewLayer.GlossCol.R",
+    "ViewLayer.GlossCol.G",
+    "ViewLayer.GlossCol.B",
+    "ViewLayer.GlossDir.R",
+    "ViewLayer.GlossDir.G",
+    "ViewLayer.GlossDir.B",
+    "ViewLayer.GlossInd.R",
+    "ViewLayer.GlossInd.G",
+    "ViewLayer.GlossInd.B",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.TransCol.R",
+    "ViewLayer.TransCol.G",
+    "ViewLayer.TransCol.B",
+    "ViewLayer.TransDir.R",
+    "ViewLayer.TransDir.G",
+    "ViewLayer.TransDir.B",
+    "ViewLayer.TransInd.R",
+    "ViewLayer.TransInd.G",
+    "ViewLayer.TransInd.B",
+    "ViewLayer.VolumeDir.R",
+    "ViewLayer.VolumeDir.G",
+    "ViewLayer.VolumeDir.B",
+    "ViewLayer.VolumeInd.R",
+    "ViewLayer.VolumeInd.G",
+    "ViewLayer.VolumeInd.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/classroom-metal-dispatch-sweep/spp-1.exr",
+      "cycles_channel_mean": [
+        0.2829537093639374,
+        0.21931710839271545,
+        0.18695710599422455
+      ],
+      "cycles_luminance_mean": 0.2305104285478592,
+      "cycles_rms": 0.41670531034469604,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.46923938393592834,
+        "flip_xy": 0.515369176864624,
+        "flip_y": 0.49214160442352295,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/classroom-metal-dispatch-sweep/spp-4.exr",
+      "psycles_channel_mean": [
+        0.2829537093639374,
+        0.21931710839271545,
+        0.18695710599422455
+      ],
+      "psycles_luminance_mean": 0.2305104285478592,
+      "psycles_rms": 0.41670529861967526,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        180,
+        320,
+        3
+      ],
+      "valid_pixels": 57600
+    },
+    "Normal": {
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/classroom-metal-dispatch-sweep/spp-1.exr",
+      "cycles_channel_mean": [
+        0.08196565508842468,
+        -0.483303964138031,
+        0.02050114795565605
+      ],
+      "cycles_luminance_mean": -0.3267458975315094,
+      "cycles_rms": 0.5486624836921692,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": -1.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.5819858312606812,
+        "flip_xy": 0.7620813250541687,
+        "flip_y": 0.6738356947898865,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/classroom-metal-dispatch-sweep/spp-4.exr",
+      "psycles_channel_mean": [
+        0.08196565508842468,
+        -0.483303964138031,
+        0.02050114795565605
+      ],
+      "psycles_luminance_mean": -0.3267458975315094,
+      "psycles_rms": 0.5486625068535056,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        180,
+        320,
+        3
+      ],
+      "valid_pixels": 57600
+    }
+  },
+  "reference_label": "Psycles Metal 1 spp",
+  "schema": "psycles.cycles-differential.v1"
+}
