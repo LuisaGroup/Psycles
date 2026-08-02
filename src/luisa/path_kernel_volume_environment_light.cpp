@@ -16,8 +16,8 @@ inline constexpr auto environment_emitter_kind =
             LightDistributionEmitterKind::
                 environment);
 
-class EnvironmentVolumeDirectionProvider final
-    : public VolumeDirectDirectionProvider {
+class EnvironmentVolumeLightProvider final
+    : public VolumeDirectLightProvider {
 
   private:
     ClosestPathEvent &_event;
@@ -30,9 +30,10 @@ class EnvironmentVolumeDirectionProvider final
     std::shared_ptr<
         const EnvironmentLightComponent>
         _environment_light;
+    mutable Bool _sample_valid{false};
 
   public:
-    EnvironmentVolumeDirectionProvider(
+    EnvironmentVolumeLightProvider(
         ClosestPathEvent &event,
         const VolumeDirectLightProposal
             &proposal,
@@ -56,7 +57,7 @@ class EnvironmentVolumeDirectionProvider final
               std::move(
                   environment_light)} {}
 
-    VolumeDirectDirectionSample emit(
+    VolumeDirectDirectionSample sample_direction(
         Float distance)
         const noexcept override {
         const auto active =
@@ -82,27 +83,12 @@ class EnvironmentVolumeDirectionProvider final
                         _event.bounce
                             .selected_light
                             .selection_pdf);
+            _sample_valid = light.valid;
             $if(light.valid) {
                 _result.direction =
                     light.direction;
                 _result.radiance =
-                    _environment_light
-                        ->evaluate_emission(
-                            _event.bounce
-                                .sample,
-                            light.direction,
-                            cycles_path_state::
-                                light_emission_shader_state(
-                                    _event.bounce
-                                        .sample.path_depth,
-                                    _event.bounce
-                                        .sample.diffuse_depth,
-                                    _event.bounce
-                                        .sample.glossy_depth,
-                                    _event.bounce
-                                        .sample.transparent_depth,
-                                    _event.bounce
-                                        .sample.transmission_depth));
+                    make_float3(1.0f);
                 _result.pdf = light.pdf;
                 _result.maximum_distance =
                     ray_maximum;
@@ -121,6 +107,51 @@ class EnvironmentVolumeDirectionProvider final
                 _result.direction,
             .valid =
                 _result.valid};
+    }
+
+    void evaluate_constant_emission()
+        const noexcept override {
+        if (_event.bounce.sample
+                .invocation.config.scene
+                ->environment_emission_is_constant) {
+            $if(_sample_valid) {
+                _result.radiance *=
+                    _environment_light
+                        ->evaluate_constant_emission(
+                            _event.bounce
+                                .sample);
+            };
+        }
+    }
+
+    void evaluate_deferred_emission(
+        Bool receiving_nonzero)
+        const noexcept override {
+        if (!_event.bounce.sample
+                 .invocation.config.scene
+                 ->environment_emission_is_constant) {
+            $if(_sample_valid &
+                receiving_nonzero) {
+                _result.radiance *=
+                    _environment_light
+                        ->evaluate_emission(
+                            _event.bounce
+                                .sample,
+                            _result.direction,
+                            cycles_path_state::
+                                light_emission_shader_state(
+                                    _event.bounce
+                                        .sample.path_depth,
+                                    _event.bounce
+                                        .sample.diffuse_depth,
+                                    _event.bounce
+                                        .sample.glossy_depth,
+                                    _event.bounce
+                                        .sample.transparent_depth,
+                                    _event.bounce
+                                        .sample.transmission_depth));
+            };
+        }
     }
 };
 
@@ -177,8 +208,8 @@ class PathVolumeEnvironmentLightComponent final
     }
 
     std::unique_ptr<
-        VolumeDirectDirectionProvider>
-    make_direction_provider(
+        VolumeDirectLightProvider>
+    make_light_provider(
         ClosestPathEvent &event,
         const VolumeDirectLightProposal
             &proposal,
@@ -188,7 +219,7 @@ class PathVolumeEnvironmentLightComponent final
             &result)
         const override {
         return std::make_unique<
-            EnvironmentVolumeDirectionProvider>(
+            EnvironmentVolumeLightProvider>(
                 event,
                 proposal,
                 std::move(

@@ -5,6 +5,7 @@
 #include <psycles/luisa/surface_ray.h>
 #include <psycles/luisa/volume_light_interval.h>
 
+#include <optional>
 #include <utility>
 
 namespace psycles::luisa_backend::detail {
@@ -16,8 +17,8 @@ inline constexpr auto mesh_emitter_kind =
             LightDistributionEmitterKind::
                 emissive_triangle);
 
-class MeshVolumeDirectionProvider final
-    : public VolumeDirectDirectionProvider {
+class MeshVolumeLightProvider final
+    : public VolumeDirectLightProvider {
 
   private:
     ClosestPathEvent &_event;
@@ -30,9 +31,14 @@ class MeshVolumeDirectionProvider final
     std::shared_ptr<
         const EmissiveTriangleComponent>
         _emissive_triangle;
+    mutable std::optional<
+        EmissiveTriangleLightProposal>
+        _sample;
+    mutable Bool _sample_valid{false};
+    mutable Bool _emission_is_constant{false};
 
   public:
-    MeshVolumeDirectionProvider(
+    MeshVolumeLightProvider(
         ClosestPathEvent &event,
         const VolumeDirectLightProposal
             &proposal,
@@ -56,7 +62,7 @@ class MeshVolumeDirectionProvider final
               std::move(
                   emissive_triangle)} {}
 
-    VolumeDirectDirectionSample emit(
+    VolumeDirectDirectionSample sample_direction(
         Float distance)
         const noexcept override {
         const auto active =
@@ -90,15 +96,18 @@ class MeshVolumeDirectionProvider final
             const auto valid =
                 light.valid &
                 visible;
+            _sample = light;
+            _sample_valid = valid;
+            _emission_is_constant =
+                light.geometry
+                    .emitter
+                    .emission_is_constant !=
+                0u;
             $if(valid) {
                 _result.direction =
                     light.light.direction;
                 _result.radiance =
-                    _emissive_triangle
-                        ->evaluate_emission(
-                            _event.bounce
-                                .sample,
-                            light);
+                    make_float3(1.0f);
                 _result.pdf = light.pdf;
                 _result.maximum_distance =
                     light.light.distance;
@@ -119,6 +128,38 @@ class MeshVolumeDirectionProvider final
                 _result.direction,
             .valid =
                 _result.valid};
+    }
+
+    void evaluate_constant_emission()
+        const noexcept override {
+        if (_sample) {
+            $if(_sample_valid &
+                _emission_is_constant) {
+                _result.radiance *=
+                    _emissive_triangle
+                        ->evaluate_constant_emission(
+                            _event.bounce
+                                .sample,
+                            *_sample);
+            };
+        }
+    }
+
+    void evaluate_deferred_emission(
+        Bool receiving_nonzero)
+        const noexcept override {
+        if (_sample) {
+            $if(_sample_valid &
+                !_emission_is_constant &
+                receiving_nonzero) {
+                _result.radiance *=
+                    _emissive_triangle
+                        ->evaluate_emission(
+                            _event.bounce
+                                .sample,
+                            *_sample);
+            };
+        }
     }
 };
 
@@ -218,8 +259,8 @@ class PathVolumeMeshLightComponent final
     }
 
     std::unique_ptr<
-        VolumeDirectDirectionProvider>
-    make_direction_provider(
+        VolumeDirectLightProvider>
+    make_light_provider(
         ClosestPathEvent &event,
         const VolumeDirectLightProposal
             &proposal,
@@ -229,7 +270,7 @@ class PathVolumeMeshLightComponent final
             &result)
         const override {
         return std::make_unique<
-            MeshVolumeDirectionProvider>(
+            MeshVolumeLightProvider>(
                 event,
                 proposal,
                 std::move(

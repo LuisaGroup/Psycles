@@ -62,8 +62,8 @@ volume_spot_light_input(
             light.spot_smooth};
 }
 
-class AnalyticVolumeDirectionProvider final
-    : public VolumeDirectDirectionProvider {
+class AnalyticVolumeLightProvider final
+    : public VolumeDirectLightProvider {
 
   private:
     const PathKernelConfig &_config;
@@ -76,6 +76,56 @@ class AnalyticVolumeDirectionProvider final
         _light_sampling;
     AreaLightSampling
         _area_sampling;
+    mutable UInt _sample_light_index;
+    mutable Float3 _sample_position;
+    mutable Float3 _sample_normal;
+    mutable Float2 _sample_uv;
+    mutable Float3 _sample_incoming;
+    mutable Float _sample_distance;
+    mutable Bool _sample_valid;
+    mutable Bool _emission_is_constant;
+
+    void _remember_emission_sample(
+        Var<LightGpu> light,
+        UInt light_index,
+        Float3 position,
+        Float3 normal,
+        Float2 uv,
+        Float3 incoming,
+        Float distance,
+        Bool valid) const noexcept {
+        _sample_light_index = select(
+            _sample_light_index,
+            light_index,
+            valid);
+        _sample_position = select(
+            _sample_position,
+            position,
+            valid);
+        _sample_normal = select(
+            _sample_normal,
+            normal,
+            valid);
+        _sample_uv = select(
+            _sample_uv,
+            uv,
+            valid);
+        _sample_incoming = select(
+            _sample_incoming,
+            incoming,
+            valid);
+        _sample_distance = select(
+            _sample_distance,
+            distance,
+            valid);
+        _emission_is_constant = select(
+            _emission_is_constant,
+            (light.flags &
+             light_flag_constant_emission) !=
+                0u,
+            valid);
+        _sample_valid |= valid;
+    }
 
     void _sample_distant(
         Var<LightGpu> light,
@@ -165,22 +215,21 @@ class AnalyticVolumeDirectionProvider final
             light.color *
             (light.power *
              evaluation_factor);
-        radiance *=
-            _event.bounce.sample
-                .analytic_light_shader(
-                    light,
-                    light_index,
-                    direction,
-                    -direction,
-                    make_float2(0.5f),
-                    -direction,
-                    ray_maximum);
         const auto pdf =
             conditional_pdf *
             _event.bounce.selected_light
                 .selection_pdf;
         const auto valid =
             active & (pdf > 0.0f);
+        _remember_emission_sample(
+            light,
+            light_index,
+            direction,
+            -direction,
+            make_float2(0.5f),
+            -direction,
+            ray_maximum,
+            valid);
         _result.direction =
             select(
                 _result.direction,
@@ -220,16 +269,6 @@ class AnalyticVolumeDirectionProvider final
             light.color *
             (light.power *
              finite.evaluation_factor);
-        radiance *=
-            _event.bounce.sample
-                .analytic_light_shader(
-                    light,
-                    light_index,
-                    finite.position,
-                    finite.normal,
-                    finite.uv,
-                    -finite.direction,
-                    finite.distance);
         const auto pdf =
             finite.conditional_pdf *
             _event.bounce.selected_light
@@ -238,6 +277,15 @@ class AnalyticVolumeDirectionProvider final
             active &
             finite.valid &
             (pdf > 0.0f);
+        _remember_emission_sample(
+            light,
+            light_index,
+            finite.position,
+            finite.normal,
+            finite.uv,
+            -finite.direction,
+            finite.distance,
+            valid);
         _result.direction =
             select(
                 _result.direction,
@@ -326,7 +374,7 @@ class AnalyticVolumeDirectionProvider final
     }
 
   public:
-    AnalyticVolumeDirectionProvider(
+    AnalyticVolumeLightProvider(
         const PathKernelConfig &config,
         ClosestPathEvent &event,
         const VolumeDirectLightProposal
@@ -341,9 +389,21 @@ class AnalyticVolumeDirectionProvider final
               std::move(segment_position)},
           _segment_direction{
               std::move(segment_direction)},
-          _result{result} {}
+          _result{result},
+          _sample_light_index{0u},
+          _sample_position{
+              make_float3(0.0f)},
+          _sample_normal{
+              make_float3(0.0f)},
+          _sample_uv{
+              make_float2(0.0f)},
+          _sample_incoming{
+              make_float3(0.0f)},
+          _sample_distance{0.0f},
+          _sample_valid{false},
+          _emission_is_constant{false} {}
 
-    VolumeDirectDirectionSample emit(
+    VolumeDirectDirectionSample sample_direction(
         Float distance) const noexcept override {
         const auto position =
             _segment_position +
@@ -419,21 +479,61 @@ class AnalyticVolumeDirectionProvider final
                 _result.direction,
             .valid = _result.valid};
     }
+
+    void evaluate_constant_emission()
+        const noexcept override {
+        $if(_sample_valid &
+            _emission_is_constant) {
+            Var<LightGpu> light =
+                _config.scene
+                    ->light_buffer
+                    ->read(
+                        _sample_light_index);
+            _result.radiance *=
+                _event.bounce.sample
+                    .analytic_light_constant_shader(
+                        light);
+        };
+    }
+
+    void evaluate_deferred_emission(
+        Bool receiving_nonzero)
+        const noexcept override {
+        $if(_sample_valid &
+            !_emission_is_constant &
+            receiving_nonzero) {
+            Var<LightGpu> light =
+                _config.scene
+                    ->light_buffer
+                    ->read(
+                        _sample_light_index);
+            _result.radiance *=
+                _event.bounce.sample
+                    .analytic_light_shader(
+                        light,
+                        _sample_light_index,
+                        _sample_position,
+                        _sample_normal,
+                        _sample_uv,
+                        _sample_incoming,
+                        _sample_distance);
+        };
+    }
 };
 
-class CombinedVolumeDirectionProvider final
-    : public VolumeDirectDirectionProvider {
+class CombinedVolumeLightProvider final
+    : public VolumeDirectLightProvider {
 
   private:
     std::vector<std::unique_ptr<
-        VolumeDirectDirectionProvider>>
+        VolumeDirectLightProvider>>
         _providers;
     VolumeDirectLightSample &_result;
 
   public:
-    CombinedVolumeDirectionProvider(
+    CombinedVolumeLightProvider(
         std::vector<std::unique_ptr<
-            VolumeDirectDirectionProvider>>
+            VolumeDirectLightProvider>>
             providers,
         VolumeDirectLightSample
             &result) noexcept
@@ -441,13 +541,13 @@ class CombinedVolumeDirectionProvider final
               std::move(providers)},
           _result{result} {}
 
-    VolumeDirectDirectionSample emit(
+    VolumeDirectDirectionSample sample_direction(
         Float distance)
         const noexcept override {
         for (const auto &provider :
              _providers) {
             static_cast<void>(
-                provider->emit(
+                provider->sample_direction(
                     distance));
         }
         return {
@@ -455,6 +555,26 @@ class CombinedVolumeDirectionProvider final
                 _result.direction,
             .valid =
                 _result.valid};
+    }
+
+    void evaluate_constant_emission()
+        const noexcept override {
+        for (const auto &provider :
+             _providers) {
+            provider
+                ->evaluate_constant_emission();
+        }
+    }
+
+    void evaluate_deferred_emission(
+        Bool receiving_nonzero)
+        const noexcept override {
+        for (const auto &provider :
+             _providers) {
+            provider
+                ->evaluate_deferred_emission(
+                    receiving_nonzero);
+        }
     }
 };
 
@@ -786,8 +906,8 @@ class PathVolumeDirectLightingComponent final
     }
 
     std::unique_ptr<
-        VolumeDirectDirectionProvider>
-    make_direction_provider(
+        VolumeDirectLightProvider>
+    make_light_provider(
         ClosestPathEvent &event,
         const VolumeDirectLightProposal
             &proposal,
@@ -796,11 +916,11 @@ class PathVolumeDirectLightingComponent final
         VolumeDirectLightSample &result)
         const override {
         std::vector<std::unique_ptr<
-            VolumeDirectDirectionProvider>>
+            VolumeDirectLightProvider>>
             providers;
         providers.emplace_back(
             std::make_unique<
-                AnalyticVolumeDirectionProvider>(
+                AnalyticVolumeLightProvider>(
                     _config,
                     event,
                     proposal,
@@ -809,7 +929,7 @@ class PathVolumeDirectLightingComponent final
                     result));
         providers.emplace_back(
             _mesh_light
-                ->make_direction_provider(
+                ->make_light_provider(
                     event,
                     proposal,
                     segment_position,
@@ -817,7 +937,7 @@ class PathVolumeDirectLightingComponent final
                     result));
         providers.emplace_back(
             _environment_light
-                ->make_direction_provider(
+                ->make_light_provider(
                     event,
                     proposal,
                     std::move(
@@ -826,7 +946,7 @@ class PathVolumeDirectLightingComponent final
                         segment_direction),
                     result));
         return std::make_unique<
-            CombinedVolumeDirectionProvider>(
+            CombinedVolumeLightProvider>(
                 std::move(providers),
                 result);
     }
@@ -848,56 +968,11 @@ class PathVolumeDirectLightingComponent final
             light.valid &
             volume.scattered &
             volume.phase.valid &
+            (volume.phase.value != 0.0f) &
             (sample
                  .continuation_probability >
              0.0f);
         $if(eligible) {
-            const auto position =
-                segment_position +
-                sample.ray->direction() *
-                    volume.distance;
-            Var<luisa::compute::Ray>
-                surface_shadow_ray =
-                    make_ray(
-                        position,
-                        light.direction,
-                        0.0f,
-                        light.maximum_distance);
-            Var<luisa::compute::Ray>
-                volume_shadow_ray =
-                    make_ray(
-                        position,
-                        light.direction,
-                        0.0f,
-                        light.maximum_distance);
-            const auto surface_transmittance =
-                _config.trace_shadow(
-                    surface_shadow_ray,
-                    surface_ray::
-                        invalid_primitive,
-                    surface_ray::
-                        invalid_primitive,
-                    light.light_instance,
-                    light.light_primitive,
-                    invocation.parameters
-                        .transparent_max_bounces,
-                    pack_shader_evaluation_state(
-                        cycles_path_state::
-                            shadow_shader_state(
-                                sample.path_depth,
-                                sample.diffuse_depth,
-                                sample.glossy_depth,
-                                sample
-                                    .transparent_depth,
-                                sample
-                                    .transmission_depth)));
-            const auto volume_transmittance =
-                _volume_shadow->emit(
-                    sample,
-                    path_stack,
-                    volume_shadow_ray,
-                    light.light_instance,
-                    light.light_primitive);
             const auto phase_pdf =
                 select(
                     0.0f,
@@ -922,36 +997,87 @@ class PathVolumeDirectLightingComponent final
                         unshadowed,
                         bounce
                             .light_terminate_sample);
-            const auto continuation =
-                volume.throughput /
-                sample
-                    .continuation_probability;
-            const auto contribution =
-                invocation
-                    .clamp_contribution(
-                        continuation *
-                            unshadowed *
-                            surface_transmittance *
-                            volume_transmittance *
-                            roulette_weight,
-                        sample.path_depth);
-            sample.accumulate_radiance(
-                contribution,
-                true);
-            const auto primary_volume =
-                (sample.path_flags &
-                 cycles_path_state::
-                     flag_any_pass) == 0u;
-            sample.sample_volume_direct +=
-                select(
-                    make_float3(0.0f),
+            // Cycles terminates the complete unshadowed light sample before
+            // branching to INTERSECT_SHADOW. A zero roulette weight therefore
+            // cannot perform either surface or volume shadow traversal.
+            $if(roulette_weight > 0.0f) {
+                const auto position =
+                    segment_position +
+                    sample.ray->direction() *
+                        volume.distance;
+                Var<luisa::compute::Ray>
+                    surface_shadow_ray =
+                        make_ray(
+                            position,
+                            light.direction,
+                            0.0f,
+                            light.maximum_distance);
+                Var<luisa::compute::Ray>
+                    volume_shadow_ray =
+                        make_ray(
+                            position,
+                            light.direction,
+                            0.0f,
+                            light.maximum_distance);
+                const auto surface_transmittance =
+                    _config.trace_shadow(
+                        surface_shadow_ray,
+                        surface_ray::
+                            invalid_primitive,
+                        surface_ray::
+                            invalid_primitive,
+                        light.light_instance,
+                        light.light_primitive,
+                        invocation.parameters
+                            .transparent_max_bounces,
+                        pack_shader_evaluation_state(
+                            cycles_path_state::
+                                shadow_shader_state(
+                                    sample.path_depth,
+                                    sample.diffuse_depth,
+                                    sample.glossy_depth,
+                                    sample
+                                        .transparent_depth,
+                                    sample
+                                        .transmission_depth)));
+                const auto volume_transmittance =
+                    _volume_shadow->emit(
+                        sample,
+                        path_stack,
+                        volume_shadow_ray,
+                        light.light_instance,
+                        light.light_primitive);
+                const auto continuation =
+                    volume.throughput /
+                    sample
+                        .continuation_probability;
+                const auto contribution =
+                    invocation
+                        .clamp_contribution(
+                            continuation *
+                                unshadowed *
+                                surface_transmittance *
+                                volume_transmittance *
+                                roulette_weight,
+                            sample.path_depth);
+                sample.accumulate_radiance(
                     contribution,
-                    primary_volume);
-            sample.accumulate_scattered_light(
-                select(
-                    contribution,
-                    make_float3(0.0f),
-                    primary_volume));
+                    true);
+                const auto primary_volume =
+                    (sample.path_flags &
+                     cycles_path_state::
+                         flag_any_pass) == 0u;
+                sample.sample_volume_direct +=
+                    select(
+                        make_float3(0.0f),
+                        contribution,
+                        primary_volume);
+                sample.accumulate_scattered_light(
+                    select(
+                        contribution,
+                        make_float3(0.0f),
+                        primary_volume));
+            };
         };
     }
 };

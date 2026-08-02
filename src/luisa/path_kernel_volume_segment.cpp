@@ -236,8 +236,8 @@ class PathVolumeSegmentStageImpl final
             .use_mis = false,
             .valid = false};
         std::unique_ptr<
-            VolumeDirectDirectionProvider>
-            direct_direction;
+            VolumeDirectLightProvider>
+            direct_provider;
         if (_direct_lighting) {
             direct_proposal =
                 _direct_lighting->propose(
@@ -246,9 +246,9 @@ class PathVolumeSegmentStageImpl final
                     segment_position,
                     ray->direction(),
                     segment_length);
-            direct_direction =
+            direct_provider =
                 _direct_lighting
-                    ->make_direction_provider(
+                    ->make_light_provider(
                         event,
                         direct_proposal,
                         segment_position,
@@ -385,7 +385,7 @@ class PathVolumeSegmentStageImpl final
                          .enabled =
                              inside_volume &
                              direct_proposal.valid},
-                        direct_direction.get());
+                        direct_provider.get());
                 if (_direct_lighting) {
                     _direct_lighting->accumulate(
                         event,
@@ -491,8 +491,8 @@ class PathVolumeSegmentStageImpl final
                                   inside_volume &
                                   direct_proposal
                                       .valid},
-                         .direct_direction =
-                             direct_direction.get(),
+                         .direct_light =
+                             direct_provider.get(),
                          .terminate =
                              transport_terminate});
                 if (_direct_lighting) {

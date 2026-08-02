@@ -38,19 +38,29 @@ struct VolumeDirectDirectionSample {
     luisa::compute::Bool valid;
 };
 
-// A scene-light component implements this host-stage callback. Volume
-// integration chooses a collision distance first, then invokes the provider
-// so finite emitters are sampled again from that exact point with the original
-// PRNG_LIGHT coordinates, as Cycles requires.
-class VolumeDirectDirectionProvider {
+// A scene-light component implements this host-stage phase protocol. Volume
+// integration chooses a collision distance first, then asks the provider to
+// resample the emitter from that exact point with the original PRNG_LIGHT
+// coordinates. Constant emission is evaluated before the receiving phase;
+// deferred emission is evaluated only after a non-zero phase and before the
+// outer path stage traces the shadow ray. The methods mutate the provider's
+// bound VolumeDirectLightSample while Luisa records one fused device AST.
+class VolumeDirectLightProvider {
 
   public:
-    virtual ~VolumeDirectDirectionProvider() noexcept =
+    virtual ~VolumeDirectLightProvider() noexcept =
         default;
 
     [[nodiscard]] virtual VolumeDirectDirectionSample
-    emit(
+    sample_direction(
         luisa::compute::Float distance)
+        const noexcept = 0;
+
+    virtual void evaluate_constant_emission()
+        const noexcept = 0;
+
+    virtual void evaluate_deferred_emission(
+        luisa::compute::Bool receiving_nonzero)
         const noexcept = 0;
 };
 

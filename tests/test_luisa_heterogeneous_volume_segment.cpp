@@ -201,13 +201,26 @@ class FixtureCollisionProvider final
     }
 };
 
-class FixtureDirectionProvider final
-    : public VolumeDirectDirectionProvider {
+class FixtureLightProvider final
+    : public VolumeDirectLightProvider {
+
+  private:
+    UInt *_phase_trace;
+    Bool *_deferred_receiving;
 
   public:
-    VolumeDirectDirectionSample emit(
+    FixtureLightProvider(
+        UInt *phase_trace,
+        Bool *deferred_receiving) noexcept
+        : _phase_trace{phase_trace},
+          _deferred_receiving{
+              deferred_receiving} {}
+
+    VolumeDirectDirectionSample sample_direction(
         Float distance)
         const noexcept override {
+        *_phase_trace =
+            *_phase_trace * 10u + 1u;
         return {
             .direction =
                 normalize(
@@ -216,6 +229,21 @@ class FixtureDirectionProvider final
                         0.4f,
                         0.8660254f)),
             .valid = distance > 0.0f};
+    }
+
+    void evaluate_constant_emission()
+        const noexcept override {
+        *_phase_trace =
+            *_phase_trace * 10u + 2u;
+    }
+
+    void evaluate_deferred_emission(
+        Bool receiving_nonzero)
+        const noexcept override {
+        *_phase_trace =
+            *_phase_trace * 10u + 3u;
+        *_deferred_receiving =
+            receiving_nonzero;
     }
 };
 
@@ -267,7 +295,7 @@ void run_backend(
     auto float_output =
         device.create_buffer<luisa::float4>(26u);
     auto uint_output =
-        device.create_buffer<luisa::uint4>(2u);
+        device.create_buffer<luisa::uint4>(3u);
 
     const auto segment =
         make_heterogeneous_volume_segment_component(
@@ -384,8 +412,12 @@ void run_backend(
                      .majorant_optical_depth =
                          1.0f,
                      .enabled = true});
-            FixtureDirectionProvider
-                direction;
+            UInt direct_phase_trace = 0u;
+            Bool deferred_receiving = false;
+            FixtureLightProvider
+                direction{
+                    &direct_phase_trace,
+                    &deferred_receiving};
             SingleSegmentSequence
                 guided_sequence;
             FixtureRandomSource
@@ -415,7 +447,7 @@ void run_backend(
                               {.minimum = 0.0f,
                                .maximum = 5.0f},
                           .enabled = true},
-                     .direct_direction =
+                     .direct_light =
                          &direction,
                      .ray_minimum = 0.0f,
                      .ray_maximum = 5.0f,
@@ -502,6 +534,16 @@ void run_backend(
                         1.0f,
                         guided.direct_phase
                             .valid)));
+            uint_records.write(
+                2u,
+                make_uint4(
+                    direct_phase_trace,
+                    select(
+                        0u,
+                        1u,
+                        deferred_receiving),
+                    0u,
+                    0u));
 
             SingleSegmentSequence
                 mis_sequence;
@@ -535,7 +577,7 @@ void run_backend(
                               {.minimum = 0.0f,
                                .maximum = 5.0f},
                           .enabled = true},
-                     .direct_direction =
+                     .direct_light =
                          &direction,
                      .ray_minimum = 0.0f,
                      .ray_maximum = 5.0f,
@@ -636,7 +678,7 @@ void run_backend(
                               {.minimum = 0.0f,
                                .maximum = 5.0f},
                           .enabled = true},
-                     .direct_direction =
+                     .direct_light =
                          &direction,
                      .ray_minimum = 0.0f,
                      .ray_maximum = 5.0f,
@@ -728,7 +770,7 @@ void run_backend(
                               {.minimum = 0.0f,
                                .maximum = 5.0f},
                           .enabled = false},
-                     .direct_direction =
+                     .direct_light =
                          nullptr,
                      .ray_minimum = 0.0f,
                      .ray_maximum = 5.0f,
@@ -791,7 +833,7 @@ void run_backend(
 
     std::array<luisa::float4, 26u>
         actual_float{};
-    std::array<luisa::uint4, 2u>
+    std::array<luisa::uint4, 3u>
         actual_uint{};
     stream
         << shader(
@@ -928,7 +970,7 @@ void run_backend(
 
     constexpr std::uint32_t
         initial_offset = 0x15982c28u;
-    const std::array<luisa::uint4, 2u>
+    const std::array<luisa::uint4, 3u>
         expected_uint{{
             {3u,
              initial_offset + 32u,
@@ -937,6 +979,10 @@ void run_backend(
             {initial_offset,
              path_rng_offset,
              tracking_seed,
+             0u},
+            {123u,
+             1u,
+             0u,
              0u},
         }};
     for (std::size_t index = 0u;

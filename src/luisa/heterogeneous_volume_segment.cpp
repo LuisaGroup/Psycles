@@ -700,13 +700,15 @@ class HeterogeneousVolumeSegmentComponentImpl final
                     .direction =
                         make_float3(0.0f),
                     .valid = false};
-            if (input.direct_direction !=
+            if (input.direct_light !=
                 nullptr) {
                 direction =
-                    input.direct_direction
-                        ->emit(
+                    input.direct_light
+                        ->sample_direction(
                             direct_distance -
                             input.ray_minimum);
+                input.direct_light
+                    ->evaluate_constant_emission();
             }
             const auto phase_evaluation =
                 direct_phases.evaluate(
@@ -729,6 +731,14 @@ class HeterogeneousVolumeSegmentComponentImpl final
                 .valid =
                     phase_evaluation.valid &
                     direction.valid};
+            if (input.direct_light !=
+                nullptr) {
+                input.direct_light
+                    ->evaluate_deferred_emission(
+                        direct_phase.valid &
+                        (direct_phase.value !=
+                         0.0f));
+            }
         };
 
         return {
@@ -831,7 +841,7 @@ HeterogeneousVolumeSegmentComponent::emit(
                   {.minimum = 0.0f,
                    .maximum = 0.0f},
               .enabled = false},
-         .direct_direction = nullptr,
+         .direct_light = nullptr,
          .ray_minimum = ray_minimum,
          .ray_maximum = ray_maximum,
          .segment_origin =
