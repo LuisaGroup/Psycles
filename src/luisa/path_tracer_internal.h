@@ -150,6 +150,8 @@ constexpr std::uint32_t light_flag_use_mis = 1u << 3u;
 constexpr std::uint32_t light_flag_full_spread = 1u << 4u;
 constexpr std::uint32_t light_flag_forward_intersectable =
     1u << 5u;
+constexpr std::uint32_t light_flag_constant_emission =
+    1u << 6u;
 
 
 struct MaterialBinding {
@@ -246,6 +248,7 @@ struct LuisaSceneData {
     std::vector<contract::EnvironmentSunDesc> environment_suns;
     std::optional<NishitaEnvironmentRuntime>
         nishita_environment;
+    bool environment_emission_is_constant{true};
     Buffer<luisa::float2> background_conditional_cdf;
     Buffer<luisa::float2> background_marginal_cdf;
     std::uint32_t background_map_width{1u};

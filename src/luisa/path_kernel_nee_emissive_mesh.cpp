@@ -110,13 +110,18 @@ class EmissiveMeshLightingComponent final
                          oriented_normal) >
                      0.0f);
                 $if(!reject_self) {
-                    // Cycles evaluates the light shader only after proposal
-                    // validity and geometric self-rejection are known.
-                    const auto radiance =
-                        _emissive_triangle
-                            ->evaluate_emission(
-                                sample,
-                                light);
+                    const auto constant_emission =
+                        emitter.emission_is_constant != 0u;
+                    Float3 radiance = make_float3(0.0f);
+                    // Cycles' constant factor is evaluated after geometric
+                    // rejection but before the receiving BSDF.
+                    $if(constant_emission) {
+                        radiance =
+                            _emissive_triangle
+                                ->evaluate_constant_emission(
+                                    sample,
+                                    light);
+                    };
                     const auto evaluation =
                         invocation.evaluate_light_surface(
                             surface.surface_tag,
@@ -124,6 +129,18 @@ class EmissiveMeshLightingComponent final
                             light.light.direction,
                             surface.path_surface_query,
                             emitter.cycles_shader_flags);
+                    // A non-constant light shader is the deferred
+                    // SHADE_LIGHT_NEE phase: after receiving-surface
+                    // evaluation and before shadow traversal.
+                    const auto bsdf_nonzero =
+                        any(evaluation.f != 0.0f);
+                    $if((!constant_emission) & bsdf_nonzero) {
+                        radiance =
+                            _emissive_triangle
+                                ->evaluate_emission(
+                                    sample,
+                                    light);
+                    };
                     const auto mis_weight =
                         config.light_transport
                             .nee_light_weight(

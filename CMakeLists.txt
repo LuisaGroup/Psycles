@@ -1,5 +1,4 @@
 cmake_minimum_required(VERSION 3.26)
-
 project(Psycles
     VERSION 0.1.0
     DESCRIPTION "Cycles-compatible renderer contracts on LuisaCompute DSL/JIT"
@@ -192,6 +191,7 @@ if(PSYCLES_ENABLE_LUISA)
             STATIC
             src/luisa/graph_surface.cpp
             src/luisa/graph_surface_closures.cpp
+            src/luisa/graph_surface_emission.cpp
             src/luisa/graph_surface_implementation.cpp
             src/luisa/graph_surface_physical_closures.cpp
             src/luisa/graph_surface_scattering.cpp

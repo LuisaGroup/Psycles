@@ -52,6 +52,9 @@ GraphSurfaceImplementation::GraphSurfaceImplementation(
                 closure.operation ==
                 compiler::ClosureOperation::principled;
         }
+        _capabilities.emission_is_constant =
+            _program->emission_evaluation() !=
+            compiler::EmissionEvaluationMode::deferred;
         _capabilities.may_have_volume = _program->volume_root().valid();
     }
 }
@@ -695,25 +698,6 @@ GraphSurfaceImplementation::sample_trace(const ShaderServices &services,
         u_direction_expression,
         query,
         true);
-}
-
-[[nodiscard]] Float3 GraphSurfaceImplementation::emission(
-    const ShaderServices &services,
-    const SurfacePoint &point,
-    Expr<luisa::float3>) const noexcept {
-    if (!_program) {
-        return make_float3(0.0f);
-    }
-    auto values = trace_values(services, point);
-    Float3 result = make_float3(0.0f);
-    for_each_closure(
-        values, [&](const TracedClosure &closure) noexcept {
-            if (closure.operation ==
-                compiler::ClosureOperation::emission) {
-                result += closure.weight;
-            }
-        });
-    return result;
 }
 
 [[nodiscard]] Float3 GraphSurfaceImplementation::transparent_extinction(

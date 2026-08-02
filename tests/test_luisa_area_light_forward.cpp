@@ -34,6 +34,20 @@ concept CarriesRadiance = requires(T value) {
     value.radiance;
 };
 
+template<typename T>
+concept CanSampleTexture = requires(
+    const T &services,
+    UInt handle,
+    Float2 uv) {
+    services.texture_2d(
+        handle,
+        uv,
+        uv,
+        uv,
+        0u,
+        0u);
+};
+
 using EmissiveProposalFunction =
     EmissiveTriangleLightProposal (
         EmissiveTriangleComponent::*)(
@@ -46,6 +60,16 @@ using EmissiveEvaluationFunction =
         PathSampleContext &,
         const EmissiveTriangleLightProposal &)
         const noexcept;
+using EmissiveConstantEvaluationFunction =
+    Float3 (EmissiveTriangleComponent::*)(
+        PathSampleContext &,
+        const EmissiveTriangleLightProposal &)
+        const noexcept;
+using SurfaceConstantEvaluationFunction =
+    Float3 (psycles::luisa_backend::Surface::*)(
+        const psycles::luisa_backend::
+            SurfaceParameterServices &,
+        Expr<std::uint32_t>) const noexcept;
 using EnvironmentProposalFunction =
     EnvironmentLightProposal (
         EnvironmentLightComponent::*)(
@@ -61,6 +85,9 @@ using EnvironmentEvaluationFunction =
             cycles_path_state::
                 ShaderEvaluationState &)
         const noexcept;
+using EnvironmentConstantEvaluationFunction =
+    Float3 (EnvironmentLightComponent::*)(
+        PathSampleContext &) const noexcept;
 
 static_assert(
     !CarriesRadiance<
@@ -68,6 +95,10 @@ static_assert(
 static_assert(
     !CarriesRadiance<
         EnvironmentLightProposal>);
+static_assert(
+    !CanSampleTexture<
+        psycles::luisa_backend::
+            SurfaceParameterServices>);
 static_assert(
     std::same_as<
         decltype(
@@ -83,6 +114,18 @@ static_assert(
 static_assert(
     std::same_as<
         decltype(
+            &EmissiveTriangleComponent::
+                evaluate_constant_emission),
+        EmissiveConstantEvaluationFunction>);
+static_assert(
+    std::same_as<
+        decltype(
+            &psycles::luisa_backend::Surface::
+                constant_emission),
+        SurfaceConstantEvaluationFunction>);
+static_assert(
+    std::same_as<
+        decltype(
             &EnvironmentLightComponent::
                 from_position),
         EnvironmentProposalFunction>);
@@ -92,6 +135,12 @@ static_assert(
             &EnvironmentLightComponent::
                 evaluate_emission),
         EnvironmentEvaluationFunction>);
+static_assert(
+    std::same_as<
+        decltype(
+            &EnvironmentLightComponent::
+                evaluate_constant_emission),
+        EnvironmentConstantEvaluationFunction>);
 
 }// namespace proposal_contract
 

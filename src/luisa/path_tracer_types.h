@@ -51,6 +51,8 @@ inline constexpr std::uint32_t material_flag_has_volume =
     1u << 0u;
 inline constexpr std::uint32_t material_flag_may_emit =
     1u << 1u;
+inline constexpr std::uint32_t material_flag_constant_emission =
+    1u << 2u;
 
 struct MaterialBindingGpu {
     luisa::uint surface_tag{};
@@ -95,6 +97,7 @@ struct EmissiveTriangleGpu {
     luisa::uint surface_tag{};
     luisa::uint parameter_block{};
     luisa::uint emission_sampling{};
+    luisa::uint emission_is_constant{};
     luisa::uint visibility_mask{};
     luisa::uint cycles_primitive_index{};
     luisa::uint cycles_object_index{};
@@ -362,6 +365,7 @@ LUISA_STRUCT(
     surface_tag,
     parameter_block,
     emission_sampling,
+    emission_is_constant,
     visibility_mask,
     cycles_primitive_index,
     cycles_object_index,

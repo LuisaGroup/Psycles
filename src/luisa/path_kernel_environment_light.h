@@ -34,6 +34,11 @@ class EnvironmentLightComponent {
         const noexcept = 0;
 
     [[nodiscard]] virtual Float3
+    evaluate_constant_emission(
+        PathSampleContext &sample)
+        const noexcept = 0;
+
+    [[nodiscard]] virtual Float3
     evaluate_emission(
         PathSampleContext &sample,
         Float3 direction,

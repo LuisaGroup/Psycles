@@ -76,6 +76,10 @@ public:
         const SurfacePoint &point,
         Expr<luisa::float3> outgoing) const noexcept override;
 
+    [[nodiscard]] Float3 constant_emission(
+        const SurfaceParameterServices &services,
+        Expr<std::uint32_t> parameter_block) const noexcept override;
+
     [[nodiscard]] Float3 transparent_extinction(
         const ShaderServices &services,
         const SurfacePoint &point) const noexcept override;

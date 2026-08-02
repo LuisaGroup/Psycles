@@ -500,6 +500,16 @@ class PathEmissiveTriangleComponent final
             proposal.light);
     }
 
+    Float3 evaluate_constant_emission(
+        PathSampleContext &sample,
+        const EmissiveTriangleLightProposal
+            &proposal) const noexcept override {
+        return sample.invocation
+            .constant_surface_emission(
+                proposal.geometry.emitter.surface_tag,
+                proposal.geometry.emitter.parameter_block);
+    }
+
     EmissiveTrianglePdf
     from_intersection(
         const std::shared_ptr<LuisaSceneData> &scene,

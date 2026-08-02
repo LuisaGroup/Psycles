@@ -67,6 +67,18 @@ SurfaceCallables make_surface_callables(
                 unpack_surface_point(packed_point),
                 outgoing);
         };
+    SurfaceConstantEmissionCallable constant_emission =
+        [scene](
+            BufferFloat4 parameters,
+            UInt surface_tag,
+            UInt parameter_block) noexcept {
+            BufferSurfaceParameterServices services{
+                parameters};
+            return scene->surfaces.constant_emission(
+                surface_tag,
+                services,
+                parameter_block);
+        };
     SurfaceSampleCallable sample =
         [scene](
             BufferFloat4 parameters,
@@ -211,6 +223,7 @@ SurfaceCallables make_surface_callables(
         };
     return {
         std::move(evaluate_light),
+        std::move(constant_emission),
         std::move(emission),
         std::move(sample),
         std::move(closure_trace),

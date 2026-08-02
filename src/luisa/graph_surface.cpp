@@ -72,6 +72,13 @@ Float3 GraphSurface::emission(
         services, point, outgoing);
 }
 
+Float3 GraphSurface::constant_emission(
+    const SurfaceParameterServices &services,
+    Expr<std::uint32_t> parameter_block) const noexcept {
+    return _implementation->constant_emission(
+        services, parameter_block);
+}
+
 Float3 GraphSurface::transparent_extinction(
     const ShaderServices &services,
     const SurfacePoint &point) const noexcept {

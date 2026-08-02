@@ -347,6 +347,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         make_environment_callables(
             scene,
             light_transport.safe_normalize,
+            surface_callables.constant_emission,
             surface_callables.emission);
     auto trace_shadow_callable =
         make_trace_shadow_callable(

@@ -122,6 +122,9 @@ struct PathKernelInvocation {
     [[nodiscard]] Float3 surface_emission(UInt surface_tag,
                                           const SurfacePoint &point,
                                           Float3 outgoing) const noexcept;
+    [[nodiscard]] Float3 constant_surface_emission(
+        UInt surface_tag,
+        UInt parameter_block) const noexcept;
     [[nodiscard]] SurfaceSample
     sample_surface(UInt surface_tag,
                    const SurfacePoint &point,
@@ -143,6 +146,8 @@ struct PathKernelInvocation {
     [[nodiscard]] Float3
     surface_shading_normal(UInt surface_tag,
                            const SurfacePoint &point) const noexcept;
+    [[nodiscard]] Float3
+    constant_environment() const noexcept;
     [[nodiscard]] Float3
     evaluate_environment(Float3 direction,
                          const cycles_path_state::ShaderEvaluationState
@@ -252,6 +257,9 @@ struct PathSampleContext {
             false) noexcept;
     void accumulate_transparency(
         Float transparency) noexcept;
+    [[nodiscard]] Float3
+    analytic_light_constant_shader(
+        Var<LightGpu> light) const noexcept;
     [[nodiscard]] Float3
     analytic_light_shader(Var<LightGpu> light,
                           UInt light_index,
