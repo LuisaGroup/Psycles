@@ -228,6 +228,50 @@ public:
     return graph;
 }
 
+[[nodiscard]] ShaderGraph make_subsurface_principled_graph() {
+    ShaderGraph graph;
+    const auto principled =
+        graph.add_node(node_type::principled_bsdf, "Subsurface Principled");
+    const auto configured =
+        graph.set_input(principled,
+            "BaseColor",
+            SocketValue::color({0.35f, 0.24f, 0.8f})) &&
+        graph.set_input(
+            principled, "Metallic", SocketValue::floating(0.0f)) &&
+        graph.set_input(
+            principled, "Roughness", SocketValue::floating(0.3f)) &&
+        graph.set_input(principled,
+            "DiffuseRoughness",
+            SocketValue::floating(0.0f)) &&
+        graph.set_input(principled,
+            "SubsurfaceWeight",
+            SocketValue::floating(1.0f)) &&
+        graph.set_input(principled,
+            "SubsurfaceRadius",
+            SocketValue::vector({1.0f, 0.2f, 0.1f})) &&
+        graph.set_input(principled,
+            "SubsurfaceScale",
+            SocketValue::floating(3.0f)) &&
+        graph.set_input(
+            principled, "IOR", SocketValue::floating(1.45f)) &&
+        graph.set_input(principled,
+            "SpecularIORLevel",
+            SocketValue::floating(0.5f)) &&
+        graph.set_input(principled,
+            "SpecularTint",
+            SocketValue::color({1.0f, 1.0f, 1.0f})) &&
+        graph.set_property(principled,
+            "Distribution",
+            SocketValue::string("MULTI_GGX"));
+    if (!configured) {
+        throw std::runtime_error{
+            "failed to configure subsurface-Principled oracle graph"};
+    }
+    graph.set_root(ShaderDomain::surface,
+        OutputRef{.node = principled, .socket = "Closure"});
+    return graph;
+}
+
 [[nodiscard]] ShaderGraph make_tangent_normal_graph() {
     ShaderGraph graph;
     const auto normal_map =
@@ -391,6 +435,21 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
+    auto subsurface_shader =
+        compiler.compile(make_subsurface_principled_graph());
+    if (!subsurface_shader.ok()) {
+        std::cerr << "failed to compile subsurface-Principled shader "
+                     "graph\n";
+        return EXIT_FAILURE;
+    }
+    auto subsurface_program =
+        compile_surface_program(*subsurface_shader.program);
+    if (!subsurface_program.ok()) {
+        std::cerr << "failed to lower subsurface-Principled surface "
+                     "program\n";
+        return EXIT_FAILURE;
+    }
+
     auto tangent_normal_shader =
         compiler.compile(make_tangent_normal_graph());
     if (!tangent_normal_shader.ok()) {
@@ -412,6 +471,8 @@ int main(int argc, char **argv) {
         surfaces.create<GraphSurface>(program.program);
     const auto physical_surface_tag =
         surfaces.create<GraphSurface>(physical_program.program);
+    const auto subsurface_surface_tag =
+        surfaces.create<GraphSurface>(subsurface_program.program);
     const auto tangent_normal_surface_tag =
         surfaces.create<GraphSurface>(
             tangent_normal_program.program);
@@ -533,6 +594,26 @@ int main(int argc, char **argv) {
                         closure.valid)));
         };
 
+    Kernel1D trace_subsurface =
+        [&](BufferFloat4 parameters, BufferFloat4 output) noexcept {
+            ParameterShaderServices services{parameters};
+            const auto point = make_surface_point();
+            const auto closure = surfaces.closure_trace(
+                UInt{subsurface_surface_tag}, services, point, 1u);
+            const auto aov = surfaces.aov(
+                UInt{subsurface_surface_tag}, services, point);
+            output.write(0u,
+                make_float4(closure.weight,
+                    select(0.0f, 1.0f, closure.valid)));
+            output.write(1u,
+                make_float4(aov.albedo, cast<float>(closure.count)));
+            output.write(2u,
+                make_float4(cast<float>(closure.type),
+                    closure.sample_weight,
+                    0.0f,
+                    0.0f));
+        };
+
     Context context{argv[0]};
     auto device = context.create_device(backend);
     auto stream = device.create_stream();
@@ -542,6 +623,11 @@ int main(int argc, char **argv) {
     auto physical_parameter_buffer =
         device.create_buffer<luisa::float4>(physical_parameters.size());
     auto physical_output = device.create_buffer<luisa::float4>(8u);
+    const auto subsurface_parameters =
+        parameter_data(*subsurface_program.program);
+    auto subsurface_parameter_buffer =
+        device.create_buffer<luisa::float4>(subsurface_parameters.size());
+    auto subsurface_output = device.create_buffer<luisa::float4>(3u);
     const auto tangent_normal_parameters =
         parameter_data(*tangent_normal_program.program);
     auto tangent_normal_parameter_buffer =
@@ -551,14 +637,18 @@ int main(int argc, char **argv) {
         device.create_buffer<luisa::float4>(2u);
     auto kernel = device.compile(evaluate);
     auto physical_kernel = device.compile(trace_physical_closures);
+    auto subsurface_kernel = device.compile(trace_subsurface);
     auto tangent_normal_kernel =
         device.compile(trace_tangent_normal);
     std::array<luisa::float4, 11u> actual{};
     std::array<luisa::float4, 8u> physical_actual{};
+    std::array<luisa::float4, 3u> subsurface_actual{};
     std::array<luisa::float4, 2u>
         tangent_normal_actual{};
     stream << physical_parameter_buffer.copy_from(
                   luisa::span{physical_parameters})
+           << subsurface_parameter_buffer.copy_from(
+                  luisa::span{subsurface_parameters})
            << tangent_normal_parameter_buffer.copy_from(
                   luisa::span{
                       tangent_normal_parameters})
@@ -568,6 +658,11 @@ int main(int argc, char **argv) {
                   physical_parameter_buffer, physical_output)
                   .dispatch(4u)
            << physical_output.copy_to(luisa::span{physical_actual})
+           << subsurface_kernel(
+                  subsurface_parameter_buffer, subsurface_output)
+                  .dispatch(1u)
+           << subsurface_output.copy_to(
+                  luisa::span{subsurface_actual})
            << tangent_normal_kernel(
                   tangent_normal_parameter_buffer,
                   tangent_normal_output)
@@ -644,6 +739,33 @@ int main(int argc, char **argv) {
             physical_actual[6u].z > 0.0f)) {
         std::cerr << "Cycles physical closure weights failed on "
                   << backend << '\n';
+        return EXIT_FAILURE;
+    }
+
+    const auto subsurface_weight = subsurface_actual[0u];
+    const auto subsurface_aov = subsurface_actual[1u];
+    const auto subsurface_meta = subsurface_actual[2u];
+    if (!approximately_equal(subsurface_weight.w, 1.0f) ||
+        !approximately_equal(subsurface_aov.w, 2.0f) ||
+        !approximately_equal(subsurface_meta.x,
+            static_cast<float>(cycles_closure::type_diffuse)) ||
+        !(subsurface_meta.y > 0.0f) ||
+        !(subsurface_weight.x > subsurface_weight.y &&
+            subsurface_weight.z > subsurface_weight.y &&
+            subsurface_weight.x * subsurface_aov.z >
+                subsurface_weight.z * subsurface_aov.x) ||
+        !(subsurface_aov.z > subsurface_aov.x &&
+            subsurface_aov.x > subsurface_aov.y)) {
+        std::cerr << "Principled subsurface approximation failed on "
+                  << backend << ": weight {" << subsurface_weight.x
+                  << ", " << subsurface_weight.y << ", "
+                  << subsurface_weight.z << ", "
+                  << subsurface_weight.w << "}, AOV {"
+                  << subsurface_aov.x << ", " << subsurface_aov.y
+                  << ", " << subsurface_aov.z << ", "
+                  << subsurface_aov.w << "}, meta {"
+                  << subsurface_meta.x << ", "
+                  << subsurface_meta.y << "}\n";
         return EXIT_FAILURE;
     }
 

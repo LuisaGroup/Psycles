@@ -59,7 +59,45 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                 auto diffuse = graph_closure;
                 diffuse.operation = compiler::ClosureOperation::diffuse;
                 diffuse.principled_lobe = PrincipledLobe::none;
-                diffuse.weight = state.diffuse_weight;
+                const auto effective_radius =
+                    max(graph_closure.subsurface_radius *
+                            graph_closure.subsurface_scale,
+                        make_float3(0.0f));
+                const auto maximum_radius =
+                    max_component(effective_radius);
+                const auto radius_tint = select(
+                    make_float3(0.0f),
+                    effective_radius /
+                        max(maximum_radius, 1.0e-20f),
+                    maximum_radius > 1.0e-20f);
+                // A full spatial BSSRDF walk is not available yet. Use the
+                // per-channel mean free paths as a scattering tint, then
+                // normalize it back to the original average diffuse energy.
+                // This reproduces long-radius color bleed while retaining
+                // the original Principled color for the data pass below.
+                const auto radius_weighted =
+                    state.diffuse_weight * radius_tint;
+                const auto radius_weighted_average =
+                    sample_weight(radius_weighted);
+                const auto energy_normalized =
+                    radius_weighted *
+                    (sample_weight(state.diffuse_weight) /
+                        max(radius_weighted_average, 1.0e-20f));
+                const auto subsurface_weight =
+                    select(0.0f,
+                        clamp(graph_closure.subsurface_weight, 0.0f, 1.0f),
+                        radius_weighted_average > 1.0e-20f);
+                // Spatial diffusion is most visible near silhouettes. Bias
+                // the tint toward grazing views so broad front-facing areas
+                // retain more of the original surface color.
+                const auto incoming_cosine = clamp(
+                    abs(dot(diffuse.normal, incoming)), 0.0f, 1.0f);
+                const auto grazing_mix = lerp(
+                    0.35f, 0.85f, 1.0f - incoming_cosine);
+                diffuse.weight = lerp(
+                    state.diffuse_weight,
+                    energy_normalized,
+                    subsurface_weight * grazing_mix);
                 diffuse.allocation_weight = sample_weight(
                     max(diffuse.weight, make_float3(0.0f)));
                 const auto diffuse_allocated =
@@ -70,7 +108,7 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                     diffuse_allocated);
                 diffuse.sample_weight = select(
                     0.0f, diffuse.allocation_weight, diffuse_allocated);
-                diffuse.albedo = diffuse.weight;
+                diffuse.albedo = state.diffuse_weight;
                 diffuse.roughness = graph_closure.diffuse_roughness;
                 diffuse.evaluation_scale = make_float3(1.0f);
                 function(diffuse);

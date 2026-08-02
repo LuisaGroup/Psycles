@@ -94,6 +94,34 @@ void GraphSurfaceImplementation::for_each_closure(
                                   values),
                               0.0f)
                         : Float{0.5f};
+                auto subsurface_weight =
+                    closure.operation ==
+                            compiler::ClosureOperation::principled
+                        ? clamp(
+                              scalar(
+                                  closure.subsurface_weight,
+                                  values),
+                              0.0f,
+                              1.0f)
+                        : Float{0.0f};
+                auto subsurface_radius =
+                    closure.operation ==
+                            compiler::ClosureOperation::principled
+                        ? max(
+                              vector(
+                                  closure.subsurface_radius,
+                                  values),
+                              make_float3(0.0f))
+                        : make_float3(0.0f);
+                auto subsurface_scale =
+                    closure.operation ==
+                            compiler::ClosureOperation::principled
+                        ? max(
+                              scalar(
+                                  closure.subsurface_scale,
+                                  values),
+                              0.0f)
+                        : Float{0.0f};
                 auto specular_tint =
                     closure.operation ==
                             compiler::ClosureOperation::principled
@@ -119,6 +147,12 @@ void GraphSurfaceImplementation::for_each_closure(
                         closure.roughness, values),
                     .diffuse_roughness =
                         diffuse_roughness,
+                    .subsurface_weight =
+                        subsurface_weight,
+                    .subsurface_radius =
+                        subsurface_radius,
+                    .subsurface_scale =
+                        subsurface_scale,
                     .metallic = metallic,
                     .ior = ior,
                     .specular_ior_level =
