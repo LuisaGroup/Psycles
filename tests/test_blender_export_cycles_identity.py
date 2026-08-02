@@ -18,6 +18,8 @@ def _reset_scene() -> None:
         bpy.data.materials.remove(material)
     for light in list(bpy.data.lights):
         bpy.data.lights.remove(light)
+    for curve in list(bpy.data.curves):
+        bpy.data.curves.remove(curve)
     for mesh in list(bpy.data.meshes):
         bpy.data.meshes.remove(mesh)
 
@@ -58,6 +60,7 @@ def _main() -> None:
     scene.world.cycles_visibility.transmission = True
     scene.world.cycles_visibility.shadow = False
     scene.world.cycles_visibility.scatter = False
+    scene.world.cycles.use_shadows = False
 
     material = bpy.data.materials.new("Middle Material")
     material.use_nodes = True
@@ -71,7 +74,34 @@ def _main() -> None:
     )
     mesh.materials.append(material)
     surface = bpy.data.objects.new("Middle Surface", mesh)
+    surface.is_shadow_catcher = True
     scene.collection.objects.link(surface)
+
+    # Legacy Curve data is the important negative case: Object.to_mesh()
+    # returns a mesh payload, but BlenderSync::object_is_geometry rejects the
+    # dependency-graph entry while its object-data ID remains a Curve.
+    # Counting it before discovering that it has no triangles shifts every
+    # later Cycles object index.
+    curve_data = bpy.data.curves.new("Convertible Legacy Curve", "CURVE")
+    curve_data.dimensions = "3D"
+    spline = curve_data.splines.new("POLY")
+    spline.points.add(1)
+    spline.points[0].co = (-0.5, 0.0, 0.0, 1.0)
+    spline.points[1].co = (0.5, 0.0, 0.0, 1.0)
+    legacy_curve = bpy.data.objects.new("Legacy Curve", curve_data)
+    scene.collection.objects.link(legacy_curve)
+    bpy.context.view_layer.update()
+    evaluated_curve = legacy_curve.evaluated_get(
+        bpy.context.evaluated_depsgraph_get()
+    )
+    converted_curve = evaluated_curve.to_mesh()
+    try:
+        if len(converted_curve.vertices) == 0:
+            raise AssertionError(
+                "legacy Curve regression fixture was not convertible"
+            )
+    finally:
+        evaluated_curve.to_mesh_clear()
 
     def add_light(name: str, group: str) -> None:
         data = bpy.data.lights.new(f"{name} Data", type="POINT")
@@ -125,6 +155,10 @@ def _main() -> None:
             "surface object identity changed: "
             f"{instances[0]['cycles_sync']}"
         )
+    if not instances[0]["is_shadow_catcher"]:
+        raise AssertionError(
+            "mesh shadow-catcher membership was not preserved"
+        )
 
     lights = payload["lights"]
     names = [item["name"] for item in lights]
@@ -164,8 +198,11 @@ def _main() -> None:
         if payload["world"]["cycles_sync"] != {
             "shader_index": 3,
             "object_index": 3,
+            "light_group": -1,
         }:
             raise AssertionError("world Cycles identity changed")
+        if payload["world"]["use_shadows"]:
+            raise AssertionError("world shadow policy changed")
         visibility = payload["world"]["visibility"]
         if (
             visibility["camera"]

@@ -229,6 +229,9 @@ struct LuisaSceneData {
     std::optional<MaterialBinding> world_surface;
     std::uint32_t cycles_background_object_index{
         ~std::uint32_t{0u}};
+    std::uint32_t cycles_background_shader_id{
+        ~std::uint32_t{0u}};
+    std::int32_t cycles_background_light_group{-1};
     std::uint32_t world_visibility_mask{
         contract::all_ray_visibility};
     Buffer<luisa::float4> parameter_buffer;

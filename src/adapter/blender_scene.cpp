@@ -1031,6 +1031,10 @@ BlenderSceneImport load_blender_scene_bundle(
             }
             mesh.triangle_random_per_island =
                 std::move(random_per_island_values);
+            mesh.cycles_primitive_offset =
+                optional_unsigned_number(member(
+                    member(geometry, "cycles_sync"),
+                    "primitive_offset"));
 
             auto *slots = member(geometry, "material_slots");
             yyjson_arr_iter slot_iterator =
@@ -1105,7 +1109,13 @@ BlenderSceneImport load_blender_scene_bundle(
                                 member(
                                     cycles_sync,
                                     "light_group"),
-                                -1))});
+                                -1)),
+                    .is_shadow_catcher =
+                        boolean(
+                            member(
+                                instance,
+                                "is_shadow_catcher"),
+                            false)});
         }
 
         auto *lights = member(root, "lights");
@@ -1242,6 +1252,10 @@ BlenderSceneImport load_blender_scene_bundle(
                             world,
                             "sample_map_resolution"),
                         1024u));
+            scene.world_cast_shadow =
+                boolean(
+                    member(world, "use_shadows"),
+                    true);
             scene.world_visibility_mask =
                 ray_visibility_mask(
                     member(world, "visibility"));
@@ -1279,6 +1293,13 @@ BlenderSceneImport load_blender_scene_bundle(
                 optional_unsigned_number(member(
                     world_cycles_sync,
                     "object_index"));
+            scene.cycles_background_light_group =
+                static_cast<std::int32_t>(
+                    signed_number(
+                        member(
+                            world_cycles_sync,
+                            "light_group"),
+                        -1));
             if (auto nishita =
                     find_simple_world_nishita(world)) {
                 scene.environment = EnvironmentDesc{

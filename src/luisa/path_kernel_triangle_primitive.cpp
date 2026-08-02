@@ -79,6 +79,9 @@ class BindlessTrianglePrimitiveComponent final
                 instance.cycles_object_index !=
                     cycles_shader_identity::
                         invalid_index);
+        UInt cycles_primitive_index =
+            geometry.cycles_primitive_offset +
+            resolved_primitive_id;
         Bool has_volume =
             (material_binding.flags &
              material_flag_has_volume) != 0u;
@@ -99,6 +102,8 @@ class BindlessTrianglePrimitiveComponent final
                 std::move(cycles_surface_shader),
             .cycles_object_index =
                 std::move(cycles_object_index),
+            .cycles_primitive_index =
+                std::move(cycles_primitive_index),
             .has_volume =
                 std::move(has_volume)};
     }

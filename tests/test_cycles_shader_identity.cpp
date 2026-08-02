@@ -1,7 +1,9 @@
 #include "../src/luisa/cycles_shader_identity.h"
+#include "../src/luisa/path_tracer_scene_geometry.h"
 
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <string_view>
 
 namespace {
@@ -11,6 +13,12 @@ namespace identity =
 using psycles::contract::RayVisibility;
 using psycles::contract::all_ray_visibility;
 using psycles::contract::visibility_bit;
+using psycles::luisa_backend::detail::
+    CyclesPrimitiveIntervalError;
+using psycles::luisa_backend::detail::
+    CyclesPrimitiveIntervalResolver;
+using psycles::luisa_backend::detail::
+    world_triangle_area;
 
 void require(bool condition, std::string_view message) {
     if (!condition) {
@@ -84,6 +92,80 @@ void test_light_shader_composition() {
              identity::exclude_transmit |
              identity::exclude_scatter),
         "object ray visibility did not map to Cycles shader flags");
+
+    require(
+        identity::emissive_triangle(
+            9u,
+            true,
+            visibility,
+            false) ==
+            (identity::surface(9u, true) |
+             identity::use_mis |
+             identity::exclude_diffuse |
+             identity::exclude_glossy |
+             identity::exclude_transmit |
+             identity::exclude_scatter |
+             identity::exclude_shadow_catcher),
+        "triangle-light shader identity changed");
+
+    require(
+        identity::background_light(
+            3u,
+            false,
+            visibility &
+                ~visibility_bit(RayVisibility::camera)) ==
+            (3u |
+             identity::use_mis |
+             identity::exclude_diffuse |
+             identity::exclude_glossy |
+             identity::exclude_transmit |
+             identity::exclude_scatter),
+        "background-light shader identity changed");
+}
+
+void test_geometry_identity() {
+    CyclesPrimitiveIntervalResolver resolver;
+    const auto first = resolver.resolve(3u);
+    const auto explicit_gap = resolver.resolve(2u, 5u);
+    const auto implicit_after_gap = resolver.resolve(4u);
+    require(
+        first.offset == 0u &&
+            explicit_gap.offset == 5u &&
+            implicit_after_gap.offset == 7u &&
+            resolver.end() == 11u,
+        "implicit and explicit Cycles primitive prefixes diverged");
+
+    const auto overlap = resolver.resolve(1u, 10u);
+    require(
+        !overlap.offset &&
+            overlap.error ==
+                CyclesPrimitiveIntervalError::overlap &&
+            resolver.end() == 11u,
+        "overlapping primitive interval was accepted or mutated state");
+
+    CyclesPrimitiveIntervalResolver boundary;
+    const auto last = boundary.resolve(
+        1u,
+        std::numeric_limits<std::uint32_t>::max());
+    const auto overflow = boundary.resolve(1u);
+    require(
+        last.offset ==
+                std::numeric_limits<std::uint32_t>::max() &&
+            !overflow.offset &&
+            overflow.error ==
+                CyclesPrimitiveIntervalError::out_of_range,
+        "Cycles primitive address-space boundary changed");
+
+    psycles::Mat4f transform;
+    transform.elements[0u] = 2.0f;
+    transform.elements[5u] = 3.0f;
+    require(
+        world_triangle_area(
+            transform,
+            {0.0f, 0.0f, 0.0f},
+            {1.0f, 0.0f, 0.0f},
+            {0.0f, 1.0f, 0.0f}) == 3.0f,
+        "emissive triangle area ignored instance transform");
 }
 
 }// namespace
@@ -91,5 +173,6 @@ void test_light_shader_composition() {
 int main() {
     test_surface_shader_composition();
     test_light_shader_composition();
+    test_geometry_identity();
     return EXIT_SUCCESS;
 }

@@ -2,6 +2,7 @@
 #include "path_tracer_environment.h"
 #include "path_tracer_generated_coordinates.h"
 #include "path_tracer_image_decode.h"
+#include "path_tracer_scene_geometry.h"
 #include "path_tracer_shader_services.h"
 #include "path_tracer_surfaces.h"
 #include "path_tracer_volume_capabilities.h"
@@ -34,45 +35,6 @@ namespace {
             return attribute_domain_face;
     }
     return attribute_domain_point;
-}
-
-[[nodiscard]] Vec3f transform_point(
-    const Mat4f &transform,
-    Vec3f point) noexcept {
-    const auto &e = transform.elements;
-    return {
-        e[0u] * point.x + e[4u] * point.y +
-            e[8u] * point.z + e[12u],
-        e[1u] * point.x + e[5u] * point.y +
-            e[9u] * point.z + e[13u],
-        e[2u] * point.x + e[6u] * point.y +
-            e[10u] * point.z + e[14u]};
-}
-
-[[nodiscard]] float world_triangle_area(
-    const Mat4f &transform,
-    Vec3f p0,
-    Vec3f p1,
-    Vec3f p2) noexcept {
-    p0 = transform_point(transform, p0);
-    p1 = transform_point(transform, p1);
-    p2 = transform_point(transform, p2);
-    const Vec3f edge01{
-        p1.x - p0.x,
-        p1.y - p0.y,
-        p1.z - p0.z};
-    const Vec3f edge02{
-        p2.x - p0.x,
-        p2.y - p0.y,
-        p2.z - p0.z};
-    const Vec3f cross{
-        edge01.y * edge02.z - edge01.z * edge02.y,
-        edge01.z * edge02.x - edge01.x * edge02.z,
-        edge01.x * edge02.y - edge01.y * edge02.x};
-    return 0.5f * std::sqrt(
-        cross.x * cross.x +
-        cross.y * cross.y +
-        cross.z * cross.z);
 }
 
 [[nodiscard]] Vec3f normalized_or_z(
@@ -386,6 +348,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             .value_or(
                 cycles_shader_identity::
                     invalid_index);
+    data->cycles_background_light_group =
+        snapshot.cycles_background_light_group;
     data->world_visibility_mask =
         snapshot.world_visibility_mask;
 
@@ -563,6 +527,14 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             data->material_bindings.find(*snapshot.world_shader);
         if (iter != data->material_bindings.end()) {
             data->world_surface = iter->second;
+            if (iter->second.cycles_shader_index !=
+                cycles_shader_identity::invalid_index) {
+                data->cycles_background_shader_id =
+                    cycles_shader_identity::background_light(
+                        iter->second.cycles_shader_index,
+                        snapshot.world_cast_shadow,
+                        snapshot.world_visibility_mask);
+            }
         }
     }
     if (parameters.empty()) {
@@ -668,6 +640,10 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     uploads.reserve(snapshot.geometries.size());
     std::map<contract::GeometryId, std::uint32_t>
         geometry_indices;
+    std::map<contract::GeometryId, std::uint32_t>
+        cycles_primitive_offsets;
+    CyclesPrimitiveIntervalResolver
+        cycles_primitive_intervals;
     luisa::vector<GeometryGpu> geometry_gpu;
     luisa::vector<AttributeBindingGpu>
         attribute_bindings;
@@ -996,6 +972,21 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                     "' has no triangles.");
             continue;
         }
+        const auto cycles_primitive_interval =
+            cycles_primitive_intervals.resolve(
+                geometry.triangles.size(),
+                geometry.cycles_primitive_offset);
+        if (!cycles_primitive_interval.offset) {
+            diagnose(
+                result.diagnostics,
+                "Geometry '" + geometry.name +
+                    "' has an overlapping or out-of-range Cycles "
+                    "primitive interval.");
+            continue;
+        }
+        cycles_primitive_offsets.emplace(
+            geometry_id,
+            *cycles_primitive_interval.offset);
         auto &upload = uploads.emplace_back();
         upload.positions.reserve(geometry.positions.size());
         const auto generated_mapping =
@@ -1379,6 +1370,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                         geometry.material_slots.size(), 1u)),
             .attribute_domains =
                 upload.attribute_domains,
+            .cycles_primitive_offset =
+                cycles_primitive_offsets.at(
+                    geometry_id),
             .generated_transform =
                 upload.generated_transform});
     }
@@ -1485,7 +1479,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                     cycles_shader_identity::
                         invalid_index),
             .cycles_light_group =
-                instance.cycles_light_group});
+                instance.cycles_light_group,
+            .is_shadow_catcher =
+                instance.is_shadow_catcher ? 1u : 0u});
         const auto &geometry =
             snapshot.geometries.at(instance.geometry);
         const auto light_visible =
@@ -1549,6 +1545,16 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                             "material.");
                     break;
                 }
+                const auto smooth =
+                    primitive_index <
+                            geometry.triangle_smooth.size() &&
+                        geometry.triangle_smooth[
+                            primitive_index] != 0u;
+                const auto base_shader_index =
+                    tag_iter->second.cycles_shader_index !=
+                            cycles_shader_identity::invalid_index
+                        ? tag_iter->second.cycles_shader_index
+                        : tag_iter->second.material_identity;
                 emissive_triangles.emplace_back(
                     EmissiveTriangleGpu{
                         .instance_index = instance_index,
@@ -1567,7 +1573,22 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                                     .at(*material_id)),
                         .visibility_mask =
                             normalized_visibility,
-                        .padding = 0u});
+                        .cycles_primitive_index =
+                            cycles_primitive_offsets.at(
+                                instance.geometry) +
+                            static_cast<std::uint32_t>(
+                                primitive_index),
+                        .cycles_object_index =
+                            instance.cycles_object_index.value_or(
+                                instance_index),
+                        .cycles_shader_id =
+                            cycles_shader_identity::emissive_triangle(
+                                base_shader_index,
+                                smooth,
+                                normalized_visibility,
+                                instance.is_shadow_catcher),
+                        .cycles_light_group =
+                            instance.cycles_light_group});
                 emissive_triangle_areas.emplace_back(
                     world_triangle_area(
                         instance.transform,

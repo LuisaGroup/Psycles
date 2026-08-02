@@ -38,19 +38,6 @@ import blender_scene_manifest as manifest  # noqa: E402
 _UINT32_MASK = 0xFFFFFFFF
 _CYCLES_DEFAULT_SHADER_COUNT = 5
 _CYCLES_BACKGROUND_SHADER_INDEX = 3
-_CYCLES_GEOMETRY_OBJECT_TYPES = {
-    "MESH",
-    "CURVE",
-    "SURFACE",
-    "FONT",
-    "META",
-    "CURVES",
-    "POINTCLOUD",
-    "VOLUME",
-    "LIGHT",
-}
-
-
 def _cycles_shader_color_space() -> dict[str, list[list[float]]]:
     """Reproduce Cycles ShaderManager::init_xyz_transforms from OCIO."""
     xyz_to_rec709 = np.asarray(
@@ -764,9 +751,21 @@ def _cycles_shader_indices(
 def _cycles_object_is_geometry(object_instance: Any) -> bool:
     if not object_instance.show_self:
         return False
-    if object_instance.object.type not in _CYCLES_GEOMETRY_OBJECT_TYPES:
+    obj = object_instance.object
+    if obj.data is None:
         return False
-    return any(_instance_ray_visibility(object_instance).values())
+    # BlenderSync::object_is_geometry accepts ordinary surface geometry only
+    # when the evaluated object-data ID is a Mesh. Legacy Curve/Surface/Font
+    # path objects can still be converted by Object.to_mesh(), but Cycles does
+    # not create an Object for them while their evaluated data remains Curve.
+    # Counting those objects shifts every later source object identity.
+    is_cycles_geometry = (
+        isinstance(obj.data, bpy.types.Mesh)
+        or obj.type in {"VOLUME", "CURVES", "POINTCLOUD", "LIGHT"}
+    )
+    return is_cycles_geometry and any(
+        _instance_ray_visibility(object_instance).values()
+    )
 
 
 def _cycles_light_group(
@@ -920,6 +919,7 @@ def _export_scene(
         for index, group in enumerate(bpy.context.view_layer.lightgroups)
     }
     cycles_object_index = 0
+    cycles_primitive_offset = 0
     with (output / "geometry.bin").open("wb") as stream:
         stream.write(b"PSYGEO2\0")
         stream.write(struct.pack("<II", 2, 0))
@@ -982,6 +982,12 @@ def _export_scene(
                 geometry_data = _geometry(original, depsgraph, stream)
                 if geometry_data is None:
                     continue
+                geometry_data["cycles_sync"] = {
+                    "primitive_offset": cycles_primitive_offset,
+                }
+                cycles_primitive_offset += int(
+                    geometry_data["triangle_count"]
+                )
                 geometry_index = len(geometries)
                 geometry_by_source[key] = geometry_index
                 geometries.append(geometry_data)
@@ -1011,6 +1017,9 @@ def _export_scene(
                         original.cycles.shadow_terminator_geometry_offset
                     ),
                     "visibility": _instance_ray_visibility(
+                        object_instance
+                    ),
+                    "is_shadow_catcher": _cycles_shadow_catcher(
                         object_instance
                     ),
                     "cycles_sync": {
@@ -1191,6 +1200,9 @@ def _export_scene(
                         1024,
                     )
                 ),
+                "use_shadows": bool(
+                    getattr(scene.world.cycles, "use_shadows", True)
+                ),
                 "visibility": {
                     "camera": bool(
                         getattr(
@@ -1240,6 +1252,10 @@ def _export_scene(
                     # BlenderSync creates the background-light object after
                     # dependency-graph geometry and analytic lights.
                     "object_index": cycles_object_index,
+                    "light_group": light_groups.get(
+                        str(getattr(scene.world, "lightgroup", "")),
+                        -1,
+                    ),
                 },
                 "node_tree": (
                     _tree(scene.world.node_tree, world=True)

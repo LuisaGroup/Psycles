@@ -136,6 +136,16 @@ def _main() -> None:
                 f"{len(scene['geometries'])} geometries, "
                 f"{len(scene['instances'])} instances"
             )
+        primitive_offset = 0
+        for geometry in scene["geometries"]:
+            cycles_sync = geometry.get("cycles_sync")
+            if cycles_sync != {"primitive_offset": primitive_offset}:
+                raise AssertionError(
+                    "Cycles global primitive prefix changed: "
+                    f"got {cycles_sync}, expected offset "
+                    f"{primitive_offset}"
+                )
+            primitive_offset += int(geometry["triangle_count"])
         smooth_section = scene["geometries"][shared_a][
             "triangle_smooth"
         ]

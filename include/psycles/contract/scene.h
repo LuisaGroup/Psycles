@@ -170,6 +170,10 @@ struct TriangleMeshDesc {
     // Face-domain ATTR_STD_RANDOM_PER_ISLAND values, already hashed with the
     // Cycles hash. This must not be interpolated across a triangle.
     std::vector<float> triangle_random_per_island;
+    // First triangle in Cycles' global primitive array. Blender bundles carry
+    // the exact GeometryManager prefix; renderer-authored scenes may omit it
+    // and let the backend assign a deterministic geometry-order prefix.
+    std::optional<std::uint32_t> cycles_primitive_offset;
 };
 
 struct MotionTransform {
@@ -219,6 +223,10 @@ struct InstanceDesc {
     // TLAS indices.
     std::optional<std::uint32_t> cycles_object_index;
     std::int32_t cycles_light_group{-1};
+    // Cycles folds shadow-catcher membership into sampled-emitter shader
+    // identity. Keep it per instance because shared geometry may be instanced
+    // both as a catcher and as an ordinary object.
+    bool is_shadow_catcher{};
 };
 
 enum class CameraProjection : std::uint8_t {
@@ -366,6 +374,8 @@ struct SceneSnapshot {
     // to the world shader/background-light pair, but uses the same public ray
     // categories.
     std::uint32_t world_visibility_mask{all_ray_visibility};
+    bool world_cast_shadow{true};
+    std::int32_t cycles_background_light_group{-1};
 };
 
 struct UpsertMaterial {
