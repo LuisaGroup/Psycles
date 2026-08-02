@@ -133,6 +133,28 @@ Metal has a 1.000000 Combined luminance ratio and 0.0000325 relative RMSE. Its
 Cycles comparison is
 [glass-transport-metal-vs-cycles-metal-64x64-256.json](reports/glass-transport-metal-vs-cycles-metal-64x64-256.json).
 
+### Metal long-dispatch completion
+
+The first 320x180, 64-sample Metal benchmark appeared to render in roughly
+four seconds but contained large black horizontal regions. Repetitions moved
+the missing region, showing that this was not scene data or a material graph.
+The fused path kernel could exceed the practical duration of one Metal command;
+the current Luisa stream synchronization returned without surfacing that the
+command had stopped before every pixel completed.
+
+Psycles now preserves the same kernel and absolute sample indices while
+partitioning Metal work into full-width row bands. Each command targets at most
+131,072 pixel-samples, and every submitted band is synchronized before the next
+one. Readback additionally requires every pixel's sample counter to equal the
+session's completed sample count, so a backend can no longer turn incomplete
+coverage into a successful image.
+
+The repaired default eight-sample dispatch is pixel-identical to the known-safe
+four-sample-dispatch Metal reference: Combined RMSE and maximum absolute error
+are both zero. Two repeated repaired frames are also pixel-identical and took
+25.6995 and 23.4594 seconds. The normal benchmark run took 25.4340 seconds and
+has no black bands or invalid pixels.
+
 ## Focused Hosek regression
 
 The new `hosek_wilkie_diffuse_transport` probe creates a raw Blender world,
@@ -210,6 +232,32 @@ x=168.51..176.68, y=42.22..50.90 in the 320x180 frame.
 ![Classroom transom: Cycles, black Psycles before, corrected Psycles after](triptychs/classroom-frosted-glass-before-after.png)
 
 ![Classroom clock: Cycles, black Psycles before, corrected Psycles after](triptychs/classroom-clock-glass-before-after.png)
+
+### Matched Classroom performance checkpoint
+
+The project benchmark runner repeated Classroom at 320x180 and 64 fixed
+samples with warm Psycles shader caches. All three renderers consumed the same
+scene state and the Psycles backends reused the same exported raw graph bundle.
+The primary timing is each renderer's reported render interval; process setup,
+scene compilation, and shader JIT are recorded separately.
+
+| Renderer | Render | Relative to Cycles Metal | Other timed phases |
+|---|---:|---:|---|
+| Cycles Metal | 1.38101 s | 1.00x | 2.32506 s process wall |
+| Psycles Metal | 25.4340 s | 18.417x slower | 1.01058 s scene compile, 0.837571 s warm JIT |
+| Psycles fallback | 134.554 s | 97.432x slower | 0.956597 s scene compile, 0.496709 s warm JIT |
+
+On this scene and checkpoint, Psycles Metal is 5.29x faster than Psycles
+fallback. This is one matched run rather than a broad renderer claim. Its full
+manifest is
+[classroom-apple-benchmark-320x180-64.json](reports/classroom-apple-benchmark-320x180-64.json).
+
+The corrected Metal image has Combined luminance 1.010774 times Cycles,
+relative RMSE 0.118657, and zero invalid pixels. Fallback has luminance ratio
+1.010494 and relative RMSE 0.119008. Metal versus fallback has luminance ratio
+1.000277 and relative RMSE 0.015057, with no missing coverage.
+
+![Corrected Classroom Metal versus Cycles Metal at 64 samples](triptychs/classroom-metal-valid-64spp-combined.png)
 
 ## Lone Monk result
 

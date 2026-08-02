@@ -1,0 +1,146 @@
+{
+  "commands": {
+    "cycles_metal": {
+      "command": [
+        "/opt/homebrew/Caskroom/blender/5.2.0/.homebrew-command-wrappers/blender",
+        "/Users/mike/CLionProjects/Psycles/assets/official-blender-scenes/classroom/classroom.blend",
+        "--background",
+        "--python-exit-code",
+        "1",
+        "--python",
+        "/Users/mike/CLionProjects/Psycles/tools/render_cycles_golden.py",
+        "--",
+        "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/classroom-apple-320x180-64-valid/cycles/metal.exr",
+        "320",
+        "180",
+        "64",
+        "--cycles-device",
+        "METAL",
+        "--device-name",
+        "Apple M1 Max"
+      ],
+      "log": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/classroom-apple-320x180-64-valid/logs/cycles-metal.log",
+      "returncode": 0,
+      "wall_seconds": 2.3250586250796914
+    },
+    "export": {
+      "reused": true
+    },
+    "psycles_fallback": {
+      "command": [
+        "/Users/mike/CLionProjects/Psycles/build-macos/bin/psycles_render_blender_scene",
+        "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom",
+        "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/classroom-apple-320x180-64-valid/psycles/fallback.ppm",
+        "fallback",
+        "320",
+        "180",
+        "64",
+        "8"
+      ],
+      "log": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/classroom-apple-320x180-64-valid/logs/psycles-fallback.log",
+      "returncode": 0,
+      "wall_seconds": 136.2699394170195
+    },
+    "psycles_metal": {
+      "command": [
+        "/Users/mike/CLionProjects/Psycles/build-macos/bin/psycles_render_blender_scene",
+        "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom",
+        "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/classroom-apple-320x180-64-valid/psycles/metal.ppm",
+        "metal",
+        "320",
+        "180",
+        "64",
+        "8"
+      ],
+      "log": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/classroom-apple-320x180-64-valid/logs/psycles-metal.log",
+      "returncode": 0,
+      "wall_seconds": 27.563457999844104
+    }
+  },
+  "comparisons": {
+    "psycles-fallback-vs-cycles-metal": {
+      "actual": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/classroom-apple-320x180-64-valid/psycles/fallback.exr",
+      "process_wall_seconds": 0.6213812921196222,
+      "reference": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/classroom-apple-320x180-64-valid/cycles/metal.exr",
+      "report": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/classroom-apple-320x180-64-valid/comparisons/psycles-fallback-vs-cycles-metal/report.json"
+    },
+    "psycles-metal-vs-cycles-metal": {
+      "actual": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/classroom-apple-320x180-64-valid/psycles/metal.exr",
+      "process_wall_seconds": 0.6185623747296631,
+      "reference": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/classroom-apple-320x180-64-valid/cycles/metal.exr",
+      "report": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/classroom-apple-320x180-64-valid/comparisons/psycles-metal-vs-cycles-metal/report.json"
+    }
+  },
+  "matrix": {
+    "cycles": [
+      "metal"
+    ],
+    "psycles": [
+      "fallback",
+      "metal"
+    ]
+  },
+  "relative_performance": {
+    "fallback": {
+      "slowdown_vs_cycles_metal": 97.43171051724083,
+      "speedup_over_cycles_metal": 0.010263598931921112
+    },
+    "metal": {
+      "slowdown_vs_cycles_metal": 18.416978501534725,
+      "speedup_over_cycles_metal": 0.054297723153484044
+    }
+  },
+  "renderers": {
+    "cycles": {
+      "metal": {
+        "device": [
+          {
+            "id": "METAL_Apple M1 Max (GPU - 32 cores)",
+            "name": "Apple M1 Max (GPU - 32 cores)",
+            "type": "METAL"
+          }
+        ],
+        "metadata": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/classroom-apple-320x180-64-valid/cycles/metal.json",
+        "output": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/classroom-apple-320x180-64-valid/cycles/metal.exr",
+        "process_wall_seconds": 2.3250586250796914,
+        "render_seconds": 1.3810082906857133,
+        "sha256": "449d81a6dcdd4cc8603612af2917c93f9dc95e43a7d9c984e8e4c4a330ee857b"
+      }
+    },
+    "psycles": {
+      "fallback": {
+        "output": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/classroom-apple-320x180-64-valid/psycles/fallback.exr",
+        "process_wall_seconds": 136.2699394170195,
+        "render_seconds": 134.554,
+        "scene_compile_seconds": 0.956597,
+        "sha256": "f9c24239e6971e877929ccaad8576ae5adb8d5827061a1ea30bf6730301b0ee2",
+        "shader_jit_seconds": 0.496709
+      },
+      "metal": {
+        "output": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/classroom-apple-320x180-64-valid/psycles/metal.exr",
+        "process_wall_seconds": 27.563457999844104,
+        "render_seconds": 25.434,
+        "scene_compile_seconds": 1.01058,
+        "sha256": "49621b3f08a6fb105a4c56a1263dc80ce956afb5270df814361462d1b3a90e54",
+        "shader_jit_seconds": 0.837571
+      }
+    }
+  },
+  "scene": {
+    "blend": "/Users/mike/CLionProjects/Psycles/assets/official-blender-scenes/classroom/classroom.blend",
+    "bundle": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom",
+    "geometry_bin_sha256": "05883ee35d2447ece76a4a31c9d8300bbf367879bd3460cfac8f1c8b1a580ae6",
+    "scene_json_sha256": "3b83a9db3debd177deb3a6149aca0982e5286590d8b50e2b139bb592b902358a",
+    "sha256": "5c526ea3f280566e80253673c9955640527cd0f247ea41b1742620b5bc39f7a4"
+  },
+  "schema": "psycles.scene-benchmark.v1",
+  "settings": {
+    "cycles_gpu_device": "METAL",
+    "cycles_gpu_device_name": "Apple M1 Max",
+    "height": 180,
+    "max_samples_per_dispatch": 8,
+    "samples": 64,
+    "width": 320
+  },
+  "status": "complete"
+}
