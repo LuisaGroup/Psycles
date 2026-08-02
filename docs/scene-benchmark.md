@@ -17,7 +17,8 @@ renderer. Cycles remains the only rendering oracle; its CPU result is retained
 alongside HIP to expose device-dependent intersection and floating-point
 behavior.
 
-`tools/run_scene_benchmark.py` renders all five entries sequentially with the
+By default, `tools/run_scene_benchmark.py` renders all five entries
+sequentially with the
 same `.blend`, scene-owned seed, resolution, fixed sample count, disabled
 adaptive sampling, and disabled denoising. The default extent is 640×480, so a
 canonical scene run never substitutes a tiny probe for full-scene behavior.
@@ -36,9 +37,32 @@ python3 tools/run_scene_benchmark.py \
   --width 640 --height 480 --samples 64
 ```
 
+Native platform matrices retain the same manifest, timing boundaries, pass
+comparisons, and explicit device selection. For example, the Apple Silicon
+matrix compares one named Cycles Metal GPU with Psycles fallback and Metal:
+
+```bash
+python3 tools/run_scene_benchmark.py \
+  --blender /opt/homebrew/bin/blender \
+  --psycles-render build-macos/bin/psycles_render_blender_scene \
+  --blend assets/official-blender-scenes/classroom/classroom.blend \
+  --output-dir build-macos/benchmarks/classroom-apple \
+  --bundle build-macos/scene-exports/classroom \
+  --reuse-export --skip-cycles-cpu \
+  --cycles-gpu-device METAL \
+  --cycles-gpu-device-name "Apple M1 Max" \
+  --psycles-backends fallback,metal \
+  --width 640 --height 360 --samples 64
+```
+
+`--cycles-hip-device-name` remains a compatibility alias for the default HIP
+matrix. A non-HIP run uses `--cycles-gpu-device` and
+`--cycles-gpu-device-name`; `--psycles-backends` is an ordered comma-separated
+list of backend module names.
+
 The runner exports the final-render Blender dependency graph once, then reuses
-that immutable bundle for all three Luisa backends. Pass `--reuse-export` only
-when the requested bundle has already been produced from the same source
+that immutable bundle for all selected Luisa backends. Pass `--reuse-export`
+only when the requested bundle has already been produced from the same source
 scene. It is never used to bypass material export: the bundle still contains
 the original node graphs, socket values, closure topology, and scene data.
 
@@ -47,15 +71,16 @@ the original node graphs, socket values, closure topology, and scene data.
 `benchmark.json` is updated after every completed stage and has
 `psycles.scene-benchmark.v1` schema. It records:
 
-- the exact five-entry matrix and execution order;
+- the exact selected matrix and execution order;
 - source and exported-scene SHA-256 hashes;
 - resolution, samples, and maximum samples per Luisa dispatch;
 - every command, log, process wall time, EXR path, and EXR hash;
 - Cycles' selected device inventory and render-call time;
 - Psycles scene compilation, shader JIT, render-only, and process wall times;
-- render-only speedup and slowdown ratios against both Cycles HIP and CPU;
-- differential-report paths for every Psycles backend against both Cycles
-  device variants.
+- render-only speedup and slowdown ratios against the selected Cycles GPU and,
+  when enabled, Cycles CPU;
+- differential-report paths for every Psycles backend against each selected
+  Cycles device variant.
 
 Each comparison covers all available linear passes and writes real
 reference/actual/absolute-difference triptychs. The panel labels include the
@@ -66,5 +91,5 @@ Performance conclusions must state which timing boundary is used. The primary
 throughput number is the renderer-reported render interval; process wall time
 and Psycles compilation/JIT phases remain visible separately. Quality
 conclusions use numeric pass metrics and original-resolution visual
-inspection. A benchmark is incomplete if any of the five renderers fails or
-silently selects a different Cycles HIP device.
+inspection. A benchmark is incomplete if any selected renderer fails or
+Cycles silently selects a different device than the explicit name filter.

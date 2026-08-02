@@ -127,6 +127,11 @@ Classroom ceiling-lamp Beckmann roughness, and rough tinted GGX. At 64x64 and
 These passes are enforced by the shader-probe runner's energy and relative
 RMSE gates. The complete report is
 [glass-transport-fallback-vs-cycles-metal-64x64-256.json](reports/glass-transport-fallback-vs-cycles-metal-64x64-256.json).
+The same probe passed on Psycles Metal: Combined luminance is 0.999886 of
+Cycles, relative RMSE is 0.005620, and all pixels are finite. Fallback versus
+Metal has a 1.000000 Combined luminance ratio and 0.0000325 relative RMSE. Its
+Cycles comparison is
+[glass-transport-metal-vs-cycles-metal-64x64-256.json](reports/glass-transport-metal-vs-cycles-metal-64x64-256.json).
 
 ## Focused Hosek regression
 
@@ -264,6 +269,15 @@ build/validation-venv/bin/python tools/run_cycles_shader_probes.py \
   --psycles-render build-macos/bin/psycles_render_blender_scene \
   --output-dir build-macos/shader-probes/glass-transport-fallback \
   --backend fallback --cycles-device METAL \
+  --cycles-device-name "Apple M1 Max" \
+  --width 64 --height 64 --samples 256 \
+  glass_transport
+
+build/validation-venv/bin/python tools/run_cycles_shader_probes.py \
+  --blender /opt/homebrew/bin/blender \
+  --psycles-render build-macos/bin/psycles_render_blender_scene \
+  --output-dir build-macos/shader-probes/glass-transport-metal \
+  --backend metal --cycles-device METAL \
   --cycles-device-name "Apple M1 Max" \
   --width 64 --height 64 --samples 256 \
   glass_transport

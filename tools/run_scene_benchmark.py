@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Run the canonical five-way Cycles/Psycles scene benchmark.
+"""Run a tracked Cycles/Psycles scene benchmark.
 
-The default matrix is intentionally fixed:
+The default matrix remains the canonical AMD five-way run:
 
 * Cycles CPU
 * Cycles HIP
@@ -12,6 +12,9 @@ The default matrix is intentionally fixed:
 Every renderer receives the same scene-owned seed, resolution, and sample
 count. The runner preserves command logs, structured timing metadata, EXR
 hashes, and differential reports against both Cycles device variants.
+
+The device and backend selectors also support native platform matrices, such
+as Cycles Metal against Psycles fallback/Metal on Apple Silicon.
 """
 
 from __future__ import annotations
@@ -29,6 +32,15 @@ from typing import Any
 
 
 _LUISA_BACKENDS = ("fallback", "hip", "vk")
+_KNOWN_LUISA_BACKENDS = {
+    "cuda",
+    "dx",
+    "fallback",
+    "hip",
+    "metal",
+    "remote",
+    "vk",
+}
 _REPORT_PASSES = (
     "Combined",
     "Normal",
@@ -67,11 +79,42 @@ def _positive_integer(value: str) -> int:
     return result
 
 
+def _backend_list(value: str) -> tuple[str, ...]:
+    result = tuple(
+        backend.strip().lower()
+        for backend in value.split(",")
+        if backend.strip()
+    )
+    if not result:
+        raise argparse.ArgumentTypeError(
+            "at least one Psycles backend is required"
+        )
+    unknown = sorted(set(result) - _KNOWN_LUISA_BACKENDS)
+    if unknown:
+        raise argparse.ArgumentTypeError(
+            "unknown Psycles backend(s): " + ", ".join(unknown)
+        )
+    if len(set(result)) != len(result):
+        raise argparse.ArgumentTypeError(
+            "Psycles backends must not be repeated"
+        )
+    return result
+
+
+def _device_key(device: str) -> str:
+    result = re.sub(r"[^a-z0-9]+", "-", device.lower()).strip("-")
+    if not result or result == "cpu":
+        raise ValueError(
+            "the selected Cycles GPU device must not be CPU"
+        )
+    return result
+
+
 def _arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Benchmark one Blender scene on Cycles CPU/HIP and "
-            "Psycles fallback/HIP/Vulkan"
+            "Benchmark one Blender scene on Cycles CPU/GPU and "
+            "selected Psycles backends"
         )
     )
     parser.add_argument("--blender", type=pathlib.Path, required=True)
@@ -98,13 +141,40 @@ def _arguments() -> argparse.Namespace:
     )
     parser.add_argument(
         "--cycles-hip-device-name",
-        required=True,
-        help="case-insensitive Cycles HIP device-name filter",
+        default="",
+        help=(
+            "legacy alias for --cycles-gpu-device-name when the "
+            "GPU device is HIP"
+        ),
+    )
+    parser.add_argument(
+        "--cycles-gpu-device",
+        default="HIP",
+        help="Cycles GPU compute backend, for example HIP or METAL",
+    )
+    parser.add_argument(
+        "--cycles-gpu-device-name",
+        default="",
+        help="case-insensitive Cycles GPU device-name filter",
     )
     parser.add_argument(
         "--cycles-cpu-device-name",
         default="",
         help="optional Cycles CPU device-name filter",
+    )
+    parser.add_argument(
+        "--skip-cycles-cpu",
+        action="store_true",
+        help="benchmark only the selected Cycles GPU device",
+    )
+    parser.add_argument(
+        "--psycles-backends",
+        type=_backend_list,
+        default=_LUISA_BACKENDS,
+        help=(
+            "comma-separated Luisa backends "
+            "(default: fallback,hip,vk)"
+        ),
     )
     parser.add_argument(
         "--width",
@@ -136,7 +206,26 @@ def _arguments() -> argparse.Namespace:
         action="store_true",
         help="record timings and EXRs without differential reports",
     )
-    return parser.parse_args()
+    result = parser.parse_args()
+    result.cycles_gpu_device = (
+        result.cycles_gpu_device.strip().upper()
+    )
+    if not result.cycles_gpu_device:
+        parser.error("--cycles-gpu-device must not be empty")
+    if not result.cycles_gpu_device_name:
+        if (
+            result.cycles_gpu_device == "HIP"
+            and result.cycles_hip_device_name
+        ):
+            result.cycles_gpu_device_name = (
+                result.cycles_hip_device_name
+            )
+        else:
+            parser.error(
+                "--cycles-gpu-device-name is required "
+                "(or use --cycles-hip-device-name for HIP)"
+            )
+    return result
 
 
 def _cycles_command(
@@ -330,32 +419,52 @@ def _write_manifest(
 
 def _relative_performance(
     manifest: dict[str, Any],
+    gpu_key: str | None = None,
 ) -> dict[str, dict[str, float]]:
     cycles = manifest["renderers"]["cycles"]
     psycles = manifest["renderers"]["psycles"]
-    hip_seconds = float(cycles["hip"]["render_seconds"])
-    cpu_seconds = float(cycles["cpu"]["render_seconds"])
+    if gpu_key is None:
+        gpu_keys = [key for key in cycles if key != "cpu"]
+        if len(gpu_keys) != 1:
+            raise RuntimeError(
+                "benchmark manifest must contain exactly one Cycles GPU"
+            )
+        gpu_key = gpu_keys[0]
+    gpu_seconds = float(cycles[gpu_key]["render_seconds"])
+    cpu_seconds = (
+        float(cycles["cpu"]["render_seconds"])
+        if "cpu" in cycles
+        else None
+    )
     result: dict[str, dict[str, float]] = {}
     for backend, record in psycles.items():
         render_seconds = float(record["render_seconds"])
         result[backend] = {
-            "speedup_over_cycles_hip": (
-                hip_seconds / render_seconds
+            f"speedup_over_cycles_{gpu_key}": (
+                gpu_seconds / render_seconds
             ),
-            "slowdown_vs_cycles_hip": (
-                render_seconds / hip_seconds
-            ),
-            "speedup_over_cycles_cpu": (
-                cpu_seconds / render_seconds
-            ),
-            "slowdown_vs_cycles_cpu": (
-                render_seconds / cpu_seconds
+            f"slowdown_vs_cycles_{gpu_key}": (
+                render_seconds / gpu_seconds
             ),
         }
-    result["cycles_cpu"] = {
-        "speedup_over_cycles_hip": hip_seconds / cpu_seconds,
-        "slowdown_vs_cycles_hip": cpu_seconds / hip_seconds,
-    }
+        if cpu_seconds is not None:
+            result[backend].update({
+                "speedup_over_cycles_cpu": (
+                    cpu_seconds / render_seconds
+                ),
+                "slowdown_vs_cycles_cpu": (
+                    render_seconds / cpu_seconds
+                ),
+            })
+    if cpu_seconds is not None:
+        result["cycles_cpu"] = {
+            f"speedup_over_cycles_{gpu_key}": (
+                gpu_seconds / cpu_seconds
+            ),
+            f"slowdown_vs_cycles_{gpu_key}": (
+                cpu_seconds / gpu_seconds
+            ),
+        }
     return result
 
 
@@ -369,6 +478,14 @@ def _main() -> int:
     renderer = arguments.psycles_render.resolve()
     blend = arguments.blend.resolve()
     output_root = arguments.output_dir.resolve()
+    gpu_device = arguments.cycles_gpu_device
+    gpu_key = _device_key(gpu_device)
+    gpu_label = f"Cycles {gpu_device}"
+    cycles_matrix = (
+        ["cpu", gpu_key]
+        if not arguments.skip_cycles_cpu
+        else [gpu_key]
+    )
     bundle = (
         arguments.bundle.resolve()
         if arguments.bundle is not None
@@ -386,8 +503,8 @@ def _main() -> int:
         "schema": "psycles.scene-benchmark.v1",
         "status": "running",
         "matrix": {
-            "cycles": ["cpu", "hip"],
-            "psycles": list(_LUISA_BACKENDS),
+            "cycles": cycles_matrix,
+            "psycles": list(arguments.psycles_backends),
         },
         "scene": {
             "blend": str(blend),
@@ -400,6 +517,10 @@ def _main() -> int:
             "samples": arguments.samples,
             "max_samples_per_dispatch": (
                 arguments.max_samples_per_dispatch
+            ),
+            "cycles_gpu_device": gpu_device,
+            "cycles_gpu_device_name": (
+                arguments.cycles_gpu_device_name
             ),
         },
         "renderers": {
@@ -420,10 +541,17 @@ def _main() -> int:
 
     try:
         cycles_outputs: dict[str, pathlib.Path] = {}
-        for key, device, device_name in (
-            ("cpu", "CPU", arguments.cycles_cpu_device_name),
-            ("hip", "HIP", arguments.cycles_hip_device_name),
-        ):
+        cycles_runs = []
+        if not arguments.skip_cycles_cpu:
+            cycles_runs.append(
+                ("cpu", "CPU", arguments.cycles_cpu_device_name)
+            )
+        cycles_runs.append((
+            gpu_key,
+            gpu_device,
+            arguments.cycles_gpu_device_name,
+        ))
+        for key, device, device_name in cycles_runs:
             output = output_root / "cycles" / f"{key}.exr"
             output.parent.mkdir(parents=True, exist_ok=True)
             record = _run_logged(
@@ -491,7 +619,7 @@ def _main() -> int:
         _write_manifest(manifest_path, manifest)
 
         psycles_outputs: dict[str, pathlib.Path] = {}
-        for backend in _LUISA_BACKENDS:
+        for backend in arguments.psycles_backends:
             preview = (
                 output_root / "psycles" / f"{backend}.ppm"
             )
@@ -528,33 +656,33 @@ def _main() -> int:
             _write_manifest(manifest_path, manifest)
 
         manifest["relative_performance"] = (
-            _relative_performance(manifest)
+            _relative_performance(manifest, gpu_key)
         )
 
         if not arguments.skip_comparisons:
             candidates = {
-                "cycles-cpu": (
+                f"psycles-{backend}": (
+                    output,
+                    f"Psycles {backend}",
+                )
+                for backend, output in psycles_outputs.items()
+            }
+            if "cpu" in cycles_outputs:
+                candidates["cycles-cpu"] = (
                     cycles_outputs["cpu"],
                     "Cycles CPU",
-                ),
-                **{
-                    f"psycles-{backend}": (
-                        output,
-                        f"Psycles {backend}",
-                    )
-                    for backend, output in psycles_outputs.items()
-                },
-            }
+                )
             references = {
-                "cycles-hip": (
-                    cycles_outputs["hip"],
-                    "Cycles HIP",
-                ),
-                "cycles-cpu": (
-                    cycles_outputs["cpu"],
-                    "Cycles CPU",
+                f"cycles-{gpu_key}": (
+                    cycles_outputs[gpu_key],
+                    gpu_label,
                 ),
             }
+            if "cpu" in cycles_outputs:
+                references["cycles-cpu"] = (
+                    cycles_outputs["cpu"],
+                    "Cycles CPU",
+                )
             for reference_key, (
                 reference,
                 reference_label,
@@ -613,8 +741,9 @@ def _main() -> int:
         raise
 
     print(
-        "Completed Cycles CPU/HIP and Psycles "
-        "fallback/HIP/Vulkan benchmark: "
+        "Completed Cycles/Psycles benchmark "
+        f"({', '.join(cycles_matrix)} vs "
+        f"{', '.join(arguments.psycles_backends)}): "
         f"{manifest_path}"
     )
     return 0
