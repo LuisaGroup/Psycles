@@ -92,6 +92,17 @@ This gives multistage code a precise binding-time boundary:
 | Unlinked color, roughness, strength, mix factor | Parameter block | Rebind data |
 | Position, normals, incoming direction, tangent | Surface point | Evaluate on device |
 
+Emission has two deliberately separate host-stage analyses. The structural
+closure transfer relation decides whether the generated Luisa AST may use the
+restricted constant-emission callable; Principled is always deferred because
+its Alpha, Sheen, and Coat layers may affect radiance. A second per-material
+metadata query mirrors Cycles' `output_estimate_emission` for mesh-emitter
+discovery: it reads direct parameter literals and closure topology while
+treating linked values conservatively. That estimate controls proposal
+membership only. The original Blender closure and all linked expressions are
+still evaluated by `SurfaceDispatch` on the device and are never replaced by
+the host estimate.
+
 `compiler::MaterialLibrary` applies this rule atomically to a scene revision.
 If any material fails to compile or bind, the previous library and revision
 remain visible.
