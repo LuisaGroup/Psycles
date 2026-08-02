@@ -335,8 +335,14 @@ boundary. Combined and Emit match current Cycles CPU within at most one or two
 float ULPs on fallback, HIP, and Vulkan; all six triptychs were inspected.
 Formulas, reports, timings, and images are in
 [`validation/2026-08-03/principled-emission-layers`](validation/2026-08-03/principled-emission-layers/README.md).
-Physical Alpha transparency and Sheen/Coat scattering closures remain open;
-this result does not overstate them as complete Principled support.
+Physical Alpha now follows Cycles' per-leaf signed cutoff, first-allocation
+order, and global transparent-closure merge. A 16-cell raw-node matrix is
+bit-for-bit identical to Cycles CPU in Combined and Environment on fallback,
+HIP, and Vulkan; the formal relation, reports, and all six inspected triptychs
+are in
+[`validation/2026-08-03/principled-alpha`](validation/2026-08-03/principled-alpha/README.md).
+Physical Sheen/Coat scattering closures remain open; these checkpoints do not
+overstate them as complete Principled support.
 
 The first heterogeneous transport checkpoint now isolates the formal
 null-collision transition in a Luisa `.h`/`.cpp` component. It pins current

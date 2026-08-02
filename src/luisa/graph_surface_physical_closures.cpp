@@ -1,4 +1,5 @@
 #include "graph_surface_internal.h"
+#include "principled_emission_layer.h"
 
 #include <psycles/luisa/cycles_closure.h>
 
@@ -11,23 +12,94 @@ void GraphSurfaceImplementation::for_each_physical_closure(
     const ClosureVisitor &function) const noexcept {
     const auto incoming =
         safe_normalize(point.incoming, point.shading_normal);
+    Float3 transparent_weight = make_float3(0.0f);
+    Float transparent_sample_weight = 0.0f;
+    for_each_closure(
+        values, [&](const TracedClosure &closure) noexcept {
+            auto contribution = TransparentClosureState{
+                .weight = make_float3(0.0f),
+                .sample_weight = 0.0f};
+            if (closure.operation ==
+                compiler::ClosureOperation::transparent) {
+                contribution = transparent_closure_state(
+                    closure.weight);
+            } else if (closure.operation ==
+                       compiler::ClosureOperation::principled) {
+                contribution =
+                    evaluate_principled_alpha_layer(closure)
+                        .transparency;
+            }
+            transparent_weight += contribution.weight;
+            transparent_sample_weight += contribution.sample_weight;
+        });
+
+    Bool transparent_allocated = false;
     for_each_closure(
         values, [&](const TracedClosure &graph_closure) noexcept {
             auto closure = graph_closure;
             closure.principled_lobe = PrincipledLobe::none;
             closure.evaluation_scale = make_float3(1.0f);
 
+            const auto produces_transparency =
+                graph_closure.operation ==
+                    compiler::ClosureOperation::transparent ||
+                graph_closure.operation ==
+                    compiler::ClosureOperation::principled;
+            if (produces_transparency) {
+                auto contribution = TransparentClosureState{
+                    .weight = make_float3(0.0f),
+                    .sample_weight = 0.0f};
+                if (graph_closure.operation ==
+                    compiler::ClosureOperation::transparent) {
+                    contribution = transparent_closure_state(
+                        graph_closure.weight);
+                } else {
+                    contribution = evaluate_principled_alpha_layer(
+                                           graph_closure)
+                                           .transparency;
+                }
+                const auto contribution_allocated =
+                    contribution.sample_weight >=
+                    cycles_closure::closure_weight_cutoff;
+                const auto emit_here =
+                    contribution_allocated & !transparent_allocated;
+                auto transparent = graph_closure;
+                transparent.operation =
+                    compiler::ClosureOperation::transparent;
+                transparent.principled_lobe = PrincipledLobe::none;
+                transparent.weight = select(make_float3(0.0f),
+                    transparent_weight,
+                    emit_here);
+                transparent.allocation_weight =
+                    select(0.0f,
+                        transparent_sample_weight,
+                        emit_here);
+                transparent.sample_weight =
+                    transparent.allocation_weight;
+                transparent.albedo = transparent.weight;
+                transparent.color = make_float3(1.0f);
+                transparent.normal = point.shading_normal;
+                transparent.roughness = 0.0f;
+                transparent.ior = 1.0f;
+                transparent.evaluation_scale = make_float3(1.0f);
+                function(transparent);
+                transparent_allocated |= contribution_allocated;
+            }
+
             switch (graph_closure.operation) {
             case compiler::ClosureOperation::principled: {
+                closure.weight =
+                    evaluate_principled_alpha_layer(graph_closure)
+                        .lower_weight;
                 const auto glossy_normal =
                     ensure_valid_specular_reflection(
                         point.geometric_normal,
                         incoming,
                         graph_closure.normal);
                 const auto state = principled_state(
-                    services, graph_closure, incoming, glossy_normal);
+                    services, closure, incoming, glossy_normal);
 
-                auto metallic = graph_closure;
+                auto metallic = closure;
                 metallic.principled_lobe = PrincipledLobe::metallic;
                 metallic.weight = state.metallic_weight;
                 metallic.allocation_weight =
@@ -41,7 +113,7 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                 metallic.evaluation_scale = state.metallic_energy_scale;
                 function(metallic);
 
-                auto dielectric = graph_closure;
+                auto dielectric = closure;
                 dielectric.principled_lobe = PrincipledLobe::dielectric;
                 dielectric.weight = state.dielectric_weight;
                 dielectric.allocation_weight =
@@ -56,7 +128,7 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                     state.dielectric_energy_scale;
                 function(dielectric);
 
-                auto diffuse = graph_closure;
+                auto diffuse = closure;
                 diffuse.operation = compiler::ClosureOperation::diffuse;
                 diffuse.principled_lobe = PrincipledLobe::none;
                 const auto effective_radius =
@@ -196,17 +268,7 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                 break;
             }
             case compiler::ClosureOperation::transparent: {
-                closure.allocation_weight =
-                    sample_weight(closure.weight);
-                const auto allocated =
-                    closure.allocation_weight >=
-                    cycles_closure::closure_weight_cutoff;
-                closure.weight = select(
-                    make_float3(0.0f), closure.weight, allocated);
-                closure.albedo = closure.weight;
-                closure.sample_weight =
-                    select(0.0f, closure.allocation_weight, allocated);
-                break;
+                return;
             }
             case compiler::ClosureOperation::emission:
             case compiler::ClosureOperation::null_closure:

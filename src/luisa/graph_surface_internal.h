@@ -98,6 +98,11 @@ struct GgxEnergy {
     Float3 energy_scale;
 };
 
+struct TransparentClosureState {
+    Float3 weight;
+    Float sample_weight;
+};
+
 struct PrincipledState {
     Float eta;
     Float3 dielectric_f0;
@@ -132,6 +137,8 @@ template <typename Id, typename Values>
 [[nodiscard]] Float3 vector(compiler::ValueExpressionId id,
     const TracedValues &values) noexcept;
 [[nodiscard]] Float sample_weight(Float3 value) noexcept;
+[[nodiscard]] TransparentClosureState transparent_closure_state(
+    Float3 weight) noexcept;
 [[nodiscard]] Float3 bsdf_allocated_weight(Float3 value) noexcept;
 [[nodiscard]] Float pass_weight(Float3 value) noexcept;
 [[nodiscard]] Float max_component(Float3 value) noexcept;

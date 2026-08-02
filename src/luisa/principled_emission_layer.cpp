@@ -57,6 +57,16 @@ namespace {
 
 }// namespace
 
+[[nodiscard]] PrincipledAlphaLayerResult
+evaluate_principled_alpha_layer(
+    const TracedClosure &closure) noexcept {
+    const auto alpha = clamp(closure.alpha, 0.0f, 1.0f);
+    return {
+        .lower_weight = closure.weight * alpha,
+        .transparency = transparent_closure_state(
+            closure.weight * (1.0f - alpha))};
+}
+
 PrincipledEmissionLayerComponent::PrincipledEmissionLayerComponent(
     const ShaderServices &services,
     const SurfacePoint &point,
@@ -68,8 +78,8 @@ PrincipledEmissionLayerComponent::PrincipledEmissionLayerComponent(
 PrincipledEmissionLayerResult
 PrincipledEmissionLayerComponent::evaluate(
     const TracedClosure &closure) const noexcept {
-    auto lower_weight = closure.weight *
-                        clamp(closure.alpha, 0.0f, 1.0f);
+    auto lower_weight =
+        evaluate_principled_alpha_layer(closure).lower_weight;
     const auto incoming = _point.incoming;
 
     const auto coat_weight = max(closure.coat_weight, 0.0f);

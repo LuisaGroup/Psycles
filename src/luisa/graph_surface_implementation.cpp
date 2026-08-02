@@ -1,4 +1,5 @@
 #include "graph_surface_internal.h"
+#include "principled_emission_layer.h"
 
 #include <utility>
 
@@ -49,7 +50,9 @@ GraphSurfaceImplementation::GraphSurfaceImplementation(
                     compiler::ClosureOperation::principled;
             _capabilities.may_be_transparent |=
                 closure.operation ==
-                compiler::ClosureOperation::transparent;
+                    compiler::ClosureOperation::transparent ||
+                closure.operation ==
+                    compiler::ClosureOperation::principled;
             _capabilities.may_have_subsurface |=
                 closure.operation ==
                 compiler::ClosureOperation::principled;
@@ -714,7 +717,14 @@ GraphSurfaceImplementation::sample_trace(const ShaderServices &services,
         values, [&](const TracedClosure &closure) noexcept {
             if (closure.operation ==
                 compiler::ClosureOperation::transparent) {
-                result += closure.weight;
+                result += transparent_closure_state(
+                              closure.weight)
+                              .weight;
+            } else if (closure.operation ==
+                       compiler::ClosureOperation::principled) {
+                result += evaluate_principled_alpha_layer(
+                              closure)
+                              .transparency.weight;
             }
         });
     return result;

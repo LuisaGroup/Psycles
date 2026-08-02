@@ -113,6 +113,15 @@ fact. The effective reflective-caustics predicate is supplied per ray through
 the surface-emission callable, so material AST reuse does not freeze an
 integrator/path-state decision.
 
+Physical Alpha uses the same ordered device expression. Each standalone
+Transparent or Principled Alpha leaf first applies Cycles' signed
+`abs(average(weight))` cutoff independently. A closure-tree reduction then
+sums only allocated weights and sample weights and places the single merged
+transparent closure at the first dynamically allocated leaf. This preserves
+closure indices and random-lobe order when earlier runtime candidates fall
+below cutoff; it also supplies transparent extinction without a host material
+surrogate.
+
 `compiler::MaterialLibrary` applies this rule atomically to a scene revision.
 If any material fails to compile or bind, the previous library and revision
 remain visible.

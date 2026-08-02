@@ -213,6 +213,8 @@ public:
         graph.set_input(principled,
             "SpecularTint",
             SocketValue::color({0.7f, 0.9f, 1.0f})) &&
+        graph.set_input(
+            principled, "Alpha", SocketValue::floating(0.6f)) &&
         graph.set_property(
             principled, "Distribution", SocketValue::string("GGX")) &&
         graph.set_input(mix, "Factor", SocketValue::floating(0.75f)) &&
@@ -226,6 +228,47 @@ public:
     }
     graph.set_root(ShaderDomain::surface,
         OutputRef{.node = mix, .socket = "Closure"});
+    return graph;
+}
+
+[[nodiscard]] ShaderGraph make_transparent_merge_order_graph() {
+    ShaderGraph graph;
+    const auto rejected = graph.add_node(
+        node_type::transparent_bsdf, "Rejected transparent");
+    const auto diffuse =
+        graph.add_node(node_type::diffuse_bsdf, "Intervening diffuse");
+    const auto allocated = graph.add_node(
+        node_type::transparent_bsdf, "Allocated transparent");
+    const auto prefix =
+        graph.add_node(node_type::add_closure, "Rejected then diffuse");
+    const auto root =
+        graph.add_node(node_type::add_closure, "Then allocated");
+    const auto configured =
+        graph.set_input(rejected,
+            "Color",
+            SocketValue::color({0.5e-5f, 0.5e-5f, 0.5e-5f})) &&
+        graph.set_input(diffuse,
+            "Color",
+            SocketValue::color({0.2f, 0.2f, 0.2f})) &&
+        graph.set_input(
+            diffuse, "Roughness", SocketValue::floating(0.0f)) &&
+        graph.set_input(allocated,
+            "Color",
+            SocketValue::color({0.25f, 0.25f, 0.25f})) &&
+        graph.connect(
+            {.node = rejected, .socket = "Closure"}, prefix, "A") &&
+        graph.connect(
+            {.node = diffuse, .socket = "Closure"}, prefix, "B") &&
+        graph.connect(
+            {.node = prefix, .socket = "Closure"}, root, "A") &&
+        graph.connect(
+            {.node = allocated, .socket = "Closure"}, root, "B");
+    if (!configured) {
+        throw std::runtime_error{
+            "failed to configure transparent merge-order graph"};
+    }
+    graph.set_root(ShaderDomain::surface,
+        OutputRef{.node = root, .socket = "Closure"});
     return graph;
 }
 
@@ -575,6 +618,20 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
+    auto transparent_order_shader =
+        compiler.compile(make_transparent_merge_order_graph());
+    if (!transparent_order_shader.ok()) {
+        std::cerr << "failed to compile transparent merge-order graph\n";
+        return EXIT_FAILURE;
+    }
+    auto transparent_order_program =
+        compile_surface_program(*transparent_order_shader.program);
+    if (!transparent_order_program.ok()) {
+        std::cerr
+            << "failed to lower transparent merge-order program\n";
+        return EXIT_FAILURE;
+    }
+
     auto subsurface_shader =
         compiler.compile(make_subsurface_principled_graph());
     if (!subsurface_shader.ok()) {
@@ -675,6 +732,8 @@ int main(int argc, char **argv) {
         surfaces.create<GraphSurface>(program.program);
     const auto physical_surface_tag =
         surfaces.create<GraphSurface>(physical_program.program);
+    const auto transparent_order_surface_tag =
+        surfaces.create<GraphSurface>(transparent_order_program.program);
     const auto subsurface_surface_tag =
         surfaces.create<GraphSurface>(subsurface_program.program);
     const auto principled_emission_surface_tag =
@@ -808,6 +867,28 @@ int main(int argc, char **argv) {
                         closure.valid)));
         };
 
+    Kernel1D trace_transparent_order =
+        [&](BufferFloat4 parameters, BufferFloat4 output) noexcept {
+            ParameterShaderServices services{parameters};
+            const auto point = make_surface_point();
+            const auto first = surfaces.closure_trace(
+                UInt{transparent_order_surface_tag}, services, point, 0u);
+            const auto second = surfaces.closure_trace(
+                UInt{transparent_order_surface_tag}, services, point, 1u);
+            output.write(0u,
+                make_float4(cast<float>(first.count),
+                    cast<float>(first.type),
+                    first.sample_weight,
+                    select(0.0f, 1.0f, first.valid)));
+            output.write(1u,
+                make_float4(cast<float>(second.count),
+                    cast<float>(second.type),
+                    second.sample_weight,
+                    select(0.0f, 1.0f, second.valid)));
+            output.write(2u, make_float4(first.weight, 0.0f));
+            output.write(3u, make_float4(second.weight, 0.0f));
+        };
+
     Kernel1D trace_subsurface =
         [&](BufferFloat4 parameters, BufferFloat4 output) noexcept {
             ParameterShaderServices services{parameters};
@@ -866,11 +947,30 @@ int main(int argc, char **argv) {
                 UInt{layered_emission_surface_tag},
                 services,
                 0u);
+            const auto first_closure = surfaces.closure_trace(
+                UInt{layered_emission_surface_tag},
+                services,
+                point,
+                0u);
+            const auto extinction = surfaces.transparent_extinction(
+                UInt{layered_emission_surface_tag},
+                services,
+                point);
             output.write(
                 0u, make_float4(with_reflection, 1.0f));
             output.write(
                 1u, make_float4(without_reflection, 1.0f));
             output.write(2u, make_float4(constant, 0.0f));
+            output.write(3u,
+                make_float4(
+                    cast<float>(first_closure.index),
+                    cast<float>(first_closure.type),
+                    first_closure.sample_weight,
+                    select(0.0f, 1.0f, first_closure.valid)));
+            output.write(4u,
+                make_float4(first_closure.weight,
+                    cast<float>(first_closure.runtime_flags)));
+            output.write(5u, make_float4(extinction, 0.0f));
         };
 
     Kernel1D evaluate_physical_light =
@@ -992,6 +1092,13 @@ int main(int argc, char **argv) {
     auto physical_parameter_buffer =
         device.create_buffer<luisa::float4>(physical_parameters.size());
     auto physical_output = device.create_buffer<luisa::float4>(8u);
+    const auto transparent_order_parameters =
+        parameter_data(*transparent_order_program.program);
+    auto transparent_order_parameter_buffer =
+        device.create_buffer<luisa::float4>(
+            transparent_order_parameters.size());
+    auto transparent_order_output =
+        device.create_buffer<luisa::float4>(4u);
     const auto subsurface_parameters =
         parameter_data(*subsurface_program.program);
     auto subsurface_parameter_buffer =
@@ -1010,7 +1117,7 @@ int main(int argc, char **argv) {
         device.create_buffer<luisa::float4>(
             layered_emission_parameters.size());
     auto layered_emission_output =
-        device.create_buffer<luisa::float4>(3u);
+        device.create_buffer<luisa::float4>(6u);
     const auto tangent_normal_parameters =
         parameter_data(*tangent_normal_program.program);
     auto tangent_normal_parameter_buffer =
@@ -1035,6 +1142,8 @@ int main(int argc, char **argv) {
         device.create_buffer<luisa::float4>(9u);
     auto kernel = device.compile(evaluate);
     auto physical_kernel = device.compile(trace_physical_closures);
+    auto transparent_order_kernel =
+        device.compile(trace_transparent_order);
     auto subsurface_kernel = device.compile(trace_subsurface);
     auto principled_emission_kernel =
         device.compile(evaluate_principled_emission);
@@ -1050,10 +1159,11 @@ int main(int argc, char **argv) {
         device.compile(evaluate_translucent_light);
     std::array<luisa::float4, 11u> actual{};
     std::array<luisa::float4, 8u> physical_actual{};
+    std::array<luisa::float4, 4u> transparent_order_actual{};
     std::array<luisa::float4, 3u> subsurface_actual{};
     std::array<luisa::float4, 2u>
         principled_emission_actual{};
-    std::array<luisa::float4, 3u>
+    std::array<luisa::float4, 6u>
         layered_emission_actual{};
     std::array<luisa::float4, 2u>
         tangent_normal_actual{};
@@ -1064,6 +1174,8 @@ int main(int argc, char **argv) {
                   luisa::span{physical_parameters})
            << subsurface_parameter_buffer.copy_from(
                   luisa::span{subsurface_parameters})
+           << transparent_order_parameter_buffer.copy_from(
+                  luisa::span{transparent_order_parameters})
            << principled_emission_parameter_buffer.copy_from(
                   luisa::span{principled_emission_parameters})
            << layered_emission_parameter_buffer.copy_from(
@@ -1081,6 +1193,12 @@ int main(int argc, char **argv) {
                   physical_parameter_buffer, physical_output)
                   .dispatch(4u)
            << physical_output.copy_to(luisa::span{physical_actual})
+           << transparent_order_kernel(
+                  transparent_order_parameter_buffer,
+                  transparent_order_output)
+                  .dispatch(1u)
+           << transparent_order_output.copy_to(
+                  luisa::span{transparent_order_actual})
            << subsurface_kernel(
                   subsurface_parameter_buffer, subsurface_output)
                   .dispatch(1u)
@@ -1183,7 +1301,23 @@ int main(int argc, char **argv) {
             without_coat_reflection.z > with_coat_reflection.z) ||
         !approximately_equal(
             layered_emission_actual[2u],
-            luisa::float4{})) {
+            luisa::float4{}) ||
+        !approximately_equal(
+            layered_emission_actual[3u],
+            luisa::float4{
+                0.0f,
+                static_cast<float>(cycles_closure::type_transparent),
+                0.27f,
+                1.0f}) ||
+        !approximately_equal(
+            layered_emission_actual[4u].x, 0.27f) ||
+        !approximately_equal(
+            layered_emission_actual[4u].y, 0.27f) ||
+        !approximately_equal(
+            layered_emission_actual[4u].z, 0.27f) ||
+        !approximately_equal(
+            layered_emission_actual[5u],
+            luisa::float4{0.27f, 0.27f, 0.27f, 0.0f})) {
         std::cerr
             << "Cycles layered Principled emission/caustics branch "
                "failed on "
@@ -1233,15 +1367,41 @@ int main(int argc, char **argv) {
         }
     }
     if (!approximately_equal(physical_actual[4u],
-            luisa::float4{0.25f, 0.25f, 0.25f, 1048.0f}) ||
+            luisa::float4{0.55f, 0.55f, 0.55f, 1048.0f}) ||
         !approximately_equal(physical_actual[5u],
-            luisa::float4{0.75f, 0.75f, 0.75f, 1048.0f}) ||
+            luisa::float4{0.45f, 0.45f, 0.45f, 1048.0f}) ||
         !(physical_actual[6u].x > 0.0f &&
             physical_actual[6u].y > 0.0f &&
             physical_actual[6u].z > 0.0f)) {
         std::cerr << "Cycles physical closure weights failed on "
                   << backend << '\n';
         return EXIT_FAILURE;
+    }
+
+    constexpr std::array transparent_order_expected{
+        luisa::float4{2.0f,
+            static_cast<float>(cycles_closure::type_diffuse),
+            0.2f,
+            1.0f},
+        luisa::float4{2.0f,
+            static_cast<float>(cycles_closure::type_transparent),
+            0.25f,
+            1.0f},
+        luisa::float4{0.2f, 0.2f, 0.2f, 0.0f},
+        luisa::float4{0.25f, 0.25f, 0.25f, 0.0f}};
+    for (std::size_t index = 0u;
+        index < transparent_order_expected.size();
+        ++index) {
+        if (!approximately_equal(transparent_order_actual[index],
+                transparent_order_expected[index])) {
+            const auto value = transparent_order_actual[index];
+            std::cerr
+                << "Cycles transparent first-allocation order failed on "
+                << backend << " at record " << index << ": got {"
+                << value.x << ", " << value.y << ", " << value.z
+                << ", " << value.w << "}\n";
+            return EXIT_FAILURE;
+        }
     }
 
     const auto subsurface_weight = subsurface_actual[0u];
