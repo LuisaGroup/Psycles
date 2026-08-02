@@ -67,9 +67,13 @@ SurfaceSampleTrace GraphSurface::sample_trace(
 Float3 GraphSurface::emission(
     const ShaderServices &services,
     const SurfacePoint &point,
-    Expr<luisa::float3> outgoing) const noexcept {
+    Expr<luisa::float3> outgoing,
+    Expr<bool> reflective_caustics) const noexcept {
     return _implementation->emission(
-        services, point, outgoing);
+        services,
+        point,
+        outgoing,
+        reflective_caustics);
 }
 
 Float3 GraphSurface::constant_emission(

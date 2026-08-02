@@ -23,7 +23,8 @@ using SurfaceEmissionCallable = Callable<luisa::float3(
     BindlessArray,
     luisa::uint,
     SurfacePointCall,
-    luisa::float3)>;
+    luisa::float3,
+    bool)>;
 using SurfaceConstantEmissionCallable =
     Callable<luisa::float3(
         Buffer<luisa::float4>,

@@ -1,15 +1,21 @@
 #include "graph_surface_internal.h"
+#include "principled_emission_layer.h"
 
 namespace psycles::luisa_backend::detail {
 
 [[nodiscard]] Float3 GraphSurfaceImplementation::emission(
     const ShaderServices &services,
     const SurfacePoint &point,
-    Expr<luisa::float3>) const noexcept {
+    Expr<luisa::float3>,
+    Expr<bool> reflective_caustics) const noexcept {
     if (!_program) {
         return make_float3(0.0f);
     }
     auto values = trace_values(services, point);
+    const PrincipledEmissionLayerComponent principled_layers{
+        services,
+        point,
+        reflective_caustics};
     Float3 result = make_float3(0.0f);
     for_each_closure(
         values, [&](const TracedClosure &closure) noexcept {
@@ -18,7 +24,7 @@ namespace psycles::luisa_backend::detail {
                 result += closure.weight;
             } else if (closure.operation ==
                        compiler::ClosureOperation::principled) {
-                result += closure.emission;
+                result += principled_layers.evaluate(closure).radiance;
             }
         });
     return result;

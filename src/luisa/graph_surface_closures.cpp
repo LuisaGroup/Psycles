@@ -131,12 +131,56 @@ void GraphSurfaceImplementation::for_each_closure(
                                   values),
                               make_float3(0.0f))
                         : make_float3(1.0f);
+                auto alpha =
+                    closure.operation ==
+                            compiler::ClosureOperation::principled
+                        ? scalar(closure.alpha, values)
+                        : Float{1.0f};
+                auto sheen_weight =
+                    closure.operation ==
+                            compiler::ClosureOperation::principled
+                        ? scalar(closure.sheen_weight, values)
+                        : Float{0.0f};
+                auto sheen_roughness =
+                    closure.operation ==
+                            compiler::ClosureOperation::principled
+                        ? scalar(closure.sheen_roughness, values)
+                        : Float{0.5f};
+                auto sheen_tint =
+                    closure.operation ==
+                            compiler::ClosureOperation::principled
+                        ? vector(closure.sheen_tint, values)
+                        : make_float3(1.0f);
+                auto coat_weight =
+                    closure.operation ==
+                            compiler::ClosureOperation::principled
+                        ? scalar(closure.coat_weight, values)
+                        : Float{0.0f};
+                auto coat_roughness =
+                    closure.operation ==
+                            compiler::ClosureOperation::principled
+                        ? scalar(closure.coat_roughness, values)
+                        : Float{0.03f};
+                auto coat_ior =
+                    closure.operation ==
+                            compiler::ClosureOperation::principled
+                        ? scalar(closure.coat_ior, values)
+                        : Float{1.5f};
+                auto coat_tint =
+                    closure.operation ==
+                            compiler::ClosureOperation::principled
+                        ? vector(closure.coat_tint, values)
+                        : make_float3(1.0f);
+                auto coat_normal =
+                    closure.operation ==
+                            compiler::ClosureOperation::principled
+                        ? vector(closure.coat_normal, values)
+                        : make_float3(0.0f);
                 auto emission =
                     closure.operation ==
                             compiler::ClosureOperation::principled
                         ? vector(closure.emission_color, values) *
-                              scalar(closure.emission_strength, values) *
-                              mix_weight
+                              scalar(closure.emission_strength, values)
                         : make_float3(0.0f);
                 function(TracedClosure{
                     .operation = closure.operation,
@@ -165,6 +209,17 @@ void GraphSurfaceImplementation::for_each_closure(
                     .specular_ior_level =
                         specular_ior_level,
                     .specular_tint = specular_tint,
+                    .alpha = alpha,
+                    .sheen_weight = sheen_weight,
+                    .sheen_roughness = sheen_roughness,
+                    .sheen_tint = sheen_tint,
+                    .coat_weight = coat_weight,
+                    .coat_roughness = coat_roughness,
+                    .coat_ior = coat_ior,
+                    .coat_tint = coat_tint,
+                    .coat_normal = coat_normal,
+                    .coat_normal_linked =
+                        closure.coat_normal_linked,
                     .emission = emission,
                     .preserve_ggx_energy =
                         closure.preserve_ggx_energy});

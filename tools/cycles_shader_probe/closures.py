@@ -802,6 +802,165 @@ def _principled_emission(scene: Any) -> None:
     _plane(material)
 
 
+def _principled_emission_layers(scene: Any) -> None:
+    """Exercise Cycles' ordered Alpha, Sheen, Coat, and emission relation."""
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 0.01
+    defaults = {
+        "alpha": 1.0,
+        "sheen_weight": 0.0,
+        "sheen_roughness": 0.5,
+        "sheen_tint": (1.0, 1.0, 1.0),
+        "coat_weight": 0.0,
+        "coat_roughness": 0.03,
+        "coat_ior": 1.5,
+        "coat_tint": (1.0, 1.0, 1.0),
+        "coat_normal": None,
+    }
+    cases = (
+        {},
+        {"alpha": 0.37},
+        {"alpha": -0.25},
+        {"alpha": 1.4},
+        {
+            "sheen_weight": 0.65,
+            "sheen_roughness": 0.05,
+            "sheen_tint": (1.0, 0.2, 0.05),
+        },
+        {
+            "sheen_weight": 1.2,
+            "sheen_roughness": 0.95,
+            "sheen_tint": (0.1, 0.8, 1.4),
+        },
+        {
+            # N and Coat Normal cancel at the 0.5 interpolation point.
+            # Cycles' sheen path keeps that exact zero normal rather than
+            # substituting the shading normal.
+            "sheen_weight": 0.8,
+            "coat_weight": 0.5,
+            "coat_normal": (0.0, 0.0, -1.0),
+        },
+        {
+            "sheen_weight": 0.8,
+            "sheen_roughness": -0.3,
+            "sheen_tint": (0.7, 0.4, 0.2),
+        },
+        {"coat_weight": 0.8, "coat_roughness": 0.0},
+        {
+            "coat_weight": 0.8,
+            "coat_roughness": 0.42,
+            "coat_ior": 1.33,
+        },
+        {
+            "coat_weight": 1.0,
+            "coat_roughness": 0.15,
+            "coat_ior": 1.0,
+        },
+        {
+            "coat_weight": 0.7,
+            "coat_roughness": 0.2,
+            "coat_ior": 2.0,
+            "coat_tint": (0.2, 0.55, 0.9),
+        },
+        {
+            "coat_weight": 0.65,
+            "coat_roughness": 0.27,
+            "coat_ior": 1.6,
+            "coat_normal": (0.6, 0.0, 0.8),
+        },
+        {
+            "alpha": 0.73,
+            "sheen_weight": 0.55,
+            "sheen_roughness": 0.38,
+            "sheen_tint": (0.9, 0.35, 0.12),
+            "coat_weight": 0.75,
+            "coat_roughness": 0.23,
+            "coat_ior": 1.7,
+            "coat_tint": (0.3, 0.7, 0.95),
+        },
+        {
+            "coat_weight": 1.3,
+            "coat_roughness": 0.31,
+            "coat_ior": 1.45,
+            "coat_tint": (0.45, 0.8, 0.2),
+        },
+        {
+            "alpha": 0.58,
+            "sheen_weight": 0.9,
+            "sheen_roughness": 0.72,
+            "sheen_tint": (0.25, 1.1, 0.6),
+            "coat_weight": 0.9,
+            "coat_roughness": 0.08,
+            "coat_ior": 1.8,
+            "coat_tint": (0.8, 0.25, 0.5),
+            "coat_normal": (0.8, 0.0, 0.6),
+        },
+    )
+    materials = []
+    for index, overrides in enumerate(cases):
+        case = defaults | overrides
+        material, tree, output = _material(
+            f"Principled Emission Layers {index:02d}"
+        )
+        principled = tree.nodes.new("ShaderNodeBsdfPrincipled")
+        principled.name = f"Layered Principled Emission {index:02d}"
+        _input(principled, "Base Color").default_value = (0.0, 0.0, 0.0, 1.0)
+        _input(principled, "Metallic").default_value = 0.0
+        _input(principled, "Roughness").default_value = 0.5
+        _input(principled, "Alpha").default_value = case["alpha"]
+        _input(principled, "Sheen Weight").default_value = case[
+            "sheen_weight"
+        ]
+        _input(principled, "Sheen Roughness").default_value = case[
+            "sheen_roughness"
+        ]
+        _input(principled, "Sheen Tint").default_value = (
+            *case["sheen_tint"],
+            1.0,
+        )
+        _input(principled, "Coat Weight").default_value = case[
+            "coat_weight"
+        ]
+        _input(principled, "Coat Roughness").default_value = case[
+            "coat_roughness"
+        ]
+        _input(principled, "Coat IOR").default_value = case[
+            "coat_ior"
+        ]
+        _input(principled, "Coat Tint").default_value = (
+            *case["coat_tint"],
+            1.0,
+        )
+        _input(principled, "Emission Color").default_value = (
+            0.17,
+            0.43,
+            0.91,
+            1.0,
+        )
+        _input(principled, "Emission Strength").default_value = 2.75
+        if case["coat_normal"] is not None:
+            tree.links.new(
+                _linked_vector(
+                    tree,
+                    f"Linked Coat Normal {index:02d}",
+                    case["coat_normal"],
+                ),
+                _input(principled, "Coat Normal"),
+            )
+        tree.links.new(
+            _output(principled, "BSDF"),
+            _input(output, "Surface"),
+        )
+        materials.append(material)
+    _material_matrix(
+        scene,
+        materials,
+        columns=4,
+        rows=4,
+        name="Principled Emission Layer Matrix",
+    )
+
+
 def _principled_bump_glossy(scene: Any) -> None:
     """Stress Cycles' default glossy bump-map correction path."""
     _world(scene, (0.31, 0.52, 0.79, 1.0), 1.2)

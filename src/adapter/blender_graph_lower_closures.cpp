@@ -102,6 +102,56 @@ public:
                 "Specular Tint",
                 SocketType::color));
             static_cast<void>(context.bind(
+                id, "Alpha", node, "Alpha", SocketType::floating));
+            static_cast<void>(context.bind(
+                id,
+                "SheenWeight",
+                node,
+                "Sheen Weight",
+                SocketType::floating));
+            static_cast<void>(context.bind(
+                id,
+                "SheenRoughness",
+                node,
+                "Sheen Roughness",
+                SocketType::floating));
+            static_cast<void>(context.bind(
+                id,
+                "SheenTint",
+                node,
+                "Sheen Tint",
+                SocketType::color));
+            static_cast<void>(context.bind(
+                id,
+                "CoatWeight",
+                node,
+                "Coat Weight",
+                SocketType::floating));
+            static_cast<void>(context.bind(
+                id,
+                "CoatRoughness",
+                node,
+                "Coat Roughness",
+                SocketType::floating));
+            static_cast<void>(context.bind(
+                id,
+                "CoatIOR",
+                node,
+                "Coat IOR",
+                SocketType::floating));
+            static_cast<void>(context.bind(
+                id,
+                "CoatTint",
+                node,
+                "Coat Tint",
+                SocketType::color));
+            static_cast<void>(context.bind(
+                id,
+                "CoatNormal",
+                node,
+                "Coat Normal",
+                SocketType::normal));
+            static_cast<void>(context.bind(
                 id,
                 "EmissionColor",
                 node,

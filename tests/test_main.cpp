@@ -1176,23 +1176,72 @@ void test_cycles_glass_closure_lowering() {
 
 void test_cycles_principled_emission_adapter() {
     CyclesNormalizedShaderGraph source;
-    source.nodes = {{
-        .id = 10u,
-        .type = "principled_bsdf",
-        .variant = {},
-        .label = "Raw Principled emission",
-        .inputs = {
-            {
-                .socket = "Emission Color",
-                .source = std::nullopt,
-                .value = SocketValue::color({0.2f, 0.4f, 0.8f})},
-            {
-                .socket = "Emission Strength",
-                .source = std::nullopt,
-                .value = SocketValue::floating(3.0f)}},
-        .properties = {{
-            "distribution",
-            SocketValue::string("MULTI_GGX")}}}};
+    source.nodes = {
+        {
+            .id = 9u,
+            .type = "geometry",
+            .variant = {},
+            .label = "Linked coat normal",
+            .inputs = {},
+            .properties = {}},
+        {
+            .id = 10u,
+            .type = "principled_bsdf",
+            .variant = {},
+            .label = "Layered Principled emission",
+            .inputs = {
+                {
+                    .socket = "Alpha",
+                    .source = std::nullopt,
+                    .value = SocketValue::floating(0.73f)},
+                {
+                    .socket = "Sheen Weight",
+                    .source = std::nullopt,
+                    .value = SocketValue::floating(0.55f)},
+                {
+                    .socket = "Sheen Roughness",
+                    .source = std::nullopt,
+                    .value = SocketValue::floating(0.38f)},
+                {
+                    .socket = "Sheen Tint",
+                    .source = std::nullopt,
+                    .value = SocketValue::color(
+                        {0.9f, 0.35f, 0.12f})},
+                {
+                    .socket = "Coat Weight",
+                    .source = std::nullopt,
+                    .value = SocketValue::floating(0.75f)},
+                {
+                    .socket = "Coat Roughness",
+                    .source = std::nullopt,
+                    .value = SocketValue::floating(0.23f)},
+                {
+                    .socket = "Coat IOR",
+                    .source = std::nullopt,
+                    .value = SocketValue::floating(1.7f)},
+                {
+                    .socket = "Coat Tint",
+                    .source = std::nullopt,
+                    .value = SocketValue::color(
+                        {0.3f, 0.7f, 0.95f})},
+                {
+                    .socket = "Coat Normal",
+                    .source = CyclesOutputRef{
+                        .node = 9u,
+                        .socket = "Normal"},
+                    .value = std::nullopt},
+                {
+                    .socket = "Emission Color",
+                    .source = std::nullopt,
+                    .value = SocketValue::color(
+                        {0.2f, 0.4f, 0.8f})},
+                {
+                    .socket = "Emission Strength",
+                    .source = std::nullopt,
+                    .value = SocketValue::floating(3.0f)}},
+            .properties = {{
+                "distribution",
+                SocketValue::string("MULTI_GGX")}}}};
     source.set_root(
         ShaderDomain::surface,
         CyclesOutputRef{.node = 10u, .socket = "BSDF"});
@@ -1214,16 +1263,28 @@ void test_cycles_principled_emission_adapter() {
         "adapted Principled emission graph failed surface lowering");
     const SurfaceParameterBlock parameters{*surface.program};
     expect(
-        surface.program->closure_instructions().size() == 1u &&
-            surface.program->closure_instructions().front().operation ==
-                ClosureOperation::principled &&
-            surface.program->closure_instructions().front()
-                .preserve_ggx_energy &&
+        surface.program->closure_instructions().size() == 1u,
+        "layered Principled graph did not lower to one closure");
+    const auto &closure =
+        surface.program->closure_instructions().front();
+    expect(
+        closure.operation == ClosureOperation::principled &&
+            closure.preserve_ggx_energy &&
+            closure.alpha.valid() &&
+            closure.sheen_weight.valid() &&
+            closure.sheen_roughness.valid() &&
+            closure.sheen_tint.valid() &&
+            closure.coat_weight.valid() &&
+            closure.coat_roughness.valid() &&
+            closure.coat_ior.valid() &&
+            closure.coat_tint.valid() &&
+            closure.coat_normal.valid() &&
+            closure.coat_normal_linked &&
             estimate_surface_emission(
                 *surface.program,
                 parameters) == Vec3f{0.6f, 1.2f, 2.4f},
-        "normalized Principled emission sockets or distribution changed "
-        "during adaptation");
+        "normalized Principled layer/emission sockets, linked-normal "
+        "topology, or distribution changed during adaptation");
 }
 
 void test_cycles_adapter_rejects_svm_lowered_graph() {

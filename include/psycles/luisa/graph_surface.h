@@ -74,7 +74,8 @@ public:
     [[nodiscard]] Float3 emission(
         const ShaderServices &services,
         const SurfacePoint &point,
-        Expr<luisa::float3> outgoing) const noexcept override;
+        Expr<luisa::float3> outgoing,
+        Expr<bool> reflective_caustics) const noexcept override;
 
     [[nodiscard]] Float3 constant_emission(
         const SurfaceParameterServices &services,

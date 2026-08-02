@@ -57,8 +57,18 @@ struct TracedClosure {
     Float ior;
     Float specular_ior_level;
     Float3 specular_tint;
-    // Raw authored emission before future Principled layer attenuation.
-    // Closure-tree Mix/Add weights have already been applied.
+    Float alpha;
+    Float sheen_weight;
+    Float sheen_roughness;
+    Float3 sheen_tint;
+    Float coat_weight;
+    Float coat_roughness;
+    Float coat_ior;
+    Float3 coat_tint;
+    Float3 coat_normal;
+    bool coat_normal_linked{};
+    // Raw authored Principled emission. Closure-tree Mix/Add and
+    // Principled layer weights are applied by the emission component.
     Float3 emission;
     // Microfacet multiple-scattering scale after any weight darkening
     // has already been applied to `weight`.
@@ -385,7 +395,8 @@ public:
         const SurfaceQuery &query) const noexcept;
     [[nodiscard]] Float3 emission(const ShaderServices &services,
         const SurfacePoint &point,
-        Expr<luisa::float3> outgoing) const noexcept;
+        Expr<luisa::float3> outgoing,
+        Expr<bool> reflective_caustics) const noexcept;
     [[nodiscard]] Float3 constant_emission(
         const SurfaceParameterServices &services,
         Expr<std::uint32_t> parameter_block) const noexcept;

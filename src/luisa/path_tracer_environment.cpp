@@ -139,7 +139,8 @@ EnvironmentCallables make_environment_callables(
                                 scene->world_surface
                                     ->surface_tag},
                             pack_surface_point(world_point),
-                            -world_direction);
+                            -world_direction,
+                            true);
                     }
                     return world;
                 };
