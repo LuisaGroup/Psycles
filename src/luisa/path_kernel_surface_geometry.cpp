@@ -241,6 +241,9 @@ private:
             .transmission_depth = transmission_depth,
             .ray_length = hit->committed_ray_t,
             .time = 0.0f,
+            .use_bump_map_correction =
+                (material_binding.flags &
+                    material_flag_use_bump_map_correction) != 0u,
             .back_facing = back_facing};
         Float3 shadow_shading_normal = shading_normal;
         $if(triangle_smooth &

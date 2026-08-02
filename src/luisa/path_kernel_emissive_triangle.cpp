@@ -393,6 +393,10 @@ class PathEmissiveTriangleComponent final
             .ray_length =
                 light.distance,
             .time = 0.5f,
+            // This point is evaluated only for emission. Its material
+            // binding is not carried in EmissiveTriangleGpu because bump
+            // correction cannot affect an emission closure.
+            .use_bump_map_correction = false,
             .back_facing =
                 back_facing};
         cycles_path_state::

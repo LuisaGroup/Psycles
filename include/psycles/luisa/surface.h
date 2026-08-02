@@ -111,6 +111,10 @@ struct SurfacePoint {
     UInt transmission_depth;
     Float ray_length;
     Float time;
+    // Cycles SD_USE_BUMP_MAP_CORRECTION is material-owned runtime state.
+    // Keep it on the shading point because one GraphSurface AST may be
+    // shared by materials with different policies.
+    Bool use_bump_map_correction;
     Bool back_facing;
 };
 

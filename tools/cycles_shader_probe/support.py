@@ -96,6 +96,7 @@ def _material_matrix(
     name: str,
     *,
     backfacing: set[int] | None = None,
+    frame_bleed: float = 0.0,
 ) -> Any:
     """Fill the orthographic frame with one material per contiguous cell."""
     if len(materials) != columns * rows:
@@ -103,6 +104,8 @@ def _material_matrix(
             f"{name}: expected {columns * rows} materials, "
             f"got {len(materials)}"
         )
+    if frame_bleed < 0.0:
+        raise ValueError(f"{name}: frame_bleed must be non-negative")
     # The orthographic probe camera spans exactly [-1.1, 1.1]. Cell
     # boundaries therefore land on integer pixels whenever the render
     # dimensions are divisible by the matrix dimensions.
@@ -116,6 +119,18 @@ def _material_matrix(
         x1 = -extent + 2.0 * extent * (column + 1) / columns
         y0 = -extent + 2.0 * extent * row / rows
         y1 = -extent + 2.0 * extent * (row + 1) / rows
+        # Keep internal material boundaries at their exact pixel-aligned
+        # coordinates while enclosing the entire camera filter footprint at
+        # the four outer edges. This prevents a single edge sample from
+        # turning a shader differential into a raster-coverage differential.
+        if column == 0:
+            x0 -= frame_bleed
+        if column + 1 == columns:
+            x1 += frame_bleed
+        if row == 0:
+            y0 -= frame_bleed
+        if row + 1 == rows:
+            y1 += frame_bleed
         first = len(vertices)
         vertices.extend(
             (

@@ -92,6 +92,8 @@ unpack_shader_evaluation_state(
     result.transmission_depth = point.transmission_depth;
     result.ray_length = point.ray_length;
     result.time = point.time;
+    result.use_bump_map_correction = select(
+        0u, 1u, point.use_bump_map_correction);
     result.back_facing = select(
         0u, 1u, point.back_facing);
     return result;
@@ -144,6 +146,8 @@ unpack_shader_evaluation_state(
         .transmission_depth = point.transmission_depth,
         .ray_length = point.ray_length,
         .time = point.time,
+        .use_bump_map_correction =
+            point.use_bump_map_correction != 0u,
         .back_facing = point.back_facing != 0u};
 }
 

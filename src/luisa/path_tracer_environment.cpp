@@ -125,6 +125,7 @@ EnvironmentCallables make_environment_callables(
                                 std::numeric_limits<
                                     float>::max(),
                             .time = 0.0f,
+                            .use_bump_map_correction = false,
                             .back_facing = false};
                         cycles_path_state::
                             apply_shader_state(

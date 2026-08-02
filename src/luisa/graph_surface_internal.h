@@ -31,7 +31,13 @@ struct TracedValues {
 // order as Cycles before any trace, AOV, evaluation, or sampling query
 // consumes it. The tag is host-stage metadata used while Luisa records
 // the shader AST.
-enum class PrincipledLobe : std::uint8_t { none, metallic, dielectric };
+enum class PrincipledLobe : std::uint8_t {
+    none,
+    sheen,
+    coat,
+    metallic,
+    dielectric
+};
 
 struct TracedClosure {
     compiler::ClosureOperation operation{
@@ -42,6 +48,12 @@ struct TracedClosure {
     // reduce sample_weight after a closure has already been allocated.
     Float allocation_weight;
     Float sample_weight;
+    // Setup validity is independent of allocation. Some Cycles setup
+    // routines retain an occupied closure slot while changing its type to
+    // CLOSURE_NONE and clearing sample_weight (for example an invalid Sheen
+    // LTC). Keeping the states orthogonal preserves closure indices and the
+    // random-dimension rescaling contract.
+    Bool setup_valid;
     // Cycles' best-effort closure albedo, including
     // ShaderClosure::weight. This drives closure selection and the
     // Diff/Gloss/Trans color passes.
@@ -67,6 +79,11 @@ struct TracedClosure {
     Float3 coat_tint;
     Float3 coat_normal;
     bool coat_normal_linked{};
+    // Linearly transformed cosine parameters for a physical Principled
+    // Sheen closure. They are device values loaded from Cycles' versioned
+    // table by the ordered host-stage layer component.
+    Float sheen_transform_a;
+    Float sheen_transform_b;
     // Raw authored Principled emission. Closure-tree Mix/Add and
     // Principled layer weights are applied by the emission component.
     Float3 emission;
@@ -189,6 +206,10 @@ template <typename Id, typename Values>
     Float3 geometric_normal,
     Float3 incoming,
     Float3 shading_normal) noexcept;
+[[nodiscard]] Float3 maybe_ensure_valid_specular_reflection(
+    const SurfacePoint &point,
+    Float3 incoming,
+    Float3 shading_normal) noexcept;
 [[nodiscard]] GgxEnergy ggx_energy(const ShaderServices &services,
     const TracedClosure &closure,
     Float incoming_cosine,
@@ -204,6 +225,17 @@ template <typename Id, typename Values>
     const TracedClosure &closure) noexcept;
 [[nodiscard]] Bool closure_allocated(
     const TracedClosure &closure) noexcept;
+// Exact Cycles bump_shadowing_term contract. `smooth_normal` is the final
+// shader-wide sd->N; closure.normal may be an independently linked socket.
+// A nonzero factor changes closure energy but never density. A zero factor
+// rejects bsdf_eval's competing PDF, while the closure selected through
+// bsdf_sample retains its original sampling PDF; EvaluationMode expresses
+// that distinction at the aggregate evaluator.
+[[nodiscard]] Float bump_shadowing_term(const SurfacePoint &point,
+    Float3 smooth_normal,
+    const TracedClosure &closure,
+    Float3 direction,
+    Bool is_evaluation) noexcept;
 [[nodiscard]] UInt cycles_runtime_flags(const TracedClosure &closure,
     Float glossy_filter_roughness = 0.0f) noexcept;
 [[nodiscard]] UInt cycles_closure_type(
@@ -241,6 +273,12 @@ template <typename Id, typename Values>
     Float2 random,
     Float3 glossy_normal,
     Float glossy_filter_roughness) noexcept;
+[[nodiscard]] Float sheen_intensity(const TracedClosure &closure,
+    Float3 incoming,
+    Float3 outgoing) noexcept;
+[[nodiscard]] Float3 sample_sheen(const TracedClosure &closure,
+    Float3 incoming,
+    Float2 random) noexcept;
 [[nodiscard]] Float3 glass_microfacet_intensity(
     const TracedClosure &closure,
     Float3 incoming,
@@ -328,6 +366,18 @@ using VolumeVisitor =
 class GraphSurfaceImplementation {
 
 private:
+    enum class EvaluationMode : std::uint8_t {
+        regular,
+        sampled_light,
+        sampled_bsdf
+    };
+
+    struct EvaluationContext {
+        EvaluationMode mode;
+        Expr<std::uint32_t> light_shader_flags;
+        Expr<std::uint32_t> selected_closure_index;
+    };
+
     std::shared_ptr<const compiler::SurfaceProgram> _program;
     SurfaceCapabilities _capabilities;
     std::vector<std::unique_ptr<ValueNode>> _value_nodes;
@@ -338,8 +388,7 @@ private:
         const SurfacePoint &point,
         Expr<luisa::float3> outgoing,
         const SurfaceQuery &query,
-        Expr<std::uint32_t> light_shader_flags,
-        bool sampled_light) const noexcept;
+        const EvaluationContext &context) const noexcept;
 
     [[nodiscard]] SurfaceSampleTrace sample_with_trace(
         const ShaderServices &services,

@@ -228,6 +228,7 @@ class SceneVolumeStackEntryPointProvider final
                 state.transmission_depth,
             .ray_length = state.ray_length,
             .time = state.time,
+            .use_bump_map_correction = false,
             .back_facing = false};
         return {
             .point = std::move(point),
