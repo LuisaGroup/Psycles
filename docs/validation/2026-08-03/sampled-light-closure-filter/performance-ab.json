@@ -1,0 +1,55 @@
+{
+  "scene": {
+    "bundle": "/var/tmp/psycles-lone-monk-identity.ikalcb",
+    "bundle_sha256": "4250d4205d8d01cefd98c15e81021d6dead540b2923797378bf7b32e96e8b8f7",
+    "width": 640,
+    "height": 480,
+    "samples": 64,
+    "max_samples_per_dispatch": 4
+  },
+  "device": "AMD Radeon RX 9070 XT (RADV GFX1201)",
+  "before": {
+    "psycles_commit": "5f2ae86",
+    "description": "direct-light trace phases, before sampled-light filtering",
+    "spirv_words_raw": 2003752,
+    "spirv_words_optimized": 1770881,
+    "cold_shader_jit_seconds": 119.875,
+    "cold_render_seconds": 4.2752,
+    "warm_shader_jit_seconds": 1.48808,
+    "warm_render_seconds": 4.24125
+  },
+  "sampled_light_checkpoint": {
+    "psycles_commit": "72bcb5b",
+    "description": "sampled-light closure filtering before projection cleanup",
+    "spirv_words_raw": 2008167,
+    "spirv_words_optimized": 1772514,
+    "cold_shader_jit_seconds": 119.243,
+    "cold_render_seconds": 4.27436,
+    "warm_shader_jit_seconds": 1.5725,
+    "warm_render_seconds": 4.25734,
+    "warm_render_slowdown_vs_before": 1.0037936928971412
+  },
+  "final_projection": {
+    "psycles_commit": "4adcc75",
+    "description": "distributed linear closure projection and dead callable removal",
+    "spirv_words_raw": 2005177,
+    "spirv_words_optimized": 1772038,
+    "cold_shader_jit_seconds": 117.885,
+    "render_seconds": 4.28724
+  },
+  "strict_image_ab": {
+    "command": [
+      "idiff",
+      "-fail",
+      "0",
+      "-warn",
+      "0",
+      "-failpercent",
+      "0",
+      "/var/tmp/psycles-lone-monk-sampled-light-72bcb5b/psycles/vk-5f2ae86-warm.exr",
+      "/var/tmp/psycles-lone-monk-sampled-light-72bcb5b/psycles/vk-warm.exr"
+    ],
+    "result": "PASS"
+  },
+  "conclusion": "The sampled-light projection is pixel-exact on this scene and does not explain the earlier Vulkan render-time change; the 4.2-second behavior is already present at 5f2ae86 with the same bundle."
+}

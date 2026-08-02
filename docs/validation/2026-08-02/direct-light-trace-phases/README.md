@@ -96,16 +96,22 @@ per-backend `1.40e5` to `2.10e5` amplification shown in the third column.
 The fresh EXRs, machine-readable reports, and individual triptychs are kept
 beside this document.
 
+## Subsequent closure-filter checkpoint
+
+The `surface_shader_bsdf_eval` gate is now closed by the formal sampled-light
+projection in
+[`2026-08-03/sampled-light-closure-filter`](../../2026-08-03/sampled-light-closure-filter/README.md).
+Emitter exclude flags project BSDF contributions while every eligible closure
+remains in the one-sample-model PDF; glass, translucent, and no-MIS behavior
+is locked on fallback, HIP, and Vulkan.
+
 ## Remaining alignment gates
 
-- `surface_shader_bsdf_eval` in Cycles filters BSDF contribution by the
-  sampled light shader's exclude flags without renormalizing the all-closure
-  PDF. Psycles must add that exact closure-filter/PDF contract; substituting a
-  lobe mask would be formally wrong.
 - Emissive-triangle and environment proposal sampling must expose raw light
   closure evaluation as a later shared component so their execution phase,
   not only their recorded trace boundary, matches Cycles.
 - MNEE, light linking, and the light tree remain separate production gates.
 
-This checkpoint therefore closes direct-light trace identity and evaluation
-ordering; it does not claim complete Lone Monk or all-Cycles feature parity.
+Together the two checkpoints close direct-light trace identity, evaluation
+ordering, and sampled-emitter closure filtering. They do not claim complete
+Lone Monk or all-Cycles feature parity.
