@@ -70,13 +70,16 @@ GraphSurfaceImplementation::evaluate_traced(
     const TracedValues &values,
     const SurfacePoint &point,
     Expr<luisa::float3> outgoing_expression,
-    const SurfaceQuery &query) const noexcept {
+    const SurfaceQuery &query,
+    Expr<std::uint32_t> light_shader_flags_expression,
+    bool sampled_light) const noexcept {
     auto result = SurfaceEvaluation::zero();
     Float total_sample_weight = 0.0f;
     Float weighted_pdf = 0.0f;
     auto outgoing = safe_normalize(
         Float3{outgoing_expression}, point.shading_normal);
     auto incoming = safe_normalize(point.incoming, -outgoing);
+    auto light_shader_flags = UInt{light_shader_flags_expression};
     auto diffuse_enabled =
         (query.lobe_mask & static_cast<std::uint32_t>(event_diffuse)) !=
         0u;
@@ -152,6 +155,18 @@ GraphSurfaceImplementation::evaluate_traced(
                 is_glass & select(glossy_enabled,
                                transmission_enabled,
                                glass_is_transmission);
+            Bool contribution_excluded = false;
+            if (sampled_light) {
+                contribution_excluded =
+                    sampled_light_excludes_closure(
+                        closure, light_shader_flags);
+            }
+            const auto diffuse_contributes =
+                diffuse_allowed & !contribution_excluded;
+            const auto glossy_contributes =
+                glossy_allowed & !contribution_excluded;
+            const auto glass_contributes =
+                glass_allowed & !contribution_excluded;
             Float3 diffuse_contribution;
             Float3 glossy_contribution;
             Float3 glass_contribution = make_float3(0.0f);
@@ -192,16 +207,17 @@ GraphSurfaceImplementation::evaluate_traced(
                                  glossy_allowed);
             auto contribution = select(make_float3(0.0f),
                                     diffuse_contribution,
-                                    diffuse_allowed) +
+                                    diffuse_contributes) +
                                 select(make_float3(0.0f),
                                     glossy_contribution,
-                                    glossy_allowed) +
+                                    glossy_contributes) +
                                 select(make_float3(0.0f),
                                     glass_contribution,
-                                    glass_allowed);
+                                    glass_contributes);
             contribution = select(make_float3(0.0f),
                 contribution,
-                diffuse_allowed | glossy_allowed | glass_allowed);
+                diffuse_contributes | glossy_contributes |
+                    glass_contributes);
             auto enabled_pdf =
                 select(0.0f,
                     pdf,
@@ -209,13 +225,14 @@ GraphSurfaceImplementation::evaluate_traced(
             result.f += contribution;
             result.diffuse_f += select(make_float3(0.0f),
                 diffuse_contribution,
-                diffuse_allowed);
+                diffuse_contributes);
             result.glossy_f += select(make_float3(0.0f),
                                    glossy_contribution,
-                                   glossy_allowed) +
+                                   glossy_contributes) +
                                select(make_float3(0.0f),
                                    glass_contribution,
-                                   glass_allowed & (!glass_is_transmission));
+                                   glass_contributes &
+                                       (!glass_is_transmission));
             auto weight = closure_sample_weight(closure);
             weight =
                 select(0.0f,
@@ -225,23 +242,23 @@ GraphSurfaceImplementation::evaluate_traced(
             weighted_pdf += weight * enabled_pdf;
             has_diffuse =
                 has_diffuse |
-                ((diffuse_allowed & (!is_translucent)) &
+                ((diffuse_contributes & (!is_translucent)) &
                     (sample_weight(diffuse_contribution) > 0.0f));
             has_translucent =
                 has_translucent |
-                (translucent_allowed &
+                ((translucent_allowed & !contribution_excluded) &
                     (sample_weight(diffuse_contribution) > 0.0f));
             has_glossy =
                 has_glossy |
-                (glossy_allowed &
+                (glossy_contributes &
                     (sample_weight(glossy_contribution) > 0.0f));
             has_glass_reflection =
                 has_glass_reflection |
-                (glass_allowed & (!glass_is_transmission) &
+                (glass_contributes & (!glass_is_transmission) &
                     (sample_weight(glass_contribution) > 0.0f));
             has_glass_transmission =
                 has_glass_transmission |
-                (glass_allowed & glass_is_transmission &
+                (glass_contributes & glass_is_transmission &
                     (sample_weight(glass_contribution) > 0.0f));
         });
 
@@ -276,6 +293,12 @@ GraphSurfaceImplementation::evaluate_traced(
     result.events = select(static_cast<std::uint32_t>(event_none),
         events,
         has_diffuse_pdf);
+    if (sampled_light) {
+        const auto use_mis =
+            (light_shader_flags &
+                contract::cycles_abi::shader_use_mis) != 0u;
+        result.pdf = select(0.0f, result.pdf, use_mis);
+    }
     return result;
 }
 
@@ -289,7 +312,26 @@ GraphSurfaceImplementation::evaluate_traced(
     }
     auto values = trace_values(services, point);
     return evaluate_traced(
-        services, values, point, outgoing_expression, query);
+        services, values, point, outgoing_expression, query, 0u, false);
+}
+
+[[nodiscard]] SurfaceEvaluation
+GraphSurfaceImplementation::evaluate_light(
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    Expr<luisa::float3> outgoing_expression,
+    const SurfaceLightQuery &query) const noexcept {
+    if (!_program) {
+        return SurfaceEvaluation::zero();
+    }
+    auto values = trace_values(services, point);
+    return evaluate_traced(services,
+        values,
+        point,
+        outgoing_expression,
+        query.surface,
+        query.shader_flags,
+        true);
 }
 
 [[nodiscard]] SurfaceClosureTrace
@@ -540,7 +582,8 @@ GraphSurfaceImplementation::sample_with_trace(
         });
 
     auto diffuse_evaluation =
-        evaluate_traced(services, values, point, result.wi, query);
+        evaluate_traced(
+            services, values, point, result.wi, query, 0u, false);
     auto reflection_geometric_valid =
         dot(point.geometric_normal, result.wi) > 0.0f;
     auto transmission_geometric_valid =

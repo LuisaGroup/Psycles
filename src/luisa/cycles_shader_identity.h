@@ -10,27 +10,28 @@ namespace psycles::luisa_backend::detail::cycles_shader_identity {
 // Stable Cycles ShaderFlag ABI. The low bits identify Scene::shaders; the
 // high bits are composed at the same semantic boundary as
 // ShaderManager::get_shader_id and Light::copy_to_kernel.
-inline constexpr std::uint32_t smooth_normal = 1u << 31u;
-inline constexpr std::uint32_t cast_shadow = 1u << 30u;
-inline constexpr std::uint32_t use_mis = 1u << 28u;
-inline constexpr std::uint32_t exclude_diffuse = 1u << 27u;
-inline constexpr std::uint32_t exclude_glossy = 1u << 26u;
-inline constexpr std::uint32_t exclude_transmit = 1u << 25u;
-inline constexpr std::uint32_t exclude_camera = 1u << 24u;
-inline constexpr std::uint32_t exclude_scatter = 1u << 23u;
-inline constexpr std::uint32_t exclude_shadow_catcher = 1u << 22u;
-inline constexpr std::uint32_t exclude_any =
-    exclude_diffuse |
-    exclude_glossy |
-    exclude_transmit |
-    exclude_camera |
-    exclude_scatter |
-    exclude_shadow_catcher;
-inline constexpr std::uint32_t shader_mask =
-    ~(smooth_normal | cast_shadow | use_mis | exclude_any);
-static_assert(
-    shader_mask ==
-    contract::cycles_abi::shader_mask);
+inline constexpr auto smooth_normal =
+    contract::cycles_abi::shader_smooth_normal;
+inline constexpr auto cast_shadow =
+    contract::cycles_abi::shader_cast_shadow;
+inline constexpr auto use_mis =
+    contract::cycles_abi::shader_use_mis;
+inline constexpr auto exclude_diffuse =
+    contract::cycles_abi::shader_exclude_diffuse;
+inline constexpr auto exclude_glossy =
+    contract::cycles_abi::shader_exclude_glossy;
+inline constexpr auto exclude_transmit =
+    contract::cycles_abi::shader_exclude_transmit;
+inline constexpr auto exclude_camera =
+    contract::cycles_abi::shader_exclude_camera;
+inline constexpr auto exclude_scatter =
+    contract::cycles_abi::shader_exclude_scatter;
+inline constexpr auto exclude_shadow_catcher =
+    contract::cycles_abi::shader_exclude_shadow_catcher;
+inline constexpr auto exclude_any =
+    contract::cycles_abi::shader_exclude_any;
+inline constexpr auto shader_mask =
+    contract::cycles_abi::shader_mask;
 inline constexpr std::uint32_t invalid_index = ~std::uint32_t{0u};
 
 // Cycles' KernelLightType order is a stable device ABI and differs from the
@@ -95,6 +96,17 @@ inline constexpr std::uint32_t invalid_index = ~std::uint32_t{0u};
     return flags;
 }
 
+[[nodiscard]] constexpr std::uint32_t analytic_light_flags(
+    bool casts_shadow,
+    std::uint32_t visibility,
+    bool is_shadow_catcher,
+    bool has_competing_bsdf_technique) noexcept {
+    return (casts_shadow ? cast_shadow : 0u) |
+           object_visibility(
+               visibility, is_shadow_catcher) |
+           (has_competing_bsdf_technique ? use_mis : 0u);
+}
+
 [[nodiscard]] constexpr std::uint32_t analytic_light(
     std::uint32_t shader_index,
     bool casts_shadow,
@@ -102,10 +114,23 @@ inline constexpr std::uint32_t invalid_index = ~std::uint32_t{0u};
     bool is_shadow_catcher,
     bool has_competing_bsdf_technique) noexcept {
     return shader_index |
-           (casts_shadow ? cast_shadow : 0u) |
+           analytic_light_flags(casts_shadow,
+               visibility,
+               is_shadow_catcher,
+               has_competing_bsdf_technique);
+}
+
+[[nodiscard]] constexpr std::uint32_t emissive_triangle_flags(
+    bool smooth,
+    std::uint32_t visibility,
+    bool is_shadow_catcher) noexcept {
+    // Triangle lights retain the surface topology flags, then add the
+    // sampled-emitter MIS and object-visibility flags at light upload time.
+    return cast_shadow |
+           (smooth ? smooth_normal : 0u) |
+           use_mis |
            object_visibility(
-               visibility, is_shadow_catcher) |
-           (has_competing_bsdf_technique ? use_mis : 0u);
+               visibility, is_shadow_catcher);
 }
 
 [[nodiscard]] constexpr std::uint32_t emissive_triangle(
@@ -113,16 +138,12 @@ inline constexpr std::uint32_t invalid_index = ~std::uint32_t{0u};
     bool smooth,
     std::uint32_t visibility,
     bool is_shadow_catcher) noexcept {
-    // Triangle lights retain the surface topology flags, then add the
-    // sampled-emitter MIS and object-visibility flags at light upload time.
-    return surface(shader_index, smooth) |
-           use_mis |
-           object_visibility(
-               visibility, is_shadow_catcher);
+    return shader_index |
+           emissive_triangle_flags(
+               smooth, visibility, is_shadow_catcher);
 }
 
-[[nodiscard]] constexpr std::uint32_t background_light(
-    std::uint32_t shader_index,
+[[nodiscard]] constexpr std::uint32_t background_light_flags(
     bool casts_shadow,
     std::uint32_t visibility) noexcept {
     using contract::RayVisibility;
@@ -133,12 +154,19 @@ inline constexpr std::uint32_t invalid_index = ~std::uint32_t{0u};
     const auto background_visibility =
         visibility |
         visibility_bit(RayVisibility::camera);
-    return shader_index |
-           (casts_shadow ? cast_shadow : 0u) |
+    return (casts_shadow ? cast_shadow : 0u) |
            use_mis |
            object_visibility(
                background_visibility,
                true);
+}
+
+[[nodiscard]] constexpr std::uint32_t background_light(
+    std::uint32_t shader_index,
+    bool casts_shadow,
+    std::uint32_t visibility) noexcept {
+    return shader_index |
+           background_light_flags(casts_shadow, visibility);
 }
 
 }// namespace psycles::luisa_backend::detail::cycles_shader_identity

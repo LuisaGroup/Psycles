@@ -2,9 +2,33 @@
 
 #include "path_tracer_shader_services.h"
 
+#include <psycles/luisa/background_sampling.h>
 #include <psycles/luisa/cycles_nishita.h>
+#include <psycles/sampling/background_distribution.h>
 
 namespace psycles::luisa_backend::detail {
+
+namespace {
+
+[[nodiscard]] Vec3f normalized_or_z(
+    Vec3f direction) noexcept {
+    const auto length_squared =
+        direction.x * direction.x +
+        direction.y * direction.y +
+        direction.z * direction.z;
+    if (!(length_squared > 1.0e-20f) ||
+        !std::isfinite(length_squared)) {
+        return {0.0f, 0.0f, 1.0f};
+    }
+    const auto inverse_length =
+        1.0f / std::sqrt(length_squared);
+    return {
+        direction.x * inverse_length,
+        direction.y * inverse_length,
+        direction.z * inverse_length};
+}
+
+}// namespace
 
 EnvironmentCallables make_environment_callables(
     const std::shared_ptr<LuisaSceneData> &scene,
@@ -219,6 +243,234 @@ EnvironmentCallables make_environment_callables(
         std::move(base),
         std::move(suns),
         std::move(nishita_sun)};
+}
+
+void configure_background_sampling(
+    LuisaSceneData &data,
+    const SceneSnapshot &snapshot,
+    bool include_environment) noexcept {
+    data.background_map_width = 1u;
+    data.background_map_height = 1u;
+    data.background_map_weight =
+        include_environment ? 1.0f : 0.0f;
+    data.background_guided_sun_weight = 0.0f;
+    data.background_guided_sun_axis =
+        luisa::make_float3(0.0f, 0.0f, 1.0f);
+    data.background_guided_sun_radius = 0.0f;
+
+    if (!include_environment) {
+        return;
+    }
+
+    // Match Cycles' single-Sun guidance contract. Multiple solar discs stay
+    // in the importance map because one analytic cone cannot represent their
+    // support without changing the estimator.
+    if (data.nishita_environment &&
+        data.nishita_environment->angular_radius > 0.0f) {
+        data.background_guided_sun_weight = 4.0f;
+        data.background_guided_sun_axis =
+            data.nishita_environment->sun_direction;
+        data.background_guided_sun_radius =
+            data.nishita_environment->angular_radius;
+    } else if (data.environment_suns.size() == 1u &&
+               data.environment_suns.front()
+                       .angular_radius >
+                   0.0f) {
+        const auto &sun = data.environment_suns.front();
+        const auto axis = normalized_or_z(sun.direction);
+        data.background_guided_sun_weight = 4.0f;
+        data.background_guided_sun_axis =
+            luisa::make_float3(axis.x, axis.y, axis.z);
+        data.background_guided_sun_radius =
+            sun.angular_radius;
+    }
+
+    if (snapshot.world_sampling ==
+        contract::WorldSampling::manual) {
+        data.background_map_width =
+            std::max(
+                snapshot.world_sample_map_resolution,
+                2u);
+        data.background_map_height =
+            std::max(
+                data.background_map_width / 2u,
+                1u);
+        return;
+    }
+
+    if (data.nishita_environment &&
+        data.background_guided_sun_weight > 0.0f) {
+        // Cycles raises an automatically sized guided Nishita map to this
+        // resolution even though the atmosphere LUT itself is smaller.
+        data.background_map_width = 512u;
+        data.background_map_height = 256u;
+    } else if (
+        snapshot.environment &&
+        snapshot.environment->width > 0u &&
+        snapshot.environment->height > 0u) {
+        data.background_map_width =
+            snapshot.environment->width;
+        data.background_map_height =
+            snapshot.environment->height;
+    } else {
+        data.background_map_width = 1024u;
+        data.background_map_height = 512u;
+    }
+}
+
+void build_background_sampling_distribution(
+    const std::shared_ptr<LuisaSceneData> &data,
+    Stream &stream) {
+    std::vector<Vec3f> radiance;
+    if (data->background_map_weight > 0.0f) {
+        const auto pixel_count =
+            static_cast<std::size_t>(
+                data->background_map_width) *
+            static_cast<std::size_t>(
+                data->background_map_height);
+        auto radiance_buffer =
+            data->device.create_buffer<luisa::float4>(
+                pixel_count);
+        luisa::vector<luisa::float4> readback(
+            pixel_count);
+
+        SafeNormalizeCallable safe_normalize =
+            [](Float3 value,
+               Float3 fallback) noexcept {
+                const auto length_squared =
+                    dot(value, value);
+                return select(
+                    fallback,
+                    value /
+                        sqrt(max(
+                            length_squared,
+                            1.0e-20f)),
+                    length_squared > 1.0e-20f);
+            };
+        auto surface_callables =
+            make_surface_callables(data);
+        auto surface_emission =
+            surface_callables.emission;
+        auto environment_callables =
+            make_environment_callables(
+                data,
+                safe_normalize,
+                surface_emission);
+        auto environment_base =
+            environment_callables.base;
+        auto environment_suns =
+            environment_callables.suns;
+        auto nishita_sun =
+            environment_callables.nishita_sun;
+        const auto width =
+            data->background_map_width;
+        const auto height =
+            data->background_map_height;
+        const auto include_discrete_suns =
+            data->background_guided_sun_weight <=
+            0.0f;
+        const auto background = data->background;
+
+        Kernel2D evaluate_importance = [
+            =,
+            &surface_emission](
+            BufferFloat4 output) noexcept {
+            set_block_size(8u, 8u, 1u);
+            const auto coordinate =
+                dispatch_id().xy();
+            const auto u =
+                (cast<float>(coordinate.x) + 0.5f) /
+                static_cast<float>(width);
+            const auto v =
+                (cast<float>(coordinate.y) + 0.5f) /
+                static_cast<float>(height);
+            const auto direction =
+                background_sampling::
+                    equirectangular_to_direction(
+                        u, v);
+            Float3 value = environment_base(
+                direction,
+                make_float3(background),
+                pack_shader_evaluation_state(
+                    cycles_path_state::
+                        light_emission_shader_state(
+                            0u, 0u, 0u, 0u, 0u)));
+            if (include_discrete_suns) {
+                for (const auto &sun :
+                     environment_suns) {
+                    value += sun(direction);
+                }
+                value += nishita_sun(direction);
+            }
+            output.write(
+                coordinate.y * width +
+                    coordinate.x,
+                make_float4(value, 1.0f));
+        };
+        auto importance_shader =
+            data->device.compile(
+                evaluate_importance);
+        stream
+            << importance_shader(
+                   radiance_buffer)
+                   .dispatch(width, height)
+            << radiance_buffer.copy_to(
+                   luisa::span{readback})
+            << synchronize();
+
+        radiance.reserve(readback.size());
+        for (const auto value : readback) {
+            const auto finite_or_zero =
+                [](float component) noexcept {
+                    return std::isfinite(component)
+                               ? component
+                               : 0.0f;
+                };
+            radiance.emplace_back(
+                finite_or_zero(value.x),
+                finite_or_zero(value.y),
+                finite_or_zero(value.z));
+        }
+    } else {
+        radiance.emplace_back(1.0f, 1.0f, 1.0f);
+    }
+
+    const auto distribution =
+        sampling::
+            build_cycles_background_map_distribution(
+                radiance,
+                data->background_map_width,
+                data->background_map_height);
+    luisa::vector<luisa::float2> conditional;
+    conditional.reserve(
+        distribution.conditional.size());
+    for (const auto entry :
+         distribution.conditional) {
+        conditional.emplace_back(
+            entry.function,
+            entry.cumulative);
+    }
+    luisa::vector<luisa::float2> marginal;
+    marginal.reserve(
+        distribution.marginal.size());
+    for (const auto entry :
+         distribution.marginal) {
+        marginal.emplace_back(
+            entry.function,
+            entry.cumulative);
+    }
+    data->background_conditional_cdf =
+        data->device.create_buffer<luisa::float2>(
+            conditional.size());
+    data->background_marginal_cdf =
+        data->device.create_buffer<luisa::float2>(
+            marginal.size());
+    stream
+        << data->background_conditional_cdf
+               .copy_from(luisa::span{conditional})
+        << data->background_marginal_cdf
+               .copy_from(luisa::span{marginal})
+        << synchronize();
 }
 
 }// namespace psycles::luisa_backend::detail

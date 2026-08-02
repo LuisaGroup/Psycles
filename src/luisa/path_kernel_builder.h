@@ -118,6 +118,12 @@ struct PathKernelInvocation {
                      const SurfacePoint &point,
                      Float3 outgoing,
                      const SurfaceQuery &query) const noexcept;
+    [[nodiscard]] SurfaceEvaluation
+    evaluate_light_surface(UInt surface_tag,
+                           const SurfacePoint &point,
+                           Float3 outgoing,
+                           const SurfaceQuery &query,
+                           UInt shader_flags) const noexcept;
     [[nodiscard]] Float3 surface_emission(UInt surface_tag,
                                           const SurfacePoint &point,
                                           Float3 outgoing) const noexcept;
