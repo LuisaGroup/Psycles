@@ -31,6 +31,16 @@ namespace psycles::compiler::detail {
         std::optional<ValueExpressionId> ior;
         std::optional<ValueExpressionId> specular_ior_level;
         std::optional<ValueExpressionId> specular_tint;
+        std::optional<ValueExpressionId> alpha;
+        std::optional<ValueExpressionId> sheen_weight;
+        std::optional<ValueExpressionId> sheen_roughness;
+        std::optional<ValueExpressionId> sheen_tint;
+        std::optional<ValueExpressionId> coat_weight;
+        std::optional<ValueExpressionId> coat_roughness;
+        std::optional<ValueExpressionId> coat_ior;
+        std::optional<ValueExpressionId> coat_tint;
+        std::optional<ValueExpressionId> coat_normal;
+        bool coat_normal_linked = false;
         std::optional<ValueExpressionId> emission_color;
         std::optional<ValueExpressionId> emission_strength;
         if (node.type == node_type::principled_bsdf ||
@@ -51,6 +61,20 @@ namespace psycles::compiler::detail {
                 lower_value_input(node, "SpecularIORLevel");
             specular_tint =
                 lower_value_input(node, "SpecularTint");
+            alpha = lower_value_input(node, "Alpha");
+            sheen_weight = lower_value_input(node, "SheenWeight");
+            sheen_roughness = lower_value_input(node, "SheenRoughness");
+            sheen_tint = lower_value_input(node, "SheenTint");
+            coat_weight = lower_value_input(node, "CoatWeight");
+            coat_roughness = lower_value_input(node, "CoatRoughness");
+            coat_ior = lower_value_input(node, "CoatIOR");
+            coat_tint = lower_value_input(node, "CoatTint");
+            const auto coat_normal_binding =
+                node.inputs.find("CoatNormal");
+            coat_normal_linked =
+                coat_normal_binding != node.inputs.end() &&
+                coat_normal_binding->second.source.has_value();
+            coat_normal = lower_value_input(node, "CoatNormal");
             emission_color =
                 lower_value_input(node, "EmissionColor");
             emission_strength =
@@ -60,7 +84,10 @@ namespace psycles::compiler::detail {
             (node.type != node_type::principled_bsdf ||
              (metallic && diffuse_roughness && subsurface_weight &&
               subsurface_radius && subsurface_scale && ior &&
-              specular_ior_level && specular_tint &&
+              specular_ior_level && specular_tint && alpha &&
+              sheen_weight && sheen_roughness && sheen_tint &&
+              coat_weight && coat_roughness && coat_ior && coat_tint &&
+              coat_normal &&
               emission_color && emission_strength)) &&
             (node.type != node_type::glass_bsdf || ior)) {
             publish(
@@ -101,6 +128,24 @@ namespace psycles::compiler::detail {
                     .specular_tint =
                         specular_tint.value_or(
                             ValueExpressionId{}),
+                    .alpha = alpha.value_or(ValueExpressionId{}),
+                    .sheen_weight =
+                        sheen_weight.value_or(ValueExpressionId{}),
+                    .sheen_roughness =
+                        sheen_roughness.value_or(ValueExpressionId{}),
+                    .sheen_tint =
+                        sheen_tint.value_or(ValueExpressionId{}),
+                    .coat_weight =
+                        coat_weight.value_or(ValueExpressionId{}),
+                    .coat_roughness =
+                        coat_roughness.value_or(ValueExpressionId{}),
+                    .coat_ior =
+                        coat_ior.value_or(ValueExpressionId{}),
+                    .coat_tint =
+                        coat_tint.value_or(ValueExpressionId{}),
+                    .coat_normal =
+                        coat_normal.value_or(ValueExpressionId{}),
+                    .coat_normal_linked = coat_normal_linked,
                     .emission_color =
                         emission_color.value_or(
                             ValueExpressionId{}),

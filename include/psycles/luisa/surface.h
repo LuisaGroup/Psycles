@@ -402,7 +402,8 @@ public:
     [[nodiscard]] virtual Float3 emission(
         const ShaderServices &,
         const SurfacePoint &,
-        Expr<luisa::float3>) const noexcept {
+        Expr<luisa::float3>,
+        Expr<bool>) const noexcept {
         return make_float3(0.0f);
     }
 
@@ -559,10 +560,15 @@ public:
         Expr<std::uint32_t> tag,
         const ShaderServices &services,
         const SurfacePoint &point,
-        Expr<luisa::float3> wo) const noexcept {
+        Expr<luisa::float3> wo,
+        Expr<bool> reflective_caustics) const noexcept {
         Float3 result = make_float3(0.0f);
         _surfaces.dispatch(tag, [&](const Surface *surface) noexcept {
-            result = surface->emission(services, point, wo);
+            result = surface->emission(
+                services,
+                point,
+                wo,
+                reflective_caustics);
         });
         return result;
     }

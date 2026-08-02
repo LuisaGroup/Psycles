@@ -51,7 +51,8 @@ SurfaceCallables make_surface_callables(
             BindlessVar geometry_heap,
             UInt surface_tag,
             Var<SurfacePointCall> packed_point,
-            Float3 outgoing) noexcept {
+            Float3 outgoing,
+            Bool reflective_caustics) noexcept {
             BufferShaderServices services{
                 parameters,
                 cycles_bsdf_tables,
@@ -65,7 +66,8 @@ SurfaceCallables make_surface_callables(
                 surface_tag,
                 services,
                 unpack_surface_point(packed_point),
-                outgoing);
+                outgoing,
+                reflective_caustics);
         };
     SurfaceConstantEmissionCallable constant_emission =
         [scene](

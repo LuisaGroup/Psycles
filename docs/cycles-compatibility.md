@@ -327,8 +327,16 @@ becoming a host material evaluator. A linked full-frame probe matches current
 Cycles CPU exactly in Combined and Emit on fallback, HIP, and Vulkan; reports
 and all six inspected triptychs are in
 [`validation/2026-08-03/principled-emission`](validation/2026-08-03/principled-emission/README.md).
-This checkpoint uses neutral Alpha/Sheen/Coat settings; their exact layered
-attenuation and the remaining Principled lobes are still open parity gates.
+The follow-up implements the exact ordered Alpha, Sheen LTC, reflective Coat
+GGX/Fresnel, and Coat Tint attenuation of that raw emission as a reusable
+host-stage `.h`/`.cpp` component that records Luisa device expressions. A
+16-cell matrix includes linked Coat Normal and the degenerate zero-normal
+boundary. Combined and Emit match current Cycles CPU within at most one or two
+float ULPs on fallback, HIP, and Vulkan; all six triptychs were inspected.
+Formulas, reports, timings, and images are in
+[`validation/2026-08-03/principled-emission-layers`](validation/2026-08-03/principled-emission-layers/README.md).
+Physical Alpha transparency and Sheen/Coat scattering closures remain open;
+this result does not overstate them as complete Principled support.
 
 The first heterogeneous transport checkpoint now isolates the formal
 null-collision transition in a Luisa `.h`/`.cpp` component. It pins current

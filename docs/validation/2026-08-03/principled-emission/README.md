@@ -43,6 +43,10 @@ Alpha = 1, Sheen Weight = 0, and Coat Weight = 0. Exact Alpha/Sheen/Coat layer
 attenuation and the remaining Principled lobes are still parity gates; this is
 not a claim of complete Principled BSDF support.
 
+Those emission-only layer gates were subsequently completed and validated in
+the [Principled emission layers checkpoint](../principled-emission-layers/README.md).
+Physical Alpha/Sheen/Coat closures remain separate work.
+
 ## Regression coverage
 
 The contract suite pins all of the following:
@@ -113,7 +117,6 @@ amplified difference pane is black.
 
 ## Remaining parity gates
 
-- implement exact Principled Alpha, Sheen, and Coat attenuation of emission;
 - complete the remaining Principled surface lobes and their sampling rules;
 - align emitter/environment importance distributions and exact RNG mapping;
 - implement heterogeneous residual-ratio shadow transport; and

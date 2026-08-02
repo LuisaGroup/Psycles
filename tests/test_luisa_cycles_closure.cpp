@@ -311,6 +311,69 @@ public:
     return graph;
 }
 
+[[nodiscard]] ShaderGraph make_layered_principled_emission_graph() {
+    ShaderGraph graph;
+    const auto geometry = graph.add_node(
+        node_type::geometry,
+        "Linked Principled coat normal");
+    const auto principled = graph.add_node(
+        node_type::principled_bsdf,
+        "Layered Principled emission closure");
+    const auto configured =
+        graph.set_input(
+            principled,
+            "Alpha",
+            SocketValue::floating(0.73f)) &&
+        graph.set_input(
+            principled,
+            "SheenWeight",
+            SocketValue::floating(0.55f)) &&
+        graph.set_input(
+            principled,
+            "SheenRoughness",
+            SocketValue::floating(0.38f)) &&
+        graph.set_input(
+            principled,
+            "SheenTint",
+            SocketValue::color({0.9f, 0.35f, 0.12f})) &&
+        graph.set_input(
+            principled,
+            "CoatWeight",
+            SocketValue::floating(0.75f)) &&
+        graph.set_input(
+            principled,
+            "CoatRoughness",
+            SocketValue::floating(0.23f)) &&
+        graph.set_input(
+            principled,
+            "CoatIOR",
+            SocketValue::floating(1.7f)) &&
+        graph.set_input(
+            principled,
+            "CoatTint",
+            SocketValue::color({0.3f, 0.7f, 0.95f})) &&
+        graph.set_input(
+            principled,
+            "EmissionColor",
+            SocketValue::color({0.17f, 0.43f, 0.91f})) &&
+        graph.set_input(
+            principled,
+            "EmissionStrength",
+            SocketValue::floating(2.75f)) &&
+        graph.connect(
+            {.node = geometry, .socket = "Normal"},
+            principled,
+            "CoatNormal");
+    if (!configured) {
+        throw std::runtime_error{
+            "failed to configure layered Principled emission graph"};
+    }
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = principled, .socket = "Closure"});
+    return graph;
+}
+
 [[nodiscard]] ShaderGraph make_tangent_normal_graph() {
     ShaderGraph graph;
     const auto normal_map =
@@ -546,6 +609,24 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
+    auto layered_emission_shader =
+        compiler.compile(make_layered_principled_emission_graph());
+    if (!layered_emission_shader.ok()) {
+        std::cerr
+            << "failed to compile layered Principled emission graph\n";
+        return EXIT_FAILURE;
+    }
+    auto layered_emission_program =
+        compile_surface_program(*layered_emission_shader.program);
+    if (!layered_emission_program.ok() ||
+        layered_emission_program.program
+                ->emission_evaluation() !=
+            EmissionEvaluationMode::deferred) {
+        std::cerr
+            << "failed to lower layered Principled emission\n";
+        return EXIT_FAILURE;
+    }
+
     auto tangent_normal_shader =
         compiler.compile(make_tangent_normal_graph());
     if (!tangent_normal_shader.ok()) {
@@ -599,6 +680,9 @@ int main(int argc, char **argv) {
     const auto principled_emission_surface_tag =
         surfaces.create<GraphSurface>(
             principled_emission_program.program);
+    const auto layered_emission_surface_tag =
+        surfaces.create<GraphSurface>(
+            layered_emission_program.program);
     const auto tangent_normal_surface_tag =
         surfaces.create<GraphSurface>(
             tangent_normal_program.program);
@@ -752,13 +836,41 @@ int main(int argc, char **argv) {
                 UInt{principled_emission_surface_tag},
                 services,
                 point,
-                make_float3(0.0f, 0.0f, 1.0f));
+                make_float3(0.0f, 0.0f, 1.0f),
+                true);
             const auto constant = surfaces.constant_emission(
                 UInt{principled_emission_surface_tag},
                 services,
                 0u);
             output.write(0u, make_float4(emission, 1.0f));
             output.write(1u, make_float4(constant, 0.0f));
+        };
+
+    Kernel1D evaluate_layered_emission =
+        [&](BufferFloat4 parameters, BufferFloat4 output) noexcept {
+            ParameterShaderServices services{parameters};
+            const auto point = make_surface_point();
+            const auto with_reflection = surfaces.emission(
+                UInt{layered_emission_surface_tag},
+                services,
+                point,
+                make_float3(0.0f, 0.0f, 1.0f),
+                true);
+            const auto without_reflection = surfaces.emission(
+                UInt{layered_emission_surface_tag},
+                services,
+                point,
+                make_float3(0.0f, 0.0f, 1.0f),
+                false);
+            const auto constant = surfaces.constant_emission(
+                UInt{layered_emission_surface_tag},
+                services,
+                0u);
+            output.write(
+                0u, make_float4(with_reflection, 1.0f));
+            output.write(
+                1u, make_float4(without_reflection, 1.0f));
+            output.write(2u, make_float4(constant, 0.0f));
         };
 
     Kernel1D evaluate_physical_light =
@@ -892,6 +1004,13 @@ int main(int argc, char **argv) {
             principled_emission_parameters.size());
     auto principled_emission_output =
         device.create_buffer<luisa::float4>(2u);
+    const auto layered_emission_parameters =
+        parameter_data(*layered_emission_program.program);
+    auto layered_emission_parameter_buffer =
+        device.create_buffer<luisa::float4>(
+            layered_emission_parameters.size());
+    auto layered_emission_output =
+        device.create_buffer<luisa::float4>(3u);
     const auto tangent_normal_parameters =
         parameter_data(*tangent_normal_program.program);
     auto tangent_normal_parameter_buffer =
@@ -919,6 +1038,8 @@ int main(int argc, char **argv) {
     auto subsurface_kernel = device.compile(trace_subsurface);
     auto principled_emission_kernel =
         device.compile(evaluate_principled_emission);
+    auto layered_emission_kernel =
+        device.compile(evaluate_layered_emission);
     auto tangent_normal_kernel =
         device.compile(trace_tangent_normal);
     auto physical_light_kernel =
@@ -932,6 +1053,8 @@ int main(int argc, char **argv) {
     std::array<luisa::float4, 3u> subsurface_actual{};
     std::array<luisa::float4, 2u>
         principled_emission_actual{};
+    std::array<luisa::float4, 3u>
+        layered_emission_actual{};
     std::array<luisa::float4, 2u>
         tangent_normal_actual{};
     std::array<luisa::float4, 15u> physical_light_actual{};
@@ -943,6 +1066,8 @@ int main(int argc, char **argv) {
                   luisa::span{subsurface_parameters})
            << principled_emission_parameter_buffer.copy_from(
                   luisa::span{principled_emission_parameters})
+           << layered_emission_parameter_buffer.copy_from(
+                  luisa::span{layered_emission_parameters})
            << tangent_normal_parameter_buffer.copy_from(
                   luisa::span{
                       tangent_normal_parameters})
@@ -967,6 +1092,12 @@ int main(int argc, char **argv) {
                   .dispatch(1u)
            << principled_emission_output.copy_to(
                   luisa::span{principled_emission_actual})
+           << layered_emission_kernel(
+                  layered_emission_parameter_buffer,
+                  layered_emission_output)
+                  .dispatch(1u)
+           << layered_emission_output.copy_to(
+                  luisa::span{layered_emission_actual})
            << tangent_normal_kernel(
                   tangent_normal_parameter_buffer,
                   tangent_normal_output)
@@ -1032,6 +1163,37 @@ int main(int argc, char **argv) {
             << backend << ": got {" << value.x << ", "
             << value.y << ", " << value.z << ", "
             << value.w << "}\n";
+        return EXIT_FAILURE;
+    }
+
+    const auto with_coat_reflection = layered_emission_actual[0u];
+    const auto without_coat_reflection = layered_emission_actual[1u];
+    const auto layered_finite = [](luisa::float4 value) noexcept {
+        return std::isfinite(value.x) &&
+               std::isfinite(value.y) &&
+               std::isfinite(value.z);
+    };
+    if (!layered_finite(with_coat_reflection) ||
+        !layered_finite(without_coat_reflection) ||
+        !(with_coat_reflection.x > 0.0f &&
+            with_coat_reflection.y > 0.0f &&
+            with_coat_reflection.z > 0.0f) ||
+        !(without_coat_reflection.x > with_coat_reflection.x &&
+            without_coat_reflection.y > with_coat_reflection.y &&
+            without_coat_reflection.z > with_coat_reflection.z) ||
+        !approximately_equal(
+            layered_emission_actual[2u],
+            luisa::float4{})) {
+        std::cerr
+            << "Cycles layered Principled emission/caustics branch "
+               "failed on "
+            << backend << ": reflective {"
+            << with_coat_reflection.x << ", "
+            << with_coat_reflection.y << ", "
+            << with_coat_reflection.z << "}, non-reflective {"
+            << without_coat_reflection.x << ", "
+            << without_coat_reflection.y << ", "
+            << without_coat_reflection.z << "}\n";
         return EXIT_FAILURE;
     }
 

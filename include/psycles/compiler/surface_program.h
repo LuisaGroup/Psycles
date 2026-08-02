@@ -316,6 +316,20 @@ struct ClosureInstruction {
     ValueExpressionId ior;
     ValueExpressionId specular_ior_level;
     ValueExpressionId specular_tint;
+    ValueExpressionId alpha;
+    ValueExpressionId sheen_weight;
+    ValueExpressionId sheen_roughness;
+    ValueExpressionId sheen_tint;
+    ValueExpressionId coat_weight;
+    ValueExpressionId coat_roughness;
+    ValueExpressionId coat_ior;
+    ValueExpressionId coat_tint;
+    ValueExpressionId coat_normal;
+    // Cycles distinguishes an unlinked Coat Normal socket from a linked
+    // expression whose numerical value happens to be zero. Preserve that
+    // graph-topology fact explicitly instead of inferring it from the
+    // lowered value operation.
+    bool coat_normal_linked{};
     ValueExpressionId emission_color;
     ValueExpressionId emission_strength;
     bool preserve_ggx_energy{};

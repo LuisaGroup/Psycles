@@ -233,13 +233,20 @@ SurfaceEvaluation PathKernelInvocation::evaluate_light_surface(
 Float3 PathKernelInvocation::surface_emission(UInt surface_tag,
                                               const SurfacePoint &point,
                                               Float3 outgoing) const noexcept {
+    const auto reflective_caustics =
+        Bool{config.reflective_caustics} |
+        ((point.ray_visibility &
+             contract::visibility_bit(
+                 contract::RayVisibility::diffuse)) ==
+            0u);
     return config.surfaces.emission(config.scene->parameter_buffer,
                                     config.scene->cycles_bsdf_table_buffer,
                                     config.scene->texture_heap,
                                     config.scene->heap,
                                     surface_tag,
                                     pack_surface_point(point),
-                                    outgoing);
+                                    outgoing,
+                                    reflective_caustics);
 }
 
 Float3 PathKernelInvocation::constant_surface_emission(

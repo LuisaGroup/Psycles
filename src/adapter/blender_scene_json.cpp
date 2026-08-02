@@ -378,6 +378,42 @@ find_simple_world_nishita(yyjson_val *world) {
         SocketValue::color({1.0f, 1.0f, 1.0f})));
     static_cast<void>(graph.set_input(
         closure,
+        "Alpha",
+        SocketValue::floating(1.0f)));
+    static_cast<void>(graph.set_input(
+        closure,
+        "SheenWeight",
+        SocketValue::floating(0.0f)));
+    static_cast<void>(graph.set_input(
+        closure,
+        "SheenRoughness",
+        SocketValue::floating(0.5f)));
+    static_cast<void>(graph.set_input(
+        closure,
+        "SheenTint",
+        SocketValue::color({1.0f, 1.0f, 1.0f})));
+    static_cast<void>(graph.set_input(
+        closure,
+        "CoatWeight",
+        SocketValue::floating(0.0f)));
+    static_cast<void>(graph.set_input(
+        closure,
+        "CoatRoughness",
+        SocketValue::floating(0.03f)));
+    static_cast<void>(graph.set_input(
+        closure,
+        "CoatIOR",
+        SocketValue::floating(1.5f)));
+    static_cast<void>(graph.set_input(
+        closure,
+        "CoatTint",
+        SocketValue::color({1.0f, 1.0f, 1.0f})));
+    static_cast<void>(graph.set_input(
+        closure,
+        "CoatNormal",
+        SocketValue::normal({0.0f, 0.0f, 0.0f})));
+    static_cast<void>(graph.set_input(
+        closure,
         "EmissionColor",
         SocketValue::color({1.0f, 1.0f, 1.0f})));
     static_cast<void>(graph.set_input(

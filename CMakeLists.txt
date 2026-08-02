@@ -194,6 +194,7 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/graph_surface_emission.cpp
             src/luisa/graph_surface_implementation.cpp
             src/luisa/graph_surface_physical_closures.cpp
+            src/luisa/principled_emission_layer.cpp
             src/luisa/graph_surface_scattering.cpp
             src/luisa/graph_surface_state.cpp
             src/luisa/graph_surface_values.cpp
@@ -238,7 +239,6 @@ if(PSYCLES_ENABLE_LUISA)
             Psycles::core
             luisa::compute)
         message(STATUS "Psycles Luisa DSL surface compiler enabled")
-
         if(MSVC)
             target_compile_options(
                 psycles_luisa
