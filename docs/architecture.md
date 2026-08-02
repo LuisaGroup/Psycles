@@ -381,8 +381,12 @@ area sampling for the volume-segment proposal, position-dependent
 solid-angle/area sampling at the final collision, and known-hit PDF
 evaluation. `EmissiveTriangleComponent` adds instance geometry, Cycles'
 negative-scale orientation convention, side selection, and evaluation of the
-original raw emission closure; surface NEE, forward-hit MIS, and
-`VolumeMeshLightComponent` all construct their AST through that boundary.
+original raw emission closure. Its radiometry-free proposal accepts only scene
+data; a separate virtual evaluator requires path state after validity and
+self-intersection rejection. `EnvironmentLightComponent` applies the same
+proposal/evaluator split to raw World closures. Surface NEE, background hits,
+forward-hit MIS, and the volume-light components all construct their AST
+through those boundaries.
 `VolumeLightInterval` independently maps the original segment to spot, area,
 or one-sided triangle geometric support. This separation prevents
 radiometric rejection, proposal measure, and interval algebra from becoming
