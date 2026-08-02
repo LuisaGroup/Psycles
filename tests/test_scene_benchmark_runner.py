@@ -35,6 +35,20 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
             ("fallback", "hip", "vk"),
         )
 
+    def test_native_apple_matrix_is_accepted(self) -> None:
+        self.assertEqual(
+            self.runner._backend_list("fallback,metal"),
+            ("fallback", "metal"),
+        )
+        self.assertEqual(
+            self.runner._device_key("METAL"),
+            "metal",
+        )
+        with self.assertRaises(
+            self.runner.argparse.ArgumentTypeError
+        ):
+            self.runner._backend_list("fallback,metal,metal")
+
     def test_cycles_commands_select_cpu_and_named_hip(self) -> None:
         common = {
             "blender": pathlib.Path("/opt/blender"),
@@ -159,6 +173,31 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
             result["hip"]["speedup_over_cycles_hip"],
             0.5,
         )
+
+    def test_relative_performance_supports_gpu_only_metal(self) -> None:
+        manifest = {
+            "renderers": {
+                "cycles": {
+                    "metal": {"render_seconds": 12.0},
+                },
+                "psycles": {
+                    "fallback": {"render_seconds": 24.0},
+                    "metal": {"render_seconds": 6.0},
+                },
+            }
+        }
+        result = self.runner._relative_performance(
+            manifest, "metal"
+        )
+        self.assertEqual(
+            result["fallback"]["slowdown_vs_cycles_metal"],
+            2.0,
+        )
+        self.assertEqual(
+            result["metal"]["speedup_over_cycles_metal"],
+            2.0,
+        )
+        self.assertNotIn("cycles_cpu", result)
 
 
 if __name__ == "__main__":
