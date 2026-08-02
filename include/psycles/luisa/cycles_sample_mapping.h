@@ -92,7 +92,7 @@ struct UniformConeSample {
 // length, incoming is in the upper hemisphere, and alpha is the squared
 // perceptual roughness.
 [[nodiscard]] inline luisa::compute::Float3
-sample_ggx_visible_normal_reflection(luisa::compute::Float3 normal,
+sample_ggx_visible_normal(luisa::compute::Float3 normal,
     luisa::compute::Float3 incoming,
     luisa::compute::Float alpha,
     luisa::compute::Float2 random) noexcept {
@@ -141,6 +141,17 @@ sample_ggx_visible_normal_reflection(luisa::compute::Float3 normal,
     const auto half_vector = world_basis.tangent * local_half.x +
                              world_basis.bitangent * local_half.y +
                              normal * local_half.z;
+    return half_vector;
+}
+
+[[nodiscard]] inline luisa::compute::Float3
+sample_ggx_visible_normal_reflection(luisa::compute::Float3 normal,
+    luisa::compute::Float3 incoming,
+    luisa::compute::Float alpha,
+    luisa::compute::Float2 random) noexcept {
+    using namespace luisa::compute;
+    const auto half_vector =
+        sample_ggx_visible_normal(normal, incoming, alpha, random);
     return 2.0f * dot(incoming, half_vector) * half_vector - incoming;
 }
 

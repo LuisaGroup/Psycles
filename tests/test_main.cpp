@@ -890,6 +890,68 @@ void test_cycles_normalized_graph_adapter() {
         "parameter update changed closure topology");
 }
 
+void test_cycles_glass_closure_lowering() {
+    CyclesNormalizedShaderGraph source;
+    source.nodes = {
+        {
+            .id = 10u,
+            .type = "geometry",
+            .variant = {},
+            .label = "Geometry",
+            .inputs = {},
+            .properties = {}},
+        {
+            .id = 11u,
+            .type = "glass_bsdf",
+            .variant = {},
+            .label = "Glass",
+            .inputs = {
+                {
+                    .socket = "Color",
+                    .source = std::nullopt,
+                    .value = SocketValue::color({0.8f, 0.9f, 1.0f})},
+                {
+                    .socket = "Roughness",
+                    .source = std::nullopt,
+                    .value = SocketValue::floating(0.17320508f)},
+                {
+                    .socket = "IOR",
+                    .source = std::nullopt,
+                    .value = SocketValue::floating(1.45f)},
+                {
+                    .socket = "Normal",
+                    .source = CyclesOutputRef{
+                        .node = 10u,
+                        .socket = "Normal"},
+                    .value = std::nullopt}},
+            .properties = {{
+                "distribution",
+                SocketValue::string("BECKMANN")}}}};
+    source.set_root(
+        ShaderDomain::surface,
+        CyclesOutputRef{.node = 11u, .socket = "BSDF"});
+
+    auto adapted = adapt_cycles_shader_graph(
+        source, make_core_cycles_node_mappings());
+    expect(adapted.ok(), "normalized Glass graph failed to adapt");
+
+    ShaderCompiler shader_compiler{make_core_node_registry()};
+    auto shader = shader_compiler.compile(*adapted.graph);
+    expect(shader.ok(), "adapted Glass graph failed validation");
+    auto surface = compile_surface_program(*shader.program);
+    expect(surface.ok(), "adapted Glass graph failed surface lowering");
+    expect(
+        surface.program->closure_instructions().size() == 1u,
+        "Glass graph did not lower to one closure");
+    const auto &closure =
+        surface.program->closure_instructions().front();
+    expect(
+        closure.operation == ClosureOperation::glass &&
+            closure.beckmann && !closure.preserve_ggx_energy &&
+            closure.ior.valid(),
+        "Glass closure lost its type, IOR, or Beckmann distribution");
+}
+
 void test_cycles_adapter_rejects_svm_lowered_graph() {
     CyclesNormalizedShaderGraph source;
     source.stage = CyclesGraphStage::svm_lowered;
@@ -1212,6 +1274,7 @@ int main() {
         test_map_range_modes_lower_to_surface_program();
         test_vector_math_modes_lower_to_surface_program();
         test_cycles_normalized_graph_adapter();
+        test_cycles_glass_closure_lowering();
         test_cycles_adapter_rejects_svm_lowered_graph();
         test_incremental_material_library();
         test_graph_errors_are_explicit();

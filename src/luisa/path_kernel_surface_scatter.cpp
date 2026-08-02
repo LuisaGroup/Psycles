@@ -156,7 +156,7 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
         auto sampled_diffuse_weight = light_component_ratio(
             surface_sample.evaluation.diffuse_f, surface_sample.evaluation.f);
         auto sampled_glossy_weight = light_component_ratio(
-            surface_sample.evaluation.f - surface_sample.evaluation.diffuse_f,
+            surface_sample.evaluation.glossy_f,
             surface_sample.evaluation.f);
         auto records_first_surface = (path_depth == 0u) & (!transparent);
         path_diffuse_weight = select(

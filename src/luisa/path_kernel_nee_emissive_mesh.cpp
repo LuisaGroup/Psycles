@@ -162,6 +162,8 @@ class EmissiveMeshLightingComponent final
                                     evaluation.f,
                                     evaluation
                                         .diffuse_f,
+                                    evaluation
+                                        .glossy_f,
                                     sample
                                         .path_diffuse_weight,
                                     sample

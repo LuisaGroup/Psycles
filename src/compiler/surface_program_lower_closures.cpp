@@ -13,7 +13,8 @@ namespace psycles::compiler::detail {
 
     if (node.type == node_type::diffuse_bsdf ||
         node.type == node_type::principled_bsdf ||
-        node.type == node_type::glossy_bsdf) {
+        node.type == node_type::glossy_bsdf ||
+        node.type == node_type::glass_bsdf) {
         const auto color_name =
             node.type == node_type::principled_bsdf
                 ? "BaseColor"
@@ -27,11 +28,14 @@ namespace psycles::compiler::detail {
         std::optional<ValueExpressionId> ior;
         std::optional<ValueExpressionId> specular_ior_level;
         std::optional<ValueExpressionId> specular_tint;
+        if (node.type == node_type::principled_bsdf ||
+            node.type == node_type::glass_bsdf) {
+            ior = lower_value_input(node, "IOR");
+        }
         if (node.type == node_type::principled_bsdf) {
             metallic = lower_value_input(node, "Metallic");
             diffuse_roughness =
                 lower_value_input(node, "DiffuseRoughness");
-            ior = lower_value_input(node, "IOR");
             specular_ior_level =
                 lower_value_input(node, "SpecularIORLevel");
             specular_tint =
@@ -40,7 +44,8 @@ namespace psycles::compiler::detail {
         if (color && roughness && normal &&
             (node.type != node_type::principled_bsdf ||
              (metallic && diffuse_roughness && ior &&
-              specular_ior_level && specular_tint))) {
+              specular_ior_level && specular_tint)) &&
+            (node.type != node_type::glass_bsdf || ior)) {
             publish(
                 node.id,
                 "Closure",
@@ -48,6 +53,8 @@ namespace psycles::compiler::detail {
                     .operation =
                         node.type == node_type::principled_bsdf
                             ? ClosureOperation::principled
+                            : node.type == node_type::glass_bsdf
+                                  ? ClosureOperation::glass
                             : node.type ==
                                       node_type::glossy_bsdf
                                   ? ClosureOperation::glossy
@@ -71,7 +78,11 @@ namespace psycles::compiler::detail {
                     .preserve_ggx_energy =
                         property_string(
                             node, "Distribution", "GGX") ==
-                        "MULTI_GGX"}));
+                        "MULTI_GGX",
+                    .beckmann =
+                        property_string(
+                            node, "Distribution", "GGX") ==
+                        "BECKMANN"}));
         }
         return true;
     }

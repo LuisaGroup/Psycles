@@ -3,7 +3,8 @@
 This checkpoint brings Psycles up on Apple Silicon with strict Luisa fallback
 and Metal backends, renders two official Blender demo scenes without material
 pre-baking, and records defect-driven compatibility repairs for Classroom's
-legacy Hosek-Wilkie daylight portals and empty window-frame material slots.
+legacy Hosek-Wilkie daylight portals, empty window-frame material slots, and
+Glass BSDF materials on the clock, transom window, and ceiling lamps.
 
 The Psycles worktree started at
 `main@037babebe93e51b427cc7e0a53105c27468d9758`. This record describes the
@@ -96,6 +97,37 @@ The corrected fallback and Metal images contain neutral window-frame pieces;
 the magenta lines are gone. A linear-EXR pixel check found 51 pixels with the
 old magenta sentinel signature and zero in the corrected fallback render.
 
+### Glass clock, transom, and ceiling lamps
+
+After the empty-slot repair, the Classroom clock face and frosted transom
+above the door still rendered as solid black. They were the visible instances
+of three raw Glass BSDF materials that previously lowered to no surface
+closure: `wallClock_Glass`, `frostedGlass`, and `ceillingLamp_glass`.
+
+The Glass implementation now preserves and executes the original node graph
+on both Luisa backends. It includes smooth dielectric delta reflection and
+refraction, rough GGX visible-normal sampling, rough Beckmann sampling,
+Fresnel/IOR handling on front and back faces, geometric-normal validity, and
+separate glossy/transmission light-pass attribution. The importer retains
+Color, Roughness, IOR, Normal, and Distribution rather than replacing any of
+the three Classroom materials.
+
+A canonical four-panel probe covers smooth Beckmann, smooth GGX, the exact
+Classroom ceiling-lamp Beckmann roughness, and rough tinted GGX. At 64x64 and
+256 fixed samples against Cycles Metal, fallback produced:
+
+| Pass | Luminance / Cycles | Relative RMSE | Invalid pixels |
+|---|---:|---:|---:|
+| Combined | 0.999886 | 0.005620 | 0 |
+| Glossy Color | 0.999350 | 0.001055 | 0 |
+| Glossy Direct | 1.001174 | 0.002185 | 0 |
+| Transmission Color | 1.000022 | 0.000063 | 0 |
+| Transmission Direct | 0.999861 | 0.005115 | 0 |
+
+These passes are enforced by the shader-probe runner's energy and relative
+RMSE gates. The complete report is
+[glass-transport-fallback-vs-cycles-metal-64x64-256.json](reports/glass-transport-fallback-vs-cycles-metal-64x64-256.json).
+
 ## Focused Hosek regression
 
 The new `hosek_wilkie_diffuse_transport` probe creates a raw Blender world,
@@ -127,14 +159,14 @@ only `METAL_Apple M1 Max (GPU - 32 cores)`. Psycles used the production Luisa
 fallback backend and the default exact partition of at most eight samples per
 dispatch.
 
-| Metric | Before repairs | Hosek only | Current |
-|---|---:|---:|---:|
-| Combined luminance / Cycles | 2.005238 | 1.002376 | 1.009643 |
-| Combined relative RMSE | 0.912358 | 0.232985 | 0.229211 |
-| Diffuse Direct luminance / Cycles | 2.484176 | 0.998291 | 0.997188 |
-| Invalid Combined pixels | 0 | 0 | 0 |
+| Metric | Before repairs | Hosek only | Default-slot repair | Current Glass |
+|---|---:|---:|---:|---:|
+| Combined luminance / Cycles | 2.005238 | 1.002376 | 1.009643 | 1.013742 |
+| Combined relative RMSE | 0.912358 | 0.232985 | 0.229211 | 0.228045 |
+| Diffuse Direct luminance / Cycles | 2.484176 | 0.998291 | 0.997188 | 0.997188 |
+| Invalid Combined pixels | 0 | 0 | 0 | 0 |
 
-The current render took 30.3342 seconds after a 219.001-second cold fallback
+The current render took 28.7395 seconds after a 218.008-second cold fallback
 JIT. The matched Cycles Metal render took 98.6381 seconds. These are recorded
 timings, not a general performance claim: the Cycles invocation included a
 cold scene/device setup, while the Psycles render interval excludes its
@@ -145,7 +177,9 @@ Additional post-repair evidence:
 - Diffuse Color luminance ratio: 1.004884, relative RMSE 0.056028;
 - Normal RMSE: 0.0377342, relative RMSE 0.068875;
 - Emission luminance ratio: 0.999846, relative RMSE 0.028617;
-- Glossy Direct luminance ratio: 0.945795;
+- Glossy Color luminance ratio: 1.001075;
+- Transmission Color luminance ratio: 1.001024, relative RMSE 0.011821;
+- Glossy Direct luminance ratio: 0.944636;
 - all compared pass pixels are finite.
 
 The same corrected package rendered through Psycles Metal. Against Cycles
@@ -158,9 +192,19 @@ luminance ratio; both backends remove the magenta empty-slot artifact.
 The Cycles and Psycles panels were opened at the generated 976x250 triptych
 resolution. They show the same classroom layout, daylight exposure, ceiling
 emitters, desks, chairs, blackboard, maps, windows, and major shadow regions.
-The neutral window-frame segments now agree visually and no magenta coverage
-pixels remain. The amplified difference panel is dominated by low-sample
-noise and known closure gaps rather than a global exposure error.
+The neutral window-frame segments now agree visually, no magenta coverage
+pixels remain, and the clock/transom Glass no longer forms black cutouts. The
+amplified difference panel is dominated by low-sample noise and remaining
+transport differences rather than a global exposure error.
+
+The object-local crops below are ordered Cycles, Psycles before Glass support,
+and Psycles after Glass support. Blender camera projection placed the frosted
+transom at pixels x=40.17..63.16, y=45.69..59.06 and the clock glass at
+x=168.51..176.68, y=42.22..50.90 in the 320x180 frame.
+
+![Classroom transom: Cycles, black Psycles before, corrected Psycles after](triptychs/classroom-frosted-glass-before-after.png)
+
+![Classroom clock: Cycles, black Psycles before, corrected Psycles after](triptychs/classroom-clock-glass-before-after.png)
 
 ## Lone Monk result
 
@@ -198,7 +242,7 @@ cmake --build build-macos --parallel 10
 ctest --test-dir build-macos --output-on-failure -j10
 ```
 
-Result: **69/69 tests passed** in 5.45 seconds. This includes fallback and
+Result: **69/69 tests passed** in 15.66 seconds. This includes fallback and
 Metal runtime tests, Blender CLI exporter/API tests, source-size and shader
 probe runner contracts, multilayer EXR, import/normalization, and renderer
 contracts.
@@ -218,6 +262,15 @@ build/validation-venv/bin/python tools/run_cycles_shader_probes.py \
 build/validation-venv/bin/python tools/run_cycles_shader_probes.py \
   --blender /opt/homebrew/bin/blender \
   --psycles-render build-macos/bin/psycles_render_blender_scene \
+  --output-dir build-macos/shader-probes/glass-transport-fallback \
+  --backend fallback --cycles-device METAL \
+  --cycles-device-name "Apple M1 Max" \
+  --width 64 --height 64 --samples 256 \
+  glass_transport
+
+build/validation-venv/bin/python tools/run_cycles_shader_probes.py \
+  --blender /opt/homebrew/bin/blender \
+  --psycles-render build-macos/bin/psycles_render_blender_scene \
   --output-dir build-macos/shader-probes/hosek-wilkie-metal \
   --backend metal --cycles-device METAL \
   --cycles-device-name "Apple M1 Max" \
@@ -232,9 +285,10 @@ The complete machine-readable pass reports are in [reports](reports).
 This is successful scene rendering and a substantial compatibility repair,
 not a claim of complete Cycles parity.
 
-- Classroom still reports one unsupported Wave Texture and three unsupported
-  Glass BSDF materials. Its Transmission Color is therefore absent in
-  Psycles, and glossy energy remains low.
+- Classroom still reports one unsupported Wave Texture, whose output default
+  is retained. Glass now contributes color and transport, although Multi-GGX
+  Glass currently shares the single-scatter GGX implementation and Glass thin
+  film inputs are not yet modeled.
 - Preetham and Multiple Scattering Sky Texture modes are distinct from Hosek
   and the implemented single-scattering Nishita path; they remain partial.
 - Classroom's 16-sample comparison is deliberately a development checkpoint,

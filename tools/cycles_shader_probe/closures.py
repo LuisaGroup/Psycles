@@ -233,6 +233,75 @@ def _diffuse_surface(scene: Any) -> None:
     _sphere(material)
 
 
+def _glass_transport(scene: Any) -> None:
+    """Exercise smooth and rough Glass reflection/refraction transport."""
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 0.01
+    _world(scene, (0.04, 0.16, 0.72, 1.0), 1.2)
+
+    glass_cases = (
+        ("BECKMANN", 0.0, 1.45, (1.0, 1.0, 1.0)),
+        ("GGX", 0.0, 1.5, (0.72, 0.94, 1.0)),
+        ("BECKMANN", 0.17320508, 1.5, (1.0, 1.0, 1.0)),
+        ("GGX", 0.32, 1.33, (1.0, 0.72, 0.48)),
+    )
+    glass_materials = []
+    for index, (distribution, roughness, ior, color) in enumerate(
+        glass_cases
+    ):
+        material, tree, output = _material(
+            f"Glass Transport {index:02d}"
+        )
+        glass = tree.nodes.new("ShaderNodeBsdfGlass")
+        glass.name = f"Glass BSDF {index:02d}"
+        glass.distribution = distribution
+        _input(glass, "Color").default_value = (*color, 1.0)
+        _input(glass, "Roughness").default_value = roughness
+        _input(glass, "IOR").default_value = ior
+        tree.links.new(
+            _output(glass, "BSDF"), _input(output, "Surface")
+        )
+        glass_materials.append(material)
+    foreground = _material_matrix(
+        scene,
+        glass_materials,
+        columns=4,
+        rows=1,
+        name="Glass Transport Foreground",
+    )
+    foreground.location.z = 0.0
+
+    background_materials = []
+    for index, color in enumerate(
+        (
+            (0.92, 0.08, 0.025),
+            (0.03, 0.72, 0.12),
+            (0.92, 0.42, 0.035),
+            (0.42, 0.04, 0.88),
+        )
+    ):
+        material, tree, output = _material(
+            f"Glass Background {index:02d}"
+        )
+        emission = tree.nodes.new("ShaderNodeEmission")
+        emission.name = f"Background Emission {index:02d}"
+        _input(emission, "Color").default_value = (*color, 1.0)
+        _input(emission, "Strength").default_value = 1.8
+        tree.links.new(
+            _output(emission, "Emission"),
+            _input(output, "Surface"),
+        )
+        background_materials.append(material)
+    background = _material_matrix(
+        scene,
+        background_materials,
+        columns=4,
+        rows=1,
+        name="Glass Transport Background",
+    )
+    background.location.z = -1.0
+
+
 def _bsdf_matrix_sun(
     scene: Any,
     *,

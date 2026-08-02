@@ -128,6 +128,7 @@ class EnvironmentLightingComponent final : public DirectLightingComponent {
                     accumulate_light_pass(split_nee_light(contribution,
                                                           evaluation.f,
                                                           evaluation.diffuse_f,
+                                                          evaluation.glossy_f,
                                                           path_diffuse_weight,
                                                           path_glossy_weight,
                                                           path_depth));

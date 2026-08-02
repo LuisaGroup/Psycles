@@ -285,6 +285,7 @@ enum class ClosureOperation : std::uint8_t {
     translucent,
     principled,
     glossy,
+    glass,
     emission,
     transparent,
     add,
@@ -303,6 +304,7 @@ struct ClosureInstruction {
     ValueExpressionId specular_ior_level;
     ValueExpressionId specular_tint;
     bool preserve_ggx_energy{};
+    bool beckmann{};
     ValueExpressionId strength;
     ValueExpressionId factor;
     ClosureExpressionId a;

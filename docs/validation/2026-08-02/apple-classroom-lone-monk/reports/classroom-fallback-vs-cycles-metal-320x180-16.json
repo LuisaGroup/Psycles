@@ -51,9 +51,9 @@
   "passes": {
     "Combined": {
       "channel_mean_ratio": [
-        1.0137442350387573,
-        1.0084878206253052,
-        1.0047980546951294
+        1.0177974700927734,
+        1.0126601457595825,
+        1.0082588195800781
       ],
       "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/cycles-metal-320x180-16.exr",
       "cycles_channel_mean": [
@@ -64,27 +64,27 @@
       "cycles_luminance_mean": 0.2273629605770111,
       "cycles_rms": 0.42679736018180847,
       "invalid_pixels": 0,
-      "luminance_mean_ratio": 1.0096428971685147,
+      "luminance_mean_ratio": 1.0137419739193752,
       "maximum_absolute_error": 1.516968011856079,
-      "mean_absolute_error": 0.04351544380187988,
+      "mean_absolute_error": 0.04319465532898903,
       "orientation_rmse": {
-        "flip_x": 0.4904484450817108,
-        "flip_xy": 0.535446047782898,
-        "flip_y": 0.5119081735610962,
-        "identity": 0.09782660752534866
+        "flip_x": 0.4897797703742981,
+        "flip_xy": 0.5354970693588257,
+        "flip_y": 0.5121476650238037,
+        "identity": 0.09732918441295624
       },
-      "p95_pixel_rmse": 0.2230052500963211,
-      "p99_pixel_rmse": 0.4117274284362793,
-      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/classroom-fallback-default-surface-320x180-16.exr",
+      "p95_pixel_rmse": 0.2198796421289444,
+      "p99_pixel_rmse": 0.41037893295288086,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/classroom-fallback-glass-320x180-16.exr",
       "psycles_channel_mean": [
-        0.28191348910331726,
-        0.21836106479167938,
-        0.1862584948539734
+        0.2830406725406647,
+        0.2192644625902176,
+        0.18690000474452972
       ],
-      "psycles_luminance_mean": 0.2295553982257843,
-      "psycles_rms": 0.4285234984350049,
-      "relative_rmse": 0.229210901125715,
-      "rmse": 0.09782660752534866,
+      "psycles_luminance_mean": 0.2304873764514923,
+      "psycles_rms": 0.42890366239062483,
+      "relative_rmse": 0.22804542270714995,
+      "rmse": 0.09732918441295624,
       "shape": [
         180,
         320,
@@ -92,10 +92,10 @@
       ],
       "triptych": {
         "difference_percentile": 99.5,
-        "difference_scale": 1.6269769131788034,
+        "difference_scale": 1.6292594584376023,
         "display_scale": 0.4261073122011646,
         "mapping": "shared_linear_srgb",
-        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/triptychs-default-surface-320x180-16/combined.png",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/triptychs-glass-320x180-16/combined.png",
         "pixel_scale": 1
       },
       "valid_pixels": 57600
@@ -126,7 +126,7 @@
       },
       "p95_pixel_rmse": 0.038477443158626556,
       "p99_pixel_rmse": 0.08808612078428268,
-      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/classroom-fallback-default-surface-320x180-16.exr",
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/classroom-fallback-glass-320x180-16.exr",
       "psycles_channel_mean": [
         0.30235788226127625,
         0.25701552629470825,
@@ -146,7 +146,7 @@
         "difference_scale": 9.486447566892101,
         "display_scale": 0.9812284963235517,
         "mapping": "shared_linear_srgb",
-        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/triptychs-default-surface-320x180-16/diffcol.png",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/triptychs-glass-320x180-16/diffcol.png",
         "pixel_scale": 1
       },
       "valid_pixels": 57600
@@ -177,7 +177,7 @@
       },
       "p95_pixel_rmse": 0.6800815463066101,
       "p99_pixel_rmse": 2.7551376819610596,
-      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/classroom-fallback-default-surface-320x180-16.exr",
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/classroom-fallback-glass-320x180-16.exr",
       "psycles_channel_mean": [
         0.6089587211608887,
         0.5502988696098328,
@@ -197,16 +197,16 @@
         "difference_scale": 0.25480141934880296,
         "display_scale": 0.18832634881103474,
         "mapping": "shared_linear_srgb",
-        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/triptychs-default-surface-320x180-16/diffdir.png",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/triptychs-glass-320x180-16/diffdir.png",
         "pixel_scale": 1
       },
       "valid_pixels": 57600
     },
     "DiffInd": {
       "channel_mean_ratio": [
-        1.0587596893310547,
-        1.0405535697937012,
-        1.0151338577270508
+        1.0592899322509766,
+        1.0411171913146973,
+        1.0157383680343628
       ],
       "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/cycles-metal-320x180-16.exr",
       "cycles_channel_mean": [
@@ -217,27 +217,27 @@
       "cycles_luminance_mean": 0.1470463126897812,
       "cycles_rms": 0.2848910689353943,
       "invalid_pixels": 0,
-      "luminance_mean_ratio": 1.043472757856088,
+      "luminance_mean_ratio": 1.044030210037159,
       "maximum_absolute_error": 9.785490989685059,
-      "mean_absolute_error": 0.08187134563922882,
+      "mean_absolute_error": 0.08187684416770935,
       "orientation_rmse": {
-        "flip_x": 0.3482173681259155,
-        "flip_xy": 0.3484925925731659,
-        "flip_y": 0.3414357900619507,
-        "identity": 0.21650756895542145
+        "flip_x": 0.3482069671154022,
+        "flip_xy": 0.34849175810813904,
+        "flip_y": 0.3414459526538849,
+        "identity": 0.21650496125221252
       },
-      "p95_pixel_rmse": 0.3492744565010071,
+      "p95_pixel_rmse": 0.34942662715911865,
       "p99_pixel_rmse": 0.8162388205528259,
-      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/classroom-fallback-default-surface-320x180-16.exr",
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/classroom-fallback-glass-320x180-16.exr",
       "psycles_channel_mean": [
-        0.18298427760601044,
-        0.14677798748016357,
-        0.13242901861667633
+        0.1830759048461914,
+        0.14685748517513275,
+        0.13250787556171417
       ],
-      "psycles_luminance_mean": 0.15343882143497467,
-      "psycles_rms": 0.2855725319916767,
-      "relative_rmse": 0.7599661504465048,
-      "rmse": 0.21650756895542145,
+      "psycles_luminance_mean": 0.15352079272270203,
+      "psycles_rms": 0.28561419464474064,
+      "relative_rmse": 0.7599569971121491,
+      "rmse": 0.21650496125221252,
       "shape": [
         180,
         320,
@@ -248,7 +248,7 @@
         "difference_scale": 0.7852891588709806,
         "display_scale": 0.6626847954039208,
         "mapping": "shared_linear_srgb",
-        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/triptychs-default-surface-320x180-16/diffind.png",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/triptychs-glass-320x180-16/diffind.png",
         "pixel_scale": 1
       },
       "valid_pixels": 57600
@@ -279,7 +279,7 @@
       },
       "p95_pixel_rmse": 0.0,
       "p99_pixel_rmse": 0.0003065436612814665,
-      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/classroom-fallback-default-surface-320x180-16.exr",
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/classroom-fallback-glass-320x180-16.exr",
       "psycles_channel_mean": [
         0.028651591390371323,
         0.022708984091877937,
@@ -299,7 +299,7 @@
         "difference_scale": 2457.6,
         "display_scale": 0.46836879862048053,
         "mapping": "shared_linear_srgb",
-        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/triptychs-default-surface-320x180-16/emit.png",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/triptychs-glass-320x180-16/emit.png",
         "pixel_scale": 1
       },
       "valid_pixels": 57600
@@ -330,7 +330,7 @@
       },
       "p95_pixel_rmse": 0.0,
       "p99_pixel_rmse": 0.0,
-      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/classroom-fallback-default-surface-320x180-16.exr",
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/classroom-fallback-glass-320x180-16.exr",
       "psycles_channel_mean": [
         0.0,
         0.0,
@@ -350,16 +350,16 @@
         "difference_scale": 1.0,
         "display_scale": 1.0,
         "mapping": "shared_linear_srgb",
-        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/triptychs-default-surface-320x180-16/env.png",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/triptychs-glass-320x180-16/env.png",
         "pixel_scale": 1
       },
       "valid_pixels": 57600
     },
     "GlossCol": {
       "channel_mean_ratio": [
-        0.9952497482299805,
-        0.9950941801071167,
-        0.9949145317077637
+        1.0009984970092773,
+        1.0011024475097656,
+        1.0010923147201538
       ],
       "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/cycles-metal-320x180-16.exr",
       "cycles_channel_mean": [
@@ -370,27 +370,27 @@
       "cycles_luminance_mean": 0.031910452991724014,
       "cycles_rms": 0.08626382052898407,
       "invalid_pixels": 0,
-      "luminance_mean_ratio": 0.9951143470438648,
+      "luminance_mean_ratio": 1.001075077134362,
       "maximum_absolute_error": 0.20012499392032623,
-      "mean_absolute_error": 0.0026478946674615145,
+      "mean_absolute_error": 0.002458615694195032,
       "orientation_rmse": {
-        "flip_x": 0.1066727340221405,
-        "flip_xy": 0.12060210108757019,
-        "flip_y": 0.11959968507289886,
-        "identity": 0.010654213838279247
+        "flip_x": 0.10671484470367432,
+        "flip_xy": 0.12055280804634094,
+        "flip_y": 0.11944794654846191,
+        "identity": 0.010231762193143368
       },
-      "p95_pixel_rmse": 0.02206231653690338,
-      "p99_pixel_rmse": 0.055614836513996124,
-      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/classroom-fallback-default-surface-320x180-16.exr",
+      "p95_pixel_rmse": 0.01874999888241291,
+      "p99_pixel_rmse": 0.05426822230219841,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/classroom-fallback-glass-320x180-16.exr",
       "psycles_channel_mean": [
-        0.032945048063993454,
-        0.03151536360383034,
-        0.030640292912721634
+        0.033135343343019485,
+        0.03170565143227577,
+        0.03083055093884468
       ],
-      "psycles_luminance_mean": 0.03175454959273338,
-      "psycles_rms": 0.0875157627315081,
-      "relative_rmse": 0.12350732639646424,
-      "rmse": 0.010654213838279247,
+      "psycles_luminance_mean": 0.03194475919008255,
+      "psycles_rms": 0.0875688384251335,
+      "relative_rmse": 0.11861012102641065,
+      "rmse": 0.010231762193143368,
       "shape": [
         180,
         320,
@@ -398,19 +398,19 @@
       ],
       "triptych": {
         "difference_percentile": 99.5,
-        "difference_scale": 13.053350679310254,
+        "difference_scale": 13.059493737395492,
         "display_scale": 1.9161649022976983,
         "mapping": "shared_linear_srgb",
-        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/triptychs-default-surface-320x180-16/glosscol.png",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/triptychs-glass-320x180-16/glosscol.png",
         "pixel_scale": 1
       },
       "valid_pixels": 57600
     },
     "GlossDir": {
       "channel_mean_ratio": [
-        0.9435001611709595,
-        0.9461427330970764,
-        0.9502137303352356
+        0.9422857761383057,
+        0.944994330406189,
+        0.9491437077522278
       ],
       "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/cycles-metal-320x180-16.exr",
       "cycles_channel_mean": [
@@ -421,27 +421,27 @@
       "cycles_luminance_mean": 0.14282426238059998,
       "cycles_rms": 0.6412081122398376,
       "invalid_pixels": 0,
-      "luminance_mean_ratio": 0.9457949660576244,
+      "luminance_mean_ratio": 0.9446364619551801,
       "maximum_absolute_error": 59.90509796142578,
-      "mean_absolute_error": 0.08045374602079391,
+      "mean_absolute_error": 0.08029115200042725,
       "orientation_rmse": {
-        "flip_x": 0.773908257484436,
-        "flip_xy": 0.8250389695167542,
-        "flip_y": 0.830967903137207,
-        "identity": 0.5206796526908875
+        "flip_x": 0.7738736867904663,
+        "flip_xy": 0.8249909281730652,
+        "flip_y": 0.8309412002563477,
+        "identity": 0.5206109285354614
       },
-      "p95_pixel_rmse": 0.37262171506881714,
+      "p95_pixel_rmse": 0.3719988167285919,
       "p99_pixel_rmse": 1.4761788845062256,
-      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/classroom-fallback-default-surface-320x180-16.exr",
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/classroom-fallback-glass-320x180-16.exr",
       "psycles_channel_mean": [
-        0.14863203465938568,
-        0.1318277269601822,
-        0.12741093337535858
+        0.14844073355197906,
+        0.13166771829128265,
+        0.12726746499538422
       ],
-      "psycles_luminance_mean": 0.13508246839046478,
-      "psycles_rms": 0.5575924148000552,
-      "relative_rmse": 0.8120291099750346,
-      "rmse": 0.5206796526908875,
+      "psycles_luminance_mean": 0.1349170058965683,
+      "psycles_rms": 0.5575047528273863,
+      "relative_rmse": 0.8119219308016676,
+      "rmse": 0.5206109285354614,
       "shape": [
         180,
         320,
@@ -449,19 +449,19 @@
       ],
       "triptych": {
         "difference_percentile": 99.5,
-        "difference_scale": 0.38946850162168767,
+        "difference_scale": 0.3894685418046833,
         "display_scale": 0.26331452449001247,
         "mapping": "shared_linear_srgb",
-        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/triptychs-default-surface-320x180-16/glossdir.png",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/triptychs-glass-320x180-16/glossdir.png",
         "pixel_scale": 1
       },
       "valid_pixels": 57600
     },
     "GlossInd": {
       "channel_mean_ratio": [
-        0.9857449531555176,
-        0.9521073698997498,
-        0.9030746817588806
+        0.989618718624115,
+        0.9552550315856934,
+        0.9048373699188232
       ],
       "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/cycles-metal-320x180-16.exr",
       "cycles_channel_mean": [
@@ -472,27 +472,27 @@
       "cycles_luminance_mean": 0.05290091782808304,
       "cycles_rms": 0.33013391494750977,
       "invalid_pixels": 0,
-      "luminance_mean_ratio": 0.9577931932169627,
+      "luminance_mean_ratio": 0.9610443504664138,
       "maximum_absolute_error": 28.02594757080078,
-      "mean_absolute_error": 0.05500224232673645,
+      "mean_absolute_error": 0.05491175875067711,
       "orientation_rmse": {
-        "flip_x": 0.42784246802330017,
-        "flip_xy": 0.42943498492240906,
-        "flip_y": 0.42898041009902954,
-        "identity": 0.36399179697036743
+        "flip_x": 0.42790475487709045,
+        "flip_xy": 0.4294125437736511,
+        "flip_y": 0.4290412962436676,
+        "identity": 0.3638104200363159
       },
-      "p95_pixel_rmse": 0.218719944357872,
-      "p99_pixel_rmse": 0.9374091029167175,
-      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/classroom-fallback-default-surface-320x180-16.exr",
+      "p95_pixel_rmse": 0.21856796741485596,
+      "p99_pixel_rmse": 0.9347851276397705,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/classroom-fallback-glass-320x180-16.exr",
       "psycles_channel_mean": [
-        0.0629827156662941,
-        0.04810495302081108,
-        0.03979697450995445
+        0.06323022395372391,
+        0.04826398938894272,
+        0.03987465426325798
       ],
-      "psycles_luminance_mean": 0.0506681390106678,
-      "psycles_rms": 0.2826985698753174,
-      "relative_rmse": 1.1025580241528379,
-      "rmse": 0.36399179697036743,
+      "psycles_luminance_mean": 0.05084012821316719,
+      "psycles_rms": 0.28279771397333037,
+      "relative_rmse": 1.1020086200297252,
+      "rmse": 0.3638104200363159,
       "shape": [
         180,
         320,
@@ -500,19 +500,19 @@
       ],
       "triptych": {
         "difference_percentile": 99.5,
-        "difference_scale": 0.5847738836041031,
-        "display_scale": 0.6946669963148292,
+        "difference_scale": 0.5854140031376139,
+        "display_scale": 0.6927575416982892,
         "mapping": "shared_linear_srgb",
-        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/triptychs-default-surface-320x180-16/glossind.png",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/triptychs-glass-320x180-16/glossind.png",
         "pixel_scale": 1
       },
       "valid_pixels": 57600
     },
     "Normal": {
       "channel_mean_ratio": [
-        1.0023258924484253,
-        1.0003784894943237,
-        0.9994112253189087
+        1.0023168325424194,
+        1.0003830194473267,
+        0.9994751811027527
       ],
       "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/cycles-metal-320x180-16.exr",
       "cycles_channel_mean": [
@@ -523,27 +523,27 @@
       "cycles_luminance_mean": -0.32670941948890686,
       "cycles_rms": 0.5478671789169312,
       "invalid_pixels": 0,
-      "luminance_mean_ratio": -1.000276760450512,
+      "luminance_mean_ratio": -1.0002815950925281,
       "maximum_absolute_error": 0.6022908687591553,
-      "mean_absolute_error": 0.015074322000145912,
+      "mean_absolute_error": 0.01506969053298235,
       "orientation_rmse": {
-        "flip_x": 0.5822485089302063,
-        "flip_xy": 0.762113630771637,
-        "flip_y": 0.6742894053459167,
-        "identity": 0.03773418068885803
+        "flip_x": 0.5822480320930481,
+        "flip_xy": 0.7621133923530579,
+        "flip_y": 0.6742887496948242,
+        "identity": 0.037733569741249084
       },
       "p95_pixel_rmse": 0.08682681620121002,
       "p99_pixel_rmse": 0.155059352517128,
-      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/classroom-fallback-default-surface-320x180-16.exr",
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/classroom-fallback-glass-320x180-16.exr",
       "psycles_channel_mean": [
-        0.08189336955547333,
-        -0.483362078666687,
-        0.020518610253930092
+        0.08189262449741364,
+        -0.4833642542362213,
+        0.0205199234187603
       ],
-      "psycles_luminance_mean": -0.32679983973503113,
-      "psycles_rms": 0.5497399625742255,
-      "relative_rmse": 0.06887468740772912,
-      "rmse": 0.03773418068885803,
+      "psycles_luminance_mean": -0.3268014192581177,
+      "psycles_rms": 0.5497398812567119,
+      "relative_rmse": 0.06887357226954881,
+      "rmse": 0.037733569741249084,
       "shape": [
         180,
         320,
@@ -554,16 +554,16 @@
         "difference_scale": 4.3322090444060555,
         "display_scale": 1.0,
         "mapping": "normal_xyz_to_rgb",
-        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/triptychs-default-surface-320x180-16/normal.png",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/triptychs-glass-320x180-16/normal.png",
         "pixel_scale": 1
       },
       "valid_pixels": 57600
     },
     "TransCol": {
       "channel_mean_ratio": [
-        0.0,
-        0.0,
-        0.0
+        1.0010241270065308,
+        1.0010241270065308,
+        1.0010241270065308
       ],
       "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/cycles-metal-320x180-16.exr",
       "cycles_channel_mean": [
@@ -574,27 +574,27 @@
       "cycles_luminance_mean": 0.003576741786673665,
       "cycles_rms": 0.05511248856782913,
       "invalid_pixels": 0,
-      "luminance_mean_ratio": 0.0,
-      "maximum_absolute_error": 0.9662189483642578,
-      "mean_absolute_error": 0.0035767420195043087,
+      "luminance_mean_ratio": 1.001024151234583,
+      "maximum_absolute_error": 0.05962872505187988,
+      "mean_absolute_error": 8.209710358642042e-06,
       "orientation_rmse": {
-        "flip_x": 0.05511248856782913,
-        "flip_xy": 0.05511248856782913,
-        "flip_y": 0.05511248856782913,
-        "identity": 0.05511248856782913
+        "flip_x": 0.07797280699014664,
+        "flip_xy": 0.07797280699014664,
+        "flip_y": 0.07797280699014664,
+        "identity": 0.0006515095592476428
       },
       "p95_pixel_rmse": 0.0,
       "p99_pixel_rmse": 0.0,
-      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/classroom-fallback-default-surface-320x180-16.exr",
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/classroom-fallback-glass-320x180-16.exr",
       "psycles_channel_mean": [
-        0.0,
-        0.0,
-        0.0
+        0.0035804053768515587,
+        0.0035804053768515587,
+        0.0035804053768515587
       ],
-      "psycles_luminance_mean": 0.0,
-      "psycles_rms": 0.0,
-      "relative_rmse": 1.0,
-      "rmse": 0.05511248856782913,
+      "psycles_luminance_mean": 0.0035804049111902714,
+      "psycles_rms": 0.055157702784141296,
+      "relative_rmse": 0.01182145056733927,
+      "rmse": 0.0006515095592476428,
       "shape": [
         180,
         320,
@@ -602,19 +602,19 @@
       ],
       "triptych": {
         "difference_percentile": 99.5,
-        "difference_scale": 15.230152930102793,
-        "display_scale": 1.0,
+        "difference_scale": 302212.78007038427,
+        "display_scale": 15.235878365185963,
         "mapping": "shared_linear_srgb",
-        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/triptychs-default-surface-320x180-16/transcol.png",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/triptychs-glass-320x180-16/transcol.png",
         "pixel_scale": 1
       },
       "valid_pixels": 57600
     },
     "TransDir": {
       "channel_mean_ratio": [
-        -0.0,
-        -0.0,
-        -0.0
+        -0.09102486819028854,
+        -0.117573581635952,
+        -0.1260543018579483
       ],
       "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/cycles-metal-320x180-16.exr",
       "cycles_channel_mean": [
@@ -625,27 +625,27 @@
       "cycles_luminance_mean": -9.569229089678721e-12,
       "cycles_rms": 9.514893317685846e-10,
       "invalid_pixels": 0,
-      "luminance_mean_ratio": 0.0,
-      "maximum_absolute_error": 1.45484349900471e-07,
-      "mean_absolute_error": 1.510255115411141e-11,
+      "luminance_mean_ratio": 0.11417192458330198,
+      "maximum_absolute_error": 1.83431041023141e-07,
+      "mean_absolute_error": 2.7355116435923144e-11,
       "orientation_rmse": {
-        "flip_x": 9.514893317685846e-10,
-        "flip_xy": 9.514893317685846e-10,
-        "flip_y": 9.514893317685846e-10,
-        "identity": 9.514893317685846e-10
+        "flip_x": 1.2662901838211837e-09,
+        "flip_xy": 1.2662901838211837e-09,
+        "flip_y": 1.2662901838211837e-09,
+        "identity": 1.3183797387128493e-09
       },
       "p95_pixel_rmse": 0.0,
       "p99_pixel_rmse": 0.0,
-      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/classroom-fallback-default-surface-320x180-16.exr",
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/classroom-fallback-glass-320x180-16.exr",
       "psycles_channel_mean": [
-        0.0,
-        0.0,
-        0.0
+        6.083020372138481e-13,
+        1.2393695011242434e-12,
+        1.063921737168294e-12
       ],
-      "psycles_luminance_mean": 0.0,
-      "psycles_rms": 0.0,
-      "relative_rmse": 1.0,
-      "rmse": 9.514893317685846e-10,
+      "psycles_luminance_mean": 1.0925373019471385e-12,
+      "psycles_rms": 8.355589995705777e-10,
+      "relative_rmse": 1.3855959228279582,
+      "rmse": 1.3183797387128493e-09,
       "shape": [
         180,
         320,
@@ -656,16 +656,16 @@
         "difference_scale": 1.0,
         "display_scale": 1.0,
         "mapping": "shared_linear_srgb",
-        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/triptychs-default-surface-320x180-16/transdir.png",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/triptychs-glass-320x180-16/transdir.png",
         "pixel_scale": 1
       },
       "valid_pixels": 57600
     },
     "TransInd": {
       "channel_mean_ratio": [
-        0.0,
-        0.0,
-        0.0
+        1.4474684000015259,
+        1.391094446182251,
+        1.2878773212432861
       ],
       "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/cycles-metal-320x180-16.exr",
       "cycles_channel_mean": [
@@ -676,27 +676,27 @@
       "cycles_luminance_mean": 0.0008604993927292526,
       "cycles_rms": 0.02075621485710144,
       "invalid_pixels": 0,
-      "luminance_mean_ratio": 0.0,
-      "maximum_absolute_error": 4.148775577545166,
-      "mean_absolute_error": 0.0008271319093182683,
+      "luminance_mean_ratio": 1.399644070556258,
+      "maximum_absolute_error": 2.396418809890747,
+      "mean_absolute_error": 0.0004035343590658158,
       "orientation_rmse": {
-        "flip_x": 0.02075621485710144,
-        "flip_xy": 0.02075621485710144,
-        "flip_y": 0.02075621485710144,
-        "identity": 0.02075621485710144
+        "flip_x": 0.03334847465157509,
+        "flip_xy": 0.03334847465157509,
+        "flip_y": 0.03334847465157509,
+        "identity": 0.012570477090775967
       },
       "p95_pixel_rmse": 0.0,
       "p99_pixel_rmse": 0.0,
-      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/classroom-fallback-default-surface-320x180-16.exr",
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/classroom-fallback-glass-320x180-16.exr",
       "psycles_channel_mean": [
-        0.0,
-        0.0,
-        0.0
+        0.0014590418431907892,
+        0.0011678703594952822,
+        0.000816341838799417
       ],
-      "psycles_luminance_mean": 0.0,
-      "psycles_rms": 0.0,
-      "relative_rmse": 1.0,
-      "rmse": 0.02075621485710144,
+      "psycles_luminance_mean": 0.0012043928727507591,
+      "psycles_rms": 0.026101729795375943,
+      "relative_rmse": 0.6056247334747143,
+      "rmse": 0.012570477090775967,
       "shape": [
         180,
         320,
@@ -704,10 +704,10 @@
       ],
       "triptych": {
         "difference_percentile": 99.5,
-        "difference_scale": 1.0,
+        "difference_scale": 879925620.9688761,
         "display_scale": 1.0,
         "mapping": "shared_linear_srgb",
-        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/triptychs-default-surface-320x180-16/transind.png",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/classroom/triptychs-glass-320x180-16/transind.png",
         "pixel_scale": 1
       },
       "valid_pixels": 57600

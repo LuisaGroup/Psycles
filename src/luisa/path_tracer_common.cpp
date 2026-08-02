@@ -154,6 +154,7 @@ pack_surface_evaluation(
     result.f = evaluation.f;
     result.pdf = evaluation.pdf;
     result.diffuse_f = evaluation.diffuse_f;
+    result.glossy_f = evaluation.glossy_f;
     result.diffuse_pdf = evaluation.diffuse_pdf;
     result.events = evaluation.events;
     return result;
@@ -165,6 +166,7 @@ pack_surface_evaluation(
         .f = evaluation.f,
         .pdf = evaluation.pdf,
         .diffuse_f = evaluation.diffuse_f,
+        .glossy_f = evaluation.glossy_f,
         .diffuse_pdf = evaluation.diffuse_pdf,
         .events = evaluation.events};
 }
@@ -175,6 +177,7 @@ pack_surface_evaluation(
     result.f = sample.evaluation.f;
     result.pdf = sample.evaluation.pdf;
     result.diffuse_f = sample.evaluation.diffuse_f;
+    result.glossy_f = sample.evaluation.glossy_f;
     result.diffuse_pdf = sample.evaluation.diffuse_pdf;
     result.events = sample.evaluation.events;
     result.wi = sample.wi;
@@ -192,6 +195,7 @@ pack_surface_evaluation(
             .f = sample.f,
             .pdf = sample.pdf,
             .diffuse_f = sample.diffuse_f,
+            .glossy_f = sample.glossy_f,
             .diffuse_pdf = sample.diffuse_pdf,
             .events = sample.events},
         .wi = sample.wi,
@@ -238,6 +242,8 @@ pack_surface_sample_trace(
     result.pdf = trace.sample.evaluation.pdf;
     result.diffuse_f =
         trace.sample.evaluation.diffuse_f;
+    result.glossy_f =
+        trace.sample.evaluation.glossy_f;
     result.diffuse_pdf =
         trace.sample.evaluation.diffuse_pdf;
     result.events = trace.sample.evaluation.events;
@@ -270,6 +276,7 @@ unpack_surface_sample_trace(
                 .f = trace.f,
                 .pdf = trace.pdf,
                 .diffuse_f = trace.diffuse_f,
+                .glossy_f = trace.glossy_f,
                 .diffuse_pdf = trace.diffuse_pdf,
                 .events = trace.events},
             .wi = trace.wi,

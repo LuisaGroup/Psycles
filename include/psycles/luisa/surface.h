@@ -173,6 +173,7 @@ struct SurfaceEvaluation {
     Float3 f;
     Float pdf;
     Float3 diffuse_f;
+    Float3 glossy_f;
     Float diffuse_pdf;
     UInt events;
 
@@ -181,6 +182,7 @@ struct SurfaceEvaluation {
             .f = make_float3(0.0f),
             .pdf = 0.0f,
             .diffuse_f = make_float3(0.0f),
+            .glossy_f = make_float3(0.0f),
             .diffuse_pdf = 0.0f,
             .events = static_cast<std::uint32_t>(event_none)};
     }
