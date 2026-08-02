@@ -47,6 +47,12 @@ struct PpmWriteOptions {
     bool apply_srgb_transfer{true};
 };
 
+struct DecodedImageRgba8 {
+    std::uint32_t width{};
+    std::uint32_t height{};
+    std::vector<std::uint8_t> pixels;
+};
+
 [[nodiscard]] bool write_ppm(
     const PassImage &image,
     const std::filesystem::path &path,
@@ -59,6 +65,16 @@ struct PpmWriteOptions {
     const std::filesystem::path &path);
 
 #if defined(PSYCLES_WITH_OPENIMAGEIO)
+// Decodes an encoded image from memory through OpenImageIO and expands it to
+// tightly packed RGBA8. The filename is only a format hint; packed Blender
+// bundles deliberately store the original bytes under content-addressed
+// paths whose on-disk extension may be .bin.
+[[nodiscard]] bool decode_image_rgba8(
+    std::span<const std::uint8_t> encoded,
+    std::string_view filename_hint,
+    DecodedImageRgba8 &image,
+    std::string *error = nullptr);
+
 // Writes every pass into one scanline-oriented, full-float OpenEXR part.
 // Channel names follow Cycles' <view-layer>.<pass>.<component> convention,
 // allowing the result to be compared or composited without per-pass files.
