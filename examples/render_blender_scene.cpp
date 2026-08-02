@@ -114,7 +114,7 @@ int main(int argc, char **argv) {
             << "usage: psycles_render_blender_scene "
                "<export-directory> <output.ppm> "
                "[backend=fallback] [width] [height] [samples] "
-               "[max-samples-per-dispatch=8] "
+               "[max-samples-per-dispatch=4] "
                "[path-trace.json] [trace-x] [trace-y] "
                "[trace-sample=0]\n";
         return EXIT_FAILURE;
@@ -142,7 +142,7 @@ int main(int argc, char **argv) {
     auto width = imported.width;
     auto height = imported.height;
     auto samples = imported.samples;
-    auto max_samples_per_dispatch = std::uint32_t{8u};
+    auto max_samples_per_dispatch = std::uint32_t{4u};
     if (argc > 4) {
         auto value = parse_unsigned<std::uint32_t>(argv[4]);
         if (!value || *value == 0u) {
