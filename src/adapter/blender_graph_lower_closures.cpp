@@ -102,6 +102,18 @@ public:
                 "Specular Tint",
                 SocketType::color));
             static_cast<void>(context.bind(
+                id,
+                "EmissionColor",
+                node,
+                "Emission Color",
+                SocketType::color));
+            static_cast<void>(context.bind(
+                id,
+                "EmissionStrength",
+                node,
+                "Emission Strength",
+                SocketType::floating));
+            static_cast<void>(context.bind(
                 id, "Normal", node, "Normal", SocketType::normal));
             return finish({
                 .ref = {.node = id, .socket = "Closure"},

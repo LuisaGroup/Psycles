@@ -131,6 +131,13 @@ void GraphSurfaceImplementation::for_each_closure(
                                   values),
                               make_float3(0.0f))
                         : make_float3(1.0f);
+                auto emission =
+                    closure.operation ==
+                            compiler::ClosureOperation::principled
+                        ? vector(closure.emission_color, values) *
+                              scalar(closure.emission_strength, values) *
+                              mix_weight
+                        : make_float3(0.0f);
                 function(TracedClosure{
                     .operation = closure.operation,
                     .weight =
@@ -158,6 +165,7 @@ void GraphSurfaceImplementation::for_each_closure(
                     .specular_ior_level =
                         specular_ior_level,
                     .specular_tint = specular_tint,
+                    .emission = emission,
                     .preserve_ggx_energy =
                         closure.preserve_ggx_energy});
                 return;

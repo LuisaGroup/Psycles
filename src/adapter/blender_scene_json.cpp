@@ -378,6 +378,14 @@ find_simple_world_nishita(yyjson_val *world) {
         SocketValue::color({1.0f, 1.0f, 1.0f})));
     static_cast<void>(graph.set_input(
         closure,
+        "EmissionColor",
+        SocketValue::color({1.0f, 1.0f, 1.0f})));
+    static_cast<void>(graph.set_input(
+        closure,
+        "EmissionStrength",
+        SocketValue::floating(0.0f)));
+    static_cast<void>(graph.set_input(
+        closure,
         "Normal",
         SocketValue::normal({0.0f, 0.0f, 0.0f})));
     static_cast<void>(graph.set_property(

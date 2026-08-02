@@ -152,6 +152,16 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         const auto capabilities =
             data->surfaces.capabilities(
                 surface_iter->second);
+        const auto emission_estimate =
+            compiler::estimate_surface_emission(
+                *material.surface_program(),
+                material.parameters());
+        const auto may_emit =
+            emission_estimate != Vec3f{};
+        const auto emission_is_constant =
+            material.surface_program()
+                ->emission_evaluation() !=
+            compiler::EmissionEvaluationMode::deferred;
         if (capabilities.may_have_volume) {
             volume_capabilities
                 .merge_surface_flags(
@@ -178,10 +188,10 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                     (capabilities.may_have_volume
                          ? material_flag_has_volume
                          : 0u) |
-                    (capabilities.may_emit
+                    (may_emit
                          ? material_flag_may_emit
                          : 0u) |
-                    (capabilities.emission_is_constant
+                    (emission_is_constant
                          ? material_flag_constant_emission
                          : 0u),
                 .volume_sampling =
@@ -1154,21 +1164,15 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 : contract::EmissionSampling::automatic;
         material_emission_sampling.emplace(
             material_id, sampling);
+        const auto binding =
+            data->material_bindings.find(material_id);
         material_may_emit.emplace(
             material_id,
             sampling !=
                     contract::EmissionSampling::none &&
-            std::any_of(
-                material.surface_program()
-                    ->closure_instructions()
-                    .begin(),
-                material.surface_program()
-                    ->closure_instructions()
-                    .end(),
-                [](const compiler::ClosureInstruction &closure) {
-                    return closure.operation ==
-                           compiler::ClosureOperation::emission;
-                }));
+                binding != data->material_bindings.end() &&
+                (binding->second.flags &
+                 material_flag_may_emit) != 0u);
     }
 
     luisa::vector<InstanceGpu> instances;

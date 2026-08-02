@@ -316,6 +316,8 @@ struct ClosureInstruction {
     ValueExpressionId ior;
     ValueExpressionId specular_ior_level;
     ValueExpressionId specular_tint;
+    ValueExpressionId emission_color;
+    ValueExpressionId emission_strength;
     bool preserve_ggx_energy{};
     bool beckmann{};
     ValueExpressionId strength;
@@ -443,6 +445,15 @@ public:
         ParameterId id,
         contract::SocketValue value);
 };
+
+// Cycles' host-stage output_estimate_emission metadata query. This evaluates
+// only direct parameter literals and the closure topology; linked value
+// expressions remain conservatively unknown (unit estimate). The returned
+// value controls emitter discovery only and is never used as rendered
+// radiance.
+[[nodiscard]] Vec3f estimate_surface_emission(
+    const SurfaceProgram &program,
+    const SurfaceParameterBlock &parameters);
 
 enum class SurfaceProgramDiagnosticCode : std::uint8_t {
     structure_mismatch,

@@ -57,6 +57,9 @@ struct TracedClosure {
     Float ior;
     Float specular_ior_level;
     Float3 specular_tint;
+    // Raw authored emission before future Principled layer attenuation.
+    // Closure-tree Mix/Add weights have already been applied.
+    Float3 emission;
     // Microfacet multiple-scattering scale after any weight darkening
     // has already been applied to `weight`.
     Float3 evaluation_scale;

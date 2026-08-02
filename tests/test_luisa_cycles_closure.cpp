@@ -273,6 +273,44 @@ public:
     return graph;
 }
 
+[[nodiscard]] ShaderGraph make_principled_emission_graph() {
+    ShaderGraph graph;
+    const auto color = graph.add_node(
+        node_type::constant_color,
+        "Linked Principled emission color");
+    const auto strength = graph.add_node(
+        node_type::constant_float,
+        "Linked Principled emission strength");
+    const auto principled = graph.add_node(
+        node_type::principled_bsdf,
+        "Raw Principled emission closure");
+    const auto configured =
+        graph.set_input(
+            color,
+            "Color",
+            SocketValue::color({0.17f, 0.43f, 0.91f})) &&
+        graph.set_input(
+            strength,
+            "Value",
+            SocketValue::floating(2.75f)) &&
+        graph.connect(
+            {.node = color, .socket = "Color"},
+            principled,
+            "EmissionColor") &&
+        graph.connect(
+            {.node = strength, .socket = "Value"},
+            principled,
+            "EmissionStrength");
+    if (!configured) {
+        throw std::runtime_error{
+            "failed to configure raw Principled emission graph"};
+    }
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = principled, .socket = "Closure"});
+    return graph;
+}
+
 [[nodiscard]] ShaderGraph make_tangent_normal_graph() {
     ShaderGraph graph;
     const auto normal_map =
@@ -489,6 +527,25 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
+    auto principled_emission_shader =
+        compiler.compile(make_principled_emission_graph());
+    if (!principled_emission_shader.ok()) {
+        std::cerr
+            << "failed to compile raw Principled emission graph\n";
+        return EXIT_FAILURE;
+    }
+    auto principled_emission_program =
+        compile_surface_program(
+            *principled_emission_shader.program);
+    if (!principled_emission_program.ok() ||
+        principled_emission_program.program
+                ->emission_evaluation() !=
+            EmissionEvaluationMode::deferred) {
+        std::cerr
+            << "failed to lower deferred Principled emission\n";
+        return EXIT_FAILURE;
+    }
+
     auto tangent_normal_shader =
         compiler.compile(make_tangent_normal_graph());
     if (!tangent_normal_shader.ok()) {
@@ -539,6 +596,9 @@ int main(int argc, char **argv) {
         surfaces.create<GraphSurface>(physical_program.program);
     const auto subsurface_surface_tag =
         surfaces.create<GraphSurface>(subsurface_program.program);
+    const auto principled_emission_surface_tag =
+        surfaces.create<GraphSurface>(
+            principled_emission_program.program);
     const auto tangent_normal_surface_tag =
         surfaces.create<GraphSurface>(
             tangent_normal_program.program);
@@ -684,6 +744,23 @@ int main(int argc, char **argv) {
                     0.0f));
         };
 
+    Kernel1D evaluate_principled_emission =
+        [&](BufferFloat4 parameters, BufferFloat4 output) noexcept {
+            ParameterShaderServices services{parameters};
+            const auto point = make_surface_point();
+            const auto emission = surfaces.emission(
+                UInt{principled_emission_surface_tag},
+                services,
+                point,
+                make_float3(0.0f, 0.0f, 1.0f));
+            const auto constant = surfaces.constant_emission(
+                UInt{principled_emission_surface_tag},
+                services,
+                0u);
+            output.write(0u, make_float4(emission, 1.0f));
+            output.write(1u, make_float4(constant, 0.0f));
+        };
+
     Kernel1D evaluate_physical_light =
         [&](BufferFloat4 parameters, BufferFloat4 output) noexcept {
             ParameterShaderServices services{parameters};
@@ -808,6 +885,13 @@ int main(int argc, char **argv) {
     auto subsurface_parameter_buffer =
         device.create_buffer<luisa::float4>(subsurface_parameters.size());
     auto subsurface_output = device.create_buffer<luisa::float4>(3u);
+    const auto principled_emission_parameters =
+        parameter_data(*principled_emission_program.program);
+    auto principled_emission_parameter_buffer =
+        device.create_buffer<luisa::float4>(
+            principled_emission_parameters.size());
+    auto principled_emission_output =
+        device.create_buffer<luisa::float4>(2u);
     const auto tangent_normal_parameters =
         parameter_data(*tangent_normal_program.program);
     auto tangent_normal_parameter_buffer =
@@ -833,6 +917,8 @@ int main(int argc, char **argv) {
     auto kernel = device.compile(evaluate);
     auto physical_kernel = device.compile(trace_physical_closures);
     auto subsurface_kernel = device.compile(trace_subsurface);
+    auto principled_emission_kernel =
+        device.compile(evaluate_principled_emission);
     auto tangent_normal_kernel =
         device.compile(trace_tangent_normal);
     auto physical_light_kernel =
@@ -845,6 +931,8 @@ int main(int argc, char **argv) {
     std::array<luisa::float4, 8u> physical_actual{};
     std::array<luisa::float4, 3u> subsurface_actual{};
     std::array<luisa::float4, 2u>
+        principled_emission_actual{};
+    std::array<luisa::float4, 2u>
         tangent_normal_actual{};
     std::array<luisa::float4, 15u> physical_light_actual{};
     std::array<luisa::float4, 12u> glass_light_actual{};
@@ -853,6 +941,8 @@ int main(int argc, char **argv) {
                   luisa::span{physical_parameters})
            << subsurface_parameter_buffer.copy_from(
                   luisa::span{subsurface_parameters})
+           << principled_emission_parameter_buffer.copy_from(
+                  luisa::span{principled_emission_parameters})
            << tangent_normal_parameter_buffer.copy_from(
                   luisa::span{
                       tangent_normal_parameters})
@@ -871,6 +961,12 @@ int main(int argc, char **argv) {
                   .dispatch(1u)
            << subsurface_output.copy_to(
                   luisa::span{subsurface_actual})
+           << principled_emission_kernel(
+                  principled_emission_parameter_buffer,
+                  principled_emission_output)
+                  .dispatch(1u)
+           << principled_emission_output.copy_to(
+                  luisa::span{principled_emission_actual})
            << tangent_normal_kernel(
                   tangent_normal_parameter_buffer,
                   tangent_normal_output)
@@ -919,6 +1015,24 @@ int main(int argc, char **argv) {
                       << actual[index].w << "}\n";
             return EXIT_FAILURE;
         }
+    }
+    if (!approximately_equal(
+            principled_emission_actual[0u],
+            luisa::float4{
+                0.4675f,
+                1.1825f,
+                2.5025f,
+                1.0f}) ||
+        !approximately_equal(
+            principled_emission_actual[1u],
+            luisa::float4{})) {
+        const auto value = principled_emission_actual[0u];
+        std::cerr
+            << "Cycles raw Principled emission failed on "
+            << backend << ": got {" << value.x << ", "
+            << value.y << ", " << value.z << ", "
+            << value.w << "}\n";
+        return EXIT_FAILURE;
     }
 
     // This is the exact physical closure order exposed by the Lone Monk

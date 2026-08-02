@@ -132,6 +132,26 @@ CyclesNodeMappingRegistry make_core_cycles_node_mappings() {
         .outputs = {{"BSDF", "Closure"}},
         .properties = {}});
     add({
+        .cycles_type = "principled_bsdf",
+        .cycles_variant = {},
+        .psycles_type = node_type::principled_bsdf,
+        .inputs = {
+            {"Base Color", "BaseColor"},
+            {"Metallic", "Metallic"},
+            {"Roughness", "Roughness"},
+            {"Diffuse Roughness", "DiffuseRoughness"},
+            {"Subsurface Weight", "SubsurfaceWeight"},
+            {"Subsurface Radius", "SubsurfaceRadius"},
+            {"Subsurface Scale", "SubsurfaceScale"},
+            {"IOR", "IOR"},
+            {"Specular IOR Level", "SpecularIORLevel"},
+            {"Specular Tint", "SpecularTint"},
+            {"Emission Color", "EmissionColor"},
+            {"Emission Strength", "EmissionStrength"},
+            {"Normal", "Normal"}},
+        .outputs = {{"BSDF", "Closure"}},
+        .properties = {{"distribution", "Distribution"}}});
+    add({
         .cycles_type = "glass_bsdf",
         .cycles_variant = {},
         .psycles_type = node_type::glass_bsdf,

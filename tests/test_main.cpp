@@ -330,6 +330,118 @@ void test_cycles_emission_evaluation_mode() {
         "linked Mix factor was incorrectly folded into constant emission");
 }
 
+void test_cycles_principled_emission_metadata() {
+    ShaderCompiler compiler{make_core_node_registry()};
+    const auto make_graph = [](Vec3f color, float strength) {
+        ShaderGraph graph;
+        const auto principled = graph.add_node(
+            node_type::principled_bsdf,
+            "Principled emission metadata");
+        expect(
+            graph.set_input(
+                principled,
+                "EmissionColor",
+                SocketValue::color(color)) &&
+                graph.set_input(
+                    principled,
+                    "EmissionStrength",
+                    SocketValue::floating(strength)),
+            "failed to configure Principled emission metadata graph");
+        graph.set_root(
+            ShaderDomain::surface,
+            OutputRef{.node = principled, .socket = "Closure"});
+        return graph;
+    };
+
+    const auto zero_shader = compiler.compile(
+        make_graph({1.0f, 1.0f, 1.0f}, 0.0f));
+    const auto emitting_shader = compiler.compile(
+        make_graph({0.25f, 0.5f, 1.0f}, 4.0f));
+    expect(
+        zero_shader.ok() && emitting_shader.ok(),
+        "Principled emission metadata graph failed to compile");
+    expect(
+        zero_shader.program->analysis().structure_signature ==
+            emitting_shader.program->analysis().structure_signature,
+        "Principled emission parameters changed reusable topology");
+    expect(
+        (emitting_shader.program->analysis().required_features &
+         feature_bit(ShaderFeature::emission)) != 0u,
+        "Principled emission feature was not retained");
+
+    const auto surface =
+        compile_surface_program(*zero_shader.program);
+    expect(surface.ok(), "Principled emission surface failed to lower");
+    expect(
+        surface.program->emission_evaluation() ==
+            EmissionEvaluationMode::deferred,
+        "Principled emission entered the constant scheduling path");
+    expect(
+        surface.program->closure_instructions().size() == 1u &&
+            surface.program->closure_instructions().front()
+                .emission_color.valid() &&
+            surface.program->closure_instructions().front()
+                .emission_strength.valid(),
+        "Principled raw emission expressions were dropped during lowering");
+
+    const SurfaceParameterBlock zero_parameters{*surface.program};
+    expect(
+        estimate_surface_emission(
+            *surface.program,
+            zero_parameters) == Vec3f{},
+        "zero Principled emission entered emitter metadata");
+    const auto rebound = bind_surface_parameters(
+        *surface.program,
+        *emitting_shader.program);
+    expect(
+        rebound.ok(),
+        "Principled emission parameters could not reuse the surface AST");
+    expect(
+        estimate_surface_emission(
+            *surface.program,
+            *rebound.parameters) == Vec3f{1.0f, 2.0f, 4.0f},
+        "Principled emission estimate diverged from Cycles metadata");
+
+    ShaderGraph linked_graph;
+    const auto linked_color = linked_graph.add_node(
+        node_type::constant_color,
+        "Linked zero color");
+    const auto linked_principled = linked_graph.add_node(
+        node_type::principled_bsdf,
+        "Linked Principled emission");
+    expect(
+        linked_graph.set_input(
+            linked_color,
+            "Color",
+            SocketValue::color({0.0f, 0.0f, 0.0f})) &&
+            linked_graph.set_input(
+                linked_principled,
+                "EmissionStrength",
+                SocketValue::floating(2.0f)) &&
+            linked_graph.connect(
+                {.node = linked_color, .socket = "Color"},
+                linked_principled,
+                "EmissionColor"),
+        "failed to link Principled emission metadata graph");
+    linked_graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{
+            .node = linked_principled,
+            .socket = "Closure"});
+    const auto linked_shader = compiler.compile(linked_graph);
+    expect(linked_shader.ok(), "linked Principled graph failed to compile");
+    const auto linked_surface =
+        compile_surface_program(*linked_shader.program);
+    expect(linked_surface.ok(), "linked Principled surface failed to lower");
+    const SurfaceParameterBlock linked_parameters{
+        *linked_surface.program};
+    expect(
+        estimate_surface_emission(
+            *linked_surface.program,
+            linked_parameters) == Vec3f{2.0f, 2.0f, 2.0f},
+        "linked Principled color was host-evaluated instead of estimated");
+}
+
 void test_volume_closure_tree_is_preserved() {
     ShaderGraph graph;
     const auto surface =
@@ -1062,6 +1174,58 @@ void test_cycles_glass_closure_lowering() {
         "Glass closure lost its type, IOR, or Beckmann distribution");
 }
 
+void test_cycles_principled_emission_adapter() {
+    CyclesNormalizedShaderGraph source;
+    source.nodes = {{
+        .id = 10u,
+        .type = "principled_bsdf",
+        .variant = {},
+        .label = "Raw Principled emission",
+        .inputs = {
+            {
+                .socket = "Emission Color",
+                .source = std::nullopt,
+                .value = SocketValue::color({0.2f, 0.4f, 0.8f})},
+            {
+                .socket = "Emission Strength",
+                .source = std::nullopt,
+                .value = SocketValue::floating(3.0f)}},
+        .properties = {{
+            "distribution",
+            SocketValue::string("MULTI_GGX")}}}};
+    source.set_root(
+        ShaderDomain::surface,
+        CyclesOutputRef{.node = 10u, .socket = "BSDF"});
+
+    auto adapted = adapt_cycles_shader_graph(
+        source, make_core_cycles_node_mappings());
+    expect(
+        adapted.ok(),
+        "normalized Principled emission graph failed to adapt");
+
+    ShaderCompiler shader_compiler{make_core_node_registry()};
+    auto shader = shader_compiler.compile(*adapted.graph);
+    expect(
+        shader.ok(),
+        "adapted Principled emission graph failed validation");
+    auto surface = compile_surface_program(*shader.program);
+    expect(
+        surface.ok(),
+        "adapted Principled emission graph failed surface lowering");
+    const SurfaceParameterBlock parameters{*surface.program};
+    expect(
+        surface.program->closure_instructions().size() == 1u &&
+            surface.program->closure_instructions().front().operation ==
+                ClosureOperation::principled &&
+            surface.program->closure_instructions().front()
+                .preserve_ggx_energy &&
+            estimate_surface_emission(
+                *surface.program,
+                parameters) == Vec3f{0.6f, 1.2f, 2.4f},
+        "normalized Principled emission sockets or distribution changed "
+        "during adaptation");
+}
+
 void test_cycles_adapter_rejects_svm_lowered_graph() {
     CyclesNormalizedShaderGraph source;
     source.stage = CyclesGraphStage::svm_lowered;
@@ -1433,6 +1597,7 @@ int main() {
         test_image_texture_modes_are_structural();
         test_closure_tree_is_preserved();
         test_cycles_emission_evaluation_mode();
+        test_cycles_principled_emission_metadata();
         test_volume_closure_tree_is_preserved();
         test_combine_color_lowers_to_surface_program();
         test_cycles_color_value_nodes_lower_to_surface_program();
@@ -1441,6 +1606,7 @@ int main() {
         test_vector_math_modes_lower_to_surface_program();
         test_cycles_normalized_graph_adapter();
         test_cycles_glass_closure_lowering();
+        test_cycles_principled_emission_adapter();
         test_cycles_adapter_rejects_svm_lowered_graph();
         test_incremental_material_library();
         test_graph_errors_are_explicit();

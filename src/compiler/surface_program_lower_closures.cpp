@@ -31,6 +31,8 @@ namespace psycles::compiler::detail {
         std::optional<ValueExpressionId> ior;
         std::optional<ValueExpressionId> specular_ior_level;
         std::optional<ValueExpressionId> specular_tint;
+        std::optional<ValueExpressionId> emission_color;
+        std::optional<ValueExpressionId> emission_strength;
         if (node.type == node_type::principled_bsdf ||
             node.type == node_type::glass_bsdf) {
             ior = lower_value_input(node, "IOR");
@@ -49,12 +51,17 @@ namespace psycles::compiler::detail {
                 lower_value_input(node, "SpecularIORLevel");
             specular_tint =
                 lower_value_input(node, "SpecularTint");
+            emission_color =
+                lower_value_input(node, "EmissionColor");
+            emission_strength =
+                lower_value_input(node, "EmissionStrength");
         }
         if (color && roughness && normal &&
             (node.type != node_type::principled_bsdf ||
              (metallic && diffuse_roughness && subsurface_weight &&
               subsurface_radius && subsurface_scale && ior &&
-              specular_ior_level && specular_tint)) &&
+              specular_ior_level && specular_tint &&
+              emission_color && emission_strength)) &&
             (node.type != node_type::glass_bsdf || ior)) {
             publish(
                 node.id,
@@ -93,6 +100,12 @@ namespace psycles::compiler::detail {
                             ValueExpressionId{}),
                     .specular_tint =
                         specular_tint.value_or(
+                            ValueExpressionId{}),
+                    .emission_color =
+                        emission_color.value_or(
+                            ValueExpressionId{}),
+                    .emission_strength =
+                        emission_strength.value_or(
                             ValueExpressionId{}),
                     .preserve_ggx_energy =
                         property_string(

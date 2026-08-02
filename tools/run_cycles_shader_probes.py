@@ -89,6 +89,7 @@ _ALL_PROBES = (
     "point_light_soft_disk",
     "point_light_soft_sphere",
     "principled_bump_glossy",
+    "principled_emission",
     "principled_surface",
     "rgb_emission",
     "rgb_curve_matrix",
@@ -167,6 +168,10 @@ _PROBE_RATIO_GATES = {
         "Combined": (0.9995, 1.0005),
         "DiffDir": (0.9995, 1.0005),
     },
+    "principled_emission": {
+        "Combined": (0.999999, 1.000001),
+        "Emit": (0.999999, 1.000001),
+    },
     "triangle_light_solid_angle": {
         "Combined": (0.995, 1.005),
         "DiffDir": (0.995, 1.005),
@@ -202,6 +207,10 @@ _PROBE_RELATIVE_RMSE_GATES = {
     "point_light_shadow_limit": {
         "Combined": 0.000005,
         "DiffDir": 0.000005,
+    },
+    "principled_emission": {
+        "Combined": 0.000001,
+        "Emit": 0.000001,
     },
     "triangle_light_solid_angle": {
         "Combined": 0.005,
