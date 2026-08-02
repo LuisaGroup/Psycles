@@ -1,6 +1,7 @@
 #include "path_kernel_builder.h"
 
 #include "path_kernel_area_light.h"
+#include "path_kernel_direct_light_trace.h"
 
 #include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/spherical_geometry.h>
@@ -15,8 +16,14 @@ class AnalyticLightingComponent final : public DirectLightingComponent {
 
   private:
     AreaLightSampling _area_sampling;
+    std::shared_ptr<const DirectLightTraceRecorder>
+        _trace;
 
   public:
+    explicit AnalyticLightingComponent(
+        std::shared_ptr<const DirectLightTraceRecorder> trace)
+        : _trace{std::move(trace)} {}
+
     void emit(DirectLightingContext &context) const noexcept override {
         auto &bounce = context.bounce;
         auto &sample = bounce.sample;
@@ -42,8 +49,6 @@ class AnalyticLightingComponent final : public DirectLightingComponent {
         auto &transmission_depth = sample.transmission_depth;
         auto &path_diffuse_weight = sample.path_diffuse_weight;
         auto &path_glossy_weight = sample.path_glossy_weight;
-        auto &path_trace_active = sample.path_trace_active;
-        const auto &path_step = bounce.path_step;
         const auto &kernel_parameters = invocation.parameters;
         const auto path_trace_enabled = config.path_trace_enabled;
         const auto &safe_normalize = config.light_transport.safe_normalize;
@@ -77,14 +82,6 @@ class AnalyticLightingComponent final : public DirectLightingComponent {
                                     const SurfaceQuery &query) noexcept {
             return invocation.evaluate_surface(
                 tag, surface_point, outgoing, query);
-        };
-        auto trace_write_event = [&](UInt event,
-                                     path_trace_schema::EventSlot slot,
-                                     Float3 value) noexcept {
-            sample.trace_write_event(event, slot, value);
-        };
-        auto trace_uint32 = [&](UInt value) noexcept {
-            return sample.trace_uint32(value);
         };
         auto make_surface_shadow_origin = [&](Float3 direction) noexcept {
             return surface.make_shadow_origin(direction);
@@ -261,62 +258,44 @@ class AnalyticLightingComponent final : public DirectLightingComponent {
                 light_valid = finite_sample.valid;
             };
 
-            light_radiance *= analytic_light_shader(light,
-                                                    light_index,
-                                                    light_position,
-                                                    light_normal,
-                                                    light_uv,
-                                                    -wi,
-                                                    light_distance);
-
             light_pdf *= selected_light.selection_pdf;
-            if (path_trace_enabled) {
-                $if(path_trace_active & light_valid & (light_pdf > 0.0f)) {
-                    auto trace_evaluation = evaluate_surface(
-                        surface_tag, point, wi, path_surface_query);
-                    const auto use_mis =
-                        (light.flags & light_flag_use_mis) != 0u;
-                    const auto trace_bsdf_pdf =
-                        select(0.0f, trace_evaluation.pdf, use_mis);
-                    const auto trace_mis_weight =
-                        nee_light_weight(light_pdf, trace_bsdf_pdf);
-                    trace_write_event(
-                        path_step,
-                        path_trace_schema::EventSlot::light_meta,
-                        make_float3(cast<float>(light.cycles_type),
-                                    cast<float>(selected_light.emitter_id),
-                                    cast<float>(light_index)));
-                    trace_write_event(
-                        path_step,
-                        path_trace_schema::EventSlot::light_id,
-                        make_float3(cast<float>(light.cycles_object_index),
-                                    cast<float>(light.cycles_light_group),
-                                    0.0f));
-                    trace_write_event(
-                        path_step,
-                        path_trace_schema::EventSlot::light_shader,
-                        trace_uint32(light.cycles_shader_id));
-                    trace_write_event(path_step,
-                                      path_trace_schema::EventSlot::light_pdf,
-                                      make_float3(light_pdf,
-                                                  selected_light.selection_pdf,
-                                                  light_eval_factor));
-                    trace_write_event(
-                        path_step, path_trace_schema::EventSlot::light_d, wi);
-                    trace_write_event(path_step,
-                                      path_trace_schema::EventSlot::light_p,
-                                      light_position);
-                    trace_write_event(path_step,
-                                      path_trace_schema::EventSlot::light_ng,
-                                      light_normal);
-                    trace_write_event(path_step,
-                                      path_trace_schema::EventSlot::light_eval,
-                                      make_float3(light_distance,
-                                                  trace_bsdf_pdf,
-                                                  trace_mis_weight));
-                };
-            }
             $if(light_valid & (light_pdf > 0.0f)) {
+                _trace->record_sample(
+                    bounce,
+                    {.type = light.cycles_type,
+                     .emitter_id = selected_light.emitter_id,
+                     .primitive = light_index,
+                     .object = light.cycles_object_index,
+                     .light_group = light.cycles_light_group,
+                     .shader = light.cycles_shader_id,
+                     .pdf = light_pdf,
+                     .selection_pdf = selected_light.selection_pdf,
+                     .evaluation_factor = light_eval_factor,
+                     .direction = wi,
+                     .position = light_position,
+                     .geometric_normal = light_normal,
+                     .distance = light_distance});
+                light_radiance *= analytic_light_shader(
+                    light,
+                    light_index,
+                    light_position,
+                    light_normal,
+                    light_uv,
+                    -wi,
+                    light_distance);
+                const auto evaluation = evaluate_surface(
+                    surface_tag, point, wi, path_surface_query);
+                const auto use_mis =
+                    (light.flags & light_flag_use_mis) != 0u;
+                const auto trace_bsdf_pdf =
+                    select(0.0f, evaluation.pdf, use_mis);
+                const auto cycles_mis_weight =
+                    nee_light_weight(light_pdf, trace_bsdf_pdf);
+                _trace->record_evaluation(
+                    bounce,
+                    {.distance = light_distance,
+                     .bsdf_pdf = trace_bsdf_pdf,
+                     .mis_weight = cycles_mis_weight});
                 const auto shadow = make_surface_shadow_origin(wi);
                 const auto finite_offset = light_position - shadow.position;
                 const auto finite_distance =
@@ -349,14 +328,10 @@ class AnalyticLightingComponent final : public DirectLightingComponent {
                                          transparent_depth,
                                          transmission_depth)));
                 $if(any(shadow_transmittance > 0.0f)) {
-                    auto evaluation = evaluate_surface(
-                        surface_tag, point, wi, path_surface_query);
                     const auto forward_intersectable =
                         (light.flags & light_flag_forward_intersectable) != 0u;
                     Float mis_weight =
-                        select(1.0f,
-                               nee_light_weight(light_pdf, evaluation.pdf),
-                               forward_intersectable);
+                        select(1.0f, cycles_mis_weight, forward_intersectable);
                     Float3 unshadowed_contribution =
                         evaluation.f * light_radiance *
                         (mis_weight / max(light_pdf, 1.0e-20f));
@@ -376,6 +351,9 @@ class AnalyticLightingComponent final : public DirectLightingComponent {
                                                           path_glossy_weight,
                                                           path_depth));
                 };
+            }
+            $else {
+                _trace->record_unavailable(bounce);
             };
         };
     }
@@ -383,8 +361,11 @@ class AnalyticLightingComponent final : public DirectLightingComponent {
 
 } // namespace
 
-std::unique_ptr<DirectLightingComponent> make_analytic_lighting_component() {
-    return std::make_unique<AnalyticLightingComponent>();
+std::unique_ptr<DirectLightingComponent>
+make_analytic_lighting_component(
+    std::shared_ptr<const DirectLightTraceRecorder> trace) {
+    return std::make_unique<AnalyticLightingComponent>(
+        std::move(trace));
 }
 
 } // namespace psycles::luisa_backend::detail

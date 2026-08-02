@@ -11,6 +11,8 @@
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
+#include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -96,6 +98,78 @@ constexpr std::string_view face_identity_attribute{
     graph.set_root(
         ShaderDomain::surface,
         OutputRef{.node = diffuse, .socket = "Closure"});
+    return graph;
+}
+
+[[nodiscard]] ShaderGraph emission_shader() {
+    ShaderGraph graph;
+    const auto emission =
+        graph.add_node(
+            node_type::emission,
+            "Raw triangle emission closure");
+    static_cast<void>(graph.set_input(
+        emission,
+        "Color",
+        SocketValue::color(
+            {0.8f, 0.5f, 0.2f})));
+    static_cast<void>(graph.set_input(
+        emission,
+        "Strength",
+        SocketValue::floating(0.0f)));
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{
+            .node = emission,
+            .socket = "Closure"});
+    return graph;
+}
+
+[[nodiscard]] ShaderGraph spatial_world_shader() {
+    ShaderGraph graph;
+    const auto coordinates =
+        graph.add_node(
+            node_type::texture_coordinate,
+            "World Texture Coordinate");
+    const auto gradient =
+        graph.add_node(
+            node_type::gradient_texture,
+            "Linear world gradient");
+    const auto gray =
+        graph.add_node(
+            node_type::scalar_to_color,
+            "Gradient to color");
+    const auto background =
+        graph.add_node(
+            node_type::emission,
+            "Raw world emission closure");
+    static_cast<void>(graph.set_property(
+        gradient,
+        "GradientType",
+        SocketValue::string("LINEAR")));
+    static_cast<void>(graph.set_input(
+        background,
+        "Strength",
+        SocketValue::floating(0.5f)));
+    static_cast<void>(graph.connect(
+        {.node = coordinates,
+         .socket = "Generated"},
+        gradient,
+        "Vector"));
+    static_cast<void>(graph.connect(
+        {.node = gradient,
+         .socket = "Factor"},
+        gray,
+        "Value"));
+    static_cast<void>(graph.connect(
+        {.node = gray,
+         .socket = "Color"},
+        background,
+        "Color"));
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{
+            .node = background,
+            .socket = "Closure"});
     return graph;
 }
 
@@ -232,6 +306,65 @@ constexpr std::string_view face_identity_attribute{
     return scene;
 }
 
+[[nodiscard]] SceneSnapshot make_mesh_light_scene() {
+    constexpr MaterialId emitter_material{6u};
+    constexpr GeometryId emitter_geometry{7u};
+    constexpr InstanceId emitter_instance{8u};
+    auto scene = make_scene();
+    scene.revision = 2u;
+    scene.lights.clear();
+    scene.materials.emplace(
+        emitter_material,
+        MaterialDesc{
+            .name = "Cycles raw triangle emitter",
+            .shader = emission_shader(),
+            .emission_sampling = EmissionSampling::front,
+            .cycles_shader_index = 11u});
+    TriangleMeshDesc mesh;
+    mesh.name = "Cycles direct-light trace triangle";
+    mesh.positions = {
+        {1.4f, -0.6f, 1.4f},
+        {2.0f, 0.6f, 1.4f},
+        {2.6f, -0.6f, 1.4f}};
+    mesh.triangles = {{0u, 1u, 2u}};
+    mesh.material_slots = {emitter_material};
+    mesh.triangle_material_slots = {0u};
+    mesh.triangle_smooth = {0u};
+    mesh.cycles_primitive_offset = 41u;
+    scene.geometries.emplace(
+        emitter_geometry,
+        std::move(mesh));
+    scene.instances.emplace(
+        emitter_instance,
+        InstanceDesc{
+            .name = "Cycles direct-light trace triangle",
+            .geometry = emitter_geometry,
+            .transform = {},
+            .cycles_object_index = 9u,
+            .cycles_light_group = 6,
+            .is_shadow_catcher = true});
+    return scene;
+}
+
+[[nodiscard]] SceneSnapshot make_environment_light_scene() {
+    constexpr MaterialId world_material{6u};
+    auto scene = make_scene();
+    scene.revision = 3u;
+    scene.lights.clear();
+    scene.materials.emplace(
+        world_material,
+        MaterialDesc{
+            .name = "Cycles spatial world emitter",
+            .shader = spatial_world_shader(),
+            .cycles_shader_index = 12u});
+    scene.world_shader = world_material;
+    scene.world_sampling = WorldSampling::manual;
+    scene.world_sample_map_resolution = 4u;
+    scene.cycles_background_object_index = 10u;
+    scene.cycles_background_light_group = 4;
+    return scene;
+}
+
 [[nodiscard]] bool approximately_equal(
     float actual,
     float expected,
@@ -245,6 +378,147 @@ constexpr std::string_view face_identity_attribute{
                 std::max(
                     std::abs(actual),
                     std::abs(expected)));
+}
+
+class CapturingPathTraceSink final
+    : public psycles::luisa_backend::LuisaPathTraceSink {
+
+  private:
+    std::optional<psycles::luisa_backend::LuisaPathTrace>
+        _trace;
+
+  public:
+    void write(
+        const psycles::luisa_backend::LuisaPathTrace &trace)
+        override {
+        _trace = trace;
+    }
+
+    void reset() noexcept { _trace.reset(); }
+
+    [[nodiscard]] const auto &trace() const noexcept {
+        return _trace;
+    }
+};
+
+struct DirectLightTraceOracle {
+    float type;
+    float emitter;
+    float primitive;
+    float object;
+    float light_group;
+    float shader_low;
+    float shader_high;
+    bool environment;
+};
+
+[[nodiscard]] bool validate_direct_light_trace(
+    const CapturingPathTraceSink &sink,
+    std::string_view backend,
+    std::string_view label,
+    const DirectLightTraceOracle &oracle) {
+    using psycles::luisa_backend::path_trace_schema::EventSlot;
+    using psycles::luisa_backend::path_trace_schema::index;
+    if (!sink.trace()) {
+        std::cerr << label
+                  << " path trace was not delivered on "
+                  << backend << '\n';
+        return false;
+    }
+    const auto &trace = *sink.trace();
+    const auto &slot = [&](EventSlot field) -> const auto & {
+        return trace.slots[index(0u, field)];
+    };
+    auto passed = true;
+    const auto require = [&](bool condition,
+                             std::string_view field) {
+        if (!condition) {
+            std::cerr << "Cycles " << label
+                      << " direct-light trace regression on "
+                      << backend << " field " << field
+                      << '\n';
+            passed = false;
+        }
+    };
+    const auto &meta = slot(EventSlot::light_meta);
+    const auto &identity = slot(EventSlot::light_id);
+    const auto &shader = slot(EventSlot::light_shader);
+    const auto &pdf = slot(EventSlot::light_pdf);
+    const auto &direction = slot(EventSlot::light_d);
+    const auto &position = slot(EventSlot::light_p);
+    const auto &normal = slot(EventSlot::light_ng);
+    const auto &evaluation = slot(EventSlot::light_eval);
+    require(meta[3u] == 1.0f &&
+                meta[0u] == oracle.type &&
+                meta[1u] == oracle.emitter &&
+                meta[2u] == oracle.primitive,
+            "light_meta");
+    require(identity[3u] == 1.0f &&
+                identity[0u] == oracle.object &&
+                identity[1u] == oracle.light_group,
+            "light_id");
+    require(shader[3u] == 1.0f &&
+                shader[0u] == oracle.shader_low &&
+                shader[1u] == oracle.shader_high,
+            "light_shader");
+    require(pdf[3u] == 1.0f &&
+                pdf[0u] > 0.0f &&
+                approximately_equal(pdf[1u], 1.0f) &&
+                pdf[2u] > 0.0f,
+            "light_pdf");
+    const auto direction_length =
+        std::sqrt(direction[0u] * direction[0u] +
+                  direction[1u] * direction[1u] +
+                  direction[2u] * direction[2u]);
+    require(direction[3u] == 1.0f &&
+                approximately_equal(direction_length, 1.0f),
+            "light_d");
+    require(position[3u] == 1.0f &&
+                normal[3u] == 1.0f,
+            "light_position_normal_presence");
+    require(evaluation[3u] == 1.0f &&
+                evaluation[1u] >= 0.0f &&
+                evaluation[2u] > 0.0f &&
+                evaluation[2u] <= 1.0f,
+            "light_eval");
+    if (oracle.environment) {
+        require(evaluation[0u] >= 1.0e30f &&
+                    approximately_equal(pdf[2u], 1.0f),
+                "environment_distance_eval_factor");
+        for (std::size_t channel = 0u;
+             channel < 3u;
+             ++channel) {
+            require(
+                approximately_equal(
+                    position[channel],
+                    -direction[channel]) &&
+                    approximately_equal(
+                        normal[channel],
+                        -direction[channel]),
+                "environment_P_Ng");
+        }
+    } else {
+        const auto &surface = slot(EventSlot::surface_p);
+        const auto dx = position[0u] - surface[0u];
+        const auto dy = position[1u] - surface[1u];
+        const auto dz = position[2u] - surface[2u];
+        const auto distance =
+            std::sqrt(dx * dx + dy * dy + dz * dz);
+        require(surface[3u] == 1.0f &&
+                    evaluation[1u] > 0.0f &&
+                    approximately_equal(
+                        evaluation[0u], distance),
+                "finite_light_distance");
+        require(
+            approximately_equal(
+                direction[0u], dx / distance) &&
+                approximately_equal(
+                    direction[1u], dy / distance) &&
+                approximately_equal(
+                    direction[2u], dz / distance),
+            "finite_light_direction");
+    }
+    return passed;
 }
 
 [[nodiscard]] RenderSettings make_settings() {
@@ -454,10 +728,18 @@ int main(int argc, char **argv) {
         std::string_view{argc > 1 ? argv[1] : "fallback"};
     luisa::compute::Context context{argv[0]};
     auto device = context.create_device(backend);
+    auto trace_sink =
+        std::make_shared<CapturingPathTraceSink>();
     psycles::luisa_backend::LuisaPathTracerBackend renderer{
         std::move(device),
         {.next_event_estimation = true,
-         .max_samples_per_dispatch = 1u}};
+         .max_samples_per_dispatch = 1u,
+         .path_trace =
+             psycles::luisa_backend::LuisaPathTraceRequest{
+                 .pixel_x = 20u,
+                 .pixel_y = 14u,
+                 .sample = 0u,
+                 .sink = trace_sink}}};
     const auto settings =
         make_settings();
 
@@ -494,9 +776,24 @@ int main(int argc, char **argv) {
             rectangle_pixels)) {
         return EXIT_FAILURE;
     }
+    if (!validate_direct_light_trace(
+            *trace_sink,
+            backend,
+            "full-spread rectangle",
+            {.type = 3.0f,
+             .emitter = 0.0f,
+             .primitive = 0.0f,
+             .object = 1.0f,
+             .light_group = -1.0f,
+             .shader_low = 5.0f,
+             .shader_high = 20736.0f,
+             .environment = false})) {
+        return EXIT_FAILURE;
+    }
 
     psycles::io::MemoryOutputSink
         narrow_ellipse_sink;
+    trace_sink->reset();
     if (!render_fixture(
             renderer,
             make_scene(true),
@@ -562,6 +859,54 @@ int main(int argc, char **argv) {
             "narrow-spread ellipse",
             narrow_ellipse_means,
             narrow_ellipse_pixels)) {
+        return EXIT_FAILURE;
+    }
+
+    psycles::io::MemoryOutputSink
+        mesh_light_sink;
+    trace_sink->reset();
+    if (!render_fixture(
+            renderer,
+            make_mesh_light_scene(),
+            settings,
+            "zero-energy raw triangle emitter",
+            mesh_light_sink) ||
+        !validate_direct_light_trace(
+            *trace_sink,
+            backend,
+            "zero-energy raw triangle emitter",
+            {.type = 5.0f,
+             .emitter = 0.0f,
+             .primitive = 41.0f,
+             .object = 9.0f,
+             .light_group = 6.0f,
+             .shader_low = 11.0f,
+             .shader_high = 20480.0f,
+             .environment = false})) {
+        return EXIT_FAILURE;
+    }
+
+    psycles::io::MemoryOutputSink
+        environment_light_sink;
+    trace_sink->reset();
+    if (!render_fixture(
+            renderer,
+            make_environment_light_scene(),
+            settings,
+            "spatial environment emitter",
+            environment_light_sink) ||
+        !validate_direct_light_trace(
+            *trace_sink,
+            backend,
+            "spatial environment emitter",
+            {.type = 2.0f,
+             .emitter = 0.0f,
+             .primitive = 0.0f,
+             .object = 10.0f,
+             .light_group = 4.0f,
+             .shader_low = 12.0f,
+             .shader_high = 20480.0f,
+             .environment = true})) {
         return EXIT_FAILURE;
     }
 
