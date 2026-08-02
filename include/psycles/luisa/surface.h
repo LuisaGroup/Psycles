@@ -49,6 +49,10 @@ using contract::event_transparent;
 struct SurfaceCapabilities {
     std::uint64_t features{};
     bool may_emit{false};
+    // Cycles' SD_HAS_CONSTANT_EMISSION scheduling property. This remains
+    // true for a non-emitting graph (whose constant value is zero) and false
+    // only when full shading-point evaluation must be deferred.
+    bool emission_is_constant{true};
     bool may_be_transparent{false};
     bool may_have_subsurface{false};
     bool may_have_volume{false};
@@ -279,10 +283,24 @@ struct SurfaceAov {
     Float3 transparency;
 };
 
-class ShaderServices {
+class SurfaceParameterServices {
 
 public:
-    virtual ~ShaderServices() noexcept = default;
+    virtual ~SurfaceParameterServices() noexcept = default;
+
+    [[nodiscard]] virtual Float parameter_float(
+        Expr<std::uint32_t> block,
+        Expr<std::uint32_t> slot) const noexcept = 0;
+
+    [[nodiscard]] virtual Float3 parameter_float3(
+        Expr<std::uint32_t> block,
+        Expr<std::uint32_t> slot) const noexcept = 0;
+};
+
+class ShaderServices : public SurfaceParameterServices {
+
+public:
+    ~ShaderServices() noexcept override = default;
 
     [[nodiscard]] virtual Float4 texture_2d(
         Expr<std::uint32_t> handle,
@@ -295,16 +313,6 @@ public:
     [[nodiscard]] virtual ShaderAttribute attribute(
         Expr<std::uint64_t> attribute_id,
         const SurfacePoint &point) const noexcept = 0;
-
-    // The block and slot are host/JIT-stage constants. Implementations emit
-    // runtime storage reads while the material graph is being traced.
-    [[nodiscard]] virtual Float parameter_float(
-        Expr<std::uint32_t> block,
-        Expr<std::uint32_t> slot) const noexcept = 0;
-
-    [[nodiscard]] virtual Float3 parameter_float3(
-        Expr<std::uint32_t> block,
-        Expr<std::uint32_t> slot) const noexcept = 0;
 
     // Versioned Cycles compatibility data. The index addresses the
     // contiguous Blender BSDF table buffer; interpolation and table shape
@@ -380,6 +388,15 @@ public:
             u_direction,
             query);
         return result;
+    }
+
+    // Device-side evaluation of Cycles' constant-emission proof. The narrow
+    // services type makes shading-point, texture, attribute and BSDF-table
+    // access unavailable while Luisa records this AST.
+    [[nodiscard]] virtual Float3 constant_emission(
+        const SurfaceParameterServices &,
+        Expr<std::uint32_t>) const noexcept {
+        return make_float3(0.0f);
     }
 
     [[nodiscard]] virtual Float3 emission(
@@ -547,6 +564,37 @@ public:
         _surfaces.dispatch(tag, [&](const Surface *surface) noexcept {
             result = surface->emission(services, point, wo);
         });
+        return result;
+    }
+
+    [[nodiscard]] Float3 constant_emission(
+        Expr<std::uint32_t> tag,
+        const SurfaceParameterServices &services,
+        Expr<std::uint32_t> parameter_block) const noexcept {
+        Float3 result = make_float3(0.0f);
+        luisa::vector<luisa::uint> constant_tags;
+        constant_tags.reserve(_surfaces.size());
+        for (auto index = std::size_t{0u};
+             index < _surfaces.size();
+             ++index) {
+            if (_surfaces.impl(index)
+                    ->capabilities()
+                    .emission_is_constant) {
+                constant_tags.emplace_back(
+                    static_cast<luisa::uint>(index));
+            }
+        }
+        if (!constant_tags.empty()) {
+            _surfaces.dispatch_group_with_default(
+                tag,
+                constant_tags,
+                [&](const Surface *surface) noexcept {
+                    result = surface->constant_emission(
+                        services,
+                        parameter_block);
+                },
+                []() noexcept {});
+        }
         return result;
     }
 

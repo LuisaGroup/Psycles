@@ -242,6 +242,15 @@ Float3 PathKernelInvocation::surface_emission(UInt surface_tag,
                                     outgoing);
 }
 
+Float3 PathKernelInvocation::constant_surface_emission(
+    UInt surface_tag,
+    UInt parameter_block) const noexcept {
+    return config.surfaces.constant_emission(
+        config.scene->parameter_buffer,
+        surface_tag,
+        parameter_block);
+}
+
 SurfaceSample
 PathKernelInvocation::sample_surface(UInt surface_tag,
                                      const SurfacePoint &point,
@@ -332,6 +341,11 @@ Float3 PathKernelInvocation::evaluate_environment(
     }
     result += config.environment.nishita_sun(direction);
     return result;
+}
+
+Float3 PathKernelInvocation::constant_environment() const noexcept {
+    return config.environment.constant(
+        parameters.background);
 }
 
 Float3 PathSampleContext::trace_uint32(UInt value) const noexcept {
@@ -674,6 +688,18 @@ void PathSampleContext::accumulate_transparency(
             make_float3(0.0f),
             make_float3(transparency),
             primary_transmit);
+}
+
+Float3
+PathSampleContext::analytic_light_constant_shader(
+    Var<LightGpu> light) const noexcept {
+    Float3 result = make_float3(1.0f);
+    $if(light.surface_tag != ~std::uint32_t{0u}) {
+        result = invocation.constant_surface_emission(
+            light.surface_tag,
+            light.parameter_block);
+    };
+    return result;
 }
 
 Float3

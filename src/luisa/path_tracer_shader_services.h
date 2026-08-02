@@ -6,6 +6,31 @@
 
 namespace psycles::luisa_backend::detail {
 
+template<typename ParameterBuffer>
+class BufferSurfaceParameterServices final
+    : public SurfaceParameterServices {
+
+private:
+    const ParameterBuffer &_parameters;
+
+public:
+    explicit BufferSurfaceParameterServices(
+        const ParameterBuffer &parameters) noexcept
+        : _parameters{parameters} {}
+
+    [[nodiscard]] Float parameter_float(
+        Expr<std::uint32_t> block,
+        Expr<std::uint32_t> slot) const noexcept override {
+        return _parameters->read(block + slot).x;
+    }
+
+    [[nodiscard]] Float3 parameter_float3(
+        Expr<std::uint32_t> block,
+        Expr<std::uint32_t> slot) const noexcept override {
+        return _parameters->read(block + slot).xyz();
+    }
+};
+
 template<typename ParameterBuffer,
          typename CyclesBuffer,
          typename TextureHeap,

@@ -180,6 +180,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                          : 0u) |
                     (capabilities.may_emit
                          ? material_flag_may_emit
+                         : 0u) |
+                    (capabilities.emission_is_constant
+                         ? material_flag_constant_emission
                          : 0u),
                 .volume_sampling =
                     snapshot.materials.at(id)
@@ -1327,6 +1330,11 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                             static_cast<std::uint32_t>(
                                 material_emission_sampling
                                     .at(*material_id)),
+                        .emission_is_constant =
+                            (tag_iter->second.flags &
+                             material_flag_constant_emission) != 0u
+                                ? 1u
+                                : 0u,
                         .visibility_mask =
                             normalized_visibility,
                         .cycles_primitive_index =
@@ -1515,6 +1523,13 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                      light.type == LightType::spot)
                 ? light_flag_forward_intersectable
                 : 0u;
+        flags |=
+            (light_binding.surface_tag ==
+                 ~std::uint32_t{0u} ||
+             (light_binding.flags &
+              material_flag_constant_emission) != 0u)
+                ? light_flag_constant_emission
+                : 0u;
         lights.emplace_back(LightGpu{
             .type =
                 static_cast<std::uint32_t>(light.type),
@@ -1568,6 +1583,15 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     data->emissive_triangle_count =
         static_cast<std::uint32_t>(
             emissive_triangles.size());
+    const auto world_emission_is_constant =
+        !data->world_surface ||
+        (data->world_surface->flags &
+         material_flag_constant_emission) != 0u;
+    data->environment_emission_is_constant =
+        world_emission_is_constant &&
+        !data->environment_texture_slot &&
+        data->environment_suns.empty() &&
+        !data->nishita_environment;
 
     bool world_is_spatially_varying = false;
     if (snapshot.world_shader) {

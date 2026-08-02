@@ -33,7 +33,21 @@ namespace {
 EnvironmentCallables make_environment_callables(
     const std::shared_ptr<LuisaSceneData> &scene,
     const SafeNormalizeCallable &safe_normalize,
+    const SurfaceConstantEmissionCallable
+        &surface_constant_emission,
     const SurfaceEmissionCallable &surface_emission) {
+    EnvironmentConstantCallable constant =
+        [scene, surface_constant_emission](
+            Float3 background) noexcept {
+            Float3 world = background;
+            if (scene->world_surface) {
+                world += surface_constant_emission(
+                    scene->parameter_buffer,
+                    UInt{scene->world_surface->surface_tag},
+                    UInt{scene->world_surface->parameter_block});
+            }
+            return world;
+        };
     EnvironmentBaseCallable base =
         [scene, surface_emission](
             Float3 direction,
@@ -240,6 +254,7 @@ EnvironmentCallables make_environment_callables(
         };
 
     return {
+        std::move(constant),
         std::move(base),
         std::move(suns),
         std::move(nishita_sun)};
@@ -355,6 +370,8 @@ void build_background_sampling_distribution(
             make_environment_callables(
                 data,
                 safe_normalize,
+                surface_callables
+                    .constant_emission,
                 surface_emission);
         auto environment_base =
             environment_callables.base;

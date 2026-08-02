@@ -276,20 +276,33 @@ class AnalyticLightingComponent final : public DirectLightingComponent {
                      .position = light_position,
                      .geometric_normal = light_normal,
                      .distance = light_distance});
-                light_radiance *= analytic_light_shader(
-                    light,
-                    light_index,
-                    light_position,
-                    light_normal,
-                    light_uv,
-                    -wi,
-                    light_distance);
+                const auto constant_emission =
+                    (light.flags &
+                     light_flag_constant_emission) != 0u;
+                $if(constant_emission) {
+                    light_radiance *=
+                        sample
+                            .analytic_light_constant_shader(
+                                light);
+                };
                 const auto evaluation = evaluate_light_surface(
                     surface_tag,
                     point,
                     wi,
                     path_surface_query,
                     light.cycles_shader_flags);
+                const auto bsdf_nonzero =
+                    any(evaluation.f != 0.0f);
+                $if((!constant_emission) & bsdf_nonzero) {
+                    light_radiance *= analytic_light_shader(
+                        light,
+                        light_index,
+                        light_position,
+                        light_normal,
+                        light_uv,
+                        -wi,
+                        light_distance);
+                };
                 const auto cycles_mis_weight =
                     nee_light_weight(light_pdf, evaluation.pdf);
                 _trace->record_evaluation(

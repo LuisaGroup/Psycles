@@ -24,6 +24,11 @@ using SurfaceEmissionCallable = Callable<luisa::float3(
     luisa::uint,
     SurfacePointCall,
     luisa::float3)>;
+using SurfaceConstantEmissionCallable =
+    Callable<luisa::float3(
+        Buffer<luisa::float4>,
+        luisa::uint,
+        luisa::uint)>;
 using SurfaceSampleCallable = Callable<SurfaceSampleCall(
     Buffer<luisa::float4>,
     Buffer<float>,
@@ -75,6 +80,7 @@ using SurfaceShadingNormalCallable = Callable<luisa::float3(
 
 struct SurfaceCallables {
     SurfaceEvaluateLightCallable evaluate_light;
+    SurfaceConstantEmissionCallable constant_emission;
     SurfaceEmissionCallable emission;
     SurfaceSampleCallable sample;
     SurfaceClosureTraceCallable closure_trace;

@@ -90,6 +90,13 @@ class PathEnvironmentLightComponent final
                 shader_state);
     }
 
+    Float3 evaluate_constant_emission(
+        PathSampleContext &sample)
+        const noexcept override {
+        return sample.invocation
+            .constant_environment();
+    }
+
     Float from_direction(
         const std::shared_ptr<
             LuisaSceneData> &scene,

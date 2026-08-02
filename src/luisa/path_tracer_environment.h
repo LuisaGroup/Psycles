@@ -10,10 +10,13 @@ using EnvironmentBaseCallable =
         luisa::float3,
         luisa::float3,
         ShaderEvaluationStateCall)>;
+using EnvironmentConstantCallable =
+    Callable<luisa::float3(luisa::float3)>;
 using EnvironmentSunCallable =
     Callable<luisa::float3(luisa::float3)>;
 
 struct EnvironmentCallables {
+    EnvironmentConstantCallable constant;
     EnvironmentBaseCallable base;
     std::vector<EnvironmentSunCallable> suns;
     EnvironmentSunCallable nishita_sun;
@@ -23,6 +26,8 @@ struct EnvironmentCallables {
 make_environment_callables(
     const std::shared_ptr<LuisaSceneData> &scene,
     const SafeNormalizeCallable &safe_normalize,
+    const SurfaceConstantEmissionCallable
+        &surface_constant_emission,
     const SurfaceEmissionCallable &surface_emission);
 
 void configure_background_sampling(

@@ -71,23 +71,33 @@ class BackgroundEventStageImpl final
         const auto world_visible =
             (scene->world_visibility_mask &
              ray_visibility) != 0u;
+        Float3 environment_radiance;
+        if (scene->environment_emission_is_constant) {
+            environment_radiance =
+                _environment_light
+                    ->evaluate_constant_emission(
+                        sample);
+        } else {
+            environment_radiance =
+                _environment_light
+                    ->evaluate_emission(
+                        sample,
+                        ray->direction(),
+                        cycles_path_state::
+                            background_emission_shader_state(
+                                ray_visibility,
+                                ray_events,
+                                path_depth,
+                                diffuse_depth,
+                                glossy_depth,
+                                transparent_depth,
+                                transmission_depth));
+        }
         Float3 environment_contribution =
             invocation
                 .clamp_emission_contribution(
                     throughput *
-                        _environment_light
-                            ->evaluate_emission(
-                                sample,
-                                ray->direction(),
-                                cycles_path_state::
-                                    background_emission_shader_state(
-                                        ray_visibility,
-                                        ray_events,
-                                        path_depth,
-                                        diffuse_depth,
-                                        glossy_depth,
-                                        transparent_depth,
-                                        transmission_depth)) *
+                        environment_radiance *
                         environment_weight,
                     path_depth);
         environment_contribution =

@@ -69,6 +69,12 @@ class EmissiveTriangleComponent {
         Float2 random) const noexcept = 0;
 
     [[nodiscard]] virtual Float3
+    evaluate_constant_emission(
+        PathSampleContext &sample,
+        const EmissiveTriangleLightProposal
+            &proposal) const noexcept = 0;
+
+    [[nodiscard]] virtual Float3
     evaluate_emission(
         PathSampleContext &sample,
         const EmissiveTriangleLightProposal

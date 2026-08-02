@@ -109,18 +109,14 @@ class EnvironmentLightingComponent final : public DirectLightingComponent {
                      .geometric_normal =
                          -light.direction,
                      .distance = ray_maximum});
-                const auto radiance =
-                    _environment_light
-                        ->evaluate_emission(
-                            sample,
-                            light.direction,
-                            cycles_path_state::
-                                light_emission_shader_state(
-                                    path_depth,
-                                    diffuse_depth,
-                                    glossy_depth,
-                                    transparent_depth,
-                                    transmission_depth));
+                Float3 radiance = make_float3(0.0f);
+                if (config.scene
+                        ->environment_emission_is_constant) {
+                    radiance =
+                        _environment_light
+                            ->evaluate_constant_emission(
+                                sample);
+                }
                 const auto evaluation =
                     evaluate_light_surface(
                         surface_tag,
@@ -129,6 +125,23 @@ class EnvironmentLightingComponent final : public DirectLightingComponent {
                         path_surface_query,
                         config.scene
                             ->cycles_background_shader_flags);
+                if (!config.scene
+                         ->environment_emission_is_constant) {
+                    $if(any(evaluation.f != 0.0f)) {
+                        radiance =
+                            _environment_light
+                                ->evaluate_emission(
+                                    sample,
+                                    light.direction,
+                                    cycles_path_state::
+                                        light_emission_shader_state(
+                                            path_depth,
+                                            diffuse_depth,
+                                            glossy_depth,
+                                            transparent_depth,
+                                            transmission_depth));
+                    };
+                }
                 const auto mis_weight =
                     nee_light_weight(
                         light.pdf,
