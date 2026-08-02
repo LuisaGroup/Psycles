@@ -191,6 +191,34 @@ class ShaderProbeRunnerContract(unittest.TestCase):
         self.assertEqual(len(failures), 1)
         self.assertIn("energy ratio", failures[0])
 
+    def test_hosek_transport_gate_tracks_energy_not_sample_map(
+        self,
+    ) -> None:
+        report = {
+            "passes": {
+                "Combined": {
+                    "luminance_mean_ratio": 1.000284,
+                    "relative_rmse": 0.042405,
+                },
+                "DiffDir": {
+                    "luminance_mean_ratio": 1.000249,
+                    "relative_rmse": 0.034036,
+                },
+            }
+        }
+        self.assertEqual(
+            self.runner._probe_gate_failures(
+                "hosek_wilkie_diffuse_transport", report
+            ),
+            [],
+        )
+        report["passes"]["Combined"]["luminance_mean_ratio"] = 0.99
+        failures = self.runner._probe_gate_failures(
+            "hosek_wilkie_diffuse_transport", report
+        )
+        self.assertEqual(len(failures), 1)
+        self.assertIn("energy ratio", failures[0])
+
 
 if __name__ == "__main__":
     # unittest would otherwise treat the runner path as a test selector.

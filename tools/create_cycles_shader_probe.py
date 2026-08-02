@@ -65,6 +65,9 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "gamma_color": values._gamma_color,
     "gradient_spherical": texture_inputs._gradient_spherical,
     "gradient_matrix": values._gradient_matrix,
+    "hosek_wilkie_diffuse_transport": (
+        closures._hosek_wilkie_diffuse_transport
+    ),
     "hue_saturation_value": values._hue_saturation_value,
     "image_texture_srgb": texture_inputs._image_texture_srgb,
     "image_texture_sampling_modes": texture_inputs._image_texture_sampling_modes,

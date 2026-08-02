@@ -61,6 +61,7 @@ def _main() -> None:
 
     material = bpy.data.materials.new("Middle Material")
     material.use_nodes = True
+    material.displacement_method = "BUMP"
     material.cycles.volume_sampling = "EQUIANGULAR"
     mesh = bpy.data.meshes.new("Surface Mesh")
     mesh.from_pydata(
@@ -105,6 +106,11 @@ def _main() -> None:
     if materials["Middle Material"]["volume_sampling"] != "EQUIANGULAR":
         raise AssertionError(
             "material volume-sampling policy did not round-trip through "
+            "the Blender exporter"
+        )
+    if materials["Middle Material"]["displacement_method"] != "BUMP":
+        raise AssertionError(
+            "material displacement policy did not round-trip through "
             "the Blender exporter"
         )
 

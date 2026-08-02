@@ -40,6 +40,7 @@ namespace {
         case ValueOperation::brick_color:
         case ValueOperation::brick_factor:
         case ValueOperation::gradient:
+        case ValueOperation::hosek_wilkie_sky:
         case ValueOperation::nishita_sky:
             return true;
         default:

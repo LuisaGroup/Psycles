@@ -518,6 +518,65 @@ def _nishita_diffuse_transport(scene: Any) -> None:
     scene.cycles.sampling_pattern = "TABULATED_SOBOL"
 
 
+def _hosek_wilkie_diffuse_transport(scene: Any) -> None:
+    """Measure legacy Hosek-Wilkie sky transport without baking it."""
+    world = bpy.data.worlds.new("Hosek-Wilkie Transport World")
+    world.use_nodes = True
+    tree = world.node_tree
+    tree.nodes.clear()
+    sky = tree.nodes.new("ShaderNodeTexSky")
+    sky.name = "Hosek-Wilkie Sky"
+    sky.sky_type = "HOSEK_WILKIE"
+    sky.sun_direction = (
+        -0.9461538195610046,
+        0.0615384615957737,
+        0.31781429052352905,
+    )
+    sky.turbidity = 2.9
+    sky.ground_albedo = 0.3
+    background = tree.nodes.new("ShaderNodeBackground")
+    background.name = "Background"
+    _input(background, "Strength").default_value = 1.0
+    output = tree.nodes.new("ShaderNodeOutputWorld")
+    output.name = "World Output"
+    tree.links.new(
+        _output(sky, "Color"),
+        _input(background, "Color"),
+    )
+    tree.links.new(
+        _output(background, "Background"),
+        _input(output, "Surface"),
+    )
+    scene.world = world
+
+    material, material_tree, material_output = _material(
+        "Hosek-Wilkie Diffuse Receiver"
+    )
+    diffuse = material_tree.nodes.new("ShaderNodeBsdfDiffuse")
+    diffuse.name = "Diffuse Receiver"
+    _input(diffuse, "Color").default_value = (
+        0.62,
+        0.41,
+        0.23,
+        1.0,
+    )
+    _input(diffuse, "Roughness").default_value = 0.0
+    material_tree.links.new(
+        _output(diffuse, "BSDF"),
+        _input(material_output, "Surface"),
+    )
+    _plane(material)
+
+    scene.cycles.max_bounces = 1
+    scene.cycles.diffuse_bounces = 1
+    scene.cycles.glossy_bounces = 0
+    scene.cycles.transmission_bounces = 0
+    scene.cycles.use_light_tree = False
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 1.0
+    scene.cycles.sampling_pattern = "TABULATED_SOBOL"
+
+
 def _translucent_surface(scene: Any) -> None:
     """Exercise Cycles' diffuse-transmission hemisphere and event labels."""
     _world(scene, (0.31, 0.56, 0.82, 1.0), 1.0)

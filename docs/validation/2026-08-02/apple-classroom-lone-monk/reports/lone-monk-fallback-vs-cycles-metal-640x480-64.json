@@ -1,0 +1,715 @@
+{
+  "actual_label": "Psycles fallback",
+  "cycles_channels": [
+    "View Layer.Combined.R",
+    "View Layer.Combined.G",
+    "View Layer.Combined.B",
+    "View Layer.Combined.A",
+    "View Layer.Debug Sample Count.X",
+    "View Layer.Depth.Z",
+    "View Layer.Diffuse Color.R",
+    "View Layer.Diffuse Color.G",
+    "View Layer.Diffuse Color.B",
+    "View Layer.Diffuse Direct.R",
+    "View Layer.Diffuse Direct.G",
+    "View Layer.Diffuse Direct.B",
+    "View Layer.Diffuse Indirect.R",
+    "View Layer.Diffuse Indirect.G",
+    "View Layer.Diffuse Indirect.B",
+    "View Layer.Emission.R",
+    "View Layer.Emission.G",
+    "View Layer.Emission.B",
+    "View Layer.Environment.R",
+    "View Layer.Environment.G",
+    "View Layer.Environment.B",
+    "View Layer.Glossy Color.R",
+    "View Layer.Glossy Color.G",
+    "View Layer.Glossy Color.B",
+    "View Layer.Glossy Direct.R",
+    "View Layer.Glossy Direct.G",
+    "View Layer.Glossy Direct.B",
+    "View Layer.Glossy Indirect.R",
+    "View Layer.Glossy Indirect.G",
+    "View Layer.Glossy Indirect.B",
+    "View Layer.Mist.Z",
+    "View Layer.Normal.X",
+    "View Layer.Normal.Y",
+    "View Layer.Normal.Z",
+    "View Layer.Transmission Color.R",
+    "View Layer.Transmission Color.G",
+    "View Layer.Transmission Color.B",
+    "View Layer.Transmission Direct.R",
+    "View Layer.Transmission Direct.G",
+    "View Layer.Transmission Direct.B",
+    "View Layer.Transmission Indirect.R",
+    "View Layer.Transmission Indirect.G",
+    "View Layer.Transmission Indirect.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        0.9778038263320923,
+        0.9809150099754333,
+        0.9803627729415894
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/cycles-metal-640x480-64.exr",
+      "cycles_channel_mean": [
+        0.6289886236190796,
+        0.4643132984638214,
+        0.38885581493377686
+      ],
+      "cycles_luminance_mean": 0.4941200911998749,
+      "cycles_rms": 1.5614123344421387,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9800408554468812,
+      "maximum_absolute_error": 15.079099655151367,
+      "mean_absolute_error": 0.033096835017204285,
+      "orientation_rmse": {
+        "flip_x": 1.0099341869354248,
+        "flip_xy": 1.842859148979187,
+        "flip_y": 1.814436912536621,
+        "identity": 0.18408484756946564
+      },
+      "p95_pixel_rmse": 0.14074856042861938,
+      "p99_pixel_rmse": 0.4706038534641266,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/lone-monk-fallback-640x480-64.exr",
+      "psycles_channel_mean": [
+        0.6150274872779846,
+        0.4554518759250641,
+        0.3812197744846344
+      ],
+      "psycles_luminance_mean": 0.48425787687301636,
+      "psycles_rms": 1.550775561574501,
+      "relative_rmse": 0.11789637081049156,
+      "rmse": 0.18408484756946564,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.1104488202005494,
+        "display_scale": 0.08933961636307851,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/triptychs-640x480-64/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "DiffCol": {
+      "channel_mean_ratio": [
+        1.0020344257354736,
+        1.0010634660720825,
+        1.0007145404815674
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/cycles-metal-640x480-64.exr",
+      "cycles_channel_mean": [
+        0.17837706208229065,
+        0.14084899425506592,
+        0.11876571923494339
+      ],
+      "cycles_luminance_mean": 0.1472315788269043,
+      "cycles_rms": 0.1884719729423523,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0012971957819325,
+      "maximum_absolute_error": 0.22116941213607788,
+      "mean_absolute_error": 0.0012809145264327526,
+      "orientation_rmse": {
+        "flip_x": 0.07352691888809204,
+        "flip_xy": 0.1568894386291504,
+        "flip_y": 0.1548195630311966,
+        "identity": 0.006726282648742199
+      },
+      "p95_pixel_rmse": 0.007109133992344141,
+      "p99_pixel_rmse": 0.025217648595571518,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/lone-monk-fallback-640x480-64.exr",
+      "psycles_channel_mean": [
+        0.17873996496200562,
+        0.14099878072738647,
+        0.11885058134794235
+      ],
+      "psycles_luminance_mean": 0.14742256700992584,
+      "psycles_rms": 0.18831974878485927,
+      "relative_rmse": 0.0356885034084063,
+      "rmse": 0.006726282648742199,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 23.13676135977844,
+        "display_scale": 1.145428502462147,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/triptychs-640x480-64/diffcol.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "DiffDir": {
+      "channel_mean_ratio": [
+        1.0088876485824585,
+        1.0091444253921509,
+        1.0093704462051392
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/cycles-metal-640x480-64.exr",
+      "cycles_channel_mean": [
+        3.5442512035369873,
+        2.9802920818328857,
+        2.5047690868377686
+      ],
+      "cycles_luminance_mean": 3.066310167312622,
+      "cycles_rms": 9.114078521728516,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0091047090526215,
+      "maximum_absolute_error": 131.13938903808594,
+      "mean_absolute_error": 0.10627887398004532,
+      "orientation_rmse": {
+        "flip_x": 5.6787333488464355,
+        "flip_xy": 11.146797180175781,
+        "flip_y": 10.98643970489502,
+        "identity": 0.6238758563995361
+      },
+      "p95_pixel_rmse": 0.6823915243148804,
+      "p99_pixel_rmse": 1.8754647970199585,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/lone-monk-fallback-640x480-64.exr",
+      "psycles_channel_mean": [
+        3.5757510662078857,
+        3.007544994354248,
+        2.5282399654388428
+      ],
+      "psycles_luminance_mean": 3.0942280292510986,
+      "psycles_rms": 9.185363936422512,
+      "relative_rmse": 0.06845188516997942,
+      "rmse": 0.6238758563995361,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 0.34942500306162094,
+        "display_scale": 0.020639663564077808,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/triptychs-640x480-64/diffdir.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "DiffInd": {
+      "channel_mean_ratio": [
+        0.9844521880149841,
+        0.9824343919754028,
+        0.9787176847457886
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/cycles-metal-640x480-64.exr",
+      "cycles_channel_mean": [
+        0.24689382314682007,
+        0.16556189954280853,
+        0.11093223839998245
+      ],
+      "cycles_luminance_mean": 0.178935706615448,
+      "cycles_rms": 0.5704659819602966,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9828550090721552,
+      "maximum_absolute_error": 55.76703643798828,
+      "mean_absolute_error": 0.05195169150829315,
+      "orientation_rmse": {
+        "flip_x": 0.6229550838470459,
+        "flip_xy": 0.7050991654396057,
+        "flip_y": 0.703260064125061,
+        "identity": 0.21376632153987885
+      },
+      "p95_pixel_rmse": 0.27642136812210083,
+      "p99_pixel_rmse": 0.6372379660606384,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/lone-monk-fallback-640x480-64.exr",
+      "psycles_channel_mean": [
+        0.24305516481399536,
+        0.16265369951725006,
+        0.10857134312391281
+      ],
+      "psycles_luminance_mean": 0.17586785554885864,
+      "psycles_rms": 0.5312754400557264,
+      "relative_rmse": 0.3747222942292054,
+      "rmse": 0.21376632153987885,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0111585009870174,
+        "display_scale": 0.3492472613703219,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/triptychs-640x480-64/diffind.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "Emit": {
+      "channel_mean_ratio": [
+        1.0003036260604858,
+        0.9993217587471008,
+        1.000460147857666
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/cycles-metal-640x480-64.exr",
+      "cycles_channel_mean": [
+        0.03894072398543358,
+        0.046566516160964966,
+        0.07665533572435379
+      ],
+      "cycles_luminance_mean": 0.04711766913533211,
+      "cycles_rms": 0.7205564379692078,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9996289547490037,
+      "maximum_absolute_error": 0.19498763978481293,
+      "mean_absolute_error": 2.8820162697229534e-05,
+      "orientation_rmse": {
+        "flip_x": 0.32811135053634644,
+        "flip_xy": 1.0191205739974976,
+        "flip_y": 1.0191205739974976,
+        "identity": 0.0007297488627955317
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/lone-monk-fallback-640x480-64.exr",
+      "psycles_channel_mean": [
+        0.0389525480568409,
+        0.046534933149814606,
+        0.07669060677289963
+      ],
+      "psycles_luminance_mean": 0.047100186347961426,
+      "psycles_rms": 0.7206977079027655,
+      "relative_rmse": 0.0010127573973972555,
+      "rmse": 0.0007297488627955317,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 3419.238563608118,
+        "display_scale": 0.19420447684346606,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/triptychs-640x480-64/emit.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "Env": {
+      "channel_mean_ratio": [
+        0.9965823292732239,
+        0.9967623353004456,
+        0.9973951578140259
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/cycles-metal-640x480-64.exr",
+      "cycles_channel_mean": [
+        1.5913617517071543e-06,
+        2.509251771698473e-06,
+        4.18795389123261e-06
+      ],
+      "cycles_luminance_mean": 2.435310307191685e-06,
+      "cycles_rms": 0.0007385853677988052,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9968160537665088,
+      "maximum_absolute_error": 0.0008766353130340576,
+      "mean_absolute_error": 8.157199360425693e-09,
+      "orientation_rmse": {
+        "flip_x": 0.0010430373949930072,
+        "flip_xy": 0.0010430373949930072,
+        "flip_y": 0.0010430373949930072,
+        "identity": 2.108404942191555e-06
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/lone-monk-fallback-640x480-64.exr",
+      "psycles_channel_mean": [
+        1.5859229733905522e-06,
+        2.5011277102748863e-06,
+        4.177044957032194e-06
+      ],
+      "psycles_luminance_mean": 2.4275564101117197e-06,
+      "psycles_rms": 0.0007364908132091486,
+      "relative_rmse": 0.002854653008460217,
+      "rmse": 2.108404942191555e-06,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/triptychs-640x480-64/env.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "GlossCol": {
+      "channel_mean_ratio": [
+        0.9988468289375305,
+        0.9988481998443604,
+        0.9988952875137329
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/cycles-metal-640x480-64.exr",
+      "cycles_channel_mean": [
+        0.05884220078587532,
+        0.057511474937200546,
+        0.05645817890763283
+      ],
+      "cycles_luminance_mean": 0.05771917849779129,
+      "cycles_rms": 0.06960290670394897,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9988557413078227,
+      "maximum_absolute_error": 0.06261932104825974,
+      "mean_absolute_error": 0.0002327985130250454,
+      "orientation_rmse": {
+        "flip_x": 0.040786683559417725,
+        "flip_xy": 0.05564825236797333,
+        "flip_y": 0.05547216907143593,
+        "identity": 0.0012790964683517814
+      },
+      "p95_pixel_rmse": 0.0008620531298220158,
+      "p99_pixel_rmse": 0.005446114577353001,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/lone-monk-fallback-640x480-64.exr",
+      "psycles_channel_mean": [
+        0.05877434462308884,
+        0.057445231825113297,
+        0.05639581009745598
+      ],
+      "psycles_luminance_mean": 0.05765313282608986,
+      "psycles_rms": 0.06954213831332388,
+      "relative_rmse": 0.018377055340408805,
+      "rmse": 0.0012790964683517814,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 109.97458022706004,
+        "display_scale": 3.4638442043759454,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/triptychs-640x480-64/glosscol.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "GlossDir": {
+      "channel_mean_ratio": [
+        0.9584951400756836,
+        0.9599714875221252,
+        0.9611918330192566
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/cycles-metal-640x480-64.exr",
+      "cycles_channel_mean": [
+        1.5828137397766113,
+        1.3922836780548096,
+        1.2692742347717285
+      ],
+      "cycles_luminance_mean": 1.4239404201507568,
+      "cycles_rms": 4.094722270965576,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9597017231988473,
+      "maximum_absolute_error": 102.48238372802734,
+      "mean_absolute_error": 0.0952119305729866,
+      "orientation_rmse": {
+        "flip_x": 2.401142120361328,
+        "flip_xy": 4.894476413726807,
+        "flip_y": 4.847964286804199,
+        "identity": 0.8582633137702942
+      },
+      "p95_pixel_rmse": 0.284201443195343,
+      "p99_pixel_rmse": 1.3655638694763184,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/lone-monk-fallback-640x480-64.exr",
+      "psycles_channel_mean": [
+        1.517119288444519,
+        1.336552619934082,
+        1.2200160026550293
+      ],
+      "psycles_luminance_mean": 1.3665580749511719,
+      "psycles_rms": 3.9258433171010845,
+      "relative_rmse": 0.20960232635458012,
+      "rmse": 0.8582633137702942,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 0.25297487302414146,
+        "display_scale": 0.04767039421642149,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/triptychs-640x480-64/glossdir.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "GlossInd": {
+      "channel_mean_ratio": [
+        0.9378020167350769,
+        0.9383836984634399,
+        0.9373387098312378
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/cycles-metal-640x480-64.exr",
+      "cycles_channel_mean": [
+        0.2408105731010437,
+        0.16559351980686188,
+        0.11389473080635071
+      ],
+      "cycles_luminance_mean": 0.1778978705406189,
+      "cycles_rms": 0.4550607204437256,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9381499756586326,
+      "maximum_absolute_error": 20.680315017700195,
+      "mean_absolute_error": 0.05772637203335762,
+      "orientation_rmse": {
+        "flip_x": 0.47621235251426697,
+        "flip_xy": 0.5455996990203857,
+        "flip_y": 0.5417993068695068,
+        "identity": 0.19938616454601288
+      },
+      "p95_pixel_rmse": 0.2994596064090729,
+      "p99_pixel_rmse": 0.8222042918205261,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/lone-monk-fallback-640x480-64.exr",
+      "psycles_channel_mean": [
+        0.22583264112472534,
+        0.15539026260375977,
+        0.10675793886184692
+      ],
+      "psycles_luminance_mean": 0.16689488291740417,
+      "psycles_rms": 0.42628368865423616,
+      "relative_rmse": 0.43815287848090523,
+      "rmse": 0.19938616454601288,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 0.7861116594987543,
+        "display_scale": 0.3636018769998171,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/triptychs-640x480-64/glossind.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "Normal": {
+      "channel_mean_ratio": [
+        0.9488235712051392,
+        0.9996219873428345,
+        1.0078617334365845
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/cycles-metal-640x480-64.exr",
+      "cycles_channel_mean": [
+        0.007766102906316519,
+        -0.5520698428153992,
+        0.06544800847768784
+      ],
+      "cycles_luminance_mean": -0.3884243667125702,
+      "cycles_rms": 0.543400764465332,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": -0.9997346041032094,
+      "maximum_absolute_error": 0.5538644194602966,
+      "mean_absolute_error": 0.0024782572872936726,
+      "orientation_rmse": {
+        "flip_x": 0.5121397972106934,
+        "flip_xy": 0.6991658806800842,
+        "flip_y": 0.6312077045440674,
+        "identity": 0.010427339933812618
+      },
+      "p95_pixel_rmse": 0.016758374869823456,
+      "p99_pixel_rmse": 0.048037368804216385,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/lone-monk-fallback-640x480-64.exr",
+      "psycles_channel_mean": [
+        0.007368661463260651,
+        -0.5518611669540405,
+        0.0659625455737114
+      ],
+      "psycles_luminance_mean": -0.38832128047943115,
+      "psycles_rms": 0.5433101266993213,
+      "relative_rmse": 0.019189041708604117,
+      "rmse": 0.010427339933812618,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 13.010230303865827,
+        "display_scale": 1.0,
+        "mapping": "normal_xyz_to_rgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/triptychs-640x480-64/normal.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "TransCol": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/cycles-metal-640x480-64.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/lone-monk-fallback-640x480-64.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/triptychs-640x480-64/transcol.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "TransDir": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/cycles-metal-640x480-64.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/lone-monk-fallback-640x480-64.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/triptychs-640x480-64/transdir.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "TransInd": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/cycles-metal-640x480-64.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/lone-monk-fallback-640x480-64.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802/triptychs-640x480-64/transind.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    }
+  },
+  "reference_label": "Cycles Metal",
+  "schema": "psycles.cycles-differential.v1"
+}

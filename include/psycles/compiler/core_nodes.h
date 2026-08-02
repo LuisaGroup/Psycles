@@ -19,6 +19,8 @@ inline constexpr auto checker_texture =
 inline constexpr auto brick_texture = "psycles.texture.brick";
 inline constexpr auto gradient_texture = "psycles.texture.gradient";
 inline constexpr auto nishita_sky = "psycles.texture.nishita_sky";
+inline constexpr auto hosek_wilkie_sky =
+    "psycles.texture.hosek_wilkie_sky";
 inline constexpr auto math = "psycles.math.cycles";
 inline constexpr auto add_float = "psycles.math.add";
 inline constexpr auto subtract_float = "psycles.math.subtract";

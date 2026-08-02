@@ -99,8 +99,9 @@ build.
 | `PSYCLES_ENABLE_OPENIMAGEIO` | `ON` | Write Cycles-compatible multilayer OpenEXR output |
 | `PSYCLES_ENABLE_LUISA` | `ON` | Build the Luisa DSL/runtime renderer |
 | `PSYCLES_ENABLE_LUISA_FALLBACK` | `ON` | Build the LLVM/Embree host backend |
-| `PSYCLES_ENABLE_LUISA_HIP` | `ON` | Build the AMD HIP backend |
-| `PSYCLES_ENABLE_LUISA_VULKAN` | `ON` | Build the Vulkan backend |
+| `PSYCLES_ENABLE_LUISA_METAL` | `ON` on Apple | Build the Metal backend |
+| `PSYCLES_ENABLE_LUISA_HIP` | `OFF` on Apple, otherwise `ON` | Build the AMD HIP backend |
+| `PSYCLES_ENABLE_LUISA_VULKAN` | `OFF` on Apple, otherwise `ON` | Build the Vulkan backend |
 | `PSYCLES_BUILD_TESTS` | `ON` | Build C++ tests and register compatibility gates |
 | `PSYCLES_BUILD_EXAMPLES` | `ON` | Build render and inspection CLIs |
 | `PSYCLES_FETCH_LUISA_NEXT` | `OFF` | Fetch `next` only when the initialized submodule is unavailable |

@@ -327,6 +327,57 @@ find_simple_world_nishita(yyjson_val *world) {
     return graph;
 }
 
+[[nodiscard]] ShaderGraph cycles_default_surface_graph() {
+    ShaderGraph graph;
+    const auto closure =
+        graph.add_node(
+            compiler::node_type::principled_bsdf,
+            "Cycles Default Surface");
+    // ShaderManager::add_default() constructs a default Principled BSDF.
+    // Keep these values explicit so this adapter contract cannot silently
+    // drift with Psycles' own node-schema defaults.
+    static_cast<void>(graph.set_input(
+        closure,
+        "BaseColor",
+        SocketValue::color({0.8f, 0.8f, 0.8f})));
+    static_cast<void>(graph.set_input(
+        closure,
+        "Metallic",
+        SocketValue::floating(0.0f)));
+    static_cast<void>(graph.set_input(
+        closure,
+        "Roughness",
+        SocketValue::floating(0.5f)));
+    static_cast<void>(graph.set_input(
+        closure,
+        "DiffuseRoughness",
+        SocketValue::floating(0.0f)));
+    static_cast<void>(graph.set_input(
+        closure,
+        "IOR",
+        SocketValue::floating(1.5f)));
+    static_cast<void>(graph.set_input(
+        closure,
+        "SpecularIORLevel",
+        SocketValue::floating(0.5f)));
+    static_cast<void>(graph.set_input(
+        closure,
+        "SpecularTint",
+        SocketValue::color({1.0f, 1.0f, 1.0f})));
+    static_cast<void>(graph.set_input(
+        closure,
+        "Normal",
+        SocketValue::normal({0.0f, 0.0f, 0.0f})));
+    static_cast<void>(graph.set_property(
+        closure,
+        "Distribution",
+        SocketValue::string("MULTI_GGX")));
+    graph.set_root(
+        ShaderDomain::surface,
+        contract::OutputRef{closure, "Closure"});
+    return graph;
+}
+
 [[nodiscard]] ShaderGraph emission_graph(
     Vec3f color,
     float strength) {

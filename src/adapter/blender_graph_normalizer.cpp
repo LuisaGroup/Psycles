@@ -67,6 +67,7 @@ private:
     std::optional<contract::NodeId> _default_image_coordinates;
     std::optional<contract::NodeId> _default_generated_coordinates;
     std::optional<contract::NodeId> _geometry;
+    bool _automatic_bump_from_displacement{};
 
 private:
     [[nodiscard]] ShaderGraph &graph() noexcept override {
@@ -767,6 +768,72 @@ private:
             return constant_from_output(
                 node, socket, requested);
         }
+        if (type == "DISPLACEMENT") {
+            // Cycles' scalar Displacement node produces
+            // normal * (height - midlevel) * scale. The automatic bump
+            // lowering below projects this vector back onto the geometric
+            // normal before evaluating the height derivatives.
+            const auto offset = _graph.add_node(
+                compiler::node_type::subtract_float,
+                node_name + " / Height Offset");
+            static_cast<void>(bind(
+                offset,
+                "A",
+                node,
+                "Height",
+                SocketType::floating));
+            static_cast<void>(bind(
+                offset,
+                "B",
+                node,
+                "Midlevel",
+                SocketType::floating));
+
+            const auto scaled_height = _graph.add_node(
+                compiler::node_type::multiply_float,
+                node_name + " / Scaled Height");
+            static_cast<void>(_graph.connect(
+                {.node = offset, .socket = "Value"},
+                scaled_height,
+                "A"));
+            static_cast<void>(bind(
+                scaled_height,
+                "B",
+                node,
+                "Scale",
+                SocketType::floating));
+
+            TypedOutput normal;
+            if (auto source = input_source(node, "Normal")) {
+                normal = lower_output(
+                    source->node,
+                    source->socket,
+                    SocketType::normal);
+            } else {
+                normal = geometry_output(
+                    "Normal", SocketType::normal);
+            }
+            const auto normal_vector = conversion(
+                normal, SocketType::vector);
+            const auto displacement = _graph.add_node(
+                compiler::node_type::vector_math,
+                node_name);
+            static_cast<void>(_graph.connect(
+                normal_vector.ref, displacement, "A"));
+            static_cast<void>(_graph.connect(
+                {.node = scaled_height, .socket = "Value"},
+                displacement,
+                "Scale"));
+            static_cast<void>(_graph.set_property(
+                displacement,
+                "Operation",
+                SocketValue::string("SCALE")));
+            return {
+                .ref = {
+                    .node = displacement,
+                    .socket = "Vector"},
+                .type = SocketType::vector};
+        }
         if (type == "BUMP") {
             const auto id = _graph.add_node(
                 compiler::node_type::bump,
@@ -876,6 +943,73 @@ private:
                 "' is not yet lowered; using its output default");
         return finish(constant_from_output(
             node, socket, fallback_type));
+    }
+
+    void lower_automatic_bump() {
+        using contract::SocketType;
+        auto *root = member(_tree, "displacement_root");
+        const auto node = text(member(root, "node"));
+        const auto socket = text(member(root, "socket"));
+        if (!_automatic_bump_from_displacement ||
+            node.empty() || socket.empty()) {
+            return;
+        }
+
+        const auto displacement = lower_output(
+            node, socket, SocketType::vector);
+        const auto normal = geometry_output(
+            "Normal", SocketType::normal);
+        const auto normal_vector = conversion(
+            normal, SocketType::vector);
+        const auto dot = _graph.add_node(
+            compiler::node_type::vector_math,
+            "Automatic Bump Displacement Height");
+        static_cast<void>(_graph.connect(
+            displacement.ref, dot, "A"));
+        static_cast<void>(_graph.connect(
+            normal_vector.ref, dot, "B"));
+        static_cast<void>(_graph.set_property(
+            dot,
+            "Operation",
+            SocketValue::string("DOT_PRODUCT")));
+
+        const auto bump = _graph.add_node(
+            compiler::node_type::bump,
+            "Automatic Bump from Displacement");
+        static_cast<void>(_graph.connect(
+            {.node = dot, .socket = "Value"},
+            bump,
+            "Height"));
+        static_cast<void>(_graph.set_input(
+            bump,
+            "Strength",
+            SocketValue::floating(1.0f)));
+        static_cast<void>(_graph.set_input(
+            bump,
+            "Distance",
+            SocketValue::floating(1.0f)));
+        static_cast<void>(_graph.set_input(
+            bump,
+            "FilterWidth",
+            SocketValue::floating(0.1f)));
+        static_cast<void>(_graph.connect(
+            normal.ref, bump, "Normal"));
+        static_cast<void>(_graph.set_property(
+            bump,
+            "Invert",
+            SocketValue::boolean(false)));
+        static_cast<void>(_graph.set_property(
+            bump,
+            "NormalLinked",
+            SocketValue::boolean(true)));
+
+        const auto bump_vector = conversion(
+            TypedOutput{
+                .ref = {.node = bump, .socket = "Normal"},
+                .type = SocketType::normal},
+            SocketType::vector);
+        _graph.set_root(
+            ShaderDomain::displacement, bump_vector.ref);
     }
 
     [[nodiscard]] TypedOutput lower_output(
@@ -1071,7 +1205,8 @@ public:
             ImageAlphaType,
             std::less<>> &image_alpha_types,
         const NodeGroupMap &node_groups,
-        std::vector<BlenderSceneDiagnostic> &diagnostics)
+        std::vector<BlenderSceneDiagnostic> &diagnostics,
+        bool automatic_bump_from_displacement)
         : _tree{tree},
           _material_name{std::move(material_name)},
           _image_ids{image_ids},
@@ -1080,11 +1215,18 @@ public:
           _node_groups{node_groups},
           _diagnostics{diagnostics},
           _lowering_components{
-              make_blender_node_lowering_components()} {
+              make_blender_node_lowering_components()},
+          _automatic_bump_from_displacement{
+              automatic_bump_from_displacement} {
         load_tree_context(_tree);
     }
 
     [[nodiscard]] ShaderGraph build() {
+        // Cycles installs this SetNormal-like side effect before lowering the
+        // surface graph. Keeping the bump as the displacement root preserves
+        // it in Psycles' evaluation order without changing closure sockets.
+        lower_automatic_bump();
+
         auto *root = member(_tree, "surface_root");
         const auto node = text(member(root, "node"));
         const auto socket = text(member(root, "socket"));
@@ -1164,14 +1306,22 @@ public:
                    !text(member(root, "node")).empty() &&
                    !text(member(root, "socket")).empty();
         };
-    if (connected_root("displacement_root")) {
+    const auto has_displacement =
+        connected_root("displacement_root");
+    const auto displacement_method = text(
+        member(material, "displacement_method"), "BUMP");
+    const auto automatic_bump =
+        has_displacement && displacement_method == "BUMP";
+    if (has_displacement && !automatic_bump) {
         diagnostics.emplace_back(BlenderSceneDiagnostic{
             .severity =
                 BlenderSceneDiagnosticSeverity::error,
             .message =
                 "shader '" + material_name +
-                "' has a connected Displacement root, which the "
-                "Luisa integrator does not yet implement"});
+                "' requests Blender displacement method '" +
+                displacement_method +
+                "'; true geometry displacement is not yet "
+                "implemented"});
     }
     return BlenderGraphNormalizer{
         tree,
@@ -1180,7 +1330,8 @@ public:
         image_color_spaces,
         image_alpha_types,
         node_groups,
-        diagnostics}
+        diagnostics,
+        automatic_bump}
         .build();
 }
 

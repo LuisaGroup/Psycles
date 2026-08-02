@@ -1,4 +1,5 @@
 #include "surface_program_builder.h"
+#include "hosek_sky.h"
 
 #include <utility>
 
@@ -406,6 +407,30 @@ namespace psycles::compiler::detail {
                     .b = *g,
                     .c = *b,
                     .static_u0 = color_mode(node)}));
+        }
+        return true;
+    }
+    if (node.type == node_type::hosek_wilkie_sky) {
+        if (auto direction = lower_value_input(node, "Vector")) {
+            publish(
+                node.id,
+                "Color",
+                append(ValueInstruction{
+                    .operation =
+                        ValueOperation::hosek_wilkie_sky,
+                    .source_node = node.id,
+                    .result_type = SocketType::color,
+                    .a = *direction,
+                    .static_table = cook_hosek_wilkie_sky(
+                        property_float(
+                            node, "SunDirectionX", 0.0f),
+                        property_float(
+                            node, "SunDirectionY", 0.0f),
+                        property_float(
+                            node, "SunDirectionZ", 1.0f),
+                        property_float(node, "Turbidity", 2.2f),
+                        property_float(
+                            node, "GroundAlbedo", 0.3f))}));
         }
         return true;
     }

@@ -1,0 +1,246 @@
+# Apple Classroom and Lone Monk validation
+
+This checkpoint brings Psycles up on Apple Silicon with strict Luisa fallback
+and Metal backends, renders two official Blender demo scenes without material
+pre-baking, and records defect-driven compatibility repairs for Classroom's
+legacy Hosek-Wilkie daylight portals and empty window-frame material slots.
+
+The Psycles worktree started at
+`main@037babebe93e51b427cc7e0a53105c27468d9758`. This record describes the
+current change set on top of that commit. The pinned LuisaCompute revision is
+`e10701e6f` on `codex/psycles-apple-fallback-llvm21`, based on upstream
+`next@5018c341f`; the branch contains the Apple fallback fixes. The clean
+Blender/Cycles source oracle is
+`main@c2acd5638ea00c2f5843d34e2049eae60e4cdae3`.
+
+## Machine and toolchain
+
+| Item | Validated value |
+|---|---|
+| Host | Apple M1 Max, 10 CPU cores, 64 GiB memory |
+| GPU | Apple M1 Max, 32 GPU cores |
+| OS | macOS 26.3, build 25D125 |
+| Blender executable | Blender 5.2.0 LTS, hash `fbe6228777e7` |
+| CMake / Ninja | 4.3.1 / 1.13.2 |
+| C++ compiler | Homebrew LLVM 21, Apple arm64 Release build |
+| Fallback dependencies | LLVM 21.1.8 and Embree 4.4.1 |
+| Image dependencies | OpenImageIO 3.1.16, NumPy 2.5.1, Pillow 12.3 |
+
+The release cache has `PSYCLES_ENABLE_LUISA_FALLBACK=ON`,
+`PSYCLES_ENABLE_LUISA_METAL=ON`, `PSYCLES_ENABLE_LUISA_HIP=OFF`,
+`PSYCLES_ENABLE_LUISA_VULKAN=OFF`, and
+`PSYCLES_ENABLE_OPENIMAGEIO=ON`. Requested fallback and Metal targets are
+strict CMake postconditions.
+
+## Inputs
+
+Both scenes came from Blender's official demo archive.
+
+| Scene | Official source | SHA-256 | Exported raw content |
+|---|---|---|---|
+| Classroom | <https://download.blender.org/demo/test/classroom.zip> | `0f0ecc58d45f12b2f4272a53e2d8e69135518e16e956b118f10c20d8dcfdf5e6` | 252 geometries, 894 instances, 85 source materials, 51 images |
+| Lone Monk | <https://download.blender.org/demo/cycles/lone-monk_cycles_and_exposure-node_demo.blend> | `4250d4205d8d01cefd98c15e81021d6dead540b2923797378bf7b32e96e8b8f7` | 348 geometries, 87,541 instances, 35 source materials, 47 images |
+
+Classroom uses `_mainScene`, frame 1, camera `renderCam`, and seed 1. Lone
+Monk uses scene `daylight`, frame 4, camera `cam.001`, and seed 0. The matched
+comparisons disable adaptive sampling and denoising and preserve the scene's
+seed. The export retains original nodes, links, socket values, geometry,
+instances, images, and render settings; Blender/Cycles is not used to bake a
+material or lighting result.
+
+## Defects and repairs
+
+### Hosek-Wilkie daylight
+
+The first Classroom render was recognizable but approximately twice as
+bright as Cycles. A controlled light inventory showed that both renderers saw
+exactly 80,648 emissive triangles: 80,640 ceiling-lamp triangles, six daylight
+portal triangles, and two blackboard-light triangles. Disabling analytic
+lights and isolating the portals retained the mismatch.
+
+The portal graph uses a raw `TEX_SKY` node with
+`sky_type=HOSEK_WILKIE`, turbidity 2.9, ground albedo 0.3, and an explicit
+sun direction. Psycles had lowered every Sky Texture mode to Nishita. The
+repair now:
+
+- preserves `HOSEK_WILKIE` as a distinct compiler node;
+- cooks the upstream XYZ Hosek coefficients once as immutable topology data;
+- evaluates the original direction-dependent Hosek formula through the Luisa
+  graph on fallback and Metal;
+- converts XYZ through the scene's exported Cycles color transform;
+- keeps `SINGLE_SCATTERING`/legacy `NISHITA` on the existing Nishita path;
+- emits explicit diagnostics for the still-partial Preetham and Multiple
+  Scattering modes.
+
+The imported graph remains raw. No portal strength, scene exposure, light
+area, or sampled sky value is patched for Classroom.
+
+The source coefficient tables and model cook are unmodified BSD-3-Clause
+files from the recorded Blender/Cycles checkout. Their provenance is retained
+in `third_party/sky_hosek`.
+
+### Empty window material slots
+
+The first accepted triptych still contained thin magenta lines beside the
+windows. They were not missing textures or Glass BSDF output. The exported
+`Cube.018` and `Cube.019` meshes are instanced fourteen times along the window
+wall and intentionally contain null material slots. Cycles maps an empty slot
+to `ShaderManager::default_surface`, a Principled BSDF with base color 0.8,
+roughness 0.5, IOR 1.5, and Multi-GGX distribution. Psycles instead mapped it
+to a magenta missing-material sentinel.
+
+The importer now constructs the Cycles default Principled graph once as
+material 1 and maps null or absent slots to it. A focused import regression
+requires that material to remain Principled rather than a diagnostic color.
+The corrected fallback and Metal images contain neutral window-frame pieces;
+the magenta lines are gone. A linear-EXR pixel check found 51 pixels with the
+old magenta sentinel signature and zero in the corrected fallback render.
+
+## Focused Hosek regression
+
+The new `hosek_wilkie_diffuse_transport` probe creates a raw Blender world,
+renders it in Cycles Metal, exports it, and runs that graph through both
+Psycles backends at 64x64 and 64 fixed samples.
+
+| Psycles backend | Combined luminance / Cycles | Diffuse Direct luminance / Cycles | Invalid pixels |
+|---|---:|---:|---:|
+| fallback | 1.000284 | 1.000249 | 0 |
+| Metal | 1.000285 | 1.000250 | 0 |
+
+Fallback and Metal are mutually consistent: their Combined luminance ratio is
+`1.00000115`, RMSE is `3.34e-7`, and invalid pixels are zero.
+
+The gate intentionally uses integrated energy. Cycles and Psycles construct
+different importance maps for this legacy analytic sky, so their paired
+finite-sample pixels have stochastic differences even though the evaluated
+sky energy agrees. The reports retain the 4.24% Combined and 3.40% Diffuse
+Direct relative RMSE rather than hiding that sampling-distribution difference.
+
+![Hosek fallback versus Cycles Metal](triptychs/hosek-fallback-combined.png)
+
+![Hosek Metal versus Cycles Metal](triptychs/hosek-metal-combined.png)
+
+## Classroom result
+
+The matched checkpoint is 320x180, 16 fixed samples, seed 1. Cycles selected
+only `METAL_Apple M1 Max (GPU - 32 cores)`. Psycles used the production Luisa
+fallback backend and the default exact partition of at most eight samples per
+dispatch.
+
+| Metric | Before repairs | Hosek only | Current |
+|---|---:|---:|---:|
+| Combined luminance / Cycles | 2.005238 | 1.002376 | 1.009643 |
+| Combined relative RMSE | 0.912358 | 0.232985 | 0.229211 |
+| Diffuse Direct luminance / Cycles | 2.484176 | 0.998291 | 0.997188 |
+| Invalid Combined pixels | 0 | 0 | 0 |
+
+The current render took 30.3342 seconds after a 219.001-second cold fallback
+JIT. The matched Cycles Metal render took 98.6381 seconds. These are recorded
+timings, not a general performance claim: the Cycles invocation included a
+cold scene/device setup, while the Psycles render interval excludes its
+separately reported JIT.
+
+Additional post-repair evidence:
+
+- Diffuse Color luminance ratio: 1.004884, relative RMSE 0.056028;
+- Normal RMSE: 0.0377342, relative RMSE 0.068875;
+- Emission luminance ratio: 0.999846, relative RMSE 0.028617;
+- Glossy Direct luminance ratio: 0.945795;
+- all compared pass pixels are finite.
+
+The same corrected package rendered through Psycles Metal. Against Cycles
+Metal its Combined luminance ratio is 1.010155, relative RMSE is 0.229011,
+and invalid pixels are zero. Fallback versus Metal has a 1.000507 Combined
+luminance ratio; both backends remove the magenta empty-slot artifact.
+
+![Classroom Cycles Metal, Psycles fallback, and absolute difference](triptychs/classroom-combined.png)
+
+The Cycles and Psycles panels were opened at the generated 976x250 triptych
+resolution. They show the same classroom layout, daylight exposure, ceiling
+emitters, desks, chairs, blackboard, maps, windows, and major shadow regions.
+The neutral window-frame segments now agree visually and no magenta coverage
+pixels remain. The amplified difference panel is dominated by low-sample
+noise and known closure gaps rather than a global exposure error.
+
+## Lone Monk result
+
+The matched checkpoint is 640x480, 64 fixed samples, seed 0. Cycles selected
+the M1 Max Metal device and Psycles used fallback. The original 35 material
+graphs and 87,541 instances remained in the export.
+
+| Pass | Luminance / Cycles | Relative RMSE |
+|---|---:|---:|
+| Combined | 0.980041 | 0.117896 |
+| Diffuse Color | 1.001297 | 0.035689 |
+| Normal | n/a | 0.019189 |
+| Diffuse Direct | 1.009105 | 0.068452 |
+| Glossy Direct | 0.959702 | 0.209602 |
+| Emission | 0.999629 | 0.001013 |
+
+Combined RMSE is 0.184085, MAE is 0.033097, and invalid pixels are zero.
+Psycles rendered in 21.4762 seconds after a 0.3183-second warm fallback JIT;
+Cycles Metal rendered in 4.0321 seconds.
+
+![Lone Monk Cycles Metal, Psycles fallback, and absolute difference](triptychs/lone-monk-combined.png)
+
+The generated 1936x546 triptych was inspected at original resolution. Both
+panels show the same monastery courtyard, central monk, foreground arches,
+roofline, vegetation, and lighting structure. The remaining residuals are
+concentrated on high-frequency foliage, roof highlights, and indirect/glossy
+transport; there is no missing-scene or camera mismatch.
+
+## Commands and automated gates
+
+The complete build and test gate was:
+
+```bash
+cmake --build build-macos --parallel 10
+ctest --test-dir build-macos --output-on-failure -j10
+```
+
+Result: **69/69 tests passed** in 5.45 seconds. This includes fallback and
+Metal runtime tests, Blender CLI exporter/API tests, source-size and shader
+probe runner contracts, multilayer EXR, import/normalization, and renderer
+contracts.
+
+The focused fallback and Metal commands were:
+
+```bash
+build/validation-venv/bin/python tools/run_cycles_shader_probes.py \
+  --blender /opt/homebrew/bin/blender \
+  --psycles-render build-macos/bin/psycles_render_blender_scene \
+  --output-dir build-macos/shader-probes/hosek-wilkie \
+  --backend fallback --cycles-device METAL \
+  --cycles-device-name "Apple M1 Max" \
+  --width 64 --height 64 --samples 64 \
+  hosek_wilkie_diffuse_transport
+
+build/validation-venv/bin/python tools/run_cycles_shader_probes.py \
+  --blender /opt/homebrew/bin/blender \
+  --psycles-render build-macos/bin/psycles_render_blender_scene \
+  --output-dir build-macos/shader-probes/hosek-wilkie-metal \
+  --backend metal --cycles-device METAL \
+  --cycles-device-name "Apple M1 Max" \
+  --width 64 --height 64 --samples 64 \
+  hosek_wilkie_diffuse_transport
+```
+
+The complete machine-readable pass reports are in [reports](reports).
+
+## Remaining limitations
+
+This is successful scene rendering and a substantial compatibility repair,
+not a claim of complete Cycles parity.
+
+- Classroom still reports one unsupported Wave Texture and three unsupported
+  Glass BSDF materials. Its Transmission Color is therefore absent in
+  Psycles, and glossy energy remains low.
+- Preetham and Multiple Scattering Sky Texture modes are distinct from Hosek
+  and the implemented single-scattering Nishita path; they remain partial.
+- Classroom's 16-sample comparison is deliberately a development checkpoint,
+  not a final high-sample quality/performance gate.
+- Lone Monk retains the known indirect/glossy transport residuals and is
+  slower than Cycles Metal on this machine.
+- The copied official `.blend`, texture payloads, generated EXRs, PPM/PFM
+  images, and shader caches remain ignored local inputs/outputs. Only compact
+  reports and viewable validation triptychs are retained here.

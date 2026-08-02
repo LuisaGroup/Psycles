@@ -8,6 +8,19 @@ multilayer OpenEXR output.
 
 ## Latest checkpoint
 
+The newest
+[2026-08-02 Apple Classroom and Lone Monk checkpoint](docs/validation/2026-08-02/apple-classroom-lone-monk/README.md)
+brings up strict Luisa fallback and Metal builds on an M1 Max, records 69/69
+passing tests, and renders both official scenes from their raw Blender graphs.
+It fixes Classroom's legacy Hosek-Wilkie daylight portal without scene-side
+scaling and replaces the magenta missing-material sentinel on deliberately
+empty window-frame slots with Cycles' default Principled surface. Combined
+mean luminance changes from `2.005238x` to `1.009643x` Cycles, and the focused
+raw-sky probe agrees within `0.029%` on both Psycles backends. The checkpoint
+includes exact asset hashes, commands, full pass reports, timings, and
+inspected triptychs. It is a development checkpoint; Classroom's Wave Texture
+and Glass closures remain explicitly tracked.
+
 The newer
 [2026-08-01 Lone Monk Principled physical-closure validation](docs/validation/2026-08-01/lone-monk-principled-physical-closures/README.md)
 records the full Cycles CPU/HIP and Psycles fallback/HIP/Vulkan matrix after

@@ -68,6 +68,8 @@ find_simple_world_nishita(yyjson_val *world);
     Vec3f color,
     float roughness = 0.0f);
 
+[[nodiscard]] contract::ShaderGraph cycles_default_surface_graph();
+
 [[nodiscard]] contract::ShaderGraph emission_graph(
     Vec3f color,
     float strength);

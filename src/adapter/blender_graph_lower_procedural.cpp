@@ -299,6 +299,32 @@ public:
                         ? SocketType::floating
                         : SocketType::color});
         }
+        if (type == "ATTRIBUTE" &&
+            context.node_property_text(
+                node, "attribute_type", "GEOMETRY") ==
+                "GEOMETRY") {
+            const auto name = context.node_property_text(
+                node, "attribute_name");
+            if (!name.empty() &&
+                (socket == "Color" || socket == "Alpha")) {
+                const auto id = context.graph().add_node(
+                    compiler::node_type::vertex_color,
+                    node_name);
+                static_cast<void>(context.graph().set_property(
+                    id,
+                    "AttributeId",
+                    SocketValue::unsigned_integer(
+                        contract::attribute_id(name))));
+                return finish({
+                    .ref = {
+                        .node = id,
+                        .socket = socket},
+                    .type =
+                        socket == "Alpha"
+                            ? SocketType::floating
+                            : SocketType::color});
+            }
+        }
         if (type == "SEPARATE_COLOR") {
             const auto id = context.graph().add_node(
                 compiler::node_type::separate_color,
@@ -424,6 +450,66 @@ public:
                     : result);
         }
         if (type == "TEX_SKY") {
+            const auto sky_type = context.node_property_text(
+                node, "sky_type", "NISHITA");
+            if (sky_type == "HOSEK_WILKIE") {
+                const auto id = context.graph().add_node(
+                    compiler::node_type::hosek_wilkie_sky,
+                    node_name);
+                if (context.input_source(node, "Vector")) {
+                    static_cast<void>(context.bind(
+                        id,
+                        "Vector",
+                        node,
+                        "Vector",
+                        SocketType::vector));
+                } else {
+                    static_cast<void>(context.graph().connect(
+                        context.default_generated_coordinates().ref,
+                        id,
+                        "Vector"));
+                }
+                const auto sun_direction = float3(
+                    member(
+                        member(node, "properties"),
+                        "sun_direction"),
+                    {0.0f, 0.0f, 1.0f});
+                for (const auto &[property, value] : {
+                         std::pair{
+                             "SunDirectionX", sun_direction.x},
+                         std::pair{
+                             "SunDirectionY", sun_direction.y},
+                         std::pair{
+                             "SunDirectionZ", sun_direction.z},
+                         std::pair{
+                             "Turbidity",
+                             context.node_property_number(
+                                 node, "turbidity", 2.2f)},
+                         std::pair{
+                             "GroundAlbedo",
+                             context.node_property_number(
+                                 node, "ground_albedo", 0.3f)}}) {
+                    static_cast<void>(context.graph().set_property(
+                        id,
+                        property,
+                        SocketValue::floating(value)));
+                }
+                return finish({
+                    .ref = {.node = id, .socket = "Color"},
+                    .type = SocketType::color});
+            }
+            if (sky_type == "PREETHAM") {
+                context.warn_once(
+                    "unsupported:sky:preetham",
+                    "Blender PREETHAM Sky Texture is unsupported; "
+                    "using Nishita as a compatibility fallback.");
+            } else if (sky_type == "MULTIPLE_SCATTERING") {
+                context.warn_once(
+                    "unsupported:sky:multiple_scattering",
+                    "Blender MULTIPLE_SCATTERING Sky Texture is not "
+                    "yet distinct from the single-scattering Nishita "
+                    "compatibility fallback.");
+            }
             const auto id = context.graph().add_node(
                 compiler::node_type::nishita_sky,
                 node_name);
