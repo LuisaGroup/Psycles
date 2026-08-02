@@ -52,9 +52,10 @@ class PathEnvironmentLightComponent final
     }
 
   public:
-    EnvironmentLightSample
+    EnvironmentLightProposal
     from_position(
-        PathSampleContext &sample,
+        const std::shared_ptr<
+            LuisaSceneData> &scene,
         Float3 reference,
         Float2 random,
         Float selection_pdf)
@@ -64,32 +65,29 @@ class PathEnvironmentLightComponent final
         static_cast<void>(reference);
         const auto direction_sample =
             _sample_direction(
-                sample.invocation
-                    .config.scene,
+                scene,
                 std::move(random));
         const auto pdf =
             direction_sample.pdf *
             selection_pdf;
-        const auto radiance =
-            sample.invocation
-                .evaluate_environment(
-                    direction_sample
-                        .direction,
-                    cycles_path_state::
-                        light_emission_shader_state(
-                            sample.path_depth,
-                            sample.diffuse_depth,
-                            sample.glossy_depth,
-                            sample
-                                .transparent_depth,
-                            sample
-                                .transmission_depth));
         return {
             .direction =
                 direction_sample.direction,
-            .radiance = radiance,
             .pdf = pdf,
             .valid = pdf > 0.0f};
+    }
+
+    Float3 evaluate_emission(
+        PathSampleContext &sample,
+        Float3 direction,
+        const cycles_path_state::
+            ShaderEvaluationState
+                &shader_state)
+        const noexcept override {
+        return sample.invocation
+            .evaluate_environment(
+                std::move(direction),
+                shader_state);
     }
 
     Float from_direction(

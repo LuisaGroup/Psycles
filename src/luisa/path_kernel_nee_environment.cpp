@@ -78,7 +78,7 @@ class EnvironmentLightingComponent final : public DirectLightingComponent {
             const auto light =
                 _environment_light
                     ->from_position(
-                        sample,
+                        config.scene,
                         surface.hit_position,
                         light_sample.xy(),
                         selected_light
@@ -109,6 +109,18 @@ class EnvironmentLightingComponent final : public DirectLightingComponent {
                      .geometric_normal =
                          -light.direction,
                      .distance = ray_maximum});
+                const auto radiance =
+                    _environment_light
+                        ->evaluate_emission(
+                            sample,
+                            light.direction,
+                            cycles_path_state::
+                                light_emission_shader_state(
+                                    path_depth,
+                                    diffuse_depth,
+                                    glossy_depth,
+                                    transparent_depth,
+                                    transmission_depth));
                 const auto evaluation =
                     evaluate_light_surface(
                         surface_tag,
@@ -155,7 +167,7 @@ class EnvironmentLightingComponent final : public DirectLightingComponent {
                 $if(any(shadow_transmittance > 0.0f)) {
                     Float3 unshadowed_contribution =
                         evaluation.f *
-                        light.radiance *
+                        radiance *
                         (mis_weight /
                          light.pdf);
                     Float roulette_weight = sample_light_roulette(
