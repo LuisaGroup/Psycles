@@ -30,6 +30,7 @@ using SplitNeeLightCallable =
         luisa::float3,
         luisa::float3,
         luisa::float3,
+        luisa::float3,
         luisa::uint)>;
 struct LightTransportCallables {
     SafeNormalizeCallable safe_normalize;

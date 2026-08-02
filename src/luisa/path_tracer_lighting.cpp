@@ -176,13 +176,14 @@ LightTransportCallables make_light_transport_callables(
             Float3 contribution,
             Float3 f,
             Float3 diffuse_f,
+            Float3 glossy_f,
             Float3 path_diffuse_weight,
             Float3 path_glossy_weight,
             UInt depth) noexcept {
             auto local_diffuse_weight =
                 light_component_ratio(diffuse_f, f);
             auto local_glossy_weight =
-                light_component_ratio(f - diffuse_f, f);
+                light_component_ratio(glossy_f, f);
             auto direct = depth == 0u;
             return split_scattered_light(
                 contribution,

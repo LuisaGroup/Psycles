@@ -58,6 +58,18 @@ struct TracedClosure {
     // has already been applied to `weight`.
     Float3 evaluation_scale;
     bool preserve_ggx_energy{};
+    bool beckmann{};
+};
+
+struct GlassSample {
+    Float3 direction;
+    Float3 singular_evaluation;
+    Float singular_pdf;
+    Float eta;
+    Float alpha;
+    Bool transmission;
+    Bool singular;
+    Bool valid;
 };
 
 struct AdjustedIor {
@@ -205,6 +217,30 @@ template <typename Id, typename Values>
     Float3 incoming,
     Float2 random,
     Float3 glossy_normal,
+    Float glossy_filter_roughness) noexcept;
+[[nodiscard]] Float3 glass_microfacet_intensity(
+    const TracedClosure &closure,
+    Float3 incoming,
+    Float3 outgoing,
+    Float3 glossy_normal,
+    Float glossy_filter_roughness) noexcept;
+[[nodiscard]] Float glass_microfacet_pdf(
+    const TracedClosure &closure,
+    Float3 incoming,
+    Float3 outgoing,
+    Float3 glossy_normal,
+    Bool reflection_allowed,
+    Bool transmission_allowed,
+    Float glossy_filter_roughness) noexcept;
+[[nodiscard]] GlassSample sample_glass(
+    const TracedClosure &closure,
+    Float3 incoming,
+    Float3 geometric_normal,
+    Float3 glossy_normal,
+    Float2 random_direction,
+    Float random_lobe,
+    Bool reflection_allowed,
+    Bool transmission_allowed,
     Float glossy_filter_roughness) noexcept;
 [[nodiscard]] Float3 sample_cosine_hemisphere(
     Float3 normal, Float2 random) noexcept;

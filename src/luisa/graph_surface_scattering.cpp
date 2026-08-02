@@ -291,6 +291,7 @@ namespace psycles::luisa_backend::detail {
     case compiler::ClosureOperation::translucent:
     case compiler::ClosureOperation::principled:
     case compiler::ClosureOperation::glossy:
+    case compiler::ClosureOperation::glass:
     case compiler::ClosureOperation::transparent:
         return true;
     case compiler::ClosureOperation::null_closure:
@@ -342,6 +343,18 @@ namespace psycles::luisa_backend::detail {
                     cycles_closure::microfacet_singular_alpha_product);
         break;
     }
+    case compiler::ClosureOperation::glass: {
+        auto alpha = clamp(closure.roughness, 0.0f, 1.0f);
+        alpha *= alpha;
+        alpha = max(alpha, glossy_filter_roughness);
+        flags = cycles_closure::runtime_bsdf |
+                cycles_closure::runtime_bsdf_has_transmission |
+                select(0u,
+                    cycles_closure::runtime_bsdf_has_eval,
+                    alpha * alpha >
+                        cycles_closure::microfacet_singular_alpha_product);
+        break;
+    }
     case compiler::ClosureOperation::transparent:
         flags = cycles_closure::runtime_bsdf |
                 cycles_closure::runtime_transparent;
@@ -371,6 +384,13 @@ namespace psycles::luisa_backend::detail {
         return cycles_closure::type_translucent;
     case compiler::ClosureOperation::glossy:
         return cycles_closure::type_microfacet_ggx;
+    case compiler::ClosureOperation::glass:
+        if (closure.preserve_ggx_energy) {
+            return cycles_closure::type_microfacet_multi_ggx_glass;
+        }
+        return closure.beckmann
+                   ? cycles_closure::type_microfacet_beckmann_glass
+                   : cycles_closure::type_microfacet_ggx_glass;
     case compiler::ClosureOperation::transparent:
         return cycles_closure::type_transparent;
     case compiler::ClosureOperation::principled:
@@ -399,6 +419,8 @@ namespace psycles::luisa_backend::detail {
         closure.operation == compiler::ClosureOperation::principled;
     const auto is_glossy =
         closure.operation == compiler::ClosureOperation::glossy;
+    const auto is_glass =
+        closure.operation == compiler::ClosureOperation::glass;
     const auto is_transparent =
         closure.operation == compiler::ClosureOperation::transparent;
     const auto diffuse_enabled =
@@ -419,6 +441,7 @@ namespace psycles::luisa_backend::detail {
                     : is_diffuse    ? diffuse_enabled
                     : is_principled ? glossy_enabled
                     : is_glossy     ? glossy_enabled
+                    : is_glass      ? (glossy_enabled | transmission_enabled)
                                     : Bool{false};
     eligible &= closure_allocated(closure);
     const auto glossy_normal = ensure_valid_specular_reflection(
@@ -587,6 +610,310 @@ namespace psycles::luisa_backend::detail {
         incoming,
         microfacet_alpha(closure, glossy_filter_roughness),
         random);
+}
+
+namespace {
+
+[[nodiscard]] Float glass_microfacet_alpha(
+    const TracedClosure &closure,
+    Float glossy_filter_roughness) noexcept {
+    auto alpha = clamp(closure.roughness, 0.0f, 1.0f);
+    alpha *= alpha;
+    return max(alpha, glossy_filter_roughness);
+}
+
+[[nodiscard]] Float glass_microfacet_distribution(
+    const TracedClosure &closure,
+    Float n_dot_h,
+    Float alpha) noexcept {
+    if (!closure.beckmann) {
+        return ggx_distribution(n_dot_h, alpha);
+    }
+    auto cosine_squared = min(n_dot_h * n_dot_h, 1.0f);
+    auto alpha_squared = alpha * alpha;
+    auto exponent = (1.0f - cosine_squared) /
+                    max(cosine_squared * alpha_squared, 1.0e-20f);
+    auto denominator = exp(min(exponent, 80.0f)) * pi *
+                       max(alpha_squared, 1.0e-20f) *
+                       cosine_squared * cosine_squared;
+    return select(0.0f,
+        1.0f / max(denominator, 1.0e-20f),
+        n_dot_h > 0.0f);
+}
+
+[[nodiscard]] Float glass_microfacet_lambda(
+    const TracedClosure &closure,
+    Float n_dot_v,
+    Float alpha) noexcept {
+    auto cosine_squared = n_dot_v * n_dot_v;
+    auto squared_alpha_tangent = alpha * alpha *
+                                 max(1.0f /
+                                             max(cosine_squared, 1.0e-20f) -
+                                         1.0f,
+                                     0.0f);
+    if (!closure.beckmann) {
+        return 0.5f *
+               (sqrt(1.0f + squared_alpha_tangent) - 1.0f);
+    }
+    auto a = rsqrt(max(squared_alpha_tangent, 1.0e-20f));
+    auto approximation =
+        ((0.396f * a - 1.259f) * a + 1.0f) /
+        max((2.181f * a + 3.535f) * a, 1.0e-20f);
+    return select(approximation,
+        0.0f,
+        squared_alpha_tangent < 0.39f);
+}
+
+struct GlassGeometry {
+    Float3 half_vector;
+    Float inverse_half_length;
+    Float cosine_incoming;
+    Float cosine_outgoing;
+    Float cosine_half_incoming;
+    Float cosine_normal_half;
+    Float cosine_half_outgoing;
+    Bool transmission;
+};
+
+[[nodiscard]] GlassGeometry glass_geometry(
+    const TracedClosure &closure,
+    Float3 incoming,
+    Float3 outgoing,
+    Float3 normal) noexcept {
+    auto cosine_outgoing = dot(normal, outgoing);
+    auto transmission = cosine_outgoing < 0.0f;
+    auto unnormalized_half = select(incoming + outgoing,
+        -(closure.ior * outgoing + incoming),
+        transmission);
+    auto inverse_half_length =
+        rsqrt(max(dot(unnormalized_half, unnormalized_half), 1.0e-20f));
+    auto half_vector = unnormalized_half * inverse_half_length;
+    return {.half_vector = half_vector,
+        .inverse_half_length = inverse_half_length,
+        .cosine_incoming = dot(normal, incoming),
+        .cosine_outgoing = cosine_outgoing,
+        .cosine_half_incoming = dot(half_vector, incoming),
+        .cosine_normal_half = dot(normal, half_vector),
+        .cosine_half_outgoing = dot(half_vector, outgoing),
+        .transmission = transmission};
+}
+
+[[nodiscard]] Float glass_reflection_probability(Float fresnel,
+    Bool reflection_allowed,
+    Bool transmission_allowed) noexcept {
+    auto reflection_energy =
+        select(0.0f, fresnel, reflection_allowed);
+    auto transmission_energy =
+        select(0.0f, 1.0f - fresnel, transmission_allowed);
+    return reflection_energy /
+           max(reflection_energy + transmission_energy, 1.0e-20f);
+}
+
+}// namespace
+
+[[nodiscard]] Float3 glass_microfacet_intensity(
+    const TracedClosure &closure,
+    Float3 incoming,
+    Float3 outgoing,
+    Float3 glossy_normal,
+    Float glossy_filter_roughness) noexcept {
+    auto geometry =
+        glass_geometry(closure, incoming, outgoing, glossy_normal);
+    auto setup_alpha = glass_microfacet_alpha(
+        closure, glossy_filter_roughness);
+    auto alpha = max(setup_alpha,
+        1.0e-7f);
+    auto distribution = glass_microfacet_distribution(
+        closure, geometry.cosine_normal_half, alpha);
+    auto lambda_incoming = glass_microfacet_lambda(
+        closure, geometry.cosine_incoming, alpha);
+    auto lambda_outgoing = glass_microfacet_lambda(
+        closure, geometry.cosine_outgoing, alpha);
+    auto reflection = fresnel_dielectric_cos(
+        geometry.cosine_half_incoming, closure.ior);
+    auto lobe = select(reflection,
+        1.0f - reflection,
+        geometry.transmission);
+    auto transmission_jacobian =
+        closure.ior * closure.ior *
+        geometry.inverse_half_length * geometry.inverse_half_length *
+        abs(geometry.cosine_half_incoming *
+            geometry.cosine_half_outgoing);
+    auto common = distribution /
+                  max(geometry.cosine_incoming, 1.0e-20f) *
+                  select(0.25f,
+                      transmission_jacobian,
+                      geometry.transmission);
+    auto intensity = closure.color * lobe * common /
+                     (1.0f + lambda_incoming + lambda_outgoing);
+    auto valid = (geometry.cosine_incoming > 0.0f) &
+                 (geometry.cosine_normal_half > 0.0f) &
+                 (geometry.cosine_half_incoming > 0.0f) &
+                 (setup_alpha * setup_alpha >
+                     cycles_closure::microfacet_singular_alpha_product);
+    return select(make_float3(0.0f), intensity, valid);
+}
+
+[[nodiscard]] Float glass_microfacet_pdf(
+    const TracedClosure &closure,
+    Float3 incoming,
+    Float3 outgoing,
+    Float3 glossy_normal,
+    Bool reflection_allowed,
+    Bool transmission_allowed,
+    Float glossy_filter_roughness) noexcept {
+    auto geometry =
+        glass_geometry(closure, incoming, outgoing, glossy_normal);
+    auto setup_alpha = glass_microfacet_alpha(
+        closure, glossy_filter_roughness);
+    auto alpha = max(setup_alpha,
+        1.0e-7f);
+    auto distribution = glass_microfacet_distribution(
+        closure, geometry.cosine_normal_half, alpha);
+    auto reflection = fresnel_dielectric_cos(
+        geometry.cosine_half_incoming, closure.ior);
+    auto reflection_probability = glass_reflection_probability(
+        reflection, reflection_allowed, transmission_allowed);
+    auto lobe_probability = select(reflection_probability,
+        1.0f - reflection_probability,
+        geometry.transmission);
+    Float directional_pdf;
+    if (closure.beckmann) {
+        auto reflection_jacobian =
+            1.0f /
+            max(4.0f * geometry.cosine_half_incoming, 1.0e-20f);
+        auto transmission_jacobian =
+            abs(geometry.cosine_half_outgoing) * closure.ior *
+            closure.ior * geometry.inverse_half_length *
+            geometry.inverse_half_length;
+        directional_pdf = distribution *
+                          max(geometry.cosine_normal_half, 0.0f) *
+                          select(reflection_jacobian,
+                              transmission_jacobian,
+                              geometry.transmission);
+    } else {
+        auto lambda_incoming = glass_microfacet_lambda(
+            closure, geometry.cosine_incoming, alpha);
+        auto transmission_jacobian =
+            closure.ior * closure.ior *
+            geometry.inverse_half_length *
+            geometry.inverse_half_length *
+            abs(geometry.cosine_half_incoming *
+                geometry.cosine_half_outgoing);
+        auto common = distribution /
+                      max(geometry.cosine_incoming, 1.0e-20f) *
+                      select(0.25f,
+                          transmission_jacobian,
+                          geometry.transmission);
+        directional_pdf = common / (1.0f + lambda_incoming);
+    }
+    auto lobe_allowed = select(reflection_allowed,
+        transmission_allowed,
+        geometry.transmission);
+    auto valid = (geometry.cosine_incoming > 0.0f) &
+                 (geometry.cosine_normal_half > 0.0f) &
+                 (geometry.cosine_half_incoming > 0.0f) & lobe_allowed;
+    valid &= setup_alpha * setup_alpha >
+             cycles_closure::microfacet_singular_alpha_product;
+    return select(0.0f,
+        directional_pdf * lobe_probability,
+        valid);
+}
+
+[[nodiscard]] GlassSample sample_glass(
+    const TracedClosure &closure,
+    Float3 incoming,
+    Float3 geometric_normal,
+    Float3 glossy_normal,
+    Float2 random_direction,
+    Float random_lobe,
+    Bool reflection_allowed,
+    Bool transmission_allowed,
+    Float glossy_filter_roughness) noexcept {
+    auto alpha = glass_microfacet_alpha(
+        closure, glossy_filter_roughness);
+    auto singular = alpha * alpha <=
+                    cycles_closure::microfacet_singular_alpha_product;
+    auto sampling_alpha = max(alpha, 1.0e-7f);
+    Float3 sampled_half;
+    if (closure.beckmann) {
+        auto tangent_squared = -sampling_alpha * sampling_alpha *
+                               log(max(1.0f - random_direction.x,
+                                   1.0e-7f));
+        auto cosine = rsqrt(1.0f + tangent_squared);
+        auto sine = sqrt(max(1.0f - cosine * cosine, 0.0f));
+        auto phi = two_pi * random_direction.y;
+        auto basis = cycles_sample_mapping::make_orthonormals(
+            glossy_normal);
+        sampled_half = basis.tangent * (sine * cos(phi)) +
+                       basis.bitangent * (sine * sin(phi)) +
+                       glossy_normal * cosine;
+    } else {
+        sampled_half = cycles_sample_mapping::sample_ggx_visible_normal(
+            glossy_normal,
+            incoming,
+            sampling_alpha,
+            random_direction);
+    }
+    auto half_vector = select(sampled_half, glossy_normal, singular);
+    auto cosine_half_incoming = dot(half_vector, incoming);
+    auto eta_squared_cosine_transmitted =
+        closure.ior * closure.ior -
+        (1.0f - cosine_half_incoming * cosine_half_incoming);
+    auto total_internal_reflection =
+        eta_squared_cosine_transmitted <= 0.0f;
+    auto reflection = fresnel_dielectric_cos(
+        cosine_half_incoming, closure.ior);
+    auto effective_transmission_allowed =
+        transmission_allowed & (!total_internal_reflection);
+    auto reflection_probability = glass_reflection_probability(
+        reflection,
+        reflection_allowed,
+        effective_transmission_allowed);
+    auto transmission =
+        (random_lobe >= reflection_probability) &
+        effective_transmission_allowed;
+    auto reflected = 2.0f * cosine_half_incoming * half_vector -
+                     incoming;
+    auto cosine_half_outgoing =
+        -sqrt(max(eta_squared_cosine_transmitted, 0.0f)) /
+        max(closure.ior, 1.0e-20f);
+    auto inverse_eta = 1.0f / max(closure.ior, 1.0e-20f);
+    auto transmitted =
+        (inverse_eta * cosine_half_incoming +
+            cosine_half_outgoing) *
+            half_vector -
+        inverse_eta * incoming;
+    auto direction = select(reflected, transmitted, transmission);
+    auto lobe = select(reflection,
+        1.0f - reflection,
+        transmission);
+    auto lobe_probability = select(reflection_probability,
+        1.0f - reflection_probability,
+        transmission);
+    auto has_lobe = select(reflection_allowed,
+        effective_transmission_allowed,
+        transmission);
+    auto expected_negative = transmission;
+    auto shading_negative = dot(glossy_normal, direction) < 0.0f;
+    auto geometric_negative = dot(geometric_normal, direction) < 0.0f;
+    auto shading_hemisphere_valid = select(!shading_negative,
+        shading_negative,
+        expected_negative);
+    auto geometric_hemisphere_valid = select(!geometric_negative,
+        geometric_negative,
+        expected_negative);
+    auto valid = has_lobe & (cosine_half_incoming > 0.0f) &
+                 shading_hemisphere_valid & geometric_hemisphere_valid;
+    return {.direction = direction,
+        .singular_evaluation =
+            closure.weight * closure.color * lobe * 1.0e6f,
+        .singular_pdf = lobe_probability * 1.0e6f,
+        .eta = select(1.0f, closure.ior, transmission),
+        .alpha = alpha,
+        .transmission = transmission,
+        .singular = singular,
+        .valid = valid};
 }
 
 [[nodiscard]] Float3 sample_cosine_hemisphere(

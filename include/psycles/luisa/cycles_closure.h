@@ -21,6 +21,9 @@ inline constexpr std::uint32_t type_oren_nayar = 3u;
 inline constexpr std::uint32_t type_rough_translucent = 4u;
 inline constexpr std::uint32_t type_translucent = 9u;
 inline constexpr std::uint32_t type_microfacet_ggx = 12u;
+inline constexpr std::uint32_t type_microfacet_beckmann_glass = 24u;
+inline constexpr std::uint32_t type_microfacet_ggx_glass = 25u;
+inline constexpr std::uint32_t type_microfacet_multi_ggx_glass = 26u;
 inline constexpr std::uint32_t type_transparent = 30u;
 inline constexpr std::uint32_t type_principled_virtual = 43u;
 

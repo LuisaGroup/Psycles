@@ -42,6 +42,7 @@ _ALL_PROBES = (
     "fresnel_matrix",
     "flat_light_distribution",
     "gamma_color",
+    "glass_transport",
     "gradient_matrix",
     "gradient_spherical",
     "hosek_wilkie_diffuse_transport",
@@ -135,6 +136,13 @@ _PROBE_RATIO_GATES = {
     "camera_dof_disk": {
         "Combined": (0.9995, 1.0005),
     },
+    "glass_transport": {
+        "Combined": (0.995, 1.005),
+        "GlossCol": (0.995, 1.005),
+        "GlossDir": (0.995, 1.005),
+        "TransCol": (0.995, 1.005),
+        "TransDir": (0.995, 1.005),
+    },
     "indirect_principled": {
         "DiffInd": (0.98, 1.02),
         "GlossInd": (0.98, 1.02),
@@ -171,6 +179,13 @@ _PROBE_RELATIVE_RMSE_GATES = {
     },
     "camera_dof_disk": {
         "Combined": 0.0005,
+    },
+    "glass_transport": {
+        "Combined": 0.01,
+        "GlossCol": 0.005,
+        "GlossDir": 0.005,
+        "TransCol": 0.001,
+        "TransDir": 0.01,
     },
     "nishita_diffuse_transport": {
         "Combined": 0.0005,

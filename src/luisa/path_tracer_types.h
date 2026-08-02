@@ -170,6 +170,7 @@ struct SurfaceEvaluationCall {
     luisa::float3 f{};
     float pdf{};
     luisa::float3 diffuse_f{};
+    luisa::float3 glossy_f{};
     float diffuse_pdf{};
     luisa::uint events{};
 };
@@ -178,6 +179,7 @@ struct SurfaceSampleCall {
     luisa::float3 f{};
     float pdf{};
     luisa::float3 diffuse_f{};
+    luisa::float3 glossy_f{};
     float diffuse_pdf{};
     luisa::uint events{};
     luisa::float3 wi{};
@@ -202,6 +204,7 @@ struct SurfaceSampleTraceCall {
     luisa::float3 f{};
     float pdf{};
     luisa::float3 diffuse_f{};
+    luisa::float3 glossy_f{};
     float diffuse_pdf{};
     luisa::uint events{};
     luisa::float3 wi{};
@@ -421,6 +424,7 @@ LUISA_STRUCT(
     f,
     pdf,
     diffuse_f,
+    glossy_f,
     diffuse_pdf,
     events) {};
 LUISA_STRUCT(
@@ -428,6 +432,7 @@ LUISA_STRUCT(
     f,
     pdf,
     diffuse_f,
+    glossy_f,
     diffuse_pdf,
     events,
     wi,
@@ -450,6 +455,7 @@ LUISA_STRUCT(
     f,
     pdf,
     diffuse_f,
+    glossy_f,
     diffuse_pdf,
     events,
     wi,

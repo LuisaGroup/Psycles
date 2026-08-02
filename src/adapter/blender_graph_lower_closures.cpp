@@ -136,6 +136,44 @@ public:
                 .ref = {.node = id, .socket = "Closure"},
                 .type = SocketType::closure});
         }
+        if (type == "BSDF_GLASS") {
+            const auto id = context.graph().add_node(
+                compiler::node_type::glass_bsdf,
+                node_name);
+            static_cast<void>(context.graph().set_property(
+                id,
+                "Distribution",
+                SocketValue::string(context.node_property_text(
+                    node, "distribution", "GGX"))));
+            static_cast<void>(context.bind(
+                id, "Color", node, "Color", SocketType::color));
+            static_cast<void>(context.bind(
+                id,
+                "Roughness",
+                node,
+                "Roughness",
+                SocketType::floating));
+            static_cast<void>(context.bind(
+                id, "IOR", node, "IOR", SocketType::floating));
+            if (context.raw_input(node, "Normal") != nullptr) {
+                static_cast<void>(context.bind(
+                    id,
+                    "Normal",
+                    node,
+                    "Normal",
+                    SocketType::normal));
+            } else {
+                static_cast<void>(context.graph().connect(
+                    context.geometry_output(
+                        "Normal", SocketType::normal)
+                        .ref,
+                    id,
+                    "Normal"));
+            }
+            return finish({
+                .ref = {.node = id, .socket = "Closure"},
+                .type = SocketType::closure});
+        }
         if (type == "EMISSION" || type == "BACKGROUND") {
             const auto id = context.graph().add_node(
                 compiler::node_type::emission,

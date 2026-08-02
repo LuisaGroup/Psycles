@@ -128,6 +128,30 @@ void GraphSurfaceImplementation::for_each_closure(
                         closure.preserve_ggx_energy});
                 return;
             }
+            case compiler::ClosureOperation::glass: {
+                auto color = max(
+                    vector(closure.color, values),
+                    make_float3(0.0f));
+                function(TracedClosure{
+                    .operation = compiler::ClosureOperation::glass,
+                    // Cycles allocates Glass with the closure mix weight;
+                    // Color is a Fresnel tint rather than closure weight.
+                    .weight = make_float3(mix_weight),
+                    .color = color,
+                    .normal = safe_normalize(
+                        vector(closure.normal, values),
+                        values.shading_normal),
+                    .roughness = scalar(closure.roughness, values),
+                    .diffuse_roughness = 0.0f,
+                    .metallic = 0.0f,
+                    .ior = max(scalar(closure.ior, values), 1.0e-5f),
+                    .specular_ior_level = 0.5f,
+                    .specular_tint = make_float3(1.0f),
+                    .preserve_ggx_energy =
+                        closure.preserve_ggx_energy,
+                    .beckmann = closure.beckmann});
+                return;
+            }
             case compiler::ClosureOperation::emission: {
                 auto color = vector(
                     closure.color, values);

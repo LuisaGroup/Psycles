@@ -98,6 +98,31 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                     allocated);
                 break;
             }
+            case compiler::ClosureOperation::glass: {
+                closure.allocation_weight = sample_weight(
+                    max(closure.weight, make_float3(0.0f)));
+                const auto allocated =
+                    closure.allocation_weight >=
+                    cycles_closure::closure_weight_cutoff;
+                closure.weight = select(make_float3(0.0f),
+                    max(closure.weight, make_float3(0.0f)),
+                    allocated);
+                closure.normal = ensure_valid_specular_reflection(
+                    point.geometric_normal,
+                    incoming,
+                    graph_closure.normal);
+                closure.ior = select(graph_closure.ior,
+                    1.0f / max(graph_closure.ior, 1.0e-20f),
+                    point.back_facing);
+                closure.color = max(
+                    graph_closure.color, make_float3(0.0f));
+                closure.albedo = closure.weight * closure.color;
+                closure.sample_weight = select(0.0f,
+                    closure.allocation_weight *
+                        sample_weight(closure.color),
+                    allocated);
+                break;
+            }
             case compiler::ClosureOperation::translucent: {
                 closure.allocation_weight = sample_weight(
                     max(closure.weight, make_float3(0.0f)));
