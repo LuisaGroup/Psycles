@@ -1,6 +1,8 @@
 #include "path_tracer_internal.h"
 #include "sample_dispatch_partition.h"
 
+#include <psycles/luisa/volume_guiding.h>
+
 namespace psycles::luisa_backend::detail {
 
 std::size_t LuisaRenderSession::pixel_count() const noexcept {
@@ -66,7 +68,7 @@ void LuisaRenderSession::prepare_sobol_table(
         sequence_size;
 }
 
-void LuisaRenderSession::write_passes(
+bool LuisaRenderSession::write_passes(
     contract::OutputSink &output) {
     const auto count = pixel_count();
     luisa::vector<luisa::float4> combined(count);
@@ -82,6 +84,15 @@ void LuisaRenderSession::write_passes(
                    luisa::span{light_passes})
             << _sample_count.copy_to(luisa::span{samples})
             << synchronize();
+
+    if (!std::all_of(
+            samples.begin(),
+            samples.end(),
+            [&](const auto count) noexcept {
+                return count == _rendered_samples;
+            })) {
+        return false;
+    }
 
     output.begin(_settings);
     for (const auto &pass : _settings.passes) {
@@ -239,6 +250,7 @@ void LuisaRenderSession::write_passes(
             .pixels = std::span<const float>{pixels}});
     }
     output.end(_cancelled.load());
+    return true;
 }
 
 LuisaRenderSession::LuisaRenderSession(
@@ -299,30 +311,66 @@ bool LuisaRenderSession::render_samples(
     if (!dispatches) {
         return false;
     }
-    const auto dispatch_size =
-        static_cast<std::uint32_t>(
-            std::max<std::size_t>(pixel_count(), 1u));
     while (const auto batch = dispatches->next()) {
         if (_cancelled.load()) {
             return false;
         }
-        _stream
-            << _render_shader(
-                   _combined,
-                   _normal,
-                   _albedo,
-                   _light_passes,
-                   _sample_count,
-                   _volume_guiding_raw,
-                   _volume_guiding_denoised,
-                   _path_trace,
-                   batch->first,
-                   batch->count,
-                   _sobol_table,
-                   _pixel_filter_table,
-                   _kernel_parameters)
-                   .dispatch(dispatch_size)
-            << synchronize();
+        auto row_dispatches =
+            PixelRowDispatchPartition::make(
+                _window.width,
+                _window.height,
+                batch->count,
+                _options.max_pixel_samples_per_dispatch);
+        if (!row_dispatches) {
+            return false;
+        }
+        while (const auto rows = row_dispatches->next()) {
+            auto parameters = _kernel_parameters;
+            parameters.window_y += rows->first_row;
+            const auto pixel_offset =
+                static_cast<std::size_t>(rows->first_pixel);
+            const auto pixel_count =
+                static_cast<std::size_t>(rows->pixel_count);
+            const auto light_offset =
+                pixel_offset * light_pass_buffer_count;
+            const auto light_count =
+                pixel_count * light_pass_buffer_count;
+            const auto volume_raw_offset =
+                pixel_offset *
+                volume_guiding::raw_pixel_stride;
+            const auto volume_raw_count =
+                pixel_count *
+                volume_guiding::raw_pixel_stride;
+            const auto volume_denoised_offset =
+                pixel_offset *
+                volume_guiding::denoised_pixel_stride;
+            const auto volume_denoised_count =
+                pixel_count *
+                volume_guiding::denoised_pixel_stride;
+            _stream
+                << _render_shader(
+                       _combined.view(pixel_offset, pixel_count),
+                       _normal.view(pixel_offset, pixel_count),
+                       _albedo.view(pixel_offset, pixel_count),
+                       _light_passes.view(
+                           light_offset, light_count),
+                       _sample_count.view(
+                           pixel_offset, pixel_count),
+                       _volume_guiding_raw.view(
+                           volume_raw_offset,
+                           volume_raw_count),
+                       _volume_guiding_denoised.view(
+                           volume_denoised_offset,
+                           volume_denoised_count),
+                       _path_trace,
+                       batch->first,
+                       batch->count,
+                       _sobol_table,
+                       _pixel_filter_table,
+                       parameters)
+                       .dispatch(rows->pixel_count)
+                << synchronize();
+        }
         _rendered_samples +=
             batch->count;
         if (batch->
@@ -361,8 +409,7 @@ bool LuisaRenderSession::render_samples(
     if (_cancelled.load()) {
         return false;
     }
-    write_passes(output);
-    return true;
+    return write_passes(output);
 }
 
 void LuisaRenderSession::cancel() noexcept {

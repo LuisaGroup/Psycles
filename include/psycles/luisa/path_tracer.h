@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 
@@ -47,6 +48,11 @@ struct LuisaPathTracerOptions {
     // finite bounds GPU progress and error-detection latency without changing
     // the device sampler's global sample indices. Zero is invalid.
     std::uint32_t max_samples_per_dispatch{8u};
+    // Upper bound on pixel/sample work submitted in one kernel dispatch.
+    // Backends without a practical watchdog use the unbounded default;
+    // the Metal backend applies a conservative device-safe cap.
+    std::uint32_t max_pixel_samples_per_dispatch{
+        std::numeric_limits<std::uint32_t>::max()};
     // Diagnostic-only, observational trace. The kernel writes this fixed
     // schema only for the requested full-film pixel and absolute sample.
     std::optional<LuisaPathTraceRequest> path_trace;

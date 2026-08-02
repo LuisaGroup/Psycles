@@ -15,6 +15,10 @@ using psycles::luisa_backend::detail::
     SampleDispatchBatch;
 using psycles::luisa_backend::detail::
     SampleDispatchPartition;
+using psycles::luisa_backend::detail::
+    PixelRowDispatchBatch;
+using psycles::luisa_backend::detail::
+    PixelRowDispatchPartition;
 
 void require(bool condition, std::string_view message) {
     if (!condition) {
@@ -71,6 +75,25 @@ collect_volume_guided(
     return batches;
 }
 
+[[nodiscard]] std::optional<
+    std::vector<PixelRowDispatchBatch>>
+collect_rows(
+    std::uint32_t width,
+    std::uint32_t height,
+    std::uint32_t samples,
+    std::uint32_t work_limit) {
+    auto partition = PixelRowDispatchPartition::make(
+        width, height, samples, work_limit);
+    if (!partition) {
+        return std::nullopt;
+    }
+    std::vector<PixelRowDispatchBatch> batches;
+    while (const auto batch = partition->next()) {
+        batches.emplace_back(*batch);
+    }
+    return batches;
+}
+
 void require_exact_partition(
     std::uint32_t first,
     std::uint32_t count,
@@ -117,6 +140,35 @@ void require_exact_partition(
 }// namespace
 
 int main() {
+    require(
+        !PixelRowDispatchPartition::make(0u, 1u, 1u, 1u),
+        "zero-width pixel partition was accepted");
+    require(
+        !PixelRowDispatchPartition::make(1u, 1u, 0u, 1u),
+        "zero-sample pixel partition was accepted");
+    const auto metal_rows = collect_rows(
+        320u, 180u, 8u, 131072u);
+    require(
+        metal_rows && metal_rows->size() == 4u,
+        "Metal work bound did not split the Classroom frame");
+    auto next_row = std::uint32_t{0u};
+    auto covered_pixels = std::uint32_t{0u};
+    for (const auto batch : *metal_rows) {
+        require(
+            batch.first_row == next_row &&
+                batch.first_pixel == covered_pixels &&
+                batch.row_count > 0u &&
+                batch.pixel_count == batch.row_count * 320u &&
+                static_cast<std::uint64_t>(batch.pixel_count) * 8u <=
+                    131072u,
+            "pixel row partition has a gap or exceeds its work bound");
+        next_row += batch.row_count;
+        covered_pixels += batch.pixel_count;
+    }
+    require(
+        next_row == 180u && covered_pixels == 320u * 180u,
+        "pixel row partition did not cover the full frame");
+
     require(
         !SampleDispatchPartition::make(0u, 1u, 0u)
              .has_value(),

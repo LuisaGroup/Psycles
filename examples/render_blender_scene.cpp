@@ -344,6 +344,9 @@ int main(int argc, char **argv) {
              .offset = 0u,
              .total = samples},
             sink)) {
+        std::cerr
+            << "error: rendering failed or returned incomplete "
+               "sample coverage\n";
         return EXIT_FAILURE;
     }
     if (path_trace_output) {

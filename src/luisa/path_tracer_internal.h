@@ -385,7 +385,7 @@ private:
     [[nodiscard]] std::size_t pixel_count() const noexcept;
     void prepare_sobol_table(std::uint32_t total_samples);
     void initialize(const RenderSettings &settings);
-    void write_passes(contract::OutputSink &output);
+    [[nodiscard]] bool write_passes(contract::OutputSink &output);
     void deliver_path_trace();
 
 public:
