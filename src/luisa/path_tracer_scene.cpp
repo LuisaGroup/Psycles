@@ -193,6 +193,10 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                          : 0u) |
                     (emission_is_constant
                          ? material_flag_constant_emission
+                         : 0u) |
+                    (snapshot.materials.at(id)
+                            .use_bump_map_correction
+                         ? material_flag_use_bump_map_correction
                          : 0u),
                 .volume_sampling =
                     snapshot.materials.at(id)

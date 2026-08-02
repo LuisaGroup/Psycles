@@ -291,6 +291,7 @@ int main() {
             .transmission_depth = 0u,
             .ray_length = 0.0f,
             .time = 0.0f,
+            .use_bump_map_correction = true,
             .back_facing = false};
         auto query = SurfaceQuery{
             .lobe_mask = ~std::uint32_t{0u},

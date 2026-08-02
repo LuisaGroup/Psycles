@@ -380,6 +380,11 @@ BlenderSceneImport load_blender_scene_bundle(
                         image_alpha_types,
                         node_groups,
                         result.diagnostics),
+                    .use_bump_map_correction =
+                        boolean(member(
+                                    material,
+                                    "use_bump_map_correction"),
+                            true),
                     .emission_sampling =
                         emission_sampling(text(
                             member(

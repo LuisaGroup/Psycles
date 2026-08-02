@@ -12,6 +12,7 @@ void GraphSurfaceImplementation::for_each_physical_closure(
     const ClosureVisitor &function) const noexcept {
     const auto incoming =
         safe_normalize(point.incoming, point.shading_normal);
+    const PrincipledLayerComponent principled_layers{services, point};
     Float3 transparent_weight = make_float3(0.0f);
     Float transparent_sample_weight = 0.0f;
     for_each_closure(
@@ -38,6 +39,7 @@ void GraphSurfaceImplementation::for_each_physical_closure(
         values, [&](const TracedClosure &graph_closure) noexcept {
             auto closure = graph_closure;
             closure.principled_lobe = PrincipledLobe::none;
+            closure.setup_valid = true;
             closure.evaluation_scale = make_float3(1.0f);
 
             const auto produces_transparency =
@@ -76,6 +78,7 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                         emit_here);
                 transparent.sample_weight =
                     transparent.allocation_weight;
+                transparent.setup_valid = true;
                 transparent.albedo = transparent.weight;
                 transparent.color = make_float3(1.0f);
                 transparent.normal = point.shading_normal;
@@ -91,11 +94,13 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                 closure.weight =
                     evaluate_principled_alpha_layer(graph_closure)
                         .lower_weight;
+                const auto sheen = principled_layers.evaluate_sheen(
+                    graph_closure, closure.weight);
+                function(sheen.closure);
+                closure.weight = sheen.lower_weight;
                 const auto glossy_normal =
-                    ensure_valid_specular_reflection(
-                        point.geometric_normal,
-                        incoming,
-                        graph_closure.normal);
+                    maybe_ensure_valid_specular_reflection(
+                        point, incoming, graph_closure.normal);
                 const auto state = principled_state(
                     services, closure, incoming, glossy_normal);
 
@@ -195,10 +200,8 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                 closure.weight = select(make_float3(0.0f),
                     max(closure.weight, make_float3(0.0f)),
                     allocated);
-                closure.normal = ensure_valid_specular_reflection(
-                    point.geometric_normal,
-                    incoming,
-                    graph_closure.normal);
+                closure.normal = maybe_ensure_valid_specular_reflection(
+                    point, incoming, graph_closure.normal);
                 closure.albedo = closure.weight *
                                  max(closure.color, make_float3(0.04f));
                 closure.sample_weight = select(0.0f,
@@ -217,10 +220,8 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                 closure.weight = select(make_float3(0.0f),
                     max(closure.weight, make_float3(0.0f)),
                     allocated);
-                closure.normal = ensure_valid_specular_reflection(
-                    point.geometric_normal,
-                    incoming,
-                    graph_closure.normal);
+                closure.normal = maybe_ensure_valid_specular_reflection(
+                    point, incoming, graph_closure.normal);
                 closure.ior = select(graph_closure.ior,
                     1.0f / max(graph_closure.ior, 1.0e-20f),
                     point.back_facing);
@@ -244,10 +245,8 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                     allocated);
                 // Cycles currently applies the specular-reflection
                 // normal correction to translucent setup as well.
-                closure.normal = ensure_valid_specular_reflection(
-                    point.geometric_normal,
-                    incoming,
-                    graph_closure.normal);
+                closure.normal = maybe_ensure_valid_specular_reflection(
+                    point, incoming, graph_closure.normal);
                 closure.albedo = closure.weight;
                 closure.sample_weight =
                     select(0.0f, closure.allocation_weight, allocated);

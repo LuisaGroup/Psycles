@@ -1073,6 +1073,9 @@ def _export_scene(
         materials.append(
             {
                 "name": material.name,
+                "use_bump_map_correction": bool(
+                    getattr(cycles, "use_bump_map_correction", True)
+                ),
                 "emission_sampling": str(
                     getattr(cycles, "emission_sampling", "AUTO")
                 ),

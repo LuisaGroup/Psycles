@@ -67,21 +67,17 @@ evaluate_principled_alpha_layer(
             closure.weight * (1.0f - alpha))};
 }
 
-PrincipledEmissionLayerComponent::PrincipledEmissionLayerComponent(
+PrincipledLayerComponent::PrincipledLayerComponent(
     const ShaderServices &services,
-    const SurfacePoint &point,
-    Bool reflective_caustics) noexcept
+    const SurfacePoint &point) noexcept
     : _services{services},
-      _point{point},
-      _reflective_caustics{reflective_caustics} {}
+      _point{point} {}
 
-PrincipledEmissionLayerResult
-PrincipledEmissionLayerComponent::evaluate(
-    const TracedClosure &closure) const noexcept {
-    auto lower_weight =
-        evaluate_principled_alpha_layer(closure).lower_weight;
+PrincipledSheenLayerResult
+PrincipledLayerComponent::evaluate_sheen(
+    const TracedClosure &closure,
+    Float3 lower_weight) const noexcept {
     const auto incoming = _point.incoming;
-
     const auto coat_weight = max(closure.coat_weight, 0.0f);
     const auto coat_normal_input = closure.coat_normal_linked
                                        ? closure.coat_normal
@@ -111,6 +107,13 @@ PrincipledEmissionLayerComponent::evaluate(
         UInt{cycles45_tables::sheen_ltc_offset},
         32u,
         32u);
+    const auto sheen_transform_b = cycles_table_2d(
+        _services,
+        sheen_cosine,
+        sheen_roughness,
+        UInt{cycles45_tables::sheen_ltc_offset + 32u * 32u},
+        32u,
+        32u);
     const auto sheen_albedo = cycles_table_2d(
         _services,
         sheen_cosine,
@@ -118,21 +121,71 @@ PrincipledEmissionLayerComponent::evaluate(
         UInt{cycles45_tables::sheen_ltc_offset + 2u * 32u * 32u},
         32u,
         32u);
-    const auto sheen_pre_weight =
-        lower_weight * sheen_tint * sheen_weight;
-    const auto sheen_allocated =
-        sample_weight(max(
-            sheen_pre_weight,
-            make_float3(0.0f))) >=
-        cycles_closure::closure_weight_cutoff;
+    const auto sheen_pre_weight = max(
+        lower_weight * sheen_tint * sheen_weight,
+        make_float3(0.0f));
+    const auto sheen_allocation_weight =
+        sample_weight(sheen_pre_weight);
+    const auto sheen_allocated = sheen_allocation_weight >=
+                                 cycles_closure::closure_weight_cutoff;
+    const auto sheen_slot_allocated =
+        sheen_requested & sheen_allocated;
     const auto sheen_valid =
-        sheen_requested & sheen_allocated &
+        sheen_slot_allocated &
         (abs(sheen_transform_a) >= 1.0e-5f) &
         (sheen_albedo >= 1.0e-5f);
+    const auto sheen_final_weight =
+        sheen_pre_weight * sheen_albedo;
     lower_weight = apply_layer_albedo(
         lower_weight,
-        sheen_pre_weight * sheen_albedo,
+        sheen_final_weight,
         sheen_valid);
+
+    auto physical = closure;
+    physical.principled_lobe = PrincipledLobe::sheen;
+    physical.weight = select(make_float3(0.0f),
+        select(sheen_pre_weight, sheen_final_weight, sheen_valid),
+        sheen_slot_allocated);
+    physical.allocation_weight = select(
+        0.0f, sheen_allocation_weight, sheen_slot_allocated);
+    physical.sample_weight = select(0.0f,
+        sheen_allocation_weight * sheen_albedo,
+        sheen_valid);
+    physical.setup_valid = sheen_valid;
+    physical.albedo = select(
+        make_float3(0.0f), sheen_final_weight, sheen_valid);
+    physical.color = sheen_tint;
+    physical.normal = sheen_normal;
+    physical.roughness = sheen_roughness;
+    physical.ior = 1.0f;
+    physical.sheen_transform_a = sheen_transform_a;
+    physical.sheen_transform_b = sheen_transform_b;
+    physical.evaluation_scale = make_float3(1.0f);
+    physical.preserve_ggx_energy = false;
+    physical.beckmann = false;
+    return {.closure = physical, .lower_weight = lower_weight};
+}
+
+PrincipledEmissionLayerResult
+PrincipledLayerComponent::evaluate_emission(
+    const TracedClosure &closure,
+    Bool reflective_caustics) const noexcept {
+    auto lower_weight =
+        evaluate_principled_alpha_layer(closure).lower_weight;
+    const auto incoming = _point.incoming;
+
+    const auto sheen = evaluate_sheen(closure, lower_weight);
+    lower_weight = sheen.lower_weight;
+
+    const auto coat_weight = max(closure.coat_weight, 0.0f);
+    const auto coat_normal_input = closure.coat_normal_linked
+                                       ? closure.coat_normal
+                                       : closure.normal;
+    const auto coat_normal_fallback = closure.coat_normal_linked
+                                          ? _point.shading_normal
+                                          : closure.normal;
+    const auto coat_normal = cycles_safe_normalize_fallback(
+        coat_normal_input, coat_normal_fallback);
 
     const auto coat_requested =
         coat_weight > cycles_closure::closure_weight_cutoff;
@@ -140,10 +193,8 @@ PrincipledEmissionLayerComponent::evaluate(
         closure.coat_roughness, 0.0f, 1.0f);
     const auto coat_ior = max(closure.coat_ior, 1.0f);
     const auto valid_coat_normal =
-        ensure_valid_specular_reflection(
-            _point.geometric_normal,
-            incoming,
-            coat_normal);
+        maybe_ensure_valid_specular_reflection(
+            _point, incoming, coat_normal);
     const auto coat_cosine = dot(incoming, valid_coat_normal);
     const auto coat_pre_weight = lower_weight * coat_weight;
     const auto coat_allocated =
@@ -152,7 +203,7 @@ PrincipledEmissionLayerComponent::evaluate(
             make_float3(0.0f))) >=
         cycles_closure::closure_weight_cutoff;
     const auto coat_reflection_active =
-        coat_requested & _reflective_caustics & coat_allocated;
+        coat_requested & reflective_caustics & coat_allocated;
 
     auto coat_closure = closure;
     coat_closure.roughness = coat_roughness;

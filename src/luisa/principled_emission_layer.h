@@ -12,29 +12,37 @@ struct PrincipledAlphaLayerResult {
 [[nodiscard]] PrincipledAlphaLayerResult evaluate_principled_alpha_layer(
     const TracedClosure &closure) noexcept;
 
-// Device-expression result of Cycles' ordered Principled layers. This is a
-// host-stage component: ordinary C++ composition records the corresponding
-// Luisa AST, while every socket and lookup remains a device-side value.
+// Device-expression results of Cycles' ordered Principled layers. The
+// host-stage component below records the corresponding Luisa AST while every
+// socket, lookup, allocation predicate, and layer reduction stays device-side.
 struct PrincipledEmissionLayerResult {
     Float3 lower_weight;
     Float3 radiance;
 };
 
-class PrincipledEmissionLayerComponent final {
+struct PrincipledSheenLayerResult {
+    TracedClosure closure;
+    Float3 lower_weight;
+};
+
+class PrincipledLayerComponent final {
 
 private:
     const ShaderServices &_services;
     const SurfacePoint &_point;
-    Bool _reflective_caustics;
 
 public:
-    PrincipledEmissionLayerComponent(
+    PrincipledLayerComponent(
         const ShaderServices &services,
-        const SurfacePoint &point,
-        Bool reflective_caustics) noexcept;
+        const SurfacePoint &point) noexcept;
 
-    [[nodiscard]] PrincipledEmissionLayerResult evaluate(
-        const TracedClosure &closure) const noexcept;
+    [[nodiscard]] PrincipledSheenLayerResult evaluate_sheen(
+        const TracedClosure &closure,
+        Float3 lower_weight) const noexcept;
+
+    [[nodiscard]] PrincipledEmissionLayerResult evaluate_emission(
+        const TracedClosure &closure,
+        Bool reflective_caustics) const noexcept;
 };
 
 }// namespace psycles::luisa_backend::detail

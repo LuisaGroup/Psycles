@@ -53,6 +53,8 @@ inline constexpr std::uint32_t material_flag_may_emit =
     1u << 1u;
 inline constexpr std::uint32_t material_flag_constant_emission =
     1u << 2u;
+inline constexpr std::uint32_t material_flag_use_bump_map_correction =
+    1u << 3u;
 
 struct MaterialBindingGpu {
     luisa::uint surface_tag{};
@@ -173,6 +175,7 @@ struct SurfacePointCall {
     luisa::uint transmission_depth{};
     float ray_length{};
     float time{};
+    luisa::uint use_bump_map_correction{};
     luisa::uint back_facing{};
 };
 
@@ -436,6 +439,7 @@ LUISA_STRUCT(
     transmission_depth,
     ray_length,
     time,
+    use_bump_map_correction,
     back_facing) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::SurfaceEvaluationCall,

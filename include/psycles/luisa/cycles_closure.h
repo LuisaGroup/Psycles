@@ -19,6 +19,7 @@ inline constexpr std::uint32_t type_none = 0u;
 inline constexpr std::uint32_t type_diffuse = 2u;
 inline constexpr std::uint32_t type_oren_nayar = 3u;
 inline constexpr std::uint32_t type_rough_translucent = 4u;
+inline constexpr std::uint32_t type_sheen = 7u;
 inline constexpr std::uint32_t type_translucent = 9u;
 inline constexpr std::uint32_t type_microfacet_ggx = 12u;
 inline constexpr std::uint32_t type_microfacet_beckmann_glass = 24u;

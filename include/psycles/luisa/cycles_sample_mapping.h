@@ -69,6 +69,30 @@ struct UniformConeSample {
     return {.tangent = tangent, .bitangent = cross(normal, tangent)};
 }
 
+// Cycles' Sheen LTC fixes its azimuthal frame with the incoming direction
+// when that tangent is usable, and falls back to make_orthonormals otherwise.
+// safe_normalize here has the exact zero-only contract from Cycles.
+[[nodiscard]] inline OrthonormalBasis make_orthonormals_safe_tangent(
+    luisa::compute::Float3 normal,
+    luisa::compute::Float3 candidate_tangent) noexcept {
+    using namespace luisa::compute;
+    const auto unnormalized_bitangent =
+        cross(normal, candidate_tangent);
+    const auto length = sqrt(dot(
+        unnormalized_bitangent, unnormalized_bitangent));
+    const auto bitangent = unnormalized_bitangent /
+                           select(1.0f, length, length != 0.0f);
+    const auto candidate = OrthonormalBasis{
+        .tangent = cross(bitangent, normal),
+        .bitangent = bitangent};
+    const auto fallback = make_orthonormals(normal);
+    const auto valid = dot(bitangent, bitangent) >= 0.99f;
+    return {
+        .tangent = select(fallback.tangent, candidate.tangent, valid),
+        .bitangent = select(
+            fallback.bitangent, candidate.bitangent, valid)};
+}
+
 // The disk map, basis orientation, and lack of a final renormalization
 // are one deterministic sampling invariant. The input normal is
 // expected to be unit length, matching the Cycles closure contract.

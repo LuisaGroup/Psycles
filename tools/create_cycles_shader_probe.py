@@ -119,6 +119,7 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "principled_bump_glossy": closures._principled_bump_glossy,
     "principled_emission": closures._principled_emission,
     "principled_emission_layers": closures._principled_emission_layers,
+    "principled_sheen_surface": closures._principled_sheen_surface,
     "principled_surface": closures._principled_surface,
     "rgb_emission": lights_camera._rgb_emission,
     "rgb_curve_matrix": texture_inputs._rgb_curve_matrix,

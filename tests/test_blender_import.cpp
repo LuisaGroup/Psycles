@@ -77,6 +77,7 @@ void test_integrator_settings_round_trip() {
   "materials": [
     {
       "name": "Raw Emissive",
+      "use_bump_map_correction": false,
       "emission_sampling": "BACK",
       "volume_sampling": "EQUIANGULAR",
       "cycles_sync": {
@@ -602,6 +603,7 @@ void test_integrator_settings_round_trip() {
     expect(
         imported_material !=
             imported.scene->materials.end() &&
+            !imported_material->second.use_bump_map_correction &&
             imported_material->second.emission_sampling ==
                 EmissionSampling::back &&
             imported_material->second.volume_sampling ==

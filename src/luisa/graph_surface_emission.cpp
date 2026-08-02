@@ -12,10 +12,7 @@ namespace psycles::luisa_backend::detail {
         return make_float3(0.0f);
     }
     auto values = trace_values(services, point);
-    const PrincipledEmissionLayerComponent principled_layers{
-        services,
-        point,
-        reflective_caustics};
+    const PrincipledLayerComponent principled_layers{services, point};
     Float3 result = make_float3(0.0f);
     for_each_closure(
         values, [&](const TracedClosure &closure) noexcept {
@@ -24,7 +21,10 @@ namespace psycles::luisa_backend::detail {
                 result += closure.weight;
             } else if (closure.operation ==
                        compiler::ClosureOperation::principled) {
-                result += principled_layers.evaluate(closure).radiance;
+                result += principled_layers
+                              .evaluate_emission(
+                                  closure, reflective_caustics)
+                              .radiance;
             }
         });
     return result;

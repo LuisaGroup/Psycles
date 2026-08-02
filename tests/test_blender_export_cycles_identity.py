@@ -66,6 +66,7 @@ def _main() -> None:
     material.use_nodes = True
     material.displacement_method = "BUMP"
     material.cycles.volume_sampling = "EQUIANGULAR"
+    material.cycles.use_bump_map_correction = False
     mesh = bpy.data.meshes.new("Surface Mesh")
     mesh.from_pydata(
         [(-1.0, -1.0, 0.0), (1.0, -1.0, 0.0), (0.0, 1.0, 0.0)],
@@ -142,6 +143,11 @@ def _main() -> None:
         raise AssertionError(
             "material displacement policy did not round-trip through "
             "the Blender exporter"
+        )
+    if materials["Middle Material"]["use_bump_map_correction"] is not False:
+        raise AssertionError(
+            "material bump-map correction policy did not round-trip "
+            "through the Blender exporter"
         )
 
     instances = payload["instances"]

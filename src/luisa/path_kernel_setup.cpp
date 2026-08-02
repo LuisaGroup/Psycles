@@ -772,6 +772,7 @@ PathSampleContext::analytic_light_shader(Var<LightGpu> light,
             .transmission_depth = transmission_depth,
             .ray_length = light_distance,
             .time = 0.0f,
+            .use_bump_map_correction = false,
             .back_facing = false};
         cycles_path_state::apply_shader_state(
             light_point,

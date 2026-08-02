@@ -74,6 +74,10 @@ enum class VolumeSampling : std::uint8_t {
 struct MaterialDesc {
     std::string name;
     ShaderGraph shader;
+    // Cycles Shader::use_bump_map_correction. This remains material
+    // metadata beside the raw closure graph because structurally identical
+    // graphs may use different correction policies at runtime.
+    bool use_bump_map_correction{true};
     // This is the original Cycles material setting. It controls whether and
     // from which side an emissive closure participates in light sampling; it
     // never replaces or pre-evaluates the closure graph above.

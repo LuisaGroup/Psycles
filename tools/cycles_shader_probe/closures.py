@@ -760,6 +760,125 @@ def _principled_surface(scene: Any) -> None:
     _sphere(material)
 
 
+def _principled_sheen_surface(scene: Any) -> None:
+    """Isolate current Cycles Principled Sheen setup and LTC sampling."""
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 0.01
+    scene.cycles.max_bounces = 1
+    scene.cycles.diffuse_bounces = 1
+    scene.cycles.glossy_bounces = 0
+    scene.cycles.transmission_bounces = 0
+    scene.cycles.use_light_tree = False
+
+    world = bpy.data.worlds.new("Directional Sheen World")
+    world.use_nodes = True
+    tree = world.node_tree
+    tree.nodes.clear()
+    coordinates = tree.nodes.new("ShaderNodeTexCoord")
+    coordinates.name = "World Direction"
+    absolute = tree.nodes.new("ShaderNodeVectorMath")
+    absolute.name = "Absolute World Direction"
+    absolute.operation = "ABSOLUTE"
+    background = tree.nodes.new("ShaderNodeBackground")
+    background.name = "Directional Background"
+    _input(background, "Strength").default_value = 1.4
+    output = tree.nodes.new("ShaderNodeOutputWorld")
+    output.name = "World Output"
+    tree.links.new(
+        _output(coordinates, "Normal"), absolute.inputs[0]
+    )
+    tree.links.new(
+        _output(absolute, "Vector"), _input(background, "Color")
+    )
+    tree.links.new(
+        _output(background, "Background"), _input(output, "Surface")
+    )
+    world.cycles.sampling_method = "NONE"
+    scene.world = world
+
+    cases = (
+        (-1.0, 0.5, (1.0, 1.0, 1.0), None),
+        (0.0, 0.5, (1.0, 1.0, 1.0), None),
+        (0.5e-5, 0.5, (1.0, 1.0, 1.0), None),
+        (1.0e-5, 0.5, (1.0, 1.0, 1.0), None),
+        (2.0e-5, 0.5, (1.0, 1.0, 1.0), None),
+        (0.25, -0.3, (0.8, 0.3, 0.1), None),
+        (0.45, 0.0, (0.9, 0.5, 0.2), None),
+        (0.55, 0.001, (0.3, 0.8, 0.4), None),
+        (0.65, 0.05, (1.0, 0.25, 0.08), None),
+        (0.75, 0.37, (0.8, 0.4, 0.2), None),
+        (0.85, 0.95, (0.15, 0.65, 1.2), None),
+        (0.9, 1.0, (0.7, 0.9, 0.25), None),
+        (0.9, 1.4, (0.6, 0.2, 1.1), None),
+        (0.8, 0.6, (-0.2, 0.5, 1.4), None),
+        (0.8, 0.32, (0.8, 0.4, 0.2), (0.3, -0.2, 0.9)),
+        (0.8, 0.72, (0.2, 1.1, 0.45), (0.8, 0.0, 0.6)),
+    )
+    materials = []
+    for index, (weight, roughness, tint, normal) in enumerate(cases):
+        material, material_tree, material_output = _material(
+            f"Principled Sheen {index:02d}"
+        )
+        principled = material_tree.nodes.new("ShaderNodeBsdfPrincipled")
+        principled.name = f"Isolated Principled Sheen {index:02d}"
+        principled.distribution = "GGX"
+        _input(principled, "Base Color").default_value = (
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+        )
+        _input(principled, "Metallic").default_value = 0.0
+        _input(principled, "Roughness").default_value = 0.27
+        _input(principled, "IOR").default_value = 1.0
+        _input(principled, "Specular IOR Level").default_value = 0.5
+        _input(principled, "Alpha").default_value = 1.0
+        _input(principled, "Coat Weight").default_value = 0.0
+        weight_node = material_tree.nodes.new("ShaderNodeValue")
+        weight_node.name = f"Linked Sheen Weight {index:02d}"
+        _output(weight_node, "Value").default_value = weight
+        roughness_node = material_tree.nodes.new("ShaderNodeValue")
+        roughness_node.name = f"Linked Sheen Roughness {index:02d}"
+        _output(roughness_node, "Value").default_value = roughness
+        material_tree.links.new(
+            _output(weight_node, "Value"),
+            _input(principled, "Sheen Weight"),
+        )
+        material_tree.links.new(
+            _output(roughness_node, "Value"),
+            _input(principled, "Sheen Roughness"),
+        )
+        material_tree.links.new(
+            _linked_vector(
+                material_tree, f"Linked Sheen Tint {index:02d}", tint
+            ),
+            _input(principled, "Sheen Tint"),
+        )
+        if normal is not None:
+            material_tree.links.new(
+                _linked_vector(
+                    material_tree,
+                    f"Linked Sheen Normal {index:02d}",
+                    normal,
+                ),
+                _input(principled, "Normal"),
+            )
+        material_tree.links.new(
+            _output(principled, "BSDF"),
+            _input(material_output, "Surface"),
+        )
+        materials.append(material)
+    surface = _material_matrix(
+        scene,
+        materials,
+        columns=4,
+        rows=4,
+        name="Principled Sheen Surface Matrix",
+        frame_bleed=0.02,
+    )
+    surface.visible_shadow = False
+
+
 def _principled_emission(scene: Any) -> None:
     """Isolate raw Principled Emission Color/Strength evaluation."""
     material, tree, output = _material("Principled Emission Probe")

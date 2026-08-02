@@ -121,6 +121,19 @@ namespace psycles::luisa_backend::detail {
         (!reflection_is_valid) & (a > 1.0e-20f));
 }
 
+[[nodiscard]] Float3 maybe_ensure_valid_specular_reflection(
+    const SurfacePoint &point,
+    Float3 incoming,
+    Float3 shading_normal) noexcept {
+    const auto correction_enabled =
+        point.use_bump_map_correction &
+        !all(point.geometric_normal == shading_normal);
+    return select(shading_normal,
+        ensure_valid_specular_reflection(
+            point.geometric_normal, incoming, shading_normal),
+        correction_enabled);
+}
+
 [[nodiscard]] GgxEnergy ggx_energy(const ShaderServices &services,
     const TracedClosure &closure,
     Float incoming_cosine,
@@ -317,6 +330,68 @@ namespace psycles::luisa_backend::detail {
            cycles_closure::closure_weight_cutoff;
 }
 
+[[nodiscard]] Float bump_shadowing_term(const SurfacePoint &point,
+    Float3 smooth_normal,
+    const TracedClosure &closure,
+    Float3 direction,
+    Bool is_evaluation) noexcept {
+    // Cycles classifies Sheen, Lambert/Oren-Nayar, and Translucent in the
+    // contiguous diffuse closure range. Express that semantic class here,
+    // independently of the current host-side operation representation.
+    const auto diffuse_closure =
+        closure.operation == compiler::ClosureOperation::diffuse ||
+        closure.operation == compiler::ClosureOperation::translucent ||
+        (closure.operation == compiler::ClosureOperation::principled &&
+            closure.principled_lobe == PrincipledLobe::sheen);
+
+    const auto normals_equal = all(closure.normal == smooth_normal);
+    const auto cosine_smooth_direction = dot(smooth_normal, direction);
+    const auto cosine_smooth_closure =
+        dot(smooth_normal, closure.normal);
+    const auto cosine_closure_direction =
+        dot(closure.normal, direction);
+
+    // A closure-specific normal must not leak reflection or refraction
+    // through the opposite side of the shader-wide smooth surface. Diffuse
+    // closures use the same predicate during sample and eval; glossy
+    // closures only use it during eval, exactly as Cycles does.
+    const auto wrong_smooth_hemisphere =
+        cosine_smooth_direction * cosine_smooth_closure *
+            cosine_closure_direction <
+        0.0f;
+    const auto reject = wrong_smooth_hemisphere &
+                        (is_evaluation | Bool{diffuse_closure});
+
+    const auto cosine_i = abs(cosine_smooth_direction);
+    const auto cosine_d = abs(cosine_smooth_closure);
+    const auto tangent_d_squared =
+        max(1.0f / max(cosine_d * cosine_d, 1.0e-20f) - 1.0f,
+            0.0f);
+    const auto bump_alpha_squared =
+        clamp(0.125f * tangent_d_squared, 0.0f, 1.0f);
+    const auto tangent_i_squared =
+        max(1.0f / max(cosine_i * cosine_i, 1.0e-20f) - 1.0f,
+            0.0f);
+    const auto lambda = 0.5f *
+                        (sqrt(1.0f +
+                                  bump_alpha_squared *
+                                      tangent_i_squared) -
+                            1.0f);
+    const auto smoothed = 1.0f / (1.0f + lambda);
+    const auto smoothing_domain =
+        Bool{diffuse_closure} & point.use_bump_map_correction &
+        (cosine_d < 1.0f) & (cosine_i < 1.0f);
+    const auto grazing_reject =
+        smoothing_domain & (cosine_i < 1.0e-6f);
+    auto result = select(1.0f,
+        smoothed,
+        smoothing_domain & !grazing_reject);
+    result = select(result, 0.0f, reject | grazing_reject);
+    // Cycles exits before all other predicates when the two normals compare
+    // exactly equal. Retain that ordering even at degenerate dot products.
+    return select(result, 1.0f, normals_equal);
+}
+
 [[nodiscard]] UInt cycles_runtime_flags(const TracedClosure &closure,
     Float glossy_filter_roughness) noexcept {
     UInt flags = 0u;
@@ -332,6 +407,13 @@ namespace psycles::luisa_backend::detail {
         break;
     case compiler::ClosureOperation::principled:
     case compiler::ClosureOperation::glossy: {
+        if (closure.operation ==
+                compiler::ClosureOperation::principled &&
+            closure.principled_lobe == PrincipledLobe::sheen) {
+            flags = cycles_closure::runtime_bsdf |
+                    cycles_closure::runtime_bsdf_has_eval;
+            break;
+        }
         auto alpha = clamp(closure.roughness, 0.0f, 1.0f);
         alpha *= alpha;
         alpha = max(alpha, glossy_filter_roughness);
@@ -370,38 +452,52 @@ namespace psycles::luisa_backend::detail {
         cycles_closure::runtime_bsdf_has_eval,
         glossy_filter_roughness * glossy_filter_roughness >
             cycles_closure::microfacet_singular_alpha_product);
-    return select(0u, flags, closure_allocated(closure));
+    return select(0u,
+        flags,
+        closure_allocated(closure) & closure.setup_valid);
 }
 
 [[nodiscard]] UInt cycles_closure_type(
     const TracedClosure &closure) noexcept {
+    UInt type = cycles_closure::type_none;
     switch (closure.operation) {
     case compiler::ClosureOperation::diffuse:
-        return select(cycles_closure::type_oren_nayar,
+        type = select(cycles_closure::type_oren_nayar,
             cycles_closure::type_diffuse,
             closure.roughness < 1.0e-5f);
+        break;
     case compiler::ClosureOperation::translucent:
-        return cycles_closure::type_translucent;
+        type = cycles_closure::type_translucent;
+        break;
     case compiler::ClosureOperation::glossy:
-        return cycles_closure::type_microfacet_ggx;
+        type = cycles_closure::type_microfacet_ggx;
+        break;
     case compiler::ClosureOperation::glass:
         if (closure.preserve_ggx_energy) {
-            return cycles_closure::type_microfacet_multi_ggx_glass;
+            type = cycles_closure::type_microfacet_multi_ggx_glass;
+            break;
         }
-        return closure.beckmann
-                   ? cycles_closure::type_microfacet_beckmann_glass
-                   : cycles_closure::type_microfacet_ggx_glass;
+        type = closure.beckmann
+                   ? UInt{cycles_closure::type_microfacet_beckmann_glass}
+                   : UInt{cycles_closure::type_microfacet_ggx_glass};
+        break;
     case compiler::ClosureOperation::transparent:
-        return cycles_closure::type_transparent;
+        type = cycles_closure::type_transparent;
+        break;
     case compiler::ClosureOperation::principled:
-        return cycles_closure::type_microfacet_ggx;
+        type = closure.principled_lobe == PrincipledLobe::sheen
+                   ? cycles_closure::type_sheen
+                   : cycles_closure::type_microfacet_ggx;
+        break;
     case compiler::ClosureOperation::null_closure:
     case compiler::ClosureOperation::add:
     case compiler::ClosureOperation::mix:
     case compiler::ClosureOperation::emission:
-        return cycles_closure::type_none;
+        break;
     }
-    return cycles_closure::type_none;
+    return select(UInt{cycles_closure::type_none},
+        type,
+        closure.setup_valid);
 }
 
 [[nodiscard]] ClosureSelectionState closure_selection_state(
@@ -417,6 +513,9 @@ namespace psycles::luisa_backend::detail {
         closure.operation == compiler::ClosureOperation::translucent;
     const auto is_principled =
         closure.operation == compiler::ClosureOperation::principled;
+    const auto is_sheen =
+        is_principled &&
+        closure.principled_lobe == PrincipledLobe::sheen;
     const auto is_glossy =
         closure.operation == compiler::ClosureOperation::glossy;
     const auto is_glass =
@@ -439,13 +538,16 @@ namespace psycles::luisa_backend::detail {
                     : is_translucent
                         ? (diffuse_enabled & transmission_enabled)
                     : is_diffuse    ? diffuse_enabled
+                    : is_sheen      ? diffuse_enabled
                     : is_principled ? glossy_enabled
                     : is_glossy     ? glossy_enabled
                     : is_glass      ? (glossy_enabled | transmission_enabled)
                                     : Bool{false};
-    eligible &= closure_allocated(closure);
-    const auto glossy_normal = ensure_valid_specular_reflection(
-        point.geometric_normal, incoming, closure.normal);
+    eligible &= closure_allocated(closure) & closure.setup_valid;
+    const auto glossy_normal = is_sheen
+                                   ? closure.normal
+                                   : maybe_ensure_valid_specular_reflection(
+                                         point, incoming, closure.normal);
     return {.eligible = eligible,
         .weight =
             select(0.0f, closure_sample_weight(closure), eligible),
@@ -610,6 +712,46 @@ namespace psycles::luisa_backend::detail {
         incoming,
         microfacet_alpha(closure, glossy_filter_roughness),
         random);
+}
+
+[[nodiscard]] Float sheen_intensity(const TracedClosure &closure,
+    Float3 incoming,
+    Float3 outgoing) noexcept {
+    const auto basis =
+        cycles_sample_mapping::make_orthonormals_safe_tangent(
+            closure.normal, incoming);
+    const auto local_outgoing = make_float3(
+        dot(outgoing, basis.tangent),
+        dot(outgoing, basis.bitangent),
+        dot(outgoing, closure.normal));
+    const auto a = closure.sheen_transform_a;
+    const auto b = closure.sheen_transform_b;
+    const auto length_squared =
+        (a * local_outgoing.x + b * local_outgoing.z) *
+            (a * local_outgoing.x + b * local_outgoing.z) +
+        (a * local_outgoing.y) * (a * local_outgoing.y) +
+        local_outgoing.z * local_outgoing.z;
+    const auto transformed = a / length_squared;
+    return inverse_pi * max(local_outgoing.z, 0.0f) *
+           transformed * transformed;
+}
+
+[[nodiscard]] Float3 sample_sheen(const TracedClosure &closure,
+    Float3 incoming,
+    Float2 random) noexcept {
+    const auto basis =
+        cycles_sample_mapping::make_orthonormals_safe_tangent(
+            closure.normal, incoming);
+    const auto disk =
+        cycles_sample_mapping::sample_uniform_disk(random);
+    const auto disk_z = sqrt(max(1.0f - dot(disk, disk), 0.0f));
+    const auto local_outgoing = normalize(make_float3(
+        disk.x - disk_z * closure.sheen_transform_b,
+        disk.y,
+        disk_z * closure.sheen_transform_a));
+    return basis.tangent * local_outgoing.x +
+           basis.bitangent * local_outgoing.y +
+           closure.normal * local_outgoing.z;
 }
 
 namespace {

@@ -92,6 +92,7 @@ _ALL_PROBES = (
     "principled_bump_glossy",
     "principled_emission",
     "principled_emission_layers",
+    "principled_sheen_surface",
     "principled_surface",
     "rgb_emission",
     "rgb_curve_matrix",
@@ -182,6 +183,12 @@ _PROBE_RATIO_GATES = {
         "Combined": (0.99999, 1.00001),
         "Emit": (0.99999, 1.00001),
     },
+    "principled_sheen_surface": {
+        "Combined": (0.99999, 1.00001),
+        "DiffDir": (0.99999, 1.00001),
+        "DiffCol": (0.99999, 1.00001),
+        "Normal": (0.99999, 1.00001),
+    },
     "triangle_light_solid_angle": {
         "Combined": (0.995, 1.005),
         "DiffDir": (0.995, 1.005),
@@ -229,6 +236,12 @@ _PROBE_RELATIVE_RMSE_GATES = {
     "principled_emission_layers": {
         "Combined": 0.00001,
         "Emit": 0.00001,
+    },
+    "principled_sheen_surface": {
+        "Combined": 0.000002,
+        "DiffDir": 0.000002,
+        "DiffCol": 0.0000001,
+        "Normal": 0.000001,
     },
     "triangle_light_solid_angle": {
         "Combined": 0.005,
