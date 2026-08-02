@@ -1,6 +1,8 @@
 #include "path_kernel_builder.h"
 #include "path_kernel_direct_light_trace.h"
 
+#include <psycles/luisa/cycles_closure.h>
+
 #include <utility>
 #include <vector>
 
@@ -134,15 +136,14 @@ void PathKernelPipeline::emit(PathSampleContext &sample) const noexcept {
         DirectLightingContext lighting{
             .bounce = bounce, .surface = surface, .shading = shading};
         if (sample.invocation.config.next_event_estimation) {
-            $if(bounce.selected_light.kind ==
-                static_cast<std::uint32_t>(
-                    sampling::LightDistributionEmitterKind::sentinel)) {
-                _impl->direct_light_trace
-                    ->record_unavailable(bounce);
+            const auto has_evaluable_bsdf =
+                (shading.cycles_surface_runtime_flags &
+                 cycles_closure::runtime_bsdf_has_eval) != 0u;
+            $if(has_evaluable_bsdf) {
+                for (const auto &component : _impl->direct_lighting) {
+                    component->emit(lighting);
+                }
             };
-            for (const auto &component : _impl->direct_lighting) {
-                component->emit(lighting);
-            }
         }
         _impl->surface_scatter->emit(lighting);
     };

@@ -218,10 +218,17 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         };
 
         UInt cycles_surface_runtime_flags = 0u;
+        if (next_event_estimation || path_trace_enabled) {
+            cycles_surface_runtime_flags =
+                invocation.surface_runtime_flags(
+                    surface_tag,
+                    point,
+                    surface.path_surface_query
+                        .glossy_filter_roughness);
+        }
         if (path_trace_enabled) {
             const auto closure_summary =
                 trace_surface_closure(surface_tag, point, 0u);
-            cycles_surface_runtime_flags = closure_summary.runtime_flags;
             trace_write_event(path_step,
                               path_trace_schema::EventSlot::state_depth,
                               make_float3(cast<float>(path_step),

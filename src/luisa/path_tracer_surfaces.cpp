@@ -43,6 +43,30 @@ SurfaceCallables make_surface_callables(
                     outgoing,
                     query));
         };
+    SurfaceRuntimeFlagsCallable runtime_flags =
+        [scene](
+            BufferFloat4 parameters,
+            BufferFloat cycles_bsdf_tables,
+            BindlessVar textures,
+            BindlessVar geometry_heap,
+            UInt surface_tag,
+            Var<SurfacePointCall> packed_point,
+            Float glossy_filter_roughness) noexcept {
+            BufferShaderServices services{
+                parameters,
+                cycles_bsdf_tables,
+                textures,
+                geometry_heap,
+                scene->attribute_binding_slot,
+                scene->attribute_range_slot,
+                scene->nishita_texture_bindings,
+                scene->shader_color_space};
+            return scene->surfaces.runtime_flags(
+                surface_tag,
+                services,
+                unpack_surface_point(packed_point),
+                glossy_filter_roughness);
+        };
     SurfaceEmissionCallable emission =
         [scene](
             BufferFloat4 parameters,
@@ -225,6 +249,7 @@ SurfaceCallables make_surface_callables(
         };
     return {
         std::move(evaluate_light),
+        std::move(runtime_flags),
         std::move(constant_emission),
         std::move(emission),
         std::move(sample),

@@ -7,7 +7,7 @@ class NullDirectLightTraceRecorder final
     : public DirectLightTraceRecorder {
 
   public:
-    void record_unavailable(
+    void record_failed_sample(
         PathBounceContext &) const noexcept override {}
 
     void record_sample(
@@ -25,7 +25,7 @@ class CyclesDirectLightTraceRecorder final
     : public DirectLightTraceRecorder {
 
   public:
-    void record_unavailable(
+    void record_failed_sample(
         PathBounceContext &bounce)
         const noexcept override {
         bounce.sample.trace_write_event(

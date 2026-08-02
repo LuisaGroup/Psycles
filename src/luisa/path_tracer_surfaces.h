@@ -16,6 +16,14 @@ using SurfaceEvaluateLightCallable = Callable<SurfaceEvaluationCall(
     luisa::uint,
     float,
     luisa::uint)>;
+using SurfaceRuntimeFlagsCallable = Callable<luisa::uint(
+    Buffer<luisa::float4>,
+    Buffer<float>,
+    BindlessArray,
+    BindlessArray,
+    luisa::uint,
+    SurfacePointCall,
+    float)>;
 using SurfaceEmissionCallable = Callable<luisa::float3(
     Buffer<luisa::float4>,
     Buffer<float>,
@@ -81,6 +89,7 @@ using SurfaceShadingNormalCallable = Callable<luisa::float3(
 
 struct SurfaceCallables {
     SurfaceEvaluateLightCallable evaluate_light;
+    SurfaceRuntimeFlagsCallable runtime_flags;
     SurfaceConstantEmissionCallable constant_emission;
     SurfaceEmissionCallable emission;
     SurfaceSampleCallable sample;

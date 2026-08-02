@@ -352,6 +352,16 @@ public:
 
     [[nodiscard]] virtual SurfaceCapabilities capabilities() const noexcept = 0;
 
+    // Runtime ShaderData flags produced by closure setup. This is separate
+    // from sampling so integrators can apply Cycles' pre-NEE capability gate
+    // without selecting a BSDF closure early.
+    [[nodiscard]] virtual UInt runtime_flags(
+        const ShaderServices &,
+        const SurfacePoint &,
+        Expr<float>) const noexcept {
+        return 0u;
+    }
+
     [[nodiscard]] virtual SurfaceEvaluation evaluate(
         const ShaderServices &services,
         const SurfacePoint &point,
@@ -492,6 +502,21 @@ public:
         _surfaces.dispatch(tag, [&](const Surface *surface) noexcept {
             result = surface->evaluate(
                 services, point, outgoing, query);
+        });
+        return result;
+    }
+
+    [[nodiscard]] UInt runtime_flags(
+        Expr<std::uint32_t> tag,
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        Expr<float> glossy_filter_roughness) const noexcept {
+        UInt result = 0u;
+        _surfaces.dispatch(tag, [&](const Surface *surface) noexcept {
+            result = surface->runtime_flags(
+                services,
+                point,
+                glossy_filter_roughness);
         });
         return result;
     }

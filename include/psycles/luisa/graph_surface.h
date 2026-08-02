@@ -40,6 +40,11 @@ public:
     [[nodiscard]] SurfaceCapabilities capabilities()
         const noexcept override;
 
+    [[nodiscard]] UInt runtime_flags(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        Expr<float> glossy_filter_roughness) const noexcept override;
+
     [[nodiscard]] SurfaceEvaluation evaluate(
         const ShaderServices &services,
         const SurfacePoint &point,

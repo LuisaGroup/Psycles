@@ -36,7 +36,10 @@ class DirectLightTraceRecorder {
   public:
     virtual ~DirectLightTraceRecorder() noexcept = default;
 
-    virtual void record_unavailable(
+    // Records a proposal attempt which reached Cycles'
+    // light_sample_from_position boundary but returned false. An NEE stage
+    // which is disabled before that boundary must not call this method.
+    virtual void record_failed_sample(
         PathBounceContext &bounce) const noexcept = 0;
     virtual void record_sample(
         PathBounceContext &bounce,

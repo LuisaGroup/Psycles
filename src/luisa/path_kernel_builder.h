@@ -119,6 +119,10 @@ struct PathKernelInvocation {
                            Float3 outgoing,
                            const SurfaceQuery &query,
                            UInt shader_flags) const noexcept;
+    [[nodiscard]] UInt surface_runtime_flags(
+        UInt surface_tag,
+        const SurfacePoint &point,
+        Float glossy_filter_roughness) const noexcept;
     [[nodiscard]] Float3 surface_emission(UInt surface_tag,
                                           const SurfacePoint &point,
                                           Float3 outgoing) const noexcept;

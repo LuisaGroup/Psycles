@@ -424,6 +424,10 @@ public:
     ~GraphSurfaceImplementation() noexcept;
 
     [[nodiscard]] SurfaceCapabilities capabilities() const noexcept;
+    [[nodiscard]] UInt runtime_flags(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        Expr<float> glossy_filter_roughness) const noexcept;
     [[nodiscard]] SurfaceEvaluation evaluate(
         const ShaderServices &services,
         const SurfacePoint &point,

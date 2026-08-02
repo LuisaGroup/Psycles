@@ -18,6 +18,16 @@ SurfaceCapabilities GraphSurface::capabilities() const noexcept {
     return _implementation->capabilities();
 }
 
+UInt GraphSurface::runtime_flags(
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    Expr<float> glossy_filter_roughness) const noexcept {
+    return _implementation->runtime_flags(
+        services,
+        point,
+        glossy_filter_roughness);
+}
+
 SurfaceEvaluation GraphSurface::evaluate(
     const ShaderServices &services,
     const SurfacePoint &point,
