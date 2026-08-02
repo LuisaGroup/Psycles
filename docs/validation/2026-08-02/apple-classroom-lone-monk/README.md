@@ -259,6 +259,19 @@ relative RMSE 0.118657, and zero invalid pixels. Fallback has luminance ratio
 
 ![Corrected Classroom Metal versus Cycles Metal at 64 samples](triptychs/classroom-metal-valid-64spp-combined.png)
 
+For visual inspection, the corrected Metal path was also rendered at 640x360
+and 128 fixed samples. This is four times the pixels and twice the samples of
+the performance checkpoint. Psycles took 152.583 seconds and Cycles Metal took
+4.86059 seconds. Combined luminance is 1.010696 times Cycles, relative RMSE is
+0.098125, and all pixels are finite. Diffuse Color relative RMSE is 0.052092,
+Transmission Color relative RMSE is 0.004111, and Emission luminance is
+0.999920 times Cycles. Original-resolution inspection confirms that the window
+pieces are neutral, the clock and transom transmit light, and the entire Metal
+frame has complete coverage. The machine-readable comparison is
+[classroom-metal-vs-cycles-metal-640x360-128.json](reports/classroom-metal-vs-cycles-metal-640x360-128.json).
+
+![Classroom Cycles Metal, Psycles Metal, and difference at 640x360x128](triptychs/classroom-metal-640x360-128-combined.png)
+
 ## Lone Monk result
 
 The matched checkpoint is 640x480, 64 fixed samples, seed 0. Cycles selected
