@@ -2,7 +2,7 @@ include_guard(GLOBAL)
 
 # Declare one Luisa device fixture and register it independently for every
 # backend enabled in the current build. Keeping backend discovery here makes
-# fallback/HIP/Vulkan coverage uniform and prevents copy-pasted test blocks
+# fallback/Metal/HIP/Vulkan coverage uniform and prevents copy-pasted test blocks
 # from silently drifting apart.
 function(psycles_add_luisa_backend_test)
     cmake_parse_arguments(
@@ -34,7 +34,7 @@ function(psycles_add_luisa_backend_test)
             RUNTIME_OUTPUT_DIRECTORY
                 "${CMAKE_BINARY_DIR}/bin")
 
-    foreach(_backend IN ITEMS fallback hip vk)
+    foreach(_backend IN ITEMS fallback metal hip vk)
         set(_backend_target
             "luisa-compute-backend-${_backend}")
         if(TARGET ${_backend_target})

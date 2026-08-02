@@ -129,6 +129,7 @@ enum class ValueOperation : std::uint8_t {
     separate_g,
     separate_b,
     combine_color,
+    hosek_wilkie_sky,
     nishita_sky
 };
 

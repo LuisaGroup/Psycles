@@ -44,6 +44,7 @@ _ALL_PROBES = (
     "gamma_color",
     "gradient_matrix",
     "gradient_spherical",
+    "hosek_wilkie_diffuse_transport",
     "hue_saturation_value",
     "image_texture_srgb",
     "image_texture_sampling_modes",
@@ -139,6 +140,10 @@ _PROBE_RATIO_GATES = {
         "GlossInd": (0.98, 1.02),
     },
     "nishita_diffuse_transport": {
+        "Combined": (0.9995, 1.0005),
+        "DiffDir": (0.9995, 1.0005),
+    },
+    "hosek_wilkie_diffuse_transport": {
         "Combined": (0.9995, 1.0005),
         "DiffDir": (0.9995, 1.0005),
     },

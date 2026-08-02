@@ -67,11 +67,12 @@ recorded in
 [the compact-geometry checkpoint](validation/2026-07-31/compact-geometry/README.md).
 
 Unknown nodes, modes, sockets, or properties produce named coverage
-diagnostics and keep the release gate red. Missing material slots use an
-explicit magenta coverage material; an unconnected Cycles Surface follows the
-separately probed opaque-black surface contract. Unsupported node outputs use
-their exported socket default only together with a named warning, never as an
-unreported compatibility claim.
+diagnostics and keep the release gate red. Empty Blender material slots use
+Cycles' default Principled surface (0.8 base color, 0.5 roughness, 1.5 IOR,
+and Multi-GGX); they are not missing-material errors. An unconnected Cycles
+Surface follows the separately probed opaque-black surface contract.
+Unsupported node outputs use their exported socket default only together with
+a named warning, never as an unreported compatibility claim.
 
 `docs/cycles-shader-nodes-4.5.10.json` is the versioned Blender RNA inventory.
 `tools/check_cycles_shader_node_coverage.py --require-complete` is deliberately
@@ -527,6 +528,21 @@ also covers all 19 blend modes with exact passes, including Cycles' deliberate
 choice to ignore its `use_alpha` property. The RNA-only ROTATION enum is not a
 constructible Cycles mode in Blender 4.5.10; Blender itself restricts the
 runtime property to FLOAT, VECTOR, and RGBA.
+
+## Sky Texture contract
+
+Sky Texture is a versioned partial node rather than one interchangeable sky
+formula. Blender 5.2 `SINGLE_SCATTERING` and legacy `NISHITA` use the existing
+Cycles-compatible spectral LUT path. Legacy `HOSEK_WILKIE` now preserves its
+explicit sun direction, turbidity, and ground albedo, cooks the upstream XYZ
+model coefficients as immutable topology data, and evaluates the analytic
+directional formula in the Luisa shader. The focused fallback and Metal probe
+measures Combined energy at `1.000284x` and `1.000285x` Cycles Metal.
+
+`PREETHAM` and `MULTIPLE_SCATTERING` remain distinct unsupported/partial
+modes. They must not be silently reported as Hosek or single-scattering
+Nishita. The complete Apple scene evidence and reports are in
+[`validation/2026-08-02/apple-classroom-lone-monk`](validation/2026-08-02/apple-classroom-lone-monk/README.md).
 
 ## Analytic-light contract
 

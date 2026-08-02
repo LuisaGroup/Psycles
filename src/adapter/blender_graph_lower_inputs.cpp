@@ -31,6 +31,50 @@ public:
                 node, socket, SocketType::floating));
         }
         if (type == "TEX_COORD" || type == "UVMAP") {
+            if (type == "TEX_COORD" && socket == "Reflection") {
+                // Cycles' surface texture coordinate is
+                // -reflect(Incoming, N). Build it from existing typed graph
+                // operations so it observes an automatic SetNormal/bump that
+                // precedes the surface graph.
+                const auto incoming = context.geometry_output(
+                    "Incoming", SocketType::vector);
+                const auto normal = context.conversion(
+                    context.geometry_output(
+                        "Normal", SocketType::normal),
+                    SocketType::vector);
+                const auto reflected = context.graph().add_node(
+                    compiler::node_type::vector_math,
+                    node_name + " / Reflection");
+                static_cast<void>(context.graph().connect(
+                    incoming.ref, reflected, "A"));
+                static_cast<void>(context.graph().connect(
+                    normal.ref, reflected, "B"));
+                static_cast<void>(context.graph().set_property(
+                    reflected,
+                    "Operation",
+                    SocketValue::string("REFLECT")));
+
+                const auto negated = context.graph().add_node(
+                    compiler::node_type::vector_math,
+                    node_name + " / Reflection Direction");
+                static_cast<void>(context.graph().connect(
+                    {.node = reflected, .socket = "Vector"},
+                    negated,
+                    "A"));
+                static_cast<void>(context.graph().set_input(
+                    negated,
+                    "Scale",
+                    SocketValue::floating(-1.0f)));
+                static_cast<void>(context.graph().set_property(
+                    negated,
+                    "Operation",
+                    SocketValue::string("SCALE")));
+                return finish({
+                    .ref = {
+                        .node = negated,
+                        .socket = "Vector"},
+                    .type = SocketType::vector});
+            }
             const auto id = context.graph().add_node(
                 compiler::node_type::texture_coordinate,
                 node_name);
@@ -83,6 +127,91 @@ public:
                 socket == "Index" ? "Index" : "Random";
             return finish({
                 .ref = {.node = id, .socket = output_socket},
+                .type = SocketType::floating});
+        }
+        if (type == "LIGHT_FALLOFF") {
+            // Cycles applies the selected distance law before its smooth
+            // near-light attenuation. Analytic-light shader points carry the
+            // sampled light distance through Light Path / Ray Length.
+            const auto light_path = context.graph().add_node(
+                compiler::node_type::light_path,
+                node_name + " / Light Path");
+            const auto squared_distance = context.graph().add_node(
+                compiler::node_type::multiply_float,
+                node_name + " / Squared Distance");
+            static_cast<void>(context.graph().connect(
+                {.node = light_path, .socket = "RayLength"},
+                squared_distance,
+                "A"));
+            static_cast<void>(context.graph().connect(
+                {.node = light_path, .socket = "RayLength"},
+                squared_distance,
+                "B"));
+
+            const auto smooth_denominator = context.graph().add_node(
+                compiler::node_type::add_float,
+                node_name + " / Smooth Denominator");
+            static_cast<void>(context.graph().connect(
+                {.node = squared_distance, .socket = "Value"},
+                smooth_denominator,
+                "A"));
+            static_cast<void>(context.bind(
+                smooth_denominator,
+                "B",
+                node,
+                "Smooth",
+                SocketType::floating));
+            const auto smooth_factor = context.graph().add_node(
+                compiler::node_type::divide_float,
+                node_name + " / Smooth Factor");
+            static_cast<void>(context.graph().connect(
+                {.node = squared_distance, .socket = "Value"},
+                smooth_factor,
+                "A"));
+            static_cast<void>(context.graph().connect(
+                {.node = smooth_denominator, .socket = "Value"},
+                smooth_factor,
+                "B"));
+
+            const auto distance_scaled = context.graph().add_node(
+                compiler::node_type::multiply_float,
+                node_name + " / Distance Falloff");
+            static_cast<void>(context.bind(
+                distance_scaled,
+                "A",
+                node,
+                "Strength",
+                SocketType::floating));
+            if (socket == "Linear") {
+                static_cast<void>(context.graph().connect(
+                    {.node = light_path, .socket = "RayLength"},
+                    distance_scaled,
+                    "B"));
+            } else if (socket == "Constant") {
+                static_cast<void>(context.graph().connect(
+                    {.node = squared_distance, .socket = "Value"},
+                    distance_scaled,
+                    "B"));
+            } else {
+                static_cast<void>(context.graph().set_input(
+                    distance_scaled,
+                    "B",
+                    SocketValue::floating(1.0f)));
+            }
+
+            const auto result = context.graph().add_node(
+                compiler::node_type::multiply_float,
+                node_name);
+            static_cast<void>(context.graph().connect(
+                {.node = distance_scaled, .socket = "Value"},
+                result,
+                "A"));
+            static_cast<void>(context.graph().connect(
+                {.node = smooth_factor, .socket = "Value"},
+                result,
+                "B"));
+            return finish({
+                .ref = {.node = result, .socket = "Value"},
                 .type = SocketType::floating});
         }
         if (type == "LIGHT_PATH") {

@@ -382,6 +382,34 @@ NodeRegistry make_core_node_registry() {
         .required_features = feature_bit(ShaderFeature::surface)}));
 
     static_cast<void>(registry.register_schema(NodeSchema{
+        .type = node_type::hosek_wilkie_sky,
+        .inputs = {
+            input("Vector", SocketType::vector, SocketValue::vector({0.0f, 0.0f, 0.0f}))},
+        .outputs = {output("Color", SocketType::color)},
+        .properties = {
+            property(
+                "SunDirectionX",
+                SocketType::floating,
+                SocketValue::floating(0.0f)),
+            property(
+                "SunDirectionY",
+                SocketType::floating,
+                SocketValue::floating(0.0f)),
+            property(
+                "SunDirectionZ",
+                SocketType::floating,
+                SocketValue::floating(1.0f)),
+            property(
+                "Turbidity",
+                SocketType::floating,
+                SocketValue::floating(2.2f)),
+            property(
+                "GroundAlbedo",
+                SocketType::floating,
+                SocketValue::floating(0.3f))},
+        .required_features = feature_bit(ShaderFeature::surface)}));
+
+    static_cast<void>(registry.register_schema(NodeSchema{
         .type = node_type::nishita_sky,
         .inputs = {
             input("Vector", SocketType::vector, SocketValue::vector({0.0f, 0.0f, 0.0f})),

@@ -49,7 +49,7 @@ using contract::WorldSampling;
 
 using detail::Document;
 using detail::boolean;
-using detail::diffuse_graph;
+using detail::cycles_default_surface_graph;
 using detail::emission_graph;
 using detail::find_simple_world_nishita;
 using detail::float3;
@@ -354,9 +354,8 @@ BlenderSceneImport load_blender_scene_bundle(
         scene.materials.emplace(
             default_material,
             MaterialDesc{
-                .name = "__psycles_missing_material__",
-                .shader = diffuse_graph(
-                    {1.0f, 0.0f, 1.0f}, 0.0f),
+                .name = "__cycles_default_surface__",
+                .shader = cycles_default_surface_graph(),
                 .cycles_shader_index = std::nullopt});
 
         auto *materials = member(root, "materials");

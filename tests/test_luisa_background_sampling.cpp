@@ -64,7 +64,6 @@ int main(int argc, char **argv) {
         device.create_buffer<luisa::float4>(random.size());
     auto round_trip_buffer = device.create_buffer<luisa::float4>(random.size());
 
-    constexpr auto sun_axis = luisa::float3{0.0f, 0.0f, 1.0f};
     constexpr auto sun_radius = 0.01f;
     Kernel1D evaluate = [](BufferFloat2 conditional_cdf,
                            BufferFloat2 marginal_cdf,
@@ -78,7 +77,9 @@ int main(int argc, char **argv) {
                                                         height,
                                                         1.0f,
                                                         4.0f,
-                                                        make_float3(sun_axis),
+                                                        make_float3(0.0f,
+                                                                    0.0f,
+                                                                    1.0f),
                                                         sun_radius,
                                                         randoms.read(index));
         const auto forward_pdf = background_sampling::pdf(conditional_cdf,
@@ -87,7 +88,9 @@ int main(int argc, char **argv) {
                                                           height,
                                                           1.0f,
                                                           4.0f,
-                                                          make_float3(sun_axis),
+                                                          make_float3(0.0f,
+                                                                      0.0f,
+                                                                      1.0f),
                                                           sun_radius,
                                                           sample.direction);
         const auto uv =

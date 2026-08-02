@@ -1077,6 +1077,16 @@ def _export_scene(
                 "surface_render_method": getattr(
                     material, "surface_render_method", None
                 ),
+                # Blender 4.1 moved this setting from the Cycles custom
+                # properties onto Material itself. Keep the older location
+                # as a compatibility fallback for supported Blender builds.
+                "displacement_method": str(
+                    getattr(
+                        material,
+                        "displacement_method",
+                        getattr(cycles, "displacement_method", "BUMP"),
+                    )
+                ),
                 "cycles_sync": (
                     {"shader_index": shader_index}
                     if shader_index is not None

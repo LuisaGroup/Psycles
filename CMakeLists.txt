@@ -12,10 +12,24 @@ option(PSYCLES_ENABLE_OPENIMAGEIO
 option(PSYCLES_ENABLE_LUISA "Build the LuisaCompute DSL interface when available" ON)
 option(PSYCLES_ENABLE_LUISA_FALLBACK
     "Build LuisaCompute's fallback backend for machines without a GPU backend" ON)
+if(APPLE)
+    set(_psycles_enable_luisa_metal_default ON)
+    set(_psycles_enable_luisa_non_apple_gpu_default OFF)
+else()
+    set(_psycles_enable_luisa_metal_default OFF)
+    set(_psycles_enable_luisa_non_apple_gpu_default ON)
+endif()
+option(PSYCLES_ENABLE_LUISA_METAL
+    "Build LuisaCompute's Metal backend on Apple platforms"
+    ${_psycles_enable_luisa_metal_default})
 option(PSYCLES_ENABLE_LUISA_HIP
-    "Build LuisaCompute's HIP backend" ON)
+    "Build LuisaCompute's HIP backend"
+    ${_psycles_enable_luisa_non_apple_gpu_default})
 option(PSYCLES_ENABLE_LUISA_VULKAN
-    "Build LuisaCompute's Vulkan backend" ON)
+    "Build LuisaCompute's Vulkan backend"
+    ${_psycles_enable_luisa_non_apple_gpu_default})
+unset(_psycles_enable_luisa_metal_default)
+unset(_psycles_enable_luisa_non_apple_gpu_default)
 option(PSYCLES_FETCH_LUISA_NEXT
     "Fetch LuisaCompute from its next branch when the bundled submodule is unavailable" OFF)
 set(PSYCLES_LUISA_SUBMODULE_DIR
@@ -29,6 +43,7 @@ endif()
 add_library(psycles_core
     src/adapter/cycles_shader_graph.cpp
     src/compiler/core_nodes.cpp
+    src/compiler/hosek_sky.cpp
     src/compiler/material_library.cpp
     src/compiler/shader_program.cpp
     src/compiler/surface_program.cpp
@@ -43,13 +58,16 @@ add_library(psycles_core
     src/sampling/background_distribution.cpp
     src/sampling/light_distribution.cpp
     src/sampling/pixel_filter.cpp
-    src/sampling/tabulated_sobol.cpp)
+    src/sampling/tabulated_sobol.cpp
+    third_party/sky_hosek/sky_hosek.cpp)
 add_library(Psycles::core ALIAS psycles_core)
 
 target_include_directories(psycles_core
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:include>)
+        $<INSTALL_INTERFACE:include>
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/sky_hosek)
 target_compile_features(psycles_core PUBLIC cxx_std_20)
 
 if(PSYCLES_ENABLE_OPENIMAGEIO)
@@ -86,6 +104,8 @@ if(PSYCLES_ENABLE_LUISA)
         set(LUISA_COMPUTE_ENABLE_CPU OFF CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_ENABLE_FALLBACK
             ${PSYCLES_ENABLE_LUISA_FALLBACK} CACHE BOOL "" FORCE)
+        set(LUISA_COMPUTE_ENABLE_METAL
+            ${PSYCLES_ENABLE_LUISA_METAL} CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_ENABLE_HIP
             ${PSYCLES_ENABLE_LUISA_HIP} CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_ENABLE_VULKAN
@@ -103,6 +123,8 @@ if(PSYCLES_ENABLE_LUISA)
         set(LUISA_COMPUTE_ENABLE_CPU OFF CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_ENABLE_FALLBACK
             ${PSYCLES_ENABLE_LUISA_FALLBACK} CACHE BOOL "" FORCE)
+        set(LUISA_COMPUTE_ENABLE_METAL
+            ${PSYCLES_ENABLE_LUISA_METAL} CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_ENABLE_HIP
             ${PSYCLES_ENABLE_LUISA_HIP} CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_ENABLE_VULKAN
@@ -135,6 +157,15 @@ if(PSYCLES_ENABLE_LUISA)
             "luisa-compute-backend-fallback. Install compatible LLVM and "
             "Embree development packages, set LLVM_DIR and embree_DIR when "
             "needed, and reconfigure.")
+    endif()
+    if(PSYCLES_ENABLE_LUISA_METAL AND
+       NOT TARGET luisa-compute-backend-metal)
+        message(FATAL_ERROR
+            "PSYCLES_ENABLE_LUISA_METAL=ON requires LuisaCompute's Metal "
+            "backend, but LuisaCompute did not create "
+            "luisa-compute-backend-metal. Configure on an Apple platform "
+            "with the Metal developer tools available, or configure with "
+            "PSYCLES_ENABLE_LUISA_METAL=OFF.")
     endif()
     if(PSYCLES_ENABLE_LUISA_HIP AND
        NOT TARGET luisa-compute-backend-hip)

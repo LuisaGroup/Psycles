@@ -1,5 +1,7 @@
 #include <psycles/adapter/blender_scene.h>
 #include <psycles/compiler/core_nodes.h>
+#include <psycles/compiler/shader_program.h>
+#include <psycles/compiler/surface_program.h>
 
 #include <chrono>
 #include <cmath>
@@ -570,6 +572,27 @@ void test_integrator_settings_round_trip() {
     const auto imported_material =
         imported.scene->materials.find(
             psycles::contract::MaterialId{2u});
+    const auto default_material =
+        imported.scene->materials.find(
+            psycles::contract::MaterialId{1u});
+    expect(
+        default_material != imported.scene->materials.end() &&
+            default_material->second.name ==
+                "__cycles_default_surface__",
+        "empty Blender material slots did not retain the Cycles default "
+        "surface");
+    bool default_is_principled = false;
+    if (default_material != imported.scene->materials.end()) {
+        for (const auto &node :
+             default_material->second.shader.nodes()) {
+            default_is_principled |=
+                node.type ==
+                psycles::compiler::node_type::principled_bsdf;
+        }
+    }
+    expect(
+        default_is_principled,
+        "Cycles default surface was replaced by a diagnostic material");
     expect(
         imported_material !=
             imported.scene->materials.end() &&
@@ -734,6 +757,241 @@ void test_integrator_settings_round_trip() {
     std::string light_tree_scene{
         std::istreambuf_iterator<char>{source},
         std::istreambuf_iterator<char>{}};
+
+    auto bump_scene = light_tree_scene;
+    const auto replace_once = [](
+                                  std::string &text,
+                                  std::string_view before,
+                                  std::string_view after) {
+        const auto position = text.find(before);
+        expect(
+            position != std::string::npos,
+            "bump regression fixture is missing its insertion point");
+        text.replace(position, before.size(), after);
+    };
+    replace_once(
+        bump_scene,
+        "\"volume_sampling\": \"EQUIANGULAR\",",
+        "\"volume_sampling\": \"EQUIANGULAR\",\n"
+        "      \"displacement_method\": \"BUMP\",");
+    replace_once(
+        bump_scene,
+        "\"surface_root\": null,",
+        "\"surface_root\": {\n"
+        "          \"node\": \"Diffuse\",\n"
+        "          \"socket\": \"BSDF\"\n"
+        "        },");
+    replace_once(
+        bump_scene,
+        "\"displacement_root\": null,",
+        "\"displacement_root\": {\n"
+        "          \"node\": \"Displacement\",\n"
+        "          \"socket\": \"Displacement\"\n"
+        "        },");
+    replace_once(
+        bump_scene,
+        "\"links\": [",
+        "\"links\": [\n"
+        "          {\n"
+        "            \"from_node\": \"Texture Coordinate\",\n"
+        "            \"from_socket\": \"Reflection\",\n"
+        "            \"to_node\": \"Diffuse\",\n"
+        "            \"to_socket\": \"Color\"\n"
+        "          },");
+    replace_once(
+        bump_scene,
+        R"JSON(        "nodes": [
+          {
+            "name": "Absorption",)JSON",
+        R"JSON(        "nodes": [
+          {
+            "name": "Texture Coordinate",
+            "label": "",
+            "type": "TEX_COORD",
+            "bl_idname": "ShaderNodeTexCoord",
+            "inputs": [],
+            "outputs": [
+              {
+                "identifier": "Reflection",
+                "name": "Reflection",
+                "type": "NodeSocketVector",
+                "linked": true,
+                "default": [0.0, 0.0, 0.0]
+              }
+            ],
+            "properties": {"from_instancer": false},
+            "special": {},
+            "image": null,
+            "node_tree": null
+          },
+          {
+            "name": "Diffuse",
+            "label": "",
+            "type": "BSDF_DIFFUSE",
+            "bl_idname": "ShaderNodeBsdfDiffuse",
+            "inputs": [
+              {
+                "identifier": "Color",
+                "name": "Color",
+                "type": "NodeSocketColor",
+                "linked": false,
+                "default": [0.8, 0.8, 0.8, 1.0]
+              },
+              {
+                "identifier": "Roughness",
+                "name": "Roughness",
+                "type": "NodeSocketFloat",
+                "linked": false,
+                "default": 0.0
+              },
+              {
+                "identifier": "Normal",
+                "name": "Normal",
+                "type": "NodeSocketVector",
+                "linked": false,
+                "default": [0.0, 0.0, 0.0]
+              }
+            ],
+            "outputs": [
+              {
+                "identifier": "BSDF",
+                "name": "BSDF",
+                "type": "NodeSocketShader",
+                "linked": true
+              }
+            ],
+            "properties": {},
+            "special": {},
+            "image": null,
+            "node_tree": null
+          },
+          {
+            "name": "Displacement",
+            "label": "",
+            "type": "DISPLACEMENT",
+            "bl_idname": "ShaderNodeDisplacement",
+            "inputs": [
+              {
+                "identifier": "Height",
+                "name": "Height",
+                "type": "NodeSocketFloat",
+                "linked": false,
+                "default": 0.75
+              },
+              {
+                "identifier": "Midlevel",
+                "name": "Midlevel",
+                "type": "NodeSocketFloat",
+                "linked": false,
+                "default": 0.5
+              },
+              {
+                "identifier": "Scale",
+                "name": "Scale",
+                "type": "NodeSocketFloat",
+                "linked": false,
+                "default": 0.1
+              },
+              {
+                "identifier": "Normal",
+                "name": "Normal",
+                "type": "NodeSocketVector",
+                "linked": false,
+                "default": [0.0, 0.0, 0.0]
+              }
+            ],
+            "outputs": [
+              {
+                "identifier": "Displacement",
+                "name": "Displacement",
+                "type": "NodeSocketVector",
+                "linked": true,
+                "default": [0.0, 0.0, 0.0]
+              }
+            ],
+            "properties": {"space": "OBJECT"},
+            "special": {},
+            "image": null,
+            "node_tree": null
+          },
+          {
+            "name": "Absorption",)JSON");
+    {
+        std::ofstream scene{temporary.path() / "scene.json"};
+        scene << bump_scene;
+    }
+    const auto bump_imported =
+        load_blender_scene_bundle(temporary.path());
+    expect(
+        bump_imported.ok(),
+        "bump-only displacement material did not import");
+    const auto bump_material =
+        bump_imported.scene->materials.find(
+            psycles::contract::MaterialId{2u});
+    expect(
+        bump_material != bump_imported.scene->materials.end() &&
+            bump_material->second.shader.root(
+                psycles::contract::ShaderDomain::displacement)
+                .has_value(),
+        "automatic bump was not retained as a displacement root");
+    bool has_automatic_bump = false;
+    for (const auto &node : bump_material->second.shader.nodes()) {
+        has_automatic_bump |=
+            node.type == psycles::compiler::node_type::bump;
+    }
+    expect(
+        has_automatic_bump,
+        "Blender bump-only displacement did not lower to a bump node");
+
+    psycles::compiler::ShaderCompiler bump_compiler{
+        psycles::compiler::make_core_node_registry()};
+    const auto bump_shader = bump_compiler.compile(
+        bump_material->second.shader);
+    expect(
+        bump_shader.ok(),
+        "automatic displacement bump graph did not validate");
+    const auto bump_surface =
+        psycles::compiler::compile_surface_program(
+            *bump_shader.program);
+    expect(
+        bump_surface.ok(),
+        "automatic displacement bump did not lower to a surface program");
+    bool has_bump_instruction = false;
+    for (const auto &instruction :
+         bump_surface.program->value_instructions()) {
+        has_bump_instruction |=
+            instruction.operation ==
+            psycles::compiler::ValueOperation::bump;
+    }
+    expect(
+        has_bump_instruction,
+        "automatic displacement bump emitted no value instruction");
+
+    auto true_displacement_scene = bump_scene;
+    replace_once(
+        true_displacement_scene,
+        "\"displacement_method\": \"BUMP\"",
+        "\"displacement_method\": \"DISPLACEMENT\"");
+    {
+        std::ofstream scene{temporary.path() / "scene.json"};
+        scene << true_displacement_scene;
+    }
+    const auto true_displacement_imported =
+        load_blender_scene_bundle(temporary.path());
+    expect(
+        !true_displacement_imported.ok(),
+        "true geometry displacement was silently accepted");
+    bool named_displacement_diagnostic = false;
+    for (const auto &diagnostic :
+         true_displacement_imported.diagnostics) {
+        named_displacement_diagnostic |=
+            diagnostic.message.find("true geometry displacement") !=
+            std::string::npos;
+    }
+    expect(
+        named_displacement_diagnostic,
+        "true displacement rejection has no named diagnostic");
+
     auto box_filter_scene = light_tree_scene;
     constexpr std::string_view gaussian_filter =
         "\"pixel_filter_type\": \"GAUSSIAN\"";
@@ -820,6 +1078,69 @@ void test_integrator_settings_round_trip() {
             ->dust_density,
         1.1f,
         "legacy Nishita dust density mismatch");
+
+    auto hosek_scene = light_tree_scene;
+    replace_once(
+        hosek_scene,
+        "\"sky_type\": \"SINGLE_SCATTERING\"",
+        "\"sky_type\": \"HOSEK_WILKIE\"");
+    replace_once(
+        hosek_scene,
+        "\"sun_elevation\": 0.9250245094299316,",
+        "\"sun_direction\": [-0.94615382, 0.06153846, "
+        "0.31781429],\n"
+        "            \"turbidity\": 2.9,\n"
+        "            \"ground_albedo\": 0.3,\n"
+        "            \"sun_elevation\": 0.9250245094299316,");
+    {
+        std::ofstream scene{temporary.path() / "scene.json"};
+        scene << hosek_scene;
+    }
+    const auto hosek_imported =
+        load_blender_scene_bundle(temporary.path());
+    expect(
+        hosek_imported.ok(),
+        "legacy Hosek-Wilkie world did not import");
+    const auto hosek_world =
+        hosek_imported.scene->materials.find(
+            psycles::contract::MaterialId{3u});
+    expect(
+        hosek_world != hosek_imported.scene->materials.end(),
+        "legacy Hosek-Wilkie world material is missing");
+    bool has_hosek_node = false;
+    for (const auto &node : hosek_world->second.shader.nodes()) {
+        has_hosek_node |=
+            node.type ==
+            psycles::compiler::node_type::hosek_wilkie_sky;
+    }
+    expect(
+        has_hosek_node,
+        "legacy Hosek-Wilkie sky was rewritten to another model");
+    psycles::compiler::ShaderCompiler hosek_compiler{
+        psycles::compiler::make_core_node_registry()};
+    const auto hosek_shader = hosek_compiler.compile(
+        hosek_world->second.shader);
+    expect(
+        hosek_shader.ok(),
+        "legacy Hosek-Wilkie graph did not validate");
+    const auto hosek_surface =
+        psycles::compiler::compile_surface_program(
+            *hosek_shader.program);
+    expect(
+        hosek_surface.ok(),
+        "legacy Hosek-Wilkie graph did not lower");
+    bool has_hosek_instruction = false;
+    for (const auto &instruction :
+         hosek_surface.program->value_instructions()) {
+        has_hosek_instruction |=
+            instruction.operation ==
+                psycles::compiler::ValueOperation::
+                    hosek_wilkie_sky &&
+            instruction.static_table.size() == 33u;
+    }
+    expect(
+        has_hosek_instruction,
+        "legacy Hosek-Wilkie sky emitted no cooked model");
 
     const auto setting =
         light_tree_scene.find("\"use_light_tree\": false");

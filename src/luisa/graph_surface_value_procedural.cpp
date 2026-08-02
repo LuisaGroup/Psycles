@@ -24,6 +24,7 @@ namespace {
         case compiler::ValueOperation::separate_g:
         case compiler::ValueOperation::separate_b:
         case compiler::ValueOperation::combine_color:
+        case compiler::ValueOperation::hosek_wilkie_sky:
         case compiler::ValueOperation::nishita_sky:
             return true;
         default:
@@ -592,6 +593,82 @@ public:
                         combine_color(
                             channels,
                             instruction.static_u0),
+                        1.0f);
+                    break;
+                }
+                case compiler::ValueOperation::hosek_wilkie_sky: {
+                    if (instruction.static_table.size() != 33u) {
+                        break;
+                    }
+                    auto direction = safe_normalize(
+                        vector(instruction.a, result),
+                        make_float3(0.0f, 0.0f, 1.0f));
+                    const auto sun_direction = make_float3(
+                        instruction.static_table[0u],
+                        instruction.static_table[1u],
+                        instruction.static_table[2u]);
+                    auto theta = min(
+                        acos(clamp(direction.z, -1.0f, 1.0f)),
+                        0.5f * pi - 0.001f);
+                    auto gamma = acos(clamp(
+                        dot(direction, sun_direction),
+                        -1.0f,
+                        1.0f));
+                    const auto radiance = make_float3(
+                        instruction.static_table[3u],
+                        instruction.static_table[4u],
+                        instruction.static_table[5u]);
+                    const auto sky_channel =
+                        [&](std::size_t channel) noexcept {
+                            const auto offset =
+                                6u + channel * 9u;
+                            const auto ctheta = cos(theta);
+                            const auto cgamma = cos(gamma);
+                            const auto ray = cgamma * cgamma;
+                            const auto g = instruction.static_table[
+                                offset + 8u];
+                            const auto mie =
+                                (1.0f + ray) /
+                                pow(
+                                    max(
+                                        1.0f + g * g -
+                                            2.0f * g * cgamma,
+                                        1.0e-20f),
+                                    1.5f);
+                            return
+                                (1.0f +
+                                 instruction.static_table[offset] *
+                                     exp(
+                                         instruction.static_table[
+                                             offset + 1u] /
+                                         (ctheta + 0.01f))) *
+                                (instruction.static_table[
+                                     offset + 2u] +
+                                 instruction.static_table[
+                                     offset + 3u] *
+                                     exp(
+                                         instruction.static_table[
+                                             offset + 4u] *
+                                         gamma) +
+                                 instruction.static_table[
+                                     offset + 5u] *
+                                     ray +
+                                 instruction.static_table[
+                                     offset + 6u] *
+                                     mie +
+                                 instruction.static_table[
+                                     offset + 7u] *
+                                     sqrt(max(ctheta, 0.0f)));
+                        };
+                    const auto xyz = make_float3(
+                        sky_channel(0u) * radiance.x,
+                        sky_channel(1u) * radiance.y,
+                        sky_channel(2u) * radiance.z);
+                    value = make_float4(
+                        max(
+                            services.xyz_to_rgb(xyz),
+                            make_float3(0.0f)) *
+                            (two_pi / 683.0f),
                         1.0f);
                     break;
                 }
