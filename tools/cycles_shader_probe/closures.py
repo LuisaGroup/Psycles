@@ -961,6 +961,87 @@ def _principled_emission_layers(scene: Any) -> None:
     )
 
 
+def _principled_alpha_surface(scene: Any) -> None:
+    """Isolate Principled Alpha and Cycles' merged transparent closure."""
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 0.01
+    _world(scene, (0.12, 0.37, 0.83, 1.0), 1.7)
+    cases = (
+        {"alpha": -1.0},
+        {"alpha": 0.0},
+        {"alpha": 0.25},
+        {"alpha": 0.5},
+        {"alpha": 0.75},
+        {"alpha": 0.999},
+        {"alpha": 1.0},
+        {"alpha": 2.0},
+        {"alpha": 0.2, "linked": True},
+        {"alpha": 0.4, "linked": True},
+        {"alpha": 0.6, "linked": True},
+        {"alpha": 0.8, "linked": True},
+        {"alpha": 1.0 - 0.5e-5},
+        {"alpha": 1.0 - 1.0e-5},
+        {"alpha": 1.0 - 2.0e-5},
+        {"alpha": 0.6, "merged": True},
+    )
+    materials = []
+    for index, case in enumerate(cases):
+        material, tree, output = _material(
+            f"Principled Alpha Surface {index:02d}"
+        )
+        principled = tree.nodes.new("ShaderNodeBsdfPrincipled")
+        principled.name = f"Principled Alpha {index:02d}"
+        _input(principled, "Base Color").default_value = (
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+        )
+        _input(principled, "Metallic").default_value = 0.0
+        _input(principled, "Roughness").default_value = 0.5
+        _input(principled, "IOR").default_value = 1.0
+        _input(principled, "Specular IOR Level").default_value = 0.5
+        _input(principled, "Emission Strength").default_value = 0.0
+        if case.get("linked", False):
+            alpha = tree.nodes.new("ShaderNodeValue")
+            alpha.name = f"Linked Alpha {index:02d}"
+            _output(alpha, "Value").default_value = case["alpha"]
+            tree.links.new(
+                _output(alpha, "Value"),
+                _input(principled, "Alpha"),
+            )
+        else:
+            _input(principled, "Alpha").default_value = case["alpha"]
+
+        surface = _output(principled, "BSDF")
+        if case.get("merged", False):
+            transparent = tree.nodes.new("ShaderNodeBsdfTransparent")
+            transparent.name = "Standalone transparency to merge"
+            _input(transparent, "Color").default_value = (
+                0.15,
+                0.15,
+                0.15,
+                1.0,
+            )
+            add = tree.nodes.new("ShaderNodeAddShader")
+            add.name = "Merged transparency order"
+            tree.links.new(
+                _output(transparent, "BSDF"),
+                add.inputs[0],
+            )
+            tree.links.new(surface, add.inputs[1])
+            surface = _output(add, "Shader")
+        tree.links.new(surface, _input(output, "Surface"))
+        materials.append(material)
+    _material_matrix(
+        scene,
+        materials,
+        columns=4,
+        rows=4,
+        name="Principled Alpha Surface Matrix",
+    )
+
+
 def _principled_bump_glossy(scene: Any) -> None:
     """Stress Cycles' default glossy bump-map correction path."""
     _world(scene, (0.31, 0.52, 0.79, 1.0), 1.2)

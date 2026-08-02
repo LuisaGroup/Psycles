@@ -4,6 +4,14 @@
 
 namespace psycles::luisa_backend::detail {
 
+struct PrincipledAlphaLayerResult {
+    Float3 lower_weight;
+    TransparentClosureState transparency;
+};
+
+[[nodiscard]] PrincipledAlphaLayerResult evaluate_principled_alpha_layer(
+    const TracedClosure &closure) noexcept;
+
 // Device-expression result of Cycles' ordered Principled layers. This is a
 // host-stage component: ordinary C++ composition records the corresponding
 // Luisa AST, while every socket and lookup remains a device-side value.

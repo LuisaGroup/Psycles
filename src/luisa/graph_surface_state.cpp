@@ -1,5 +1,7 @@
 #include "graph_surface_internal.h"
 
+#include <psycles/luisa/cycles_closure.h>
+
 namespace psycles::luisa_backend::detail {
 
 [[nodiscard]] Float scalar(
@@ -19,6 +21,19 @@ namespace psycles::luisa_backend::detail {
     // BSDF allocation has already clamped negative spectral components;
     // transparent closure setup applies the absolute value directly.
     return abs((value.x + value.y + value.z) / 3.0f);
+}
+
+[[nodiscard]] TransparentClosureState transparent_closure_state(
+    Float3 weight) noexcept {
+    // bsdf_transparent_setup differs from ordinary bsdf_alloc: it retains
+    // signed spectral weights and applies the cutoff to fabs(average).
+    const auto candidate_sample_weight = sample_weight(weight);
+    const auto allocated = candidate_sample_weight >=
+                           cycles_closure::closure_weight_cutoff;
+    return {
+        .weight = select(make_float3(0.0f), weight, allocated),
+        .sample_weight = select(
+            0.0f, candidate_sample_weight, allocated)};
 }
 
 [[nodiscard]] Float3 bsdf_allocated_weight(

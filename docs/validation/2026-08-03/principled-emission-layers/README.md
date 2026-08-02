@@ -40,8 +40,10 @@ The effective reflective-caustics value is evaluated per ray as
 Cycles path relation. It is passed through the generated surface-emission
 callable rather than frozen into material state.
 
-This checkpoint is specifically emission-layer parity. Alpha transparency and
-the physical Sheen/Coat scattering closures are not claimed complete yet.
+This checkpoint is specifically emission-layer parity. Physical Alpha was
+completed in the subsequent
+[transparent-closure checkpoint](../principled-alpha/README.md); physical
+Sheen/Coat scattering closures are not claimed complete yet.
 
 ## Regression matrix
 
@@ -124,7 +126,6 @@ Vulkan.
 
 ## Remaining Principled work
 
-- add the physical Alpha transparent closure to the ordered closure set;
 - implement and validate Sheen and Coat scattering/sample/PDF/AOV behavior;
 - complete transmission, subsurface, thin-film, and remaining Principled
   interactions; and
