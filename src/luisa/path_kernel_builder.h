@@ -16,6 +16,8 @@
 
 namespace psycles::luisa_backend::detail {
 
+class DirectLightTraceRecorder;
+
 using RenderKernel = Kernel1D<Buffer<luisa::float4>,
                               Buffer<luisa::float4>,
                               Buffer<luisa::float4>,
@@ -430,11 +432,14 @@ make_background_event_stage();
 make_surface_geometry_stage();
 [[nodiscard]] std::unique_ptr<SurfaceShadingStage> make_surface_shading_stage();
 [[nodiscard]] std::unique_ptr<DirectLightingComponent>
-make_environment_lighting_component();
+make_environment_lighting_component(
+    std::shared_ptr<const DirectLightTraceRecorder> trace);
 [[nodiscard]] std::unique_ptr<DirectLightingComponent>
-make_emissive_mesh_lighting_component();
+make_emissive_mesh_lighting_component(
+    std::shared_ptr<const DirectLightTraceRecorder> trace);
 [[nodiscard]] std::unique_ptr<DirectLightingComponent>
-make_analytic_lighting_component();
+make_analytic_lighting_component(
+    std::shared_ptr<const DirectLightTraceRecorder> trace);
 [[nodiscard]] std::unique_ptr<SurfaceScatterStage> make_surface_scatter_stage();
 
 class PathKernelPipeline {

@@ -488,8 +488,7 @@ class PathEmissiveTriangleComponent final
             light.valid &
             side_valid &
             (geometry.area > 0.0f) &
-            (pdf > 0.0f) &
-            any(radiance > 0.0f);
+            (pdf > 0.0f);
         return {
             .geometry =
                 std::move(geometry),

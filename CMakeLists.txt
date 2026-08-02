@@ -250,7 +250,6 @@ if(PSYCLES_ENABLE_LUISA)
                     -Wall -Wextra -Wpedantic
                     -Wconversion -Wsign-conversion)
         endif()
-
         add_library(
             psycles_luisa_runtime
             src/adapter/blender_graph_lower_closures.cpp
@@ -270,6 +269,7 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/path_kernel_background_event.cpp
             src/luisa/path_kernel_bounce_setup.cpp
             src/luisa/path_kernel_closest_event.cpp
+            src/luisa/path_kernel_direct_light_trace.cpp
             src/luisa/path_kernel_emissive_triangle.cpp
             src/luisa/path_kernel_environment_light.cpp
             src/luisa/path_kernel_forward_light.cpp

@@ -1,0 +1,64 @@
+{
+  "actual_label": "Psycles fallback",
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        0.9999997615814209,
+        0.9999999403953552,
+        0.9999998807907104
+      ],
+      "cycles": "/home/mike/Projects/Psycles/docs/validation/2026-07-31/surface-area-light-mis/exr/cycles-cpu.exr",
+      "cycles_channel_mean": [
+        0.5357025265693665,
+        0.708509624004364,
+        0.5520233511924744
+      ],
+      "cycles_luminance_mean": 0.6604728698730469,
+      "cycles_rms": 1.0518181324005127,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999998195091805,
+      "maximum_absolute_error": 5.9604644775390625e-06,
+      "mean_absolute_error": 6.311436209216481e-07,
+      "orientation_rmse": {
+        "flip_x": 1.1813496351242065,
+        "flip_xy": 1.2605807781219482,
+        "flip_y": 0.89388108253479,
+        "identity": 1.1211491255380679e-06
+      },
+      "p95_pixel_rmse": 2.6550924303592183e-06,
+      "p99_pixel_rmse": 3.670405931188725e-06,
+      "psycles": "/home/mike/Projects/Psycles/docs/validation/2026-08-02/direct-light-trace-phases/exr/psycles-fallback.exr",
+      "psycles_channel_mean": [
+        0.5357024073600769,
+        0.7085095643997192,
+        0.5520232915878296
+      ],
+      "psycles_luminance_mean": 0.6604727506637573,
+      "psycles_rms": 1.051818052530749,
+      "relative_rmse": 1.065915381187929e-06,
+      "rmse": 1.1211491255380679e-06,
+      "shape": [
+        32,
+        32,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 209715.2,
+        "display_scale": 0.24979488671604544,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles/docs/validation/2026-08-02/direct-light-trace-phases/triptychs/fallback/combined.png",
+        "pixel_scale": 16
+      },
+      "valid_pixels": 1024
+    }
+  },
+  "reference_label": "Cycles",
+  "schema": "psycles.cycles-differential.v1"
+}

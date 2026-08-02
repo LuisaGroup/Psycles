@@ -1,4 +1,5 @@
 #include "path_kernel_builder.h"
+#include "path_kernel_direct_light_trace.h"
 
 #include <utility>
 #include <vector>
@@ -25,20 +26,31 @@ class PathKernelPipeline::Impl {
         make_surface_geometry_stage()};
     std::unique_ptr<SurfaceShadingStage> surface_shading{
         make_surface_shading_stage()};
+    std::shared_ptr<const DirectLightTraceRecorder>
+        direct_light_trace;
     std::vector<std::unique_ptr<DirectLightingComponent>> direct_lighting;
     std::unique_ptr<SurfaceScatterStage> surface_scatter{
         make_surface_scatter_stage()};
 
     explicit Impl(
-        const PathKernelConfig &config) {
+        const PathKernelConfig &config)
+        : direct_light_trace{
+              make_direct_light_trace_recorder(
+                  config.path_trace_enabled)} {
         if (config.volume_state) {
             volume_segment =
                 make_path_volume_segment_stage(
                     config);
         }
-        direct_lighting.emplace_back(make_environment_lighting_component());
-        direct_lighting.emplace_back(make_emissive_mesh_lighting_component());
-        direct_lighting.emplace_back(make_analytic_lighting_component());
+        direct_lighting.emplace_back(
+            make_environment_lighting_component(
+                direct_light_trace));
+        direct_lighting.emplace_back(
+            make_emissive_mesh_lighting_component(
+                direct_light_trace));
+        direct_lighting.emplace_back(
+            make_analytic_lighting_component(
+                direct_light_trace));
     }
 };
 
@@ -122,6 +134,12 @@ void PathKernelPipeline::emit(PathSampleContext &sample) const noexcept {
         DirectLightingContext lighting{
             .bounce = bounce, .surface = surface, .shading = shading};
         if (sample.invocation.config.next_event_estimation) {
+            $if(bounce.selected_light.kind ==
+                static_cast<std::uint32_t>(
+                    sampling::LightDistributionEmitterKind::sentinel)) {
+                _impl->direct_light_trace
+                    ->record_unavailable(bounce);
+            };
             for (const auto &component : _impl->direct_lighting) {
                 component->emit(lighting);
             }

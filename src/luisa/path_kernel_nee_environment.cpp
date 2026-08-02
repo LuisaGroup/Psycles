@@ -1,4 +1,5 @@
 #include "path_kernel_builder.h"
+#include "path_kernel_direct_light_trace.h"
 #include "path_kernel_environment_light.h"
 
 #include <psycles/luisa/surface_ray.h>
@@ -15,8 +16,14 @@ class EnvironmentLightingComponent final : public DirectLightingComponent {
         const EnvironmentLightComponent>
         _environment_light{
             make_environment_light_component()};
+    std::shared_ptr<const DirectLightTraceRecorder>
+        _trace;
 
   public:
+    explicit EnvironmentLightingComponent(
+        std::shared_ptr<const DirectLightTraceRecorder> trace)
+        : _trace{std::move(trace)} {}
+
     void emit(DirectLightingContext &context) const noexcept override {
         auto &bounce = context.bounce;
         auto &sample = bounce.sample;
@@ -76,6 +83,46 @@ class EnvironmentLightingComponent final : public DirectLightingComponent {
                         selected_light
                             .selection_pdf);
             $if(light.valid) {
+                _trace->record_sample(
+                    bounce,
+                    {.type = 2u,
+                     .emitter_id =
+                         selected_light.emitter_id,
+                     .primitive =
+                         config.scene->light_count,
+                     .object =
+                         config.scene
+                             ->cycles_background_object_index,
+                     .light_group =
+                         config.scene
+                             ->cycles_background_light_group,
+                     .shader =
+                         config.scene
+                             ->cycles_background_shader_id,
+                     .pdf = light.pdf,
+                     .selection_pdf =
+                         selected_light.selection_pdf,
+                     .evaluation_factor = 1.0f,
+                     .direction = light.direction,
+                     .position = -light.direction,
+                     .geometric_normal =
+                         -light.direction,
+                     .distance = ray_maximum});
+                const auto evaluation =
+                    evaluate_surface(
+                        surface_tag,
+                        point,
+                        light.direction,
+                        path_surface_query);
+                const auto mis_weight =
+                    nee_light_weight(
+                        light.pdf,
+                        evaluation.pdf);
+                _trace->record_evaluation(
+                    bounce,
+                    {.distance = ray_maximum,
+                     .bsdf_pdf = evaluation.pdf,
+                     .mis_weight = mis_weight});
                 const auto shadow =
                     make_surface_shadow_origin(
                         light.direction);
@@ -103,15 +150,6 @@ class EnvironmentLightingComponent final : public DirectLightingComponent {
                                          transparent_depth,
                                          transmission_depth)));
                 $if(any(shadow_transmittance > 0.0f)) {
-                    auto evaluation = evaluate_surface(
-                        surface_tag,
-                        point,
-                        light.direction,
-                        path_surface_query);
-                    Float mis_weight =
-                        nee_light_weight(
-                            light.pdf,
-                            evaluation.pdf);
                     Float3 unshadowed_contribution =
                         evaluation.f *
                         light.radiance *
@@ -133,6 +171,10 @@ class EnvironmentLightingComponent final : public DirectLightingComponent {
                                                           path_glossy_weight,
                                                           path_depth));
                 };
+            }
+            $else {
+                _trace->record_unavailable(
+                    bounce);
             };
         };
     }
@@ -140,8 +182,11 @@ class EnvironmentLightingComponent final : public DirectLightingComponent {
 
 } // namespace
 
-std::unique_ptr<DirectLightingComponent> make_environment_lighting_component() {
-    return std::make_unique<EnvironmentLightingComponent>();
+std::unique_ptr<DirectLightingComponent>
+make_environment_lighting_component(
+    std::shared_ptr<const DirectLightTraceRecorder> trace) {
+    return std::make_unique<EnvironmentLightingComponent>(
+        std::move(trace));
 }
 
 } // namespace psycles::luisa_backend::detail
