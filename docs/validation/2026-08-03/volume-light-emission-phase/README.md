@@ -125,7 +125,8 @@ backend-specific discontinuity.
 
 ## Remaining parity gates
 
-- import and lower raw Principled BSDF emission sockets;
+- implement exact Principled Alpha/Sheen/Coat attenuation after the raw
+  emission socket import;
 - align emitter/environment importance distributions and exact RNG mapping;
 - implement heterogeneous residual-ratio shadow transport;
 - align surface-light roulette ordering with Cycles; and
