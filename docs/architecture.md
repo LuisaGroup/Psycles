@@ -386,7 +386,16 @@ data; a separate virtual evaluator requires path state after validity and
 self-intersection rejection. `EnvironmentLightComponent` applies the same
 proposal/evaluator split to raw World closures. Surface NEE, background hits,
 forward-hit MIS, and the volume-light components all construct their AST
-through those boundaries.
+through those boundaries. `SurfaceParameterServices` is the narrower
+constant-emission boundary: it exposes only device parameter-buffer reads and
+cannot access a shading point, texture, attribute, geometry, or BSDF table.
+The host-stage `SurfaceDispatch` records this callable only for graphs proven
+constant by the compiler's closure-tree relation. Surface analytic, triangle,
+and environment NEE evaluate that path before the receiving BSDF; deferred
+graphs evaluate the ordinary raw closure only after a non-zero BSDF and before
+shadow traversal. This mirrors Cycles' constant/`SHADE_LIGHT_NEE` split while
+retaining one fused Luisa device program and the original per-instance
+parameter blocks.
 `VolumeLightInterval` independently maps the original segment to spot, area,
 or one-sided triangle geometric support. This separation prevents
 radiometric rejection, proposal measure, and interval algebra from becoming
