@@ -50,17 +50,10 @@ class AnalyticLightingComponent final : public DirectLightingComponent {
         auto &path_diffuse_weight = sample.path_diffuse_weight;
         auto &path_glossy_weight = sample.path_glossy_weight;
         const auto &kernel_parameters = invocation.parameters;
-        const auto path_trace_enabled = config.path_trace_enabled;
         const auto &safe_normalize = config.light_transport.safe_normalize;
         const auto &trace_shadow = config.trace_shadow;
         const auto &nee_light_weight = config.light_transport.nee_light_weight;
         const auto &split_nee_light = config.light_transport.split_nee_light;
-        auto trace_surface_closure = [&](UInt tag,
-                                         const SurfacePoint &surface_point,
-                                         UInt requested_index) noexcept {
-            return invocation.trace_surface_closure(
-                tag, surface_point, requested_index);
-        };
         auto analytic_light_shader = [&](Var<LightGpu> light,
                                          UInt light_index,
                                          Float3 light_position,
@@ -187,18 +180,9 @@ class AnalyticLightingComponent final : public DirectLightingComponent {
                     sphere & (light.radius > 0.0f) &
                     (length_squared(hit_position - light.position) <=
                      light.radius * light.radius);
-                // Only a point inside spherical emitter geometry
-                // needs the surface's transmission capability to
-                // choose Cycles' uniform-sphere versus
-                // cosine-hemisphere measure. Avoid a second graph
-                // evaluation for every ordinary light sample.
-                if (!path_trace_enabled) {
-                    $if(inside_sphere) {
-                        cycles_surface_runtime_flags =
-                            trace_surface_closure(surface_tag, point, 0u)
-                                .runtime_flags;
-                    };
-                }
+                // The unified pre-NEE closure capability summary also
+                // supplies Cycles' transmission bit for the special case of
+                // a shading point inside spherical emitter geometry.
                 const auto has_transmission =
                     (cycles_surface_runtime_flags &
                      cycles_closure::runtime_bsdf_has_transmission) != 0u;
@@ -367,7 +351,7 @@ class AnalyticLightingComponent final : public DirectLightingComponent {
                 };
             }
             $else {
-                _trace->record_unavailable(bounce);
+                _trace->record_failed_sample(bounce);
             };
         };
     }

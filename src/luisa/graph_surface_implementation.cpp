@@ -421,6 +421,32 @@ GraphSurfaceImplementation::evaluate_light(
             .selected_closure_index = ~std::uint32_t{0u}});
 }
 
+[[nodiscard]] UInt GraphSurfaceImplementation::runtime_flags(
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    Expr<float> glossy_filter_roughness_expression) const noexcept {
+    if (!_program) {
+        return 0u;
+    }
+    auto values = trace_values(services, point);
+    auto glossy_filter_roughness =
+        Float{glossy_filter_roughness_expression};
+    UInt result = select(
+        0u,
+        cycles_closure::runtime_backfacing,
+        point.back_facing);
+    for_each_physical_closure(
+        services,
+        point,
+        values,
+        [&](const TracedClosure &closure) noexcept {
+            result |= cycles_runtime_flags(
+                closure,
+                glossy_filter_roughness);
+        });
+    return result;
+}
+
 [[nodiscard]] SurfaceClosureTrace
 GraphSurfaceImplementation::closure_trace(
     const ShaderServices &services,

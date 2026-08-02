@@ -14,17 +14,20 @@ The oracle is the local current Cycles checkout at
 `/home/mike/Projects/blender-cycles-trace`, specifically
 `kernel/integrator/shade_surface.h:343-435`. Its surface NEE sequence is:
 
-1. call `light_sample_from_position`; on failure write
+1. require both global `use_direct_light` and surface
+   `SR_BSDF_HAS_EVAL`; otherwise return without crossing a direct-light trace
+   boundary;
+2. call `light_sample_from_position`; on failure write
    `light_meta=(-1,-1,-1)` and return;
-2. write the sampled light type, emitter, global primitive, object, group,
+3. write the sampled light type, emitter, global primitive, object, group,
    packed shader, combined PDF, selection PDF, evaluation factor, direction,
    position, and geometric normal;
-3. for a triangle with a non-sentinel primitive, reject exactly when source
+4. for a triangle with a non-sentinel primitive, reject exactly when source
    object and global primitive both match and
    `dot(D, transmission ? -Ng : Ng) > 0`;
-4. evaluate the surface BSDF and NEE MIS weight;
-5. write `(distance, bsdf_pdf, mis_weight)` before the shadow query;
-6. trace the shadow ray and reuse that one BSDF evaluation for contribution
+5. evaluate the surface BSDF and NEE MIS weight;
+6. write `(distance, bsdf_pdf, mis_weight)` before the shadow query;
+7. trace the shadow ray and reuse that one BSDF evaluation for contribution
    and pass splitting.
 
 Psycles now follows that state machine. The triangle predicate is expressed
@@ -34,6 +37,43 @@ triangle, and environment components all receive the same
 `DirectLightTraceRecorder` host object. The normal renderer receives the null
 implementation, so Luisa's multistage AST construction erases diagnostics at
 host time.
+
+### Pre-sampling capability gates
+
+An additional regression locks the distinction between an unavailable NEE
+capability and a failed proposal. In Cycles' flat-distribution setup,
+`LightManager` assigns `kernel_data.integrator.use_direct_light =
+(totarea > 0)`. A scene with no analytic lights, no emissive triangles, and
+no sampled world therefore exits `integrate_surface_direct_light` before
+`light_sample_from_position`; no `light_*` trace slot is written. The
+`(-1,-1,-1)` record belongs only to a proposal which was actually attempted
+and failed.
+
+Psycles now derives its host-stage NEE specialization from the same positive
+distribution predicate. The recorder interface names the later state
+`record_failed_sample`, so callers cannot conflate it with the absence of a
+distribution. The fallback/HIP/Vulkan device fixture proves that surface
+shading was reached, all eight direct-light slots remain unwritten, and the
+32x32 Combined result remains exactly black with alpha one. The existing
+analytic, triangle, and environment fixtures still prove that a successful
+attempt writes the complete record.
+
+The second half of Cycles' predicate is per-surface rather than per-scene.
+Psycles now exposes closure setup flags through a dedicated virtual
+`Surface::runtime_flags` stage. Graph surfaces lower that host-stage
+interface to a Luisa callable, including the current glossy-filter roughness,
+and the path pipeline tests `runtime_bsdf_has_eval` once around the complete
+set of analytic, triangle, and environment components. This also replaces
+the analytic-sphere component's former trace-only flag query: the same
+production summary supplies both `HAS_EVAL` and `HAS_TRANSMISSION` in normal
+and diagnostic renders.
+
+A scene with a valid area-light distribution but a pure Transparent receiver
+locks this second gate. It reaches surface shading and later transparent
+scattering, yet no direct-light trace slot is written. Thus the state machine
+has three explicit observations: no capability produces no record, an
+attempted failed proposal produces the `(-1,-1,-1)` record, and a successful
+proposal produces the full sample record.
 
 The analytic component also evaluates its raw lamp shader after recording the
 sample and before BSDF evaluation, and evaluates the BSDF once before shadow
@@ -53,6 +93,13 @@ scene contracts on fallback, HIP, and Vulkan:
 | zero-energy raw Emission triangle | 5 | 0 | 41 | 9 | 6 | `0x5000000b` |
 | spatial raw world closure | 2 | 0 | 0 | 10 | 4 | `0x5000000c` |
 
+Two additional fixtures exercise the boundary before proposal sampling:
+
+| Fixture | Distribution | Surface capability | Expected trace |
+|---|---|---|---|
+| no sampled emitters | zero total weight | Diffuse `HAS_EVAL` | no `light_*` writes |
+| area light + Transparent receiver | usable | no `HAS_EVAL` | no `light_*` writes |
+
 The triangle fixture deliberately places its geometry at Cycles primitive
 prefix 41, so a local TLAS/BLAS primitive index cannot accidentally pass. Its
 raw Emission closure has zero strength: Cycles still accepts the geometric
@@ -71,6 +118,16 @@ After the final typed-record cleanup, a 32-way complete project run passed
 123/123 tests in 67.12 s. The two longest checks were the existing Vulkan
 volume path (58.14 s) and volume environment (67.12 s) tests; no backend test
 failed.
+
+After adding both capability-gate regressions, a warm-cache 32-way run passed
+123/123; the expanded area-light executable completed in 0.37 s on fallback,
+0.79 s on HIP, and 1.43 s on Vulkan. A final run after specializing away the
+unused runtime-summary callable produced new shader hashes and again passed
+123/123 in 46.84 s. In that run the area-light tests, including compilation
+of five scene variants, took 3.94 s, 8.17 s, and 13.82 s respectively; the
+longest checks were Vulkan volume environment (46.03 s) and volume path
+(46.84 s). The source-size gate also passed; every changed C++ source/header
+remains below 2000 lines.
 
 ## Numerical and visual check
 
@@ -95,6 +152,16 @@ per-backend `1.40e5` to `2.10e5` amplification shown in the third column.
 
 The fresh EXRs, machine-readable reports, and individual triptychs are kept
 beside this document.
+
+For the capability-gate change, fresh narrow-ellipse EXRs from fallback,
+HIP, and Vulkan each passed `oiiotool --fail 0 --warn 0 --diff` against those
+retained backend EXRs. I reopened the overview above at original resolution:
+the Cycles/Psycles sample support, silhouette, central energy, and hue remain
+visually aligned on all three backends; only the previously documented,
+strongly amplified float noise is visible in the difference column. The two
+new gate fixtures are numerically exact black RGB with alpha one across all
+1024 pixels, so an additional all-black triptych would contain no visual
+information.
 
 ## Subsequent closure-filter checkpoint
 

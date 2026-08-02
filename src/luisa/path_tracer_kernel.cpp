@@ -181,11 +181,19 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         integrator.refractive_caustics;
     const auto max_path_steps =
         bounce_limits.maximum_path_steps;
+    // Cycles' flat-distribution LightManager sets use_direct_light only
+    // when the distribution has positive total weight. This is a host-stage
+    // capability gate: no distribution means NEE was never attempted,
+    // whereas a selected emitter whose position sample fails is an attempted
+    // proposal and has a distinct diagnostic trace state.
+    const auto direct_light_available =
+        scene->light_distribution_count > 0u;
     const auto next_event_estimation =
         _options.next_event_estimation &&
         integrator.direct_light_sampling !=
             contract::DirectLightSampling::
-                forward_path_tracing;
+                forward_path_tracing &&
+        direct_light_available;
     const auto direct_light_sampling =
         next_event_estimation
             ? integrator.direct_light_sampling

@@ -230,6 +230,20 @@ SurfaceEvaluation PathKernelInvocation::evaluate_light_surface(
             shader_flags));
 }
 
+UInt PathKernelInvocation::surface_runtime_flags(
+    UInt surface_tag,
+    const SurfacePoint &point,
+    Float glossy_filter_roughness) const noexcept {
+    return config.surfaces.runtime_flags(
+        config.scene->parameter_buffer,
+        config.scene->cycles_bsdf_table_buffer,
+        config.scene->texture_heap,
+        config.scene->heap,
+        surface_tag,
+        pack_surface_point(point),
+        glossy_filter_roughness);
+}
+
 Float3 PathKernelInvocation::surface_emission(UInt surface_tag,
                                               const SurfacePoint &point,
                                               Float3 outgoing) const noexcept {

@@ -226,6 +226,24 @@ constexpr std::string_view zero_emission_attribute{
     return graph;
 }
 
+[[nodiscard]] ShaderGraph transparent_shader() {
+    ShaderGraph graph;
+    const auto transparent =
+        graph.add_node(
+            node_type::transparent_bsdf,
+            "Cycles non-evaluable transparent closure");
+    static_cast<void>(graph.set_input(
+        transparent,
+        "Color",
+        SocketValue::color({1.0f, 1.0f, 1.0f})));
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{
+            .node = transparent,
+            .socket = "Closure"});
+    return graph;
+}
+
 [[nodiscard]] ShaderGraph emission_shader() {
     ShaderGraph graph;
     const auto zero = graph.add_node(
@@ -504,6 +522,23 @@ constexpr std::string_view zero_emission_attribute{
     return scene;
 }
 
+[[nodiscard]] SceneSnapshot make_no_direct_light_scene() {
+    auto scene = make_scene();
+    scene.revision = 4u;
+    scene.lights.clear();
+    scene.world_sampling = WorldSampling::none;
+    return scene;
+}
+
+[[nodiscard]] SceneSnapshot make_no_evaluable_bsdf_scene() {
+    constexpr MaterialId material_id{1u};
+    auto scene = make_scene();
+    scene.revision = 5u;
+    scene.materials.at(material_id).shader =
+        transparent_shader();
+    return scene;
+}
+
 [[nodiscard]] bool approximately_equal(
     float actual,
     float expected,
@@ -656,6 +691,54 @@ struct DirectLightTraceOracle {
                 approximately_equal(
                     direction[2u], dz / distance),
             "finite_light_direction");
+    }
+    return passed;
+}
+
+[[nodiscard]] bool validate_direct_light_not_attempted(
+    const CapturingPathTraceSink &sink,
+    std::string_view backend,
+    std::string_view label) {
+    using psycles::luisa_backend::path_trace_schema::EventSlot;
+    using psycles::luisa_backend::path_trace_schema::index;
+    if (!sink.trace()) {
+        std::cerr << label
+                  << " path trace was not delivered on "
+                  << backend << '\n';
+        return false;
+    }
+    const auto &trace = *sink.trace();
+    const auto &slot = [&](EventSlot field) -> const auto & {
+        return trace.slots[index(0u, field)];
+    };
+    if (slot(EventSlot::surface_p)[3u] != 1.0f) {
+        std::cerr << "Cycles " << label
+                  << " did not reach surface shading on "
+                  << backend << '\n';
+        return false;
+    }
+    struct TraceField {
+        EventSlot slot;
+        std::string_view name;
+    };
+    constexpr std::array fields{
+        TraceField{EventSlot::light_meta, "light_meta"},
+        TraceField{EventSlot::light_id, "light_id"},
+        TraceField{EventSlot::light_shader, "light_shader"},
+        TraceField{EventSlot::light_pdf, "light_pdf"},
+        TraceField{EventSlot::light_d, "light_d"},
+        TraceField{EventSlot::light_p, "light_p"},
+        TraceField{EventSlot::light_ng, "light_ng"},
+        TraceField{EventSlot::light_eval, "light_eval"}};
+    auto passed = true;
+    for (const auto &field : fields) {
+        if (slot(field.slot)[3u] != 0.0f) {
+            std::cerr << "Cycles " << label
+                      << " unexpectedly attempted direct lighting on "
+                      << backend << " field "
+                      << field.name << '\n';
+            passed = false;
+        }
     }
     return passed;
 }
@@ -860,6 +943,39 @@ template<std::size_t N>
     return passed;
 }
 
+[[nodiscard]] bool validate_exact_black_fixture(
+    const psycles::io::MemoryOutputSink &sink,
+    std::string_view backend,
+    std::string_view label) {
+    const auto *combined =
+        sink.find(PassKind::combined);
+    if (combined == nullptr ||
+        combined->channels != 4u ||
+        combined->pixels.size() !=
+            static_cast<std::size_t>(width) * height * 4u) {
+        std::cerr << label
+                  << " Combined pass has an invalid shape on "
+                  << backend << '\n';
+        return false;
+    }
+    for (std::size_t pixel = 0u;
+         pixel < static_cast<std::size_t>(width) * height;
+         ++pixel) {
+        const auto base = pixel * 4u;
+        if (combined->pixels[base] != 0.0f ||
+            combined->pixels[base + 1u] != 0.0f ||
+            combined->pixels[base + 2u] != 0.0f ||
+            combined->pixels[base + 3u] != 1.0f) {
+            std::cerr << label
+                      << " expected exact opaque black on "
+                      << backend << " pixel "
+                      << pixel << '\n';
+            return false;
+        }
+    }
+    return true;
+}
+
 }// namespace
 
 int main(int argc, char **argv) {
@@ -1046,6 +1162,46 @@ int main(int argc, char **argv) {
              .shader_low = 12.0f,
              .shader_high = 20480.0f,
              .environment = true})) {
+        return EXIT_FAILURE;
+    }
+
+    psycles::io::MemoryOutputSink
+        no_direct_light_sink;
+    trace_sink->reset();
+    if (!render_fixture(
+            renderer,
+            make_no_direct_light_scene(),
+            settings,
+            "zero-weight direct-light distribution",
+            no_direct_light_sink) ||
+        !validate_exact_black_fixture(
+            no_direct_light_sink,
+            backend,
+            "zero-weight direct-light distribution") ||
+        !validate_direct_light_not_attempted(
+            *trace_sink,
+            backend,
+            "zero-weight direct-light distribution")) {
+        return EXIT_FAILURE;
+    }
+
+    psycles::io::MemoryOutputSink
+        no_evaluable_bsdf_sink;
+    trace_sink->reset();
+    if (!render_fixture(
+            renderer,
+            make_no_evaluable_bsdf_scene(),
+            settings,
+            "non-evaluable surface closure",
+            no_evaluable_bsdf_sink) ||
+        !validate_exact_black_fixture(
+            no_evaluable_bsdf_sink,
+            backend,
+            "non-evaluable surface closure") ||
+        !validate_direct_light_not_attempted(
+            *trace_sink,
+            backend,
+            "non-evaluable surface closure")) {
         return EXIT_FAILURE;
     }
 

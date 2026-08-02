@@ -229,7 +229,7 @@ class EmissiveMeshLightingComponent final
                 };
             }
             $else {
-                _trace->record_unavailable(
+                _trace->record_failed_sample(
                     bounce);
             };
         };
