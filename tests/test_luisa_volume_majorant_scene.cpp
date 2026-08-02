@@ -1595,7 +1595,7 @@ void run_scene_build(
                               {.minimum = 0.0f,
                                .maximum = 0.0f},
                           .enabled = false},
-                     .direct_direction = nullptr,
+                     .direct_light = nullptr,
                      .terminate = false});
             output.write(
                 0u,

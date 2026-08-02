@@ -60,8 +60,8 @@ struct HeterogeneousVolumeSegmentInput {
         &collisions;
     HeterogeneousVolumeGuidingSample guiding;
     HeterogeneousVolumeDirectInput direct;
-    const VolumeDirectDirectionProvider
-        *direct_direction;
+    const VolumeDirectLightProvider
+        *direct_light;
     Float ray_minimum;
     Float ray_maximum;
     Float3 segment_origin;

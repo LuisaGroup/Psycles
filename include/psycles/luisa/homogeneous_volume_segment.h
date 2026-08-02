@@ -52,8 +52,8 @@ class HomogeneousVolumeSegmentComponent {
          Bool terminate,
          const VolumeScatterProbabilityGuidingState &guiding,
          const HomogeneousVolumeDirectInput &direct,
-         const VolumeDirectDirectionProvider
-             *direct_direction) const noexcept = 0;
+         const VolumeDirectLightProvider
+             *direct_light) const noexcept = 0;
 };
 
 [[nodiscard]] std::unique_ptr<HomogeneousVolumeSegmentComponent>

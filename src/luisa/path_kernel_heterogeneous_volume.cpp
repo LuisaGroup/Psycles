@@ -154,8 +154,8 @@ class PathHeterogeneousVolumeComponentImpl final
                      .evaluate(
                          input.guiding),
              .direct = input.direct,
-             .direct_direction =
-                 input.direct_direction,
+             .direct_light =
+                 input.direct_light,
              .ray_minimum =
                  input.ray_minimum,
              .ray_maximum =

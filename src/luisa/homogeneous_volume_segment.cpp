@@ -41,8 +41,8 @@ class HomogeneousVolumeSegmentComponentImpl final
          Bool terminate,
          const VolumeScatterProbabilityGuidingState &guiding,
          const HomogeneousVolumeDirectInput &direct,
-         const VolumeDirectDirectionProvider
-             *direct_direction) const noexcept override {
+         const VolumeDirectLightProvider
+             *direct_light) const noexcept override {
         VolumePhaseSet phases{
             _closure_allocation_budget};
         const StackedVolumeEvaluator evaluator{
@@ -96,11 +96,13 @@ class HomogeneousVolumeSegmentComponentImpl final
                 .direction =
                     make_float3(0.0f),
                 .valid = false};
-        if (direct_direction != nullptr) {
+        if (direct_light != nullptr) {
             direction_sample =
-                direct_direction->emit(
+                direct_light->sample_direction(
                     direct_transport
                         .distance);
+            direct_light
+                ->evaluate_constant_emission();
         }
         const auto direct_phase_raw =
             phases.evaluate(
@@ -124,6 +126,13 @@ class HomogeneousVolumeSegmentComponentImpl final
                 .valid =
                     direct_phase_raw.valid &
                     direction_sample.valid};
+        if (direct_light != nullptr) {
+            direct_light
+                ->evaluate_deferred_emission(
+                    direct_phase.valid &
+                    (direct_phase.value !=
+                     0.0f));
+        }
 
         // Cycles phase functions use -sd->wi as their axis. Volume ShaderData
         // stores sd->wi = -ray.D, so the sampling axis here is the propagation

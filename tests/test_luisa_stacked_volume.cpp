@@ -29,7 +29,7 @@ using namespace psycles::compiler;
 using namespace psycles::contract;
 using namespace psycles::luisa_backend;
 
-inline constexpr std::size_t record_count = 29u;
+inline constexpr std::size_t record_count = 30u;
 
 void require(bool condition, const char *message) {
     if (!condition) {
@@ -378,6 +378,51 @@ class FixturePointProvider final
             .point = std::move(point),
             .object_density =
                 std::move(object_density)};
+    }
+};
+
+class FixtureDirectLightProvider final
+    : public VolumeDirectLightProvider {
+
+  private:
+    UInt *_phase_trace;
+    Bool *_deferred_receiving;
+
+  public:
+    FixtureDirectLightProvider(
+        UInt *phase_trace,
+        Bool *deferred_receiving) noexcept
+        : _phase_trace{phase_trace},
+          _deferred_receiving{
+              deferred_receiving} {}
+
+    VolumeDirectDirectionSample sample_direction(
+        Float distance)
+        const noexcept override {
+        *_phase_trace =
+            *_phase_trace * 10u + 1u;
+        return {
+            .direction = normalize(
+                make_float3(
+                    0.3f,
+                    0.4f,
+                    0.8660254f)),
+            .valid = distance >= 0.0f};
+    }
+
+    void evaluate_constant_emission()
+        const noexcept override {
+        *_phase_trace =
+            *_phase_trace * 10u + 2u;
+    }
+
+    void evaluate_deferred_emission(
+        Bool receiving_nonzero)
+        const noexcept override {
+        *_phase_trace =
+            *_phase_trace * 10u + 3u;
+        *_deferred_receiving =
+            receiving_nonzero;
     }
 };
 
@@ -899,6 +944,66 @@ int main(int argc, char **argv) {
                         1.0f,
                         collision.phase_failed)));
 
+            UInt direct_phase_trace = 0u;
+            Bool deferred_receiving = false;
+            FixtureDirectLightProvider
+                direct_provider{
+                    &direct_phase_trace,
+                    &deferred_receiving};
+            const auto direct_checkpoint =
+                segment->emit(
+                    single,
+                    services,
+                    state,
+                    0.5f,
+                    make_float3(1.0f),
+                    0.2f,
+                    0.2f,
+                    make_float2(
+                        0.034f, 0.83f),
+                    false,
+                    {.scattered_radiance =
+                         make_float3(0.0f),
+                     .transmitted_radiance =
+                         make_float3(0.0f),
+                     .majorant_optical_depth =
+                         0.0f,
+                     .enabled = false},
+                    {.requested_method =
+                         volume_sample_distance,
+                     .light_position =
+                         make_float3(
+                             1.0f,
+                             0.0f,
+                             2.0f),
+                     .interval =
+                         {.minimum = 0.0f,
+                          .maximum = 0.5f},
+                     .enabled = true},
+                    &direct_provider);
+            records.write(
+                29u,
+                make_float4(
+                    cast<float>(
+                        direct_phase_trace),
+                    select(
+                        0.0f,
+                        1.0f,
+                        deferred_receiving),
+                    select(
+                        0.0f,
+                        1.0f,
+                        direct_checkpoint
+                                .direct_phase
+                                .value >
+                            0.0f),
+                    select(
+                        0.0f,
+                        1.0f,
+                        direct_checkpoint
+                            .direct_phase
+                            .valid)));
+
             const auto empty_segment =
                 segment->emit(
                     empty,
@@ -1183,7 +1288,11 @@ int main(int argc, char **argv) {
         luisa::float4{
             2.0f, 1.0f, 1.0f, 1.0f},
         luisa::float4{
-            1.35f, 1.95f, 2.7f, 2.0f}};
+            1.35f, 1.95f, 2.7f, 2.0f},
+        // The provider protocol brackets phase evaluation: direction,
+        // constant emission, then deferred emission with a non-zero phase.
+        luisa::float4{
+            123.0f, 1.0f, 1.0f, 1.0f}};
     for (std::size_t index = 0u;
          index < expected.size();
          ++index) {

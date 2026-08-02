@@ -31,8 +31,8 @@ struct PathHeterogeneousVolumeInput {
     HeterogeneousVolumeGuidingState
         guiding;
     HeterogeneousVolumeDirectInput direct;
-    const VolumeDirectDirectionProvider
-        *direct_direction;
+    const VolumeDirectLightProvider
+        *direct_light;
     Bool terminate;
 };
 

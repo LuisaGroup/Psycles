@@ -54,8 +54,8 @@ class VolumeDirectLightingComponent {
         Float segment_length) const noexcept = 0;
 
     [[nodiscard]] virtual std::unique_ptr<
-        VolumeDirectDirectionProvider>
-    make_direction_provider(
+        VolumeDirectLightProvider>
+    make_light_provider(
         ClosestPathEvent &event,
         const VolumeDirectLightProposal &proposal,
         Float3 segment_position,
