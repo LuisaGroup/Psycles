@@ -27,10 +27,12 @@ struct EmissiveTriangleSegmentSample {
     Bool valid;
 };
 
-struct EmissiveTriangleLightSample {
+// A proposal is deliberately radiometry-free. Cycles samples and rejects the
+// light geometry before evaluating the emitter shader; keeping radiance out of
+// this type makes that phase boundary impossible to bypass accidentally.
+struct EmissiveTriangleLightProposal {
     EmissiveTriangleGeometryContext geometry;
     TriangleLightSample light;
-    Float3 radiance;
     Float pdf;
     Bool valid;
 };
@@ -41,9 +43,11 @@ struct EmissiveTrianglePdf {
 };
 
 // Shared host-stage component for mesh-emitter geometry, Cycles triangle
-// measures, side selection, and raw emission-closure evaluation. Surface NEE,
-// volume NEE, and forward-hit MIS call the same semantic boundary while Luisa
-// still records each use directly into the fused path kernel.
+// measures and side selection. Raw emission-closure evaluation is a separate
+// operation, matching Cycles' proposal -> geometric rejection -> shader
+// evaluation state machine. Surface NEE, volume NEE, and forward-hit MIS call
+// the same host-stage component while Luisa records each use directly into the
+// fused path kernel.
 class EmissiveTriangleComponent {
 
   public:
@@ -57,12 +61,18 @@ class EmissiveTriangleComponent {
         Float3 reference,
         Float2 random) const noexcept = 0;
 
-    [[nodiscard]] virtual EmissiveTriangleLightSample
+    [[nodiscard]] virtual EmissiveTriangleLightProposal
     from_position(
-        PathSampleContext &sample,
+        const std::shared_ptr<LuisaSceneData> &scene,
         UInt emitter_index,
         Float3 reference,
         Float2 random) const noexcept = 0;
+
+    [[nodiscard]] virtual Float3
+    evaluate_emission(
+        PathSampleContext &sample,
+        const EmissiveTriangleLightProposal
+            &proposal) const noexcept = 0;
 
     [[nodiscard]] virtual EmissiveTrianglePdf
     from_intersection(

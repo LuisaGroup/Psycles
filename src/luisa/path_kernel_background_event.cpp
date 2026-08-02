@@ -74,21 +74,22 @@ class BackgroundEventStageImpl final
         Float3 environment_contribution =
             invocation
                 .clamp_emission_contribution(
-                throughput *
-                    invocation
-                        .evaluate_environment(
-                            ray->direction(),
-                            cycles_path_state::
-                                background_emission_shader_state(
-                                    ray_visibility,
-                                    ray_events,
-                                    path_depth,
-                                    diffuse_depth,
-                                    glossy_depth,
-                                    transparent_depth,
-                                    transmission_depth)) *
-                    environment_weight,
-                path_depth);
+                    throughput *
+                        _environment_light
+                            ->evaluate_emission(
+                                sample,
+                                ray->direction(),
+                                cycles_path_state::
+                                    background_emission_shader_state(
+                                        ray_visibility,
+                                        ray_events,
+                                        path_depth,
+                                        diffuse_depth,
+                                        glossy_depth,
+                                        transparent_depth,
+                                        transmission_depth)) *
+                        environment_weight,
+                    path_depth);
         environment_contribution =
             select(
                 make_float3(0.0f),

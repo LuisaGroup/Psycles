@@ -3,9 +3,13 @@
 #include <psycles/io/image.h>
 #include <psycles/luisa/path_tracer.h>
 
+#include "../src/luisa/path_kernel_emissive_triangle.h"
+#include "../src/luisa/path_kernel_environment_light.h"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -20,6 +24,76 @@
 #include <luisa/runtime/context.h>
 
 namespace {
+
+namespace proposal_contract {
+
+using namespace psycles::luisa_backend::detail;
+
+template<typename T>
+concept CarriesRadiance = requires(T value) {
+    value.radiance;
+};
+
+using EmissiveProposalFunction =
+    EmissiveTriangleLightProposal (
+        EmissiveTriangleComponent::*)(
+        const std::shared_ptr<LuisaSceneData> &,
+        UInt,
+        Float3,
+        Float2) const noexcept;
+using EmissiveEvaluationFunction =
+    Float3 (EmissiveTriangleComponent::*)(
+        PathSampleContext &,
+        const EmissiveTriangleLightProposal &)
+        const noexcept;
+using EnvironmentProposalFunction =
+    EnvironmentLightProposal (
+        EnvironmentLightComponent::*)(
+        const std::shared_ptr<LuisaSceneData> &,
+        Float3,
+        Float2,
+        Float) const noexcept;
+using EnvironmentEvaluationFunction =
+    Float3 (EnvironmentLightComponent::*)(
+        PathSampleContext &,
+        Float3,
+        const psycles::luisa_backend::
+            cycles_path_state::
+                ShaderEvaluationState &)
+        const noexcept;
+
+static_assert(
+    !CarriesRadiance<
+        EmissiveTriangleLightProposal>);
+static_assert(
+    !CarriesRadiance<
+        EnvironmentLightProposal>);
+static_assert(
+    std::same_as<
+        decltype(
+            &EmissiveTriangleComponent::
+                from_position),
+        EmissiveProposalFunction>);
+static_assert(
+    std::same_as<
+        decltype(
+            &EmissiveTriangleComponent::
+                evaluate_emission),
+        EmissiveEvaluationFunction>);
+static_assert(
+    std::same_as<
+        decltype(
+            &EnvironmentLightComponent::
+                from_position),
+        EnvironmentProposalFunction>);
+static_assert(
+    std::same_as<
+        decltype(
+            &EnvironmentLightComponent::
+                evaluate_emission),
+        EnvironmentEvaluationFunction>);
+
+}// namespace proposal_contract
 
 using namespace psycles;
 using namespace psycles::compiler;

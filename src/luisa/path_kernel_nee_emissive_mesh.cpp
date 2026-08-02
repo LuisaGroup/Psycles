@@ -50,7 +50,7 @@ class EmissiveMeshLightingComponent final
             const auto light =
                 _emissive_triangle
                     ->from_position(
-                        sample,
+                        config.scene,
                         selected_light
                             .index,
                         surface
@@ -110,6 +110,13 @@ class EmissiveMeshLightingComponent final
                          oriented_normal) >
                      0.0f);
                 $if(!reject_self) {
+                    // Cycles evaluates the light shader only after proposal
+                    // validity and geometric self-rejection are known.
+                    const auto radiance =
+                        _emissive_triangle
+                            ->evaluate_emission(
+                                sample,
+                                light);
                     const auto evaluation =
                         invocation.evaluate_light_surface(
                             surface.surface_tag,
@@ -175,7 +182,7 @@ class EmissiveMeshLightingComponent final
                     $if(any(transmittance > 0.0f)) {
                         const auto unshadowed =
                             evaluation.f *
-                            light.radiance *
+                            radiance *
                             (mis_weight /
                              light.pdf);
                         const auto roulette_weight =

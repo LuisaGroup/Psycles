@@ -72,7 +72,9 @@ class MeshVolumeDirectionProvider final
                 _emissive_triangle
                     ->from_position(
                         _event.bounce
-                            .sample,
+                            .sample
+                            .invocation
+                            .config.scene,
                         _proposal
                             .emitter_index,
                         position,
@@ -88,52 +90,29 @@ class MeshVolumeDirectionProvider final
             const auto valid =
                 light.valid &
                 visible;
-            _result.direction =
-                select(
-                    _result.direction,
-                    light.light
-                        .direction,
-                    valid);
-            _result.radiance =
-                select(
-                    _result.radiance,
-                    light.radiance,
-                    valid);
-            _result.pdf =
-                select(
-                    _result.pdf,
-                    light.pdf,
-                    valid);
-            _result.maximum_distance =
-                select(
-                    _result
-                        .maximum_distance,
-                    light.light
-                        .distance,
-                    valid);
-            _result.light_instance =
-                select(
-                    _result
-                        .light_instance,
+            $if(valid) {
+                _result.direction =
+                    light.light.direction;
+                _result.radiance =
+                    _emissive_triangle
+                        ->evaluate_emission(
+                            _event.bounce
+                                .sample,
+                            light);
+                _result.pdf = light.pdf;
+                _result.maximum_distance =
+                    light.light.distance;
+                _result.light_instance =
                     light.geometry
                         .emitter
-                        .instance_index,
-                    valid);
-            _result.light_primitive =
-                select(
-                    _result
-                        .light_primitive,
+                        .instance_index;
+                _result.light_primitive =
                     light.geometry
                         .emitter
-                        .primitive_index,
-                    valid);
-            _result.use_mis =
-                select(
-                    _result.use_mis,
-                    true,
-                    valid);
-            _result.valid |=
-                valid;
+                        .primitive_index;
+                _result.use_mis = true;
+                _result.valid = true;
+            };
         };
         return {
             .direction =

@@ -72,7 +72,9 @@ class EnvironmentVolumeDirectionProvider final
                 _environment_light
                     ->from_position(
                         _event.bounce
-                            .sample,
+                            .sample
+                            .invocation
+                            .config.scene,
                         position,
                         _event.bounce
                             .light_sample
@@ -80,48 +82,39 @@ class EnvironmentVolumeDirectionProvider final
                         _event.bounce
                             .selected_light
                             .selection_pdf);
-            _result.direction =
-                select(
-                    _result.direction,
-                    light.direction,
-                    light.valid);
-            _result.radiance =
-                select(
-                    _result.radiance,
-                    light.radiance,
-                    light.valid);
-            _result.pdf =
-                select(
-                    _result.pdf,
-                    light.pdf,
-                    light.valid);
-            _result.maximum_distance =
-                select(
-                    _result
-                        .maximum_distance,
-                    ray_maximum,
-                    light.valid);
-            _result.light_instance =
-                select(
-                    _result
-                        .light_instance,
+            $if(light.valid) {
+                _result.direction =
+                    light.direction;
+                _result.radiance =
+                    _environment_light
+                        ->evaluate_emission(
+                            _event.bounce
+                                .sample,
+                            light.direction,
+                            cycles_path_state::
+                                light_emission_shader_state(
+                                    _event.bounce
+                                        .sample.path_depth,
+                                    _event.bounce
+                                        .sample.diffuse_depth,
+                                    _event.bounce
+                                        .sample.glossy_depth,
+                                    _event.bounce
+                                        .sample.transparent_depth,
+                                    _event.bounce
+                                        .sample.transmission_depth));
+                _result.pdf = light.pdf;
+                _result.maximum_distance =
+                    ray_maximum;
+                _result.light_instance =
                     surface_ray::
-                        invalid_primitive,
-                    light.valid);
-            _result.light_primitive =
-                select(
-                    _result
-                        .light_primitive,
+                        invalid_primitive;
+                _result.light_primitive =
                     surface_ray::
-                        invalid_primitive,
-                    light.valid);
-            _result.use_mis =
-                select(
-                    _result.use_mis,
-                    true,
-                    light.valid);
-            _result.valid |=
-                light.valid;
+                        invalid_primitive;
+                _result.use_mis = true;
+                _result.valid = true;
+            };
         };
         return {
             .direction =

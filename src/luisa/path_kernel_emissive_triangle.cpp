@@ -446,16 +446,15 @@ class PathEmissiveTriangleComponent final
             .valid = valid};
     }
 
-    EmissiveTriangleLightSample
+    EmissiveTriangleLightProposal
     from_position(
-        PathSampleContext &sample,
+        const std::shared_ptr<LuisaSceneData> &scene,
         UInt emitter_index,
         Float3 reference,
         Float2 random) const noexcept override {
         auto geometry =
             _geometry(
-                sample.invocation
-                    .config.scene,
+                scene,
                 emitter_index);
         auto light =
             _sampling.from_position(
@@ -476,14 +475,7 @@ class PathEmissiveTriangleComponent final
         const auto pdf =
             light.conditional_pdf *
             geometry.area *
-            sample.invocation
-                .config.scene
-                ->triangle_area_pdf;
-        const auto radiance =
-            _evaluate_emission(
-                sample,
-                geometry,
-                light);
+            scene->triangle_area_pdf;
         const auto valid =
             light.valid &
             side_valid &
@@ -494,9 +486,18 @@ class PathEmissiveTriangleComponent final
                 std::move(geometry),
             .light =
                 std::move(light),
-            .radiance = radiance,
             .pdf = pdf,
             .valid = valid};
+    }
+
+    Float3 evaluate_emission(
+        PathSampleContext &sample,
+        const EmissiveTriangleLightProposal
+            &proposal) const noexcept override {
+        return _evaluate_emission(
+            sample,
+            proposal.geometry,
+            proposal.light);
     }
 
     EmissiveTrianglePdf
