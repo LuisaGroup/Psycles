@@ -264,6 +264,8 @@ namespace psycles::compiler::detail {
     }
     if (node.type == node_type::vector_to_color ||
         node.type == node_type::color_to_vector ||
+        node.type == node_type::point_to_vector ||
+        node.type == node_type::float3_to_vector ||
         node.type == node_type::vector_to_normal ||
         node.type == node_type::normal_to_vector) {
         const auto input =
@@ -272,7 +274,11 @@ namespace psycles::compiler::detail {
                 ? "Vector"
                 : node.type == node_type::normal_to_vector
                       ? "Normal"
-                      : "Color";
+                      : node.type == node_type::point_to_vector
+                            ? "Point"
+                            : node.type == node_type::float3_to_vector
+                                  ? "Value"
+                                  : "Color";
         const auto output =
             node.type == node_type::vector_to_color
                 ? "Color"

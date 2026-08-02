@@ -349,7 +349,7 @@ private:
         } else if (
             vector_like(source.type) &&
             target == SocketType::floating) {
-            if (source.type == SocketType::normal) {
+            if (source.type != SocketType::vector) {
                 source = conversion(source, SocketType::vector);
             }
             node_type = compiler::node_type::vector_to_scalar;
@@ -380,6 +380,18 @@ private:
             input = "Normal";
             output = "Vector";
         } else if (
+            source.type == SocketType::point &&
+            target == SocketType::vector) {
+            node_type = compiler::node_type::point_to_vector;
+            input = "Point";
+            output = "Vector";
+        } else if (
+            source.type == SocketType::float3 &&
+            target == SocketType::vector) {
+            node_type = compiler::node_type::float3_to_vector;
+            input = "Value";
+            output = "Vector";
+        } else if (
             source.type == SocketType::color &&
             target == SocketType::normal) {
             return conversion(
@@ -397,15 +409,6 @@ private:
             return conversion(
                 conversion(source, SocketType::color),
                 target);
-        } else if (
-            vector_like(source.type) &&
-            target == SocketType::vector) {
-            if (source.type == SocketType::normal) {
-                return conversion(source, SocketType::vector);
-            }
-            return {
-                .ref = source.ref,
-                .type = SocketType::vector};
         }
 
         if (node_type == nullptr) {
@@ -1313,15 +1316,18 @@ public:
     const auto automatic_bump =
         has_displacement &&
         (displacement_method == "BUMP" ||
-         displacement_method == "BOTH");
-    if (has_displacement && displacement_method == "BOTH") {
+         displacement_method == "BOTH" ||
+         displacement_method == "DISPLACEMENT");
+    if (has_displacement && displacement_method != "BUMP" &&
+        automatic_bump) {
         diagnostics.emplace_back(BlenderSceneDiagnostic{
             .severity =
                 BlenderSceneDiagnosticSeverity::warning,
             .message =
                 "shader '" + material_name +
-                "' requests Blender displacement method 'BOTH'; "
-                "using its bump component because true geometry "
+                "' requests Blender displacement method '" +
+                displacement_method +
+                "'; using a bump approximation because true geometry "
                 "displacement is not yet implemented"});
     }
     if (has_displacement && !automatic_bump) {

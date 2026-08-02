@@ -988,7 +988,7 @@ void test_integrator_settings_round_trip() {
             diagnostic.severity ==
                 psycles::adapter::
                     BlenderSceneDiagnosticSeverity::warning &&
-            diagnostic.message.find("using its bump component") !=
+            diagnostic.message.find("using a bump approximation") !=
                 std::string::npos;
     }
     expect(
@@ -1007,18 +1007,21 @@ void test_integrator_settings_round_trip() {
     const auto true_displacement_imported =
         load_blender_scene_bundle(temporary.path());
     expect(
-        !true_displacement_imported.ok(),
-        "true geometry displacement was silently accepted");
-    bool named_displacement_diagnostic = false;
+        true_displacement_imported.ok(),
+        "true geometry displacement was not accepted as a bump approximation");
+    bool named_displacement_warning = false;
     for (const auto &diagnostic :
          true_displacement_imported.diagnostics) {
-        named_displacement_diagnostic |=
-            diagnostic.message.find("true geometry displacement") !=
-            std::string::npos;
+        named_displacement_warning |=
+            diagnostic.severity ==
+                psycles::adapter::
+                    BlenderSceneDiagnosticSeverity::warning &&
+            diagnostic.message.find("using a bump approximation") !=
+                std::string::npos;
     }
     expect(
-        named_displacement_diagnostic,
-        "true displacement rejection has no named diagnostic");
+        named_displacement_warning,
+        "true displacement approximation has no named warning");
 
     auto box_filter_scene = light_tree_scene;
     constexpr std::string_view gaussian_filter =

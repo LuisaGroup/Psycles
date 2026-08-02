@@ -1192,6 +1192,61 @@ void test_sampled_color_ramp_is_part_of_the_graph_contract() {
         "sampled Color Ramp lost its normalized-table flag");
 }
 
+void test_point_to_vector_conversion_lowers() {
+    ShaderCompiler compiler{make_core_node_registry()};
+    ShaderGraph graph;
+    const auto geometry = graph.add_node(node_type::geometry, "Geometry");
+    const auto conversion = graph.add_node(
+        node_type::point_to_vector, "Position to Vector");
+    const auto noise = graph.add_node(node_type::noise_texture, "Noise");
+    const auto emission = graph.add_node(node_type::emission, "Emission");
+    expect(
+        graph.set_property(
+            noise,
+            "NeedsColor",
+            SocketValue::boolean(true)),
+        "failed to request the Noise Color output");
+    expect(
+        graph.connect(
+            {.node = geometry, .socket = "Position"},
+            conversion,
+            "Point"),
+        "failed to connect Geometry Position to point conversion");
+    expect(
+        graph.connect(
+            {.node = conversion, .socket = "Vector"},
+            noise,
+            "Vector"),
+        "failed to connect converted Position to vector input");
+    expect(
+        graph.connect(
+            {.node = noise, .socket = "Color"},
+            emission,
+            "Color"),
+        "failed to connect noise color to emission");
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = emission, .socket = "Closure"});
+
+    auto compiled = compiler.compile(graph);
+    expect(compiled.ok(), "point-to-vector graph failed to compile");
+    auto surface = compile_surface_program(*compiled.program);
+    expect(
+        surface.ok(),
+        "point-to-vector graph failed to lower" +
+            (surface.diagnostics.empty()
+                 ? std::string{}
+                 : ": " + surface.diagnostics.front().message));
+    expect(
+        std::ranges::any_of(
+            surface.program->value_instructions(),
+            [](const ValueInstruction &instruction) {
+                return instruction.operation ==
+                       ValueOperation::passthrough;
+            }),
+        "point-to-vector passthrough instruction is missing");
+}
+
 void test_scene_delta_is_atomic() {
     SceneDatabase scene;
     SceneDelta initial{.base_revision = 0u, .commands = {}};
@@ -1279,6 +1334,7 @@ int main() {
         test_incremental_material_library();
         test_graph_errors_are_explicit();
         test_sampled_color_ramp_is_part_of_the_graph_contract();
+        test_point_to_vector_conversion_lowers();
         test_scene_delta_is_atomic();
         std::cout << "All Psycles contract tests passed.\n";
         return EXIT_SUCCESS;
