@@ -148,7 +148,13 @@ int main(int argc, char **argv) {
         materials.update(*imported.scene, shader_compiler);
     if (!update.committed) {
         for (const auto &diagnostic : update.diagnostics) {
-            std::cerr << diagnostic.message << '\n';
+            std::cerr << "material " << diagnostic.material.value;
+            if (const auto iter = imported.scene->materials.find(
+                    diagnostic.material);
+                iter != imported.scene->materials.end()) {
+                std::cerr << " '" << iter->second.name << "'";
+            }
+            std::cerr << ": " << diagnostic.message << '\n';
         }
         return EXIT_FAILURE;
     }
