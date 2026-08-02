@@ -194,9 +194,6 @@ template <typename Id, typename Values>
     const TracedClosure &closure,
     Float3 incoming,
     const SurfaceQuery &query) noexcept;
-[[nodiscard]] Bool sampled_light_excludes_closure(
-    const TracedClosure &closure,
-    UInt shader_flags) noexcept;
 [[nodiscard]] Float oren_nayar_g(Float cosine) noexcept;
 [[nodiscard]] Float3 diffuse_intensity(const TracedClosure &closure,
     Float3 incoming,

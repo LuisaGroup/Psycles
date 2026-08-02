@@ -209,24 +209,6 @@ volume_guiding_majorant_optical_depth()
             0.0f);
 }
 
-SurfaceEvaluation PathKernelInvocation::evaluate_surface(
-    UInt surface_tag,
-    const SurfacePoint &point,
-    Float3 outgoing,
-    const SurfaceQuery &query) const noexcept {
-    return unpack_surface_evaluation(
-        config.surfaces.evaluate(config.scene->parameter_buffer,
-                                 config.scene->cycles_bsdf_table_buffer,
-                                 config.scene->texture_heap,
-                                 config.scene->heap,
-                                 surface_tag,
-                                 pack_surface_point(point),
-                                 outgoing,
-                                 query.lobe_mask,
-                                 query.transport_mode,
-                                 query.glossy_filter_roughness));
-}
-
 SurfaceEvaluation PathKernelInvocation::evaluate_light_surface(
     UInt surface_tag,
     const SurfacePoint &point,
