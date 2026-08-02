@@ -288,6 +288,15 @@ and raw World-closure component with surface lighting. Its latest-Cycles
 Scatter World visibility controls. Reports, EXRs, and inspected triptychs are
 in
 [`validation/2026-07-31/homogeneous-volume-environment-mis`](validation/2026-07-31/homogeneous-volume-environment-mis/README.md).
+Emissive-triangle and environment sampling now expose radiometry-free
+proposals and separate raw closure evaluators. The proposal APIs accept only
+scene data and cannot evaluate shader AST; surface self/side validity and
+volume visibility are established before the evaluator receives path state.
+Compile-time interface regressions plus fallback/HIP/Vulkan surface and volume
+renders passed `123/123`. A 640x480 Lone Monk rerun is pixel-exact against the
+previous fallback and Vulkan EXRs; HIP differences remain below its measured
+pre-existing cold/warm nondeterminism. Reports and inspected triptychs are in
+[`validation/2026-08-03/light-proposal-emission-phase`](validation/2026-08-03/light-proposal-emission-phase/README.md).
 
 The first heterogeneous transport checkpoint now isolates the formal
 null-collision transition in a Luisa `.h`/`.cpp` component. It pins current

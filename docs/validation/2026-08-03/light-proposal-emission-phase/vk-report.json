@@ -1,0 +1,103 @@
+{
+  "actual_label": "Psycles vk",
+  "cycles_channels": [
+    "View Layer.Combined.R",
+    "View Layer.Combined.G",
+    "View Layer.Combined.B",
+    "View Layer.Combined.A",
+    "View Layer.Debug Sample Count.X",
+    "View Layer.Depth.Z",
+    "View Layer.Diffuse Color.R",
+    "View Layer.Diffuse Color.G",
+    "View Layer.Diffuse Color.B",
+    "View Layer.Diffuse Direct.R",
+    "View Layer.Diffuse Direct.G",
+    "View Layer.Diffuse Direct.B",
+    "View Layer.Diffuse Indirect.R",
+    "View Layer.Diffuse Indirect.G",
+    "View Layer.Diffuse Indirect.B",
+    "View Layer.Emission.R",
+    "View Layer.Emission.G",
+    "View Layer.Emission.B",
+    "View Layer.Environment.R",
+    "View Layer.Environment.G",
+    "View Layer.Environment.B",
+    "View Layer.Glossy Color.R",
+    "View Layer.Glossy Color.G",
+    "View Layer.Glossy Color.B",
+    "View Layer.Glossy Direct.R",
+    "View Layer.Glossy Direct.G",
+    "View Layer.Glossy Direct.B",
+    "View Layer.Glossy Indirect.R",
+    "View Layer.Glossy Indirect.G",
+    "View Layer.Glossy Indirect.B",
+    "View Layer.Mist.Z",
+    "View Layer.Normal.X",
+    "View Layer.Normal.Y",
+    "View Layer.Normal.Z",
+    "View Layer.Transmission Color.R",
+    "View Layer.Transmission Color.G",
+    "View Layer.Transmission Color.B",
+    "View Layer.Transmission Direct.R",
+    "View Layer.Transmission Direct.G",
+    "View Layer.Transmission Direct.B",
+    "View Layer.Transmission Indirect.R",
+    "View Layer.Transmission Indirect.G",
+    "View Layer.Transmission Indirect.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        1.0058079957962036,
+        1.0044825077056885,
+        1.0026719570159912
+      ],
+      "cycles": "/var/tmp/psycles-lone-monk-sampled-light-72bcb5b/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.6276389360427856,
+        0.4636603891849518,
+        0.3885495662689209
+      ],
+      "cycles_luminance_mean": 0.4933455288410187,
+      "cycles_rms": 1.5590537786483765,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0047257059034143,
+      "maximum_absolute_error": 4.103293418884277,
+      "mean_absolute_error": 0.02255987748503685,
+      "orientation_rmse": {
+        "flip_x": 1.0113887786865234,
+        "flip_xy": 1.8550081253051758,
+        "flip_y": 1.8258814811706543,
+        "identity": 0.07258426398038864
+      },
+      "p95_pixel_rmse": 0.12167757749557495,
+      "p99_pixel_rmse": 0.3044212758541107,
+      "psycles": "/var/tmp/psycles-lone-monk-emission-phase-82ea7fc/psycles/vk.exr",
+      "psycles_channel_mean": [
+        0.6312842965126038,
+        0.4657387435436249,
+        0.38958775997161865
+      ],
+      "psycles_luminance_mean": 0.4956769347190857,
+      "psycles_rms": 1.5696423367369714,
+      "relative_rmse": 0.046556613360262435,
+      "rmse": 0.07258426398038864,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 2.121046621252742,
+        "display_scale": 0.08927653361408334,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles/docs/validation/2026-08-03/light-proposal-emission-phase/triptychs/vk/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    }
+  },
+  "reference_label": "Cycles HIP",
+  "schema": "psycles.cycles-differential.v1"
+}

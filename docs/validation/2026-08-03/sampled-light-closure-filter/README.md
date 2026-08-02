@@ -174,10 +174,16 @@ The Cycles CPU/HIP stochastic floor is retained separately:
 
 ![Cycles HIP, Cycles CPU, and amplified absolute difference](triptychs/cycles-cpu-vs-cycles-hip-combined.png)
 
+## Subsequent proposal/evaluation checkpoint
+
+The emissive-triangle and environment proposal/evaluation split is closed by
+[`light-proposal-emission-phase`](../light-proposal-emission-phase/README.md).
+The radiometry-free proposal types cannot receive path state or carry
+radiance, while separate host-stage evaluators retain the original raw
+closure graphs.
+
 ## Remaining gates
 
-- Split emissive-triangle and environment proposal sampling from their later
-  raw closure-evaluation phase while retaining the shared surface interface.
 - Attribute and recover the Vulkan throughput change across the exact
   geometry-identity/bundle boundary.
 - Align emitter/environment importance distributions, exact random dimensions

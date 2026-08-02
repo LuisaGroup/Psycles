@@ -1,0 +1,107 @@
+{
+  "schema": "psycles.light-proposal-emission-phase.v1",
+  "commit": "82ea7fc4d068f47d7bd25a2b64ea99d86ef30100",
+  "cycles": {
+    "source_commit": "a3afe632",
+    "binary_commit": "b82c3f0d",
+    "cycles_subtree_identical": true,
+    "cpu_render_seconds": 5.096992729,
+    "hip_render_seconds": 1.846312916
+  },
+  "scene": {
+    "name": "Lone Monk",
+    "bundle_sha256": "4250d4205d8d01cefd98c15e81021d6dead540b2923797378bf7b32e96e8b8f7",
+    "width": 640,
+    "height": 480,
+    "samples": 64,
+    "max_samples_per_dispatch": 4
+  },
+  "tests": {
+    "build_jobs": 32,
+    "ctest_passed": 123,
+    "ctest_total": 123,
+    "backends": ["fallback", "hip", "vk"]
+  },
+  "renderers": {
+    "fallback": {
+      "scene_compile_seconds": 1.2632,
+      "shader_jit_seconds": 85.6592,
+      "render_seconds": 5.63737,
+      "slowdown_vs_cycles_cpu": 1.106018843,
+      "exr_sha256": "846a2f0f64bdb9528cfd8c9a0368424d92ad21ae3ad5df209232104a1cd145ff"
+    },
+    "hip": {
+      "scene_compile_seconds": 3.37554,
+      "cold_shader_jit_seconds": 361.272,
+      "warm_shader_jit_seconds": 0.335061,
+      "cold_render_seconds": 2.45065,
+      "warm_render_seconds": 2.39502,
+      "slowdown_vs_cycles_hip": 1.29719073,
+      "llvm_codegen_seconds": 24.05078258,
+      "llvm_codegen_bytes": 4685820,
+      "hiprtc_link_seconds": 332.68767643,
+      "code_object_bytes": 5940536,
+      "cold_exr_sha256": "6a27666596dd12e8782715f394a32525827c517c7de0e6caa957f1b8a4a4a4c2",
+      "warm_exr_sha256": "beba5e27e7b3268c65177fe36d80200672dbceb5fe47e0283bd21d58434dee21"
+    },
+    "vk": {
+      "scene_compile_seconds": 0.927751,
+      "shader_jit_seconds": 117.802,
+      "render_seconds": 4.28466,
+      "slowdown_vs_cycles_hip": 2.320657546,
+      "spirv_words_before_optimization": 2005177,
+      "spirv_words_after_optimization": 1772038,
+      "exr_sha256": "b66f2d5fa4d0a723de2393e45327e295859a513eab3309be8dbf2048fefbb911"
+    }
+  },
+  "ab": {
+    "fallback_previous_vs_current_strict_idiff": "pass",
+    "vk_previous_vs_current_strict_idiff": "pass",
+    "hip_previous_cold_vs_warm": {
+      "different_pixels": 66,
+      "rms_error": 0.00149189,
+      "maximum_error": 1.68987
+    },
+    "hip_current_cold_vs_warm": {
+      "different_pixels": 54,
+      "rms_error": 0.00136812,
+      "maximum_error": 1.68987
+    },
+    "hip_previous_cold_vs_current_cold": {
+      "different_pixels": 31,
+      "rms_error": 0.000604649,
+      "maximum_error": 1.42286
+    }
+  },
+  "combined_vs_cycles_hip": {
+    "fallback": {
+      "rmse": 0.07213026285171509,
+      "relative_rmse": 0.046265410365926254,
+      "mean_absolute_error": 0.022413469851017,
+      "mean_luminance_ratio": 1.0046288708861806
+    },
+    "hip_warm": {
+      "rmse": 0.07291238754987717,
+      "relative_rmse": 0.046767076638683146,
+      "mean_absolute_error": 0.022567376494407654,
+      "mean_luminance_ratio": 1.005188496338241
+    },
+    "vk": {
+      "rmse": 0.07258426398038864,
+      "relative_rmse": 0.046556613360262435,
+      "mean_absolute_error": 0.02255987748503685,
+      "mean_luminance_ratio": 1.0047257059034143
+    }
+  },
+  "visual_inspection": {
+    "performed": true,
+    "triptychs": [
+      "triptychs/fallback/combined.png",
+      "triptychs/hip/combined.png",
+      "triptychs/hip/diffdir.png",
+      "triptychs/hip/glossdir.png",
+      "triptychs/vk/combined.png"
+    ],
+    "new_regression_observed": false
+  }
+}
