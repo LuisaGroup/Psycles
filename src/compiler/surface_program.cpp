@@ -51,10 +51,17 @@ struct EmissionProof {
             case ClosureOperation::null_closure:
             case ClosureOperation::diffuse:
             case ClosureOperation::translucent:
-            case ClosureOperation::principled:
             case ClosureOperation::glossy:
             case ClosureOperation::glass:
             case ClosureOperation::transparent:
+                break;
+            case ClosureOperation::principled:
+                // Cycles never exposes Principled through the constant
+                // emission path: alpha, sheen and coat can all affect its
+                // emitted radiance. Material-specific zero emission is
+                // refined separately by estimate_surface_emission().
+                proof.may_emit = true;
+                proof.cycles_constant = false;
                 break;
             case ClosureOperation::emission:
                 proof.may_emit = true;
@@ -147,6 +154,134 @@ bool SurfaceParameterBlock::set(
     }
     _values[id.value] = std::move(value);
     return true;
+}
+
+namespace {
+
+[[nodiscard]] const contract::SocketValue *direct_parameter_value(
+    const SurfaceProgram &program,
+    const SurfaceParameterBlock &parameters,
+    ValueExpressionId expression,
+    contract::NodeId owner) noexcept {
+    if (!expression.valid() ||
+        expression.value >= program.value_instructions().size()) {
+        return nullptr;
+    }
+    const auto &instruction =
+        program.value_instructions()[expression.value];
+    if (instruction.operation != ValueOperation::parameter ||
+        instruction.source_node != owner ||
+        !instruction.parameter.valid()) {
+        return nullptr;
+    }
+    return parameters.find(instruction.parameter);
+}
+
+[[nodiscard]] Vec3f add(Vec3f a, Vec3f b) noexcept {
+    return {a.x + b.x, a.y + b.y, a.z + b.z};
+}
+
+[[nodiscard]] Vec3f multiply(Vec3f value, float scale) noexcept {
+    return {
+        value.x * scale,
+        value.y * scale,
+        value.z * scale};
+}
+
+}// namespace
+
+Vec3f estimate_surface_emission(
+    const SurfaceProgram &program,
+    const SurfaceParameterBlock &parameters) {
+    if (!program.root().valid()) {
+        return {};
+    }
+    std::vector<Vec3f> estimates;
+    estimates.reserve(program.closure_instructions().size());
+    const auto dependency = [&](ClosureExpressionId id) noexcept {
+        // A malformed dependency must not silently remove an emitter from
+        // the scene. Valid compiled programs always take the first branch.
+        return id.valid() && id.value < estimates.size()
+                   ? estimates[id.value]
+                   : Vec3f{1.0f, 1.0f, 1.0f};
+    };
+    for (const auto &closure : program.closure_instructions()) {
+        Vec3f estimate{};
+        switch (closure.operation) {
+            case ClosureOperation::principled:
+            case ClosureOperation::emission: {
+                const auto color_expression =
+                    closure.operation == ClosureOperation::principled
+                        ? closure.emission_color
+                        : closure.color;
+                const auto strength_expression =
+                    closure.operation == ClosureOperation::principled
+                        ? closure.emission_strength
+                        : closure.strength;
+                auto color = Vec3f{1.0f, 1.0f, 1.0f};
+                if (const auto *value = direct_parameter_value(
+                        program,
+                        parameters,
+                        color_expression,
+                        closure.source_node)) {
+                    if (const auto *literal =
+                            std::get_if<Vec3f>(&value->value)) {
+                        color = *literal;
+                    }
+                }
+                auto strength = 1.0f;
+                if (const auto *value = direct_parameter_value(
+                        program,
+                        parameters,
+                        strength_expression,
+                        closure.source_node)) {
+                    if (const auto *literal =
+                            std::get_if<float>(&value->value)) {
+                        strength = *literal;
+                    }
+                }
+                estimate = multiply(color, strength);
+                break;
+            }
+            case ClosureOperation::add:
+                estimate = add(
+                    dependency(closure.a),
+                    dependency(closure.b));
+                break;
+            case ClosureOperation::mix: {
+                const auto a = dependency(closure.a);
+                const auto b = dependency(closure.b);
+                const auto *value = direct_parameter_value(
+                    program,
+                    parameters,
+                    closure.factor,
+                    closure.source_node);
+                const auto *factor =
+                    value != nullptr
+                        ? std::get_if<float>(&value->value)
+                        : nullptr;
+                // Cycles intentionally does not try to estimate a linked
+                // factor: both branches remain possible and are summed.
+                estimate = factor != nullptr
+                               ? add(
+                                     multiply(a, 1.0f - *factor),
+                                     multiply(b, *factor))
+                               : add(a, b);
+                break;
+            }
+            case ClosureOperation::null_closure:
+            case ClosureOperation::diffuse:
+            case ClosureOperation::translucent:
+            case ClosureOperation::glossy:
+            case ClosureOperation::glass:
+            case ClosureOperation::transparent:
+                break;
+        }
+        estimates.emplace_back(estimate);
+    }
+    return program.root().value < estimates.size()
+               ? estimates[program.root().value]
+               : Vec3f{};
 }
 
 SurfaceProgramCompilation compile_surface_program(

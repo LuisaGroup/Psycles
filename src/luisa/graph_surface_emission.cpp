@@ -16,6 +16,9 @@ namespace psycles::luisa_backend::detail {
             if (closure.operation ==
                 compiler::ClosureOperation::emission) {
                 result += closure.weight;
+            } else if (closure.operation ==
+                       compiler::ClosureOperation::principled) {
+                result += closure.emission;
             }
         });
     return result;

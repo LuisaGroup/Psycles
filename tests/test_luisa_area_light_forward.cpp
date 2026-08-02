@@ -157,6 +157,8 @@ constexpr std::string_view point_identity_attribute{
     "Cycles rectangle point identity"};
 constexpr std::string_view face_identity_attribute{
     "Cycles rectangle face identity"};
+constexpr std::string_view zero_emission_attribute{
+    "Cycles zero emission attribute"};
 
 [[nodiscard]] Mat4f translated(
     float x,
@@ -226,19 +228,26 @@ constexpr std::string_view face_identity_attribute{
 
 [[nodiscard]] ShaderGraph emission_shader() {
     ShaderGraph graph;
+    const auto zero = graph.add_node(
+        node_type::vertex_color,
+        "Device zero emission attribute");
     const auto emission =
         graph.add_node(
             node_type::emission,
             "Raw triangle emission closure");
-    static_cast<void>(graph.set_input(
-        emission,
-        "Color",
-        SocketValue::color(
-            {0.8f, 0.5f, 0.2f})));
+    static_cast<void>(graph.set_property(
+        zero,
+        "AttributeId",
+        SocketValue::unsigned_integer(
+            attribute_id(zero_emission_attribute))));
     static_cast<void>(graph.set_input(
         emission,
         "Strength",
-        SocketValue::floating(0.0f)));
+        SocketValue::floating(1.0f)));
+    static_cast<void>(graph.connect(
+        {.node = zero, .socket = "Color"},
+        emission,
+        "Color"));
     graph.set_root(
         ShaderDomain::surface,
         OutputRef{
@@ -454,6 +463,13 @@ constexpr std::string_view face_identity_attribute{
     mesh.triangle_material_slots = {0u};
     mesh.triangle_smooth = {0u};
     mesh.cycles_primitive_offset = 41u;
+    auto &zero_emission =
+        mesh.color_attributes[
+            std::string{zero_emission_attribute}];
+    zero_emission.domain = MeshAttributeDomain::point;
+    zero_emission.values.assign(
+        mesh.positions.size(),
+        Vec4f{0.0f, 0.0f, 0.0f, 1.0f});
     scene.geometries.emplace(
         emitter_geometry,
         std::move(mesh));

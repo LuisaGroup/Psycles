@@ -977,11 +977,15 @@ NodeRegistry make_core_node_registry() {
             input("IOR", SocketType::floating, SocketValue::floating(1.5f)),
             input("SpecularIORLevel", SocketType::floating, SocketValue::floating(0.5f)),
             input("SpecularTint", SocketType::color, SocketValue::color({1.0f, 1.0f, 1.0f})),
+            input("EmissionColor", SocketType::color, SocketValue::color({1.0f, 1.0f, 1.0f})),
+            input("EmissionStrength", SocketType::floating, SocketValue::floating(0.0f)),
             input("Normal", SocketType::normal, SocketValue::normal({0.0f, 0.0f, 0.0f}))},
         .outputs = {output("Closure", SocketType::closure)},
         .properties = {
             property("Distribution", SocketType::string, SocketValue::string("GGX"))},
-        .required_features = feature_bit(ShaderFeature::surface)}));
+        .required_features =
+            feature_bit(ShaderFeature::surface) |
+            feature_bit(ShaderFeature::emission)}));
 
     static_cast<void>(registry.register_schema(NodeSchema{
         .type = node_type::glossy_bsdf,

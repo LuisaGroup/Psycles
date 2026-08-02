@@ -760,6 +760,48 @@ def _principled_surface(scene: Any) -> None:
     _sphere(material)
 
 
+def _principled_emission(scene: Any) -> None:
+    """Isolate raw Principled Emission Color/Strength evaluation."""
+    material, tree, output = _material("Principled Emission Probe")
+    color = tree.nodes.new("ShaderNodeRGB")
+    color.name = "Linked Principled Emission Color"
+    _output(color, "Color").default_value = (
+        0.17,
+        0.43,
+        0.91,
+        1.0,
+    )
+    strength = tree.nodes.new("ShaderNodeValue")
+    strength.name = "Linked Principled Emission Strength"
+    _output(strength, "Value").default_value = 2.75
+    principled = tree.nodes.new("ShaderNodeBsdfPrincipled")
+    principled.name = "Raw Principled Emission"
+    _input(principled, "Base Color").default_value = (
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+    )
+    _input(principled, "Metallic").default_value = 0.0
+    _input(principled, "Roughness").default_value = 0.5
+    _input(principled, "Sheen Weight").default_value = 0.0
+    _input(principled, "Coat Weight").default_value = 0.0
+    _input(principled, "Alpha").default_value = 1.0
+    tree.links.new(
+        _output(color, "Color"),
+        _input(principled, "Emission Color"),
+    )
+    tree.links.new(
+        _output(strength, "Value"),
+        _input(principled, "Emission Strength"),
+    )
+    tree.links.new(
+        _output(principled, "BSDF"),
+        _input(output, "Surface"),
+    )
+    _plane(material)
+
+
 def _principled_bump_glossy(scene: Any) -> None:
     """Stress Cycles' default glossy bump-map correction path."""
     _world(scene, (0.31, 0.52, 0.79, 1.0), 1.2)

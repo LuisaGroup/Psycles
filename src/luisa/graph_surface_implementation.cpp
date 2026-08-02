@@ -44,7 +44,9 @@ GraphSurfaceImplementation::GraphSurfaceImplementation(
         for (const auto &closure : _program->closure_instructions()) {
             _capabilities.may_emit |=
                 closure.operation ==
-                compiler::ClosureOperation::emission;
+                    compiler::ClosureOperation::emission ||
+                closure.operation ==
+                    compiler::ClosureOperation::principled;
             _capabilities.may_be_transparent |=
                 closure.operation ==
                 compiler::ClosureOperation::transparent;
