@@ -309,6 +309,15 @@ pixel-exact against the previous fallback and Vulkan EXRs, with HIP inside its
 measured runtime non-determinism floor. The formal relation, compile data,
 reports, and inspected triptychs are in
 [`validation/2026-08-03/constant-light-emission`](validation/2026-08-03/constant-light-emission/README.md).
+Homogeneous and heterogeneous volume NEE now use the same compiler relation
+through an explicit host-stage provider protocol: direction proposal,
+constant emission, receiving phase evaluation, then guarded deferred raw
+emission. Light roulette now precedes both surface and volume shadow queries
+on this path. The refactor remains one fused Luisa kernel and preserves raw
+Blender closures. Full CTest passed `123/123`; all six new fallback/HIP/Vulkan
+EXRs are bit-for-bit identical to the retained pre-refactor Psycles images.
+Latest-Cycles CPU differentials and all nine inspected triptychs are in
+[`validation/2026-08-03/volume-light-emission-phase`](validation/2026-08-03/volume-light-emission-phase/README.md).
 
 The first heterogeneous transport checkpoint now isolates the formal
 null-collision transition in a Luisa `.h`/`.cpp` component. It pins current

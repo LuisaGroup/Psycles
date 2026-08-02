@@ -352,15 +352,20 @@ the exact Distance/Equiangular/MIS technique algebra, equiangular geometry,
 and power heuristic independently of light shape.
 `PathVolumeDirectLightingComponent` first asks the selected emitter family
 for a proposal and its valid ray interval. After the segment component has
-selected a collision distance, a polymorphic
-`VolumeDirectDirectionProvider` samples that same emitter again from the
-collision point with the original light random coordinates. Analytic and
-mesh-emitter providers are composed at the host stage and are selected in the
-recorded AST by an explicit emitter kind/index pair. This proposal/re-sample
-protocol preserves Cycles' coupled RNG measure while allowing point, spot,
-area, triangle, and future light-tree implementations to supply geometry
-without branching the homogeneous estimator itself. The component then owns
-phase/light MIS, roulette, clamping, and pass routing.
+selected a collision distance, a polymorphic `VolumeDirectLightProvider`
+samples that same emitter again from the collision point with the original
+light random coordinates. Its explicit host-stage protocol records direction
+sampling, constant emission evaluation, and deferred emission evaluation as
+three ordered Luisa AST phases. The deferred phase receives the computed
+receiving-phase nonzero predicate, matching Cycles' scheduling boundary
+without evaluating a material on the host. Analytic, mesh-emitter, and
+environment providers retain their proposal state as device expressions and
+are composed at the host stage. This proposal/re-sample protocol preserves
+Cycles' coupled RNG measure while allowing point, spot, area, triangle,
+environment, and future light-tree implementations to supply geometry and
+raw radiometry without branching the homogeneous estimator itself. The
+component then owns phase/light MIS, pre-shadow light roulette, clamping, and
+pass routing.
 `HomogeneousVolumeShadowComponent` copies the active volume stack and walks
 ordered closest boundary events to integrate shadow transmittance. Surface
 transparency stays in the shared shadow component. These objects are ordinary
