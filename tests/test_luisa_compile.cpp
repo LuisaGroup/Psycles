@@ -112,6 +112,14 @@ public:
         return SurfaceEvaluation::zero();
     }
 
+    [[nodiscard]] SurfaceEvaluation evaluate_light(
+        const ShaderServices &,
+        const SurfacePoint &,
+        Expr<luisa::float3>,
+        const SurfaceLightQuery &) const noexcept override {
+        return SurfaceEvaluation::zero();
+    }
+
     [[nodiscard]] SurfaceSample sample(
         const ShaderServices &,
         const SurfacePoint &,

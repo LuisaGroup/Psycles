@@ -22,6 +22,7 @@ using namespace psycles;
 using namespace psycles::compiler;
 using namespace psycles::contract;
 using namespace psycles::luisa_backend;
+namespace cycles_abi = psycles::contract::cycles_abi;
 
 static_assert(cycles_closure::runtime_backfacing == 1u);
 static_assert(cycles_closure::runtime_cache_miss == 2u);
@@ -318,6 +319,44 @@ public:
     return graph;
 }
 
+[[nodiscard]] ShaderGraph make_glass_graph() {
+    ShaderGraph graph;
+    const auto glass =
+        graph.add_node(node_type::glass_bsdf, "Glass");
+    const auto configured =
+        graph.set_input(glass,
+            "Color",
+            SocketValue::color({0.72f, 0.86f, 0.94f})) &&
+        graph.set_input(
+            glass, "Roughness", SocketValue::floating(0.3f)) &&
+        graph.set_input(
+            glass, "IOR", SocketValue::floating(1.45f)) &&
+        graph.set_property(
+            glass, "Distribution", SocketValue::string("GGX"));
+    if (!configured) {
+        throw std::runtime_error{
+            "failed to configure glass light-filter graph"};
+    }
+    graph.set_root(ShaderDomain::surface,
+        OutputRef{.node = glass, .socket = "Closure"});
+    return graph;
+}
+
+[[nodiscard]] ShaderGraph make_translucent_graph() {
+    ShaderGraph graph;
+    const auto translucent =
+        graph.add_node(node_type::translucent_bsdf, "Translucent");
+    if (!graph.set_input(translucent,
+            "Color",
+            SocketValue::color({0.31f, 0.57f, 0.83f}))) {
+        throw std::runtime_error{
+            "failed to configure translucent light-filter graph"};
+    }
+    graph.set_root(ShaderDomain::surface,
+        OutputRef{.node = translucent, .socket = "Closure"});
+    return graph;
+}
+
 [[nodiscard]] std::vector<luisa::float4> parameter_data(
     const SurfaceProgram &program) {
     std::vector<luisa::float4> result;
@@ -466,6 +505,33 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
+    auto glass_shader = compiler.compile(make_glass_graph());
+    if (!glass_shader.ok()) {
+        std::cerr << "failed to compile glass light-filter graph\n";
+        return EXIT_FAILURE;
+    }
+    auto glass_program =
+        compile_surface_program(*glass_shader.program);
+    if (!glass_program.ok()) {
+        std::cerr << "failed to lower glass light-filter program\n";
+        return EXIT_FAILURE;
+    }
+
+    auto translucent_shader =
+        compiler.compile(make_translucent_graph());
+    if (!translucent_shader.ok()) {
+        std::cerr
+            << "failed to compile translucent light-filter graph\n";
+        return EXIT_FAILURE;
+    }
+    auto translucent_program =
+        compile_surface_program(*translucent_shader.program);
+    if (!translucent_program.ok()) {
+        std::cerr
+            << "failed to lower translucent light-filter program\n";
+        return EXIT_FAILURE;
+    }
+
     SurfaceDispatch surfaces;
     const auto surface_tag =
         surfaces.create<GraphSurface>(program.program);
@@ -476,6 +542,10 @@ int main(int argc, char **argv) {
     const auto tangent_normal_surface_tag =
         surfaces.create<GraphSurface>(
             tangent_normal_program.program);
+    const auto glass_surface_tag =
+        surfaces.create<GraphSurface>(glass_program.program);
+    const auto translucent_surface_tag =
+        surfaces.create<GraphSurface>(translucent_program.program);
     auto color_parameter = std::uint32_t{~std::uint32_t{0u}};
     const auto &parameters = program.program->parameters();
     for (std::uint32_t index = 0u; index < parameters.size(); ++index) {
@@ -614,6 +684,116 @@ int main(int argc, char **argv) {
                     0.0f));
         };
 
+    Kernel1D evaluate_physical_light =
+        [&](BufferFloat4 parameters, BufferFloat4 output) noexcept {
+            ParameterShaderServices services{parameters};
+            const auto point = make_surface_point();
+            const auto query = SurfaceQuery{
+                .lobe_mask = ~std::uint32_t{0u},
+                .transport_mode = static_cast<std::uint32_t>(
+                    TransportMode::radiance),
+                .glossy_filter_roughness = 0.0f};
+            const auto case_index = dispatch_x();
+            UInt shader_flags = cycles_abi::shader_use_mis;
+            shader_flags |= select(0u,
+                cycles_abi::shader_exclude_diffuse,
+                (case_index == 1u) | (case_index == 3u));
+            shader_flags |= select(0u,
+                cycles_abi::shader_exclude_glossy,
+                (case_index == 2u) | (case_index == 3u));
+            shader_flags =
+                select(shader_flags, 0u, case_index == 4u);
+            const auto evaluation = surfaces.evaluate_light(
+                UInt{physical_surface_tag},
+                services,
+                point,
+                normalize(make_float3(0.35f, 0.0f, 0.94f)),
+                SurfaceLightQuery{
+                    .surface = query,
+                    .shader_flags = shader_flags});
+            const auto base = case_index * 3u;
+            output.write(base,
+                make_float4(evaluation.f, evaluation.pdf));
+            output.write(base + 1u,
+                make_float4(
+                    evaluation.diffuse_f, evaluation.diffuse_pdf));
+            output.write(base + 2u,
+                make_float4(evaluation.glossy_f,
+                    cast<float>(evaluation.events)));
+        };
+
+    Kernel1D evaluate_glass_light =
+        [&](BufferFloat4 parameters, BufferFloat4 output) noexcept {
+            ParameterShaderServices services{parameters};
+            const auto point = make_surface_point();
+            const auto query = SurfaceQuery{
+                .lobe_mask = ~std::uint32_t{0u},
+                .transport_mode = static_cast<std::uint32_t>(
+                    TransportMode::radiance),
+                .glossy_filter_roughness = 0.0f};
+            const auto case_index = dispatch_x();
+            UInt shader_flags = cycles_abi::shader_use_mis;
+            shader_flags |= select(0u,
+                cycles_abi::shader_exclude_glossy,
+                (case_index == 1u) | (case_index == 3u));
+            shader_flags |= select(0u,
+                cycles_abi::shader_exclude_transmit,
+                (case_index == 2u) | (case_index == 3u));
+            const auto evaluation = surfaces.evaluate_light(
+                UInt{glass_surface_tag},
+                services,
+                point,
+                normalize(make_float3(0.2f, 0.0f, 0.98f)),
+                SurfaceLightQuery{
+                    .surface = query,
+                    .shader_flags = shader_flags});
+            const auto base = case_index * 3u;
+            output.write(base,
+                make_float4(evaluation.f, evaluation.pdf));
+            output.write(base + 1u,
+                make_float4(
+                    evaluation.diffuse_f, evaluation.diffuse_pdf));
+            output.write(base + 2u,
+                make_float4(evaluation.glossy_f,
+                    cast<float>(evaluation.events)));
+        };
+
+    Kernel1D evaluate_translucent_light =
+        [&](BufferFloat4 parameters, BufferFloat4 output) noexcept {
+            ParameterShaderServices services{parameters};
+            const auto point = make_surface_point();
+            const auto query = SurfaceQuery{
+                .lobe_mask = ~std::uint32_t{0u},
+                .transport_mode = static_cast<std::uint32_t>(
+                    TransportMode::radiance),
+                .glossy_filter_roughness = 0.0f};
+            const auto case_index = dispatch_x();
+            UInt shader_flags = cycles_abi::shader_use_mis;
+            shader_flags |= select(0u,
+                cycles_abi::shader_exclude_diffuse,
+                case_index == 1u);
+            shader_flags |= select(0u,
+                cycles_abi::shader_exclude_transmit,
+                case_index == 2u);
+            const auto evaluation = surfaces.evaluate_light(
+                UInt{translucent_surface_tag},
+                services,
+                point,
+                normalize(make_float3(0.2f, 0.0f, -0.98f)),
+                SurfaceLightQuery{
+                    .surface = query,
+                    .shader_flags = shader_flags});
+            const auto base = case_index * 3u;
+            output.write(base,
+                make_float4(evaluation.f, evaluation.pdf));
+            output.write(base + 1u,
+                make_float4(
+                    evaluation.diffuse_f, evaluation.diffuse_pdf));
+            output.write(base + 2u,
+                make_float4(evaluation.glossy_f,
+                    cast<float>(evaluation.events)));
+        };
+
     Context context{argv[0]};
     auto device = context.create_device(backend);
     auto stream = device.create_stream();
@@ -635,16 +815,40 @@ int main(int argc, char **argv) {
             tangent_normal_parameters.size());
     auto tangent_normal_output =
         device.create_buffer<luisa::float4>(2u);
+    const auto glass_parameters =
+        parameter_data(*glass_program.program);
+    auto glass_parameter_buffer =
+        device.create_buffer<luisa::float4>(glass_parameters.size());
+    const auto translucent_parameters =
+        parameter_data(*translucent_program.program);
+    auto translucent_parameter_buffer =
+        device.create_buffer<luisa::float4>(
+            translucent_parameters.size());
+    auto physical_light_output =
+        device.create_buffer<luisa::float4>(15u);
+    auto glass_light_output =
+        device.create_buffer<luisa::float4>(12u);
+    auto translucent_light_output =
+        device.create_buffer<luisa::float4>(9u);
     auto kernel = device.compile(evaluate);
     auto physical_kernel = device.compile(trace_physical_closures);
     auto subsurface_kernel = device.compile(trace_subsurface);
     auto tangent_normal_kernel =
         device.compile(trace_tangent_normal);
+    auto physical_light_kernel =
+        device.compile(evaluate_physical_light);
+    auto glass_light_kernel =
+        device.compile(evaluate_glass_light);
+    auto translucent_light_kernel =
+        device.compile(evaluate_translucent_light);
     std::array<luisa::float4, 11u> actual{};
     std::array<luisa::float4, 8u> physical_actual{};
     std::array<luisa::float4, 3u> subsurface_actual{};
     std::array<luisa::float4, 2u>
         tangent_normal_actual{};
+    std::array<luisa::float4, 15u> physical_light_actual{};
+    std::array<luisa::float4, 12u> glass_light_actual{};
+    std::array<luisa::float4, 9u> translucent_light_actual{};
     stream << physical_parameter_buffer.copy_from(
                   luisa::span{physical_parameters})
            << subsurface_parameter_buffer.copy_from(
@@ -652,6 +856,10 @@ int main(int argc, char **argv) {
            << tangent_normal_parameter_buffer.copy_from(
                   luisa::span{
                       tangent_normal_parameters})
+           << glass_parameter_buffer.copy_from(
+                  luisa::span{glass_parameters})
+           << translucent_parameter_buffer.copy_from(
+                  luisa::span{translucent_parameters})
            << kernel(output).dispatch(1u)
            << output.copy_to(luisa::span{actual})
            << physical_kernel(
@@ -670,6 +878,24 @@ int main(int argc, char **argv) {
            << tangent_normal_output.copy_to(
                   luisa::span{
                       tangent_normal_actual})
+           << physical_light_kernel(
+                  physical_parameter_buffer,
+                  physical_light_output)
+                  .dispatch(5u)
+           << physical_light_output.copy_to(
+                  luisa::span{physical_light_actual})
+           << glass_light_kernel(
+                  glass_parameter_buffer,
+                  glass_light_output)
+                  .dispatch(4u)
+           << glass_light_output.copy_to(
+                  luisa::span{glass_light_actual})
+           << translucent_light_kernel(
+                  translucent_parameter_buffer,
+                  translucent_light_output)
+                  .dispatch(3u)
+           << translucent_light_output.copy_to(
+                  luisa::span{translucent_light_actual})
            << synchronize();
 
     constexpr std::array expected{
@@ -800,6 +1026,141 @@ int main(int argc, char **argv) {
                 << value.w << "}\n";
             return EXIT_FAILURE;
         }
+    }
+
+    const auto rgb_equal = [](luisa::float4 lhs,
+                               luisa::float4 rhs) noexcept {
+        return approximately_equal(lhs.x, rhs.x) &&
+               approximately_equal(lhs.y, rhs.y) &&
+               approximately_equal(lhs.z, rhs.z);
+    };
+    const auto rgb_zero = [&](luisa::float4 value) noexcept {
+        return rgb_equal(value, luisa::float4{});
+    };
+    const auto rgb_positive = [](luisa::float4 value) noexcept {
+        return value.x > 0.0f || value.y > 0.0f || value.z > 0.0f;
+    };
+
+    // Cycles' one-sample-model contract: sampled-light visibility filters
+    // BsdfEval accumulation only. Every eligible closure still contributes
+    // its sample weight and directional PDF to the competing-technique PDF.
+    const auto &physical_base_f = physical_light_actual[0u];
+    const auto &physical_base_diffuse = physical_light_actual[1u];
+    const auto &physical_base_glossy = physical_light_actual[2u];
+    const auto &physical_exclude_diffuse_f = physical_light_actual[3u];
+    const auto &physical_exclude_diffuse = physical_light_actual[4u];
+    const auto &physical_exclude_diffuse_glossy =
+        physical_light_actual[5u];
+    const auto &physical_exclude_glossy_f = physical_light_actual[6u];
+    const auto &physical_exclude_glossy_diffuse =
+        physical_light_actual[7u];
+    const auto &physical_exclude_glossy = physical_light_actual[8u];
+    const auto &physical_exclude_both_f = physical_light_actual[9u];
+    const auto &physical_exclude_both_diffuse =
+        physical_light_actual[10u];
+    const auto &physical_exclude_both_glossy =
+        physical_light_actual[11u];
+    const auto &physical_no_mis_f = physical_light_actual[12u];
+    const auto &physical_no_mis_diffuse = physical_light_actual[13u];
+    const auto &physical_no_mis_glossy = physical_light_actual[14u];
+    const auto physical_pdf_invariant =
+        physical_base_f.w > 0.0f &&
+        approximately_equal(
+            physical_exclude_diffuse_f.w, physical_base_f.w) &&
+        approximately_equal(
+            physical_exclude_glossy_f.w, physical_base_f.w) &&
+        approximately_equal(
+            physical_exclude_both_f.w, physical_base_f.w);
+    const auto physical_contribution_filter =
+        rgb_positive(physical_base_diffuse) &&
+        rgb_positive(physical_base_glossy) &&
+        rgb_equal(physical_exclude_diffuse_f,
+            physical_base_glossy) &&
+        rgb_zero(physical_exclude_diffuse) &&
+        rgb_equal(physical_exclude_diffuse_glossy,
+            physical_base_glossy) &&
+        rgb_equal(physical_exclude_glossy_f,
+            physical_base_diffuse) &&
+        rgb_equal(physical_exclude_glossy_diffuse,
+            physical_base_diffuse) &&
+        rgb_zero(physical_exclude_glossy) &&
+        rgb_zero(physical_exclude_both_f) &&
+        rgb_zero(physical_exclude_both_diffuse) &&
+        rgb_zero(physical_exclude_both_glossy);
+    const auto physical_no_mis_contract =
+        physical_no_mis_f.w == 0.0f &&
+        rgb_equal(physical_no_mis_f, physical_base_f) &&
+        rgb_equal(physical_no_mis_diffuse,
+            physical_base_diffuse) &&
+        rgb_equal(physical_no_mis_glossy,
+            physical_base_glossy);
+    if (!physical_pdf_invariant ||
+        !physical_contribution_filter ||
+        !physical_no_mis_contract) {
+        std::cerr
+            << "Cycles sampled-light closure filtering failed on "
+            << backend << '\n';
+        return EXIT_FAILURE;
+    }
+
+    const auto &glass_base_f = glass_light_actual[0u];
+    const auto &glass_base_glossy = glass_light_actual[2u];
+    const auto &glass_exclude_glossy_f = glass_light_actual[3u];
+    const auto &glass_exclude_glossy_glossy = glass_light_actual[5u];
+    const auto &glass_exclude_transmit_f = glass_light_actual[6u];
+    const auto &glass_exclude_transmit_glossy = glass_light_actual[8u];
+    const auto &glass_exclude_both_f = glass_light_actual[9u];
+    const auto &glass_exclude_both_glossy = glass_light_actual[11u];
+    if (!(glass_base_f.w > 0.0f &&
+          rgb_positive(glass_base_f) &&
+          rgb_equal(glass_exclude_glossy_f, glass_base_f) &&
+          rgb_equal(glass_exclude_glossy_glossy,
+              glass_base_glossy) &&
+          rgb_equal(glass_exclude_transmit_f, glass_base_f) &&
+          rgb_equal(glass_exclude_transmit_glossy,
+              glass_base_glossy) &&
+          rgb_zero(glass_exclude_both_f) &&
+          rgb_zero(glass_exclude_both_glossy) &&
+          approximately_equal(
+              glass_exclude_glossy_f.w, glass_base_f.w) &&
+          approximately_equal(
+              glass_exclude_transmit_f.w, glass_base_f.w) &&
+          approximately_equal(
+              glass_exclude_both_f.w, glass_base_f.w))) {
+        std::cerr
+            << "Cycles sampled-light glass classification failed on "
+            << backend << '\n';
+        return EXIT_FAILURE;
+    }
+
+    const auto &translucent_base_f = translucent_light_actual[0u];
+    const auto &translucent_base_diffuse = translucent_light_actual[1u];
+    const auto &translucent_exclude_diffuse_f =
+        translucent_light_actual[3u];
+    const auto &translucent_exclude_diffuse =
+        translucent_light_actual[4u];
+    const auto &translucent_exclude_transmit_f =
+        translucent_light_actual[6u];
+    const auto &translucent_exclude_transmit_diffuse =
+        translucent_light_actual[7u];
+    if (!(translucent_base_f.w > 0.0f &&
+          rgb_positive(translucent_base_f) &&
+          rgb_zero(translucent_exclude_diffuse_f) &&
+          rgb_zero(translucent_exclude_diffuse) &&
+          rgb_equal(translucent_exclude_transmit_f,
+              translucent_base_f) &&
+          rgb_equal(translucent_exclude_transmit_diffuse,
+              translucent_base_diffuse) &&
+          approximately_equal(
+              translucent_exclude_diffuse_f.w,
+              translucent_base_f.w) &&
+          approximately_equal(
+              translucent_exclude_transmit_f.w,
+              translucent_base_f.w))) {
+        std::cerr
+            << "Cycles sampled-light translucent classification failed on "
+            << backend << '\n';
+        return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;
 }

@@ -46,6 +46,12 @@ public:
         Expr<luisa::float3> outgoing,
         const SurfaceQuery &query) const noexcept override;
 
+    [[nodiscard]] SurfaceEvaluation evaluate_light(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        Expr<luisa::float3> outgoing,
+        const SurfaceLightQuery &query) const noexcept override;
+
     [[nodiscard]] SurfaceSample sample(
         const ShaderServices &services,
         const SurfacePoint &point,

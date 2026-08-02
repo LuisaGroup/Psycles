@@ -42,6 +42,43 @@ SurfaceCallables make_surface_callables(
                     outgoing,
                     query));
         };
+    SurfaceEvaluateLightCallable evaluate_light =
+        [scene](
+            BufferFloat4 parameters,
+            BufferFloat cycles_bsdf_tables,
+            BindlessVar textures,
+            BindlessVar geometry_heap,
+            UInt surface_tag,
+            Var<SurfacePointCall> packed_point,
+            Float3 outgoing,
+            UInt lobe_mask,
+            UInt transport_mode,
+            Float glossy_filter_roughness,
+            UInt shader_flags) noexcept {
+            BufferShaderServices services{
+                parameters,
+                cycles_bsdf_tables,
+                textures,
+                geometry_heap,
+                scene->attribute_binding_slot,
+                scene->attribute_range_slot,
+                scene->nishita_texture_bindings,
+                scene->shader_color_space};
+            auto query = SurfaceLightQuery{
+                .surface = {
+                    .lobe_mask = lobe_mask,
+                    .transport_mode = transport_mode,
+                    .glossy_filter_roughness =
+                        glossy_filter_roughness},
+                .shader_flags = shader_flags};
+            return pack_surface_evaluation(
+                scene->surfaces.evaluate_light(
+                    surface_tag,
+                    services,
+                    unpack_surface_point(packed_point),
+                    outgoing,
+                    query));
+        };
     SurfaceEmissionCallable emission =
         [scene](
             BufferFloat4 parameters,
@@ -210,6 +247,7 @@ SurfaceCallables make_surface_callables(
         };
     return {
         std::move(evaluate),
+        std::move(evaluate_light),
         std::move(emission),
         std::move(sample),
         std::move(closure_trace),

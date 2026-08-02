@@ -452,6 +452,37 @@ namespace psycles::luisa_backend::detail {
         .glossy_normal = glossy_normal};
 }
 
+[[nodiscard]] Bool sampled_light_excludes_closure(
+    const TracedClosure &closure,
+    UInt shader_flags) noexcept {
+    using namespace contract::cycles_abi;
+    switch (closure.operation) {
+    case compiler::ClosureOperation::diffuse:
+    case compiler::ClosureOperation::translucent:
+        // Cycles classifies Translucent as diffuse, not as a pure
+        // transmission closure.
+        return (shader_flags & shader_exclude_diffuse) != 0u;
+    case compiler::ClosureOperation::principled:
+    case compiler::ClosureOperation::glossy:
+        return (shader_flags & shader_exclude_glossy) != 0u;
+    case compiler::ClosureOperation::glass:
+        // A glass closure is both reflective and transmissive. Cycles keeps
+        // it unless both classes are excluded by the sampled emitter.
+        return (shader_flags &
+                   (shader_exclude_glossy |
+                    shader_exclude_transmit)) ==
+               (shader_exclude_glossy |
+                shader_exclude_transmit);
+    case compiler::ClosureOperation::transparent:
+    case compiler::ClosureOperation::null_closure:
+    case compiler::ClosureOperation::add:
+    case compiler::ClosureOperation::mix:
+    case compiler::ClosureOperation::emission:
+        return false;
+    }
+    return false;
+}
+
 [[nodiscard]] Float oren_nayar_g(Float cosine) noexcept {
     auto c = clamp(cosine, 0.0f, 1.0f);
     auto sine = sqrt(max(1.0f - c * c, 0.0f));

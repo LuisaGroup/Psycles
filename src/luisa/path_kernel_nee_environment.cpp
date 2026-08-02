@@ -52,12 +52,13 @@ class EnvironmentLightingComponent final : public DirectLightingComponent {
         auto make_surface_shadow_origin = [&](Float3 direction) noexcept {
             return surface.make_shadow_origin(direction);
         };
-        auto evaluate_surface = [&](UInt tag,
-                                    const SurfacePoint &surface_point,
-                                    Float3 outgoing,
-                                    const SurfaceQuery &query) noexcept {
-            return invocation.evaluate_surface(
-                tag, surface_point, outgoing, query);
+        auto evaluate_light_surface = [&](UInt tag,
+                                          const SurfacePoint &surface_point,
+                                          Float3 outgoing,
+                                          const SurfaceQuery &query,
+                                          UInt shader_flags) noexcept {
+            return invocation.evaluate_light_surface(
+                tag, surface_point, outgoing, query, shader_flags);
         };
         auto sample_light_roulette = [&](Float3 contribution,
                                          Float random) noexcept {
@@ -109,11 +110,13 @@ class EnvironmentLightingComponent final : public DirectLightingComponent {
                          -light.direction,
                      .distance = ray_maximum});
                 const auto evaluation =
-                    evaluate_surface(
+                    evaluate_light_surface(
                         surface_tag,
                         point,
                         light.direction,
-                        path_surface_query);
+                        path_surface_query,
+                        config.scene
+                            ->cycles_background_shader_flags);
                 const auto mis_weight =
                     nee_light_weight(
                         light.pdf,

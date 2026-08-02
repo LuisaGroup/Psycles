@@ -27,6 +27,15 @@ SurfaceEvaluation GraphSurface::evaluate(
         services, point, outgoing, query);
 }
 
+SurfaceEvaluation GraphSurface::evaluate_light(
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    Expr<luisa::float3> outgoing,
+    const SurfaceLightQuery &query) const noexcept {
+    return _implementation->evaluate_light(
+        services, point, outgoing, query);
+}
+
 SurfaceSample GraphSurface::sample(
     const ShaderServices &services,
     const SurfacePoint &point,

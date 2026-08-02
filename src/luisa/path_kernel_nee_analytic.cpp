@@ -76,12 +76,13 @@ class AnalyticLightingComponent final : public DirectLightingComponent {
                                                 incoming,
                                                 light_distance);
         };
-        auto evaluate_surface = [&](UInt tag,
-                                    const SurfacePoint &surface_point,
-                                    Float3 outgoing,
-                                    const SurfaceQuery &query) noexcept {
-            return invocation.evaluate_surface(
-                tag, surface_point, outgoing, query);
+        auto evaluate_light_surface = [&](UInt tag,
+                                          const SurfacePoint &surface_point,
+                                          Float3 outgoing,
+                                          const SurfaceQuery &query,
+                                          UInt shader_flags) noexcept {
+            return invocation.evaluate_light_surface(
+                tag, surface_point, outgoing, query, shader_flags);
         };
         auto make_surface_shadow_origin = [&](Float3 direction) noexcept {
             return surface.make_shadow_origin(direction);
@@ -283,18 +284,18 @@ class AnalyticLightingComponent final : public DirectLightingComponent {
                     light_uv,
                     -wi,
                     light_distance);
-                const auto evaluation = evaluate_surface(
-                    surface_tag, point, wi, path_surface_query);
-                const auto use_mis =
-                    (light.flags & light_flag_use_mis) != 0u;
-                const auto trace_bsdf_pdf =
-                    select(0.0f, evaluation.pdf, use_mis);
+                const auto evaluation = evaluate_light_surface(
+                    surface_tag,
+                    point,
+                    wi,
+                    path_surface_query,
+                    light.cycles_shader_flags);
                 const auto cycles_mis_weight =
-                    nee_light_weight(light_pdf, trace_bsdf_pdf);
+                    nee_light_weight(light_pdf, evaluation.pdf);
                 _trace->record_evaluation(
                     bounce,
                     {.distance = light_distance,
-                     .bsdf_pdf = trace_bsdf_pdf,
+                     .bsdf_pdf = evaluation.pdf,
                      .mis_weight = cycles_mis_weight});
                 const auto shadow = make_surface_shadow_origin(wi);
                 const auto finite_offset = light_position - shadow.position;

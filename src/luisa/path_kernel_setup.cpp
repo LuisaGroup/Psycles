@@ -227,6 +227,27 @@ SurfaceEvaluation PathKernelInvocation::evaluate_surface(
                                  query.glossy_filter_roughness));
 }
 
+SurfaceEvaluation PathKernelInvocation::evaluate_light_surface(
+    UInt surface_tag,
+    const SurfacePoint &point,
+    Float3 outgoing,
+    const SurfaceQuery &query,
+    UInt shader_flags) const noexcept {
+    return unpack_surface_evaluation(
+        config.surfaces.evaluate_light(
+            config.scene->parameter_buffer,
+            config.scene->cycles_bsdf_table_buffer,
+            config.scene->texture_heap,
+            config.scene->heap,
+            surface_tag,
+            pack_surface_point(point),
+            outgoing,
+            query.lobe_mask,
+            query.transport_mode,
+            query.glossy_filter_roughness,
+            shader_flags));
+}
+
 Float3 PathKernelInvocation::surface_emission(UInt surface_tag,
                                               const SurfacePoint &point,
                                               Float3 outgoing) const noexcept {

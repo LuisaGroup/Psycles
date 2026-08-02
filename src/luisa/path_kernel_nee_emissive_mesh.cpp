@@ -111,11 +111,12 @@ class EmissiveMeshLightingComponent final
                      0.0f);
                 $if(!reject_self) {
                     const auto evaluation =
-                        invocation.evaluate_surface(
+                        invocation.evaluate_light_surface(
                             surface.surface_tag,
                             surface.point,
                             light.light.direction,
-                            surface.path_surface_query);
+                            surface.path_surface_query,
+                            emitter.cycles_shader_flags);
                     const auto mis_weight =
                         config.light_transport
                             .nee_light_weight(

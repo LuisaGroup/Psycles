@@ -25,4 +25,13 @@ make_environment_callables(
     const SafeNormalizeCallable &safe_normalize,
     const SurfaceEmissionCallable &surface_emission);
 
+void configure_background_sampling(
+    LuisaSceneData &scene,
+    const SceneSnapshot &snapshot,
+    bool include_environment) noexcept;
+
+void build_background_sampling_distribution(
+    const std::shared_ptr<LuisaSceneData> &scene,
+    Stream &stream);
+
 }// namespace psycles::luisa_backend::detail

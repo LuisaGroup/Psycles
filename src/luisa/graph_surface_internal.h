@@ -194,6 +194,9 @@ template <typename Id, typename Values>
     const TracedClosure &closure,
     Float3 incoming,
     const SurfaceQuery &query) noexcept;
+[[nodiscard]] Bool sampled_light_excludes_closure(
+    const TracedClosure &closure,
+    UInt shader_flags) noexcept;
 [[nodiscard]] Float oren_nayar_g(Float cosine) noexcept;
 [[nodiscard]] Float3 diffuse_intensity(const TracedClosure &closure,
     Float3 incoming,
@@ -317,7 +320,9 @@ private:
         const TracedValues &values,
         const SurfacePoint &point,
         Expr<luisa::float3> outgoing,
-        const SurfaceQuery &query) const noexcept;
+        const SurfaceQuery &query,
+        Expr<std::uint32_t> light_shader_flags,
+        bool sampled_light) const noexcept;
 
     [[nodiscard]] SurfaceSampleTrace sample_with_trace(
         const ShaderServices &services,
@@ -358,6 +363,11 @@ public:
         const SurfacePoint &point,
         Expr<luisa::float3> outgoing,
         const SurfaceQuery &query) const noexcept;
+    [[nodiscard]] SurfaceEvaluation evaluate_light(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        Expr<luisa::float3> outgoing,
+        const SurfaceLightQuery &query) const noexcept;
     [[nodiscard]] SurfaceSample sample(const ShaderServices &services,
         const SurfacePoint &point,
         Expr<float> u_lobe,

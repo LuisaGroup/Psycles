@@ -62,6 +62,13 @@ void test_light_shader_composition() {
             false) == 0x41000005u,
         "delta point-light shader identity changed");
     require(
+        identity::analytic_light_flags(
+            true,
+            point_visibility,
+            true,
+            false) == 0x41000000u,
+        "point-light flags depend on shader-vector identity");
+    require(
         identity::analytic_light(
             5u,
             true,
@@ -107,6 +114,13 @@ void test_light_shader_composition() {
              identity::exclude_scatter |
              identity::exclude_shadow_catcher),
         "triangle-light shader identity changed");
+    require(
+        identity::emissive_triangle_flags(
+            true, visibility, false) ==
+            (identity::emissive_triangle(
+                 9u, true, visibility, false) &
+             ~identity::shader_mask),
+        "triangle-light flags diverged from its full identity");
 
     require(
         identity::background_light(
@@ -121,6 +135,18 @@ void test_light_shader_composition() {
              identity::exclude_transmit |
              identity::exclude_scatter),
         "background-light shader identity changed");
+    require(
+        identity::background_light_flags(
+            false,
+            visibility &
+                ~visibility_bit(RayVisibility::camera)) ==
+            (identity::background_light(
+                 3u,
+                 false,
+                 visibility &
+                     ~visibility_bit(RayVisibility::camera)) &
+             ~identity::shader_mask),
+        "background-light flags diverged from its full identity");
 }
 
 void test_geometry_identity() {

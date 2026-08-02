@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <utility>
 
+#include <psycles/contract/cycles_abi.h>
 #include <psycles/contract/surface.h>
 
 #include <luisa/core/stl/vector.h>
@@ -115,6 +116,14 @@ struct SurfaceQuery {
     // Cycles Filter Glossy widens microfacet alpha after closure setup. Zero
     // leaves the material closure unchanged.
     Float glossy_filter_roughness;
+};
+
+// Cycles sampled-light visibility is deliberately separate from the path
+// lobe mask. Shader exclude flags remove closure contributions, but every
+// otherwise eligible closure remains in the one-sample-model PDF.
+struct SurfaceLightQuery {
+    SurfaceQuery surface;
+    UInt shader_flags;
 };
 
 struct ShaderAttribute {
@@ -337,6 +346,12 @@ public:
         Expr<luisa::float3> outgoing,
         const SurfaceQuery &query) const noexcept = 0;
 
+    [[nodiscard]] virtual SurfaceEvaluation evaluate_light(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        Expr<luisa::float3> outgoing,
+        const SurfaceLightQuery &query) const noexcept = 0;
+
     [[nodiscard]] virtual SurfaceSample sample(
         const ShaderServices &services,
         const SurfacePoint &point,
@@ -454,6 +469,20 @@ public:
         auto result = SurfaceEvaluation::zero();
         _surfaces.dispatch(tag, [&](const Surface *surface) noexcept {
             result = surface->evaluate(
+                services, point, outgoing, query);
+        });
+        return result;
+    }
+
+    [[nodiscard]] SurfaceEvaluation evaluate_light(
+        Expr<std::uint32_t> tag,
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        Expr<luisa::float3> outgoing,
+        const SurfaceLightQuery &query) const noexcept {
+        auto result = SurfaceEvaluation::zero();
+        _surfaces.dispatch(tag, [&](const Surface *surface) noexcept {
+            result = surface->evaluate_light(
                 services, point, outgoing, query);
         });
         return result;
@@ -653,6 +682,7 @@ public:
 
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::SurfacePoint)
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::SurfaceQuery)
+LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::SurfaceLightQuery)
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::ShaderAttribute)
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::VolumeQuery)
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::VolumeCoefficients)
