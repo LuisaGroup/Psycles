@@ -13,6 +13,83 @@ struct SampleDispatchBatch {
     bool filter_volume_guiding{};
 };
 
+struct PixelRowDispatchBatch {
+    std::uint32_t first_row{};
+    std::uint32_t row_count{};
+    std::uint32_t first_pixel{};
+    std::uint32_t pixel_count{};
+};
+
+// Splits a rectangular dispatch into complete, contiguous row bands while
+// bounding width * rows * samples. Complete rows keep film coordinates and
+// buffer views contiguous, so tiling does not alter sample identities.
+class PixelRowDispatchPartition final {
+
+private:
+    std::uint32_t _width{};
+    std::uint32_t _height{};
+    std::uint32_t _cursor{};
+    std::uint32_t _max_rows{};
+
+    PixelRowDispatchPartition(
+        std::uint32_t width,
+        std::uint32_t height,
+        std::uint32_t max_rows) noexcept
+        : _width{width},
+          _height{height},
+          _max_rows{max_rows} {}
+
+public:
+    [[nodiscard]] static std::optional<
+        PixelRowDispatchPartition>
+    make(
+        std::uint32_t width,
+        std::uint32_t height,
+        std::uint32_t samples,
+        std::uint32_t max_pixel_samples) noexcept {
+        if (width == 0u || height == 0u || samples == 0u ||
+            max_pixel_samples == 0u) {
+            return std::nullopt;
+        }
+        const auto pixel_count =
+            static_cast<std::uint64_t>(width) *
+            static_cast<std::uint64_t>(height);
+        if (pixel_count >
+            static_cast<std::uint64_t>(
+                std::numeric_limits<std::uint32_t>::max())) {
+            return std::nullopt;
+        }
+        const auto work_per_row =
+            static_cast<std::uint64_t>(width) *
+            static_cast<std::uint64_t>(samples);
+        const auto bounded_rows = std::max<std::uint64_t>(
+            1u,
+            static_cast<std::uint64_t>(max_pixel_samples) /
+                work_per_row);
+        return PixelRowDispatchPartition{
+            width,
+            height,
+            static_cast<std::uint32_t>(std::min<std::uint64_t>(
+                height, bounded_rows))};
+    }
+
+    [[nodiscard]] std::optional<PixelRowDispatchBatch>
+    next() noexcept {
+        if (_cursor == _height) {
+            return std::nullopt;
+        }
+        const auto rows = std::min(
+            _height - _cursor, _max_rows);
+        const PixelRowDispatchBatch batch{
+            .first_row = _cursor,
+            .row_count = rows,
+            .first_pixel = _cursor * _width,
+            .pixel_count = rows * _width};
+        _cursor += rows;
+        return batch;
+    }
+};
+
 // A valid partition of [first, first + count) satisfies:
 //
 //   B[0].first == first

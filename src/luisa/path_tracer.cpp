@@ -3,12 +3,30 @@
 namespace psycles::luisa_backend {
 
 using namespace detail;
+namespace {
+
+// Apple Metal can abort a long fused path-tracing command without surfacing
+// an error through the current Luisa stream synchronization path. Keep each
+// command comfortably below the empirically observed watchdog boundary; the
+// session preserves exact sample indices while splitting the image into row
+// bands.
+constexpr auto metal_max_pixel_samples_per_dispatch =
+    std::uint32_t{131072u};
+
+}// namespace
 
 LuisaPathTracerBackend::LuisaPathTracerBackend(
     luisa::compute::Device device,
     LuisaPathTracerOptions options) noexcept
     : _device{std::move(device)},
-      _options{options} {}
+      _options{options} {
+    if (_device && _device.backend_name() == "metal") {
+        _options.max_pixel_samples_per_dispatch =
+            std::min(
+                _options.max_pixel_samples_per_dispatch,
+                metal_max_pixel_samples_per_dispatch);
+    }
+}
 
 std::unique_ptr<contract::RenderSession>
 LuisaPathTracerBackend::create_session(
@@ -18,7 +36,8 @@ LuisaPathTracerBackend::create_session(
         static_cast<const LuisaCompiledScene &>(scene);
     if (settings.full_extent.width == 0u ||
         settings.full_extent.height == 0u ||
-        _options.max_samples_per_dispatch == 0u) {
+        _options.max_samples_per_dispatch == 0u ||
+        _options.max_pixel_samples_per_dispatch == 0u) {
         return nullptr;
     }
     if (const auto &trace = _options.path_trace) {
