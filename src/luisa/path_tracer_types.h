@@ -12,6 +12,7 @@ struct GeometryGpu {
     luisa::uint material_offset{};
     luisa::uint material_count{};
     luisa::uint attribute_domains{};
+    luisa::uint cycles_primitive_offset{};
     // Cycles ATTR_STD_GENERATED_TRANSFORM. Surface points retain explicit
     // per-vertex Generated values; volume points apply this transform to
     // object-space P because they have no primitive to interpolate.
@@ -43,6 +44,7 @@ struct InstanceGpu {
     float shadow_terminator_geometry_offset{};
     luisa::uint cycles_object_index{};
     std::int32_t cycles_light_group{};
+    luisa::uint is_shadow_catcher{};
 };
 
 inline constexpr std::uint32_t material_flag_has_volume =
@@ -93,7 +95,10 @@ struct EmissiveTriangleGpu {
     luisa::uint parameter_block{};
     luisa::uint emission_sampling{};
     luisa::uint visibility_mask{};
-    luisa::uint padding{};
+    luisa::uint cycles_primitive_index{};
+    luisa::uint cycles_object_index{};
+    luisa::uint cycles_shader_id{};
+    std::int32_t cycles_light_group{};
 };
 
 struct LightDistributionGpu {
@@ -288,6 +293,7 @@ LUISA_STRUCT(
     material_offset,
     material_count,
     attribute_domains,
+    cycles_primitive_offset,
     generated_transform) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::AttributeBindingGpu,
@@ -310,7 +316,8 @@ LUISA_STRUCT(
     particle_index,
     shadow_terminator_geometry_offset,
     cycles_object_index,
-    cycles_light_group) {};
+    cycles_light_group,
+    is_shadow_catcher) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::MaterialBindingGpu,
     surface_tag,
@@ -353,7 +360,10 @@ LUISA_STRUCT(
     parameter_block,
     emission_sampling,
     visibility_mask,
-    padding) {};
+    cycles_primitive_index,
+    cycles_object_index,
+    cycles_shader_id,
+    cycles_light_group) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::LightDistributionGpu,
     cumulative,

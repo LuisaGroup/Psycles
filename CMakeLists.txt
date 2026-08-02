@@ -299,6 +299,7 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/path_tracer_light_distribution.cpp
             src/luisa/path_tracer_lighting.cpp
             src/luisa/path_tracer_scene.cpp
+            src/luisa/path_tracer_scene_geometry.cpp
             src/luisa/path_tracer_session.cpp
             src/luisa/path_tracer_surfaces.cpp
             src/luisa/path_tracer_volume_capabilities.cpp
@@ -1654,7 +1655,8 @@ if(PSYCLES_ENABLE_LUISA)
 
             add_executable(
                 psycles_cycles_shader_identity_tests
-                tests/test_cycles_shader_identity.cpp)
+                tests/test_cycles_shader_identity.cpp
+                src/luisa/path_tracer_scene_geometry.cpp)
             target_link_libraries(
                 psycles_cycles_shader_identity_tests
                 PRIVATE Psycles::core)

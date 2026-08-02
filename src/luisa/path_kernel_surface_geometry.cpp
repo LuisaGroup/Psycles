@@ -72,6 +72,8 @@ private:
             triangle_attributes.random_per_island;
         auto &triangle_smooth =
             primitive.smooth;
+        auto &cycles_primitive_index =
+            primitive.cycles_primitive_index;
 
         auto object_to_world = scene->accel->instance_transform(hit->inst);
         auto world_to_object = inverse(object_to_world);
@@ -305,6 +307,7 @@ private:
                 std::move(surface_tag),
                 std::move(cycles_surface_shader),
                 std::move(cycles_object_index),
+                std::move(cycles_primitive_index),
                 std::move(volume_stack_entry),
                 std::move(surface_has_volume),
                 std::move(point),

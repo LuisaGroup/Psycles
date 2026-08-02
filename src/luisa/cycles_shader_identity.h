@@ -108,4 +108,37 @@ inline constexpr std::uint32_t invalid_index = ~std::uint32_t{0u};
            (has_competing_bsdf_technique ? use_mis : 0u);
 }
 
+[[nodiscard]] constexpr std::uint32_t emissive_triangle(
+    std::uint32_t shader_index,
+    bool smooth,
+    std::uint32_t visibility,
+    bool is_shadow_catcher) noexcept {
+    // Triangle lights retain the surface topology flags, then add the
+    // sampled-emitter MIS and object-visibility flags at light upload time.
+    return surface(shader_index, smooth) |
+           use_mis |
+           object_visibility(
+               visibility, is_shadow_catcher);
+}
+
+[[nodiscard]] constexpr std::uint32_t background_light(
+    std::uint32_t shader_index,
+    bool casts_shadow,
+    std::uint32_t visibility) noexcept {
+    using contract::RayVisibility;
+    using contract::visibility_bit;
+    // BackgroundLight::copy_to_kernel applies world visibility only to the
+    // four scattering categories. Its synthetic Object is camera-visible and
+    // is a shadow catcher by construction.
+    const auto background_visibility =
+        visibility |
+        visibility_bit(RayVisibility::camera);
+    return shader_index |
+           (casts_shadow ? cast_shadow : 0u) |
+           use_mis |
+           object_visibility(
+               background_visibility,
+               true);
+}
+
 }// namespace psycles::luisa_backend::detail::cycles_shader_identity

@@ -291,6 +291,7 @@ void test_integrator_settings_round_trip() {
     "color": [0.05, 0.05, 0.05],
     "sampling_method": "MANUAL",
     "sample_map_resolution": 2048,
+    "use_shadows": false,
     "visibility": {
       "camera": true,
       "diffuse": false,
@@ -301,7 +302,8 @@ void test_integrator_settings_round_trip() {
     },
     "cycles_sync": {
       "shader_index": 3,
-      "object_index": 12
+      "object_index": 12,
+      "light_group": 4
     },
     "node_tree": {
       "name": "World Nodes",
@@ -560,6 +562,10 @@ void test_integrator_settings_round_trip() {
     expect(
         imported.scene->world_sample_map_resolution == 2048u,
         "world sample-map resolution did not round-trip");
+    expect(
+        !imported.scene->world_cast_shadow &&
+            imported.scene->cycles_background_light_group == 4,
+        "world shadow/light-group policy did not round-trip");
     expect(
         imported.scene->world_visibility_mask ==
             (psycles::contract::visibility_bit(

@@ -33,6 +33,8 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         auto &wp2 = surface.wp2;
         auto &cycles_surface_shader = surface.cycles_surface_shader;
         auto &cycles_object_index = surface.cycles_object_index;
+        auto &cycles_primitive_index =
+            surface.cycles_primitive_index;
         auto &path_step = bounce.path_step;
         auto &terminate_sample = bounce.terminate_sample;
         auto &light_sample = bounce.light_sample;
@@ -256,7 +258,7 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
             trace_write_event(path_step,
                               path_trace_schema::EventSlot::isect_id,
                               make_float3(cast<float>(cycles_object_index),
-                                          cast<float>(hit->prim),
+                                          cast<float>(cycles_primitive_index),
                                           1.0f));
             trace_write_event(
                 path_step,

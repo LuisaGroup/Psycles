@@ -39,7 +39,8 @@ int main(int argc, char **argv) {
         GeometryGpu{
             .bindless_base = 0u,
             .material_offset = 0u,
-            .material_count = 2u}};
+            .material_count = 2u,
+            .cycles_primitive_offset = 1200u}};
     constexpr std::array instances{
         InstanceGpu{
             .geometry_index = 0u,
@@ -319,7 +320,7 @@ int main(int argc, char **argv) {
                             .material_slot),
                     number(
                         override_0
-                            .primitive_id)));
+                            .cycles_primitive_index)));
 
             const auto override_1 =
                 primitive->emit(
@@ -375,7 +376,7 @@ int main(int argc, char **argv) {
                             .flags),
                     number(
                         override_1
-                            .primitive_id)));
+                            .cycles_primitive_index)));
         };
     auto shader = device.compile(evaluate);
 
@@ -416,10 +417,10 @@ int main(int argc, char **argv) {
         luisa::float4{30.0f, 300.0f, 3003.0f, 1.0f},
         luisa::float4{3003.0f, 1.0f, 0.0f, 77.0f},
         luisa::float4{77.0f, 3003.0f, 30.0f, 300.0f},
-        luisa::float4{1.0f, 1.0f, 0.0f, 0.0f},
+        luisa::float4{1.0f, 1.0f, 0.0f, 1200.0f},
         luisa::float4{40.0f, 400.0f, 4.0f, 0.0f},
         luisa::float4{1.0f, 1.0f, 77.0f, 1.0f},
-        luisa::float4{0.0f, 1.0f, 0.0f, 1.0f}};
+        luisa::float4{0.0f, 1.0f, 0.0f, 1201.0f}};
     for (auto index = std::size_t{0u};
          index < expected.size();
          ++index) {
