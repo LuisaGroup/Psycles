@@ -1,0 +1,106 @@
+{
+  "actual_label": "Psycles Metal",
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.DiffCol.R",
+    "ViewLayer.DiffCol.G",
+    "ViewLayer.DiffCol.B",
+    "ViewLayer.DiffDir.R",
+    "ViewLayer.DiffDir.G",
+    "ViewLayer.DiffDir.B",
+    "ViewLayer.DiffInd.R",
+    "ViewLayer.DiffInd.G",
+    "ViewLayer.DiffInd.B",
+    "ViewLayer.Emit.R",
+    "ViewLayer.Emit.G",
+    "ViewLayer.Emit.B",
+    "ViewLayer.Env.R",
+    "ViewLayer.Env.G",
+    "ViewLayer.Env.B",
+    "ViewLayer.GlossCol.R",
+    "ViewLayer.GlossCol.G",
+    "ViewLayer.GlossCol.B",
+    "ViewLayer.GlossDir.R",
+    "ViewLayer.GlossDir.G",
+    "ViewLayer.GlossDir.B",
+    "ViewLayer.GlossInd.R",
+    "ViewLayer.GlossInd.G",
+    "ViewLayer.GlossInd.B",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.TransCol.R",
+    "ViewLayer.TransCol.G",
+    "ViewLayer.TransCol.B",
+    "ViewLayer.TransDir.R",
+    "ViewLayer.TransDir.G",
+    "ViewLayer.TransDir.B",
+    "ViewLayer.TransInd.R",
+    "ViewLayer.TransInd.G",
+    "ViewLayer.TransInd.B",
+    "ViewLayer.VolumeDir.R",
+    "ViewLayer.VolumeDir.G",
+    "ViewLayer.VolumeDir.B",
+    "ViewLayer.VolumeInd.R",
+    "ViewLayer.VolumeInd.G",
+    "ViewLayer.VolumeInd.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        1.0002988576889038,
+        1.0001667737960815,
+        1.0002532005310059
+      ],
+      "cycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/lone-monk-apple-960x720-128/psycles/fallback.exr",
+      "cycles_channel_mean": [
+        0.6144318580627441,
+        0.45490825176239014,
+        0.3809358775615692
+      ],
+      "cycles_luminance_mean": 0.48403728008270264,
+      "cycles_rms": 1.567992925643921,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0002204216876223,
+      "maximum_absolute_error": 5.2515549659729,
+      "mean_absolute_error": 0.0044051650911569595,
+      "orientation_rmse": {
+        "flip_x": 1.022194504737854,
+        "flip_xy": 1.8636870384216309,
+        "flip_y": 1.8366129398345947,
+        "identity": 0.033461689949035645
+      },
+      "p95_pixel_rmse": 0.019190896302461624,
+      "p99_pixel_rmse": 0.07588794082403183,
+      "psycles": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/lone-monk-apple-960x720-128/psycles/metal.exr",
+      "psycles_channel_mean": [
+        0.6146154999732971,
+        0.4549840986728668,
+        0.3810323476791382
+      ],
+      "psycles_luminance_mean": 0.4841439723968506,
+      "psycles_rms": 1.5681912342738744,
+      "relative_rmse": 0.02134045976980035,
+      "rmse": 0.033461689949035645,
+      "shape": [
+        720,
+        960,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 7.404211862680126,
+        "display_scale": 0.08852730287510661,
+        "mapping": "shared_linear_srgb",
+        "path": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/lone-monk-apple-960x720-128/comparisons/psycles-metal-vs-fallback/triptychs/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 691200
+    }
+  },
+  "reference_label": "Psycles fallback",
+  "schema": "psycles.cycles-differential.v1"
+}

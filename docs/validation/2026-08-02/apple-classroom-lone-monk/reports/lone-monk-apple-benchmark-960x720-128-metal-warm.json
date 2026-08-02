@@ -1,0 +1,112 @@
+{
+  "commands": {
+    "cycles_metal": {
+      "command": [
+        "/opt/homebrew/Caskroom/blender/5.2.0/.homebrew-command-wrappers/blender",
+        "/Users/mike/CLionProjects/Psycles/assets/official-blender-scenes/lone-monk/lone-monk_cycles_and_exposure-node_demo.blend",
+        "--background",
+        "--python-exit-code",
+        "1",
+        "--python",
+        "/Users/mike/CLionProjects/Psycles/tools/render_cycles_golden.py",
+        "--",
+        "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/lone-monk-apple-960x720-128-metal-warm/cycles/metal.exr",
+        "960",
+        "720",
+        "128",
+        "--cycles-device",
+        "METAL",
+        "--device-name",
+        "Apple M1 Max"
+      ],
+      "log": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/lone-monk-apple-960x720-128-metal-warm/logs/cycles-metal.log",
+      "returncode": 0,
+      "wall_seconds": 15.248312457930297
+    },
+    "export": {
+      "reused": true
+    },
+    "psycles_metal": {
+      "command": [
+        "/Users/mike/CLionProjects/Psycles/build-macos/bin/psycles_render_blender_scene",
+        "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802",
+        "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/lone-monk-apple-960x720-128-metal-warm/psycles/metal.ppm",
+        "metal",
+        "960",
+        "720",
+        "128",
+        "8"
+      ],
+      "log": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/lone-monk-apple-960x720-128-metal-warm/logs/psycles-metal.log",
+      "returncode": 0,
+      "wall_seconds": 124.30089395819232
+    }
+  },
+  "comparisons": {
+    "psycles-metal-vs-cycles-metal": {
+      "actual": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/lone-monk-apple-960x720-128-metal-warm/psycles/metal.exr",
+      "process_wall_seconds": 4.907318958081305,
+      "reference": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/lone-monk-apple-960x720-128-metal-warm/cycles/metal.exr",
+      "report": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/lone-monk-apple-960x720-128-metal-warm/comparisons/psycles-metal-vs-cycles-metal/report.json"
+    }
+  },
+  "matrix": {
+    "cycles": [
+      "metal"
+    ],
+    "psycles": [
+      "metal"
+    ]
+  },
+  "relative_performance": {
+    "metal": {
+      "slowdown_vs_cycles_metal": 8.599279423166875,
+      "speedup_over_cycles_metal": 0.11628881337498484
+    }
+  },
+  "renderers": {
+    "cycles": {
+      "metal": {
+        "device": [
+          {
+            "id": "METAL_Apple M1 Max (GPU - 32 cores)",
+            "name": "Apple M1 Max (GPU - 32 cores)",
+            "type": "METAL"
+          }
+        ],
+        "metadata": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/lone-monk-apple-960x720-128-metal-warm/cycles/metal.json",
+        "output": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/lone-monk-apple-960x720-128-metal-warm/cycles/metal.exr",
+        "process_wall_seconds": 15.248312457930297,
+        "render_seconds": 14.094785625115037,
+        "sha256": "da13e8f053fa8559f7a1d0dcd634fc13c69cbfab01f1ba81e7d6918912d2d3a2"
+      }
+    },
+    "psycles": {
+      "metal": {
+        "output": "/Users/mike/CLionProjects/Psycles/build-macos/benchmarks/lone-monk-apple-960x720-128-metal-warm/psycles/metal.exr",
+        "process_wall_seconds": 124.30089395819232,
+        "render_seconds": 121.205,
+        "scene_compile_seconds": 1.4949,
+        "sha256": "50313bcc96c21082c095c315cb45a29396e696a3e84de61141d56126e371e607",
+        "shader_jit_seconds": 0.620668
+      }
+    }
+  },
+  "scene": {
+    "blend": "/Users/mike/CLionProjects/Psycles/assets/official-blender-scenes/lone-monk/lone-monk_cycles_and_exposure-node_demo.blend",
+    "bundle": "/Users/mike/CLionProjects/Psycles/build-macos/scene-exports/lone-monk-20260802",
+    "geometry_bin_sha256": "75012edc3d6ec700ee57dacdf0e01da7f1d1b34c7f3d51fba72db2142e68cdfb",
+    "scene_json_sha256": "242bb7994ee3b400bc393634bf6214624287650cbdbe579da8d3f0215a514c88",
+    "sha256": "4250d4205d8d01cefd98c15e81021d6dead540b2923797378bf7b32e96e8b8f7"
+  },
+  "schema": "psycles.scene-benchmark.v1",
+  "settings": {
+    "cycles_gpu_device": "METAL",
+    "cycles_gpu_device_name": "Apple M1 Max",
+    "height": 720,
+    "max_samples_per_dispatch": 8,
+    "samples": 128,
+    "width": 960
+  },
+  "status": "complete"
+}

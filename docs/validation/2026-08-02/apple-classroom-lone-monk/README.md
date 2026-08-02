@@ -299,6 +299,35 @@ roofline, vegetation, and lighting structure. The remaining residuals are
 concentrated on high-frequency foliage, roof highlights, and indirect/glossy
 transport; there is no missing-scene or camera mismatch.
 
+The larger visual checkpoint uses 960x720 and 128 fixed samples: 2.25 times
+the pixels and twice the samples of the earlier image. Both Psycles backends
+completed with zero invalid pixels.
+
+| Renderer | Render | Relative to Cycles Metal | Shader JIT |
+|---|---:|---:|---:|
+| Cycles Metal | 14.7416 s | 1.00x | included in Blender setup |
+| Psycles fallback | 108.391 s | 7.353x slower | 74.2062 s cold |
+| Psycles Metal | 121.238 s | 8.224x slower | 518.475 s cold |
+| Psycles Metal warm repeat | 121.205 s | 8.599x slower than its 14.0948 s repeat oracle | 0.620668 s |
+
+Metal is therefore 11.9% slower than fallback for this heavily instanced
+scene, despite being 5.29x faster on Classroom. The one-time Metal shader
+compile is also material: 8.64 minutes cold, versus 0.62 seconds from cache.
+The timings demonstrate that backend ranking is scene dependent.
+
+Against Cycles, the high-sample Metal image has Combined luminance ratio
+0.980035, relative RMSE 0.122921, and zero invalid pixels. Diffuse Color
+relative RMSE is 0.038306, Normal relative RMSE is 0.021393, Diffuse Direct
+relative RMSE is 0.049171, and Emission luminance ratio is 0.999654. Fallback
+has Combined luminance ratio 0.979819 and relative RMSE 0.124580. Metal versus
+fallback has luminance ratio 1.000220 and relative RMSE 0.021340. The complete
+cold matrix is
+[lone-monk-apple-benchmark-960x720-128-cold.json](reports/lone-monk-apple-benchmark-960x720-128-cold.json),
+and the cache behavior is retained in
+[lone-monk-apple-benchmark-960x720-128-metal-warm.json](reports/lone-monk-apple-benchmark-960x720-128-metal-warm.json).
+
+![Lone Monk Cycles Metal, Psycles Metal, and difference at 960x720x128](triptychs/lone-monk-metal-960x720-128-combined.png)
+
 ## Commands and automated gates
 
 The complete build and test gate was:
