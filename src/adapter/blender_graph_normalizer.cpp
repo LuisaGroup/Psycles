@@ -1311,7 +1311,19 @@ public:
     const auto displacement_method = text(
         member(material, "displacement_method"), "BUMP");
     const auto automatic_bump =
-        has_displacement && displacement_method == "BUMP";
+        has_displacement &&
+        (displacement_method == "BUMP" ||
+         displacement_method == "BOTH");
+    if (has_displacement && displacement_method == "BOTH") {
+        diagnostics.emplace_back(BlenderSceneDiagnostic{
+            .severity =
+                BlenderSceneDiagnosticSeverity::warning,
+            .message =
+                "shader '" + material_name +
+                "' requests Blender displacement method 'BOTH'; "
+                "using its bump component because true geometry "
+                "displacement is not yet implemented"});
+    }
     if (has_displacement && !automatic_bump) {
         diagnostics.emplace_back(BlenderSceneDiagnostic{
             .severity =

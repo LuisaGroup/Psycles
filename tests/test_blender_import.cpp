@@ -967,6 +967,34 @@ void test_integrator_settings_round_trip() {
         has_bump_instruction,
         "automatic displacement bump emitted no value instruction");
 
+    auto combined_displacement_scene = bump_scene;
+    replace_once(
+        combined_displacement_scene,
+        "\"displacement_method\": \"BUMP\"",
+        "\"displacement_method\": \"BOTH\"");
+    {
+        std::ofstream scene{temporary.path() / "scene.json"};
+        scene << combined_displacement_scene;
+    }
+    const auto combined_displacement_imported =
+        load_blender_scene_bundle(temporary.path());
+    expect(
+        combined_displacement_imported.ok(),
+        "combined displacement was not accepted as a bump approximation");
+    bool named_combined_displacement_warning = false;
+    for (const auto &diagnostic :
+         combined_displacement_imported.diagnostics) {
+        named_combined_displacement_warning |=
+            diagnostic.severity ==
+                psycles::adapter::
+                    BlenderSceneDiagnosticSeverity::warning &&
+            diagnostic.message.find("using its bump component") !=
+                std::string::npos;
+    }
+    expect(
+        named_combined_displacement_warning,
+        "combined displacement approximation has no named warning");
+
     auto true_displacement_scene = bump_scene;
     replace_once(
         true_displacement_scene,
