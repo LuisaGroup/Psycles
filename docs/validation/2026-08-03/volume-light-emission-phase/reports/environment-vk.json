@@ -1,0 +1,124 @@
+{
+  "actual_label": "Psycles vk",
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.Volume Direct.R",
+    "ViewLayer.Volume Direct.G",
+    "ViewLayer.Volume Direct.B",
+    "ViewLayer.Volume Indirect.R",
+    "ViewLayer.Volume Indirect.G",
+    "ViewLayer.Volume Indirect.B",
+    "ViewLayer.Environment.R",
+    "ViewLayer.Environment.G",
+    "ViewLayer.Environment.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        0.9999974370002747,
+        0.9999974370002747,
+        0.9999974370002747
+      ],
+      "cycles": "/home/mike/Projects/Psycles/docs/validation/2026-07-31/homogeneous-volume-environment-mis/exr/cycles-cpu.exr",
+      "cycles_channel_mean": [
+        0.3343028724193573,
+        0.3343028724193573,
+        0.3343028724193573
+      ],
+      "cycles_luminance_mean": 0.3343028426170349,
+      "cycles_rms": 0.36556684970855713,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999975038649976,
+      "maximum_absolute_error": 6.16908073425293e-06,
+      "mean_absolute_error": 1.3932585716247559e-06,
+      "orientation_rmse": {
+        "flip_x": 0.11337534338235855,
+        "flip_xy": 0.2358374297618866,
+        "flip_y": 0.2431892454624176,
+        "identity": 2.456110678394907e-06
+      },
+      "p95_pixel_rmse": 4.995614290237427e-06,
+      "p99_pixel_rmse": 5.934387445449829e-06,
+      "psycles": "/var/tmp/psycles-volume-emission-phase-0c985d0/environment/vk.exr",
+      "psycles_channel_mean": [
+        0.33430200815200806,
+        0.33430200815200806,
+        0.33430200815200806
+      ],
+      "psycles_luminance_mean": 0.33430200815200806,
+      "psycles_rms": 0.36556646987108216,
+      "relative_rmse": 6.718636223041027e-06,
+      "rmse": 2.456110678394907e-06,
+      "shape": [
+        4,
+        4,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 145888.8347826087,
+        "display_scale": 1.7940154630301033,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-volume-emission-phase-0c985d0/reports/environment/vk/combined.png",
+        "pixel_scale": 64
+      },
+      "valid_pixels": 16
+    },
+    "Volume Direct": {
+      "channel_mean_ratio": [
+        0.9999914765357971,
+        0.9999914765357971,
+        0.9999914765357971
+      ],
+      "cycles": "/home/mike/Projects/Psycles/docs/validation/2026-07-31/homogeneous-volume-environment-mis/exr/cycles-cpu.exr",
+      "cycles_channel_mean": [
+        0.10370223969221115,
+        0.10370223969221115,
+        0.10370223969221115
+      ],
+      "cycles_luminance_mean": 0.10370223969221115,
+      "cycles_rms": 0.12431936711072922,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999914503380672,
+      "maximum_absolute_error": 6.16908073425293e-06,
+      "mean_absolute_error": 1.3541430234909058e-06,
+      "orientation_rmse": {
+        "flip_x": 0.05499652773141861,
+        "flip_xy": 0.11229884624481201,
+        "flip_y": 0.10020890831947327,
+        "identity": 2.4554358333261916e-06
+      },
+      "p95_pixel_rmse": 4.995614290237427e-06,
+      "p99_pixel_rmse": 5.934387445449829e-06,
+      "psycles": "/var/tmp/psycles-volume-emission-phase-0c985d0/environment/vk.exr",
+      "psycles_channel_mean": [
+        0.10370135307312012,
+        0.10370135307312012,
+        0.10370135307312012
+      ],
+      "psycles_luminance_mean": 0.10370135307312012,
+      "psycles_rms": 0.1243181069700501,
+      "relative_rmse": 1.9751032283965663e-05,
+      "rmse": 2.4554358333261916e-06,
+      "shape": [
+        4,
+        4,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 145888.8347826087,
+        "display_scale": 3.6286372508908182,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-volume-emission-phase-0c985d0/reports/environment/vk/volume-direct.png",
+        "pixel_scale": 64
+      },
+      "valid_pixels": 16
+    }
+  },
+  "reference_label": "Cycles CPU",
+  "schema": "psycles.cycles-differential.v1"
+}
