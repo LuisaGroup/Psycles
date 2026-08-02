@@ -606,6 +606,15 @@ Surface and volume mesh-light NEE plus emissive forward-hit MIS now use the
 same triangle geometry, position-dependent sampling measure, side selection,
 and raw closure-evaluation component. The volume fixture above additionally
 pins its segment-only area proposal and one-sided plane interval.
+Surface NEE now also carries each sampled emitter's raw Cycles shader flags
+into a dedicated light-evaluation query. Exclude flags project diffuse,
+glossy, and transmission contributions without removing any otherwise
+eligible closure from the Veach one-sample-model PDF; glass is removed only
+by the combined glossy/transmission exclusion, translucent follows the
+diffuse category, and missing `USE_MIS` zeroes only the competing PDF. The
+formal fallback/HIP/Vulkan regressions and the five-way Lone Monk render are
+recorded in
+[`validation/2026-08-03/sampled-light-closure-filter`](validation/2026-08-03/sampled-light-closure-filter/README.md).
 When the light tree is disabled, the Luisa NEE path applies Cycles'
 `film_exposure / light_sampling_threshold` roulette to the unshadowed light
 sample and compensates surviving samples by the reciprocal probability.
