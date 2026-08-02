@@ -8,6 +8,7 @@
 #include "cycles_shader_identity.h"
 
 #include <psycles/compiler/core_nodes.h>
+#include <psycles/io/image.h>
 #include <psycles/luisa/background_sampling.h>
 #include <psycles/luisa/cycles_bsdf_tables.h>
 #include <psycles/luisa/cycles_nishita.h>
@@ -791,18 +792,40 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         int width = 0;
         int height = 0;
         int channels = 0;
-        auto *decoded = stbi_load_from_memory(
+        auto *stbi_decoded = stbi_load_from_memory(
             image.encoded_data.data(),
             static_cast<int>(image.encoded_data.size()),
             &width,
             &height,
             &channels,
             STBI_rgb_alpha);
+        std::vector<std::uint8_t> oiio_pixels;
+        const std::uint8_t *decoded = stbi_decoded;
+#if defined(PSYCLES_WITH_OPENIMAGEIO)
+        if (decoded == nullptr) {
+            io::DecodedImageRgba8 oiio_image;
+            if (io::decode_image_rgba8(
+                    image.encoded_data,
+                    image.name,
+                    oiio_image) &&
+                oiio_image.width <=
+                    static_cast<std::uint32_t>(
+                        std::numeric_limits<int>::max()) &&
+                oiio_image.height <=
+                    static_cast<std::uint32_t>(
+                        std::numeric_limits<int>::max())) {
+                width = static_cast<int>(oiio_image.width);
+                height = static_cast<int>(oiio_image.height);
+                oiio_pixels = std::move(oiio_image.pixels);
+                decoded = oiio_pixels.data();
+            }
+        }
+#endif
         if (decoded == nullptr || width <= 0 || height <= 0) {
             diagnose(
                 result.diagnostics,
                 "Failed to decode image '" + image.name + "'.");
-            stbi_image_free(decoded);
+            stbi_image_free(stbi_decoded);
             continue;
         }
         const auto pixel_bytes =
@@ -811,7 +834,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         auto &pixels =
             texture_uploads.emplace_back(pixel_bytes);
         std::memcpy(pixels.data(), decoded, pixel_bytes);
-        stbi_image_free(decoded);
+        stbi_image_free(stbi_decoded);
         if (image.alpha_type ==
                 contract::ImageAlphaType::straight &&
             image.color_space !=

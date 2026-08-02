@@ -6,7 +6,9 @@
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <iterator>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -106,6 +108,28 @@ int main() {
             actual.data()),
         input->geterror());
     require(input->close(), "could not close generated EXR");
+
+    std::ifstream encoded_stream{path, std::ios::binary};
+    const std::vector<std::uint8_t> encoded{
+        std::istreambuf_iterator<char>{encoded_stream},
+        std::istreambuf_iterator<char>{}};
+    psycles::io::DecodedImageRgba8 decoded;
+    require(
+        psycles::io::decode_image_rgba8(
+            encoded, "packed-texture.exr", decoded, &error),
+        error);
+    require(
+        decoded.width == 2u && decoded.height == 2u &&
+            decoded.pixels.size() == 16u,
+        "in-memory EXR decoding did not produce RGBA8 pixels");
+    const std::vector<std::uint8_t> expected_rgba{
+        255u, 255u, 255u, 64u,
+        255u, 255u, 255u, 128u,
+        255u, 255u, 255u, 191u,
+        255u, 255u, 255u, 255u};
+    require(
+        decoded.pixels == expected_rgba,
+        "in-memory EXR decoding changed channel conversion or alpha");
 
     const std::vector<float> expected{
         1.0f, 2.0f, 3.0f, 0.25f, -1.0f, 0.0f, 1.0f,

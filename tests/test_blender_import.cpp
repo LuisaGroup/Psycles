@@ -612,6 +612,7 @@ void test_integrator_settings_round_trip() {
     bool has_absorption = false;
     bool has_scatter = false;
     bool has_volume_mix = false;
+    bool has_transparent_boundary = false;
     for (const auto &node :
          imported_material->second.shader.nodes()) {
         has_absorption |=
@@ -624,11 +625,18 @@ void test_integrator_settings_round_trip() {
         has_volume_mix |=
             node.type ==
             psycles::compiler::node_type::mix_volume;
+        has_transparent_boundary |=
+            node.type ==
+            psycles::compiler::node_type::transparent_bsdf;
     }
     expect(
         has_absorption && has_scatter && has_volume_mix,
         "Blender Volume closure tree was flattened or typed as a "
         "surface closure");
+    expect(
+        has_transparent_boundary,
+        "volume-only Blender material did not receive a transparent "
+        "surface boundary");
     const auto imported_light =
         imported.scene->lights.find(
             psycles::contract::LightId{1u});

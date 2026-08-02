@@ -1230,27 +1230,46 @@ public:
         // it in Psycles' evaluation order without changing closure sockets.
         lower_automatic_bump();
 
+        auto *raw_volume_root =
+            member(_tree, "volume_root");
+        const auto volume_node =
+            text(member(raw_volume_root, "node"));
+        const auto volume_socket =
+            text(member(raw_volume_root, "socket"));
+        const auto has_volume_root =
+            !volume_node.empty() && !volume_socket.empty();
+
         auto *root = member(_tree, "surface_root");
         const auto node = text(member(root, "node"));
         const auto socket = text(member(root, "socket"));
         if (node.empty() || socket.empty()) {
-            // Cycles treats an unconnected material surface as an opaque
-            // black path terminator while retaining the shading normal pass.
+            // A volume-only material uses its mesh as an invisible volume
+            // boundary in Cycles. A genuinely empty material surface remains
+            // an opaque black path terminator.
             const auto closure = _graph.add_node(
-                compiler::node_type::diffuse_bsdf,
-                "Unconnected Surface");
+                has_volume_root
+                    ? compiler::node_type::transparent_bsdf
+                    : compiler::node_type::diffuse_bsdf,
+                has_volume_root
+                    ? "Transparent Volume Boundary"
+                    : "Unconnected Surface");
             static_cast<void>(_graph.set_input(
                 closure,
                 "Color",
-                SocketValue::color({0.0f, 0.0f, 0.0f})));
-            static_cast<void>(_graph.set_input(
-                closure,
-                "Roughness",
-                SocketValue::floating(0.0f)));
-            static_cast<void>(_graph.set_input(
-                closure,
-                "Normal",
-                SocketValue::normal({0.0f, 0.0f, 0.0f})));
+                SocketValue::color(
+                    has_volume_root
+                        ? Vec3f{1.0f, 1.0f, 1.0f}
+                        : Vec3f{0.0f, 0.0f, 0.0f})));
+            if (!has_volume_root) {
+                static_cast<void>(_graph.set_input(
+                    closure,
+                    "Roughness",
+                    SocketValue::floating(0.0f)));
+                static_cast<void>(_graph.set_input(
+                    closure,
+                    "Normal",
+                    SocketValue::normal({0.0f, 0.0f, 0.0f})));
+            }
             _graph.set_root(
                 ShaderDomain::surface,
                 contract::OutputRef{
@@ -1262,14 +1281,7 @@ public:
                 ShaderDomain::surface, output.ref);
         }
 
-        auto *raw_volume_root =
-            member(_tree, "volume_root");
-        const auto volume_node =
-            text(member(raw_volume_root, "node"));
-        const auto volume_socket =
-            text(member(raw_volume_root, "socket"));
-        if (!volume_node.empty() &&
-            !volume_socket.empty()) {
+        if (has_volume_root) {
             auto output = lower_output(
                 volume_node,
                 volume_socket,

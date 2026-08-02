@@ -1,6 +1,7 @@
 #include <psycles/io/image.h>
 
 #include <OpenImageIO/imageio.h>
+#include <OpenImageIO/filesystem.h>
 
 #include <algorithm>
 #include <array>
@@ -52,6 +53,95 @@ namespace {
 }
 
 }// namespace
+
+bool decode_image_rgba8(
+    std::span<const std::uint8_t> encoded,
+    std::string_view filename_hint,
+    DecodedImageRgba8 &image,
+    std::string *error) {
+    image = {};
+    if (error != nullptr) {
+        error->clear();
+    }
+    if (encoded.empty()) {
+        return fail("the encoded image payload is empty", error);
+    }
+
+    OIIO::Filesystem::IOMemReader reader{
+        encoded.data(), encoded.size()};
+    auto input = OIIO::ImageInput::open(
+        std::string{filename_hint}, nullptr, &reader);
+    if (!input) {
+        return fail(
+            "OpenImageIO could not identify the encoded image",
+            error);
+    }
+    const auto specification = input->spec();
+    if (specification.width <= 0 ||
+        specification.height <= 0 ||
+        specification.nchannels <= 0) {
+        return fail("the encoded image has an invalid extent", error);
+    }
+    const auto width =
+        static_cast<std::size_t>(specification.width);
+    const auto height =
+        static_cast<std::size_t>(specification.height);
+    if (width > std::numeric_limits<std::size_t>::max() / height ||
+        width * height >
+            std::numeric_limits<std::size_t>::max() / 4u) {
+        return fail("the encoded image is too large", error);
+    }
+    const auto pixel_count = width * height;
+    const auto source_channels = std::min(specification.nchannels, 4);
+    std::vector<std::uint8_t> source_pixels(
+        pixel_count * static_cast<std::size_t>(source_channels));
+    if (!input->read_image(
+            0,
+            0,
+            0,
+            source_channels,
+            OIIO::TypeDesc::UINT8,
+            source_pixels.data())) {
+        auto message = input->geterror();
+        return fail(
+            message.empty()
+                ? "OpenImageIO could not read the encoded image"
+                : std::move(message),
+            error);
+    }
+
+    image.width = static_cast<std::uint32_t>(width);
+    image.height = static_cast<std::uint32_t>(height);
+    image.pixels.resize(pixel_count * 4u);
+    for (std::size_t pixel = 0u; pixel < pixel_count; ++pixel) {
+        const auto source =
+            pixel * static_cast<std::size_t>(source_channels);
+        const auto destination = pixel * 4u;
+        if (source_channels == 1) {
+            image.pixels[destination] = source_pixels[source];
+            image.pixels[destination + 1u] = source_pixels[source];
+            image.pixels[destination + 2u] = source_pixels[source];
+            image.pixels[destination + 3u] = 255u;
+        } else if (source_channels == 2) {
+            image.pixels[destination] = source_pixels[source];
+            image.pixels[destination + 1u] = source_pixels[source];
+            image.pixels[destination + 2u] = source_pixels[source];
+            image.pixels[destination + 3u] =
+                source_pixels[source + 1u];
+        } else {
+            image.pixels[destination] = source_pixels[source];
+            image.pixels[destination + 1u] =
+                source_pixels[source + 1u];
+            image.pixels[destination + 2u] =
+                source_pixels[source + 2u];
+            image.pixels[destination + 3u] =
+                source_channels == 4
+                    ? source_pixels[source + 3u]
+                    : 255u;
+        }
+    }
+    return true;
+}
 
 bool write_multilayer_exr(
     std::span<const PassImage> images,
