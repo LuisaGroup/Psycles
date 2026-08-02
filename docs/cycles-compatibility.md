@@ -297,6 +297,18 @@ renders passed `123/123`. A 640x480 Lone Monk rerun is pixel-exact against the
 previous fallback and Vulkan EXRs; HIP differences remain below its measured
 pre-existing cold/warm nondeterminism. Reports and inspected triptychs are in
 [`validation/2026-08-03/light-proposal-emission-phase`](validation/2026-08-03/light-proposal-emission-phase/README.md).
+Surface analytic, triangle, and environment NEE now also reproduce Cycles'
+constant-emission scheduling boundary. A total closure-tree transfer relation
+classifies non-emitting, constant, and deferred graphs from socket provenance;
+linked values remain deferred even when their source is a Constant node. The
+constant device callable can read only the runtime parameter block, while the
+full raw closure evaluator runs after a non-zero receiving BSDF and before
+shadow traversal. Constant World background hits use the same restricted
+path. Full CTest passed `123/123`; the fresh five-way Lone Monk render is
+pixel-exact against the previous fallback and Vulkan EXRs, with HIP inside its
+measured runtime non-determinism floor. The formal relation, compile data,
+reports, and inspected triptychs are in
+[`validation/2026-08-03/constant-light-emission`](validation/2026-08-03/constant-light-emission/README.md).
 
 The first heterogeneous transport checkpoint now isolates the formal
 null-collision transition in a Luisa `.h`/`.cpp` component. It pins current
