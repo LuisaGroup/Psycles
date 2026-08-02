@@ -354,6 +354,18 @@ find_simple_world_nishita(yyjson_val *world) {
         SocketValue::floating(0.0f)));
     static_cast<void>(graph.set_input(
         closure,
+        "SubsurfaceWeight",
+        SocketValue::floating(0.0f)));
+    static_cast<void>(graph.set_input(
+        closure,
+        "SubsurfaceRadius",
+        SocketValue::vector({1.0f, 0.2f, 0.1f})));
+    static_cast<void>(graph.set_input(
+        closure,
+        "SubsurfaceScale",
+        SocketValue::floating(0.005f)));
+    static_cast<void>(graph.set_input(
+        closure,
         "IOR",
         SocketValue::floating(1.5f)));
     static_cast<void>(graph.set_input(

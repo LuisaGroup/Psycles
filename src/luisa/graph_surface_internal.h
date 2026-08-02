@@ -50,6 +50,9 @@ struct TracedClosure {
     Float3 normal;
     Float roughness;
     Float diffuse_roughness;
+    Float subsurface_weight;
+    Float3 subsurface_radius;
+    Float subsurface_scale;
     Float metallic;
     Float ior;
     Float specular_ior_level;

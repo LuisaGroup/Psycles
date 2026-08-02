@@ -48,6 +48,9 @@ GraphSurfaceImplementation::GraphSurfaceImplementation(
             _capabilities.may_be_transparent |=
                 closure.operation ==
                 compiler::ClosureOperation::transparent;
+            _capabilities.may_have_subsurface |=
+                closure.operation ==
+                compiler::ClosureOperation::principled;
         }
         _capabilities.may_have_volume = _program->volume_root().valid();
     }

@@ -299,6 +299,9 @@ struct ClosureInstruction {
     ValueExpressionId normal;
     ValueExpressionId roughness;
     ValueExpressionId diffuse_roughness;
+    ValueExpressionId subsurface_weight;
+    ValueExpressionId subsurface_radius;
+    ValueExpressionId subsurface_scale;
     ValueExpressionId metallic;
     ValueExpressionId ior;
     ValueExpressionId specular_ior_level;

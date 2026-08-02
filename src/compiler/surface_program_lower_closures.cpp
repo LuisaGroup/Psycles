@@ -25,6 +25,9 @@ namespace psycles::compiler::detail {
         auto normal = lower_value_input(node, "Normal");
         std::optional<ValueExpressionId> metallic;
         std::optional<ValueExpressionId> diffuse_roughness;
+        std::optional<ValueExpressionId> subsurface_weight;
+        std::optional<ValueExpressionId> subsurface_radius;
+        std::optional<ValueExpressionId> subsurface_scale;
         std::optional<ValueExpressionId> ior;
         std::optional<ValueExpressionId> specular_ior_level;
         std::optional<ValueExpressionId> specular_tint;
@@ -36,6 +39,12 @@ namespace psycles::compiler::detail {
             metallic = lower_value_input(node, "Metallic");
             diffuse_roughness =
                 lower_value_input(node, "DiffuseRoughness");
+            subsurface_weight =
+                lower_value_input(node, "SubsurfaceWeight");
+            subsurface_radius =
+                lower_value_input(node, "SubsurfaceRadius");
+            subsurface_scale =
+                lower_value_input(node, "SubsurfaceScale");
             specular_ior_level =
                 lower_value_input(node, "SpecularIORLevel");
             specular_tint =
@@ -43,7 +52,8 @@ namespace psycles::compiler::detail {
         }
         if (color && roughness && normal &&
             (node.type != node_type::principled_bsdf ||
-             (metallic && diffuse_roughness && ior &&
+             (metallic && diffuse_roughness && subsurface_weight &&
+              subsurface_radius && subsurface_scale && ior &&
               specular_ior_level && specular_tint)) &&
             (node.type != node_type::glass_bsdf || ior)) {
             publish(
@@ -65,6 +75,15 @@ namespace psycles::compiler::detail {
                     .roughness = *roughness,
                     .diffuse_roughness =
                         diffuse_roughness.value_or(
+                            ValueExpressionId{}),
+                    .subsurface_weight =
+                        subsurface_weight.value_or(
+                            ValueExpressionId{}),
+                    .subsurface_radius =
+                        subsurface_radius.value_or(
+                            ValueExpressionId{}),
+                    .subsurface_scale =
+                        subsurface_scale.value_or(
                             ValueExpressionId{}),
                     .metallic =
                         metallic.value_or(ValueExpressionId{}),

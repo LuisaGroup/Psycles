@@ -56,6 +56,38 @@ public:
                 "Diffuse Roughness",
                 SocketType::floating));
             static_cast<void>(context.bind(
+                id,
+                "SubsurfaceWeight",
+                node,
+                "Subsurface Weight",
+                SocketType::floating));
+            static_cast<void>(context.bind(
+                id,
+                "SubsurfaceRadius",
+                node,
+                "Subsurface Radius",
+                SocketType::vector));
+            static_cast<void>(context.bind(
+                id,
+                "SubsurfaceScale",
+                node,
+                "Subsurface Scale",
+                SocketType::floating));
+            auto *subsurface_weight =
+                context.raw_input(node, "Subsurface Weight");
+            const auto uses_subsurface =
+                subsurface_weight != nullptr &&
+                (boolean(member(subsurface_weight, "linked")) ||
+                    number(member(subsurface_weight, "default")) >
+                        1.0e-5f);
+            if (uses_subsurface) {
+                context.warn_once(
+                    "principled-subsurface-approximation:" + node_name,
+                    "Principled subsurface transport uses a "
+                    "radius-weighted diffuse approximation; "
+                    "spatial BSSRDF random walks are not yet implemented");
+            }
+            static_cast<void>(context.bind(
                 id, "IOR", node, "IOR", SocketType::floating));
             static_cast<void>(context.bind(
                 id,
