@@ -220,6 +220,116 @@ void test_closure_tree_is_preserved() {
         "emission feature was not preserved through the closure tree");
 }
 
+void test_cycles_emission_evaluation_mode() {
+    ShaderCompiler compiler{make_core_node_registry()};
+    const auto compile_mode = [&](const ShaderGraph &graph) {
+        const auto shader = compiler.compile(graph);
+        expect(shader.ok(), "emission scheduling graph failed to compile");
+        const auto surface =
+            compile_surface_program(*shader.program);
+        expect(surface.ok(), "emission scheduling graph failed to lower");
+        return surface.program->emission_evaluation();
+    };
+
+    ShaderGraph diffuse_graph;
+    const auto diffuse =
+        diffuse_graph.add_node(node_type::diffuse_bsdf, "Diffuse");
+    diffuse_graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = diffuse, .socket = "Closure"});
+    expect(
+        compile_mode(diffuse_graph) == EmissionEvaluationMode::none,
+        "non-emitting closure was scheduled as an emitter");
+
+    ShaderGraph constant_graph;
+    const auto constant_emission =
+        constant_graph.add_node(node_type::emission, "Emission");
+    constant_graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = constant_emission, .socket = "Closure"});
+    expect(
+        compile_mode(constant_graph) ==
+            EmissionEvaluationMode::constant,
+        "unconnected Emission parameters missed Cycles' constant path");
+
+    ShaderGraph linked_color_graph;
+    const auto color = linked_color_graph.add_node(
+        node_type::constant_color, "Linked Constant Color");
+    const auto linked_color_emission = linked_color_graph.add_node(
+        node_type::emission, "Emission");
+    expect(
+        linked_color_graph.connect(
+            {.node = color, .socket = "Color"},
+            linked_color_emission,
+            "Color"),
+        "failed to connect constant emission color");
+    linked_color_graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{
+            .node = linked_color_emission,
+            .socket = "Closure"});
+    expect(
+        compile_mode(linked_color_graph) ==
+            EmissionEvaluationMode::deferred,
+        "linked Emission color was incorrectly folded on the host");
+
+    ShaderGraph additive_graph;
+    const auto additive_diffuse = additive_graph.add_node(
+        node_type::diffuse_bsdf, "Diffuse");
+    const auto additive_emission = additive_graph.add_node(
+        node_type::emission, "Emission");
+    const auto add = additive_graph.add_node(
+        node_type::add_closure, "Add");
+    expect(
+        additive_graph.connect(
+            {.node = additive_diffuse, .socket = "Closure"},
+            add,
+            "A") &&
+            additive_graph.connect(
+                {.node = additive_emission, .socket = "Closure"},
+                add,
+                "B"),
+        "failed to construct additive emission graph");
+    additive_graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = add, .socket = "Closure"});
+    expect(
+        compile_mode(additive_graph) ==
+            EmissionEvaluationMode::constant,
+        "non-emitting Add branch invalidated constant emission");
+
+    ShaderGraph linked_factor_graph;
+    const auto factor = linked_factor_graph.add_node(
+        node_type::constant_float, "Linked Constant Factor");
+    const auto factor_diffuse = linked_factor_graph.add_node(
+        node_type::diffuse_bsdf, "Diffuse");
+    const auto factor_emission = linked_factor_graph.add_node(
+        node_type::emission, "Emission");
+    const auto mix = linked_factor_graph.add_node(
+        node_type::mix_closure, "Mix");
+    expect(
+        linked_factor_graph.connect(
+            {.node = factor, .socket = "Value"},
+            mix,
+            "Factor") &&
+            linked_factor_graph.connect(
+                {.node = factor_diffuse, .socket = "Closure"},
+                mix,
+                "A") &&
+            linked_factor_graph.connect(
+                {.node = factor_emission, .socket = "Closure"},
+                mix,
+                "B"),
+        "failed to construct linked-factor emission graph");
+    linked_factor_graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = mix, .socket = "Closure"});
+    expect(
+        compile_mode(linked_factor_graph) ==
+            EmissionEvaluationMode::deferred,
+        "linked Mix factor was incorrectly folded into constant emission");
+}
+
 void test_volume_closure_tree_is_preserved() {
     ShaderGraph graph;
     const auto surface =
@@ -1322,6 +1432,7 @@ int main() {
         test_shader_graph_and_invalidation();
         test_image_texture_modes_are_structural();
         test_closure_tree_is_preserved();
+        test_cycles_emission_evaluation_mode();
         test_volume_closure_tree_is_preserved();
         test_combine_color_lowers_to_surface_program();
         test_cycles_color_value_nodes_lower_to_surface_program();

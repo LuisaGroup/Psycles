@@ -292,6 +292,16 @@ enum class ClosureOperation : std::uint8_t {
     mix
 };
 
+// Scheduling contract for Cycles' next-event light-shader evaluation. This is
+// a proof about the closure program's structure, not a host-side evaluation of
+// its radiance: parameter values remain runtime data and are evaluated by the
+// Luisa device program.
+enum class EmissionEvaluationMode : std::uint8_t {
+    none,
+    constant,
+    deferred
+};
+
 struct ClosureInstruction {
     ClosureOperation operation{ClosureOperation::diffuse};
     contract::NodeId source_node;
@@ -371,6 +381,8 @@ private:
     std::vector<VolumeInstruction> _volume_instructions;
     ClosureExpressionId _root;
     VolumeExpressionId _volume_root;
+    EmissionEvaluationMode _emission_evaluation{
+        EmissionEvaluationMode::none};
 
 public:
     SurfaceProgram(
@@ -405,6 +417,10 @@ public:
     }
     [[nodiscard]] VolumeExpressionId volume_root() const noexcept {
         return _volume_root;
+    }
+    [[nodiscard]] EmissionEvaluationMode
+    emission_evaluation() const noexcept {
+        return _emission_evaluation;
     }
 };
 
