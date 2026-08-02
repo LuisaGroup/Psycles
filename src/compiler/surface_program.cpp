@@ -1,8 +1,100 @@
 #include "surface_program_builder.h"
 
 #include <utility>
+#include <vector>
 
 namespace psycles::compiler {
+namespace {
+
+struct EmissionProof {
+    bool may_emit{};
+    bool cycles_constant{true};
+};
+
+[[nodiscard]] bool is_unconnected_parameter(
+    const std::vector<ValueInstruction> &values,
+    ValueExpressionId expression,
+    contract::NodeId owner) noexcept {
+    return expression.valid() &&
+           expression.value < values.size() &&
+           values[expression.value].operation ==
+               ValueOperation::parameter &&
+           values[expression.value].parameter.valid() &&
+           values[expression.value].source_node == owner;
+}
+
+// This transfer function is the closed-form counterpart of Cycles'
+// output_estimate_emission relation. Non-emitting closure leaves are the
+// additive identity and do not force shader evaluation. Emission inputs and
+// Mix weights are provably constant only when they are direct, unconnected
+// parameters; a linked value remains deferred even if a later optimizer could
+// prove it numerically uniform. That preserves Cycles' conservative scheduling
+// without evaluating or baking a single material value on the host.
+[[nodiscard]] EmissionEvaluationMode analyze_emission_evaluation(
+    const std::vector<ValueInstruction> &values,
+    const std::vector<ClosureInstruction> &closures,
+    ClosureExpressionId root) noexcept {
+    if (!root.valid() || root.value >= closures.size()) {
+        return EmissionEvaluationMode::none;
+    }
+    std::vector<EmissionProof> proofs;
+    proofs.reserve(closures.size());
+    const auto dependency = [&](ClosureExpressionId id) noexcept {
+        return id.valid() && id.value < proofs.size()
+                   ? proofs[id.value]
+                   : EmissionProof{.may_emit = true,
+                         .cycles_constant = false};
+    };
+    for (const auto &closure : closures) {
+        EmissionProof proof;
+        switch (closure.operation) {
+            case ClosureOperation::null_closure:
+            case ClosureOperation::diffuse:
+            case ClosureOperation::translucent:
+            case ClosureOperation::principled:
+            case ClosureOperation::glossy:
+            case ClosureOperation::glass:
+            case ClosureOperation::transparent:
+                break;
+            case ClosureOperation::emission:
+                proof.may_emit = true;
+                proof.cycles_constant =
+                    is_unconnected_parameter(
+                        values, closure.color, closure.source_node) &&
+                    is_unconnected_parameter(
+                        values, closure.strength, closure.source_node);
+                break;
+            case ClosureOperation::add: {
+                const auto a = dependency(closure.a);
+                const auto b = dependency(closure.b);
+                proof.may_emit = a.may_emit || b.may_emit;
+                proof.cycles_constant =
+                    a.cycles_constant && b.cycles_constant;
+                break;
+            }
+            case ClosureOperation::mix: {
+                const auto a = dependency(closure.a);
+                const auto b = dependency(closure.b);
+                proof.may_emit = a.may_emit || b.may_emit;
+                proof.cycles_constant =
+                    a.cycles_constant && b.cycles_constant &&
+                    is_unconnected_parameter(
+                        values, closure.factor, closure.source_node);
+                break;
+            }
+        }
+        proofs.emplace_back(proof);
+    }
+    const auto result = proofs[root.value];
+    if (!result.may_emit) {
+        return EmissionEvaluationMode::none;
+    }
+    return result.cycles_constant
+               ? EmissionEvaluationMode::constant
+               : EmissionEvaluationMode::deferred;
+}
+
+}// namespace
 
 SurfaceProgram::SurfaceProgram(
     std::uint64_t structure_signature,
@@ -18,7 +110,11 @@ SurfaceProgram::SurfaceProgram(
       _closure_instructions{std::move(closure_instructions)},
       _volume_instructions{std::move(volume_instructions)},
       _root{root},
-      _volume_root{volume_root} {}
+      _volume_root{volume_root},
+      _emission_evaluation{analyze_emission_evaluation(
+          _value_instructions,
+          _closure_instructions,
+          _root)} {}
 
 SurfaceParameterBlock::SurfaceParameterBlock(
     const SurfaceProgram &program) {
