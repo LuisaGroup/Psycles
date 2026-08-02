@@ -6,42 +6,6 @@ namespace psycles::luisa_backend::detail {
 
 SurfaceCallables make_surface_callables(
     const std::shared_ptr<LuisaSceneData> &scene) noexcept {
-    SurfaceEvaluateCallable evaluate =
-        [scene](
-            BufferFloat4 parameters,
-            BufferFloat cycles_bsdf_tables,
-            BindlessVar textures,
-            BindlessVar geometry_heap,
-            UInt surface_tag,
-            Var<SurfacePointCall> packed_point,
-            Float3 outgoing,
-            UInt lobe_mask,
-            UInt transport_mode,
-            Float glossy_filter_roughness) noexcept {
-            BufferShaderServices services{
-                parameters,
-                cycles_bsdf_tables,
-                textures,
-                geometry_heap,
-                scene->attribute_binding_slot,
-                scene->attribute_range_slot,
-                scene->nishita_texture_bindings,
-                scene->shader_color_space};
-            auto point =
-                unpack_surface_point(packed_point);
-            auto query = SurfaceQuery{
-                .lobe_mask = lobe_mask,
-                .transport_mode = transport_mode,
-                .glossy_filter_roughness =
-                    glossy_filter_roughness};
-            return pack_surface_evaluation(
-                scene->surfaces.evaluate(
-                    surface_tag,
-                    services,
-                    point,
-                    outgoing,
-                    query));
-        };
     SurfaceEvaluateLightCallable evaluate_light =
         [scene](
             BufferFloat4 parameters,
@@ -246,7 +210,6 @@ SurfaceCallables make_surface_callables(
                 unpack_surface_point(packed_point));
         };
     return {
-        std::move(evaluate),
         std::move(evaluate_light),
         std::move(emission),
         std::move(sample),

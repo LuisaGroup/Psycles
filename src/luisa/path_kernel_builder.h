@@ -114,11 +114,6 @@ struct PathKernelInvocation {
     volume_guiding_majorant_optical_depth()
         const noexcept;
     [[nodiscard]] SurfaceEvaluation
-    evaluate_surface(UInt surface_tag,
-                     const SurfacePoint &point,
-                     Float3 outgoing,
-                     const SurfaceQuery &query) const noexcept;
-    [[nodiscard]] SurfaceEvaluation
     evaluate_light_surface(UInt surface_tag,
                            const SurfacePoint &point,
                            Float3 outgoing,

@@ -80,6 +80,24 @@ GraphSurfaceImplementation::evaluate_traced(
         Float3{outgoing_expression}, point.shading_normal);
     auto incoming = safe_normalize(point.incoming, -outgoing);
     auto light_shader_flags = UInt{light_shader_flags_expression};
+    Bool light_diffuse_included = true;
+    Bool light_glossy_included = true;
+    Bool light_glass_included = true;
+    if (sampled_light) {
+        using namespace contract::cycles_abi;
+        const auto excludes_diffuse =
+            (light_shader_flags & shader_exclude_diffuse) != 0u;
+        const auto excludes_glossy =
+            (light_shader_flags & shader_exclude_glossy) != 0u;
+        const auto excludes_transmit =
+            (light_shader_flags & shader_exclude_transmit) != 0u;
+        light_diffuse_included = !excludes_diffuse;
+        light_glossy_included = !excludes_glossy;
+        // Cycles treats a glass closure as a hybrid rather than assigning
+        // each sampled direction to one pure light-visibility class.
+        light_glass_included =
+            !(excludes_glossy & excludes_transmit);
+    }
     auto diffuse_enabled =
         (query.lobe_mask & static_cast<std::uint32_t>(event_diffuse)) !=
         0u;
@@ -155,18 +173,12 @@ GraphSurfaceImplementation::evaluate_traced(
                 is_glass & select(glossy_enabled,
                                transmission_enabled,
                                glass_is_transmission);
-            Bool contribution_excluded = false;
-            if (sampled_light) {
-                contribution_excluded =
-                    sampled_light_excludes_closure(
-                        closure, light_shader_flags);
-            }
             const auto diffuse_contributes =
-                diffuse_allowed & !contribution_excluded;
+                diffuse_allowed & light_diffuse_included;
             const auto glossy_contributes =
-                glossy_allowed & !contribution_excluded;
+                glossy_allowed & light_glossy_included;
             const auto glass_contributes =
-                glass_allowed & !contribution_excluded;
+                glass_allowed & light_glass_included;
             Float3 diffuse_contribution;
             Float3 glossy_contribution;
             Float3 glass_contribution = make_float3(0.0f);
@@ -205,34 +217,38 @@ GraphSurfaceImplementation::evaluate_traced(
                            : select(diffuse_pdf,
                                  glossy_pdf,
                                  glossy_allowed);
-            auto contribution = select(make_float3(0.0f),
-                                    diffuse_contribution,
-                                    diffuse_contributes) +
-                                select(make_float3(0.0f),
-                                    glossy_contribution,
-                                    glossy_contributes) +
-                                select(make_float3(0.0f),
-                                    glass_contribution,
-                                    glass_contributes);
-            contribution = select(make_float3(0.0f),
-                contribution,
-                diffuse_contributes | glossy_contributes |
-                    glass_contributes);
             auto enabled_pdf =
                 select(0.0f,
                     pdf,
                     diffuse_allowed | glossy_allowed | glass_allowed);
-            result.f += contribution;
-            result.diffuse_f += select(make_float3(0.0f),
-                diffuse_contribution,
-                diffuse_contributes);
-            result.glossy_f += select(make_float3(0.0f),
-                                   glossy_contribution,
-                                   glossy_contributes) +
-                               select(make_float3(0.0f),
-                                   glass_contribution,
-                                   glass_contributes &
-                                       (!glass_is_transmission));
+            const auto eligible_diffuse =
+                select(make_float3(0.0f),
+                    diffuse_contribution,
+                    diffuse_contributes);
+            const auto eligible_glossy =
+                select(make_float3(0.0f),
+                    glossy_contribution,
+                    glossy_contributes);
+            const auto eligible_glass =
+                select(make_float3(0.0f),
+                    glass_contribution,
+                    glass_contributes);
+            const auto eligible_glass_reflection =
+                select(make_float3(0.0f),
+                    glass_contribution,
+                    glass_contributes & (!glass_is_transmission));
+            // Light visibility is a linear projection of the evaluated
+            // closure vector. Distributing it through the sum preserves the
+            // projection exactly while closure weights and PDFs below remain
+            // functions of the unprojected eligibility predicates.
+            result.f +=
+                eligible_diffuse +
+                eligible_glossy +
+                eligible_glass;
+            result.diffuse_f += eligible_diffuse;
+            result.glossy_f +=
+                eligible_glossy +
+                eligible_glass_reflection;
             auto weight = closure_sample_weight(closure);
             weight =
                 select(0.0f,
@@ -246,7 +262,7 @@ GraphSurfaceImplementation::evaluate_traced(
                     (sample_weight(diffuse_contribution) > 0.0f));
             has_translucent =
                 has_translucent |
-                ((translucent_allowed & !contribution_excluded) &
+                ((translucent_allowed & light_diffuse_included) &
                     (sample_weight(diffuse_contribution) > 0.0f));
             has_glossy =
                 has_glossy |
