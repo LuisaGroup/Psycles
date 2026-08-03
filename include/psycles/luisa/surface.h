@@ -219,6 +219,12 @@ enum class SurfaceClosureLobe : std::uint32_t {
     dielectric
 };
 
+// Cycles kernel/types.h::MAX_CLOSURE. Scene analysis may specialize to a
+// smaller graph-derived value, but no surface closure allocation may exceed
+// this ABI limit.
+inline constexpr std::uint32_t
+    maximum_surface_closure_capacity = 64u;
+
 // Canonical device-expression record emitted after Cycles-compatible closure
 // allocation and setup. Fields which do not belong to a closure family are
 // explicitly zeroed by the producer. This makes the record safe to retain in

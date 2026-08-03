@@ -3,6 +3,7 @@
 #include <psycles/compiler/surface_program.h>
 #include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/graph_surface.h>
+#include <psycles/luisa/surface_closure_set.h>
 
 #include "luisa_surface_test_support.h"
 
@@ -30,6 +31,7 @@ using psycles::test_support::ParameterShaderServices;
 
 constexpr auto closure_slots = 8u;
 constexpr auto records_per_slot = 6u;
+constexpr auto storage_records_per_slot = 13u;
 
 struct CollectedClosureTrace {
     UInt count;
@@ -251,6 +253,179 @@ int main(int argc, char **argv) {
         output.write(base + 2u, make_float4(trace.normal, 0.0f));
     };
 
+    Kernel1D retain = [&](BufferFloat4 parameter_buffer,
+                          BufferFloat4 output) noexcept {
+        const auto invocation = dispatch_x();
+        const auto material = invocation / closure_slots;
+        const auto requested = invocation % closure_slots;
+        auto point = make_surface_point();
+        point.parameter_block = select(
+            0u, glass_parameter_base, material != 0u);
+        ParameterShaderServices services{parameter_buffer};
+        const auto tag = select(
+            UInt{layered_tag}, UInt{glass_tag}, material != 0u);
+        SurfaceClosureSet closures{3u};
+        static_cast<void>(surfaces.collect_closures(
+            tag,
+            services,
+            point,
+            true,
+            true,
+            closures));
+        const auto closure = closures.entry(requested);
+        const auto valid = requested < closures.count();
+        const auto base = invocation * 3u;
+        output.write(base,
+            make_float4(
+                cast<float>(closures.count()),
+                cast<float>(closure.kind),
+                cast<float>(closure.lobe),
+                select(0.0f, 1.0f, valid)));
+        output.write(base + 1u,
+            make_float4(
+                closure.weight,
+                closure.sample_weight));
+        output.write(base + 2u,
+            make_float4(
+                closure.normal,
+                closure.allocation_weight));
+    };
+
+    Kernel1D storage = [&](BufferFloat4 output) noexcept {
+        SurfaceClosureSet closures{2u};
+
+        auto ignored = SurfaceClosureRecord::zero();
+        ignored.allocation_weight = 1.0f;
+        closures.add(ignored);
+
+        auto below_cutoff = SurfaceClosureRecord::zero();
+        below_cutoff.kind = static_cast<std::uint32_t>(
+            SurfaceClosureKind::diffuse);
+        below_cutoff.allocation_weight =
+            0.5f * cycles_closure::closure_weight_cutoff;
+        closures.add(below_cutoff);
+
+        auto invalid_setup = SurfaceClosureRecord::zero();
+        invalid_setup.kind = static_cast<std::uint32_t>(
+            SurfaceClosureKind::principled);
+        invalid_setup.lobe = static_cast<std::uint32_t>(
+            SurfaceClosureLobe::sheen);
+        invalid_setup.weight = make_float3(0.1f, 0.2f, 0.3f);
+        invalid_setup.allocation_weight = 0.2f;
+        invalid_setup.sample_weight = 0.0f;
+        invalid_setup.albedo = make_float3(0.4f, 0.5f, 0.6f);
+        invalid_setup.normal = make_float3(0.0f, 1.0f, 0.0f);
+        invalid_setup.ior = 1.2f;
+        invalid_setup.setup_valid = false;
+        closures.add(invalid_setup);
+
+        auto glass_record = SurfaceClosureRecord::zero();
+        glass_record.kind = static_cast<std::uint32_t>(
+            SurfaceClosureKind::glass);
+        glass_record.lobe = static_cast<std::uint32_t>(
+            SurfaceClosureLobe::transmission);
+        glass_record.weight = make_float3(1.0f, 2.0f, 3.0f);
+        glass_record.allocation_weight = 0.4f;
+        glass_record.sample_weight = 0.5f;
+        glass_record.setup_valid = true;
+        glass_record.albedo = make_float3(4.0f, 5.0f, 6.0f);
+        glass_record.reflection_albedo =
+            make_float3(7.0f, 8.0f, 9.0f);
+        glass_record.transmission_albedo =
+            make_float3(10.0f, 11.0f, 12.0f);
+        glass_record.color = make_float3(13.0f, 14.0f, 15.0f);
+        glass_record.normal = make_float3(16.0f, 17.0f, 18.0f);
+        glass_record.roughness = 0.19f;
+        glass_record.diffuse_roughness = 0.20f;
+        glass_record.metallic = 0.21f;
+        glass_record.ior = 1.37f;
+        glass_record.specular_ior_level = 0.22f;
+        glass_record.specular_tint =
+            make_float3(23.0f, 24.0f, 25.0f);
+        glass_record.sheen_transform_a = 0.26f;
+        glass_record.sheen_transform_b = 0.27f;
+        glass_record.evaluation_scale =
+            make_float3(28.0f, 29.0f, 30.0f);
+        glass_record.fresnel_f0 =
+            make_float3(31.0f, 32.0f, 33.0f);
+        glass_record.fresnel_f90 =
+            make_float3(34.0f, 35.0f, 36.0f);
+        glass_record.reflection_tint =
+            make_float3(37.0f, 38.0f, 39.0f);
+        glass_record.transmission_tint =
+            make_float3(40.0f, 41.0f, 42.0f);
+        glass_record.preserve_ggx_energy = true;
+        glass_record.beckmann = true;
+        closures.add(glass_record);
+
+        auto overflow = SurfaceClosureRecord::zero();
+        overflow.kind = static_cast<std::uint32_t>(
+            SurfaceClosureKind::diffuse);
+        overflow.weight = make_float3(99.0f);
+        overflow.allocation_weight = 0.9f;
+        overflow.setup_valid = true;
+        closures.add(overflow);
+
+        const auto requested = dispatch_x();
+        const auto closure = closures.entry(requested);
+        const auto valid = requested < closures.count();
+        const auto flags =
+            select(0u, 1u, closure.setup_valid) |
+            select(0u, 2u, closure.preserve_ggx_energy) |
+            select(0u, 4u, closure.beckmann);
+        const auto base = requested * storage_records_per_slot;
+        output.write(base,
+            make_float4(
+                cast<float>(closures.count()),
+                cast<float>(closure.kind),
+                cast<float>(closure.lobe),
+                select(0.0f, 1.0f, valid)));
+        output.write(base + 1u,
+            make_float4(
+                closure.weight,
+                closure.allocation_weight));
+        output.write(base + 2u,
+            make_float4(
+                closure.albedo,
+                closure.sample_weight));
+        output.write(base + 3u,
+            make_float4(
+                closure.reflection_albedo,
+                closure.roughness));
+        output.write(base + 4u,
+            make_float4(
+                closure.transmission_albedo,
+                closure.diffuse_roughness));
+        output.write(base + 5u,
+            make_float4(
+                closure.color,
+                closure.metallic));
+        output.write(base + 6u,
+            make_float4(
+                closure.normal,
+                closure.ior));
+        output.write(base + 7u,
+            make_float4(
+                closure.specular_tint,
+                closure.specular_ior_level));
+        output.write(base + 8u,
+            make_float4(
+                closure.evaluation_scale,
+                closure.sheen_transform_a));
+        output.write(base + 9u,
+            make_float4(
+                closure.fresnel_f0,
+                closure.sheen_transform_b));
+        output.write(base + 10u,
+            make_float4(
+                closure.fresnel_f90,
+                cast<float>(flags)));
+        output.write(base + 11u,
+            make_float4(closure.reflection_tint, 0.0f));
+        output.write(base + 12u,
+            make_float4(closure.transmission_tint, 0.0f));
+    };
+
     Context context{argv[0]};
     auto device = context.create_device(backend);
     auto stream = device.create_stream();
@@ -261,17 +436,33 @@ int main(int argc, char **argv) {
         device.create_buffer<luisa::float4>(invocation_count * records_per_slot);
     auto legacy_buffer =
         device.create_buffer<luisa::float4>(invocation_count * 3u);
+    auto retained_buffer =
+        device.create_buffer<luisa::float4>(invocation_count * 3u);
+    auto storage_buffer = device.create_buffer<luisa::float4>(
+        3u * storage_records_per_slot);
     auto collect_kernel = device.compile(collect);
     auto legacy_kernel = device.compile(legacy);
+    auto retain_kernel = device.compile(retain);
+    auto storage_kernel = device.compile(storage);
     std::array<luisa::float4, invocation_count * records_per_slot> collected{};
     std::array<luisa::float4, invocation_count * 3u> old{};
+    std::array<luisa::float4, invocation_count * 3u> retained{};
+    std::array<luisa::float4,
+        3u * storage_records_per_slot>
+        stored{};
     stream << parameter_buffer.copy_from(luisa::span{parameters})
            << collect_kernel(parameter_buffer, collected_buffer)
                   .dispatch(invocation_count)
            << collected_buffer.copy_to(luisa::span{collected})
            << legacy_kernel(parameter_buffer, legacy_buffer)
                   .dispatch(invocation_count)
-           << legacy_buffer.copy_to(luisa::span{old}) << synchronize();
+           << legacy_buffer.copy_to(luisa::span{old})
+           << retain_kernel(parameter_buffer, retained_buffer)
+                  .dispatch(invocation_count)
+           << retained_buffer.copy_to(luisa::span{retained})
+           << storage_kernel(storage_buffer).dispatch(3u)
+           << storage_buffer.copy_to(luisa::span{stored})
+           << synchronize();
 
     constexpr std::array layered_kinds{
         SurfaceClosureKind::transparent, SurfaceClosureKind::principled,
@@ -317,6 +508,34 @@ int main(int argc, char **argv) {
             : material != 0u && expected_valid
                 ? cycles_closure::type_microfacet_beckmann_glass
                 : cycles_closure::type_none;
+        const auto retained_count = material == 0u ? 3u : 1u;
+        const auto retained_valid = requested < retained_count;
+        const auto retained_meta = retained[legacy_base];
+        const auto retained_equal =
+            approximately_equal(retained_meta.x,
+                static_cast<float>(retained_count)) &&
+            approximately_equal(retained_meta.y,
+                static_cast<float>(
+                    retained_valid
+                        ? expected_kind
+                        : SurfaceClosureKind::none)) &&
+            approximately_equal(retained_meta.z,
+                static_cast<float>(
+                    retained_valid
+                        ? expected_lobe
+                        : SurfaceClosureLobe::none)) &&
+            approximately_equal(retained_meta.w,
+                retained_valid ? 1.0f : 0.0f) &&
+            approximately_equal(
+                retained[legacy_base + 1u],
+                retained_valid
+                    ? collected[collected_base + 1u]
+                    : luisa::float4{}) &&
+            approximately_equal(
+                retained[legacy_base + 2u],
+                retained_valid
+                    ? collected[collected_base + 2u]
+                    : luisa::float4{0.0f, 0.0f, 1.0f, 0.0f});
         const auto core_equal =
             approximately_equal(meta.x, static_cast<float>(expected_count)) &&
             approximately_equal(meta.y, static_cast<float>(expected_kind)) &&
@@ -353,7 +572,7 @@ int main(int argc, char **argv) {
                               requested == 5u
                           ? 2.0f
                           : 0.0f);
-        if (!core_equal || !all_finite ||
+        if (!core_equal || !retained_equal || !all_finite ||
             !approximately_equal(flags, expected_flags) ||
             !approximately_equal(collected[collected_base + 5u].x, 0.0f) ||
             !approximately_equal(collected[collected_base + 5u].y, 0.0f) ||
@@ -366,6 +585,66 @@ int main(int argc, char **argv) {
                       << legacy_meta.w << "}, flags " << flags << '\n';
             return EXIT_FAILURE;
         }
+    }
+
+    constexpr std::array glass_storage_expected{
+        luisa::float4{2.0f,
+            static_cast<float>(SurfaceClosureKind::glass),
+            static_cast<float>(SurfaceClosureLobe::transmission),
+            1.0f},
+        luisa::float4{1.0f, 2.0f, 3.0f, 0.4f},
+        luisa::float4{4.0f, 5.0f, 6.0f, 0.5f},
+        luisa::float4{7.0f, 8.0f, 9.0f, 0.19f},
+        luisa::float4{10.0f, 11.0f, 12.0f, 0.20f},
+        luisa::float4{13.0f, 14.0f, 15.0f, 0.21f},
+        luisa::float4{16.0f, 17.0f, 18.0f, 1.37f},
+        luisa::float4{23.0f, 24.0f, 25.0f, 0.22f},
+        luisa::float4{28.0f, 29.0f, 30.0f, 0.26f},
+        luisa::float4{31.0f, 32.0f, 33.0f, 0.27f},
+        luisa::float4{34.0f, 35.0f, 36.0f, 7.0f},
+        luisa::float4{37.0f, 38.0f, 39.0f, 0.0f},
+        luisa::float4{40.0f, 41.0f, 42.0f, 0.0f}};
+    const auto invalid_setup_retained =
+        approximately_equal(stored[0u],
+            luisa::float4{2.0f,
+                static_cast<float>(SurfaceClosureKind::principled),
+                static_cast<float>(SurfaceClosureLobe::sheen),
+                1.0f}) &&
+        approximately_equal(stored[1u],
+            luisa::float4{0.1f, 0.2f, 0.3f, 0.2f}) &&
+        approximately_equal(stored[2u],
+            luisa::float4{0.4f, 0.5f, 0.6f, 0.0f}) &&
+        approximately_equal(stored[6u],
+            luisa::float4{0.0f, 1.0f, 0.0f, 1.2f}) &&
+        approximately_equal(stored[10u].w, 0.0f);
+    auto glass_round_trip = true;
+    for (auto record = 0u;
+         record < glass_storage_expected.size();
+         ++record) {
+        glass_round_trip &= approximately_equal(
+            stored[storage_records_per_slot + record],
+            glass_storage_expected[record]);
+    }
+    const auto overflow_truncated =
+        approximately_equal(
+            stored[2u * storage_records_per_slot],
+            luisa::float4{2.0f,
+                static_cast<float>(SurfaceClosureKind::none),
+                static_cast<float>(SurfaceClosureLobe::none),
+                0.0f}) &&
+        approximately_equal(
+            stored[2u * storage_records_per_slot + 6u],
+            luisa::float4{0.0f, 0.0f, 1.0f, 1.0f}) &&
+        approximately_equal(
+            stored[2u * storage_records_per_slot + 8u],
+            luisa::float4{1.0f, 1.0f, 1.0f, 0.0f});
+    if (!invalid_setup_retained ||
+        !glass_round_trip ||
+        !overflow_truncated) {
+        std::cerr
+            << "surface closure Local storage failed on "
+            << backend << '\n';
+        return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;
 }
