@@ -2,7 +2,37 @@
 
 #include "path_tracer_shader_services.h"
 
+#include <psycles/luisa/surface_closure_evaluator.h>
+
+#include <utility>
+
 namespace psycles::luisa_backend::detail {
+namespace {
+
+template<typename Consumer>
+[[nodiscard]] decltype(auto) evaluate_surface_closures(
+    const LuisaSceneData &scene,
+    const ShaderServices &services,
+    UInt surface_tag,
+    const SurfacePoint &point,
+    Bool reflective_caustics,
+    Bool refractive_caustics,
+    Consumer &&consumer) noexcept {
+    SurfaceClosureSet closures{
+        scene.volume_metadata.closure_allocation_budget};
+    const auto collection = scene.surfaces.collect_closures(
+        surface_tag,
+        services,
+        point,
+        reflective_caustics,
+        refractive_caustics,
+        closures);
+    const SurfaceClosureEvaluator evaluator{
+        point, closures, collection.shading_normal};
+    return std::forward<Consumer>(consumer)(evaluator);
+}
+
+}// namespace
 
 SurfaceCallables make_surface_callables(
     const std::shared_ptr<LuisaSceneData> &scene) noexcept {
@@ -67,13 +97,20 @@ SurfaceCallables make_surface_callables(
                 scene->attribute_range_slot,
                 scene->nishita_texture_bindings,
                 scene->shader_color_space};
-            return scene->surfaces.runtime_flags(
-                surface_tag,
+            const auto point =
+                unpack_surface_point(packed_point);
+            return evaluate_surface_closures(
+                *scene,
                 services,
-                unpack_surface_point(packed_point),
-                glossy_filter_roughness,
+                surface_tag,
+                point,
                 reflective_caustics,
-                refractive_caustics);
+                refractive_caustics,
+                [&](const SurfaceClosureEvaluator
+                        &evaluator) noexcept {
+                    return evaluator.runtime_flags(
+                        glossy_filter_roughness);
+                });
         };
     SurfaceEmissionCallable emission =
         [scene](
@@ -173,14 +210,21 @@ SurfaceCallables make_surface_callables(
                 scene->attribute_range_slot,
                 scene->nishita_texture_bindings,
                 scene->shader_color_space};
+            const auto point =
+                unpack_surface_point(packed_point);
             return pack_surface_closure_trace(
-                scene->surfaces.closure_trace(
-                    surface_tag,
+                evaluate_surface_closures(
+                    *scene,
                     services,
-                    unpack_surface_point(packed_point),
-                    requested_index,
+                    surface_tag,
+                    point,
                     reflective_caustics,
-                    refractive_caustics));
+                    refractive_caustics,
+                    [&](const SurfaceClosureEvaluator
+                            &evaluator) noexcept {
+                        return evaluator.closure_trace(
+                            requested_index);
+                    }));
         };
     SurfaceSampleTraceCallable sample_trace =
         [scene](
@@ -239,11 +283,20 @@ SurfaceCallables make_surface_callables(
                 scene->attribute_range_slot,
                 scene->nishita_texture_bindings,
                 scene->shader_color_space};
+            const auto point =
+                unpack_surface_point(packed_point);
             return pack_surface_aov(
-                scene->surfaces.aov(
-                    surface_tag,
+                evaluate_surface_closures(
+                    *scene,
                     services,
-                    unpack_surface_point(packed_point)));
+                    surface_tag,
+                    point,
+                    true,
+                    true,
+                    [](const SurfaceClosureEvaluator
+                           &evaluator) noexcept {
+                        return evaluator.aov();
+                    }));
         };
     SurfaceShadingNormalCallable shading_normal =
         [scene](
