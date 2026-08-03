@@ -36,6 +36,7 @@ enum class PrincipledLobe : std::uint8_t {
     sheen,
     coat,
     metallic,
+    transmission,
     dielectric
 };
 
@@ -58,6 +59,12 @@ struct TracedClosure {
     // ShaderClosure::weight. This drives closure selection and the
     // Diff/Gloss/Trans color passes.
     Float3 albedo;
+    // Generalized-Schlick glass keeps its two physical lobes separate.
+    // This is required both for spectral lobe selection and for Cycles'
+    // Glossy/Transmission Color passes; re-splitting a combined albedo with
+    // a scalar dielectric Fresnel loses authored tint information.
+    Float3 reflection_albedo;
+    Float3 transmission_albedo;
     Float3 color;
     Float3 normal;
     Float roughness;
@@ -65,6 +72,7 @@ struct TracedClosure {
     Float subsurface_weight;
     Float3 subsurface_radius;
     Float subsurface_scale;
+    Float transmission_weight;
     Float metallic;
     Float ior;
     Float specular_ior_level;
@@ -90,6 +98,10 @@ struct TracedClosure {
     // Microfacet multiple-scattering scale after any weight darkening
     // has already been applied to `weight`.
     Float3 evaluation_scale;
+    Float3 fresnel_f0;
+    Float3 fresnel_f90;
+    Float3 reflection_tint;
+    Float3 transmission_tint;
     bool preserve_ggx_energy{};
     bool beckmann{};
 };
@@ -131,24 +143,6 @@ struct GgxEnergy {
 struct TransparentClosureState {
     Float3 weight;
     Float sample_weight;
-};
-
-struct PrincipledState {
-    Float eta;
-    Float3 dielectric_f0;
-    Float3 metallic_f0;
-    Float3 metallic_b;
-    Float3 dielectric_energy_scale;
-    Float3 metallic_energy_scale;
-    Float3 dielectric_weight;
-    Float dielectric_allocation_weight;
-    Float dielectric_sample_weight;
-    Float3 dielectric_albedo;
-    Float3 metallic_weight;
-    Float metallic_allocation_weight;
-    Float metallic_sample_weight;
-    Float3 metallic_albedo;
-    Float3 diffuse_weight;
 };
 
 struct ClosureSelectionState {
@@ -227,12 +221,6 @@ template <typename Id, typename Values>
     const TracedClosure &closure,
     Float incoming_cosine,
     Float3 fss) noexcept;
-[[nodiscard]] PrincipledState principled_state(
-    const ShaderServices &services,
-    const TracedClosure &closure,
-    Float3 incoming,
-    Float3 glossy_normal,
-    Bool reflective_caustics) noexcept;
 [[nodiscard]] bool is_scattering_operation(
     compiler::ClosureOperation operation) noexcept;
 [[nodiscard]] Float closure_sample_weight(
@@ -302,30 +290,6 @@ template <typename Id, typename Values>
 [[nodiscard]] Float3 sample_sheen(const TracedClosure &closure,
     Float3 incoming,
     Float2 random) noexcept;
-[[nodiscard]] Float3 glass_microfacet_intensity(
-    const TracedClosure &closure,
-    Float3 incoming,
-    Float3 outgoing,
-    Float3 glossy_normal,
-    Float glossy_filter_roughness) noexcept;
-[[nodiscard]] Float glass_microfacet_pdf(
-    const TracedClosure &closure,
-    Float3 incoming,
-    Float3 outgoing,
-    Float3 glossy_normal,
-    Bool reflection_allowed,
-    Bool transmission_allowed,
-    Float glossy_filter_roughness) noexcept;
-[[nodiscard]] GlassSample sample_glass(
-    const TracedClosure &closure,
-    Float3 incoming,
-    Float3 geometric_normal,
-    Float3 glossy_normal,
-    Float2 random_direction,
-    Float random_lobe,
-    Bool reflection_allowed,
-    Bool transmission_allowed,
-    Float glossy_filter_roughness) noexcept;
 [[nodiscard]] Float3 sample_cosine_hemisphere(
     Float3 normal, Float2 random) noexcept;
 [[nodiscard]] Float3 rotate_euler(
@@ -437,6 +401,7 @@ private:
         const SurfacePoint &point,
         const TracedValues &values,
         Bool reflective_caustics,
+        Bool refractive_caustics,
         const ClosureVisitor &visitor) const noexcept;
     void for_each_volume(const TracedValues &values,
         const VolumeVisitor &visitor) const noexcept;
@@ -452,7 +417,8 @@ public:
         const ShaderServices &services,
         const SurfacePoint &point,
         Expr<float> glossy_filter_roughness,
-        Expr<bool> reflective_caustics) const noexcept;
+        Expr<bool> reflective_caustics,
+        Expr<bool> refractive_caustics) const noexcept;
     [[nodiscard]] SurfaceEvaluation evaluate(
         const ShaderServices &services,
         const SurfacePoint &point,
@@ -472,7 +438,8 @@ public:
         const ShaderServices &services,
         const SurfacePoint &point,
         Expr<std::uint32_t> requested_index,
-        Expr<bool> reflective_caustics) const noexcept;
+        Expr<bool> reflective_caustics,
+        Expr<bool> refractive_caustics) const noexcept;
     [[nodiscard]] SurfaceSampleTrace sample_trace(
         const ShaderServices &services,
         const SurfacePoint &point,

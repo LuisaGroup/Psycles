@@ -129,6 +129,11 @@ struct SurfaceQuery {
     // predicate, not merely a lobe-selection mask: Coat/specular layering of
     // lower closures also depends on it.
     Bool reflective_caustics{true};
+    // Transmission closures have an independent Cycles caustics gate. Glass
+    // remains one allocated closure when either reflective or refractive
+    // transport is enabled, with the disabled Fresnel branch carrying zero
+    // tint.
+    Bool refractive_caustics{true};
 };
 
 // Cycles sampled-light visibility is deliberately separate from the path
@@ -364,6 +369,7 @@ public:
         const ShaderServices &,
         const SurfacePoint &,
         Expr<float>,
+        Expr<bool> = true,
         Expr<bool> = true) const noexcept {
         return 0u;
     }
@@ -391,6 +397,7 @@ public:
         const ShaderServices &,
         const SurfacePoint &,
         Expr<std::uint32_t> requested_index,
+        Expr<bool> = true,
         Expr<bool> = true) const noexcept {
         return SurfaceClosureTrace::zero(requested_index);
     }
@@ -518,14 +525,16 @@ public:
         const ShaderServices &services,
         const SurfacePoint &point,
         Expr<float> glossy_filter_roughness,
-        Expr<bool> reflective_caustics = true) const noexcept {
+        Expr<bool> reflective_caustics = true,
+        Expr<bool> refractive_caustics = true) const noexcept {
         UInt result = 0u;
         _surfaces.dispatch(tag, [&](const Surface *surface) noexcept {
             result = surface->runtime_flags(
                 services,
                 point,
                 glossy_filter_roughness,
-                reflective_caustics);
+                reflective_caustics,
+                refractive_caustics);
         });
         return result;
     }
@@ -564,7 +573,8 @@ public:
         const ShaderServices &services,
         const SurfacePoint &point,
         Expr<std::uint32_t> requested_index,
-        Expr<bool> reflective_caustics = true) const noexcept {
+        Expr<bool> reflective_caustics = true,
+        Expr<bool> refractive_caustics = true) const noexcept {
         auto result =
             SurfaceClosureTrace::zero(requested_index);
         _surfaces.dispatch(tag, [&](const Surface *surface) noexcept {
@@ -572,7 +582,8 @@ public:
                 services,
                 point,
                 requested_index,
-                reflective_caustics);
+                reflective_caustics,
+                refractive_caustics);
         });
         return result;
     }

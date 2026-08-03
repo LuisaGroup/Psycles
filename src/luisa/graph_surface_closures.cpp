@@ -122,6 +122,13 @@ void GraphSurfaceImplementation::for_each_closure(
                                   values),
                               0.0f)
                         : Float{0.0f};
+                auto transmission_weight =
+                    closure.operation ==
+                            compiler::ClosureOperation::principled
+                        ? scalar(
+                              closure.transmission_weight,
+                              values)
+                        : Float{0.0f};
                 auto specular_tint =
                     closure.operation ==
                             compiler::ClosureOperation::principled
@@ -204,6 +211,8 @@ void GraphSurfaceImplementation::for_each_closure(
                         subsurface_radius,
                     .subsurface_scale =
                         subsurface_scale,
+                    .transmission_weight =
+                        transmission_weight,
                     .metallic = metallic,
                     .ior = ior,
                     .specular_ior_level =
