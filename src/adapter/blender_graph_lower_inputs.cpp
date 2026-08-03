@@ -389,6 +389,10 @@ public:
                 return finish(context.geometry_output(
                     "Backfacing", SocketType::floating));
             }
+            if (socket == "Pointiness") {
+                return finish(context.geometry_output(
+                    "Pointiness", SocketType::floating));
+            }
             if (socket == "Random Per Island") {
                 return finish(context.geometry_output(
                     "RandomPerIsland", SocketType::floating));

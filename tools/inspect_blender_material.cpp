@@ -1,11 +1,13 @@
 #include <psycles/adapter/blender_scene.h>
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/compiler/material_library.h>
+#include <psycles/contract/cycles_pointiness.h>
 
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <stdexcept>
 #include <string_view>
 
 namespace {
@@ -73,14 +75,18 @@ int main(int argc, char **argv) {
         std::cerr
             << "usage: psycles_inspect_blender_material "
                "<export-directory> <material-name> "
-               "[--require-generated-transform]\n";
+               "[--require-generated-transform|"
+               "--require-pointiness-source]\n";
         return EXIT_FAILURE;
     }
+    const auto option =
+        argc == 4 ? std::string_view{argv[3]} : std::string_view{};
     const auto require_generated_transform =
-        argc == 4 &&
-        std::string_view{argv[3]} ==
-            "--require-generated-transform";
-    if (argc == 4 && !require_generated_transform) {
+        option == "--require-generated-transform";
+    const auto require_pointiness_source =
+        option == "--require-pointiness-source";
+    if (argc == 4 && !require_generated_transform &&
+        !require_pointiness_source) {
         std::cerr
             << "unknown option: " << argv[3] << '\n';
         return EXIT_FAILURE;
@@ -139,6 +145,42 @@ int main(int argc, char **argv) {
                     return EXIT_FAILURE;
                 }
             }
+        }
+    }
+    if (require_pointiness_source) {
+        auto found_source = false;
+        for (const auto &[geometry_id, geometry] :
+             imported.scene->geometries) {
+            static_cast<void>(geometry_id);
+            if (!geometry.pointiness_source) {
+                continue;
+            }
+            found_source = true;
+            try {
+                const auto values =
+                    psycles::contract::
+                        make_cycles_pointiness_attribute(
+                            geometry.positions,
+                            geometry.pointiness_source
+                                ->point_normals,
+                            geometry.pointiness_source->edges);
+                if (values.size() != geometry.positions.size()) {
+                    std::cerr
+                        << "geometry '" << geometry.name
+                        << "' has an invalid Pointiness extent\n";
+                    return EXIT_FAILURE;
+                }
+            } catch (const std::invalid_argument &error) {
+                std::cerr
+                    << "geometry '" << geometry.name
+                    << "' has an invalid Pointiness source: "
+                    << error.what() << '\n';
+                return EXIT_FAILURE;
+            }
+        }
+        if (!found_source) {
+            std::cerr << "scene has no Cycles Pointiness source\n";
+            return EXIT_FAILURE;
         }
     }
     psycles::compiler::ShaderCompiler shader_compiler{

@@ -25,6 +25,12 @@ namespace psycles::contract {
     return hash;
 }
 
+// Cycles exposes Pointiness as a standard geometry attribute rather than a
+// user-named attribute. Keep its binding in a reserved namespace so a custom
+// attribute called "pointiness" cannot alias it.
+inline constexpr auto cycles_pointiness_attribute_id =
+    attribute_id("geom:pointiness");
+
 [[nodiscard]] inline std::uint64_t uv_attribute_id(
     std::string_view name) {
     std::string qualified{"geom:uv:"};
@@ -131,6 +137,15 @@ struct MeshAttribute {
     std::vector<T> values;
 };
 
+// Source topology retained for Cycles' mesh-sync Pointiness construction.
+// These are the evaluated Blender point normals and original (pre-triangle-
+// tessellation) edges. Pointiness is derived from them by Psycles at scene
+// synchronization time; this is geometry preprocessing, never shader baking.
+struct MeshPointinessSource {
+    std::vector<Vec3f> point_normals;
+    std::vector<std::array<std::uint32_t, 2u>> edges;
+};
+
 struct TriangleMeshDesc {
     std::string name;
     std::vector<Vec3f> positions;
@@ -164,6 +179,7 @@ struct TriangleMeshDesc {
     // BYTE_COLOR conversion therefore matches Cycles before device upload.
     std::map<std::string, MeshAttribute<Vec4f>, std::less<>>
         color_attributes;
+    std::optional<MeshPointinessSource> pointiness_source;
     std::vector<std::array<std::uint32_t, 3u>> triangles;
     std::vector<MaterialId> material_slots;
     std::vector<std::uint32_t> triangle_material_slots;

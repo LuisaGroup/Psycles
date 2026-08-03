@@ -46,6 +46,7 @@ _ALL_PROBES = (
     "flat_light_distribution",
     "gamma_color",
     "glass_transport",
+    "geometry_pointiness",
     "gradient_matrix",
     "gradient_spherical",
     "hosek_wilkie_diffuse_transport",
@@ -141,6 +142,10 @@ _REPORT_PASSES = (
 # mappings are valid. A probe may additionally require a relative-RMSE gate
 # when its purpose is to preserve Cycles' exact sample mapping.
 _PROBE_RATIO_GATES = {
+    "geometry_pointiness": {
+        "Combined": (0.99999, 1.00001),
+        "Emit": (0.99999, 1.00001),
+    },
     "wave_texture_distortion": {
         # Cycles CPU and Cycles HIP differ by 3.41e-5 relative RMSE on this
         # deliberately high-frequency saw/triangle matrix. Keep one oracle
@@ -243,6 +248,10 @@ _PROBE_RATIO_GATES = {
 }
 
 _PROBE_RELATIVE_RMSE_GATES = {
+    "geometry_pointiness": {
+        "Combined": 0.00001,
+        "Emit": 0.00001,
+    },
     "wave_texture_distortion": {
         "Combined": 0.00006,
         "Emit": 0.00006,

@@ -68,6 +68,13 @@ namespace psycles::compiler::detail {
                 .result_type = SocketType::floating}));
         publish(
             node.id,
+            "Pointiness",
+            append(ValueInstruction{
+                .operation = ValueOperation::pointiness,
+                .source_node = node.id,
+                .result_type = SocketType::floating}));
+        publish(
+            node.id,
             "RandomPerIsland",
             append(ValueInstruction{
                 .operation = ValueOperation::random_per_island,
