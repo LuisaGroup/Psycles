@@ -116,7 +116,8 @@ begin_path_kernel(const PathKernelConfig &config,
             contract::event_transmission | contract::event_transparent),
         .transport_mode =
             static_cast<std::uint32_t>(contract::TransportMode::radiance),
-        .glossy_filter_roughness = 0.0f};
+        .glossy_filter_roughness = 0.0f,
+        .reflective_caustics = true};
     return {config,
             combined,
             normal,
@@ -227,13 +228,15 @@ SurfaceEvaluation PathKernelInvocation::evaluate_light_surface(
             query.lobe_mask,
             query.transport_mode,
             query.glossy_filter_roughness,
+            query.reflective_caustics,
             shader_flags));
 }
 
 UInt PathKernelInvocation::surface_runtime_flags(
     UInt surface_tag,
     const SurfacePoint &point,
-    Float glossy_filter_roughness) const noexcept {
+    Float glossy_filter_roughness,
+    Bool reflective_caustics) const noexcept {
     return config.surfaces.runtime_flags(
         config.scene->parameter_buffer,
         config.scene->cycles_bsdf_table_buffer,
@@ -241,7 +244,8 @@ UInt PathKernelInvocation::surface_runtime_flags(
         config.scene->heap,
         surface_tag,
         pack_surface_point(point),
-        glossy_filter_roughness);
+        glossy_filter_roughness,
+        reflective_caustics);
 }
 
 Float3 PathKernelInvocation::surface_emission(UInt surface_tag,
@@ -289,13 +293,15 @@ PathKernelInvocation::sample_surface(UInt surface_tag,
                                u_direction,
                                query.lobe_mask,
                                query.transport_mode,
-                               query.glossy_filter_roughness));
+                               query.glossy_filter_roughness,
+                               query.reflective_caustics));
 }
 
 SurfaceClosureTrace PathKernelInvocation::trace_surface_closure(
     UInt surface_tag,
     const SurfacePoint &point,
-    UInt requested_index) const noexcept {
+    UInt requested_index,
+    Bool reflective_caustics) const noexcept {
     return unpack_surface_closure_trace(
         config.surfaces.closure_trace(config.scene->parameter_buffer,
                                       config.scene->cycles_bsdf_table_buffer,
@@ -303,7 +309,8 @@ SurfaceClosureTrace PathKernelInvocation::trace_surface_closure(
                                       config.scene->heap,
                                       surface_tag,
                                       pack_surface_point(point),
-                                      requested_index));
+                                      requested_index,
+                                      reflective_caustics));
 }
 
 SurfaceSampleTrace PathKernelInvocation::trace_sample_surface(
@@ -323,7 +330,8 @@ SurfaceSampleTrace PathKernelInvocation::trace_sample_surface(
                                      u_direction,
                                      query.lobe_mask,
                                      query.transport_mode,
-                                     query.glossy_filter_roughness));
+                                     query.glossy_filter_roughness,
+                                     query.reflective_caustics));
 }
 
 SurfaceAov

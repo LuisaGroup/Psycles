@@ -1,5 +1,5 @@
 #include "graph_surface_internal.h"
-#include "principled_emission_layer.h"
+#include "principled_layer_component.h"
 
 #include <utility>
 
@@ -131,6 +131,7 @@ GraphSurfaceImplementation::evaluate_traced(
     for_each_physical_closure(services,
         point,
         values,
+        query.reflective_caustics,
         [&](const TracedClosure &closure) noexcept {
             const auto allocated = closure_allocated(closure);
             const auto current_closure_index = closure_index;
@@ -171,6 +172,16 @@ GraphSurfaceImplementation::evaluate_traced(
                                      ? closure.normal
                                      : maybe_ensure_valid_specular_reflection(
                                            point, incoming, closure.normal);
+            auto glass_is_transmission =
+                dot(glossy_normal, outgoing) < 0.0f;
+            // Cycles promotes near-unit-IOR transmission samples to delta
+            // even when their microfacet distribution is otherwise rough.
+            // Such a selected closure is initialized from bsdf_sample() and
+            // must not also be accumulated through its regular bsdf_eval().
+            const auto selected_unit_ior_glass_delta =
+                selected_sample & Bool{is_glass} &
+                glass_is_transmission &
+                (abs(closure.ior - 1.0f) < 1.0e-4f);
             const auto bump_shadowing = bump_shadowing_term(point,
                 values.shading_normal,
                 closure,
@@ -211,6 +222,8 @@ GraphSurfaceImplementation::evaluate_traced(
             }
             glossy_pdf = select(
                 0.0f, glossy_pdf, bump_pdf_valid);
+            glossy_pdf = select(
+                glossy_pdf, 0.0f, selected_unit_ior_glass_delta);
             auto translucent_allowed =
                 diffuse_enabled & transmission_enabled & is_translucent;
             auto diffuse_allowed =
@@ -219,8 +232,6 @@ GraphSurfaceImplementation::evaluate_traced(
             auto glossy_allowed =
                 glossy_enabled &
                 ((is_principled && !is_sheen) || is_glossy);
-            auto glass_is_transmission =
-                dot(glossy_normal, outgoing) < 0.0f;
             auto glass_allowed =
                 is_glass & select(glossy_enabled,
                                transmission_enabled,
@@ -248,6 +259,9 @@ GraphSurfaceImplementation::evaluate_traced(
                         glossy_normal,
                         query.glossy_filter_roughness) *
                     bump_shadowing;
+                glass_contribution = select(glass_contribution,
+                    make_float3(0.0f),
+                    selected_unit_ior_glass_delta);
             } else if (is_sheen) {
                 diffuse_contribution =
                     closure.weight * diffuse_pdf * bump_shadowing;
@@ -424,13 +438,15 @@ GraphSurfaceImplementation::evaluate_light(
 [[nodiscard]] UInt GraphSurfaceImplementation::runtime_flags(
     const ShaderServices &services,
     const SurfacePoint &point,
-    Expr<float> glossy_filter_roughness_expression) const noexcept {
+    Expr<float> glossy_filter_roughness_expression,
+    Expr<bool> reflective_caustics_expression) const noexcept {
     if (!_program) {
         return 0u;
     }
     auto values = trace_values(services, point);
     auto glossy_filter_roughness =
         Float{glossy_filter_roughness_expression};
+    auto reflective_caustics = Bool{reflective_caustics_expression};
     UInt result = select(
         0u,
         cycles_closure::runtime_backfacing,
@@ -439,6 +455,7 @@ GraphSurfaceImplementation::evaluate_light(
         services,
         point,
         values,
+        reflective_caustics,
         [&](const TracedClosure &closure) noexcept {
             result |= cycles_runtime_flags(
                 closure,
@@ -451,8 +468,10 @@ GraphSurfaceImplementation::evaluate_light(
 GraphSurfaceImplementation::closure_trace(
     const ShaderServices &services,
     const SurfacePoint &point,
-    Expr<std::uint32_t> requested_index_expression) const noexcept {
+    Expr<std::uint32_t> requested_index_expression,
+    Expr<bool> reflective_caustics_expression) const noexcept {
     auto requested_index = UInt{requested_index_expression};
+    auto reflective_caustics = Bool{reflective_caustics_expression};
     auto result = SurfaceClosureTrace::zero(requested_index);
     if (!_program) {
         return result;
@@ -464,6 +483,7 @@ GraphSurfaceImplementation::closure_trace(
     for_each_physical_closure(services,
         point,
         values,
+        reflective_caustics,
         [&](const TracedClosure &closure) noexcept {
             runtime_flags |= cycles_runtime_flags(closure);
             auto allocated = closure_allocated(closure);
@@ -509,6 +529,7 @@ GraphSurfaceImplementation::sample_with_trace(
     for_each_physical_closure(services,
         point,
         values,
+        query.reflective_caustics,
         [&](const TracedClosure &closure) noexcept {
             surface_runtime_flags |= cycles_runtime_flags(
                 closure, query.glossy_filter_roughness);
@@ -528,6 +549,7 @@ GraphSurfaceImplementation::sample_with_trace(
     Bool selected_transparent = false;
     Bool selected_translucent = false;
     Bool selected_glossy = false;
+    Bool selected_glossy_singular = false;
     Bool selected_glass = false;
     Bool selected_glass_transmission = false;
     Bool selected_glass_singular = false;
@@ -535,6 +557,9 @@ GraphSurfaceImplementation::sample_with_trace(
     UInt selected_closure_index = ~std::uint32_t{0u};
     Float3 transparent_weight = make_float3(0.0f);
     Float transparent_sample_weight = 0.0f;
+    Float3 glossy_singular_evaluation = make_float3(0.0f);
+    Float glossy_singular_pdf = 0.0f;
+    Float glossy_sample_weight = 0.0f;
     Float3 glass_singular_evaluation = make_float3(0.0f);
     Float glass_singular_pdf = 0.0f;
     Float glass_sample_weight = 0.0f;
@@ -544,6 +569,7 @@ GraphSurfaceImplementation::sample_with_trace(
     for_each_physical_closure(services,
         point,
         values,
+        query.reflective_caustics,
         [&](const TracedClosure &closure) noexcept {
             auto is_translucent =
                 closure.operation ==
@@ -575,7 +601,9 @@ GraphSurfaceImplementation::sample_with_trace(
             auto diffuse_direction = sample_cosine_hemisphere(
                 is_translucent ? -glossy_normal : closure.normal,
                 random_direction);
-            auto glossy_direction = sample_ggx(closure,
+            auto glossy = sample_microfacet_reflection(point,
+                values.shading_normal,
+                closure,
                 incoming,
                 random_direction,
                 glossy_normal,
@@ -592,7 +620,7 @@ GraphSurfaceImplementation::sample_with_trace(
                                            ? transparent_direction
                                        : is_sheen ? sheen_direction
                                                   : select(diffuse_direction,
-                                                        glossy_direction,
+                                                        glossy.direction,
                                                         sample_glossy);
             Bool candidate_valid = true;
             Bool glass_transmission = false;
@@ -602,6 +630,9 @@ GraphSurfaceImplementation::sample_with_trace(
             Float candidate_glass_singular_pdf = 0.0f;
             Float candidate_glass_eta = 1.0f;
             Float candidate_glass_alpha = 0.0f;
+            if (sample_glossy) {
+                candidate_valid = glossy.valid;
+            }
             if (is_glass) {
                 const auto glass = sample_glass(closure,
                     incoming,
@@ -629,10 +660,8 @@ GraphSurfaceImplementation::sample_with_trace(
             selected_closure_index = select(selected_closure_index,
                 current_closure_index,
                 choose);
-            auto sampled_glossy_roughness = microfacet_alpha(
-                closure, query.glossy_filter_roughness);
             auto nontransparent_roughness = select(make_float2(1.0f),
-                make_float2(sampled_glossy_roughness),
+                make_float2(glossy.alpha),
                 sample_glossy);
             if (is_sheen) {
                 nontransparent_roughness = make_float2(1.0f);
@@ -682,6 +711,11 @@ GraphSurfaceImplementation::sample_with_trace(
                 ((!is_transparent && !is_glass && sample_glossy)
                         ? choose
                         : Bool{false});
+            selected_glossy_singular =
+                selected_glossy_singular |
+                ((!is_transparent && !is_glass && sample_glossy)
+                        ? (choose & glossy.singular)
+                        : Bool{false});
             selected_glass =
                 selected_glass | (is_glass ? choose : Bool{false});
             selected_glass_transmission =
@@ -693,6 +727,22 @@ GraphSurfaceImplementation::sample_with_trace(
             selected_candidate_valid = select(selected_candidate_valid,
                 candidate_valid,
                 choose);
+            glossy_singular_evaluation = select(
+                glossy_singular_evaluation,
+                glossy.singular_evaluation,
+                (!is_transparent && !is_glass && sample_glossy)
+                    ? choose
+                    : Bool{false});
+            glossy_singular_pdf = select(glossy_singular_pdf,
+                glossy.singular_pdf,
+                (!is_transparent && !is_glass && sample_glossy)
+                    ? choose
+                    : Bool{false});
+            glossy_sample_weight = select(glossy_sample_weight,
+                weight,
+                (!is_transparent && !is_glass && sample_glossy)
+                    ? choose
+                    : Bool{false});
             glass_singular_evaluation = select(
                 glass_singular_evaluation,
                 candidate_glass_singular_evaluation,
@@ -718,10 +768,8 @@ GraphSurfaceImplementation::sample_with_trace(
     auto geometric_valid = select(reflection_geometric_valid,
         transmission_geometric_valid,
         selected_translucent | selected_glass_transmission);
-    auto diffuse_valid =
-        selected & (!selected_transparent) & geometric_valid &
-        selected_candidate_valid;
-    auto transparent_valid = selected & selected_transparent;
+    auto sample_valid = selected & selected_candidate_valid &
+                        (selected_transparent | geometric_valid);
     auto diffuse_evaluation =
         evaluate_traced(services,
             values,
@@ -736,47 +784,57 @@ GraphSurfaceImplementation::sample_with_trace(
     // below Ng). Keep invalid sample payloads observationally zero instead
     // of relying on downstream code to ignore result.valid.
     diffuse_evaluation.f = select(
-        make_float3(0.0f), diffuse_evaluation.f, diffuse_valid);
+        make_float3(0.0f), diffuse_evaluation.f, sample_valid);
     diffuse_evaluation.pdf = select(
-        0.0f, diffuse_evaluation.pdf, diffuse_valid);
+        0.0f, diffuse_evaluation.pdf, sample_valid);
     diffuse_evaluation.diffuse_f = select(make_float3(0.0f),
         diffuse_evaluation.diffuse_f,
-        diffuse_valid);
+        sample_valid);
     diffuse_evaluation.glossy_f = select(make_float3(0.0f),
         diffuse_evaluation.glossy_f,
-        diffuse_valid);
+        sample_valid);
     diffuse_evaluation.diffuse_pdf = select(
-        0.0f, diffuse_evaluation.diffuse_pdf, diffuse_valid);
+        0.0f, diffuse_evaluation.diffuse_pdf, sample_valid);
     diffuse_evaluation.events = select(
-        0u, diffuse_evaluation.events, diffuse_valid);
-    result.valid = diffuse_valid | transparent_valid;
-    result.evaluation.f = select(diffuse_evaluation.f,
+        0u, diffuse_evaluation.events, sample_valid);
+    result.valid = sample_valid;
+    const auto transparent_singular =
+        sample_valid & selected_transparent;
+    const auto glossy_singular =
+        sample_valid & selected_glossy & selected_glossy_singular;
+    const auto glass_singular =
+        sample_valid & selected_glass & selected_glass_singular;
+    const auto transparent_delta = select(make_float3(0.0f),
         transparent_weight * 1.0e6f,
-        selected_transparent);
-    result.evaluation.f = select(result.evaluation.f,
+        transparent_singular);
+    const auto glossy_delta = select(make_float3(0.0f),
+        glossy_singular_evaluation,
+        glossy_singular);
+    const auto glass_delta = select(make_float3(0.0f),
         glass_singular_evaluation,
-        selected_glass & selected_glass_singular);
-    result.evaluation.pdf = select(diffuse_evaluation.pdf,
-        1.0e6f * transparent_sample_weight /
-            max(total_weight, 1.0e-20f),
-        selected_transparent);
-    result.evaluation.pdf = select(result.evaluation.pdf,
-        glass_singular_pdf * glass_sample_weight /
-            max(total_weight, 1.0e-20f),
-        selected_glass & selected_glass_singular);
-    result.evaluation.diffuse_f = select(diffuse_evaluation.diffuse_f,
-        make_float3(0.0f),
-        selected_transparent);
-    result.evaluation.glossy_f = select(diffuse_evaluation.glossy_f,
-        make_float3(0.0f),
-        selected_transparent);
-    result.evaluation.glossy_f = select(result.evaluation.glossy_f,
-        select(glass_singular_evaluation,
+        glass_singular);
+    const auto delta_pdf_numerator =
+        select(0.0f,
+            1.0e6f * transparent_sample_weight,
+            transparent_singular) +
+        select(0.0f,
+            glossy_singular_pdf * glossy_sample_weight,
+            glossy_singular) +
+        select(0.0f,
+            glass_singular_pdf * glass_sample_weight,
+            glass_singular);
+    result.evaluation.f = diffuse_evaluation.f + transparent_delta +
+                          glossy_delta + glass_delta;
+    result.evaluation.pdf =
+        diffuse_evaluation.pdf +
+        delta_pdf_numerator / max(total_weight, 1.0e-20f);
+    result.evaluation.diffuse_f = diffuse_evaluation.diffuse_f;
+    result.evaluation.glossy_f =
+        diffuse_evaluation.glossy_f + glossy_delta +
+        select(glass_delta,
             make_float3(0.0f),
-            selected_glass_transmission),
-        selected_glass & selected_glass_singular);
-    result.evaluation.diffuse_pdf = select(
-        diffuse_evaluation.diffuse_pdf, 0.0f, selected_transparent);
+            selected_glass_transmission);
+    result.evaluation.diffuse_pdf = diffuse_evaluation.diffuse_pdf;
     auto sampled_surface_events = select(
         static_cast<std::uint32_t>(event_diffuse | event_reflection),
         static_cast<std::uint32_t>(event_glossy | event_reflection),
@@ -784,6 +842,9 @@ GraphSurfaceImplementation::sample_with_trace(
     sampled_surface_events = select(sampled_surface_events,
         static_cast<std::uint32_t>(event_diffuse | event_transmission),
         selected_translucent);
+    sampled_surface_events = select(sampled_surface_events,
+        static_cast<std::uint32_t>(event_singular | event_reflection),
+        selected_glossy & selected_glossy_singular);
     auto glass_events = select(
         static_cast<std::uint32_t>(event_glossy),
         static_cast<std::uint32_t>(event_singular),
@@ -799,7 +860,12 @@ GraphSurfaceImplementation::sample_with_trace(
         static_cast<std::uint32_t>(
             event_transmission | event_transparent),
         selected_transparent);
-    result.eta = select(1.0f, glass_eta, selected_glass);
+    result.evaluation.events = select(
+        0u, result.evaluation.events, sample_valid);
+    result.eta = select(
+        1.0f, glass_eta, selected_glass & sample_valid);
+    result.roughness = select(
+        make_float2(0.0f), result.roughness, sample_valid);
     if (trace_selection) {
         trace.closure_valid = selected;
     }
@@ -934,6 +1000,7 @@ GraphSurfaceImplementation::evaluate_volume(
     for_each_physical_closure(services,
         point,
         values,
+        true,
         [&](const TracedClosure &closure) noexcept {
             if (closure.operation ==
                 compiler::ClosureOperation::transparent) {

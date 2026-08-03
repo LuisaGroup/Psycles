@@ -18,6 +18,7 @@ SurfaceCallables make_surface_callables(
             UInt lobe_mask,
             UInt transport_mode,
             Float glossy_filter_roughness,
+            Bool reflective_caustics,
             UInt shader_flags) noexcept {
             BufferShaderServices services{
                 parameters,
@@ -33,7 +34,8 @@ SurfaceCallables make_surface_callables(
                     .lobe_mask = lobe_mask,
                     .transport_mode = transport_mode,
                     .glossy_filter_roughness =
-                        glossy_filter_roughness},
+                        glossy_filter_roughness,
+                    .reflective_caustics = reflective_caustics},
                 .shader_flags = shader_flags};
             return pack_surface_evaluation(
                 scene->surfaces.evaluate_light(
@@ -51,7 +53,8 @@ SurfaceCallables make_surface_callables(
             BindlessVar geometry_heap,
             UInt surface_tag,
             Var<SurfacePointCall> packed_point,
-            Float glossy_filter_roughness) noexcept {
+            Float glossy_filter_roughness,
+            Bool reflective_caustics) noexcept {
             BufferShaderServices services{
                 parameters,
                 cycles_bsdf_tables,
@@ -65,7 +68,8 @@ SurfaceCallables make_surface_callables(
                 surface_tag,
                 services,
                 unpack_surface_point(packed_point),
-                glossy_filter_roughness);
+                glossy_filter_roughness,
+                reflective_caustics);
         };
     SurfaceEmissionCallable emission =
         [scene](
@@ -117,7 +121,8 @@ SurfaceCallables make_surface_callables(
             Float2 u_direction,
             UInt lobe_mask,
             UInt transport_mode,
-            Float glossy_filter_roughness) noexcept {
+            Float glossy_filter_roughness,
+            Bool reflective_caustics) noexcept {
             BufferShaderServices services{
                 parameters,
                 cycles_bsdf_tables,
@@ -131,7 +136,8 @@ SurfaceCallables make_surface_callables(
                 .lobe_mask = lobe_mask,
                 .transport_mode = transport_mode,
                 .glossy_filter_roughness =
-                    glossy_filter_roughness};
+                    glossy_filter_roughness,
+                .reflective_caustics = reflective_caustics};
             return pack_surface_sample(
                 scene->surfaces.sample(
                     surface_tag,
@@ -149,7 +155,8 @@ SurfaceCallables make_surface_callables(
             BindlessVar geometry_heap,
             UInt surface_tag,
             Var<SurfacePointCall> packed_point,
-            UInt requested_index) noexcept {
+            UInt requested_index,
+            Bool reflective_caustics) noexcept {
             BufferShaderServices services{
                 parameters,
                 cycles_bsdf_tables,
@@ -164,7 +171,8 @@ SurfaceCallables make_surface_callables(
                     surface_tag,
                     services,
                     unpack_surface_point(packed_point),
-                    requested_index));
+                    requested_index,
+                    reflective_caustics));
         };
     SurfaceSampleTraceCallable sample_trace =
         [scene](
@@ -178,7 +186,8 @@ SurfaceCallables make_surface_callables(
             Float2 u_direction,
             UInt lobe_mask,
             UInt transport_mode,
-            Float glossy_filter_roughness) noexcept {
+            Float glossy_filter_roughness,
+            Bool reflective_caustics) noexcept {
             BufferShaderServices services{
                 parameters,
                 cycles_bsdf_tables,
@@ -192,7 +201,8 @@ SurfaceCallables make_surface_callables(
                 .lobe_mask = lobe_mask,
                 .transport_mode = transport_mode,
                 .glossy_filter_roughness =
-                    glossy_filter_roughness};
+                    glossy_filter_roughness,
+                .reflective_caustics = reflective_caustics};
             return pack_surface_sample_trace(
                 scene->surfaces.sample_trace(
                     surface_tag,

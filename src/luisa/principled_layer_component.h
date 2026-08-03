@@ -25,6 +25,11 @@ struct PrincipledSheenLayerResult {
     Float3 lower_weight;
 };
 
+struct PrincipledCoatLayerResult {
+    TracedClosure closure;
+    Float3 lower_weight;
+};
+
 class PrincipledLayerComponent final {
 
 private:
@@ -39,6 +44,11 @@ public:
     [[nodiscard]] PrincipledSheenLayerResult evaluate_sheen(
         const TracedClosure &closure,
         Float3 lower_weight) const noexcept;
+
+    [[nodiscard]] PrincipledCoatLayerResult evaluate_coat(
+        const TracedClosure &closure,
+        Float3 lower_weight,
+        Bool reflective_caustics) const noexcept;
 
     [[nodiscard]] PrincipledEmissionLayerResult evaluate_emission(
         const TracedClosure &closure,

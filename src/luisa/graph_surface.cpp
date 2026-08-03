@@ -21,11 +21,13 @@ SurfaceCapabilities GraphSurface::capabilities() const noexcept {
 UInt GraphSurface::runtime_flags(
     const ShaderServices &services,
     const SurfacePoint &point,
-    Expr<float> glossy_filter_roughness) const noexcept {
+    Expr<float> glossy_filter_roughness,
+    Expr<bool> reflective_caustics) const noexcept {
     return _implementation->runtime_flags(
         services,
         point,
-        glossy_filter_roughness);
+        glossy_filter_roughness,
+        reflective_caustics);
 }
 
 SurfaceEvaluation GraphSurface::evaluate(
@@ -59,9 +61,10 @@ SurfaceSample GraphSurface::sample(
 SurfaceClosureTrace GraphSurface::closure_trace(
     const ShaderServices &services,
     const SurfacePoint &point,
-    Expr<std::uint32_t> requested_index) const noexcept {
+    Expr<std::uint32_t> requested_index,
+    Expr<bool> reflective_caustics) const noexcept {
     return _implementation->closure_trace(
-        services, point, requested_index);
+        services, point, requested_index, reflective_caustics);
 }
 
 SurfaceSampleTrace GraphSurface::sample_trace(

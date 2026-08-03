@@ -124,6 +124,11 @@ struct SurfaceQuery {
     // Cycles Filter Glossy widens microfacet alpha after closure setup. Zero
     // leaves the material closure unchanged.
     Float glossy_filter_roughness;
+    // Cycles allocates reflective Principled layers only when reflective
+    // caustics are enabled for the current path. This is an allocation
+    // predicate, not merely a lobe-selection mask: Coat/specular layering of
+    // lower closures also depends on it.
+    Bool reflective_caustics{true};
 };
 
 // Cycles sampled-light visibility is deliberately separate from the path
@@ -358,7 +363,8 @@ public:
     [[nodiscard]] virtual UInt runtime_flags(
         const ShaderServices &,
         const SurfacePoint &,
-        Expr<float>) const noexcept {
+        Expr<float>,
+        Expr<bool> = true) const noexcept {
         return 0u;
     }
 
@@ -384,7 +390,8 @@ public:
     [[nodiscard]] virtual SurfaceClosureTrace closure_trace(
         const ShaderServices &,
         const SurfacePoint &,
-        Expr<std::uint32_t> requested_index) const noexcept {
+        Expr<std::uint32_t> requested_index,
+        Expr<bool> = true) const noexcept {
         return SurfaceClosureTrace::zero(requested_index);
     }
 
@@ -510,13 +517,15 @@ public:
         Expr<std::uint32_t> tag,
         const ShaderServices &services,
         const SurfacePoint &point,
-        Expr<float> glossy_filter_roughness) const noexcept {
+        Expr<float> glossy_filter_roughness,
+        Expr<bool> reflective_caustics = true) const noexcept {
         UInt result = 0u;
         _surfaces.dispatch(tag, [&](const Surface *surface) noexcept {
             result = surface->runtime_flags(
                 services,
                 point,
-                glossy_filter_roughness);
+                glossy_filter_roughness,
+                reflective_caustics);
         });
         return result;
     }
@@ -554,14 +563,16 @@ public:
         Expr<std::uint32_t> tag,
         const ShaderServices &services,
         const SurfacePoint &point,
-        Expr<std::uint32_t> requested_index) const noexcept {
+        Expr<std::uint32_t> requested_index,
+        Expr<bool> reflective_caustics = true) const noexcept {
         auto result =
             SurfaceClosureTrace::zero(requested_index);
         _surfaces.dispatch(tag, [&](const Surface *surface) noexcept {
             result = surface->closure_trace(
                 services,
                 point,
-                requested_index);
+                requested_index,
+                reflective_caustics);
         });
         return result;
     }

@@ -105,6 +105,19 @@ struct GlassSample {
     Bool valid;
 };
 
+// Result of sampling a reflection-only microfacet closure. Regular samples
+// are evaluated by the aggregate evaluator so competing closures share one
+// balance-heuristic denominator. Delta samples carry the selected closure's
+// singular numerator explicitly because their directional eval is zero.
+struct MicrofacetReflectionSample {
+    Float3 direction;
+    Float3 singular_evaluation;
+    Float singular_pdf;
+    Float alpha;
+    Bool singular;
+    Bool valid;
+};
+
 struct AdjustedIor {
     Float eta;
     Float f0;
@@ -218,7 +231,8 @@ template <typename Id, typename Values>
     const ShaderServices &services,
     const TracedClosure &closure,
     Float3 incoming,
-    Float3 glossy_normal) noexcept;
+    Float3 glossy_normal,
+    Bool reflective_caustics) noexcept;
 [[nodiscard]] bool is_scattering_operation(
     compiler::ClosureOperation operation) noexcept;
 [[nodiscard]] Float closure_sample_weight(
@@ -254,8 +268,14 @@ template <typename Id, typename Values>
     Float n_dot_h, Float alpha) noexcept;
 [[nodiscard]] Float microfacet_alpha(const TracedClosure &closure,
     Float glossy_filter_roughness) noexcept;
+[[nodiscard]] Bool microfacet_is_singular(
+    const TracedClosure &closure,
+    Float glossy_filter_roughness) noexcept;
 [[nodiscard]] Float smith_g1(Float n_dot_v, Float alpha) noexcept;
 [[nodiscard]] Float3 specular_f0(const TracedClosure &closure) noexcept;
+[[nodiscard]] Float3 microfacet_reflection_fresnel(
+    const TracedClosure &closure,
+    Float cosine) noexcept;
 [[nodiscard]] Float3 microfacet_intensity(
     const ShaderServices &services,
     const TracedClosure &closure,
@@ -268,7 +288,10 @@ template <typename Id, typename Values>
     Float3 outgoing,
     Float3 glossy_normal,
     Float glossy_filter_roughness) noexcept;
-[[nodiscard]] Float3 sample_ggx(const TracedClosure &closure,
+[[nodiscard]] MicrofacetReflectionSample sample_microfacet_reflection(
+    const SurfacePoint &point,
+    Float3 smooth_normal,
+    const TracedClosure &closure,
     Float3 incoming,
     Float2 random,
     Float3 glossy_normal,
@@ -413,6 +436,7 @@ private:
     void for_each_physical_closure(const ShaderServices &services,
         const SurfacePoint &point,
         const TracedValues &values,
+        Bool reflective_caustics,
         const ClosureVisitor &visitor) const noexcept;
     void for_each_volume(const TracedValues &values,
         const VolumeVisitor &visitor) const noexcept;
@@ -427,7 +451,8 @@ public:
     [[nodiscard]] UInt runtime_flags(
         const ShaderServices &services,
         const SurfacePoint &point,
-        Expr<float> glossy_filter_roughness) const noexcept;
+        Expr<float> glossy_filter_roughness,
+        Expr<bool> reflective_caustics) const noexcept;
     [[nodiscard]] SurfaceEvaluation evaluate(
         const ShaderServices &services,
         const SurfacePoint &point,
@@ -446,7 +471,8 @@ public:
     [[nodiscard]] SurfaceClosureTrace closure_trace(
         const ShaderServices &services,
         const SurfacePoint &point,
-        Expr<std::uint32_t> requested_index) const noexcept;
+        Expr<std::uint32_t> requested_index,
+        Expr<bool> reflective_caustics) const noexcept;
     [[nodiscard]] SurfaceSampleTrace sample_trace(
         const ShaderServices &services,
         const SurfacePoint &point,

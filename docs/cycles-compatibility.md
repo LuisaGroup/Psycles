@@ -341,8 +341,16 @@ bit-for-bit identical to Cycles CPU in Combined and Environment on fallback,
 HIP, and Vulkan; the formal relation, reports, and all six inspected triptychs
 are in
 [`validation/2026-08-03/principled-alpha`](validation/2026-08-03/principled-alpha/README.md).
-Physical Sheen/Coat scattering closures remain open; these checkpoints do not
-overstate them as complete Principled support.
+Physical Principled Coat is now implemented as the second ordered host-stage
+layer, including GGX energy compensation, Fresnel/albedo attenuation, Tint
+absorption, exact reflective-caustics allocation, singular reflection, and
+multi-closure delta MIS. Latest Cycles CPU differentials pass on fallback,
+HIP, and Vulkan; the formal relations, direct Cycles CPU/HIP fast-math
+diagnostic, reports, and inspected triptychs are in
+[`validation/2026-08-03/principled-coat`](validation/2026-08-03/principled-coat/README.md).
+Transmission, subsurface, thin film, anisotropy, and their remaining
+Principled interactions are still open, so these checkpoints do not
+overstate complete Principled support.
 
 The first heterogeneous transport checkpoint now isolates the formal
 null-collision transition in a Luisa `.h`/`.cpp` component. It pins current

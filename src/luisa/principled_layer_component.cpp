@@ -1,4 +1,4 @@
-#include "principled_emission_layer.h"
+#include "principled_layer_component.h"
 
 #include <psycles/luisa/cycles_bsdf_tables.h>
 #include <psycles/luisa/cycles_closure.h>
@@ -166,18 +166,18 @@ PrincipledLayerComponent::evaluate_sheen(
     return {.closure = physical, .lower_weight = lower_weight};
 }
 
-PrincipledEmissionLayerResult
-PrincipledLayerComponent::evaluate_emission(
+PrincipledCoatLayerResult
+PrincipledLayerComponent::evaluate_coat(
     const TracedClosure &closure,
+    Float3 lower_weight,
     Bool reflective_caustics) const noexcept {
-    auto lower_weight =
-        evaluate_principled_alpha_layer(closure).lower_weight;
     const auto incoming = _point.incoming;
-
-    const auto sheen = evaluate_sheen(closure, lower_weight);
-    lower_weight = sheen.lower_weight;
-
     const auto coat_weight = max(closure.coat_weight, 0.0f);
+    const auto coat_requested =
+        coat_weight > cycles_closure::closure_weight_cutoff;
+    const auto coat_roughness = clamp(
+        closure.coat_roughness, 0.0f, 1.0f);
+    const auto coat_ior = max(closure.coat_ior, 1.0f);
     const auto coat_normal_input = closure.coat_normal_linked
                                        ? closure.coat_normal
                                        : closure.normal;
@@ -186,31 +186,29 @@ PrincipledLayerComponent::evaluate_emission(
                                           : closure.normal;
     const auto coat_normal = cycles_safe_normalize_fallback(
         coat_normal_input, coat_normal_fallback);
-
-    const auto coat_requested =
-        coat_weight > cycles_closure::closure_weight_cutoff;
-    const auto coat_roughness = clamp(
-        closure.coat_roughness, 0.0f, 1.0f);
-    const auto coat_ior = max(closure.coat_ior, 1.0f);
     const auto valid_coat_normal =
         maybe_ensure_valid_specular_reflection(
             _point, incoming, coat_normal);
     const auto coat_cosine = dot(incoming, valid_coat_normal);
-    const auto coat_pre_weight = lower_weight * coat_weight;
-    const auto coat_allocated =
-        sample_weight(max(
-            coat_pre_weight,
-            make_float3(0.0f))) >=
-        cycles_closure::closure_weight_cutoff;
-    const auto coat_reflection_active =
-        coat_requested & reflective_caustics & coat_allocated;
 
-    auto coat_closure = closure;
-    coat_closure.roughness = coat_roughness;
-    coat_closure.preserve_ggx_energy = true;
+    // bsdf_alloc() clamps the closure weight before storing it. Keep that
+    // allocation state separate from the later Fresnel/sample-weight setup:
+    // an IOR-one Coat still occupies a Cycles closure slot with zero sampling
+    // weight.
+    const auto coat_pre_weight = max(
+        lower_weight * coat_weight, make_float3(0.0f));
+    const auto coat_allocation_weight = sample_weight(coat_pre_weight);
+    const auto coat_allocated =
+        coat_requested & reflective_caustics &
+        (coat_allocation_weight >=
+            cycles_closure::closure_weight_cutoff);
+
+    auto energy_input = closure;
+    energy_input.roughness = coat_roughness;
+    energy_input.preserve_ggx_energy = true;
     const auto coat_energy = ggx_energy(
         _services,
-        coat_closure,
+        energy_input,
         coat_cosine,
         make_float3(fresnel_dielectric_fss(coat_ior)));
     const auto coat_z = sqrt(abs(
@@ -229,34 +227,73 @@ PrincipledLayerComponent::evaluate_emission(
         0.0f,
         lerp(f0_from_ior(coat_ior), 1.0f, coat_s),
         coat_ior > 1.0f);
+    const auto coat_albedo_estimate = make_float3(coat_fresnel);
+    const auto coat_final_weight =
+        coat_pre_weight * coat_energy.darkening;
+    const auto coat_albedo =
+        coat_final_weight * coat_albedo_estimate;
     lower_weight = apply_layer_albedo(
-        lower_weight,
-        coat_pre_weight * coat_energy.darkening * coat_fresnel,
-        coat_reflection_active);
+        lower_weight, coat_albedo, coat_allocated);
 
+    // Cycles applies absorption through the Coat medium independently of
+    // reflective-caustic closure allocation. The authored weight is not
+    // saturated here: SVM uses the non-negative raw socket value.
     const auto coat_tint = max(
         closure.coat_tint, make_float3(0.0f));
     const auto coat_tint_active =
-        coat_requested &
-        any(coat_tint != make_float3(1.0f));
+        coat_requested & any(coat_tint != make_float3(1.0f));
     const auto coat_cosine_squared = coat_cosine * coat_cosine;
     const auto coat_transmitted_cosine = sqrt(max(
         1.0f -
             (1.0f / (coat_ior * coat_ior)) *
                 (1.0f - coat_cosine_squared),
         0.0f));
-    const auto optical_depth =
-        1.0f / coat_transmitted_cosine;
+    const auto optical_depth = 1.0f / coat_transmitted_cosine;
     const auto coat_transmission = color_power(
         coat_tint, optical_depth);
-    const auto tinted_weight = lower_weight * lerp(
-        make_float3(1.0f),
-        coat_transmission,
-        coat_weight);
     lower_weight = select(
         lower_weight,
-        tinted_weight,
+        lower_weight * lerp(make_float3(1.0f),
+                           coat_transmission,
+                           coat_weight),
         coat_tint_active);
+
+    auto physical = closure;
+    physical.principled_lobe = PrincipledLobe::coat;
+    physical.weight = select(
+        make_float3(0.0f), coat_final_weight, coat_allocated);
+    physical.allocation_weight = select(
+        0.0f, coat_allocation_weight, coat_allocated);
+    physical.sample_weight = select(
+        0.0f,
+        coat_allocation_weight *
+            sample_weight(coat_albedo_estimate) *
+            sample_weight(coat_energy.darkening),
+        coat_allocated);
+    physical.setup_valid = true;
+    physical.albedo = select(
+        make_float3(0.0f), coat_albedo, coat_allocated);
+    physical.color = make_float3(f0_from_ior(coat_ior));
+    physical.normal = valid_coat_normal;
+    physical.roughness = coat_roughness;
+    physical.ior = coat_ior;
+    physical.evaluation_scale = coat_energy.energy_scale;
+    physical.preserve_ggx_energy = true;
+    physical.beckmann = false;
+    return {.closure = physical, .lower_weight = lower_weight};
+}
+
+PrincipledEmissionLayerResult
+PrincipledLayerComponent::evaluate_emission(
+    const TracedClosure &closure,
+    Bool reflective_caustics) const noexcept {
+    auto lower_weight =
+        evaluate_principled_alpha_layer(closure).lower_weight;
+    const auto sheen = evaluate_sheen(closure, lower_weight);
+    lower_weight = sheen.lower_weight;
+    const auto coat = evaluate_coat(
+        closure, lower_weight, reflective_caustics);
+    lower_weight = coat.lower_weight;
 
     return {
         .lower_weight = lower_weight,
