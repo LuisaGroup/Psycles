@@ -147,10 +147,20 @@ namespace {
             node.id,
             "Color",
             append(instruction));
+        instruction.result_type = SocketType::vector;
+        publish(
+            node.id,
+            "Vector",
+            append(instruction));
+        instruction.operation =
+            ValueOperation::attribute_factor;
+        instruction.result_type = SocketType::floating;
+        publish(
+            node.id,
+            "Factor",
+            append(instruction));
         instruction.operation =
             ValueOperation::attribute_alpha;
-        instruction.result_type =
-            SocketType::floating;
         publish(
             node.id,
             "Alpha",

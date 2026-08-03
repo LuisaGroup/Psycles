@@ -3,6 +3,7 @@
 #include "cycles_integrator_limits.h"
 #include "path_kernel_builder.h"
 
+#include <psycles/luisa/camera_sampling.h>
 #include <psycles/luisa/pixel_filter.h>
 #include <psycles/sampling/light_distribution.h>
 
@@ -238,8 +239,13 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                   scene->camera.field_of_view * 0.5f);
     const auto camera_horizontal_tangent =
         camera_vertical_tangent * camera_aspect;
-    const auto camera_ortho_scale =
-        scene->camera.orthographic_scale;
+    const auto camera_ortho_viewplane =
+        camera_sampling::orthographic_viewplane_span(
+            scene->camera.orthographic_scale,
+            camera_aspect,
+            camera_horizontal_fit);
+    const auto camera_ortho_vertical_span =
+        camera_ortho_viewplane.vertical;
     const auto camera_shift_x =
         scene->camera.lens_shift_x *
         (camera_horizontal_fit
@@ -280,8 +286,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                         camera_horizontal_tangent,
                     .vertical_tangent =
                         camera_vertical_tangent,
-                    .orthographic_scale =
-                        camera_ortho_scale,
+                    .orthographic_vertical_span =
+                        camera_ortho_vertical_span,
                     .shift_x = camera_shift_x,
                     .shift_y = camera_shift_y,
                     .near_clip = camera_near,
@@ -344,7 +350,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
             camera_horizontal_tangent,
         .camera_vertical_tangent =
             camera_vertical_tangent,
-        .camera_ortho_scale = camera_ortho_scale,
+        .camera_ortho_vertical_span =
+            camera_ortho_vertical_span,
         .camera_shift_x = camera_shift_x,
         .camera_shift_y = camera_shift_y,
         .camera_near = camera_near,

@@ -49,6 +49,21 @@ constexpr std::array filter_samples{0.0f, 0.125f, 0.5f, 0.75f, 0.999f, 1.0f};
 
 int main(int argc, char **argv) {
     const auto backend = std::string_view{argc > 1 ? argv[1] : "fallback"};
+    constexpr auto landscape_horizontal_fit =
+        camera_sampling::orthographic_viewplane_span(2.2f, 2.0f, true);
+    constexpr auto landscape_vertical_fit =
+        camera_sampling::orthographic_viewplane_span(2.2f, 2.0f, false);
+    constexpr auto portrait_horizontal_fit =
+        camera_sampling::orthographic_viewplane_span(2.2f, 0.5f, true);
+    if (!approximately_equal(landscape_horizontal_fit.horizontal, 2.2f) ||
+        !approximately_equal(landscape_horizontal_fit.vertical, 1.1f) ||
+        !approximately_equal(landscape_vertical_fit.horizontal, 4.4f) ||
+        !approximately_equal(landscape_vertical_fit.vertical, 2.2f) ||
+        !approximately_equal(portrait_horizontal_fit.horizontal, 2.2f) ||
+        !approximately_equal(portrait_horizontal_fit.vertical, 4.4f)) {
+        std::cerr << "Cycles orthographic sensor-fit viewplane mapping failed\n";
+        return EXIT_FAILURE;
+    }
     Context context{argv[0]};
     auto device = context.create_device(backend);
     auto stream = device.create_stream();

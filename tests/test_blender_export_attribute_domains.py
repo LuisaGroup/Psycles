@@ -98,7 +98,41 @@ def _main() -> None:
     ):
         corner_color.data[index].color = value
 
+    corner_byte_color = mesh.color_attributes.new(
+        name="Corner Byte Color",
+        type="BYTE_COLOR",
+        domain="CORNER",
+    )
+    for item in corner_byte_color.data:
+        item.color = (0.15, 0.45, 0.90, 0.35)
+    byte_rec709_linear = tuple(
+        float(component)
+        for component in corner_byte_color.data[0].color
+    )
+
     material = bpy.data.materials.new("Domain Material")
+    material.use_nodes = True
+    tree = material.node_tree
+    tree.nodes.clear()
+    attribute = tree.nodes.new("ShaderNodeAttribute")
+    attribute.name = "Cycles Attribute Contract"
+    attribute.attribute_type = "GEOMETRY"
+    attribute.attribute_name = "Corner Color"
+    mix = tree.nodes.new("ShaderNodeMixRGB")
+    mix.name = "Color Vector Factor Consumer"
+    tree.links.new(attribute.outputs[0], mix.inputs[1])
+    tree.links.new(attribute.outputs[1], mix.inputs[2])
+    tree.links.new(attribute.outputs[2], mix.inputs[0])
+    alpha = tree.nodes.new("ShaderNodeMath")
+    alpha.name = "Alpha Consumer"
+    alpha.operation = "ADD"
+    alpha.inputs[1].default_value = 1.0
+    tree.links.new(attribute.outputs[3], alpha.inputs[0])
+    emission = tree.nodes.new("ShaderNodeEmission")
+    tree.links.new(mix.outputs[0], emission.inputs[0])
+    tree.links.new(alpha.outputs[0], emission.inputs[1])
+    output = tree.nodes.new("ShaderNodeOutputMaterial")
+    tree.links.new(emission.outputs[0], output.inputs[0])
     mesh.materials.append(material)
     obj = bpy.data.objects.new("Domain Object", mesh)
     scene.collection.objects.link(obj)
@@ -260,6 +294,43 @@ def _main() -> None:
             or colors["Corner Color"]["values"]["bytes"] != 6 * 4 * 4
         ):
             raise AssertionError("corner color domain has invalid extent")
+        if (
+            colors["Corner Byte Color"]["domain"] != "CORNER"
+            or colors["Corner Byte Color"]["data_type"] != "BYTE_COLOR"
+            or colors["Corner Byte Color"]["values"]["bytes"]
+            != 6 * 4 * 4
+        ):
+            raise AssertionError("corner byte-color contract is invalid")
+        rec709_to_rgb = scene["render"]["color_management"][
+            "shader_transforms"
+        ]["rec709_to_rgb"]
+        expected_byte_scene_linear = tuple(
+            sum(
+                float(row[channel]) * byte_rec709_linear[channel]
+                for channel in range(3)
+            )
+            for row in rec709_to_rgb
+        ) + (byte_rec709_linear[3],)
+        byte_values = struct.unpack(
+            "<24f",
+            _read_section(
+                geometry_path,
+                colors["Corner Byte Color"]["values"],
+            ),
+        )
+        for corner in range(6):
+            actual = byte_values[corner * 4 : corner * 4 + 4]
+            if any(
+                abs(component - expected) > 5.0e-7
+                for component, expected in zip(
+                    actual,
+                    expected_byte_scene_linear,
+                )
+            ):
+                raise AssertionError(
+                    "Cycles CORNER/BYTE_COLOR Rec.709 conversion was lost: "
+                    f"{actual}, expected {expected_byte_scene_linear}"
+                )
         inspected = subprocess.run(
             [
                 str(inspector),
@@ -275,6 +346,11 @@ def _main() -> None:
             raise AssertionError(
                 "C++ compact-geometry import failed:\n"
                 f"{inspected.stdout}\n{inspected.stderr}"
+            )
+        if "node type 'ATTRIBUTE'" in inspected.stderr:
+            raise AssertionError(
+                "Cycles Attribute outputs fell back during typed lowering:\n"
+                f"{inspected.stderr}"
             )
 
     print("Psycles Blender attribute-domain regression passed")

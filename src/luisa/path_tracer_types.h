@@ -280,7 +280,7 @@ struct RenderKernelParameters {
     float light_inv_rr_threshold{};
     float camera_horizontal_tangent{};
     float camera_vertical_tangent{};
-    float camera_ortho_scale{};
+    float camera_ortho_vertical_span{};
     float camera_shift_x{};
     float camera_shift_y{};
     float camera_near{};
@@ -537,7 +537,7 @@ LUISA_STRUCT(
     light_inv_rr_threshold,
     camera_horizontal_tangent,
     camera_vertical_tangent,
-    camera_ortho_scale,
+    camera_ortho_vertical_span,
     camera_shift_x,
     camera_shift_y,
     camera_near,

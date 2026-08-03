@@ -78,6 +78,9 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "fresnel_matrix": texture_inputs._fresnel_matrix,
     "gamma_color": values._gamma_color,
     "glass_transport": closures._glass_transport,
+    "geometry_attribute_outputs": (
+        geometry_inputs._geometry_attribute_outputs
+    ),
     "geometry_pointiness": geometry_inputs._geometry_pointiness,
     "gradient_spherical": texture_inputs._gradient_spherical,
     "gradient_matrix": values._gradient_matrix,

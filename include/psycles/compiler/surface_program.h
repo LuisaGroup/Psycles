@@ -114,6 +114,7 @@ enum class ValueOperation : std::uint8_t {
     environment_color,
     environment_alpha,
     attribute_color,
+    attribute_factor,
     attribute_alpha,
     normal_map,
     bump,

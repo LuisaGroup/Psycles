@@ -437,7 +437,9 @@ public:
             const auto name = context.node_property_text(
                 node, "attribute_name");
             if (!name.empty() &&
-                (socket == "Color" || socket == "Alpha")) {
+                (socket == "Color" || socket == "Vector" ||
+                 socket == "Fac" || socket == "Factor" ||
+                 socket == "Alpha")) {
                 const auto id = context.graph().add_node(
                     compiler::node_type::vertex_color,
                     node_name);
@@ -449,11 +451,14 @@ public:
                 return finish({
                     .ref = {
                         .node = id,
-                        .socket = socket},
+                        .socket =
+                            socket == "Fac" ? "Factor" : socket},
                     .type =
-                        socket == "Alpha"
-                            ? SocketType::floating
-                            : SocketType::color});
+                        socket == "Color"
+                            ? SocketType::color
+                            : socket == "Vector"
+                                  ? SocketType::vector
+                                  : SocketType::floating});
             }
         }
         if (type == "SEPARATE_COLOR") {

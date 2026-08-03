@@ -31,6 +31,7 @@ namespace {
         case ValueOperation::environment_color:
         case ValueOperation::environment_alpha:
         case ValueOperation::attribute_color:
+        case ValueOperation::attribute_factor:
         case ValueOperation::attribute_alpha:
         case ValueOperation::normal_map:
         case ValueOperation::bump:

@@ -14,6 +14,27 @@ namespace psycles::luisa_backend::camera_sampling {
 
 inline constexpr float pi = 3.1415926535897932f;
 
+struct OrthographicViewplaneSpan {
+    float horizontal{};
+    float vertical{};
+};
+
+// Cycles defines orthographic_scale along the fitted sensor dimension. The
+// other dimension follows from the render aspect ratio. Expressing that rule
+// once at the host stage keeps camera-ray generation and conservative volume
+// bounds on the same viewplane:
+//
+//   horizontal fit: (scale, scale / aspect)
+//   vertical fit:   (scale * aspect, scale)
+[[nodiscard]] constexpr OrthographicViewplaneSpan
+orthographic_viewplane_span(float scale,
+                            float aspect,
+                            bool horizontal_fit) noexcept {
+    return horizontal_fit
+               ? OrthographicViewplaneSpan{scale, scale / aspect}
+               : OrthographicViewplaneSpan{scale * aspect, scale};
+}
+
 // Cycles addresses film pixels from the lower-left, whereas Psycles stores
 // output rows from the upper-left. A displayed output row must therefore use
 // the vertically mirrored Cycles row for every pixel-keyed sample dimension.

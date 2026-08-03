@@ -128,17 +128,17 @@ CameraRaySample construct_camera_ray(
         projection == CameraProjection::orthographic) {
         local_origin = make_float3(
             screen_x *
-                parameters.camera_ortho_scale *
+                parameters.camera_ortho_vertical_span *
                 aspect * 0.5f,
             screen_y *
-                parameters.camera_ortho_scale *
+                parameters.camera_ortho_vertical_span *
                 0.5f,
             0.0f);
         differential_position =
             0.5f *
-            (parameters.camera_ortho_scale *
+            (parameters.camera_ortho_vertical_span *
                  aspect / width +
-             parameters.camera_ortho_scale /
+             parameters.camera_ortho_vertical_span /
                  height);
     } else {
         const Float longitude = screen_x * pi;

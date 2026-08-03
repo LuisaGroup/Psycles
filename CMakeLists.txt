@@ -1370,6 +1370,15 @@ if(PSYCLES_ENABLE_LUISA)
                         luisa_refraction
                     LIBRARIES Psycles::luisa)
 
+                psycles_add_luisa_backend_test(
+                    TARGET
+                        psycles_luisa_attribute_tests
+                    SOURCE
+                        tests/test_luisa_attribute.cpp
+                    TEST_STEM
+                        luisa_attribute
+                    LIBRARIES Psycles::luisa)
+
                 add_executable(
                     psycles_luisa_cycles_path_state_tests
                     tests/test_luisa_cycles_path_state.cpp)
