@@ -7,6 +7,7 @@
 #include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/cycles_noise.h>
 #include <psycles/luisa/cycles_volume.h>
+#include <psycles/luisa/surface_closure_sampling.h>
 
 namespace psycles::luisa_backend::detail {
 
@@ -550,8 +551,11 @@ GraphSurfaceImplementation::sample_with_trace(
                 canonical_surface_closure(closure);
             surface_runtime_flags |= cycles_runtime_flags(
                 physical, query.glossy_filter_roughness);
-            const auto selection = closure_selection_state(
-                services, point, physical, incoming, query);
+            const auto selection = surface_closure_selection(
+                point,
+                physical,
+                Expr<luisa::float3>{incoming.expression()},
+                query);
             total_weight += selection.weight;
             closure_count += select(
                 0u, 1u, closure_allocated(physical));
@@ -609,9 +613,13 @@ GraphSurfaceImplementation::sample_with_trace(
                             compiler::ClosureOperation::glass;
             const auto allocated = closure_allocated(physical);
             const auto current_closure_index = closure_index;
-            const auto selection = closure_selection_state(
-                services, point, physical, incoming, query);
-            const auto glossy_normal = selection.glossy_normal;
+            const auto selection = surface_closure_selection(
+                point,
+                physical,
+                Expr<luisa::float3>{incoming.expression()},
+                query);
+            const auto glossy_normal = Float3{
+                selection.glossy_normal.expression()};
             const auto weight = selection.weight;
             auto next = accumulated + weight;
             auto choose =

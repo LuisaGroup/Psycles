@@ -31,16 +31,20 @@ namespace psycles::luisa_backend::detail {
 
 using SurfaceClosureSelectionCallable =
     Callable<SurfaceClosureSelectionCall(
-        Buffer<luisa::float4>,
-        Buffer<float>,
-        BindlessArray,
-        BindlessArray,
-        SurfacePointCall,
-        SurfaceClosureSamplingQueryCall,
-        luisa::float4x4,
-        luisa::float4x4,
-        luisa::float4x4,
-        luisa::float4x4)>;
+        luisa::float3,
+        luisa::float3,
+        luisa::uint,
+        float,
+        bool,
+        luisa::uint,
+        luisa::uint,
+        float,
+        float,
+        bool,
+        luisa::float3,
+        float,
+        bool,
+        bool)>;
 
 using SurfaceClosureConditionalSampleCallable =
     Callable<SurfaceClosureConditionalSampleCall(
@@ -77,6 +81,7 @@ class CallableSurfaceClosureSamplingOperation final
     const BindlessVar &_textures;
     const BindlessVar &_geometry_heap;
     const Var<SurfacePointCall> &_point;
+    SurfaceClosureSelectionContext _selection_context;
     Var<SurfaceClosureSamplingQueryCall> _query;
     const SurfaceClosureSamplingCallables &_callables;
 
