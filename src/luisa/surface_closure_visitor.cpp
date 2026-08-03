@@ -1,0 +1,97 @@
+#include <psycles/luisa/surface_closure_visitor.h>
+
+#include <algorithm>
+
+namespace psycles::luisa_backend {
+
+SurfaceClosureExpression::SurfaceClosureExpression(
+    const SurfaceClosureRecord &closure) noexcept
+    : kind{closure.kind.expression()},
+      lobe{closure.lobe.expression()},
+      weight{closure.weight.expression()},
+      allocation_weight{closure.allocation_weight.expression()},
+      sample_weight{closure.sample_weight.expression()},
+      setup_valid{closure.setup_valid.expression()},
+      albedo{closure.albedo.expression()},
+      reflection_albedo{closure.reflection_albedo.expression()},
+      transmission_albedo{closure.transmission_albedo.expression()},
+      color{closure.color.expression()},
+      normal{closure.normal.expression()},
+      roughness{closure.roughness.expression()},
+      diffuse_roughness{closure.diffuse_roughness.expression()},
+      metallic{closure.metallic.expression()},
+      ior{closure.ior.expression()},
+      specular_ior_level{closure.specular_ior_level.expression()},
+      specular_tint{closure.specular_tint.expression()},
+      sheen_transform_a{closure.sheen_transform_a.expression()},
+      sheen_transform_b{closure.sheen_transform_b.expression()},
+      evaluation_scale{closure.evaluation_scale.expression()},
+      fresnel_f0{closure.fresnel_f0.expression()},
+      fresnel_f90{closure.fresnel_f90.expression()},
+      reflection_tint{closure.reflection_tint.expression()},
+      transmission_tint{closure.transmission_tint.expression()},
+      preserve_ggx_energy{closure.preserve_ggx_energy.expression()},
+      beckmann{closure.beckmann.expression()} {}
+
+SurfaceClosureRecord SurfaceClosureExpression::reference() const noexcept {
+    return {
+        .kind = UInt{kind.expression()},
+        .lobe = UInt{lobe.expression()},
+        .weight = Float3{weight.expression()},
+        .allocation_weight = Float{allocation_weight.expression()},
+        .sample_weight = Float{sample_weight.expression()},
+        .setup_valid = Bool{setup_valid.expression()},
+        .albedo = Float3{albedo.expression()},
+        .reflection_albedo = Float3{reflection_albedo.expression()},
+        .transmission_albedo = Float3{transmission_albedo.expression()},
+        .color = Float3{color.expression()},
+        .normal = Float3{normal.expression()},
+        .roughness = Float{roughness.expression()},
+        .diffuse_roughness = Float{diffuse_roughness.expression()},
+        .metallic = Float{metallic.expression()},
+        .ior = Float{ior.expression()},
+        .specular_ior_level = Float{specular_ior_level.expression()},
+        .specular_tint = Float3{specular_tint.expression()},
+        .sheen_transform_a = Float{sheen_transform_a.expression()},
+        .sheen_transform_b = Float{sheen_transform_b.expression()},
+        .evaluation_scale = Float3{evaluation_scale.expression()},
+        .fresnel_f0 = Float3{fresnel_f0.expression()},
+        .fresnel_f90 = Float3{fresnel_f90.expression()},
+        .reflection_tint = Float3{reflection_tint.expression()},
+        .transmission_tint = Float3{transmission_tint.expression()},
+        .preserve_ggx_energy = Bool{preserve_ggx_energy.expression()},
+        .beckmann = Bool{beckmann.expression()}};
+}
+
+SurfaceClosureExpressionVisitor::SurfaceClosureExpressionVisitor(
+    std::size_t capacity) noexcept
+    : _capacity{std::clamp(
+          capacity,
+          std::size_t{1u},
+          static_cast<std::size_t>(
+              maximum_surface_closure_capacity))} {}
+
+std::size_t SurfaceClosureExpressionVisitor::capacity() const noexcept {
+    return _capacity;
+}
+
+void SurfaceClosureExpressionVisitor::begin(
+    Expr<luisa::float3> shading_normal) noexcept {
+    _closures.clear();
+    _shading_normal = shading_normal.expression();
+}
+
+void SurfaceClosureExpressionVisitor::add(
+    const SurfaceClosureRecord &closure) noexcept {
+    _closures.emplace_back(closure);
+}
+
+void SurfaceClosureExpressionVisitor::finish() noexcept {
+    if (_shading_normal != nullptr) {
+        visit(
+            Expr<luisa::float3>{_shading_normal},
+            _closures);
+    }
+}
+
+}// namespace psycles::luisa_backend

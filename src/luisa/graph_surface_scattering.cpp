@@ -7,16 +7,32 @@
 namespace psycles::luisa_backend::detail {
 namespace {
 
+template<typename Closure>
 [[nodiscard]] Bool has_kind(
-    const SurfaceClosureRecord &closure,
+    const Closure &closure,
     SurfaceClosureKind kind) noexcept {
     return closure.kind == static_cast<std::uint32_t>(kind);
 }
 
+template<typename Closure>
 [[nodiscard]] Bool has_lobe(
-    const SurfaceClosureRecord &closure,
+    const Closure &closure,
     SurfaceClosureLobe lobe) noexcept {
     return closure.lobe == static_cast<std::uint32_t>(lobe);
+}
+
+[[nodiscard]] SurfaceClosureIdentityExpression closure_identity(
+    const SurfaceClosureRecord &closure) noexcept {
+    return {
+        .kind = Expr<std::uint32_t>{closure.kind.expression()},
+        .lobe = Expr<std::uint32_t>{closure.lobe.expression()},
+        .allocation_weight =
+            Expr<float>{closure.allocation_weight.expression()},
+        .setup_valid = Expr<bool>{closure.setup_valid.expression()},
+        .roughness = Expr<float>{closure.roughness.expression()},
+        .preserve_ggx_energy =
+            Expr<bool>{closure.preserve_ggx_energy.expression()},
+        .beckmann = Expr<bool>{closure.beckmann.expression()}};
 }
 
 }// namespace
@@ -188,6 +204,11 @@ namespace {
 
 [[nodiscard]] Bool closure_allocated(
     const SurfaceClosureRecord &closure) noexcept {
+    return closure_allocated(closure_identity(closure));
+}
+
+[[nodiscard]] Bool closure_allocated(
+    const SurfaceClosureIdentityExpression &closure) noexcept {
     return !has_kind(closure, SurfaceClosureKind::none) &
            (closure.allocation_weight >=
                cycles_closure::closure_weight_cutoff);
@@ -260,6 +281,14 @@ namespace {
 [[nodiscard]] UInt cycles_runtime_flags(
     const SurfaceClosureRecord &closure,
     Float glossy_filter_roughness) noexcept {
+    return cycles_runtime_flags(
+        closure_identity(closure),
+        std::move(glossy_filter_roughness));
+}
+
+[[nodiscard]] UInt cycles_runtime_flags(
+    const SurfaceClosureIdentityExpression &closure,
+    Float glossy_filter_roughness) noexcept {
     const auto is_diffuse = has_kind(
         closure, SurfaceClosureKind::diffuse);
     const auto is_translucent = has_kind(
@@ -316,6 +345,11 @@ namespace {
 
 [[nodiscard]] UInt cycles_closure_type(
     const SurfaceClosureRecord &closure) noexcept {
+    return cycles_closure_type(closure_identity(closure));
+}
+
+[[nodiscard]] UInt cycles_closure_type(
+    const SurfaceClosureIdentityExpression &closure) noexcept {
     const auto is_diffuse = has_kind(
         closure, SurfaceClosureKind::diffuse);
     const auto is_translucent = has_kind(

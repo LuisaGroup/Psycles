@@ -135,6 +135,19 @@ struct MicrofacetReflectionSample {
     Bool valid;
 };
 
+// Minimal expression-only projection shared by closure classification
+// callables. It preserves the exact allocation/setup identity needed by
+// Cycles without materializing the complete scattering record.
+struct SurfaceClosureIdentityExpression {
+    Expr<std::uint32_t> kind;
+    Expr<std::uint32_t> lobe;
+    Expr<float> allocation_weight;
+    Expr<bool> setup_valid;
+    Expr<float> roughness;
+    Expr<bool> preserve_ggx_energy;
+    Expr<bool> beckmann;
+};
+
 struct AdjustedIor {
     Float eta;
     Float f0;
@@ -230,6 +243,8 @@ template <typename Id, typename Values>
     const SurfaceClosureRecord &closure) noexcept;
 [[nodiscard]] Bool closure_allocated(
     const SurfaceClosureRecord &closure) noexcept;
+[[nodiscard]] Bool closure_allocated(
+    const SurfaceClosureIdentityExpression &closure) noexcept;
 // Exact Cycles bump_shadowing_term contract. `smooth_normal` is the final
 // shader-wide sd->N; closure.normal may be an independently linked socket.
 // A nonzero factor changes closure energy but never density. A zero factor
@@ -243,8 +258,13 @@ template <typename Id, typename Values>
     Bool is_evaluation) noexcept;
 [[nodiscard]] UInt cycles_runtime_flags(const SurfaceClosureRecord &closure,
     Float glossy_filter_roughness = 0.0f) noexcept;
+[[nodiscard]] UInt cycles_runtime_flags(
+    const SurfaceClosureIdentityExpression &closure,
+    Float glossy_filter_roughness) noexcept;
 [[nodiscard]] UInt cycles_closure_type(
     const SurfaceClosureRecord &closure) noexcept;
+[[nodiscard]] UInt cycles_closure_type(
+    const SurfaceClosureIdentityExpression &closure) noexcept;
 [[nodiscard]] ClosureSelectionState closure_selection_state(
     const ShaderServices &services,
     const SurfacePoint &point,

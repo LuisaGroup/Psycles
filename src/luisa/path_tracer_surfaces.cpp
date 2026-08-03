@@ -3,6 +3,7 @@
 #include "path_tracer_shader_services.h"
 
 #include <psycles/luisa/surface_closure_evaluator.h>
+#include <psycles/luisa/surface_closure_operations.h>
 
 #include <utility>
 
@@ -38,6 +39,8 @@ template<typename Consumer>
 
 SurfaceCallables make_surface_callables(
     const std::shared_ptr<LuisaSceneData> &scene) noexcept {
+    const auto closure_identity =
+        make_surface_closure_identity_callable();
     SurfaceEvaluateLightCallable evaluate_light =
         [scene](
             BufferFloat4 parameters,
@@ -89,7 +92,7 @@ SurfaceCallables make_surface_callables(
                     }));
         };
     SurfaceRuntimeFlagsCallable runtime_flags =
-        [scene](
+        [scene, closure_identity](
             BufferFloat4 parameters,
             BufferFloat cycles_bsdf_tables,
             BindlessVar textures,
@@ -110,19 +113,19 @@ SurfaceCallables make_surface_callables(
                 scene->shader_color_space};
             const auto point =
                 unpack_surface_point(packed_point);
-            return evaluate_surface_closures(
-                *scene,
-                SurfaceClosureStorageProfile::runtime_flags,
-                services,
+            SurfaceRuntimeFlagsVisitor visitor{
+                point,
+                glossy_filter_roughness,
+                scene->volume_metadata.closure_allocation_budget,
+                closure_identity};
+            static_cast<void>(scene->surfaces.collect_closures(
                 surface_tag,
+                services,
                 point,
                 reflective_caustics,
                 refractive_caustics,
-                [&](const SurfaceClosureEvaluator
-                        &evaluator) noexcept {
-                    return evaluator.runtime_flags(
-                        glossy_filter_roughness);
-                });
+                visitor));
+            return visitor.result();
         };
     SurfaceEmissionCallable emission =
         [scene](
@@ -214,7 +217,7 @@ SurfaceCallables make_surface_callables(
                     }));
         };
     SurfaceClosureTraceCallable closure_trace =
-        [scene](
+        [scene, closure_identity](
             BufferFloat4 parameters,
             BufferFloat cycles_bsdf_tables,
             BindlessVar textures,
@@ -235,20 +238,19 @@ SurfaceCallables make_surface_callables(
                 scene->shader_color_space};
             const auto point =
                 unpack_surface_point(packed_point);
-            return pack_surface_closure_trace(
-                evaluate_surface_closures(
-                    *scene,
-                    SurfaceClosureStorageProfile::closure_trace,
-                    services,
-                    surface_tag,
-                    point,
-                    reflective_caustics,
-                    refractive_caustics,
-                    [&](const SurfaceClosureEvaluator
-                            &evaluator) noexcept {
-                        return evaluator.closure_trace(
-                            requested_index);
-                    }));
+            SurfaceClosureTraceVisitor visitor{
+                point,
+                requested_index,
+                scene->volume_metadata.closure_allocation_budget,
+                closure_identity};
+            static_cast<void>(scene->surfaces.collect_closures(
+                surface_tag,
+                services,
+                point,
+                reflective_caustics,
+                refractive_caustics,
+                visitor));
+            return pack_surface_closure_trace(visitor.result());
         };
     SurfaceSampleTraceCallable sample_trace =
         [scene](
