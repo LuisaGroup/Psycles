@@ -293,15 +293,57 @@ struct SurfaceClosureRecord {
     }
 };
 
+// Non-owning host-stage view of a canonical closure's Luisa expressions.
+// Copying this type only copies AST expression handles: it neither declares
+// device variables nor evaluates, serializes, or bakes material data. This is
+// the representation retained by multistage visitors while a material branch
+// is being recorded.
+struct SurfaceClosureExpression {
+    Expr<std::uint32_t> kind;
+    Expr<std::uint32_t> lobe;
+    Expr<luisa::float3> weight;
+    Expr<float> allocation_weight;
+    Expr<float> sample_weight;
+    Expr<bool> setup_valid;
+    Expr<luisa::float3> albedo;
+    Expr<luisa::float3> reflection_albedo;
+    Expr<luisa::float3> transmission_albedo;
+    Expr<luisa::float3> color;
+    Expr<luisa::float3> normal;
+    Expr<float> roughness;
+    Expr<float> diffuse_roughness;
+    Expr<float> metallic;
+    Expr<float> ior;
+    Expr<float> specular_ior_level;
+    Expr<luisa::float3> specular_tint;
+    Expr<float> sheen_transform_a;
+    Expr<float> sheen_transform_b;
+    Expr<luisa::float3> evaluation_scale;
+    Expr<luisa::float3> fresnel_f0;
+    Expr<luisa::float3> fresnel_f90;
+    Expr<luisa::float3> reflection_tint;
+    Expr<luisa::float3> transmission_tint;
+    Expr<bool> preserve_ggx_energy;
+    Expr<bool> beckmann;
+
+    explicit SurfaceClosureExpression(
+        const SurfaceClosureRecord &closure) noexcept;
+};
+
 // Host-stage sink matching VolumePhaseCollector. Surface implementations call
-// add() while Luisa records the selected material branch; a consumer may keep
-// the raw records in device-local storage or expose them to diagnostics.
+// begin(), add(), and finish() while Luisa records each material branch. A
+// multistage consumer may retain SurfaceClosureExpression handles until
+// finish(), which remains inside that branch. The default lifecycle hooks keep
+// existing streaming collectors source compatible.
 class SurfaceClosureCollector {
 
   public:
     virtual ~SurfaceClosureCollector() noexcept = default;
+    virtual void begin(
+        Expr<luisa::float3>) noexcept {}
     virtual void add(
         const SurfaceClosureRecord &closure) noexcept = 0;
+    virtual void finish() noexcept {}
 };
 
 struct SurfaceClosureCollection {
@@ -482,7 +524,9 @@ public:
         const SurfacePoint &point,
         Expr<bool>,
         Expr<bool>,
-        SurfaceClosureCollector &) const noexcept {
+        SurfaceClosureCollector &collector) const noexcept {
+        collector.begin(point.shading_normal);
+        collector.finish();
         return {.shading_normal = point.shading_normal};
     }
 

@@ -194,6 +194,7 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/graph_surface_emission.cpp
             src/luisa/graph_surface_implementation.cpp
             src/luisa/graph_surface_physical_closures.cpp
+            src/luisa/surface_closure_expression.cpp
             src/luisa/surface_closure_set.cpp
             src/luisa/surface_closure_evaluator.cpp
             src/luisa/surface_closure_sampling.cpp

@@ -117,9 +117,12 @@ SurfaceClosureCollection GraphSurfaceImplementation::collect_closures(
     Expr<bool> refractive_caustics_expression,
     SurfaceClosureCollector &collector) const noexcept {
     if (!_program) {
+        collector.begin(point.shading_normal);
+        collector.finish();
         return {.shading_normal = point.shading_normal};
     }
     const auto values = trace_values(services, point);
+    collector.begin(values.shading_normal);
     for_each_physical_closure(
         services,
         point,
@@ -129,6 +132,7 @@ SurfaceClosureCollection GraphSurfaceImplementation::collect_closures(
         [&](const TracedClosure &closure) noexcept {
             collector.add(canonical_surface_closure(closure));
         });
+    collector.finish();
     return {.shading_normal = values.shading_normal};
 }
 
