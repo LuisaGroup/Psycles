@@ -23,7 +23,12 @@ class SurfaceClosureExpressionVisitor : public SurfaceClosureCollector {
     const luisa::compute::Expression *_shading_normal{};
 
   protected:
-    [[nodiscard]] std::size_t capacity() const noexcept;
+    // The single allocation law shared by every branch-local operation.
+    // allocated_count is the runtime index in Cycles' retained closure
+    // sequence, not the host/JIT-stage position in the expression vector.
+    [[nodiscard]] Bool retains(
+        const SurfaceClosureExpression &closure,
+        Expr<std::uint32_t> allocated_count) const noexcept;
 
     virtual void visit(
         Expr<luisa::float3> shading_normal,

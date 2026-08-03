@@ -7,6 +7,7 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/surface_closure_blocks.cpp
     src/luisa/surface_closure_visitor.cpp
     src/luisa/surface_closure_operations.cpp
+    src/luisa/surface_closure_evaluation.cpp
     src/luisa/surface_closure_set.cpp
     src/luisa/surface_closure_evaluator.cpp
     src/luisa/surface_closure_sampling.cpp
@@ -98,6 +99,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_tracer_scene.cpp
     src/luisa/path_tracer_scene_geometry.cpp
     src/luisa/path_tracer_session.cpp
+    src/luisa/path_tracer_surface_closure_evaluation.cpp
     src/luisa/path_tracer_surfaces.cpp
     src/luisa/path_tracer_volume_capabilities.cpp
     src/luisa/path_tracer_volume_majorant_scene.cpp

@@ -5,6 +5,7 @@
 #include <psycles/luisa/graph_surface.h>
 #include <psycles/luisa/surface_closure_evaluator.h>
 #include <psycles/luisa/surface_closure_blocks.h>
+#include <psycles/luisa/surface_closure_evaluation.h>
 #include <psycles/luisa/surface_closure_operations.h>
 #include <psycles/luisa/surface_closure_set.h>
 
@@ -174,6 +175,58 @@ public:
             .closure = _selected,
             .valid = _valid,
             .shading_normal = _shading_normal};
+    }
+};
+
+// Test-only operation which exercises the same OOP visitor and canonical
+// contribution algebra without the path tracer's scene-resource callable.
+// The separate block-ABI regression below covers callable transport itself;
+// production kernels combine both pieces.
+class InlineSurfaceClosureEvaluationOperation final
+    : public SurfaceClosureEvaluationOperation {
+
+private:
+    const ShaderServices &_services;
+    const SurfacePoint &_point;
+    const SurfaceQuery &_query;
+    const SurfaceClosureEvaluationPolicy &_policy;
+    Float3 _incoming{make_float3(0.0f)};
+    Float3 _outgoing{make_float3(0.0f)};
+
+public:
+    InlineSurfaceClosureEvaluationOperation(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        Expr<luisa::float3> outgoing,
+        const SurfaceQuery &query,
+        const SurfaceClosureEvaluationPolicy &policy) noexcept
+        : _services{services},
+          _point{point},
+          _query{query},
+          _policy{policy} {
+        const auto directions =
+            make_surface_closure_evaluation_directions(
+                point, outgoing);
+        _incoming = directions.incoming;
+        _outgoing = directions.outgoing;
+    }
+
+    [[nodiscard]] luisa::compute::Var<
+        SurfaceClosureEvaluationContributionCall>
+    evaluate(
+        Expr<luisa::float3> shading_normal,
+        const SurfaceClosureExpression &closure,
+        Expr<bool> selected_sample) const noexcept override {
+        return surface_closure_evaluation_contribution(
+            _services,
+            _point,
+            shading_normal,
+            closure.reference(),
+            Expr<luisa::float3>{_incoming.expression()},
+            Expr<luisa::float3>{_outgoing.expression()},
+            _query,
+            _policy,
+            selected_sample);
     }
 };
 
@@ -833,28 +886,53 @@ int main(int argc, char **argv) {
                     0.0f, 0.08f, scenario == 7u),
                 .reflective_caustics = scenario != 6u,
                 .refractive_caustics = scenario != 2u};
-            SurfaceClosureSet closures{
+            const auto regular_policy =
+                make_surface_closure_evaluation_policy(
+                    false, Expr<std::uint32_t>{0u});
+            InlineSurfaceClosureEvaluationOperation regular_operation{
+                services,
+                point,
+                Expr<luisa::float3>{outgoing.expression()},
+                query,
+                regular_policy};
+            SurfaceClosureEvaluationVisitor regular_visitor{
                 12u,
-                SurfaceClosureStorageProfile::complete};
-            const auto collection = surfaces.collect_closures(
+                regular_operation,
+                Expr<bool>{regular_policy.preserve_pdf.expression()}};
+            static_cast<void>(surfaces.collect_closures(
                 tag,
                 services,
                 point,
                 query.reflective_caustics,
                 query.refractive_caustics,
-                closures);
-            const SurfaceClosureEvaluator evaluator{
-                point, closures, collection.shading_normal};
+                regular_visitor));
+            const auto light_policy =
+                make_surface_closure_evaluation_policy(
+                    true,
+                    Expr<std::uint32_t>{
+                        shader_flags.expression()});
+            InlineSurfaceClosureEvaluationOperation light_operation{
+                services,
+                point,
+                Expr<luisa::float3>{outgoing.expression()},
+                query,
+                light_policy};
+            SurfaceClosureEvaluationVisitor light_visitor{
+                12u,
+                light_operation,
+                Expr<bool>{light_policy.preserve_pdf.expression()}};
+            static_cast<void>(surfaces.collect_closures(
+                tag,
+                services,
+                point,
+                query.reflective_caustics,
+                query.refractive_caustics,
+                light_visitor));
             write_scattering_result(
                 output,
                 invocation * scattering_records_per_slot,
-                evaluator.evaluate(
-                    services, outgoing, query),
-                evaluator.evaluate_light(services,
-                    outgoing,
-                    SurfaceLightQuery{
-                        .surface = query,
-                        .shader_flags = shader_flags}));
+                regular_visitor.result(),
+                light_visitor.result());
         };
 
     Kernel1D scatter_legacy =
