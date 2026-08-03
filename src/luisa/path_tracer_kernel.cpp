@@ -22,6 +22,22 @@ render_shader_cache_enabled() noexcept {
            std::string_view{disabled} != "1";
 }
 
+[[nodiscard]] bool
+render_shader_driver_optimization_enabled(
+    const luisa::compute::Device &device) noexcept {
+    if (device.backend_name() != "vk") {
+        return true;
+    }
+    // The monolithic path kernel retains a runtime-indexed Cycles closure
+    // array. Full RADV optimization of that shape can consume unbounded host
+    // memory on a cold compile. Luisa's per-shader Vulkan policy keeps the
+    // compile bounded while leaving every other scene kernel optimized.
+    const auto *enabled = std::getenv(
+        "PSYCLES_VULKAN_ENABLE_DRIVER_OPTIMIZATION");
+    return enabled != nullptr &&
+           std::string_view{enabled} == "1";
+}
+
 }// namespace
 
 void LuisaRenderSession::initialize(const RenderSettings &settings) {
@@ -399,7 +415,10 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         luisa::compute::ShaderOption{
             .enable_cache =
                 render_shader_cache_enabled(),
-            .enable_fast_math = false});
+            .enable_fast_math = false,
+            .enable_driver_optimization =
+                render_shader_driver_optimization_enabled(
+                    _scene->device)});
 }
 
 }// namespace psycles::luisa_backend::detail
