@@ -42,77 +42,136 @@ struct CollectedClosureTrace {
     UInt count;
     SurfaceClosureRecord closure;
     Bool valid;
+    Float3 shading_normal;
 };
 
-// Diagnostic consumer of the new host-stage collection boundary. Selection
-// is runtime-indexed so this exercises the same dynamic record identity that
-// the shared production closure set will consume.
+// Multistage diagnostic consumer of the collection boundary. add() retains
+// only raw AST expression handles; runtime-indexed selection is deliberately
+// emitted later by finish(), while still inside the material dispatch branch.
+// The two fixture materials have different closure counts, so clearing the
+// host vector in begin() is also a regression for cross-branch leakage.
 class RequestedClosureCollector final : public SurfaceClosureCollector {
 
 private:
     UInt _requested;
+    luisa::vector<SurfaceClosureExpression> _closures;
     UInt _count{0u};
     SurfaceClosureRecord _selected{SurfaceClosureRecord::zero()};
     Bool _valid{false};
+    Float3 _shading_normal{make_float3(0.0f, 0.0f, 1.0f)};
 
 public:
     explicit RequestedClosureCollector(UInt requested) noexcept
         : _requested{requested} {}
 
+    void begin(
+        Expr<luisa::float3> shading_normal) noexcept override {
+        _closures.clear();
+        _shading_normal = shading_normal;
+    }
+
     void add(const SurfaceClosureRecord &closure) noexcept override {
-        const auto scattering =
-            closure.kind != static_cast<std::uint32_t>(SurfaceClosureKind::none);
-        const auto allocated = scattering & (closure.allocation_weight >=
-                                             cycles_closure::closure_weight_cutoff);
-        const auto match = allocated & (_count == _requested);
-        _selected.kind = select(_selected.kind, closure.kind, match);
-        _selected.lobe = select(_selected.lobe, closure.lobe, match);
-        _selected.weight = select(_selected.weight, closure.weight, match);
-        _selected.allocation_weight =
-            select(_selected.allocation_weight, closure.allocation_weight, match);
-        _selected.sample_weight =
-            select(_selected.sample_weight, closure.sample_weight, match);
-        _selected.setup_valid =
-            select(_selected.setup_valid, closure.setup_valid, match);
-        _selected.albedo = select(_selected.albedo, closure.albedo, match);
-        _selected.reflection_albedo =
-            select(_selected.reflection_albedo, closure.reflection_albedo, match);
-        _selected.transmission_albedo = select(_selected.transmission_albedo,
-                                               closure.transmission_albedo, match);
-        _selected.color = select(_selected.color, closure.color, match);
-        _selected.normal = select(_selected.normal, closure.normal, match);
-        _selected.roughness = select(_selected.roughness, closure.roughness, match);
-        _selected.diffuse_roughness =
-            select(_selected.diffuse_roughness, closure.diffuse_roughness, match);
-        _selected.metallic = select(_selected.metallic, closure.metallic, match);
-        _selected.ior = select(_selected.ior, closure.ior, match);
-        _selected.specular_ior_level =
-            select(_selected.specular_ior_level, closure.specular_ior_level, match);
-        _selected.specular_tint =
-            select(_selected.specular_tint, closure.specular_tint, match);
-        _selected.sheen_transform_a =
-            select(_selected.sheen_transform_a, closure.sheen_transform_a, match);
-        _selected.sheen_transform_b =
-            select(_selected.sheen_transform_b, closure.sheen_transform_b, match);
-        _selected.evaluation_scale =
-            select(_selected.evaluation_scale, closure.evaluation_scale, match);
-        _selected.fresnel_f0 =
-            select(_selected.fresnel_f0, closure.fresnel_f0, match);
-        _selected.fresnel_f90 =
-            select(_selected.fresnel_f90, closure.fresnel_f90, match);
-        _selected.reflection_tint =
-            select(_selected.reflection_tint, closure.reflection_tint, match);
-        _selected.transmission_tint =
-            select(_selected.transmission_tint, closure.transmission_tint, match);
-        _selected.preserve_ggx_energy = select(_selected.preserve_ggx_energy,
-                                               closure.preserve_ggx_energy, match);
-        _selected.beckmann = select(_selected.beckmann, closure.beckmann, match);
-        _valid |= match;
-        _count += select(0u, 1u, allocated);
+        _closures.emplace_back(closure);
+    }
+
+    void finish() noexcept override {
+        for (const auto &closure : _closures) {
+            const auto scattering =
+                closure.kind != static_cast<std::uint32_t>(
+                                    SurfaceClosureKind::none);
+            const auto allocated =
+                scattering &
+                (closure.allocation_weight >=
+                    cycles_closure::closure_weight_cutoff);
+            const auto match = allocated & (_count == _requested);
+            _selected.kind = select(_selected.kind, closure.kind, match);
+            _selected.lobe = select(_selected.lobe, closure.lobe, match);
+            _selected.weight = select(_selected.weight, closure.weight, match);
+            _selected.allocation_weight = select(
+                _selected.allocation_weight,
+                closure.allocation_weight,
+                match);
+            _selected.sample_weight = select(
+                _selected.sample_weight,
+                closure.sample_weight,
+                match);
+            _selected.setup_valid = select(
+                _selected.setup_valid,
+                closure.setup_valid,
+                match);
+            _selected.albedo = select(
+                _selected.albedo, closure.albedo, match);
+            _selected.reflection_albedo = select(
+                _selected.reflection_albedo,
+                closure.reflection_albedo,
+                match);
+            _selected.transmission_albedo = select(
+                _selected.transmission_albedo,
+                closure.transmission_albedo,
+                match);
+            _selected.color = select(
+                _selected.color, closure.color, match);
+            _selected.normal = select(
+                _selected.normal, closure.normal, match);
+            _selected.roughness = select(
+                _selected.roughness, closure.roughness, match);
+            _selected.diffuse_roughness = select(
+                _selected.diffuse_roughness,
+                closure.diffuse_roughness,
+                match);
+            _selected.metallic = select(
+                _selected.metallic, closure.metallic, match);
+            _selected.ior = select(
+                _selected.ior, closure.ior, match);
+            _selected.specular_ior_level = select(
+                _selected.specular_ior_level,
+                closure.specular_ior_level,
+                match);
+            _selected.specular_tint = select(
+                _selected.specular_tint,
+                closure.specular_tint,
+                match);
+            _selected.sheen_transform_a = select(
+                _selected.sheen_transform_a,
+                closure.sheen_transform_a,
+                match);
+            _selected.sheen_transform_b = select(
+                _selected.sheen_transform_b,
+                closure.sheen_transform_b,
+                match);
+            _selected.evaluation_scale = select(
+                _selected.evaluation_scale,
+                closure.evaluation_scale,
+                match);
+            _selected.fresnel_f0 = select(
+                _selected.fresnel_f0, closure.fresnel_f0, match);
+            _selected.fresnel_f90 = select(
+                _selected.fresnel_f90, closure.fresnel_f90, match);
+            _selected.reflection_tint = select(
+                _selected.reflection_tint,
+                closure.reflection_tint,
+                match);
+            _selected.transmission_tint = select(
+                _selected.transmission_tint,
+                closure.transmission_tint,
+                match);
+            _selected.preserve_ggx_energy = select(
+                _selected.preserve_ggx_energy,
+                closure.preserve_ggx_energy,
+                match);
+            _selected.beckmann = select(
+                _selected.beckmann, closure.beckmann, match);
+            _valid |= match;
+            _count += select(0u, 1u, allocated);
+        }
     }
 
     [[nodiscard]] CollectedClosureTrace result() const noexcept {
-        return {.count = _count, .closure = _selected, .valid = _valid};
+        return {
+            .count = _count,
+            .closure = _selected,
+            .valid = _valid,
+            .shading_normal = _shading_normal};
     }
 };
 
@@ -221,6 +280,7 @@ int main(int argc, char **argv) {
         const auto collection =
             surfaces.collect_closures(tag, services, point, true, true, collector);
         const auto trace = collector.result();
+        static_cast<void>(collection);
         const auto &closure = trace.closure;
         const auto base = invocation * records_per_slot;
         output.write(base, make_float4(cast<float>(trace.count),
@@ -237,7 +297,7 @@ int main(int argc, char **argv) {
         output.write(base + 4u,
                      make_float4(closure.reflection_albedo, cast<float>(flags)));
         output.write(base + 5u,
-                     make_float4(collection.shading_normal, closure.ior));
+                     make_float4(trace.shading_normal, closure.ior));
     };
 
     Kernel1D legacy = [&](BufferFloat4 parameter_buffer,
