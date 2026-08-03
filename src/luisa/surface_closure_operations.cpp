@@ -9,22 +9,6 @@
 namespace psycles::luisa_backend {
 namespace {
 
-[[nodiscard]] Bool allocated(
-    const SurfaceClosureExpression &closure) noexcept {
-    return (closure.kind != static_cast<std::uint32_t>(
-                                SurfaceClosureKind::none)) &
-           (closure.allocation_weight >=
-               cycles_closure::closure_weight_cutoff);
-}
-
-[[nodiscard]] Bool retained(
-    const SurfaceClosureExpression &closure,
-    UInt allocated_count,
-    std::size_t capacity) noexcept {
-    return allocated(closure) &
-           (allocated_count < static_cast<std::uint32_t>(capacity));
-}
-
 [[nodiscard]] luisa::compute::UInt2 classify(
     const SurfaceClosureIdentityCallable &identity,
     const SurfaceClosureExpression &closure,
@@ -263,8 +247,8 @@ void SurfaceRuntimeFlagsVisitor::visit(
         _point.back_facing);
     UInt allocated_count = 0u;
     for (const auto &closure : closures) {
-        const auto keep = retained(
-            closure, allocated_count, capacity());
+        const auto keep = retains(
+            closure, allocated_count);
         $if(keep) {
             _result |= classify(
                 _identity,
@@ -309,8 +293,8 @@ void SurfaceClosureTraceVisitor::visit(
 
     UInt allocated_count = 0u;
     for (const auto &closure : closures) {
-        const auto keep = retained(
-            closure, allocated_count, capacity());
+        const auto keep = retains(
+            closure, allocated_count);
         $if(keep) {
             const auto identity = classify(
                 _identity, closure, 0.0f);
@@ -370,8 +354,8 @@ void SurfaceAovVisitor::visit(
 
     UInt allocated_count = 0u;
     for (const auto &closure : closures) {
-        const auto keep = retained(
-            closure, allocated_count, capacity());
+        const auto keep = retains(
+            closure, allocated_count);
         $if(keep) {
             const auto contribution = _aov(
                 _point.incoming,

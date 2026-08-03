@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include <psycles/luisa/cycles_closure.h>
+
 namespace psycles::luisa_backend {
 
 SurfaceClosureExpression::SurfaceClosureExpression(
@@ -71,8 +73,16 @@ SurfaceClosureExpressionVisitor::SurfaceClosureExpressionVisitor(
           static_cast<std::size_t>(
               maximum_surface_closure_capacity))} {}
 
-std::size_t SurfaceClosureExpressionVisitor::capacity() const noexcept {
-    return _capacity;
+Bool SurfaceClosureExpressionVisitor::retains(
+    const SurfaceClosureExpression &closure,
+    Expr<std::uint32_t> allocated_count) const noexcept {
+    return
+        (closure.kind != static_cast<std::uint32_t>(
+                             SurfaceClosureKind::none)) &
+        (closure.allocation_weight >=
+            cycles_closure::closure_weight_cutoff) &
+        (allocated_count < static_cast<std::uint32_t>(
+                               _capacity));
 }
 
 void SurfaceClosureExpressionVisitor::begin(

@@ -1,6 +1,7 @@
 #include "path_tracer_surfaces.h"
 
 #include "path_tracer_shader_services.h"
+#include "path_tracer_surface_closure_evaluation.h"
 
 #include <psycles/luisa/surface_closure_evaluator.h>
 #include <psycles/luisa/surface_closure_operations.h>
@@ -43,8 +44,10 @@ SurfaceCallables make_surface_callables(
         make_surface_closure_identity_callable();
     const auto closure_aov =
         make_surface_closure_aov_callable();
+    const auto closure_evaluation =
+        make_surface_closure_evaluation_callable(scene);
     SurfaceEvaluateLightCallable evaluate_light =
-        [scene](
+        [scene, closure_evaluation](
             BufferFloat4 parameters,
             BufferFloat cycles_bsdf_tables,
             BindlessVar textures,
@@ -78,20 +81,34 @@ SurfaceCallables make_surface_callables(
                 .shader_flags = shader_flags};
             const auto point =
                 unpack_surface_point(packed_point);
-            return pack_surface_evaluation(
-                evaluate_surface_closures(
-                    *scene,
-                    SurfaceClosureStorageProfile::complete,
-                    services,
-                    surface_tag,
-                    point,
-                    reflective_caustics,
-                    refractive_caustics,
-                    [&](const SurfaceClosureEvaluator
-                            &evaluator) noexcept {
-                        return evaluator.evaluate_light(
-                            services, outgoing, query);
-                    }));
+            const auto policy =
+                make_surface_closure_evaluation_policy(
+                    true,
+                    Expr<std::uint32_t>{
+                        shader_flags.expression()});
+            CallableSurfaceClosureEvaluationOperation operation{
+                parameters,
+                cycles_bsdf_tables,
+                textures,
+                geometry_heap,
+                packed_point,
+                point,
+                Expr<luisa::float3>{outgoing.expression()},
+                query.surface,
+                policy,
+                closure_evaluation};
+            SurfaceClosureEvaluationVisitor visitor{
+                scene->volume_metadata.closure_allocation_budget,
+                operation,
+                Expr<bool>{policy.preserve_pdf.expression()}};
+            static_cast<void>(scene->surfaces.collect_closures(
+                surface_tag,
+                services,
+                point,
+                reflective_caustics,
+                refractive_caustics,
+                visitor));
+            return pack_surface_evaluation(visitor.result());
         };
     SurfaceRuntimeFlagsCallable runtime_flags =
         [scene, closure_identity](
