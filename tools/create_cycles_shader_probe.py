@@ -122,6 +122,7 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "principled_emission_layers": closures._principled_emission_layers,
     "principled_sheen_surface": closures._principled_sheen_surface,
     "principled_surface": closures._principled_surface,
+    "principled_transmission_surface": closures._principled_transmission_surface,
     "rgb_emission": lights_camera._rgb_emission,
     "rgb_curve_matrix": texture_inputs._rgb_curve_matrix,
     "rgb_to_bw": values._rgb_to_bw,

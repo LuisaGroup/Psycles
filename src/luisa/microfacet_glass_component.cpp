@@ -80,7 +80,7 @@ glass_microfacet_alpha(const TracedClosure &closure,
         (1.0f - cosine_squared) / (cosine_squared * alpha_squared);
     const auto denominator =
         exp(exponent) * pi * alpha_squared * cosine_squared * cosine_squared;
-    return select(0.0f, 1.0f / denominator, normal_half_cosine > 0.0f);
+    return 1.0f / denominator;
 }
 
 [[nodiscard]] Float glass_microfacet_lambda(const TracedClosure &closure,
@@ -105,8 +105,18 @@ glass_microfacet_alpha(const TracedClosure &closure,
     const auto transmission = cosine_outgoing < 0.0f;
     const auto unnormalized_half = select(
         incoming + outgoing, -(closure.ior * outgoing + incoming), transmission);
+    const auto half_length = sqrt(dot(unnormalized_half, unnormalized_half));
+    // At eta == 1 every transmitted microfacet maps to -incoming. Cycles
+    // classifies that event as singular; its finite-direction evaluation has
+    // zero measure. Make the definition explicit so backend normalization
+    // precision cannot turn the zero half-vector into an unbounded Jacobian.
+    const auto unit_ior_transmission = transmission & (closure.ior == 1.0f);
+    const auto has_finite_half =
+        (half_length != 0.0f) & !unit_ior_transmission;
+    const auto safe_half_length =
+        select(1.0f, half_length, has_finite_half);
     const auto inverse_half_length =
-        1.0f / sqrt(dot(unnormalized_half, unnormalized_half));
+        select(0.0f, 1.0f / safe_half_length, has_finite_half);
     const auto half_vector = unnormalized_half * inverse_half_length;
     return {.half_vector = half_vector,
             .inverse_half_length = inverse_half_length,
@@ -262,11 +272,14 @@ Float3 MicrofacetGlassComponent::intensity(
     const auto value = lobe * common /
                        (1.0f + lambda_incoming + lambda_outgoing) *
                        closure.evaluation_scale;
-    const auto valid = (geometry.cosine_incoming > 0.0f) &
-                       (geometry.cosine_normal_half > 0.0f) &
-                       (geometry.cosine_half_incoming > 0.0f) &
-                       (setup_alpha * setup_alpha >
-                        cycles_closure::microfacet_singular_alpha_product);
+    // Cycles orients the refractive half-vector by eta, not by N. For an
+    // inverse-eta (backface) configuration both N.H and H.I may therefore be
+    // negative. D, Fresnel, and the Jacobian are defined for that orientation;
+    // the incoming hemisphere is the only directional validity condition.
+    const auto valid =
+        (geometry.cosine_incoming > 0.0f) &
+        (setup_alpha * setup_alpha >
+         cycles_closure::microfacet_singular_alpha_product);
     return select(make_float3(0.0f), value, valid);
 }
 
@@ -288,34 +301,24 @@ Float MicrofacetGlassComponent::pdf(
     const auto probability = reflection_probability(fresnel);
     const auto lobe_probability =
         select(probability, 1.0f - probability, geometry.transmission);
-    Float directional_pdf;
-    if (closure.beckmann) {
-        const auto reflection_jacobian =
-            1.0f / (4.0f * geometry.cosine_half_incoming);
-        const auto transmission_jacobian =
-            abs(geometry.cosine_half_outgoing) * closure.ior * closure.ior *
-            geometry.inverse_half_length * geometry.inverse_half_length;
-        directional_pdf = distribution * max(geometry.cosine_normal_half, 0.0f) *
-                          select(reflection_jacobian, transmission_jacobian,
-                                 geometry.transmission);
-    } else {
-        const auto lambda_incoming =
-            glass_microfacet_lambda(closure, geometry.cosine_incoming, alpha);
-        const auto transmission_jacobian =
-            closure.ior * closure.ior * geometry.inverse_half_length *
-            geometry.inverse_half_length *
-            abs(geometry.cosine_half_incoming * geometry.cosine_half_outgoing);
-        const auto common =
-            distribution / geometry.cosine_incoming *
-            select(0.25f, transmission_jacobian, geometry.transmission);
-        directional_pdf = common / (1.0f + lambda_incoming);
-    }
+    // Both GGX and Beckmann use visible-normal sampling in Cycles, so their
+    // evaluation PDFs share D / (N.I) / (1 + Lambda(I)); only D and Lambda
+    // differ by distribution.
+    const auto lambda_incoming =
+        glass_microfacet_lambda(closure, geometry.cosine_incoming, alpha);
+    const auto transmission_jacobian =
+        closure.ior * closure.ior * geometry.inverse_half_length *
+        geometry.inverse_half_length *
+        abs(geometry.cosine_half_incoming * geometry.cosine_half_outgoing);
+    const auto common =
+        distribution / geometry.cosine_incoming *
+        select(0.25f, transmission_jacobian, geometry.transmission);
+    const auto directional_pdf = common / (1.0f + lambda_incoming);
     const auto lobe_energy =
         select(sample_weight(fresnel.reflection),
                sample_weight(fresnel.transmission), geometry.transmission);
     const auto valid =
-        (geometry.cosine_incoming > 0.0f) & (geometry.cosine_normal_half > 0.0f) &
-        (geometry.cosine_half_incoming > 0.0f) & (lobe_energy > 0.0f) &
+        (geometry.cosine_incoming > 0.0f) & (lobe_energy > 0.0f) &
         (setup_alpha * setup_alpha >
          cycles_closure::microfacet_singular_alpha_product);
     return select(0.0f, directional_pdf * lobe_probability, valid);
@@ -332,14 +335,8 @@ GlassSample MicrofacetGlassComponent::sample(
     const auto sampling_alpha = max(alpha, 1.0e-7f);
     Float3 sampled_half;
     if (closure.beckmann) {
-        const auto tangent_squared = -sampling_alpha * sampling_alpha *
-                                     log(max(1.0f - random_direction.x, 1.0e-7f));
-        const auto cosine = rsqrt(1.0f + tangent_squared);
-        const auto sine = sqrt(max(1.0f - cosine * cosine, 0.0f));
-        const auto phi = two_pi * random_direction.y;
-        const auto basis = cycles_sample_mapping::make_orthonormals(glossy_normal);
-        sampled_half = basis.tangent * (sine * cos(phi)) +
-                       basis.bitangent * (sine * sin(phi)) + glossy_normal * cosine;
+        sampled_half = cycles_sample_mapping::sample_beckmann_visible_normal(
+            glossy_normal, incoming, sampling_alpha, random_direction);
     } else {
         sampled_half = cycles_sample_mapping::sample_ggx_visible_normal(
             glossy_normal, incoming, sampling_alpha, random_direction);

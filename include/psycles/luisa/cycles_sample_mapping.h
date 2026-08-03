@@ -168,6 +168,143 @@ sample_ggx_visible_normal(luisa::compute::Float3 normal,
     return half_vector;
 }
 
+// Cycles' Beckmann sampler draws the distribution of visible normals, not
+// the underlying NDF. The error-function approximations and the bounded
+// Newton/bisection solve below are part of its deterministic sample mapping;
+// replacing them with a statistically equivalent inverse CDF breaks
+// path-by-path correlation with Cycles.
+[[nodiscard]] inline luisa::compute::Float fast_erf(
+    luisa::compute::Float value) noexcept {
+    using namespace luisa::compute;
+    const auto magnitude = abs(value);
+    const auto crushed = 1.0f - (1.0f - magnitude);
+    auto polynomial = fma(0.0000430638f, crushed, 0.0002765672f);
+    polynomial = fma(polynomial, crushed, 0.0001520143f);
+    polynomial = fma(polynomial, crushed, 0.0092705272f);
+    polynomial = fma(polynomial, crushed, 0.0422820123f);
+    polynomial = fma(polynomial, crushed, 0.0705230784f);
+    polynomial = fma(polynomial, crushed, 1.0f);
+    const auto square = polynomial * polynomial;
+    const auto fourth = square * square;
+    const auto eighth = fourth * fourth;
+    const auto sixteenth = eighth * eighth;
+    const auto unsigned_result = 1.0f - 1.0f / sixteenth;
+    const auto signed_result =
+        select(-unsigned_result, unsigned_result, value >= 0.0f);
+    const auto signed_limit = select(-1.0f, 1.0f, value >= 0.0f);
+    return select(signed_result, signed_limit, magnitude >= 12.3f);
+}
+
+[[nodiscard]] inline luisa::compute::Float fast_inverse_erf(
+    luisa::compute::Float value) noexcept {
+    using namespace luisa::compute;
+    const auto magnitude = min(abs(value), 0.99999994f);
+    const auto base = -log((1.0f - magnitude) * (1.0f + magnitude));
+
+    const auto central_x = base - 2.5f;
+    auto central = fma(2.81022636e-08f, central_x, 3.43273939e-07f);
+    central = fma(central, central_x, -3.5233877e-06f);
+    central = fma(central, central_x, -4.39150654e-06f);
+    central = fma(central, central_x, 0.00021858087f);
+    central = fma(central, central_x, -0.00125372503f);
+    central = fma(central, central_x, -0.00417768164f);
+    central = fma(central, central_x, 0.246640727f);
+    central = fma(central, central_x, 1.50140941f);
+
+    const auto tail_x = sqrt(base) - 3.0f;
+    auto tail = fma(-0.000200214257f, tail_x, 0.000100950558f);
+    tail = fma(tail, tail_x, 0.00134934322f);
+    tail = fma(tail, tail_x, -0.00367342844f);
+    tail = fma(tail, tail_x, 0.00573950773f);
+    tail = fma(tail, tail_x, -0.0076224613f);
+    tail = fma(tail, tail_x, 0.00943887047f);
+    tail = fma(tail, tail_x, 1.00167406f);
+    tail = fma(tail, tail_x, 2.83297682f);
+    return select(tail, central, base < 5.0f) * value;
+}
+
+[[nodiscard]] inline luisa::compute::Float3
+sample_beckmann_visible_normal(luisa::compute::Float3 normal,
+    luisa::compute::Float3 incoming,
+    luisa::compute::Float alpha,
+    luisa::compute::Float2 random) noexcept {
+    using namespace luisa::compute;
+
+    const auto world_basis = make_orthonormals(normal);
+    const auto local_incoming =
+        make_float3(dot(world_basis.tangent, incoming),
+            dot(world_basis.bitangent, incoming),
+            dot(normal, incoming));
+    const auto stretched_incoming =
+        normalize(make_float3(alpha * local_incoming.x,
+            alpha * local_incoming.y,
+            local_incoming.z));
+
+    const auto normal_radius = sqrt(-log(random.x));
+    const auto normal_phi = 2.0f * pi * random.y;
+    const auto normal_slope = normal_radius *
+                              make_float2(cos(normal_phi), sin(normal_phi));
+
+    const auto cosine = stretched_incoming.z;
+    const auto sine = sqrt(max(1.0f - cosine * cosine, 0.0f));
+    const auto safe_cosine = select(1.0f, cosine, cosine != 0.0f);
+    const auto safe_sine = select(1.0f, sine, sine != 0.0f);
+    const auto tangent = sine / safe_cosine;
+    const auto safe_tangent = select(1.0f, tangent, tangent != 0.0f);
+    const auto cotangent = 1.0f / safe_tangent;
+    const auto erf_a = fast_erf(cotangent);
+    const auto exponential = exp(-cotangent * cotangent);
+    const auto cosine_phi = select(
+        1.0f, stretched_incoming.x / safe_sine, sine != 0.0f);
+    const auto sine_phi = select(
+        0.0f, stretched_incoming.y / safe_sine, sine != 0.0f);
+    const auto k = tangent * 0.56418958354f;
+    const auto approximate_y =
+        random.x * (1.0f + erf_a + k * (1.0f - erf_a * erf_a));
+    const auto exact_y = random.x * (1.0f + erf_a + k * exponential);
+    const auto safe_k = select(1.0f, k, k > 0.0f);
+    const auto quadratic_b =
+        (0.5f - sqrt(max(k * (k - approximate_y + 1.0f) + 0.25f,
+                          0.0f))) /
+        safe_k;
+    const auto b = select(approximate_y - 1.0f, quadratic_b, k > 0.0f);
+
+    Float inverse_erf = fast_inverse_erf(b);
+    Float2 begin = make_float2(-1.0f, -exact_y);
+    Float2 end =
+        make_float2(erf_a, 1.0f + erf_a + k * exponential - exact_y);
+    Float2 current = make_float2(
+        b, 1.0f + b + k * exp(-inverse_erf * inverse_erf) - exact_y);
+    UInt iteration = 0u;
+    $while((abs(current.y) > 1.0e-6f) & (iteration < 3u)) {
+        const auto same_sign = (begin.y < 0.0f) == (current.y < 0.0f);
+        begin = make_float2(select(begin.x, current.x, same_sign),
+                            select(begin.y, current.y, same_sign));
+        end.x = select(current.x, end.x, same_sign);
+        const auto newton =
+            current.x - current.y / (1.0f - inverse_erf * tangent);
+        const auto inside = (newton >= begin.x) & (newton <= end.x);
+        current.x = select(0.5f * (begin.x + end.x), newton, inside);
+        inverse_erf = fast_inverse_erf(current.x);
+        current.y = 1.0f + current.x +
+                    k * exp(-inverse_erf * inverse_erf) - exact_y;
+        iteration += 1u;
+    };
+
+    const auto general_slope =
+        make_float2(inverse_erf, fast_inverse_erf(2.0f * random.y - 1.0f));
+    const auto slope = select(general_slope, normal_slope,
+                              stretched_incoming.z >= 0.99999f);
+    const auto rotated_slope =
+        make_float2(cosine_phi * slope.x - sine_phi * slope.y,
+                    sine_phi * slope.x + cosine_phi * slope.y) *
+        alpha;
+    const auto local_half =
+        normalize(make_float3(-rotated_slope.x, -rotated_slope.y, 1.0f));
+    return world_basis.tangent * local_half.x +
+           world_basis.bitangent * local_half.y + normal * local_half.z;
+}
+
 [[nodiscard]] inline luisa::compute::Float3
 sample_ggx_visible_normal_reflection(luisa::compute::Float3 normal,
     luisa::compute::Float3 incoming,

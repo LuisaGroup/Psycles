@@ -1,0 +1,714 @@
+{
+  "actual_label": "Psycles",
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.Depth.Z",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.Diffuse Direct.R",
+    "ViewLayer.Diffuse Direct.G",
+    "ViewLayer.Diffuse Direct.B",
+    "ViewLayer.Diffuse Indirect.R",
+    "ViewLayer.Diffuse Indirect.G",
+    "ViewLayer.Diffuse Indirect.B",
+    "ViewLayer.Diffuse Color.R",
+    "ViewLayer.Diffuse Color.G",
+    "ViewLayer.Diffuse Color.B",
+    "ViewLayer.Glossy Direct.R",
+    "ViewLayer.Glossy Direct.G",
+    "ViewLayer.Glossy Direct.B",
+    "ViewLayer.Glossy Indirect.R",
+    "ViewLayer.Glossy Indirect.G",
+    "ViewLayer.Glossy Indirect.B",
+    "ViewLayer.Glossy Color.R",
+    "ViewLayer.Glossy Color.G",
+    "ViewLayer.Glossy Color.B",
+    "ViewLayer.Transmission Direct.R",
+    "ViewLayer.Transmission Direct.G",
+    "ViewLayer.Transmission Direct.B",
+    "ViewLayer.Transmission Indirect.R",
+    "ViewLayer.Transmission Indirect.G",
+    "ViewLayer.Transmission Indirect.B",
+    "ViewLayer.Transmission Color.R",
+    "ViewLayer.Transmission Color.G",
+    "ViewLayer.Transmission Color.B",
+    "ViewLayer.Emission.R",
+    "ViewLayer.Emission.G",
+    "ViewLayer.Emission.B",
+    "ViewLayer.Environment.R",
+    "ViewLayer.Environment.G",
+    "ViewLayer.Environment.B",
+    "ViewLayer.Debug Sample Count.X"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        1.0000008344650269,
+        1.0000015497207642,
+        0.9999973177909851
+      ],
+      "cycles": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/glass_transport-cycles.exr",
+      "cycles_channel_mean": [
+        0.9885388016700745,
+        0.5299988389015198,
+        0.28664717078208923
+      ],
+      "cycles_luminance_mean": 0.6099132895469666,
+      "cycles_rms": 0.8243183493614197,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0000010749906647,
+      "maximum_absolute_error": 0.005941405892372131,
+      "mean_absolute_error": 1.9247909222031012e-06,
+      "orientation_rmse": {
+        "flip_x": 0.7927690148353577,
+        "flip_xy": 0.7927689552307129,
+        "flip_y": 0.005414762068539858,
+        "identity": 7.376662688329816e-05
+      },
+      "p95_pixel_rmse": 4.617745048562938e-07,
+      "p99_pixel_rmse": 3.213121999579016e-06,
+      "psycles": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/glass_transport-psycles.exr",
+      "psycles_channel_mean": [
+        0.9885396361351013,
+        0.5299996733665466,
+        0.28664639592170715
+      ],
+      "psycles_luminance_mean": 0.6099139451980591,
+      "psycles_rms": 0.8243191192405154,
+      "relative_rmse": 8.948803206970153e-05,
+      "rmse": 7.376662688329816e-05,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 167551.08281392427,
+        "display_scale": 0.5604845183424515,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/triptychs/combined.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "DiffCol": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/glass_transport-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/glass_transport-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/triptychs/diffcol.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "DiffDir": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/glass_transport-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/glass_transport-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/triptychs/diffdir.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "DiffInd": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/glass_transport-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/glass_transport-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/triptychs/diffind.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "Emit": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/glass_transport-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/glass_transport-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/triptychs/emit.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "Env": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/glass_transport-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 20018005386646.11,
+      "maximum_absolute_error": 0.0033750003203749657,
+      "mean_absolute_error": 3.5095217754133046e-07,
+      "orientation_rmse": {
+        "flip_x": 3.1234740163199604e-05,
+        "flip_xy": 3.1234740163199604e-05,
+        "flip_y": 3.1234740163199604e-05,
+        "identity": 3.1234740163199604e-05
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/glass_transport-psycles.exr",
+      "psycles_channel_mean": [
+        4.577636758540393e-08,
+        1.8310547034161573e-07,
+        8.239746875915444e-07
+      ],
+      "psycles_luminance_mean": 2.001800538664611e-07,
+      "psycles_rms": 3.123474088256326e-05,
+      "relative_rmse": 3123474016319960.5,
+      "rmse": 3.1234740163199604e-05,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/triptychs/env.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "GlossCol": {
+      "channel_mean_ratio": [
+        0.9999993443489075,
+        0.9999995231628418,
+        0.9999997019767761
+      ],
+      "cycles": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/glass_transport-cycles.exr",
+      "cycles_channel_mean": [
+        0.030675211921334267,
+        0.03146390989422798,
+        0.030856138095259666
+      ],
+      "cycles_luminance_mean": 0.031252142041921616,
+      "cycles_rms": 0.03262251242995262,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999996423966434,
+      "maximum_absolute_error": 7.87004828453064e-05,
+      "mean_absolute_error": 1.4090271172051416e-08,
+      "orientation_rmse": {
+        "flip_x": 0.014520909637212753,
+        "flip_xy": 0.014520909637212753,
+        "flip_y": 9.388738249072048e-07,
+        "identity": 9.388738249072048e-07
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/glass_transport-psycles.exr",
+      "psycles_channel_mean": [
+        0.030675191432237625,
+        0.03146389499306679,
+        0.03085612878203392
+      ],
+      "psycles_luminance_mean": 0.03125213086605072,
+      "psycles_rms": 0.0326225059421951,
+      "relative_rmse": 2.8779936153696436e-05,
+      "rmse": 9.388738249072048e-07,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 22.492174527988332,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/triptychs/glosscol.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "GlossDir": {
+      "channel_mean_ratio": [
+        1.0000009536743164,
+        1.0000009536743164,
+        1.0000009536743164
+      ],
+      "cycles": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/glass_transport-cycles.exr",
+      "cycles_channel_mean": [
+        0.04787437617778778,
+        0.1914975643157959,
+        0.8617478013038635
+      ],
+      "cycles_luminance_mean": 0.20935560762882233,
+      "cycles_rms": 0.5113682746887207,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0000010676447622,
+      "maximum_absolute_error": 0.0032843947410583496,
+      "mean_absolute_error": 4.092774759101303e-07,
+      "orientation_rmse": {
+        "flip_x": 0.04329286888241768,
+        "flip_xy": 0.04328429326415062,
+        "flip_y": 0.04413418099284172,
+        "identity": 3.039649163838476e-05
+      },
+      "p95_pixel_rmse": 2.0950135137809411e-07,
+      "p99_pixel_rmse": 2.0950135137809411e-07,
+      "psycles": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/glass_transport-psycles.exr",
+      "psycles_channel_mean": [
+        0.04787442088127136,
+        0.19149774312973022,
+        0.8617486357688904
+      ],
+      "psycles_luminance_mean": 0.20935583114624023,
+      "psycles_rms": 0.5113688138738215,
+      "relative_rmse": 5.9441488928674086e-05,
+      "rmse": 3.039649163838476e-05,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 2516582.4,
+        "display_scale": 0.8959081496076681,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/triptychs/glossdir.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "GlossInd": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/glass_transport-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/glass_transport-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/triptychs/glossind.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "Normal": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.9999990463256836
+      ],
+      "cycles": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/glass_transport-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "cycles_luminance_mean": 0.0722000002861023,
+      "cycles_rms": 0.5773502588272095,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.99999907125727,
+      "maximum_absolute_error": 0.00390625,
+      "mean_absolute_error": 3.178914482759865e-07,
+      "orientation_rmse": {
+        "flip_x": 3.523866325849667e-05,
+        "flip_xy": 3.523866325849667e-05,
+        "flip_y": 3.523866325849667e-05,
+        "identity": 3.523866325849667e-05
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/glass_transport-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.9999990463256836
+      ],
+      "psycles_luminance_mean": 0.07219993323087692,
+      "psycles_rms": 0.5773497099820423,
+      "relative_rmse": 6.103515625e-05,
+      "rmse": 3.523866325849667e-05,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "normal_xyz_to_rgb",
+        "path": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/triptychs/normal.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "TransCol": {
+      "channel_mean_ratio": [
+        0.9999989867210388,
+        0.9999991655349731,
+        0.9999995231628418
+      ],
+      "cycles": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/glass_transport-cycles.exr",
+      "cycles_channel_mean": [
+        0.8993094563484192,
+        0.8835335373878479,
+        0.8391302227973938
+      ],
+      "cycles_luminance_mean": 0.8836879730224609,
+      "cycles_rms": 0.8878089189529419,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999991906014802,
+      "maximum_absolute_error": 0.0038275718688964844,
+      "mean_absolute_error": 6.852715159766376e-07,
+      "orientation_rmse": {
+        "flip_x": 0.2548538148403168,
+        "flip_xy": 0.2548538148403168,
+        "flip_y": 4.5661588956136256e-05,
+        "identity": 4.5661588956136256e-05
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/glass_transport-psycles.exr",
+      "psycles_channel_mean": [
+        0.8993085622787476,
+        0.8835328221321106,
+        0.8391298055648804
+      ],
+      "psycles_luminance_mean": 0.8836872577667236,
+      "psycles_rms": 0.8878082774248851,
+      "relative_rmse": 5.1431775443288306e-05,
+      "rmse": 4.5661588956136256e-05,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 0.918503470508208,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/triptychs/transcol.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "TransDir": {
+      "channel_mean_ratio": [
+        1.0000003576278687,
+        1.0000004768371582,
+        1.0000015497207642
+      ],
+      "cycles": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/glass_transport-cycles.exr",
+      "cycles_channel_mean": [
+        1.0253862142562866,
+        0.570992112159729,
+        0.46555280685424805
+      ],
+      "cycles_luminance_mean": 0.6599836945533752,
+      "cycles_rms": 0.9435378909111023,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.000000451561495,
+      "maximum_absolute_error": 0.0024415254592895508,
+      "mean_absolute_error": 1.15320051463641e-06,
+      "orientation_rmse": {
+        "flip_x": 0.9887486696243286,
+        "flip_xy": 0.9887487888336182,
+        "flip_y": 0.006472689099609852,
+        "identity": 3.3910964702954516e-05
+      },
+      "p95_pixel_rmse": 6.982373861319502e-07,
+      "p99_pixel_rmse": 3.256303443777142e-06,
+      "psycles": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/glass_transport-psycles.exr",
+      "psycles_channel_mean": [
+        1.0253865718841553,
+        0.5709923505783081,
+        0.46555355191230774
+      ],
+      "psycles_luminance_mean": 0.6599839925765991,
+      "psycles_rms": 0.9435385144979043,
+      "relative_rmse": 3.594022564394239e-05,
+      "rmse": 3.3910964702954516e-05,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 165691.8123020537,
+        "display_scale": 0.5420818751979473,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/triptychs/transdir.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "TransInd": {
+      "channel_mean_ratio": [
+        2.1904661655426025,
+        10.49995231628418,
+        0.039772551506757736
+      ],
+      "cycles": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/glass_transport-cycles.exr",
+      "cycles_channel_mean": [
+        7.510270734201185e-07,
+        7.15263794859311e-08,
+        1.5735804481664672e-06
+      ],
+      "cycles_luminance_mean": 3.2443651321045763e-07,
+      "cycles_rms": 6.44815299892798e-05,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 2.7475293022090486,
+      "maximum_absolute_error": 0.0061890361830592155,
+      "mean_absolute_error": 1.0281881941409665e-06,
+      "orientation_rmse": {
+        "flip_x": 9.288910950999707e-05,
+        "flip_xy": 9.288910950999707e-05,
+        "flip_y": 9.288910223403946e-05,
+        "identity": 6.956290599191561e-05
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/glass_transport-psycles.exr",
+      "psycles_channel_mean": [
+        1.6450993598482455e-06,
+        7.510235491281492e-07,
+        6.258530760305803e-08
+      ],
+      "psycles_luminance_mean": 8.913988267522654e-07,
+      "psycles_rms": 6.686193037730015e-05,
+      "relative_rmse": 1.078803589236803,
+      "rmse": 6.956290599191561e-05,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-beckmann-vndf/fallback/glass_transport/triptychs/transind.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    }
+  },
+  "reference_label": "Cycles",
+  "schema": "psycles.cycles-differential.v1"
+}

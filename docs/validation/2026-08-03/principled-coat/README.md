@@ -282,8 +282,9 @@ described above rather than a broad algorithm or layout mismatch:
 
 ## Remaining Principled and scene work
 
-- implement physical Principled transmission, thin-wall behavior,
-  subsurface, thin film, anisotropy, and their exact closure interactions;
+- continue from the completed physical thick-transmission checkpoint with
+  thin-wall behavior, subsurface, thin film, anisotropy, and their exact
+  closure interactions;
 - continue aligning Cycles RNG dimensions, camera/material-boundary coverage,
   light/environment proposals, and estimator scheduling;
 - re-evaluate Lone Monk grass after the next material/sampler checkpoint; and
