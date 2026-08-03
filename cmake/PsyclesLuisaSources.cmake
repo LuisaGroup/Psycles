@@ -17,6 +17,7 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/principled_layer_component.cpp
     src/luisa/graph_surface_scattering.cpp
     src/luisa/graph_surface_state.cpp
+    src/luisa/graph_surface_value_expression.cpp
     src/luisa/graph_surface_values.cpp
     src/luisa/graph_surface_value_context.cpp
     src/luisa/graph_surface_value_image.cpp

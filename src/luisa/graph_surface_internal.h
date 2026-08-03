@@ -8,6 +8,8 @@
 #include <psycles/compiler/surface_program.h>
 #include <psycles/luisa/surface.h>
 
+#include "graph_surface_value_expression.h"
+
 #include <luisa/core/stl/vector.h>
 
 namespace psycles::luisa_backend::detail {
@@ -23,7 +25,7 @@ inline constexpr std::uint32_t shadow_ray_visibility = 1u << 4u;
 inline constexpr std::uint32_t volume_ray_visibility = 1u << 5u;
 
 struct TracedValues {
-    luisa::vector<Float4> values;
+    luisa::vector<SurfaceValueExpression> values;
     Float3 shading_normal;
 };
 
@@ -341,7 +343,7 @@ public:
     }
     virtual ~ValueNode() noexcept = default;
 
-    [[nodiscard]] virtual Float4 evaluate(
+    [[nodiscard]] virtual SurfaceValueExpression evaluate(
         ValueEvaluationContext &context) const noexcept = 0;
 };
 

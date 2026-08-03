@@ -7,13 +7,13 @@ namespace psycles::luisa_backend::detail {
 [[nodiscard]] Float scalar(
     compiler::ValueExpressionId id,
     const TracedValues &values) noexcept {
-    return get(id, values.values).x;
+    return get(id, values.values).scalar();
 }
 
 [[nodiscard]] Float3 vector(
     compiler::ValueExpressionId id,
     const TracedValues &values) noexcept {
-    return get(id, values.values).xyz();
+    return get(id, values.values).vector();
 }
 
 [[nodiscard]] Float sample_weight(Float3 value) noexcept {
