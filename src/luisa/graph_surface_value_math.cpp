@@ -42,7 +42,7 @@ class MathValueNode final : public ValueNode {
 public:
     using ValueNode::ValueNode;
 
-    [[nodiscard]] Float4 evaluate(
+    [[nodiscard]] SurfaceValueExpression evaluate(
         ValueEvaluationContext &context) const noexcept override {
         [[maybe_unused]] const auto &services = context.services;
         [[maybe_unused]] const auto &point = context.point;
@@ -51,17 +51,24 @@ public:
         Float4 value = make_float4(0.0f);
         switch (instruction.operation) {
                 case compiler::ValueOperation::parameter:
-                    value = make_float4(
-                        services.parameter_float3(
+                    if (surface_value_category(
+                            instruction.result_type) ==
+                        SurfaceValueCategory::scalar) {
+                        auto parameter = services.parameter_float(
                             point.parameter_block,
-                            instruction.parameter.value),
-                        services.parameter_float(
+                            instruction.parameter.value);
+                        return SurfaceValueExpression::from_scalar(
+                            Expr<float>{parameter.expression()});
+                    } else {
+                        auto parameter = services.parameter_float3(
                             point.parameter_block,
-                            instruction.parameter.value));
-                    break;
+                            instruction.parameter.value);
+                        return SurfaceValueExpression::from_vector(
+                            Expr<luisa::float3>{
+                                parameter.expression()});
+                    }
                 case compiler::ValueOperation::passthrough:
-                    value = get(instruction.a, result.values);
-                    break;
+                    return get(instruction.a, result.values);
                 case compiler::ValueOperation::scalar_to_color: {
                     auto x = scalar(instruction.a, result);
                     value = make_float4(x, x, x, 1.0f);
@@ -982,7 +989,8 @@ public:
             default:
                 break;
         }
-        return value;
+        return project_surface_value(
+            instruction.result_type, value);
     }
 };
 

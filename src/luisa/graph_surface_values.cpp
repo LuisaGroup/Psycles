@@ -83,7 +83,9 @@ TracedValues GraphSurfaceImplementation::trace_values(
          ++instruction_index) {
         if (active_mask != nullptr &&
             !(*active_mask)[instruction_index]) {
-            result.values.emplace_back(make_float4(0.0f));
+            result.values.emplace_back(
+                SurfaceValueExpression::zero(
+                    instructions[instruction_index].result_type));
             continue;
         }
         result.values.emplace_back(

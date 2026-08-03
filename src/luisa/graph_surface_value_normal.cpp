@@ -10,7 +10,7 @@ class NormalMapValueNode final : public ValueNode {
 public:
     using ValueNode::ValueNode;
 
-    [[nodiscard]] Float4 evaluate(
+    [[nodiscard]] SurfaceValueExpression evaluate(
         ValueEvaluationContext &context) const noexcept override {
         const auto &services = context.services;
         const auto &point = context.point;
@@ -134,7 +134,8 @@ public:
                         nonnegative_strength,
                 point.shading_normal);
         }
-        return make_float4(world, 0.0f);
+        return SurfaceValueExpression::from_vector(
+            Expr<luisa::float3>{world.expression()});
     }
 };
 
@@ -143,7 +144,7 @@ class BumpValueNode final : public ValueNode {
 public:
     using ValueNode::ValueNode;
 
-    [[nodiscard]] Float4 evaluate(
+    [[nodiscard]] SurfaceValueExpression evaluate(
         ValueEvaluationContext &context) const noexcept override {
         const auto &services = context.services;
         const auto &point = context.point;
@@ -256,8 +257,8 @@ public:
                 perturbed_valid);
         result.shading_normal =
             normal_out;
-        return make_float4(
-            normal_out, 0.0f);
+        return SurfaceValueExpression::from_vector(
+            Expr<luisa::float3>{normal_out.expression()});
     }
 };
 

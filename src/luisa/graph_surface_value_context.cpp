@@ -60,7 +60,7 @@ class ContextValueNode final : public ValueNode {
 public:
     using ValueNode::ValueNode;
 
-    [[nodiscard]] Float4 evaluate(
+    [[nodiscard]] SurfaceValueExpression evaluate(
         ValueEvaluationContext &context) const noexcept override {
         [[maybe_unused]] const auto &services = context.services;
         [[maybe_unused]] const auto &point = context.point;
@@ -422,7 +422,8 @@ public:
             default:
                 break;
         }
-        return value;
+        return project_surface_value(
+            instruction.result_type, value);
     }
 };
 
