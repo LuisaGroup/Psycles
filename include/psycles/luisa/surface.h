@@ -328,6 +328,11 @@ struct SurfaceClosureExpression {
 
     explicit SurfaceClosureExpression(
         const SurfaceClosureRecord &closure) noexcept;
+
+    // Re-wrap the retained handles in the mutable DSL facade expected by
+    // existing scattering components. This creates no AST declarations or
+    // assignments; callers must treat the returned facade as read-only.
+    [[nodiscard]] SurfaceClosureRecord reference() const noexcept;
 };
 
 // Host-stage sink matching VolumePhaseCollector. Surface implementations call

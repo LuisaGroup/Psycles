@@ -4,6 +4,7 @@
 #include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/graph_surface.h>
 #include <psycles/luisa/surface_closure_evaluator.h>
+#include <psycles/luisa/surface_closure_operations.h>
 #include <psycles/luisa/surface_closure_set.h>
 
 #include "luisa_surface_test_support.h"
@@ -266,6 +267,8 @@ int main(int argc, char **argv) {
     const auto glass_parameters = parameter_data(*glass);
     parameters.insert(parameters.end(), glass_parameters.begin(),
                       glass_parameters.end());
+    const auto closure_identity =
+        make_surface_closure_identity_callable();
 
     Kernel1D collect = [&](BufferFloat4 parameter_buffer,
                            BufferFloat4 output) noexcept {
@@ -677,39 +680,33 @@ int main(int argc, char **argv) {
             // Cycles reserves twelve slots for the reachable Principled
             // graph, which is also the scene maximum for this fixture. Each
             // production callable records only its formal field projection.
-            SurfaceClosureSet runtime_closures{
+            SurfaceRuntimeFlagsVisitor runtime_visitor{
+                point,
+                0.04f,
                 12u,
-                SurfaceClosureStorageProfile::runtime_flags};
-            const auto runtime_collection = surfaces.collect_closures(
+                closure_identity};
+            static_cast<void>(surfaces.collect_closures(
                 tag,
                 services,
                 point,
                 true,
                 true,
-                runtime_closures);
-            const SurfaceClosureEvaluator runtime_evaluator{
-                point,
-                runtime_closures,
-                runtime_collection.shading_normal};
-            const auto runtime_flags =
-                runtime_evaluator.runtime_flags(0.04f);
+                runtime_visitor));
+            const auto runtime_flags = runtime_visitor.result();
 
-            SurfaceClosureSet trace_closures{
+            SurfaceClosureTraceVisitor trace_visitor{
+                point,
+                requested,
                 12u,
-                SurfaceClosureStorageProfile::closure_trace};
-            const auto trace_collection = surfaces.collect_closures(
+                closure_identity};
+            static_cast<void>(surfaces.collect_closures(
                 tag,
                 services,
                 point,
                 true,
                 true,
-                trace_closures);
-            const SurfaceClosureEvaluator trace_evaluator{
-                point,
-                trace_closures,
-                trace_collection.shading_normal};
-            const auto trace =
-                trace_evaluator.closure_trace(requested);
+                trace_visitor));
+            const auto &trace = trace_visitor.result();
 
             SurfaceClosureSet aov_closures{
                 12u,
