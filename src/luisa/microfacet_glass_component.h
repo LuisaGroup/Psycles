@@ -4,9 +4,10 @@
 
 namespace psycles::luisa_backend::detail {
 
-// Host-stage input for one Cycles generalized-Schlick glass closure. Every
-// field containing a Luisa DSL value remains device-side when setup() records
-// the shader AST; the static fields select the concrete closure family.
+// Host-stage input for one Cycles microfacet dielectric closure. Every field
+// containing a Luisa DSL value remains device-side when setup() records the
+// shader AST; the static fields select generalized-Schlick Glass or pure
+// Refraction and the concrete distribution.
 struct MicrofacetGlassSetup {
     TracedClosure prototype;
     Float3 weight;
@@ -19,13 +20,15 @@ struct MicrofacetGlassSetup {
     Float3 transmission_tint;
     Bool enabled;
     PrincipledLobe principled_lobe{PrincipledLobe::none};
+    bool refraction_only{};
     bool preserve_energy{};
     bool beckmann{};
 };
 
-// Builds and consumes physical microfacet-glass closures while Luisa records
-// kernels. Keeping setup, Fresnel, evaluation, density, and sampling behind a
-// single component prevents those contracts from drifting independently.
+// Builds and consumes physical microfacet Glass and Refraction closures while
+// Luisa records kernels. Keeping setup, lobe selection/TIR, evaluation,
+// density, and sampling behind a single component prevents those contracts
+// from drifting independently.
 class MicrofacetGlassComponent final {
 
 private:

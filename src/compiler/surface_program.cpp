@@ -53,6 +53,7 @@ struct EmissionProof {
             case ClosureOperation::translucent:
             case ClosureOperation::glossy:
             case ClosureOperation::glass:
+            case ClosureOperation::refraction:
             case ClosureOperation::transparent:
                 break;
             case ClosureOperation::principled:
@@ -274,6 +275,7 @@ Vec3f estimate_surface_emission(
             case ClosureOperation::translucent:
             case ClosureOperation::glossy:
             case ClosureOperation::glass:
+            case ClosureOperation::refraction:
             case ClosureOperation::transparent:
                 break;
         }

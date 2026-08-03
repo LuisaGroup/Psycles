@@ -234,15 +234,22 @@ void GraphSurfaceImplementation::for_each_closure(
                         closure.preserve_ggx_energy});
                 return;
             }
-            case compiler::ClosureOperation::glass: {
+            case compiler::ClosureOperation::glass:
+            case compiler::ClosureOperation::refraction: {
+                const auto glass = closure.operation ==
+                                   compiler::ClosureOperation::glass;
                 auto color = max(
                     vector(closure.color, values),
                     make_float3(0.0f));
                 function(TracedClosure{
-                    .operation = compiler::ClosureOperation::glass,
-                    // Cycles allocates Glass with the closure mix weight;
-                    // Color is a Fresnel tint rather than closure weight.
-                    .weight = make_float3(mix_weight),
+                    .operation = closure.operation,
+                    // Cycles allocates Glass with the closure mix weight and
+                    // treats Color as a Fresnel tint. Standalone Refraction
+                    // is a pure-transmission closure whose Color is its
+                    // ordinary allocation weight.
+                    .weight = glass
+                                  ? make_float3(mix_weight)
+                                  : color * mix_weight,
                     .color = color,
                     .normal = safe_normalize(
                         vector(closure.normal, values),
@@ -254,7 +261,7 @@ void GraphSurfaceImplementation::for_each_closure(
                     .specular_ior_level = 0.5f,
                     .specular_tint = make_float3(1.0f),
                     .preserve_ggx_energy =
-                        closure.preserve_ggx_energy,
+                        glass && closure.preserve_ggx_energy,
                     .beckmann = closure.beckmann});
                 return;
             }

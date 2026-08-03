@@ -86,6 +86,7 @@ namespace psycles::luisa_backend::detail {
             case compiler::ClosureOperation::principled:
             case compiler::ClosureOperation::glossy:
             case compiler::ClosureOperation::glass:
+            case compiler::ClosureOperation::refraction:
             case compiler::ClosureOperation::transparent:
                 return;
         }

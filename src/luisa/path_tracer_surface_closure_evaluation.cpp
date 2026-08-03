@@ -55,6 +55,8 @@ make_surface_closure_evaluation_callable(
                 packed_query.glossy_included != 0u,
             .glass_included =
                 packed_query.glass_included != 0u,
+            .refraction_included =
+                packed_query.refraction_included != 0u,
             // PDF gating is applied once by the outer accumulator.
             .preserve_pdf = true};
         return surface_closure_evaluation_contribution(
@@ -104,6 +106,8 @@ CallableSurfaceClosureEvaluationOperation::
         0u, 1u, policy.glossy_included);
     _query.glass_included = select(
         0u, 1u, policy.glass_included);
+    _query.refraction_included = select(
+        0u, 1u, policy.refraction_included);
 }
 
 void CallableSurfaceClosureEvaluationOperation::set_outgoing(

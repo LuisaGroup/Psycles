@@ -521,6 +521,27 @@ fall from 52 to 30. Reports and all nine visually inspected backend triptychs
 are in
 [`validation/2026-08-04/voronoi-texture`](validation/2026-08-04/voronoi-texture/README.md).
 
+Refraction BSDF is `cycles_verified` as a native Luisa microfacet closure,
+not as a recolored Glass closure. The adapter retains the raw Color,
+Roughness, IOR, Normal, and Beckmann/GGX distribution. Setup follows Cycles'
+pure-transmission contract: Color is the ordinary closure allocation weight,
+there is no Fresnel reflection branch, total internal reflection contributes
+zero, backfaces invert eta, and neither GGX energy compensation nor a Glass
+Fresnel tint is introduced. Linked roughness follows Cycles' square-then-
+saturate rule, so negative inputs retain their magnitude rather than clamping
+to a smooth lobe. Refraction keeps its exact Cycles closure IDs 20
+and 21 and is both glossy and transmissive for lobe and sampled-light
+filtering; unlike Glass, excluding either class removes it. A 16-cell raw-node
+probe and three-backend analytic regression cover the Barbershop parameters,
+both distributions, smooth/rough and unit-IOR cases, normals, backfaces, TIR,
+allocation cutoff, direct evaluation/PDF, sampling, and split AOVs. Against
+Cycles CPU, Combined relative RMSE is `5.12e-7` on fallback, `8.36e-8` on HIP,
+and `1.43e-7` on Vulkan; `GlossCol` is exactly zero and `TransCol` is exact on
+fallback. The same unchanged Barbershop export compiles both disinfectant
+materials and has no Refraction diagnostic, reducing the scene total from 30
+to 26. Reports and all 15 visually inspected triptychs are in
+[`validation/2026-08-04/refraction-bsdf`](validation/2026-08-04/refraction-bsdf/README.md).
+
 Geometry Pointiness now follows Cycles' mesh-sync construction instead of
 using a triangle-normal curvature approximation or a material-side bake. The
 Blender adapter retains evaluated point normals and original edges only for

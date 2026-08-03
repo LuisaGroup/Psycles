@@ -114,6 +114,28 @@
       "probe": "diffuse_bsdf_matrix",
       "samples": 4
     },
+    "BSDF_REFRACTION": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 2.13074144848782e-15
+        },
+        "GlossCol": {
+          "rmse": 0.0
+        },
+        "Normal": {
+          "rmse": 0.0
+        },
+        "TransCol": {
+          "rmse": 0.0
+        },
+        "TransDir": {
+          "rmse": 8.272714144849733e-15
+        }
+      },
+      "probe": "refraction_bsdf_matrix",
+      "samples": 256
+    },
     "BSDF_TRANSLUCENT": {
       "max_rmse": 1e-06,
       "passes": {

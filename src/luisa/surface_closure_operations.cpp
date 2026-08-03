@@ -66,6 +66,10 @@ aov_contribution(
     const auto is_glass =
         closure.kind == static_cast<std::uint32_t>(
                             SurfaceClosureKind::glass);
+    const auto is_refraction =
+        closure.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::refraction);
+    const auto is_dielectric = is_glass | is_refraction;
     const auto generic_glossy =
         (is_principled & !is_sheen) | is_glossy;
 
@@ -110,7 +114,7 @@ aov_contribution(
     const auto glossy_weight = select(
         0.0f,
         closure_pass_weight,
-        is_glass | generic_glossy);
+        is_dielectric | generic_glossy);
 
     luisa::compute::Var<SurfaceAovContributionCall> result;
     result.albedo = diffuse_albedo;
@@ -118,7 +122,7 @@ aov_contribution(
         select(
             make_float3(0.0f),
             closure.reflection_albedo,
-            is_glass) +
+            is_dielectric) +
         select(
             make_float3(0.0f),
             closure.albedo,
@@ -126,7 +130,7 @@ aov_contribution(
     result.transmission_albedo = select(
         make_float3(0.0f),
         closure.transmission_albedo,
-        is_glass);
+        is_dielectric);
     result.transparency = select(
         make_float3(0.0f),
         closure.weight,

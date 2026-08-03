@@ -302,6 +302,8 @@ template<typename Closure>
         closure, SurfaceClosureKind::glossy);
     const auto is_glass = has_kind(
         closure, SurfaceClosureKind::glass);
+    const auto is_refraction = has_kind(
+        closure, SurfaceClosureKind::refraction);
     const auto is_transparent = has_kind(
         closure, SurfaceClosureKind::transparent);
 
@@ -331,6 +333,10 @@ template<typename Closure>
         microfacet_flags |
             cycles_closure::runtime_bsdf_has_transmission,
         is_glass);
+    flags = select(flags,
+        microfacet_flags |
+            cycles_closure::runtime_bsdf_has_transmission,
+        is_refraction);
     flags = select(flags,
         bsdf | cycles_closure::runtime_transparent,
         is_transparent);
@@ -363,6 +369,8 @@ template<typename Closure>
         closure, SurfaceClosureKind::glossy);
     const auto is_glass = has_kind(
         closure, SurfaceClosureKind::glass);
+    const auto is_refraction = has_kind(
+        closure, SurfaceClosureKind::refraction);
     const auto is_transparent = has_kind(
         closure, SurfaceClosureKind::transparent);
 
@@ -387,6 +395,11 @@ template<typename Closure>
         UInt{cycles_closure::type_microfacet_multi_ggx_glass},
         closure.preserve_ggx_energy);
     type = select(type, glass, is_glass);
+    const auto refraction = select(
+        UInt{cycles_closure::type_microfacet_ggx_refraction},
+        UInt{cycles_closure::type_microfacet_beckmann_refraction},
+        closure.beckmann);
+    type = select(type, refraction, is_refraction);
     type = select(type,
         UInt{cycles_closure::type_transparent},
         is_transparent);

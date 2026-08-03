@@ -23,6 +23,12 @@ struct GlassGeometry {
     Bool transmission;
 };
 
+[[nodiscard]] Bool is_refraction(
+    const SurfaceClosureRecord &closure) noexcept {
+    return closure.kind == static_cast<std::uint32_t>(
+                               SurfaceClosureKind::refraction);
+}
+
 [[nodiscard]] GlassFresnel glass_fresnel(
     const SurfaceClosureRecord &closure,
     Float cosine_half_incoming) noexcept {
@@ -36,9 +42,18 @@ struct GlassGeometry {
         clamp((real_fresnel - real_f0) / (1.0f - real_f0), 0.0f, 1.0f);
     const auto fresnel =
         lerp(closure.fresnel_f0, closure.fresnel_f90, interpolation);
-    return {.reflection = fresnel * closure.reflection_tint,
-            .transmission =
-                (make_float3(1.0f) - fresnel) * closure.transmission_tint};
+    const auto refraction_only = is_refraction(closure);
+    const auto pure_transmission = select(
+        make_float3(1.0f), make_float3(0.0f), real_fresnel == 1.0f);
+    return {
+        .reflection = select(
+            fresnel * closure.reflection_tint,
+            make_float3(0.0f),
+            refraction_only),
+        .transmission = select(
+            (make_float3(1.0f) - fresnel) * closure.transmission_tint,
+            pure_transmission,
+            refraction_only)};
 }
 
 [[nodiscard]] GlassFresnel masked_fresnel(
@@ -182,6 +197,16 @@ glass_microfacet_alpha(const SurfaceClosureRecord &closure,
 glass_albedo_estimate(const ShaderServices &services,
                       const TracedClosure &closure,
                       Float incoming_cosine) noexcept {
+    if (closure.operation == compiler::ClosureOperation::refraction) {
+        const auto real_fresnel =
+            fresnel_dielectric_cos(incoming_cosine, closure.ior);
+        return {
+            .reflection = make_float3(0.0f),
+            .transmission = select(
+                make_float3(1.0f),
+                make_float3(0.0f),
+                real_fresnel == 1.0f)};
+    }
     const auto roughness = clamp(closure.roughness, 0.0f, 1.0f);
     const auto z = sqrt(abs((closure.ior - 1.0f) / (closure.ior + 1.0f)));
     const auto interpolation = cycles_table_3d(
@@ -203,13 +228,19 @@ MicrofacetGlassComponent::MicrofacetGlassComponent(
 TracedClosure MicrofacetGlassComponent::setup(
     const MicrofacetGlassSetup &parameters) const noexcept {
     auto closure = parameters.prototype;
-    closure.operation = compiler::ClosureOperation::glass;
+    closure.operation = parameters.refraction_only
+                            ? compiler::ClosureOperation::refraction
+                            : compiler::ClosureOperation::glass;
     closure.principled_lobe = parameters.principled_lobe;
     closure.setup_valid = true;
     closure.normal = maybe_ensure_valid_specular_reflection(
         _point, safe_normalize(_point.incoming, _point.shading_normal),
         parameters.normal);
-    closure.roughness = clamp(parameters.roughness, 0.0f, 1.0f);
+    // Standalone Cycles Glass/Refraction squares the linked socket value
+    // before saturating microfacet alpha. Retain the equivalent perceptual
+    // roughness here so later alpha and Roughness-pass paths share one value.
+    closure.roughness = sqrt(clamp(
+        parameters.roughness * parameters.roughness, 0.0f, 1.0f));
     const auto original_ior = max(parameters.ior, 1.0e-5f);
     closure.ior = select(original_ior, 1.0f / original_ior, _point.back_facing);
     closure.fresnel_f0 =
@@ -239,10 +270,18 @@ TracedClosure MicrofacetGlassComponent::setup(
     closure.transmission_albedo = select(
         make_float3(0.0f), closure.weight * estimated.transmission, allocated);
     closure.albedo = closure.reflection_albedo + closure.transmission_albedo;
+    // Cycles leaves a pure Refraction closure's allocation-derived sample
+    // weight untouched. TIR zeros its evaluated/transmission albedo and makes
+    // the conditional sample invalid, but must not change mixture selection
+    // probabilities before a microfacet normal has been sampled.
+    const auto estimated_sample_weight = parameters.refraction_only
+                                             ? Float{1.0f}
+                                             : sample_weight(estimated.reflection +
+                                                             estimated.transmission);
     closure.sample_weight =
         select(0.0f,
                allocation_weight *
-                   sample_weight(estimated.reflection + estimated.transmission) *
+                   estimated_sample_weight *
                    sample_weight(energy.darkening),
                allocated);
     closure.evaluation_scale = energy.energy_scale;

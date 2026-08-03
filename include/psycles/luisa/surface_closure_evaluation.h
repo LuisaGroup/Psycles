@@ -44,6 +44,7 @@ struct SurfaceClosureEvaluationPolicy {
     Bool diffuse_included;
     Bool glossy_included;
     Bool glass_included;
+    Bool refraction_included;
     Bool preserve_pdf;
 };
 

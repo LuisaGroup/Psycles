@@ -258,6 +258,7 @@ cycles_program_closure_allocation_count(
             case compiler::ClosureOperation::diffuse:
             case compiler::ClosureOperation::translucent:
             case compiler::ClosureOperation::glass:
+            case compiler::ClosureOperation::refraction:
             case compiler::ClosureOperation::emission:
             case compiler::ClosureOperation::transparent:
                 add(1u);

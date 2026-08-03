@@ -114,6 +114,8 @@ surface_closure_selection(
         closure, SurfaceClosureKind::glossy);
     const auto is_glass = has_kind(
         closure, SurfaceClosureKind::glass);
+    const auto is_refraction = has_kind(
+        closure, SurfaceClosureKind::refraction);
     const auto is_transparent = has_kind(
         closure, SurfaceClosureKind::transparent);
     UInt lobe_mask{context.lobe_mask};
@@ -143,6 +145,9 @@ surface_closure_selection(
     eligible = select(eligible,
         glossy_enabled | transmission_enabled,
         is_glass);
+    eligible = select(eligible,
+        glossy_enabled & transmission_enabled,
+        is_refraction);
     eligible &= detail::closure_allocated(identity) &
                 Bool{closure.setup_valid};
 
@@ -214,6 +219,9 @@ surface_closure_conditional_sample(
         closure, SurfaceClosureKind::transparent);
     const auto is_glass = has_kind(
         closure, SurfaceClosureKind::glass);
+    const auto is_refraction = has_kind(
+        closure, SurfaceClosureKind::refraction);
+    const auto is_dielectric = is_glass | is_refraction;
     const auto sample_glossy =
         is_glossy | (is_principled & !is_sheen);
 
@@ -233,7 +241,7 @@ surface_closure_conditional_sample(
         direction = -point.incoming;
         roughness = make_float2(0.0f);
     }
-    $elif(is_glass) {
+    $elif(is_dielectric) {
         const auto glass = microfacet_glass.sample(
             closure,
             incoming,
@@ -287,11 +295,11 @@ surface_closure_conditional_sample(
     properties |= select(0u, transparent, is_transparent);
     properties |= select(0u, translucent, is_translucent);
     properties |= select(0u, glossy, sample_glossy);
-    properties |= select(0u, glass, is_glass);
+    properties |= select(0u, glass, is_dielectric);
     properties |= select(
         0u,
         surface_closure_sample_property::transmission,
-        is_glass & glass_transmission);
+        is_dielectric & glass_transmission);
     properties |= select(0u,
         surface_closure_sample_property::singular,
         singular);

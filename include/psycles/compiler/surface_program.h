@@ -322,7 +322,8 @@ enum class ClosureOperation : std::uint8_t {
     emission,
     transparent,
     add,
-    mix
+    mix,
+    refraction
 };
 
 // Scheduling contract for Cycles' next-event light-shader evaluation. This is

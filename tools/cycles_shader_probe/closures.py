@@ -7,6 +7,7 @@ from typing import Any
 import bpy
 
 from .support import (
+    _bsdf_matrix_sun,
     _input,
     _linked_vector,
     _material,
@@ -300,31 +301,6 @@ def _glass_transport(scene: Any) -> None:
         name="Glass Transport Background",
     )
     background.location.z = -1.0
-
-
-def _bsdf_matrix_sun(
-    scene: Any,
-    *,
-    transmission: bool,
-) -> None:
-    """Add a zero-angle Sun for variance-free BSDF evaluation."""
-    data = bpy.data.lights.new("BSDF Matrix Sun", type="SUN")
-    data.color = (0.36, 0.72, 1.0)
-    data.energy = 1.7
-    data.normalize = True
-    data.angle = 0.0
-    data.use_shadow = True
-    light = bpy.data.objects.new(data.name, data)
-    if transmission:
-        light.rotation_euler = (3.141592653589793, 0.0, 0.0)
-    scene.collection.objects.link(light)
-    scene.cycles.max_bounces = 1
-    scene.cycles.diffuse_bounces = 1
-    scene.cycles.glossy_bounces = 0
-    scene.cycles.transmission_bounces = 1
-    # Tiny closure-allocation threshold cases must not be randomized by
-    # Cycles' direct-light sample roulette.
-    scene.cycles.light_sampling_threshold = 0.0
 
 
 def _diffuse_bsdf_matrix(scene: Any) -> None:
