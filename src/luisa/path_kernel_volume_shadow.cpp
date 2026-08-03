@@ -109,7 +109,8 @@ class VolumeShadowComponentImpl final
             _scene->surfaces,
             *_points};
         BufferShaderServices services{
-            _scene->parameter_buffer,
+            _scene->scalar_parameter_buffer,
+            _scene->vector_parameter_buffer,
             _scene->cycles_bsdf_table_buffer,
             _scene->texture_heap,
             _scene->heap,

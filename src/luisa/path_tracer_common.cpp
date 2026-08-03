@@ -358,27 +358,32 @@ unpack_surface_sample_trace(
         matrix.elements[14u]};
 }
 
-[[nodiscard]] luisa::float4 parameter_value(
+[[nodiscard]] float scalar_parameter_value(
     const contract::SocketValue &value) noexcept {
     using contract::SocketType;
     switch (value.type) {
         case SocketType::boolean:
-            return luisa::make_float4(
-                std::get<bool>(value.value) ? 1.0f : 0.0f);
+            return std::get<bool>(value.value) ? 1.0f : 0.0f;
         case SocketType::integer:
-            return luisa::make_float4(
-                static_cast<float>(
-                    std::get<std::int64_t>(value.value)));
+            return static_cast<float>(
+                std::get<std::int64_t>(value.value));
         case SocketType::unsigned_integer:
-            return luisa::make_float4(
-                static_cast<float>(
-                    std::get<std::uint64_t>(value.value)));
+            return static_cast<float>(
+                std::get<std::uint64_t>(value.value));
         case SocketType::floating:
-            return luisa::make_float4(
-                std::get<float>(value.value));
+            return std::get<float>(value.value);
+        default:
+            std::abort();
+    }
+}
+
+[[nodiscard]] luisa::float3 vector_parameter_value(
+    const contract::SocketValue &value) noexcept {
+    using contract::SocketType;
+    switch (value.type) {
         case SocketType::float2: {
             const auto v = std::get<Vec2f>(value.value);
-            return luisa::make_float4(v.x, v.y, 0.0f, 0.0f);
+            return luisa::make_float3(v.x, v.y, 0.0f);
         }
         case SocketType::float3:
         case SocketType::color:
@@ -387,10 +392,10 @@ unpack_surface_sample_trace(
         case SocketType::vector:
         case SocketType::normal: {
             const auto v = std::get<Vec3f>(value.value);
-            return luisa::make_float4(v.x, v.y, v.z, 0.0f);
+            return luisa::make_float3(v.x, v.y, v.z);
         }
         default:
-            return luisa::make_float4(0.0f);
+            std::abort();
     }
 }
 

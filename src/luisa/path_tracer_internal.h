@@ -18,6 +18,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <limits>
 #include <map>
 #include <memory>
@@ -76,6 +77,7 @@ using luisa::compute::BindlessVar;
 using luisa::compute::Bool;
 using luisa::compute::Buffer;
 using luisa::compute::BufferFloat;
+using luisa::compute::BufferFloat3;
 using luisa::compute::BufferFloat4;
 using luisa::compute::BufferUInt;
 using luisa::compute::Callable;
@@ -237,7 +239,11 @@ struct LuisaSceneData {
     std::int32_t cycles_background_light_group{-1};
     std::uint32_t world_visibility_mask{
         contract::all_ray_visibility};
-    Buffer<luisa::float4> parameter_buffer;
+    // Shader literals retain their compiler IR type. Both buffers use the
+    // same material-block/ParameterId address so dispatch remains compact,
+    // while no float4 type erasure crosses the device ABI.
+    Buffer<float> scalar_parameter_buffer;
+    Buffer<luisa::float3> vector_parameter_buffer;
     Buffer<float> cycles_bsdf_table_buffer;
     std::vector<GeometryResource> geometries;
     std::vector<Image<float>> images;
@@ -452,7 +458,9 @@ unpack_surface_sample_trace(
     std::size_t column) noexcept;
 [[nodiscard]] Vec3f matrix_translation(
     const Mat4f &matrix) noexcept;
-[[nodiscard]] luisa::float4 parameter_value(
+[[nodiscard]] float scalar_parameter_value(
+    const contract::SocketValue &value) noexcept;
+[[nodiscard]] luisa::float3 vector_parameter_value(
     const contract::SocketValue &value) noexcept;
 [[nodiscard]] PixelWindow effective_window(
     const RenderSettings &settings) noexcept;

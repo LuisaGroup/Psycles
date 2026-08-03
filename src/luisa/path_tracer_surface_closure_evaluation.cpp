@@ -10,7 +10,8 @@ SurfaceClosureEvaluationCallable
 make_surface_closure_evaluation_callable(
     const std::shared_ptr<LuisaSceneData> &scene) noexcept {
     return [scene](
-               BufferFloat4 parameters,
+               BufferFloat scalar_parameters,
+               BufferFloat3 vector_parameters,
                BufferFloat cycles_bsdf_tables,
                BindlessVar textures,
                BindlessVar geometry_heap,
@@ -23,7 +24,8 @@ make_surface_closure_evaluation_callable(
                luisa::compute::Float4x4 block_2,
                luisa::compute::Float4x4 block_3) noexcept {
         BufferShaderServices services{
-            parameters,
+            scalar_parameters,
+            vector_parameters,
             cycles_bsdf_tables,
             textures,
             geometry_heap,
@@ -70,7 +72,8 @@ make_surface_closure_evaluation_callable(
 
 CallableSurfaceClosureEvaluationOperation::
     CallableSurfaceClosureEvaluationOperation(
-        const BufferFloat4 &parameters,
+        const BufferFloat &scalar_parameters,
+        const BufferFloat3 &vector_parameters,
         const BufferFloat &cycles_bsdf_tables,
         const BindlessVar &textures,
         const BindlessVar &geometry_heap,
@@ -79,7 +82,8 @@ CallableSurfaceClosureEvaluationOperation::
         const SurfaceQuery &query,
         const SurfaceClosureEvaluationPolicy &policy,
         const SurfaceClosureEvaluationCallable &callable) noexcept
-    : _parameters{parameters},
+    : _scalar_parameters{scalar_parameters},
+      _vector_parameters{vector_parameters},
       _cycles_bsdf_tables{cycles_bsdf_tables},
       _textures{textures},
       _geometry_heap{geometry_heap},
@@ -119,7 +123,8 @@ CallableSurfaceClosureEvaluationOperation::evaluate(
     const auto blocks = pack_surface_closure(
         closure.reference());
     return _callable(
-        _parameters,
+        _scalar_parameters,
+        _vector_parameters,
         _cycles_bsdf_tables,
         _textures,
         _geometry_heap,

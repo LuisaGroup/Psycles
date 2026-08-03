@@ -22,7 +22,8 @@ SurfaceCallables make_surface_callables(
         make_surface_closure_sampling_callables(scene);
     SurfaceEvaluateLightCallable evaluate_light =
         [scene, closure_evaluation](
-            BufferFloat4 parameters,
+            BufferFloat scalar_parameters,
+            BufferFloat3 vector_parameters,
             BufferFloat cycles_bsdf_tables,
             BindlessVar textures,
             BindlessVar geometry_heap,
@@ -36,7 +37,8 @@ SurfaceCallables make_surface_callables(
             Bool refractive_caustics,
             UInt shader_flags) noexcept {
             BufferShaderServices services{
-                parameters,
+                scalar_parameters,
+                vector_parameters,
                 cycles_bsdf_tables,
                 textures,
                 geometry_heap,
@@ -61,7 +63,8 @@ SurfaceCallables make_surface_callables(
                     Expr<std::uint32_t>{
                         shader_flags.expression()});
             CallableSurfaceClosureEvaluationOperation operation{
-                parameters,
+                scalar_parameters,
+                vector_parameters,
                 cycles_bsdf_tables,
                 textures,
                 geometry_heap,
@@ -87,7 +90,8 @@ SurfaceCallables make_surface_callables(
         };
     SurfaceRuntimeFlagsCallable runtime_flags =
         [scene, closure_identity](
-            BufferFloat4 parameters,
+            BufferFloat scalar_parameters,
+            BufferFloat3 vector_parameters,
             BufferFloat cycles_bsdf_tables,
             BindlessVar textures,
             BindlessVar geometry_heap,
@@ -97,7 +101,8 @@ SurfaceCallables make_surface_callables(
             Bool reflective_caustics,
             Bool refractive_caustics) noexcept {
             BufferShaderServices services{
-                parameters,
+                scalar_parameters,
+                vector_parameters,
                 cycles_bsdf_tables,
                 textures,
                 geometry_heap,
@@ -123,7 +128,8 @@ SurfaceCallables make_surface_callables(
         };
     SurfaceEmissionCallable emission =
         [scene](
-            BufferFloat4 parameters,
+            BufferFloat scalar_parameters,
+            BufferFloat3 vector_parameters,
             BufferFloat cycles_bsdf_tables,
             BindlessVar textures,
             BindlessVar geometry_heap,
@@ -132,7 +138,8 @@ SurfaceCallables make_surface_callables(
             Float3 outgoing,
             Bool reflective_caustics) noexcept {
             BufferShaderServices services{
-                parameters,
+                scalar_parameters,
+                vector_parameters,
                 cycles_bsdf_tables,
                 textures,
                 geometry_heap,
@@ -149,11 +156,13 @@ SurfaceCallables make_surface_callables(
         };
     SurfaceConstantEmissionCallable constant_emission =
         [scene](
-            BufferFloat4 parameters,
+            BufferFloat scalar_parameters,
+            BufferFloat3 vector_parameters,
             UInt surface_tag,
             UInt parameter_block) noexcept {
             BufferSurfaceParameterServices services{
-                parameters};
+                scalar_parameters,
+                vector_parameters};
             return scene->surfaces.constant_emission(
                 surface_tag,
                 services,
@@ -161,7 +170,8 @@ SurfaceCallables make_surface_callables(
         };
     SurfaceSampleCallable sample =
         [scene, closure_sampling, closure_evaluation](
-            BufferFloat4 parameters,
+            BufferFloat scalar_parameters,
+            BufferFloat3 vector_parameters,
             BufferFloat cycles_bsdf_tables,
             BindlessVar textures,
             BindlessVar geometry_heap,
@@ -175,7 +185,8 @@ SurfaceCallables make_surface_callables(
             Bool reflective_caustics,
             Bool refractive_caustics) noexcept {
             BufferShaderServices services{
-                parameters,
+                scalar_parameters,
+                vector_parameters,
                 cycles_bsdf_tables,
                 textures,
                 geometry_heap,
@@ -196,7 +207,8 @@ SurfaceCallables make_surface_callables(
                 *scene,
                 closure_sampling,
                 closure_evaluation,
-                parameters,
+                scalar_parameters,
+                vector_parameters,
                 cycles_bsdf_tables,
                 textures,
                 geometry_heap,
@@ -212,7 +224,8 @@ SurfaceCallables make_surface_callables(
         };
     SurfaceClosureTraceCallable closure_trace =
         [scene, closure_identity](
-            BufferFloat4 parameters,
+            BufferFloat scalar_parameters,
+            BufferFloat3 vector_parameters,
             BufferFloat cycles_bsdf_tables,
             BindlessVar textures,
             BindlessVar geometry_heap,
@@ -222,7 +235,8 @@ SurfaceCallables make_surface_callables(
             Bool reflective_caustics,
             Bool refractive_caustics) noexcept {
             BufferShaderServices services{
-                parameters,
+                scalar_parameters,
+                vector_parameters,
                 cycles_bsdf_tables,
                 textures,
                 geometry_heap,
@@ -248,7 +262,8 @@ SurfaceCallables make_surface_callables(
         };
     SurfaceSampleTraceCallable sample_trace =
         [scene, closure_sampling, closure_evaluation](
-            BufferFloat4 parameters,
+            BufferFloat scalar_parameters,
+            BufferFloat3 vector_parameters,
             BufferFloat cycles_bsdf_tables,
             BindlessVar textures,
             BindlessVar geometry_heap,
@@ -262,7 +277,8 @@ SurfaceCallables make_surface_callables(
             Bool reflective_caustics,
             Bool refractive_caustics) noexcept {
             BufferShaderServices services{
-                parameters,
+                scalar_parameters,
+                vector_parameters,
                 cycles_bsdf_tables,
                 textures,
                 geometry_heap,
@@ -284,7 +300,8 @@ SurfaceCallables make_surface_callables(
                     *scene,
                     closure_sampling,
                     closure_evaluation,
-                    parameters,
+                    scalar_parameters,
+                    vector_parameters,
                     cycles_bsdf_tables,
                     textures,
                     geometry_heap,
@@ -301,14 +318,16 @@ SurfaceCallables make_surface_callables(
         };
     SurfaceAovCallable aov =
         [scene, closure_aov](
-            BufferFloat4 parameters,
+            BufferFloat scalar_parameters,
+            BufferFloat3 vector_parameters,
             BufferFloat cycles_bsdf_tables,
             BindlessVar textures,
             BindlessVar geometry_heap,
             UInt surface_tag,
             Var<SurfacePointCall> packed_point) noexcept {
             BufferShaderServices services{
-                parameters,
+                scalar_parameters,
+                vector_parameters,
                 cycles_bsdf_tables,
                 textures,
                 geometry_heap,
@@ -333,14 +352,16 @@ SurfaceCallables make_surface_callables(
         };
     SurfaceShadingNormalCallable shading_normal =
         [scene](
-            BufferFloat4 parameters,
+            BufferFloat scalar_parameters,
+            BufferFloat3 vector_parameters,
             BufferFloat cycles_bsdf_tables,
             BindlessVar textures,
             BindlessVar geometry_heap,
             UInt surface_tag,
             Var<SurfacePointCall> packed_point) noexcept {
             BufferShaderServices services{
-                parameters,
+                scalar_parameters,
+                vector_parameters,
                 cycles_bsdf_tables,
                 textures,
                 geometry_heap,

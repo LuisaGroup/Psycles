@@ -5,7 +5,8 @@
 namespace psycles::luisa_backend::detail {
 
 using SurfaceEvaluateLightCallable = Callable<SurfaceEvaluationCall(
-    Buffer<luisa::float4>,
+    Buffer<float>,
+    Buffer<luisa::float3>,
     Buffer<float>,
     BindlessArray,
     BindlessArray,
@@ -19,7 +20,8 @@ using SurfaceEvaluateLightCallable = Callable<SurfaceEvaluationCall(
     bool,
     luisa::uint)>;
 using SurfaceRuntimeFlagsCallable = Callable<luisa::uint(
-    Buffer<luisa::float4>,
+    Buffer<float>,
+    Buffer<luisa::float3>,
     Buffer<float>,
     BindlessArray,
     BindlessArray,
@@ -29,7 +31,8 @@ using SurfaceRuntimeFlagsCallable = Callable<luisa::uint(
     bool,
     bool)>;
 using SurfaceEmissionCallable = Callable<luisa::float3(
-    Buffer<luisa::float4>,
+    Buffer<float>,
+    Buffer<luisa::float3>,
     Buffer<float>,
     BindlessArray,
     BindlessArray,
@@ -39,11 +42,13 @@ using SurfaceEmissionCallable = Callable<luisa::float3(
     bool)>;
 using SurfaceConstantEmissionCallable =
     Callable<luisa::float3(
-        Buffer<luisa::float4>,
+        Buffer<float>,
+        Buffer<luisa::float3>,
         luisa::uint,
         luisa::uint)>;
 using SurfaceSampleCallable = Callable<SurfaceSampleCall(
-    Buffer<luisa::float4>,
+    Buffer<float>,
+    Buffer<luisa::float3>,
     Buffer<float>,
     BindlessArray,
     BindlessArray,
@@ -58,7 +63,8 @@ using SurfaceSampleCallable = Callable<SurfaceSampleCall(
     bool)>;
 using SurfaceClosureTraceCallable =
     Callable<SurfaceClosureTraceCall(
-        Buffer<luisa::float4>,
+        Buffer<float>,
+        Buffer<luisa::float3>,
         Buffer<float>,
         BindlessArray,
         BindlessArray,
@@ -69,7 +75,8 @@ using SurfaceClosureTraceCallable =
         bool)>;
 using SurfaceSampleTraceCallable =
     Callable<SurfaceSampleTraceCall(
-        Buffer<luisa::float4>,
+        Buffer<float>,
+        Buffer<luisa::float3>,
         Buffer<float>,
         BindlessArray,
         BindlessArray,
@@ -83,14 +90,16 @@ using SurfaceSampleTraceCallable =
         bool,
         bool)>;
 using SurfaceAovCallable = Callable<SurfaceAovCall(
-    Buffer<luisa::float4>,
+    Buffer<float>,
+    Buffer<luisa::float3>,
     Buffer<float>,
     BindlessArray,
     BindlessArray,
     luisa::uint,
     SurfacePointCall)>;
 using SurfaceShadingNormalCallable = Callable<luisa::float3(
-    Buffer<luisa::float4>,
+    Buffer<float>,
+    Buffer<luisa::float3>,
     Buffer<float>,
     BindlessArray,
     BindlessArray,

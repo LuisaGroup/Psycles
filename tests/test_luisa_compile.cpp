@@ -167,13 +167,15 @@ public:
              std::move(nishita_textures),
          shader_color_space,
          logical_binding_count](
-            BufferFloat4 parameters,
+            BufferFloat scalar_parameters,
+            BufferFloat3 vector_parameters,
             BufferFloat cycles_bsdf_tables,
             BindlessVar textures,
             BindlessVar geometry_heap) noexcept {
             psycles::luisa_backend::detail::
                 BufferShaderServices services{
-                    parameters,
+                    scalar_parameters,
+                    vector_parameters,
                     cycles_bsdf_tables,
                     textures,
                     geometry_heap,

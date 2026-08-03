@@ -6,39 +6,45 @@
 
 namespace psycles::luisa_backend::detail {
 
-template<typename ParameterBuffer>
+template<typename ScalarParameterBuffer,
+         typename VectorParameterBuffer>
 class BufferSurfaceParameterServices final
     : public SurfaceParameterServices {
 
 private:
-    const ParameterBuffer &_parameters;
+    const ScalarParameterBuffer &_scalar_parameters;
+    const VectorParameterBuffer &_vector_parameters;
 
 public:
     explicit BufferSurfaceParameterServices(
-        const ParameterBuffer &parameters) noexcept
-        : _parameters{parameters} {}
+        const ScalarParameterBuffer &scalar_parameters,
+        const VectorParameterBuffer &vector_parameters) noexcept
+        : _scalar_parameters{scalar_parameters},
+          _vector_parameters{vector_parameters} {}
 
     [[nodiscard]] Float parameter_float(
         Expr<std::uint32_t> block,
         Expr<std::uint32_t> slot) const noexcept override {
-        return _parameters->read(block + slot).x;
+        return _scalar_parameters->read(block + slot);
     }
 
     [[nodiscard]] Float3 parameter_float3(
         Expr<std::uint32_t> block,
         Expr<std::uint32_t> slot) const noexcept override {
-        return _parameters->read(block + slot).xyz();
+        return _vector_parameters->read(block + slot);
     }
 };
 
-template<typename ParameterBuffer,
+template<typename ScalarParameterBuffer,
+         typename VectorParameterBuffer,
          typename CyclesBuffer,
          typename TextureHeap,
          typename GeometryHeap>
 class BufferShaderServices final : public ShaderServices {
 
 private:
-    const ParameterBuffer &_parameters;
+    const ScalarParameterBuffer &_scalar_parameters;
+    const VectorParameterBuffer &_vector_parameters;
     const CyclesBuffer &_cycles_bsdf_tables;
     const TextureHeap &_textures;
     const GeometryHeap &_geometry_heap;
@@ -49,7 +55,8 @@ private:
 
 public:
     explicit BufferShaderServices(
-        const ParameterBuffer &parameters,
+        const ScalarParameterBuffer &scalar_parameters,
+        const VectorParameterBuffer &vector_parameters,
         const CyclesBuffer &cycles_bsdf_tables,
         const TextureHeap &textures,
         const GeometryHeap &geometry_heap,
@@ -59,7 +66,8 @@ public:
             &nishita_textures,
         const contract::ShaderColorSpace
             &shader_color_space) noexcept
-        : _parameters{parameters},
+        : _scalar_parameters{scalar_parameters},
+          _vector_parameters{vector_parameters},
           _cycles_bsdf_tables{cycles_bsdf_tables},
           _textures{textures},
           _geometry_heap{geometry_heap},
@@ -279,13 +287,13 @@ public:
     [[nodiscard]] Float parameter_float(
         Expr<std::uint32_t> block,
         Expr<std::uint32_t> slot) const noexcept override {
-        return _parameters->read(block + slot).x;
+        return _scalar_parameters->read(block + slot);
     }
 
     [[nodiscard]] Float3 parameter_float3(
         Expr<std::uint32_t> block,
         Expr<std::uint32_t> slot) const noexcept override {
-        return _parameters->read(block + slot).xyz();
+        return _vector_parameters->read(block + slot);
     }
 
     [[nodiscard]] Float cycles_bsdf_data(

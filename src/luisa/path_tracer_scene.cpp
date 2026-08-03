@@ -1,4 +1,5 @@
 #include "path_tracer_internal.h"
+#include "graph_surface_value_expression.h"
 #include "path_tracer_environment.h"
 #include "path_tracer_generated_coordinates.h"
 #include "path_tracer_image_decode.h"
@@ -131,15 +132,16 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         cycles_scene_closure_allocation_budget(
             data->materials);
 
-    luisa::vector<luisa::float4> parameters;
+    luisa::vector<float> scalar_parameters;
+    luisa::vector<luisa::float3> vector_parameters;
     std::vector<std::uint32_t>
         volume_surface_flags;
     std::map<std::uint64_t, std::uint32_t>
         surface_tags_by_signature;
     for (const auto &[id, material] :
          data->materials.materials()) {
-        const auto base =
-            static_cast<std::uint32_t>(parameters.size());
+        const auto base = static_cast<std::uint32_t>(
+            scalar_parameters.size());
         const auto signature =
             material.surface_program()->structure_signature();
         auto [surface_iter, inserted] =
@@ -286,10 +288,20 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
              material.surface_program()->parameters()) {
             const auto *value =
                 material.parameters().find(parameter.id);
-            parameters.emplace_back(
-                value != nullptr
-                    ? parameter_value(*value)
-                    : luisa::make_float4(0.0f));
+            auto scalar = 0.0f;
+            auto vector = luisa::make_float3(0.0f);
+            if (value != nullptr) {
+                switch (surface_value_category(parameter.type)) {
+                    case SurfaceValueCategory::scalar:
+                        scalar = scalar_parameter_value(*value);
+                        break;
+                    case SurfaceValueCategory::vector:
+                        vector = vector_parameter_value(*value);
+                        break;
+                }
+            }
+            scalar_parameters.emplace_back(scalar);
+            vector_parameters.emplace_back(vector);
         }
     }
     if (!result.diagnostics.empty()) {
@@ -310,12 +322,16 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             }
         }
     }
-    if (parameters.empty()) {
-        parameters.emplace_back(luisa::make_float4(0.0f));
+    if (scalar_parameters.empty()) {
+        scalar_parameters.emplace_back(0.0f);
+        vector_parameters.emplace_back(luisa::make_float3(0.0f));
     }
-    data->parameter_buffer =
-        data->device.create_buffer<luisa::float4>(
-            parameters.size());
+    data->scalar_parameter_buffer =
+        data->device.create_buffer<float>(
+            scalar_parameters.size());
+    data->vector_parameter_buffer =
+        data->device.create_buffer<luisa::float3>(
+            vector_parameters.size());
     data->volume_surface_flag_count =
         static_cast<std::uint32_t>(
             volume_surface_flags.size());
@@ -430,8 +446,10 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         static_cast<std::uint32_t>(
             fixed_geometry_slots);
     Stream stream = data->device.create_stream();
-    stream << data->parameter_buffer.copy_from(
-                  luisa::span{parameters})
+    stream << data->scalar_parameter_buffer.copy_from(
+                  luisa::span{scalar_parameters})
+           << data->vector_parameter_buffer.copy_from(
+                  luisa::span{vector_parameters})
            << data->cycles_bsdf_table_buffer.copy_from(
                   luisa::span{cycles_bsdf_values})
            << data->volume_surface_flag_buffer.copy_from(
