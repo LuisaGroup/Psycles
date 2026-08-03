@@ -110,6 +110,8 @@ enum class ValueOperation : std::uint8_t {
     mapping,
     image_color,
     image_alpha,
+    environment_color,
+    environment_alpha,
     attribute_color,
     attribute_alpha,
     normal_map,

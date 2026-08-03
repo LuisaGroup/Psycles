@@ -39,6 +39,9 @@ _ALL_PROBES = (
     "diffuse_bsdf_matrix",
     "diffuse_surface",
     "emission_surface",
+    "environment_texture_projection_modes",
+    "environment_texture_sampling_modes",
+    "environment_texture_world_default",
     "fresnel_matrix",
     "flat_light_distribution",
     "gamma_color",
@@ -142,6 +145,18 @@ _PROBE_RATIO_GATES = {
     "camera_dof_disk": {
         "Combined": (0.9995, 1.0005),
     },
+    "environment_texture_projection_modes": {
+        "Combined": (0.99999, 1.00001),
+        "Emit": (0.99999, 1.00001),
+    },
+    "environment_texture_sampling_modes": {
+        "Combined": (0.99999, 1.00001),
+        "Emit": (0.99999, 1.00001),
+    },
+    "environment_texture_world_default": {
+        "Combined": (0.99999, 1.00001),
+        "Env": (0.99999, 1.00001),
+    },
     "glass_transport": {
         "Combined": (0.9999, 1.0001),
         "GlossCol": (0.9999, 1.0001),
@@ -219,6 +234,18 @@ _PROBE_RELATIVE_RMSE_GATES = {
     },
     "camera_dof_disk": {
         "Combined": 0.0005,
+    },
+    "environment_texture_projection_modes": {
+        "Combined": 0.00001,
+        "Emit": 0.00001,
+    },
+    "environment_texture_sampling_modes": {
+        "Combined": 0.00001,
+        "Emit": 0.00001,
+    },
+    "environment_texture_world_default": {
+        "Combined": 0.00001,
+        "Env": 0.00001,
     },
     "glass_transport": {
         "Combined": 0.0002,

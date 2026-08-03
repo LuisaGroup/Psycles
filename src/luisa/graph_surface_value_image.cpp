@@ -1,5 +1,7 @@
 #include "graph_surface_internal.h"
 
+#include <psycles/luisa/spherical_geometry.h>
+
 #include <luisa/dsl/sugar.h>
 
 namespace psycles::luisa_backend::detail {
@@ -10,12 +12,53 @@ namespace {
     switch (operation) {
         case compiler::ValueOperation::image_color:
         case compiler::ValueOperation::image_alpha:
+        case compiler::ValueOperation::environment_color:
+        case compiler::ValueOperation::environment_alpha:
         case compiler::ValueOperation::attribute_color:
         case compiler::ValueOperation::attribute_alpha:
             return true;
         default:
             return false;
     }
+}
+
+[[nodiscard]] Float3 cycles_safe_normalize_direction(
+    Float3 direction) noexcept {
+    const auto length = sqrt(dot(direction, direction));
+    const auto nonzero = length != 0.0f;
+    const auto safe_length = select(1.0f, length, nonzero);
+    return select(
+        direction,
+        direction * (1.0f / safe_length),
+        nonzero);
+}
+
+[[nodiscard]] Float2 cycles_direction_to_equirectangular(
+    Float3 direction) noexcept {
+    direction = cycles_safe_normalize_direction(direction);
+    const auto length = sqrt(dot(direction, direction));
+    Float2 uv = make_float2(0.0f);
+    $if (length != 0.0f) {
+        const auto azimuth =
+            spherical_geometry::canonical_direction_azimuth(direction);
+        uv = make_float2(
+            (pi - azimuth) /
+                (2.0f * pi),
+            1.0f - acos(direction.z / length) / pi);
+    };
+    return uv;
+}
+
+[[nodiscard]] Float2 cycles_direction_to_mirrorball(
+    Float3 direction) noexcept {
+    direction = cycles_safe_normalize_direction(direction);
+    direction.y -= 1.0f;
+    const auto divisor =
+        2.0f * sqrt(max(-0.5f * direction.y, 0.0f));
+    $if (divisor > 0.0f) {
+        direction /= divisor;
+    };
+    return 0.5f * (direction.xz() + 1.0f);
 }
 
 class ImageValueNode final : public ValueNode {
@@ -32,7 +75,14 @@ public:
         Float4 value = make_float4(0.0f);
         switch (instruction.operation) {
                 case compiler::ValueOperation::image_color:
-                case compiler::ValueOperation::image_alpha: {
+                case compiler::ValueOperation::image_alpha:
+                case compiler::ValueOperation::environment_color:
+                case compiler::ValueOperation::environment_alpha: {
+                    const auto environment =
+                        instruction.operation ==
+                            compiler::ValueOperation::environment_color ||
+                        instruction.operation ==
+                            compiler::ValueOperation::environment_alpha;
                     const auto extension =
                         static_cast<std::uint32_t>(
                             instruction.static_u1 & 0xffu);
@@ -98,7 +148,14 @@ public:
                     auto coordinate =
                         vector(instruction.a, result);
                     Float4 sampled;
-                    if (projection == 1u) {
+                    if (environment) {
+                        const auto uv = projection == 1u
+                                            ? cycles_direction_to_mirrorball(
+                                                  coordinate)
+                                            : cycles_direction_to_equirectangular(
+                                                  coordinate);
+                        sampled = sample_uv(uv);
+                    } else if (projection == 1u) {
                         // Cycles' object-normal weighted box projection.
                         auto signed_normal =
                             point.object_shading_normal;
@@ -288,12 +345,14 @@ public:
                         }
                         sampled = sample_uv(uv);
                     }
-                    value =
+                    const auto color_output =
                         instruction.operation ==
-                                compiler::ValueOperation::
-                                    image_color
-                            ? sampled
-                            : make_float4(sampled.w);
+                            compiler::ValueOperation::image_color ||
+                        instruction.operation ==
+                            compiler::ValueOperation::environment_color;
+                    value = color_output
+                                ? sampled
+                                : make_float4(sampled.w);
                     break;
                 }
                 case compiler::ValueOperation::attribute_color:

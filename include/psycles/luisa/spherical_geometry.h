@@ -40,6 +40,21 @@ normalize_or(luisa::compute::Float3 value,
                   length_squared > 1.0e-20f);
 }
 
+// A direction on the z axis has no unique azimuth. Cycles' CPU and HIP math
+// libraries resolve atan2(0, 0) to zero, but GLSL.std.450 leaves that input
+// undefined. State the canonical meridian explicitly so spherical mappings
+// remain identical on every Luisa backend.
+[[nodiscard]] inline luisa::compute::Float
+canonical_direction_azimuth(
+    luisa::compute::Float3 direction) noexcept {
+    const auto has_azimuth =
+        (direction.x != 0.0f) |
+        (direction.y != 0.0f);
+    return select(0.0f,
+                  atan2(direction.y, direction.x),
+                  has_azimuth);
+}
+
 // Height of a spherical cap on the unit sphere. The direct expression
 // 1 - cos(radius) catastrophically cancels for sun-sized angles when a GPU
 // backend lowers cos to a fast approximation. This equivalent half-angle

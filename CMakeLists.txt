@@ -1468,6 +1468,26 @@ if(PSYCLES_ENABLE_LUISA)
                     COMMAND
                         psycles_luisa_background_sampling_tests
                         fallback)
+                if(TARGET luisa-compute-backend-hip)
+                    add_dependencies(
+                        psycles_luisa_background_sampling_tests
+                        luisa-compute-backend-hip)
+                    add_test(
+                        NAME psycles.luisa_background_sampling_hip
+                        COMMAND
+                            psycles_luisa_background_sampling_tests
+                            hip)
+                endif()
+                if(TARGET luisa-compute-backend-vk)
+                    add_dependencies(
+                        psycles_luisa_background_sampling_tests
+                        luisa-compute-backend-vk)
+                    add_test(
+                        NAME psycles.luisa_background_sampling_vk
+                        COMMAND
+                            psycles_luisa_background_sampling_tests
+                            vk)
+                endif()
 
                 add_executable(
                     psycles_luisa_surface_ray_tests

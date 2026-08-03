@@ -1,9 +1,33 @@
 #include "surface_program_builder.h"
 #include "hosek_sky.h"
 
+#include <cstdint>
+#include <string_view>
 #include <utility>
 
 namespace psycles::compiler::detail {
+namespace {
+
+[[nodiscard]] std::uint32_t texture_interpolation(
+    std::string_view name) noexcept {
+    return name == "Closest"
+               ? 0u
+               : name == "Linear"
+                     ? 1u
+                     : name == "Cubic" ? 2u : 3u;
+}
+
+[[nodiscard]] std::uint32_t texture_color_flags(
+    std::string_view color_space,
+    std::string_view interpolation,
+    bool unassociate_alpha = false) noexcept {
+    const auto srgb = color_space == "sRGB" ? 1u : 0u;
+    return (srgb << 8u) |
+           (static_cast<std::uint32_t>(unassociate_alpha) << 9u) |
+           (texture_interpolation(interpolation) << 10u);
+}
+
+}// namespace
 
 // Lowers image, attribute, procedural, ramp, and sky nodes. A true result
 // means the node family was recognized, even when input diagnostics
@@ -30,18 +54,8 @@ namespace psycles::compiler::detail {
                     : extension == "EXTEND"
                           ? 2u
                           : extension == "MIRROR" ? 3u : 0u;
-            const auto srgb =
-                color_space == "sRGB" ? 1u : 0u;
             const auto unassociate_alpha =
-                property_bool(node, "UnassociateAlpha") ? 1u : 0u;
-            const auto interpolation =
-                interpolation_name == "Closest"
-                    ? 0u
-                    : interpolation_name == "Linear"
-                          ? 1u
-                          : interpolation_name == "Cubic"
-                                ? 2u
-                                : 3u;
+                property_bool(node, "UnassociateAlpha");
             const auto projection =
                 projection_name == "BOX"
                     ? 1u
@@ -52,9 +66,10 @@ namespace psycles::compiler::detail {
                                 : 0u;
             const auto flags =
                 address |
-                (srgb << 8u) |
-                (unassociate_alpha << 9u) |
-                (interpolation << 10u) |
+                texture_color_flags(
+                    color_space,
+                    interpolation_name,
+                    unassociate_alpha) |
                 (projection << 12u);
             const auto projection_blend =
                 property_float(
@@ -81,6 +96,43 @@ namespace psycles::compiler::detail {
                     .static_u0 = image,
                     .static_u1 = flags,
                     .static_f0 = projection_blend}));
+        }
+        return true;
+    }
+    if (node.type == node_type::environment_texture) {
+        if (auto vector = lower_value_input(node, "Vector")) {
+            const auto image = property_uint(node, "Image");
+            const auto projection =
+                property_string(
+                    node, "Projection", "EQUIRECTANGULAR") ==
+                        "MIRROR_BALL"
+                    ? 1u
+                    : 0u;
+            const auto flags =
+                texture_color_flags(
+                    property_string(node, "ColorSpace", "Non-Color"),
+                    property_string(node, "Interpolation", "Linear")) |
+                (projection << 12u);
+            publish(
+                node.id,
+                "Color",
+                append(ValueInstruction{
+                    .operation = ValueOperation::environment_color,
+                    .source_node = node.id,
+                    .result_type = SocketType::color,
+                    .a = *vector,
+                    .static_u0 = image,
+                    .static_u1 = flags}));
+            publish(
+                node.id,
+                "Alpha",
+                append(ValueInstruction{
+                    .operation = ValueOperation::environment_alpha,
+                    .source_node = node.id,
+                    .result_type = SocketType::floating,
+                    .a = *vector,
+                    .static_u0 = image,
+                    .static_u1 = flags}));
         }
         return true;
     }

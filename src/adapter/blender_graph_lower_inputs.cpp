@@ -2,11 +2,71 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <tuple>
 #include <utility>
 
 namespace psycles::adapter::detail {
 namespace {
+
+struct BlenderImageBinding {
+    std::uint64_t id{};
+    std::string color_space{"Non-Color"};
+    bool unassociate_alpha{};
+};
+
+[[nodiscard]] BlenderImageBinding resolve_image_binding(
+    BlenderNodeLoweringContext &context,
+    yyjson_val *node,
+    bool alpha_output_controls_unassociation) {
+    const auto image_name = text(member(node, "image"));
+    const auto image_iter = context.image_ids().find(image_name);
+    if (image_iter == context.image_ids().end()) {
+        context.warn_once(
+            "image:" + image_name,
+            "image '" + image_name + "' is unavailable");
+    }
+    const auto color_iter =
+        context.image_color_spaces().find(image_name);
+    const auto image_color_space =
+        color_iter == context.image_color_spaces().end()
+            ? ImageColorSpace::data
+            : color_iter->second;
+    const auto alpha_iter =
+        context.image_alpha_types().find(image_name);
+    const auto alpha_type =
+        alpha_iter == context.image_alpha_types().end()
+            ? ImageAlphaType::straight
+            : alpha_iter->second;
+    return {
+        .id = image_iter == context.image_ids().end()
+                  ? 0u
+                  : image_iter->second.value,
+        .color_space =
+            image_color_space == ImageColorSpace::srgb
+                ? "sRGB"
+                : "Non-Color",
+        .unassociate_alpha =
+            alpha_output_controls_unassociation &&
+            context.output_is_linked(node, "Alpha") &&
+            image_color_space != ImageColorSpace::data &&
+            alpha_type != ImageAlphaType::channel_packed &&
+            alpha_type != ImageAlphaType::ignore};
+}
+
+void set_image_resource_properties(
+    BlenderNodeLoweringContext &context,
+    contract::NodeId node,
+    const BlenderImageBinding &binding) {
+    static_cast<void>(context.graph().set_property(
+        node,
+        "Image",
+        SocketValue::unsigned_integer(binding.id)));
+    static_cast<void>(context.graph().set_property(
+        node,
+        "ColorSpace",
+        SocketValue::string(binding.color_space)));
+}
 
 class InputNodeLoweringComponent final
     : public BlenderNodeLoweringComponent {
@@ -377,45 +437,9 @@ public:
                     id,
                     "Vector"));
             }
-            const auto image_name =
-                text(member(node, "image"));
-            const auto image_iter =
-                context.image_ids().find(image_name);
-            if (image_iter == context.image_ids().end()) {
-                context.warn_once(
-                    "image:" + image_name,
-                    "image '" + image_name +
-                        "' is unavailable");
-            }
-            const auto image_id =
-                image_iter == context.image_ids().end()
-                    ? 0u
-                    : image_iter->second.value;
-            const auto color_iter =
-                context.image_color_spaces().find(image_name);
-            const auto image_color_space =
-                color_iter == context.image_color_spaces().end()
-                    ? ImageColorSpace::data
-                    : color_iter->second;
-            const auto color_space =
-                image_color_space == ImageColorSpace::srgb
-                    ? "sRGB"
-                    : "Non-Color";
-            const auto alpha_iter =
-                context.image_alpha_types().find(image_name);
-            const auto alpha_type =
-                alpha_iter == context.image_alpha_types().end()
-                    ? ImageAlphaType::straight
-                    : alpha_iter->second;
-            const auto unassociate_alpha =
-                context.output_is_linked(node, "Alpha") &&
-                image_color_space != ImageColorSpace::data &&
-                alpha_type != ImageAlphaType::channel_packed &&
-                alpha_type != ImageAlphaType::ignore;
-            static_cast<void>(context.graph().set_property(
-                id,
-                "Image",
-                SocketValue::unsigned_integer(image_id)));
+            const auto image =
+                resolve_image_binding(context, node, true);
+            set_image_resource_properties(context, id, image);
             static_cast<void>(context.graph().set_property(
                 id,
                 "Extension",
@@ -438,12 +462,53 @@ public:
                     node, "projection_blend", 0.0f))));
             static_cast<void>(context.graph().set_property(
                 id,
-                "ColorSpace",
-                SocketValue::string(color_space)));
+                "UnassociateAlpha",
+                SocketValue::boolean(image.unassociate_alpha)));
+            return finish({
+                .ref = {
+                    .node = id,
+                    .socket =
+                        socket == "Alpha" ? "Alpha" : "Color"},
+                .type =
+                    socket == "Alpha"
+                        ? SocketType::floating
+                        : SocketType::color});
+        }
+        if (type == "TEX_ENVIRONMENT") {
+            const auto id = context.graph().add_node(
+                compiler::node_type::environment_texture,
+                node_name);
+            if (context.input_source(node, "Vector")) {
+                static_cast<void>(context.bind(
+                    id,
+                    "Vector",
+                    node,
+                    "Vector",
+                    SocketType::vector));
+            } else {
+                // Cycles marks Environment Texture's implicit input as
+                // LINK_POSITION. shader_setup_from_background assigns the
+                // ray direction to that position for world evaluation.
+                const auto position = context.conversion(
+                    context.geometry_output(
+                        "Position", SocketType::point),
+                    SocketType::vector);
+                static_cast<void>(context.graph().connect(
+                    position.ref, id, "Vector"));
+            }
+            const auto image =
+                resolve_image_binding(context, node, false);
+            set_image_resource_properties(context, id, image);
             static_cast<void>(context.graph().set_property(
                 id,
-                "UnassociateAlpha",
-                SocketValue::boolean(unassociate_alpha)));
+                "Interpolation",
+                SocketValue::string(context.node_property_text(
+                    node, "interpolation", "Linear"))));
+            static_cast<void>(context.graph().set_property(
+                id,
+                "Projection",
+                SocketValue::string(context.node_property_text(
+                    node, "projection", "EQUIRECTANGULAR"))));
             return finish({
                 .ref = {
                     .node = id,

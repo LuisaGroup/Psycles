@@ -27,6 +27,8 @@ namespace {
         case ValueOperation::random_per_island:
         case ValueOperation::image_color:
         case ValueOperation::image_alpha:
+        case ValueOperation::environment_color:
+        case ValueOperation::environment_alpha:
         case ValueOperation::attribute_color:
         case ValueOperation::attribute_alpha:
         case ValueOperation::normal_map:

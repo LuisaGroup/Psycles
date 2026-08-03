@@ -251,6 +251,34 @@ NodeRegistry make_core_node_registry() {
             feature_bit(ShaderFeature::derivatives)}));
 
     static_cast<void>(registry.register_schema(NodeSchema{
+        .type = node_type::environment_texture,
+        .inputs = {
+            input("Vector", SocketType::vector, SocketValue::vector({0.0f, 0.0f, 0.0f}))},
+        .outputs = {
+            output("Color", SocketType::color),
+            output("Alpha", SocketType::floating)},
+        .properties = {
+            property(
+                "Image",
+                SocketType::unsigned_integer,
+                SocketValue::unsigned_integer(0u)),
+            property(
+                "Interpolation",
+                SocketType::string,
+                SocketValue::string("Linear")),
+            property(
+                "Projection",
+                SocketType::string,
+                SocketValue::string("EQUIRECTANGULAR")),
+            property(
+                "ColorSpace",
+                SocketType::string,
+                SocketValue::string("Non-Color"))},
+        .required_features =
+            feature_bit(ShaderFeature::surface) |
+            feature_bit(ShaderFeature::derivatives)}));
+
+    static_cast<void>(registry.register_schema(NodeSchema{
         .type = node_type::noise_texture,
         .inputs = {
             input("Vector", SocketType::vector, SocketValue::vector({0.0f, 0.0f, 0.0f})),

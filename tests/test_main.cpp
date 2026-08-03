@@ -91,6 +91,39 @@ void expect(bool condition, const std::string &message) {
     return graph;
 }
 
+[[nodiscard]] ShaderGraph make_environment_emission_graph(
+    std::string interpolation,
+    std::string projection) {
+    ShaderGraph graph;
+    const auto environment = graph.add_node(
+        node_type::environment_texture,
+        "Environment Texture");
+    const auto emission =
+        graph.add_node(node_type::emission, "Emission");
+    expect(
+        graph.set_property(
+            environment,
+            "Interpolation",
+            SocketValue::string(std::move(interpolation))),
+        "failed to set environment interpolation");
+    expect(
+        graph.set_property(
+            environment,
+            "Projection",
+            SocketValue::string(std::move(projection))),
+        "failed to set environment projection");
+    expect(
+        graph.connect(
+            {.node = environment, .socket = "Color"},
+            emission,
+            "Color"),
+        "failed to connect environment color to emission");
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = emission, .socket = "Closure"});
+    return graph;
+}
+
 void test_shader_graph_and_invalidation() {
     ShaderCompiler compiler{make_core_node_registry()};
 
@@ -181,6 +214,54 @@ void test_image_texture_modes_are_structural() {
         box_blend.program->analysis().structure_signature !=
             baseline_signature,
         "image projection blend did not invalidate shader structure");
+}
+
+void test_environment_texture_modes_are_structural() {
+    ShaderCompiler compiler{make_core_node_registry()};
+    const auto baseline = compiler.compile(
+        make_environment_emission_graph(
+            "Linear", "EQUIRECTANGULAR"));
+    const auto closest = compiler.compile(
+        make_environment_emission_graph(
+            "Closest", "EQUIRECTANGULAR"));
+    const auto mirror_ball = compiler.compile(
+        make_environment_emission_graph(
+            "Linear", "MIRROR_BALL"));
+
+    expect(
+        baseline.ok(),
+        "baseline environment graph failed to compile");
+    expect(
+        closest.ok(),
+        "closest environment graph failed to compile");
+    expect(
+        mirror_ball.ok(),
+        "mirror-ball environment graph failed to compile");
+    const auto baseline_signature =
+        baseline.program->analysis().structure_signature;
+    expect(
+        closest.program->analysis().structure_signature !=
+            baseline_signature,
+        "environment interpolation did not invalidate shader structure");
+    expect(
+        mirror_ball.program->analysis().structure_signature !=
+            baseline_signature,
+        "environment projection did not invalidate shader structure");
+
+    const auto lowered = compile_surface_program(*baseline.program);
+    expect(
+        lowered.ok(),
+        "environment graph did not lower to a surface program");
+    const auto has_environment_color = std::any_of(
+        lowered.program->value_instructions().begin(),
+        lowered.program->value_instructions().end(),
+        [](const auto &instruction) {
+            return instruction.operation ==
+                   ValueOperation::environment_color;
+        });
+    expect(
+        has_environment_color,
+        "environment graph emitted no typed environment operation");
 }
 
 void test_closure_tree_is_preserved() {
@@ -1661,6 +1742,7 @@ int main() {
     try {
         test_shader_graph_and_invalidation();
         test_image_texture_modes_are_structural();
+        test_environment_texture_modes_are_structural();
         test_closure_tree_is_preserved();
         test_cycles_emission_evaluation_mode();
         test_cycles_principled_emission_metadata();
