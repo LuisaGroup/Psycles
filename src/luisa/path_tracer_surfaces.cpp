@@ -41,6 +41,8 @@ SurfaceCallables make_surface_callables(
     const std::shared_ptr<LuisaSceneData> &scene) noexcept {
     const auto closure_identity =
         make_surface_closure_identity_callable();
+    const auto closure_aov =
+        make_surface_closure_aov_callable();
     SurfaceEvaluateLightCallable evaluate_light =
         [scene](
             BufferFloat4 parameters,
@@ -304,7 +306,7 @@ SurfaceCallables make_surface_callables(
                     }));
         };
     SurfaceAovCallable aov =
-        [scene](
+        [scene, closure_aov](
             BufferFloat4 parameters,
             BufferFloat cycles_bsdf_tables,
             BindlessVar textures,
@@ -322,19 +324,18 @@ SurfaceCallables make_surface_callables(
                 scene->shader_color_space};
             const auto point =
                 unpack_surface_point(packed_point);
-            return pack_surface_aov(
-                evaluate_surface_closures(
-                    *scene,
-                    SurfaceClosureStorageProfile::aov,
-                    services,
-                    surface_tag,
-                    point,
-                    true,
-                    true,
-                    [](const SurfaceClosureEvaluator
-                           &evaluator) noexcept {
-                        return evaluator.aov();
-                    }));
+            SurfaceAovVisitor visitor{
+                point,
+                scene->volume_metadata.closure_allocation_budget,
+                closure_aov};
+            static_cast<void>(scene->surfaces.collect_closures(
+                surface_tag,
+                services,
+                point,
+                true,
+                true,
+                visitor));
+            return pack_surface_aov(visitor.result());
         };
     SurfaceShadingNormalCallable shading_normal =
         [scene](
