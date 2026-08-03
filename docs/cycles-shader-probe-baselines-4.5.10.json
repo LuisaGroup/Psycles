@@ -729,6 +729,65 @@
       "probe": "checker_texture_matrix",
       "samples": 4
     },
+    "TEX_ENVIRONMENT": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 4.7706993910878737e-08
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Emit": {
+          "rmse": 4.7706993910878737e-08
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "environment_texture_projection_modes",
+      "samples": 4,
+      "supplemental_probes": [
+        {
+          "max_rmse": 1e-06,
+          "passes": {
+            "Combined": {
+              "rmse": 3.9400124052235697e-08
+            },
+            "DiffCol": {
+              "rmse": 0.0
+            },
+            "Emit": {
+              "rmse": 3.9400124052235697e-08
+            },
+            "Normal": {
+              "rmse": 0.0
+            }
+          },
+          "probe": "environment_texture_sampling_modes",
+          "samples": 4
+        },
+        {
+          "max_rmse": 1e-06,
+          "passes": {
+            "Combined": {
+              "rmse": 9.7927973286005e-08
+            },
+            "DiffCol": {
+              "rmse": 0.0
+            },
+            "Env": {
+              "rmse": 9.7927973286005e-08
+            },
+            "Normal": {
+              "rmse": 0.0
+            }
+          },
+          "probe": "environment_texture_world_default",
+          "samples": 4
+        }
+      ]
+    },
     "TEX_GRADIENT": {
       "max_rmse": 1e-06,
       "passes": {

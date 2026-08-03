@@ -63,13 +63,15 @@ int main(int argc, char **argv) {
     auto direction_pdf_buffer =
         device.create_buffer<luisa::float4>(random.size());
     auto round_trip_buffer = device.create_buffer<luisa::float4>(random.size());
+    auto pole_uv_buffer = device.create_buffer<luisa::float2>(2u);
 
     constexpr auto sun_radius = 0.01f;
     Kernel1D evaluate = [](BufferFloat2 conditional_cdf,
                            BufferFloat2 marginal_cdf,
                            BufferFloat2 randoms,
                            BufferFloat4 direction_pdf,
-                           BufferFloat4 round_trip) noexcept {
+                           BufferFloat4 round_trip,
+                           BufferFloat2 pole_uv) noexcept {
         const auto index = dispatch_x();
         const auto sample = background_sampling::sample(conditional_cdf,
                                                         marginal_cdf,
@@ -99,10 +101,21 @@ int main(int argc, char **argv) {
             background_sampling::equirectangular_to_direction(uv.x, uv.y);
         direction_pdf.write(index, make_float4(sample.direction, sample.pdf));
         round_trip.write(index, make_float4(reconstructed, forward_pdf));
+        $if (index == 0u) {
+            pole_uv.write(
+                0u,
+                background_sampling::direction_to_equirectangular(
+                    make_float3(0.0f, 0.0f, 1.0f)));
+            pole_uv.write(
+                1u,
+                background_sampling::direction_to_equirectangular(
+                    make_float3(0.0f, 0.0f, -1.0f)));
+        };
     };
     auto shader = device.compile(evaluate);
     std::array<luisa::float4, random.size()> direction_pdf{};
     std::array<luisa::float4, random.size()> round_trip{};
+    std::array<luisa::float2, 2u> pole_uv{};
     stream << conditional_buffer.copy_from(luisa::span{conditional})
            << marginal_buffer.copy_from(luisa::span{marginal})
            << random_buffer.copy_from(luisa::span{random})
@@ -110,11 +123,24 @@ int main(int argc, char **argv) {
                      marginal_buffer,
                      random_buffer,
                      direction_pdf_buffer,
-                     round_trip_buffer)
+                     round_trip_buffer,
+                     pole_uv_buffer)
                   .dispatch(static_cast<std::uint32_t>(random.size()))
            << direction_pdf_buffer.copy_to(luisa::span{direction_pdf})
            << round_trip_buffer.copy_to(luisa::span{round_trip})
+           << pole_uv_buffer.copy_to(luisa::span{pole_uv})
            << synchronize();
+
+    if (!near(pole_uv[0u].x, 0.5f, 1.0e-7f) ||
+        !near(pole_uv[0u].y, 1.0f, 1.0e-7f) ||
+        !near(pole_uv[1u].x, 0.5f, 1.0e-7f) ||
+        !near(pole_uv[1u].y, 0.0f, 1.0e-7f)) {
+        std::cerr << "canonical pole azimuth failed on " << backend
+                  << ": north {" << pole_uv[0u].x << ", "
+                  << pole_uv[0u].y << "}, south {" << pole_uv[1u].x
+                  << ", " << pole_uv[1u].y << "}\n";
+        return EXIT_FAILURE;
+    }
 
     for (std::size_t i = 0u; i < random.size(); ++i) {
         const auto direction_length =

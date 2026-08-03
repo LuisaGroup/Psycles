@@ -601,6 +601,25 @@ choice to ignore its `use_alpha` property. The RNA-only ROTATION enum is not a
 constructible Cycles mode in Blender 4.5.10; Blender itself restricts the
 runtime property to FLOAT, VECTOR, and RGBA.
 
+Environment Texture is `cycles_verified` without baking the world or image
+lookup. The Blender adapter retains the original node, image binding, vector
+input, interpolation, projection, and color-space metadata; an unlinked Vector
+uses the world ray direction through the same `LINK_POSITION` convention as
+Cycles. Luisa evaluates Cycles' equirectangular and mirror-ball projections,
+repeat addressing, Closest/Linear/Cubic/Smart interpolation, and post-filter
+sRGB decode directly in the generated shader. A shared spherical-geometry
+primitive makes the otherwise undefined azimuth at both poles explicitly zero,
+matching Cycles CPU/HIP on Vulkan as well. Two focused material probes cover zero,
+axis-aligned, oblique, and pole directions plus every exposed interpolation;
+a third perspective-world probe covers the implicit, unlinked Vector path.
+At 64×64/4 spp against Blender 5.3 Alpha/Cycles `b82c3f0da6c1`, Combined RMSE
+is `4.77e-8` on fallback, `4.67e-8` on HIP, and `9.41e-8` on Vulkan for the
+projection matrix; the sampling matrix remains below `3.95e-8` on all three.
+The perspective-world probe remains below `4.12e-7` on all three, including
+the complete camera-to-world direction convention and background Env pass.
+Reports and visually inspected triptychs are recorded in
+[`validation/2026-08-04/environment-texture`](validation/2026-08-04/environment-texture/README.md).
+
 ## Sky Texture contract
 
 Sky Texture is a versioned partial node rather than one interchangeable sky

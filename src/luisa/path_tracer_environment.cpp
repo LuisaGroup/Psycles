@@ -73,7 +73,10 @@ EnvironmentCallables make_environment_callables(
                     Float3 world = background;
                     if (scene->world_surface) {
                         SurfacePoint world_point{
-                            .position = make_float3(0.0f),
+                            // Cycles shader_setup_from_background stores the
+                            // ray direction in sd->P. This is also the
+                            // implicit coordinate of Environment Texture.
+                            .position = world_direction,
                             .object_position =
                                 make_float3(0.0f),
                             .object_location =

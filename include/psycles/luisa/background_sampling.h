@@ -53,7 +53,9 @@ equirectangular_to_direction(luisa::compute::Float u,
 direction_to_equirectangular(luisa::compute::Float3 direction) noexcept {
     direction = spherical_geometry::normalize_or(
         direction, luisa::compute::make_float3(0.0f, 0.0f, -1.0f));
-    const auto u = fract((pi - atan2(direction.y, direction.x)) / two_pi);
+    const auto u = fract(
+        (pi - spherical_geometry::canonical_direction_azimuth(direction)) /
+        two_pi);
     const auto v = 1.0f - acos(clamp(direction.z, -1.0f, 1.0f)) / pi;
     return luisa::compute::make_float2(u, v);
 }

@@ -27,6 +27,7 @@ if str(_TOOL_DIRECTORY) not in sys.path:
 
 from cycles_shader_probe import (  # noqa: E402
     closures,
+    environment_inputs,
     lights_camera,
     procedural_textures,
     support,
@@ -61,6 +62,15 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "diffuse_bsdf_matrix": closures._diffuse_bsdf_matrix,
     "diffuse_surface": closures._diffuse_surface,
     "emission_surface": lights_camera._emission_surface,
+    "environment_texture_projection_modes": (
+        environment_inputs._environment_texture_projection_modes
+    ),
+    "environment_texture_sampling_modes": (
+        environment_inputs._environment_texture_sampling_modes
+    ),
+    "environment_texture_world_default": (
+        environment_inputs._environment_texture_world_default
+    ),
     "fresnel_matrix": texture_inputs._fresnel_matrix,
     "gamma_color": values._gamma_color,
     "glass_transport": closures._glass_transport,
