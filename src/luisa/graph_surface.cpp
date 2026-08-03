@@ -18,6 +18,20 @@ SurfaceCapabilities GraphSurface::capabilities() const noexcept {
     return _implementation->capabilities();
 }
 
+SurfaceClosureCollection GraphSurface::collect_closures(
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    Expr<bool> reflective_caustics,
+    Expr<bool> refractive_caustics,
+    SurfaceClosureCollector &collector) const noexcept {
+    return _implementation->collect_closures(
+        services,
+        point,
+        reflective_caustics,
+        refractive_caustics,
+        collector);
+}
+
 UInt GraphSurface::runtime_flags(
     const ShaderServices &services,
     const SurfacePoint &point,

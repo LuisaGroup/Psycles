@@ -40,6 +40,13 @@ public:
     [[nodiscard]] SurfaceCapabilities capabilities()
         const noexcept override;
 
+    [[nodiscard]] SurfaceClosureCollection collect_closures(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        Expr<bool> reflective_caustics,
+        Expr<bool> refractive_caustics,
+        SurfaceClosureCollector &collector) const noexcept override;
+
     [[nodiscard]] UInt runtime_flags(
         const ShaderServices &services,
         const SurfacePoint &point,

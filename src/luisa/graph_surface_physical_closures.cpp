@@ -6,6 +6,134 @@
 #include <psycles/luisa/cycles_closure.h>
 
 namespace psycles::luisa_backend::detail {
+namespace {
+
+[[nodiscard]] SurfaceClosureRecord canonical_record(
+    const TracedClosure &closure) noexcept {
+    auto result = SurfaceClosureRecord::zero();
+    switch (closure.operation) {
+        case compiler::ClosureOperation::diffuse:
+            result.kind = static_cast<std::uint32_t>(
+                SurfaceClosureKind::diffuse);
+            break;
+        case compiler::ClosureOperation::translucent:
+            result.kind = static_cast<std::uint32_t>(
+                SurfaceClosureKind::translucent);
+            break;
+        case compiler::ClosureOperation::principled:
+            result.kind = static_cast<std::uint32_t>(
+                SurfaceClosureKind::principled);
+            break;
+        case compiler::ClosureOperation::glossy:
+            result.kind = static_cast<std::uint32_t>(
+                SurfaceClosureKind::glossy);
+            break;
+        case compiler::ClosureOperation::glass:
+            result.kind = static_cast<std::uint32_t>(
+                SurfaceClosureKind::glass);
+            break;
+        case compiler::ClosureOperation::transparent:
+            result.kind = static_cast<std::uint32_t>(
+                SurfaceClosureKind::transparent);
+            break;
+        case compiler::ClosureOperation::null_closure:
+        case compiler::ClosureOperation::emission:
+        case compiler::ClosureOperation::add:
+        case compiler::ClosureOperation::mix:
+            break;
+    }
+    switch (closure.principled_lobe) {
+        case PrincipledLobe::none:
+            break;
+        case PrincipledLobe::sheen:
+            result.lobe = static_cast<std::uint32_t>(
+                SurfaceClosureLobe::sheen);
+            break;
+        case PrincipledLobe::coat:
+            result.lobe = static_cast<std::uint32_t>(
+                SurfaceClosureLobe::coat);
+            break;
+        case PrincipledLobe::metallic:
+            result.lobe = static_cast<std::uint32_t>(
+                SurfaceClosureLobe::metallic);
+            break;
+        case PrincipledLobe::transmission:
+            result.lobe = static_cast<std::uint32_t>(
+                SurfaceClosureLobe::transmission);
+            break;
+        case PrincipledLobe::dielectric:
+            result.lobe = static_cast<std::uint32_t>(
+                SurfaceClosureLobe::dielectric);
+            break;
+    }
+    result.weight = closure.weight;
+    result.allocation_weight = closure.allocation_weight;
+    result.sample_weight = closure.sample_weight;
+    result.setup_valid = closure.setup_valid;
+    result.albedo = closure.albedo;
+    result.color = closure.color;
+    result.normal = closure.normal;
+    result.roughness = closure.roughness;
+    result.ior = closure.ior;
+    result.evaluation_scale = closure.evaluation_scale;
+
+    if (closure.operation == compiler::ClosureOperation::diffuse ||
+        closure.operation == compiler::ClosureOperation::principled) {
+        result.diffuse_roughness = closure.diffuse_roughness;
+    }
+    if (closure.operation == compiler::ClosureOperation::principled ||
+        closure.operation == compiler::ClosureOperation::glossy) {
+        result.metallic = closure.metallic;
+        result.specular_ior_level = closure.specular_ior_level;
+        result.specular_tint = closure.specular_tint;
+    }
+    if (closure.operation == compiler::ClosureOperation::principled &&
+        closure.principled_lobe == PrincipledLobe::sheen) {
+        result.sheen_transform_a = closure.sheen_transform_a;
+        result.sheen_transform_b = closure.sheen_transform_b;
+    }
+    if (closure.operation == compiler::ClosureOperation::glass) {
+        result.reflection_albedo = closure.reflection_albedo;
+        result.transmission_albedo = closure.transmission_albedo;
+        result.fresnel_f0 = closure.fresnel_f0;
+        result.fresnel_f90 = closure.fresnel_f90;
+        result.reflection_tint = closure.reflection_tint;
+        result.transmission_tint = closure.transmission_tint;
+    }
+    if (closure.operation == compiler::ClosureOperation::principled ||
+        closure.operation == compiler::ClosureOperation::glossy ||
+        closure.operation == compiler::ClosureOperation::glass) {
+        result.preserve_ggx_energy = closure.preserve_ggx_energy;
+    }
+    if (closure.operation == compiler::ClosureOperation::glass) {
+        result.beckmann = closure.beckmann;
+    }
+    return result;
+}
+
+}// namespace
+
+SurfaceClosureCollection GraphSurfaceImplementation::collect_closures(
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    Expr<bool> reflective_caustics_expression,
+    Expr<bool> refractive_caustics_expression,
+    SurfaceClosureCollector &collector) const noexcept {
+    if (!_program) {
+        return {.shading_normal = point.shading_normal};
+    }
+    const auto values = trace_values(services, point);
+    for_each_physical_closure(
+        services,
+        point,
+        values,
+        Bool{reflective_caustics_expression},
+        Bool{refractive_caustics_expression},
+        [&](const TracedClosure &closure) noexcept {
+            collector.add(canonical_record(closure));
+        });
+    return {.shading_normal = values.shading_normal};
+}
 
 void GraphSurfaceImplementation::for_each_physical_closure(
     const ShaderServices &services,

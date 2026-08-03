@@ -1427,6 +1427,15 @@ if(PSYCLES_ENABLE_LUISA)
 
                 psycles_add_luisa_backend_test(
                     TARGET
+                        psycles_luisa_surface_closure_collection_tests
+                    SOURCE
+                        tests/test_luisa_surface_closure_collection.cpp
+                    TEST_STEM
+                        luisa_surface_closure_collection
+                    LIBRARIES Psycles::luisa)
+
+                psycles_add_luisa_backend_test(
+                    TARGET
                         psycles_luisa_principled_coat_tests
                     SOURCE
                         tests/test_luisa_principled_coat.cpp
