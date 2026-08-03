@@ -65,6 +65,9 @@ inline constexpr std::uint32_t transmission = 1u << 4u;
 inline constexpr std::uint32_t singular = 1u << 5u;
 }// namespace surface_closure_sample_property
 
+[[nodiscard]] Float3 make_surface_closure_sampling_incoming(
+    const SurfacePoint &point) noexcept;
+
 // Canonical p(i) state. `incoming` must be normalized once by the caller.
 [[nodiscard]] luisa::compute::Var<SurfaceClosureSelectionCall>
 surface_closure_selection(
@@ -207,6 +210,7 @@ class SurfaceClosureSamplingOperation {
     conditional_sample(
         Expr<luisa::float3> shading_normal,
         const SurfaceClosureExpression &closure,
+        Expr<luisa::float3> glossy_normal,
         Expr<luisa::float2> random_direction,
         Expr<float> rescaled_lobe) const noexcept = 0;
 };

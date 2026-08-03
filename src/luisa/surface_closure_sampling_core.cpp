@@ -30,6 +30,12 @@ namespace {
 
 }// namespace
 
+Float3 make_surface_closure_sampling_incoming(
+    const SurfacePoint &point) noexcept {
+    return detail::safe_normalize(
+        point.incoming, point.shading_normal);
+}
+
 luisa::compute::Var<SurfaceClosureSelectionCall>
 surface_closure_selection(
     const ShaderServices &services,
@@ -485,6 +491,8 @@ void SurfaceClosureSamplingVisitor::visit(
                     _sampling.conditional_sample(
                         shading_normal,
                         closure,
+                        Expr<luisa::float3>{
+                            selection.glossy_normal.expression()},
                         _random_direction,
                         Expr<float>{choice.rescaled.expression()});
                 selected.accept(
