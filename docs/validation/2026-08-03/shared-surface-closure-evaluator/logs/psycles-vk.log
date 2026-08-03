@@ -1,0 +1,18 @@
+warning: Cycles adaptive sampling is enabled in the source scene; Psycles currently renders a fixed sample count. Official differential goldens must disable adaptive sampling.
+warning: Cycles denoising is enabled in the source scene; Psycles outputs un-denoised linear passes. Official differential goldens must disable denoising.
+[2026-08-03 17:45:17.117] [console] [info] Created context for program 'psycles_render_blender_scene'.
+[2026-08-03 17:45:17.117] [console] [info] Runtime directory: /home/mike/Projects/Psycles/build/bin.
+[2026-08-03 17:45:17.118] [console] [info] Loaded dynamic module '/home/mike/Projects/Psycles/build/bin/libluisa-backend-vk.so' in 1.193215 ms.
+WARNING: radv is not a conformant Vulkan implementation, testing use only.
+[2026-08-03 17:45:17.128] [console] [info] Select device: AMD Radeon RX 9070 XT (RADV GFX1201)
+[2026-08-03 17:45:17.128] [console] [info] Vulkan motion blur disabled: rayTracingPipeline=false rayTraversalPrimitiveCulling=false rayTracingMotionBlur=false and required extensions=false
+[2026-08-03 17:45:17.690] [console] [info] Loaded dynamic module '/home/mike/Projects/Psycles/build/bin/libdxcompiler.so' in 0.637842 ms.
+[2026-08-03 17:47:41.020] [console] [info] SPIR-V optimization preset 'compute' completed: 3682846 -> 3236597 words (changed)
+[2026-08-03 17:47:42.659] [console] [info] SPIR-V compilation successful, binary size: 3236597 words, properties: 32 binds
+Luisa/vk compiled 348 geometries, 87534 instances, 37 materials in 1.21209 s
+Luisa shader JIT completed in 355.832 s
+Rendered 640x480 at 64 spp in 8.81585 s: "/var/tmp/psycles-lone-monk-shared-closures-cceead9/psycles/vk.ppm"
+Linear Combined: "/var/tmp/psycles-lone-monk-shared-closures-cceead9/psycles/vk-combined.pfm"
+Linear Normal:   "/var/tmp/psycles-lone-monk-shared-closures-cceead9/psycles/vk-normal.pfm"
+Linear Albedo:   "/var/tmp/psycles-lone-monk-shared-closures-cceead9/psycles/vk-albedo.pfm"
+Multilayer EXR:  "/var/tmp/psycles-lone-monk-shared-closures-cceead9/psycles/vk.exr"

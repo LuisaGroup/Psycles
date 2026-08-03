@@ -1,0 +1,1421 @@
+warning: Cycles adaptive sampling is enabled in the source scene; Psycles currently renders a fixed sample count. Official differential goldens must disable adaptive sampling.
+warning: Cycles denoising is enabled in the source scene; Psycles outputs un-denoised linear passes. Official differential goldens must disable denoising.
+[2026-08-03 17:44:00.369] [console] [info] Created context for program 'psycles_render_blender_scene'.
+[2026-08-03 17:44:00.369] [console] [info] Runtime directory: /home/mike/Projects/Psycles/build/bin.
+[2026-08-03 17:44:00.387] [console] [info] Loaded dynamic module '/home/mike/Projects/Psycles/build/bin/libluisa-backend-hip.so' in 17.361127 ms.
+[2026-08-03 17:44:00.397] [console] [info] Created HIP device 0: AMD Radeon RX 9070 XT (arch = gfx1201, cc = 12.0, driver = 7.2.53211, runtime = 7.2.53211, build = 7.2.53211).
+[2026-08-03 17:44:00.832] [console] [info] Loaded HIP shader 'hip_kernel_26fcdf0cdea7f802.cache' from cache (24080 bytes).
+[2026-08-03 17:44:00.833] [console] [info] Loaded HIP code object in 0.9224089999999999 ms.
+[2026-08-03 17:44:00.839] [console] [info] Created HIPRT context lazily for HIP device 0.
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createGeometry
+HighQualityBuild::getGeometryBuildTempBufferSize
+HighQualityBuild::buildGeometry
+HighQualityBuild::createScene
+HighQualityBuild::getSceneBuildTempBufferSize
+HighQualityBuild::buildScene
+[2026-08-03 17:44:03.965] [console] [info] Loaded HIP shader 'hip_kernel_c2cb3b2bcbd33826.cache' from cache (11048 bytes).
+[2026-08-03 17:44:03.966] [console] [info] Loaded HIP code object in 1.019517 ms.
+[2026-08-03 17:44:04.125] [console] [warning] Failed to allocate 58982400 bytes from HIPStageBufferPool. Falling back to ad-hoc allocation. Consecutive warnings would be suppressed to avoid flooding. [/home/mike/Projects/Psycles/third_party/LuisaCompute/src/backends/hip/hip_stage_buffer_pool.cpp:67]
+[2026-08-03 17:44:37.327] [console] [info] HIP LLVM codegen completed in 24453.791576 ms. [/home/mike/Projects/Psycles/third_party/LuisaCompute/src/backends/hip/llvm_codegen/hip_codegen_llvm_impl.cpp:1109]
+[2026-08-03 17:44:37.539] [console] [info] Generated AMDGPU code with HIP LLVM CodeGen in 24670.243822 ms. [/home/mike/Projects/Psycles/third_party/LuisaCompute/src/backends/hip/llvm_codegen/hip_codegen_llvm.cpp:16]
+[2026-08-03 17:44:37.639] [console] [info] Generated AMDGPU code (3517376 bytes)
+[2026-08-03 17:45:12.451] [console] [info] Linked HIP LLVM bitcode to AMDGPU code object (5534200 bytes) in 34811.226838999995 ms.
+[2026-08-03 17:45:12.454] [console] [info] Saved HIP shader cache entry (5535893 bytes) to '/home/mike/Projects/Psycles/build/bin/.cache/hip_kernel_31df2b520ce026f5.cache'.
+[2026-08-03 17:45:12.965] [console] [info] Loaded HIP RT code object in 3.950601 ms.
+Luisa/hip compiled 348 geometries, 87534 instances, 37 materials in 3.71714 s
+Luisa shader JIT completed in 69.0015 s
+Rendered 640x480 at 64 spp in 3.53686 s: "/var/tmp/psycles-lone-monk-shared-closures-cceead9/psycles/hip.ppm"
+Linear Combined: "/var/tmp/psycles-lone-monk-shared-closures-cceead9/psycles/hip-combined.pfm"
+Linear Normal:   "/var/tmp/psycles-lone-monk-shared-closures-cceead9/psycles/hip-normal.pfm"
+Linear Albedo:   "/var/tmp/psycles-lone-monk-shared-closures-cceead9/psycles/hip-albedo.pfm"
+Multilayer EXR:  "/var/tmp/psycles-lone-monk-shared-closures-cceead9/psycles/hip.exr"
+Scene pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated
+Geometry pool deallocated

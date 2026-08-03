@@ -1,0 +1,31 @@
+warning: Cycles adaptive sampling is enabled in the source scene; Psycles currently renders a fixed sample count. Official differential goldens must disable adaptive sampling.
+warning: Cycles denoising is enabled in the source scene; Psycles outputs un-denoised linear passes. Official differential goldens must disable denoising.
+[2026-08-03 17:42:13.121] [console] [info] Created context for program 'psycles_render_blender_scene'.
+[2026-08-03 17:42:13.121] [console] [info] Runtime directory: /home/mike/Projects/Psycles/build/bin.
+[2026-08-03 17:42:13.127] [console] [info] Loaded dynamic module '/home/mike/Projects/Psycles/build/bin/libluisa-backend-fallback.so' in 6.756689 ms.
+
+Embree Ray Tracing Kernels 4.4.1 ()
+  Compiler  : GCC 15.2.1 20260209
+  Build     : Release 
+  Platform  : Linux (64bit)
+  CPU       : Unknown CPU (AuthenticAMD)
+   Threads  : 32
+   ISA      : XMM YMM ZMM SSE SSE2 SSE3 SSSE3 SSE4.1 SSE4.2 POPCNT AVX F16C RDRAND AVX2 FMA3 LZCNT BMI1 BMI2 AVX512F AVX512DQ AVX512CD AVX512BW AVX512VL AVX512IFMA AVX512VBMI 
+   Targets  : SSE SSE2 SSE3 SSSE3 SSE4.1 SSE4.2 AVX AVXI AVX2 AVX512 
+   MXCSR    : FTZ=1, DAZ=1
+  Config
+    Threads : default
+    ISA     : XMM YMM ZMM SSE SSE2 SSE3 SSSE3 SSE4.1 SSE4.2 POPCNT AVX F16C RDRAND AVX2 FMA3 LZCNT BMI1 BMI2 AVX512F AVX512DQ AVX512CD AVX512BW AVX512VL AVX512IFMA AVX512VBMI 
+    Targets : SSE SSE2 SSE3 SSSE3 SSE4.1 SSE4.2 AVX AVXI AVX2 AVX512  (supported)
+              SSE2 SSE4.2 AVX AVX2 AVX512  (compile time enabled)
+    Features: raymasks intersection_filter 
+    Tasking : TBB2022.3 TBB_header_interface_12170 TBB_lib_interface_12190 
+
+[2026-08-03 17:42:46.889] [console] [warning] Fallback LLVM function has 537135 instructions; using the minimal O0 IR pipeline and O1 machine-code generation above the 250000-instruction scalability limit. [/home/mike/Projects/Psycles/third_party/LuisaCompute/src/backends/fallback/fallback_shader.cpp:768]
+Luisa/fallback compiled 348 geometries, 87534 instances, 37 materials in 1.53464 s
+Luisa shader JIT completed in 83.1154 s
+Rendered 640x480 at 64 spp in 22.1624 s: "/var/tmp/psycles-lone-monk-shared-closures-cceead9/psycles/fallback.ppm"
+Linear Combined: "/var/tmp/psycles-lone-monk-shared-closures-cceead9/psycles/fallback-combined.pfm"
+Linear Normal:   "/var/tmp/psycles-lone-monk-shared-closures-cceead9/psycles/fallback-normal.pfm"
+Linear Albedo:   "/var/tmp/psycles-lone-monk-shared-closures-cceead9/psycles/fallback-albedo.pfm"
+Multilayer EXR:  "/var/tmp/psycles-lone-monk-shared-closures-cceead9/psycles/fallback.exr"

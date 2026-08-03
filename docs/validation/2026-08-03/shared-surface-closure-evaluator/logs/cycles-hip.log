@@ -1,0 +1,7 @@
+00:00.128  blend            | Read blend: "/home/mike/Downloads/lone-monk_cycles_and_exposure-node_demo.blend"
+00:00.320  cycles           | WARNING CUEW initialization failed: Error opening the library
+00:02.226  render           | Saved: '/var/tmp/psycles-lone-monk-shared-closures-cceead9/cycles/hip.exr'
+Cycles golden rendered 640x480 at 64 spp on HIP in 1.881s: /var/tmp/psycles-lone-monk-shared-closures-cceead9/cycles/hip.exr
+Blender 5.3.0 Alpha (hash b82c3f0da6c1 built 2026-07-31 11:58:59)
+
+Blender quit

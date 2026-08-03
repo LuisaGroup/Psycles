@@ -78,13 +78,19 @@ XT.
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Cycles CPU | included | included | included | 5.029 | 2.72x slower |
 | Cycles HIP | included | included | included | 1.848 | 1.00x |
-| Psycles fallback | 1.550 | 0.677 | cached | 21.709 | 11.75x slower |
+| Psycles fallback | 1.550 | cache hit: 0.677 | cached | 21.709 | 11.75x slower |
 | Psycles HIP | 3.842 | 34.266 | 0.665 | 3.537 | 1.91x slower |
 | Psycles Vulkan | 1.287 | 215.332 | 2.918 | 8.311 | 4.50x slower |
 
 Warm HIP and Vulkan render-only times were 3.529 s and 8.291 s. The HIP
 callable fix is therefore a compile-time correctness/scalability repair; it
 does not yet make Psycles faster than Cycles HIP.
+
+Correction recorded at `3020c88`: the fallback 0.677 s entry above was a cache
+hit, not a cold compile. Fresh path-kernel hashes later measured 83.115 s and
+84.803 s cold and reported 537,135 fallback LLVM instructions. See the
+[`shared-surface-closure-evaluator`](../shared-surface-closure-evaluator/README.md)
+checkpoint for the cache-state proof and native-object hashes.
 
 ## Numerical comparison
 
@@ -141,5 +147,5 @@ and numerical residuals above still require algorithmic alignment.
 ![Cycles HIP, Psycles Vulkan, and amplified Normal difference](triptychs/vk-normal.png)
 
 The complete machine-readable matrix is in [`benchmark.json`](benchmark.json),
-the four comparison reports are in [`reports/`](reports/), and the cold-run
-compiler logs are retained in [`logs/`](logs/).
+the four comparison reports are in [`reports/`](reports/), and the observed
+compiler/render logs are retained in [`logs/`](logs/).
