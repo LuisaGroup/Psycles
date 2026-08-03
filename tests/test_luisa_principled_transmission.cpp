@@ -29,7 +29,7 @@ using psycles::test_support::make_surface_point;
 using psycles::test_support::parameter_data;
 using psycles::test_support::ParameterShaderServices;
 
-constexpr std::uint32_t record_count = 32u;
+constexpr std::uint32_t record_count = 35u;
 
 [[nodiscard]] ShaderGraph
 make_principled_transmission_graph(std::string_view distribution) {
@@ -66,6 +66,23 @@ make_principled_transmission_graph(std::string_view distribution) {
     return graph;
 }
 
+[[nodiscard]] ShaderGraph make_beckmann_glass_graph() {
+    ShaderGraph graph;
+    const auto glass = graph.add_node(
+        node_type::glass_bsdf, "Beckmann VNDF density regression");
+    const auto configured =
+        graph.set_input(glass, "Color", SocketValue::color({1.0f, 1.0f, 1.0f})) &&
+        graph.set_input(glass, "Roughness", SocketValue::floating(0.8f)) &&
+        graph.set_input(glass, "IOR", SocketValue::floating(1.5f)) &&
+        graph.set_property(glass, "Distribution", SocketValue::string("BECKMANN"));
+    if (!configured) {
+        throw std::runtime_error{"failed to configure Beckmann Glass graph"};
+    }
+    graph.set_root(ShaderDomain::surface,
+                   OutputRef{.node = glass, .socket = "Closure"});
+    return graph;
+}
+
 void set_parameter(std::vector<luisa::float4> &values,
                    const SurfaceProgram &program, std::string_view socket,
                    luisa::float4 value) {
@@ -84,18 +101,21 @@ void set_parameter(std::vector<luisa::float4> &values,
 transmission_parameters(const SurfaceProgram &program) {
     const auto defaults = parameter_data(program);
     std::vector<luisa::float4> result;
-    result.reserve(defaults.size() * 4u);
-    const auto append_case = [&](float transmission, float roughness) {
+    result.reserve(defaults.size() * 5u);
+    const auto append_case = [&](float transmission, float roughness,
+                                 float ior = 1.5f) {
         auto values = defaults;
         set_parameter(values, program, "TransmissionWeight",
                       {transmission, 0.0f, 0.0f, 0.0f});
         set_parameter(values, program, "Roughness", {roughness, 0.0f, 0.0f, 0.0f});
+        set_parameter(values, program, "IOR", {ior, 0.0f, 0.0f, 0.0f});
         result.insert(result.end(), values.begin(), values.end());
     };
     append_case(1.0f, 0.0f);
     append_case(1.0e-5f, 0.0f);
     append_case(2.0e-5f, 0.0f);
     append_case(1.0f, 0.35f);
+    append_case(1.0f, 0.35f, 1.0f);
     return result;
 }
 
@@ -120,13 +140,16 @@ int main(int argc, char **argv) {
         compiler.compile(make_principled_transmission_graph("GGX"));
     const auto multi_shader =
         compiler.compile(make_principled_transmission_graph("MULTI_GGX"));
-    if (!ggx_shader.ok() || !multi_shader.ok()) {
+    const auto beckmann_shader = compiler.compile(make_beckmann_glass_graph());
+    if (!ggx_shader.ok() || !multi_shader.ok() || !beckmann_shader.ok()) {
         std::cerr << "failed to compile Transmission graphs\n";
         return EXIT_FAILURE;
     }
     const auto ggx_program = compile_surface_program(*ggx_shader.program);
     const auto multi_program = compile_surface_program(*multi_shader.program);
-    if (!ggx_program.ok() || !multi_program.ok()) {
+    const auto beckmann_program =
+        compile_surface_program(*beckmann_shader.program);
+    if (!ggx_program.ok() || !multi_program.ok() || !beckmann_program.ok()) {
         std::cerr << "failed to lower Transmission surface programs\n";
         return EXIT_FAILURE;
     }
@@ -143,18 +166,23 @@ int main(int argc, char **argv) {
 
     const auto ggx_values = transmission_parameters(*ggx_program.program);
     const auto multi_values = parameter_data(*multi_program.program);
+    const auto beckmann_values = parameter_data(*beckmann_program.program);
     const auto parameter_stride =
         static_cast<std::uint32_t>(ggx_program.program->parameters().size());
 
     SurfaceDispatch surfaces;
     const auto ggx_tag = surfaces.create<GraphSurface>(ggx_program.program);
     const auto multi_tag = surfaces.create<GraphSurface>(multi_program.program);
+    const auto beckmann_tag =
+        surfaces.create<GraphSurface>(beckmann_program.program);
 
     Kernel1D evaluate = [&](BufferFloat4 ggx_parameter_buffer,
                             BufferFloat4 multi_parameter_buffer,
+                            BufferFloat4 beckmann_parameter_buffer,
                             BufferFloat4 output) noexcept {
         ParameterShaderServices ggx_services{ggx_parameter_buffer};
         ParameterShaderServices multi_services{multi_parameter_buffer};
+        ParameterShaderServices beckmann_services{beckmann_parameter_buffer};
         auto point = make_surface_point();
         const auto trace = [&](UInt block, UInt index, Bool reflection,
                                Bool transmission) noexcept {
@@ -262,6 +290,31 @@ int main(int argc, char **argv) {
             UInt{multi_tag}, multi_services, point, 0u, true, true);
         write_trace(30u, multi_trace);
         output.write(31u, make_float4(multi_trace.weight, 0.0f));
+
+        auto rough_backface = rough_point;
+        rough_backface.back_facing = true;
+        const auto backface_transmitted = surfaces.evaluate(
+            UInt{ggx_tag}, ggx_services, rough_backface,
+            make_float3(0.0f, 0.0f, -1.0f), all_query);
+        output.write(32u, make_float4(backface_transmitted.f,
+                                     backface_transmitted.pdf));
+
+        auto unit_ior_point = point;
+        unit_ior_point.parameter_block = 4u * parameter_stride;
+        const auto unit_ior_transmitted = surfaces.evaluate(
+            UInt{ggx_tag}, ggx_services, unit_ior_point,
+            make_float3(0.0f, 0.0f, -1.0f), all_query);
+        output.write(33u, make_float4(unit_ior_transmitted.f,
+                                     unit_ior_transmitted.pdf));
+
+        auto beckmann_point = point;
+        beckmann_point.incoming =
+            normalize(make_float3(0.9539392f, 0.0f, 0.3f));
+        const auto beckmann_reflected = surfaces.evaluate(
+            UInt{beckmann_tag}, beckmann_services, beckmann_point,
+            normalize(make_float3(-0.9539392f, 0.0f, 0.3f)), all_query);
+        output.write(34u, make_float4(beckmann_reflected.f,
+                                     beckmann_reflected.pdf));
     };
 
     Context context{argv[0]};
@@ -269,12 +322,16 @@ int main(int argc, char **argv) {
     auto stream = device.create_stream();
     auto ggx_buffer = device.create_buffer<luisa::float4>(ggx_values.size());
     auto multi_buffer = device.create_buffer<luisa::float4>(multi_values.size());
+    auto beckmann_buffer =
+        device.create_buffer<luisa::float4>(beckmann_values.size());
     auto output_buffer = device.create_buffer<luisa::float4>(record_count);
     auto kernel = device.compile(evaluate);
     std::array<luisa::float4, record_count> actual{};
     stream << ggx_buffer.copy_from(luisa::span{ggx_values})
            << multi_buffer.copy_from(luisa::span{multi_values})
-           << kernel(ggx_buffer, multi_buffer, output_buffer).dispatch(1u)
+           << beckmann_buffer.copy_from(luisa::span{beckmann_values})
+           << kernel(ggx_buffer, multi_buffer, beckmann_buffer, output_buffer)
+                  .dispatch(1u)
            << output_buffer.copy_to(luisa::span{actual}) << synchronize();
 
     if (std::getenv("PSYCLES_DUMP_TRANSMISSION_REGRESSION") != nullptr) {
@@ -402,6 +459,38 @@ int main(int argc, char **argv) {
     if (!meta(30u, 1.0f, multi_ggx_glass, true) ||
         !rgb_equal(actual[31u], expected_multi_weight)) {
         std::cerr << "Multi-GGX glass energy regression failed on " << backend
+                  << '\n';
+        return EXIT_FAILURE;
+    }
+
+    const auto backface_transmission_common = 4.0f * distribution_at_normal;
+    if (!finite(actual[32u]) ||
+        !rgb_equal(actual[32u], transmission * backface_transmission_common,
+                   8.0e-5f) ||
+        !approximately_equal(
+            actual[32u].w,
+            backface_transmission_common * (1.0f - reflection_probability),
+            8.0e-5f)) {
+        std::cerr << "rough backface generalized-glass regression failed on "
+                  << backend << '\n';
+        return EXIT_FAILURE;
+    }
+    if (!finite(actual[33u]) || !rgb_equal(actual[33u], {0.0f, 0.0f, 0.0f}) ||
+        !approximately_equal(actual[33u].w, 0.0f)) {
+        std::cerr << "unit-IOR generalized-glass normalization failed on "
+                  << backend << '\n';
+        return EXIT_FAILURE;
+    }
+
+    // Cycles samples both Beckmann and GGX from the visible-normal
+    // distribution. At this symmetric oblique reflection H=N, so the Cycles
+    // Beckmann result is f=0.094655011 and pdf=0.111128319. The former NDF PDF
+    // omitted 1/(1+Lambda(I)) and produced 0.134543656 instead.
+    if (!finite(actual[34u]) ||
+        !rgb_equal(actual[34u], {0.094655011f, 0.094655011f, 0.094655011f},
+                   8.0e-5f) ||
+        !approximately_equal(actual[34u].w, 0.111128319f, 8.0e-5f)) {
+        std::cerr << "Beckmann visible-normal PDF regression failed on " << backend
                   << '\n';
         return EXIT_FAILURE;
     }

@@ -973,6 +973,118 @@ def _principled_coat_surface(scene: Any) -> None:
     surface.visible_shadow = False
 
 
+def _principled_transmission_surface(scene: Any) -> None:
+    """Exercise Cycles' thick Principled generalized-Schlick glass."""
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 0.01
+    scene.cycles.use_light_tree = False
+    _bsdf_matrix_sun(scene, transmission=True)
+    # distribution, weight, roughness, IOR, base color, specular tint,
+    # metallic, explicit normal, backface
+    cases = (
+        ("GGX", -1.0, 0.30, 1.50, (0.36, 0.64, 1.00),
+         (1.0, 1.0, 1.0), 0.0, None, False),
+        ("GGX", 0.0, 0.30, 1.50, (0.36, 0.64, 1.00),
+         (1.0, 1.0, 1.0), 0.0, None, False),
+        ("GGX", 0.5e-5, 0.30, 1.50, (0.36, 0.64, 1.00),
+         (1.0, 1.0, 1.0), 0.0, None, False),
+        ("GGX", 1.0e-5, 0.30, 1.50, (0.36, 0.64, 1.00),
+         (1.0, 1.0, 1.0), 0.0, None, False),
+        ("GGX", 2.0e-5, 0.30, 1.50, (0.36, 0.64, 1.00),
+         (1.0, 1.0, 1.0), 0.0, None, False),
+        ("GGX", 0.25, 0.05, 1.50, (0.36, 0.64, 1.00),
+         (1.0, 1.0, 1.0), 0.0, None, False),
+        ("GGX", 0.70, 0.20, 1.00, (0.36, 0.64, 1.00),
+         (1.0, 1.0, 1.0), 0.0, None, False),
+        ("GGX", 0.70, 0.20, 1.33, (0.36, 0.64, 1.00),
+         (1.0, 1.0, 1.0), 0.0, None, False),
+        ("GGX", 0.70, 0.20, 2.00, (0.81, 0.25, 0.04),
+         (0.2, 0.7, 1.0), 0.0, None, False),
+        ("GGX", 1.30, 0.31, 1.45, (0.16, 0.81, 0.36),
+         (0.8, 0.3, 1.0), 0.0, None, False),
+        ("GGX", 0.65, 0.27, 1.60, (0.64, 0.09, 0.49),
+         (0.4, 1.0, 0.2), 0.0, (0.3, 0.0, 0.4), False),
+        ("GGX", 0.65, 0.27, 1.60, (0.64, 0.09, 0.49),
+         (0.4, 1.0, 0.2), 0.0, None, True),
+        ("MULTI_GGX", 0.70, 0.30, 1.50, (0.36, 0.64, 1.00),
+         (1.0, 1.0, 1.0), 0.0, None, False),
+        ("MULTI_GGX", 1.00, 0.60, 1.33, (0.81, 0.25, 0.04),
+         (0.2, 0.7, 1.0), 0.0, None, False),
+        ("MULTI_GGX", 0.85, 0.42, 1.80, (0.09, 0.49, 0.81),
+         (1.0, 0.4, 0.2), 0.0, (0.6, 0.0, 0.8), False),
+        ("GGX", 0.90, 0.40, 1.50, (0.49, 0.81, 0.16),
+         (0.3, 0.8, 1.0), 0.35, None, False),
+    )
+    materials = []
+    backfacing: set[int] = set()
+    for index, case in enumerate(cases):
+        (
+            distribution,
+            transmission,
+            roughness,
+            ior,
+            base_color,
+            specular_tint,
+            metallic,
+            normal,
+            backface,
+        ) = case
+        material, tree, output = _material(
+            f"Principled Transmission {index:02d}"
+        )
+        principled = tree.nodes.new("ShaderNodeBsdfPrincipled")
+        principled.name = f"Physical Principled Transmission {index:02d}"
+        principled.distribution = distribution
+        _input(principled, "Diffuse Roughness").default_value = 0.0
+        _input(principled, "Specular IOR Level").default_value = 0.5
+        _input(principled, "Sheen Weight").default_value = 0.0
+        _input(principled, "Coat Weight").default_value = 0.0
+        _input(principled, "Alpha").default_value = 1.0
+        tree.links.new(
+            _linked_vector(tree, f"Linked Base Color {index:02d}", base_color),
+            _input(principled, "Base Color"),
+        )
+        tree.links.new(
+            _linked_vector(tree, f"Linked Specular Tint {index:02d}", specular_tint),
+            _input(principled, "Specular Tint"),
+        )
+        for label, socket, value in (
+            ("Transmission Weight", "Transmission Weight", transmission),
+            ("Roughness", "Roughness", roughness),
+            ("IOR", "IOR", ior),
+            ("Metallic", "Metallic", metallic),
+        ):
+            value_node = tree.nodes.new("ShaderNodeValue")
+            value_node.name = f"Linked {label} {index:02d}"
+            _output(value_node, "Value").default_value = value
+            tree.links.new(
+                _output(value_node, "Value"),
+                _input(principled, socket),
+            )
+        if normal is not None:
+            tree.links.new(
+                _linked_vector(tree, f"Linked Normal {index:02d}", normal),
+                _input(principled, "Normal"),
+            )
+        tree.links.new(
+            _output(principled, "BSDF"),
+            _input(output, "Surface"),
+        )
+        if backface:
+            backfacing.add(index)
+        materials.append(material)
+    surface = _material_matrix(
+        scene,
+        materials,
+        columns=4,
+        rows=4,
+        name="Principled Transmission Surface Matrix",
+        backfacing=backfacing,
+        frame_bleed=0.02,
+    )
+    surface.visible_shadow = False
+
+
 def _principled_emission(scene: Any) -> None:
     """Isolate raw Principled Emission Color/Strength evaluation."""
     material, tree, output = _material("Principled Emission Probe")

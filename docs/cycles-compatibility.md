@@ -348,8 +348,17 @@ multi-closure delta MIS. Latest Cycles CPU differentials pass on fallback,
 HIP, and Vulkan; the formal relations, direct Cycles CPU/HIP fast-math
 diagnostic, reports, and inspected triptychs are in
 [`validation/2026-08-03/principled-coat`](validation/2026-08-03/principled-coat/README.md).
-Transmission, subsurface, thin film, anisotropy, and their remaining
-Principled interactions are still open, so these checkpoints do not
+Physical thick Principled transmission now uses one coupled generalized-
+Schlick Glass closure with Cycles' exact caustics gates, spectral tints,
+front/backface eta relation, GGX energy handling, and visible-normal measure.
+The shared Glass implementation now samples both GGX and Beckmann VNDFs and
+uses their matching evaluation/PDF equations. Latest Cycles CPU EXR
+differentials pass on fallback, HIP, and Vulkan; formulas, strict regressions,
+the Luisa fallback Boolean-codegen correction, reports, EXRs, and all inspected
+triptychs are in
+[`validation/2026-08-03/principled-transmission`](validation/2026-08-03/principled-transmission/README.md).
+Subsurface, thin film, thin-wall behavior, anisotropy interactions, and their
+remaining Principled combinations are still open, so these checkpoints do not
 overstate complete Principled support.
 
 The first heterogeneous transport checkpoint now isolates the formal

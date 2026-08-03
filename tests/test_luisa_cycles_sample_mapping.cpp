@@ -95,13 +95,15 @@ int main(int argc, char **argv) {
     auto bitangent_buffer =
         device.create_buffer<luisa::float4>(inputs.size());
     auto ggx_buffer = device.create_buffer<luisa::float4>(1u);
+    auto beckmann_buffer = device.create_buffer<luisa::float4>(2u);
 
     Kernel1D evaluate = [](BufferFloat4 input,
                             BufferFloat2 random,
                             BufferFloat4 samples,
                             BufferFloat4 tangents,
                             BufferFloat4 bitangents,
-                            BufferFloat4 ggx) noexcept {
+                            BufferFloat4 ggx,
+                            BufferFloat4 beckmann) noexcept {
         const auto index = dispatch_x();
         const auto normal = input.read(index).xyz();
         const auto basis = sample_mapping::make_orthonormals(normal);
@@ -126,6 +128,25 @@ int main(int argc, char **argv) {
                     make_float2(
                         0.04747750982642174f, 0.6334579586982727f));
             ggx.write(0u, make_float4(ggx_direction, 0.0f));
+
+            const auto normal = make_float3(0.0f, 0.0f, 1.0f);
+            const auto oblique_incoming =
+                normalize(make_float3(0.9539392f, 0.0f, 0.3f));
+            const auto sample_random = make_float2(0.37f, 0.73f);
+            const auto oblique_half =
+                sample_mapping::sample_beckmann_visible_normal(
+                    normal, oblique_incoming, 0.64f, sample_random);
+            const auto oblique_direction =
+                2.0f * dot(oblique_incoming, oblique_half) * oblique_half -
+                oblique_incoming;
+            beckmann.write(0u, make_float4(oblique_direction, 0.0f));
+
+            const auto normal_half =
+                sample_mapping::sample_beckmann_visible_normal(
+                    normal, normal, 0.64f, sample_random);
+            const auto normal_direction =
+                2.0f * dot(normal, normal_half) * normal_half - normal;
+            beckmann.write(1u, make_float4(normal_direction, 0.0f));
         };
     };
     auto shader = device.compile(evaluate);
@@ -134,6 +155,7 @@ int main(int argc, char **argv) {
     std::array<luisa::float4, sample_cases.size()> tangents{};
     std::array<luisa::float4, sample_cases.size()> bitangents{};
     std::array<luisa::float4, 1u> ggx{};
+    std::array<luisa::float4, 2u> beckmann{};
     stream << input_buffer.copy_from(luisa::span{inputs})
            << random_buffer.copy_from(luisa::span{randoms})
            << shader(input_buffer,
@@ -141,13 +163,15 @@ int main(int argc, char **argv) {
                   sample_buffer,
                   tangent_buffer,
                   bitangent_buffer,
-                  ggx_buffer)
+                  ggx_buffer,
+                  beckmann_buffer)
                   .dispatch(
                       static_cast<std::uint32_t>(sample_cases.size()))
            << sample_buffer.copy_to(luisa::span{samples})
            << tangent_buffer.copy_to(luisa::span{tangents})
            << bitangent_buffer.copy_to(luisa::span{bitangents})
-           << ggx_buffer.copy_to(luisa::span{ggx}) << synchronize();
+           << ggx_buffer.copy_to(luisa::span{ggx})
+           << beckmann_buffer.copy_to(luisa::span{beckmann}) << synchronize();
 
     for (std::size_t i = 0u; i < sample_cases.size(); ++i) {
         const auto actual_direction = samples[i].xyz();
@@ -204,6 +228,25 @@ int main(int argc, char **argv) {
                   << ": direction {" << actual.x << ", " << actual.y
                   << ", " << actual.z << "}\n";
         return EXIT_FAILURE;
+    }
+
+    // Fixed current-Cycles VNDF samples cover both the oblique root solve and
+    // its normal-incidence branch. The former NDF sampler maps these same
+    // random numbers to different rays despite having the right marginal D.
+    constexpr std::array expected_beckmann_directions{
+        luisa::float3{-0.368741920f, -0.324739778f, 0.870961235f},
+        luisa::float3{0.716639308f, 0.555882428f, 0.421215894f}};
+    for (std::size_t index = 0u;
+         index < expected_beckmann_directions.size(); ++index) {
+        if (!approximately_equal(beckmann[index].xyz(),
+                                 expected_beckmann_directions[index],
+                                 1.0e-5f)) {
+            const auto actual = beckmann[index].xyz();
+            std::cerr << "Cycles Beckmann VNDF mapping failed on " << backend
+                      << " for case " << index << ": direction {" << actual.x
+                      << ", " << actual.y << ", " << actual.z << "}\n";
+            return EXIT_FAILURE;
+        }
     }
     return EXIT_SUCCESS;
 }

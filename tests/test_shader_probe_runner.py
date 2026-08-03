@@ -106,6 +106,49 @@ class ShaderProbeRunnerContract(unittest.TestCase):
             [],
         )
 
+    def test_glass_gate_rejects_ndf_instead_of_vndf_sampling(
+        self,
+    ) -> None:
+        aligned = {
+            "Combined": (1.000001075, 0.000089489),
+            "GlossCol": (0.999999642, 0.000028780),
+            "GlossDir": (1.000001068, 0.000059442),
+            "TransCol": (0.999999191, 0.000051432),
+            "TransDir": (1.000001355, 0.000082308),
+        }
+        report = {
+            "passes": {
+                pass_name: {
+                    "luminance_mean_ratio": ratio,
+                    "relative_rmse": rmse,
+                }
+                for pass_name, (ratio, rmse) in aligned.items()
+            }
+        }
+        self.assertEqual(
+            self.runner._probe_gate_failures("glass_transport", report),
+            [],
+        )
+
+        # The former Beckmann NDF sampler had plausible energy but a different
+        # Cycles sample map. These are its retained 256-spp oracle metrics.
+        old_ndf = {
+            "Combined": (0.999885660, 0.005619914),
+            "GlossCol": (0.999350473, 0.001054857),
+            "GlossDir": (1.001174338, 0.002185002),
+            "TransCol": (1.000022393, 0.000063067),
+            "TransDir": (0.999860558, 0.005114500),
+        }
+        for pass_name, (ratio, rmse) in old_ndf.items():
+            report["passes"][pass_name] = {
+                "luminance_mean_ratio": ratio,
+                "relative_rmse": rmse,
+            }
+        failures = self.runner._probe_gate_failures(
+            "glass_transport", report
+        )
+        self.assertEqual(len(failures), 8)
+
     def test_triangle_solid_angle_gate_requires_sample_alignment(
         self,
     ) -> None:
@@ -218,6 +261,50 @@ class ShaderProbeRunnerContract(unittest.TestCase):
         )
         self.assertEqual(len(failures), 1)
         self.assertIn("energy ratio", failures[0])
+
+    def test_principled_transmission_gate_rejects_missing_backface(
+        self,
+    ) -> None:
+        report = {
+            "passes": {
+                pass_name: {
+                    "luminance_mean_ratio": 1.0,
+                    "relative_rmse": 0.0,
+                }
+                for pass_name in (
+                    "Combined",
+                    "DiffCol",
+                    "GlossCol",
+                    "TransCol",
+                    "TransDir",
+                    "Normal",
+                )
+            }
+        }
+        self.assertEqual(
+            self.runner._probe_gate_failures(
+                "principled_transmission_surface", report
+            ),
+            [],
+        )
+
+        # The former half-vector sign rejection made the rough inverse-eta
+        # cell exactly black while the remaining 15 cells still aligned.
+        # Preserve both the energy and spatial evidence of that failure.
+        report["passes"]["TransDir"] = {
+            "luminance_mean_ratio": 0.999641251,
+            "relative_rmse": 0.000362996,
+        }
+        failures = self.runner._probe_gate_failures(
+            "principled_transmission_surface", report
+        )
+        self.assertEqual(len(failures), 2)
+        self.assertTrue(
+            any("energy ratio" in failure for failure in failures)
+        )
+        self.assertTrue(
+            any("relative RMSE" in failure for failure in failures)
+        )
 
 
 if __name__ == "__main__":
