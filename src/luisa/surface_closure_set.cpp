@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include <psycles/luisa/cycles_closure.h>
+#include <psycles/luisa/surface_closure_blocks.h>
 
 #include <luisa/dsl/sugar.h>
 
@@ -28,69 +29,6 @@ enum class StorageField : std::uint32_t {
     reflection_tint,
     transmission_tint,
 };
-
-struct CompleteStorageBlocks {
-    luisa::compute::Float4x4 block_0;
-    luisa::compute::Float4x4 block_1;
-    luisa::compute::Float4x4 block_2;
-    luisa::compute::Float4x4 block_3;
-};
-
-[[nodiscard]] CompleteStorageBlocks pack_complete(
-    const SurfaceClosureRecord &closure,
-    UInt flags) noexcept {
-    const auto zero = make_float4(0.0f);
-    return {
-        .block_0 = make_float4x4(
-            make_uint4(
-                closure.kind,
-                closure.lobe,
-                flags,
-                0u)
-                .bitcast<luisa::float4>(),
-            make_float4(
-                closure.weight,
-                closure.allocation_weight),
-            make_float4(
-                closure.albedo,
-                closure.sample_weight),
-            make_float4(
-                closure.reflection_albedo,
-                closure.roughness)),
-        .block_1 = make_float4x4(
-            make_float4(
-                closure.transmission_albedo,
-                closure.diffuse_roughness),
-            make_float4(
-                closure.color,
-                closure.metallic),
-            make_float4(
-                closure.normal,
-                closure.ior),
-            make_float4(
-                closure.specular_tint,
-                closure.specular_ior_level)),
-        .block_2 = make_float4x4(
-            make_float4(
-                closure.evaluation_scale,
-                closure.sheen_transform_a),
-            make_float4(
-                closure.fresnel_f0,
-                closure.sheen_transform_b),
-            make_float4(
-                closure.fresnel_f90,
-                0.0f),
-            make_float4(
-                closure.reflection_tint,
-                0.0f)),
-        .block_3 = make_float4x4(
-            make_float4(
-                closure.transmission_tint,
-                0.0f),
-            zero,
-            zero,
-            zero)};
-}
 
 [[nodiscard]] bool stores(
     SurfaceClosureStorageProfile profile,
@@ -183,7 +121,7 @@ SurfaceClosureSet::SurfaceClosureSet(
       _count{0u} {
     const auto zero = SurfaceClosureRecord::zero();
     if (_profile == SurfaceClosureStorageProfile::complete) {
-        const auto packed = pack_complete(zero, 0u);
+        const auto packed = pack_surface_closure(zero);
         _complete_0.write(0u, packed.block_0);
         _complete_1.write(0u, packed.block_1);
         _complete_2.write(0u, packed.block_2);
@@ -271,21 +209,21 @@ void SurfaceClosureSet::add(
         allocated &
         (_count < static_cast<std::uint32_t>(_capacity));
     $if(retained) {
-        UInt flags = 0u;
-        flags |= select(
-            0u, setup_valid_bit, closure.setup_valid);
-        flags |= select(0u,
-            preserve_ggx_energy_bit,
-            closure.preserve_ggx_energy);
-        flags |= select(
-            0u, beckmann_bit, closure.beckmann);
         if (_profile == SurfaceClosureStorageProfile::complete) {
-            const auto packed = pack_complete(closure, flags);
+            const auto packed = pack_surface_closure(closure);
             _complete_0.write(_count, packed.block_0);
             _complete_1.write(_count, packed.block_1);
             _complete_2.write(_count, packed.block_2);
             _complete_3.write(_count, packed.block_3);
         } else {
+            UInt flags = 0u;
+            flags |= select(
+                0u, setup_valid_bit, closure.setup_valid);
+            flags |= select(0u,
+                preserve_ggx_energy_bit,
+                closure.preserve_ggx_energy);
+            flags |= select(
+                0u, beckmann_bit, closure.beckmann);
             _identity.write(_count,
                 make_uint4(
                     closure.kind,
