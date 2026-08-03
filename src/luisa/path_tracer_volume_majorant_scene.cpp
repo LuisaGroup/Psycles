@@ -562,7 +562,8 @@ VolumeMajorantSceneComponent::build(
             UInt grid_resolution) noexcept {
             set_block_size(64u, 1u, 1u);
             BufferShaderServices services{
-                scene->parameter_buffer,
+                scene->scalar_parameter_buffer,
+                scene->vector_parameter_buffer,
                 scene->cycles_bsdf_table_buffer,
                 scene->texture_heap,
                 scene->heap,

@@ -42,7 +42,8 @@ EnvironmentCallables make_environment_callables(
             Float3 world = background;
             if (scene->world_surface) {
                 world += surface_constant_emission(
-                    scene->parameter_buffer,
+                    scene->scalar_parameter_buffer,
+                    scene->vector_parameter_buffer,
                     UInt{scene->world_surface->surface_tag},
                     UInt{scene->world_surface->parameter_block});
             }
@@ -58,7 +59,8 @@ EnvironmentCallables make_environment_callables(
                 unpack_shader_evaluation_state(
                     shader_state_call);
             BufferShaderServices services{
-                scene->parameter_buffer,
+                scene->scalar_parameter_buffer,
+                scene->vector_parameter_buffer,
                 scene->cycles_bsdf_table_buffer,
                 scene->texture_heap,
                 scene->heap,
@@ -132,7 +134,8 @@ EnvironmentCallables make_environment_callables(
                                 world_point,
                                 shader_state);
                         world += surface_emission(
-                            scene->parameter_buffer,
+                            scene->scalar_parameter_buffer,
+                            scene->vector_parameter_buffer,
                             scene->cycles_bsdf_table_buffer,
                             scene->texture_heap,
                             scene->heap,
@@ -226,7 +229,8 @@ EnvironmentCallables make_environment_callables(
                 return Float3{make_float3(0.0f)};
             }
             BufferShaderServices services{
-                scene->parameter_buffer,
+                scene->scalar_parameter_buffer,
+                scene->vector_parameter_buffer,
                 scene->cycles_bsdf_table_buffer,
                 scene->texture_heap,
                 scene->heap,

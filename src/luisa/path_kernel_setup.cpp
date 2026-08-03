@@ -219,7 +219,8 @@ SurfaceEvaluation PathKernelInvocation::evaluate_light_surface(
     UInt shader_flags) const noexcept {
     return unpack_surface_evaluation(
         config.surfaces.evaluate_light(
-            config.scene->parameter_buffer,
+            config.scene->scalar_parameter_buffer,
+            config.scene->vector_parameter_buffer,
             config.scene->cycles_bsdf_table_buffer,
             config.scene->texture_heap,
             config.scene->heap,
@@ -241,7 +242,8 @@ UInt PathKernelInvocation::surface_runtime_flags(
     Bool reflective_caustics,
     Bool refractive_caustics) const noexcept {
     return config.surfaces.runtime_flags(
-        config.scene->parameter_buffer,
+        config.scene->scalar_parameter_buffer,
+        config.scene->vector_parameter_buffer,
         config.scene->cycles_bsdf_table_buffer,
         config.scene->texture_heap,
         config.scene->heap,
@@ -261,7 +263,8 @@ Float3 PathKernelInvocation::surface_emission(UInt surface_tag,
              contract::visibility_bit(
                  contract::RayVisibility::diffuse)) ==
             0u);
-    return config.surfaces.emission(config.scene->parameter_buffer,
+    return config.surfaces.emission(config.scene->scalar_parameter_buffer,
+                                    config.scene->vector_parameter_buffer,
                                     config.scene->cycles_bsdf_table_buffer,
                                     config.scene->texture_heap,
                                     config.scene->heap,
@@ -275,7 +278,8 @@ Float3 PathKernelInvocation::constant_surface_emission(
     UInt surface_tag,
     UInt parameter_block) const noexcept {
     return config.surfaces.constant_emission(
-        config.scene->parameter_buffer,
+        config.scene->scalar_parameter_buffer,
+        config.scene->vector_parameter_buffer,
         surface_tag,
         parameter_block);
 }
@@ -287,7 +291,8 @@ PathKernelInvocation::sample_surface(UInt surface_tag,
                                      Float2 u_direction,
                                      const SurfaceQuery &query) const noexcept {
     return unpack_surface_sample(
-        config.surfaces.sample(config.scene->parameter_buffer,
+        config.surfaces.sample(config.scene->scalar_parameter_buffer,
+                               config.scene->vector_parameter_buffer,
                                config.scene->cycles_bsdf_table_buffer,
                                config.scene->texture_heap,
                                config.scene->heap,
@@ -309,7 +314,8 @@ SurfaceClosureTrace PathKernelInvocation::trace_surface_closure(
     Bool reflective_caustics,
     Bool refractive_caustics) const noexcept {
     return unpack_surface_closure_trace(
-        config.surfaces.closure_trace(config.scene->parameter_buffer,
+        config.surfaces.closure_trace(config.scene->scalar_parameter_buffer,
+                                      config.scene->vector_parameter_buffer,
                                       config.scene->cycles_bsdf_table_buffer,
                                       config.scene->texture_heap,
                                       config.scene->heap,
@@ -327,7 +333,8 @@ SurfaceSampleTrace PathKernelInvocation::trace_sample_surface(
     Float2 u_direction,
     const SurfaceQuery &query) const noexcept {
     return unpack_surface_sample_trace(
-        config.surfaces.sample_trace(config.scene->parameter_buffer,
+        config.surfaces.sample_trace(config.scene->scalar_parameter_buffer,
+                                     config.scene->vector_parameter_buffer,
                                      config.scene->cycles_bsdf_table_buffer,
                                      config.scene->texture_heap,
                                      config.scene->heap,
@@ -346,7 +353,8 @@ SurfaceAov
 PathKernelInvocation::surface_aov(UInt surface_tag,
                                   const SurfacePoint &point) const noexcept {
     return unpack_surface_aov(
-        config.surfaces.aov(config.scene->parameter_buffer,
+        config.surfaces.aov(config.scene->scalar_parameter_buffer,
+                            config.scene->vector_parameter_buffer,
                             config.scene->cycles_bsdf_table_buffer,
                             config.scene->texture_heap,
                             config.scene->heap,
@@ -357,7 +365,8 @@ PathKernelInvocation::surface_aov(UInt surface_tag,
 Float3 PathKernelInvocation::surface_shading_normal(
     UInt surface_tag, const SurfacePoint &point) const noexcept {
     return config.surfaces.shading_normal(
-        config.scene->parameter_buffer,
+        config.scene->scalar_parameter_buffer,
+        config.scene->vector_parameter_buffer,
         config.scene->cycles_bsdf_table_buffer,
         config.scene->texture_heap,
         config.scene->heap,

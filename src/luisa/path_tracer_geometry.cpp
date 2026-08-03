@@ -29,7 +29,8 @@ make_evaluate_shadow_surface_callable(
                 unpack_shader_evaluation_state(
                     shader_state_call);
             BufferShaderServices services{
-                scene->parameter_buffer,
+                scene->scalar_parameter_buffer,
+                scene->vector_parameter_buffer,
                 scene->cycles_bsdf_table_buffer,
                 scene->texture_heap,
                 scene->heap,

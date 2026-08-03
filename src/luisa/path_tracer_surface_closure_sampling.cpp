@@ -78,7 +78,8 @@ make_surface_closure_sampling_callables(
 
     SurfaceClosureConditionalSampleCallable conditional_sample =
         [scene](
-            BufferFloat4 parameters,
+            BufferFloat scalar_parameters,
+            BufferFloat3 vector_parameters,
             BufferFloat cycles_bsdf_tables,
             BindlessVar textures,
             BindlessVar geometry_heap,
@@ -93,7 +94,8 @@ make_surface_closure_sampling_callables(
             luisa::compute::Float4x4 block_2,
             luisa::compute::Float4x4 block_3) noexcept {
             BufferShaderServices services{
-                parameters,
+                scalar_parameters,
+                vector_parameters,
                 cycles_bsdf_tables,
                 textures,
                 geometry_heap,
@@ -129,7 +131,8 @@ make_surface_closure_sampling_callables(
 
 CallableSurfaceClosureSamplingOperation::
     CallableSurfaceClosureSamplingOperation(
-        const BufferFloat4 &parameters,
+        const BufferFloat &scalar_parameters,
+        const BufferFloat3 &vector_parameters,
         const BufferFloat &cycles_bsdf_tables,
         const BindlessVar &textures,
         const BindlessVar &geometry_heap,
@@ -137,7 +140,8 @@ CallableSurfaceClosureSamplingOperation::
         const SurfacePoint &point,
         const SurfaceQuery &query,
         const SurfaceClosureSamplingCallables &callables) noexcept
-    : _parameters{parameters},
+    : _scalar_parameters{scalar_parameters},
+      _vector_parameters{vector_parameters},
       _cycles_bsdf_tables{cycles_bsdf_tables},
       _textures{textures},
       _geometry_heap{geometry_heap},
@@ -188,7 +192,8 @@ CallableSurfaceClosureSamplingOperation::conditional_sample(
     Expr<float> rescaled_lobe) const noexcept {
     const auto blocks = pack_surface_closure(closure.reference());
     return _callables.conditional_sample(
-        _parameters,
+        _scalar_parameters,
+        _vector_parameters,
         _cycles_bsdf_tables,
         _textures,
         _geometry_heap,
@@ -208,7 +213,8 @@ SurfaceSampleTrace sample_surface_closures(
     const LuisaSceneData &scene,
     const SurfaceClosureSamplingCallables &sampling_callables,
     const SurfaceClosureEvaluationCallable &evaluation_callable,
-    const BufferFloat4 &parameters,
+    const BufferFloat &scalar_parameters,
+    const BufferFloat3 &vector_parameters,
     const BufferFloat &cycles_bsdf_tables,
     const BindlessVar &textures,
     const BindlessVar &geometry_heap,
@@ -223,7 +229,8 @@ SurfaceSampleTrace sample_surface_closures(
     const auto policy = make_surface_closure_evaluation_policy(
         false, Expr<std::uint32_t>{0u});
     CallableSurfaceClosureEvaluationOperation evaluation{
-        parameters,
+        scalar_parameters,
+        vector_parameters,
         cycles_bsdf_tables,
         textures,
         geometry_heap,
@@ -233,7 +240,8 @@ SurfaceSampleTrace sample_surface_closures(
         policy,
         evaluation_callable};
     CallableSurfaceClosureSamplingOperation sampling{
-        parameters,
+        scalar_parameters,
+        vector_parameters,
         cycles_bsdf_tables,
         textures,
         geometry_heap,

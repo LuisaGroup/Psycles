@@ -42,7 +42,8 @@ namespace psycles::luisa_backend::detail {
 
 using SurfaceClosureEvaluationCallable =
     Callable<SurfaceClosureEvaluationContributionCall(
-        Buffer<luisa::float4>,
+        Buffer<float>,
+        Buffer<luisa::float3>,
         Buffer<float>,
         BindlessArray,
         BindlessArray,
@@ -66,7 +67,8 @@ class CallableSurfaceClosureEvaluationOperation final
     : public SurfaceClosureEvaluationOperation {
 
   private:
-    const BufferFloat4 &_parameters;
+    const BufferFloat &_scalar_parameters;
+    const BufferFloat3 &_vector_parameters;
     const BufferFloat &_cycles_bsdf_tables;
     const BindlessVar &_textures;
     const BindlessVar &_geometry_heap;
@@ -77,7 +79,8 @@ class CallableSurfaceClosureEvaluationOperation final
 
   public:
     CallableSurfaceClosureEvaluationOperation(
-        const BufferFloat4 &parameters,
+        const BufferFloat &scalar_parameters,
+        const BufferFloat3 &vector_parameters,
         const BufferFloat &cycles_bsdf_tables,
         const BindlessVar &textures,
         const BindlessVar &geometry_heap,

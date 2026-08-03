@@ -668,10 +668,16 @@ make_volume_graph(VolumeGraphKind kind) {
     return graph;
 }
 
-[[nodiscard]] std::vector<luisa::float4>
+struct TypedParameterData {
+    std::vector<float> scalars;
+    std::vector<luisa::float3> vectors;
+};
+
+[[nodiscard]] TypedParameterData
 parameter_data(const SurfaceProgram &program) {
-    std::vector<luisa::float4> result;
-    result.reserve(program.parameters().size());
+    TypedParameterData result;
+    result.scalars.reserve(program.parameters().size());
+    result.vectors.reserve(program.parameters().size());
     for (const auto &parameter :
          program.parameters()) {
         const auto &value =
@@ -679,26 +685,28 @@ parameter_data(const SurfaceProgram &program) {
         if (const auto *scalar =
                 std::get_if<float>(
                     &value.value)) {
-            result.emplace_back(
-                *scalar, 0.0f, 0.0f, 0.0f);
+            result.scalars.emplace_back(*scalar);
+            result.vectors.emplace_back(
+                luisa::make_float3(0.0f));
         } else if (
             const auto *vector =
                 std::get_if<Vec3f>(
                     &value.value)) {
-            result.emplace_back(
+            result.scalars.emplace_back(0.0f);
+            result.vectors.emplace_back(
                 vector->x,
                 vector->y,
-                vector->z,
-                0.0f);
+                vector->z);
         } else {
             throw std::runtime_error{
                 "scene-majorant fixture has an "
                 "unsupported parameter type"};
         }
     }
-    if (result.empty()) {
-        result.emplace_back(
-            0.0f, 0.0f, 0.0f, 0.0f);
+    if (result.scalars.empty()) {
+        result.scalars.emplace_back(0.0f);
+        result.vectors.emplace_back(
+            luisa::make_float3(0.0f));
     }
     return result;
 }
@@ -863,27 +871,38 @@ void run_scene_build(
         parameter_data(*spatial_lowered.program);
     const auto homogeneous_parameter_block =
         static_cast<std::uint32_t>(
-            host_parameters.size());
+            host_parameters.scalars.size());
     const auto homogeneous_parameters =
         parameter_data(
             *homogeneous_lowered.program);
-    host_parameters.insert(
-        host_parameters.end(),
-        homogeneous_parameters.begin(),
-        homogeneous_parameters.end());
+    host_parameters.scalars.insert(
+        host_parameters.scalars.end(),
+        homogeneous_parameters.scalars.begin(),
+        homogeneous_parameters.scalars.end());
+    host_parameters.vectors.insert(
+        host_parameters.vectors.end(),
+        homogeneous_parameters.vectors.begin(),
+        homogeneous_parameters.vectors.end());
     const auto spatial_light_path_parameter_block =
         static_cast<std::uint32_t>(
-            host_parameters.size());
+            host_parameters.scalars.size());
     const auto spatial_light_path_parameters =
         parameter_data(
             *spatial_light_path_lowered.program);
-    host_parameters.insert(
-        host_parameters.end(),
-        spatial_light_path_parameters.begin(),
-        spatial_light_path_parameters.end());
-    scene->parameter_buffer =
-        device.create_buffer<luisa::float4>(
-            host_parameters.size());
+    host_parameters.scalars.insert(
+        host_parameters.scalars.end(),
+        spatial_light_path_parameters.scalars.begin(),
+        spatial_light_path_parameters.scalars.end());
+    host_parameters.vectors.insert(
+        host_parameters.vectors.end(),
+        spatial_light_path_parameters.vectors.begin(),
+        spatial_light_path_parameters.vectors.end());
+    scene->scalar_parameter_buffer =
+        device.create_buffer<float>(
+            host_parameters.scalars.size());
+    scene->vector_parameter_buffer =
+        device.create_buffer<luisa::float3>(
+            host_parameters.vectors.size());
     scene->cycles_bsdf_table_buffer =
         device.create_buffer<float>(1u);
     std::vector<std::uint32_t>
@@ -1002,8 +1021,10 @@ void run_scene_build(
         std::byte{255u},
         std::byte{255u}};
     stream
-        << scene->parameter_buffer.copy_from(
-               luisa::span{host_parameters})
+        << scene->scalar_parameter_buffer.copy_from(
+               luisa::span{host_parameters.scalars})
+        << scene->vector_parameter_buffer.copy_from(
+               luisa::span{host_parameters.vectors})
         << scene->cycles_bsdf_table_buffer
                .copy_from(
                    luisa::span{cycles_table})
@@ -1179,7 +1200,8 @@ void run_scene_build(
             BufferVar<luisa::float4> output)
             noexcept {
             BufferShaderServices services{
-                scene->parameter_buffer,
+                scene->scalar_parameter_buffer,
+                scene->vector_parameter_buffer,
                 scene->cycles_bsdf_table_buffer,
                 scene->texture_heap,
                 scene->heap,
@@ -1483,7 +1505,8 @@ void run_scene_build(
             BufferFloat4 sobol,
             BufferFloat4 output) noexcept {
             BufferShaderServices services{
-                scene->parameter_buffer,
+                scene->scalar_parameter_buffer,
+                scene->vector_parameter_buffer,
                 scene->cycles_bsdf_table_buffer,
                 scene->texture_heap,
                 scene->heap,
