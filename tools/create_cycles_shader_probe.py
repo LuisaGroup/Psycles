@@ -33,6 +33,7 @@ from cycles_shader_probe import (  # noqa: E402
     support,
     texture_inputs,
     values,
+    wave_inputs,
 )
 
 
@@ -148,6 +149,8 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "value_emission": lights_camera._value_emission,
     "vector_math_matrix": texture_inputs._vector_math_matrix,
     "wavelength_matrix": texture_inputs._wavelength_matrix,
+    "wave_texture_distortion": wave_inputs._wave_texture_distortion,
+    "wave_texture_modes": wave_inputs._wave_texture_modes,
     "white_noise_dimensions": procedural_textures._white_noise_dimensions,
 }
 

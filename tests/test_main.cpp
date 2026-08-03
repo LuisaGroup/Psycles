@@ -264,6 +264,96 @@ void test_environment_texture_modes_are_structural() {
         "environment graph emitted no typed environment operation");
 }
 
+void test_wave_texture_configuration_lowers_structurally() {
+    ShaderCompiler compiler{make_core_node_registry()};
+    ShaderGraph graph;
+    const auto wave = graph.add_node(
+        node_type::wave_texture,
+        "Wave Texture");
+    const auto emission = graph.add_node(
+        node_type::emission,
+        "Emission");
+    for (const auto &[name, value] : {
+             std::pair{"Scale", 7.25f},
+             std::pair{"Distortion", 1.5f},
+             std::pair{"Detail", 3.75f},
+             std::pair{"DetailScale", -2.0f},
+             std::pair{"DetailRoughness", 0.625f},
+             std::pair{"PhaseOffset", -0.75f}}) {
+        expect(
+            graph.set_input(
+                wave,
+                name,
+                SocketValue::floating(value)),
+            std::string{"failed to set Wave input "} + name);
+    }
+    expect(
+        graph.set_input(
+            wave,
+            "Vector",
+            SocketValue::vector({0.25f, -0.5f, 1.75f})),
+        "failed to set Wave Vector");
+    for (const auto &[name, value] : {
+             std::pair{"WaveType", "RINGS"},
+             std::pair{"BandsDirection", "DIAGONAL"},
+             std::pair{"RingsDirection", "SPHERICAL"},
+             std::pair{"Profile", "TRI"}}) {
+        expect(
+            graph.set_property(
+                wave,
+                name,
+                SocketValue::string(value)),
+            std::string{"failed to set Wave property "} + name);
+    }
+    expect(
+        graph.set_property(
+            wave,
+            "NeedsColor",
+            SocketValue::boolean(true)),
+        "failed to select the Wave Color output");
+    expect(
+        graph.connect(
+            {.node = wave, .socket = "Color"},
+            emission,
+            "Color"),
+        "failed to connect Wave Color");
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = emission, .socket = "Closure"});
+
+    auto compiled = compiler.compile(graph);
+    expect(compiled.ok(), "Wave graph failed contract compilation");
+    auto surface = compile_surface_program(*compiled.program);
+    expect(surface.ok(), "Wave graph failed typed lowering");
+    const auto wave_color = std::ranges::find_if(
+        surface.program->value_instructions(),
+        [](const ValueInstruction &instruction) {
+            return instruction.operation == ValueOperation::wave_color;
+        });
+    expect(
+        wave_color != surface.program->value_instructions().end(),
+        "Wave Color instruction is missing");
+    constexpr std::uint64_t expected_configuration =
+        1u | (3u << 8u) | (3u << 16u) | (2u << 24u);
+    expect(
+        wave_color->static_u0 == expected_configuration,
+        "Wave static configuration was not encoded structurally");
+    expect(
+        wave_color->a.valid() && wave_color->b.valid() &&
+            wave_color->c.valid() && wave_color->d.valid() &&
+            wave_color->e.valid() && wave_color->f.valid() &&
+            wave_color->g.valid(),
+        "Wave dynamic inputs were not preserved as typed dependencies");
+    expect(
+        std::ranges::none_of(
+            surface.program->value_instructions(),
+            [](const ValueInstruction &instruction) {
+                return instruction.operation ==
+                       ValueOperation::wave_factor;
+            }),
+        "unused Wave Factor duplicated the procedural AST");
+}
+
 void test_closure_tree_is_preserved() {
     ShaderCompiler compiler{make_core_node_registry()};
     ShaderGraph graph;
@@ -1743,6 +1833,7 @@ int main() {
         test_shader_graph_and_invalidation();
         test_image_texture_modes_are_structural();
         test_environment_texture_modes_are_structural();
+        test_wave_texture_configuration_lowers_structurally();
         test_closure_tree_is_preserved();
         test_cycles_emission_evaluation_mode();
         test_cycles_principled_emission_metadata();

@@ -671,8 +671,13 @@ template<typename P>
     Float amplitude = 1.0f;
     Float maximum_amplitude = 0.0f;
     Float sum = 0.0f;
-    auto whole_octaves =
-        cast<luisa::uint>(floor(detail)) + 1u;
+    // Cycles spells the loop bound as
+    // `i <= float_to_int(detail)`, where float_to_int truncates toward zero.
+    // Derive the iteration count from that definition instead of floor(detail):
+    // the two agree for the declared non-negative socket range, while this also
+    // preserves Cycles semantics for values arriving through linked sockets.
+    auto whole_octaves = cast<luisa::uint>(
+        max(cast<int>(detail) + 1, 0));
     $for (octave, whole_octaves) {
         static_cast<void>(octave);
         sum += signed_noise(frequency * p) * amplitude;
@@ -681,9 +686,7 @@ template<typename P>
         frequency *= lacunarity;
     };
     auto result = normalize
-                      ? 0.5f * sum /
-                                max(maximum_amplitude, 1.0e-20f) +
-                            0.5f
+                      ? 0.5f * sum / maximum_amplitude + 0.5f
                       : sum;
     auto remainder = detail - floor(detail);
     $if (remainder != 0.0f) {
@@ -692,9 +695,7 @@ template<typename P>
         auto extended_result =
             normalize
                 ? 0.5f * extended_sum /
-                          max(
-                              maximum_amplitude + amplitude,
-                              1.0e-20f) +
+                          (maximum_amplitude + amplitude) +
                       0.5f
                 : extended_sum;
         result = lerp(result, extended_result, remainder);

@@ -23,7 +23,9 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/graph_surface_value_image.cpp
     src/luisa/graph_surface_value_math.cpp
     src/luisa/graph_surface_value_normal.cpp
+    src/luisa/graph_surface_value_wave.cpp
     src/luisa/graph_surface_value_procedural.cpp
+    src/luisa/cycles_wave.cpp
     src/luisa/heterogeneous_volume_candidate.cpp
     src/luisa/heterogeneous_volume_collision.cpp
     src/luisa/heterogeneous_volume_guiding.cpp
