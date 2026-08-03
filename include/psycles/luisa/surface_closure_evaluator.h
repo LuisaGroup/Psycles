@@ -33,6 +33,13 @@ class SurfaceClosureEvaluator {
         UInt light_shader_flags,
         UInt selected_closure_index) const noexcept;
 
+    [[nodiscard]] SurfaceSampleTrace sample_impl(
+        const ShaderServices &services,
+        Float u_lobe,
+        Float2 u_direction,
+        const SurfaceQuery &query,
+        bool trace_selection) const noexcept;
+
   public:
     SurfaceClosureEvaluator(
         const SurfacePoint &point,
@@ -56,6 +63,18 @@ class SurfaceClosureEvaluator {
         const ShaderServices &services,
         Expr<luisa::float3> outgoing,
         const SurfaceLightQuery &query) const noexcept;
+
+    [[nodiscard]] SurfaceSample sample(
+        const ShaderServices &services,
+        Expr<float> u_lobe,
+        Expr<luisa::float2> u_direction,
+        const SurfaceQuery &query) const noexcept;
+
+    [[nodiscard]] SurfaceSampleTrace sample_trace(
+        const ShaderServices &services,
+        Expr<float> u_lobe,
+        Expr<luisa::float2> u_direction,
+        const SurfaceQuery &query) const noexcept;
 };
 
 }// namespace psycles::luisa_backend

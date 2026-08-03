@@ -193,14 +193,25 @@ SurfaceCallables make_surface_callables(
                     glossy_filter_roughness,
                 .reflective_caustics = reflective_caustics,
                 .refractive_caustics = refractive_caustics};
+            const auto point =
+                unpack_surface_point(packed_point);
             return pack_surface_sample(
-                scene->surfaces.sample(
-                    surface_tag,
+                evaluate_surface_closures(
+                    *scene,
+                    SurfaceClosureStorageProfile::complete,
                     services,
-                    unpack_surface_point(packed_point),
-                    u_lobe,
-                    u_direction,
-                    query));
+                    surface_tag,
+                    point,
+                    reflective_caustics,
+                    refractive_caustics,
+                    [&](const SurfaceClosureEvaluator
+                            &evaluator) noexcept {
+                        return evaluator.sample(
+                            services,
+                            u_lobe,
+                            u_direction,
+                            query);
+                    }));
         };
     SurfaceClosureTraceCallable closure_trace =
         [scene](
@@ -270,14 +281,25 @@ SurfaceCallables make_surface_callables(
                     glossy_filter_roughness,
                 .reflective_caustics = reflective_caustics,
                 .refractive_caustics = refractive_caustics};
+            const auto point =
+                unpack_surface_point(packed_point);
             return pack_surface_sample_trace(
-                scene->surfaces.sample_trace(
-                    surface_tag,
+                evaluate_surface_closures(
+                    *scene,
+                    SurfaceClosureStorageProfile::complete,
                     services,
-                    unpack_surface_point(packed_point),
-                    u_lobe,
-                    u_direction,
-                    query));
+                    surface_tag,
+                    point,
+                    reflective_caustics,
+                    refractive_caustics,
+                    [&](const SurfaceClosureEvaluator
+                            &evaluator) noexcept {
+                        return evaluator.sample_trace(
+                            services,
+                            u_lobe,
+                            u_direction,
+                            query);
+                    }));
         };
     SurfaceAovCallable aov =
         [scene](

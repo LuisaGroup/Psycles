@@ -29,6 +29,69 @@ enum class StorageField : std::uint32_t {
     transmission_tint,
 };
 
+struct CompleteStorageBlocks {
+    luisa::compute::Float4x4 block_0;
+    luisa::compute::Float4x4 block_1;
+    luisa::compute::Float4x4 block_2;
+    luisa::compute::Float4x4 block_3;
+};
+
+[[nodiscard]] CompleteStorageBlocks pack_complete(
+    const SurfaceClosureRecord &closure,
+    UInt flags) noexcept {
+    const auto zero = make_float4(0.0f);
+    return {
+        .block_0 = make_float4x4(
+            make_uint4(
+                closure.kind,
+                closure.lobe,
+                flags,
+                0u)
+                .bitcast<luisa::float4>(),
+            make_float4(
+                closure.weight,
+                closure.allocation_weight),
+            make_float4(
+                closure.albedo,
+                closure.sample_weight),
+            make_float4(
+                closure.reflection_albedo,
+                closure.roughness)),
+        .block_1 = make_float4x4(
+            make_float4(
+                closure.transmission_albedo,
+                closure.diffuse_roughness),
+            make_float4(
+                closure.color,
+                closure.metallic),
+            make_float4(
+                closure.normal,
+                closure.ior),
+            make_float4(
+                closure.specular_tint,
+                closure.specular_ior_level)),
+        .block_2 = make_float4x4(
+            make_float4(
+                closure.evaluation_scale,
+                closure.sheen_transform_a),
+            make_float4(
+                closure.fresnel_f0,
+                closure.sheen_transform_b),
+            make_float4(
+                closure.fresnel_f90,
+                0.0f),
+            make_float4(
+                closure.reflection_tint,
+                0.0f)),
+        .block_3 = make_float4x4(
+            make_float4(
+                closure.transmission_tint,
+                0.0f),
+            zero,
+            zero,
+            zero)};
+}
+
 [[nodiscard]] bool stores(
     SurfaceClosureStorageProfile profile,
     StorageField field) noexcept {
@@ -62,7 +125,18 @@ enum class StorageField : std::uint32_t {
     SurfaceClosureStorageProfile profile,
     StorageField field,
     std::size_t capacity) noexcept {
-    return stores(profile, field) ? capacity : std::size_t{1u};
+    return profile != SurfaceClosureStorageProfile::complete &&
+                   stores(profile, field)
+               ? capacity
+               : std::size_t{1u};
+}
+
+[[nodiscard]] std::size_t complete_storage_size(
+    SurfaceClosureStorageProfile profile,
+    std::size_t capacity) noexcept {
+    return profile == SurfaceClosureStorageProfile::complete
+               ? capacity
+               : std::size_t{1u};
 }
 
 }// namespace
@@ -76,7 +150,12 @@ SurfaceClosureSet::SurfaceClosureSet(
           static_cast<std::size_t>(
               maximum_surface_closure_capacity))},
       _profile{profile},
-      _identity{_capacity},
+      _complete_0{complete_storage_size(profile, _capacity)},
+      _complete_1{complete_storage_size(profile, _capacity)},
+      _complete_2{complete_storage_size(profile, _capacity)},
+      _complete_3{complete_storage_size(profile, _capacity)},
+      _identity{storage_size(
+          profile, StorageField::identity, _capacity)},
       _weight{storage_size(
           profile, StorageField::weight, _capacity)},
       _albedo{storage_size(
@@ -103,11 +182,20 @@ SurfaceClosureSet::SurfaceClosureSet(
           profile, StorageField::transmission_tint, _capacity)},
       _count{0u} {
     const auto zero = SurfaceClosureRecord::zero();
-    _identity.write(0u, make_uint4(
-                            zero.kind,
-                            zero.lobe,
-                            0u,
-                            0u));
+    if (_profile == SurfaceClosureStorageProfile::complete) {
+        const auto packed = pack_complete(zero, 0u);
+        _complete_0.write(0u, packed.block_0);
+        _complete_1.write(0u, packed.block_1);
+        _complete_2.write(0u, packed.block_2);
+        _complete_3.write(0u, packed.block_3);
+        return;
+    }
+    _identity.write(0u,
+        make_uint4(
+            zero.kind,
+            zero.lobe,
+            0u,
+            0u));
     if (stores(_profile, StorageField::weight)) {
         _weight.write(0u, make_float4(
                                zero.weight,
@@ -191,83 +279,53 @@ void SurfaceClosureSet::add(
             closure.preserve_ggx_energy);
         flags |= select(
             0u, beckmann_bit, closure.beckmann);
-        _identity.write(_count,
-            make_uint4(
-                closure.kind,
-                closure.lobe,
-                flags,
-                0u));
-        if (stores(_profile, StorageField::weight)) {
-            _weight.write(_count,
-                make_float4(
-                    closure.weight,
-                    closure.allocation_weight));
-        }
-        if (stores(_profile, StorageField::albedo)) {
-            _albedo.write(_count,
-                make_float4(
-                    closure.albedo,
-                    closure.sample_weight));
-        }
-        if (stores(_profile, StorageField::reflection_albedo)) {
-            _reflection_albedo.write(_count,
-                make_float4(
-                    closure.reflection_albedo,
-                    closure.roughness));
-        }
-        if (stores(_profile, StorageField::transmission_albedo)) {
-            _transmission_albedo.write(_count,
-                make_float4(
-                    closure.transmission_albedo,
-                    closure.diffuse_roughness));
-        }
-        if (stores(_profile, StorageField::color)) {
-            _color.write(_count,
-                make_float4(
-                    closure.color,
-                    closure.metallic));
-        }
-        if (stores(_profile, StorageField::normal)) {
-            _normal.write(_count,
-                make_float4(
-                    closure.normal,
-                    closure.ior));
-        }
-        if (stores(_profile, StorageField::specular_tint)) {
-            _specular_tint.write(_count,
-                make_float4(
-                    closure.specular_tint,
-                    closure.specular_ior_level));
-        }
-        if (stores(_profile, StorageField::evaluation_scale)) {
-            _evaluation_scale.write(_count,
-                make_float4(
-                    closure.evaluation_scale,
-                    closure.sheen_transform_a));
-        }
-        if (stores(_profile, StorageField::fresnel_f0)) {
-            _fresnel_f0.write(_count,
-                make_float4(
-                    closure.fresnel_f0,
-                    closure.sheen_transform_b));
-        }
-        if (stores(_profile, StorageField::fresnel_f90)) {
-            _fresnel_f90.write(_count,
-                make_float4(
-                    closure.fresnel_f90,
-                    0.0f));
-        }
-        if (stores(_profile, StorageField::reflection_tint)) {
-            _reflection_tint.write(_count,
-                make_float4(
-                    closure.reflection_tint,
-                    0.0f));
-        }
-        if (stores(_profile, StorageField::transmission_tint)) {
-            _transmission_tint.write(_count,
-                make_float4(
-                    closure.transmission_tint,
-                    0.0f));
+        if (_profile == SurfaceClosureStorageProfile::complete) {
+            const auto packed = pack_complete(closure, flags);
+            _complete_0.write(_count, packed.block_0);
+            _complete_1.write(_count, packed.block_1);
+            _complete_2.write(_count, packed.block_2);
+            _complete_3.write(_count, packed.block_3);
+        } else {
+            _identity.write(_count,
+                make_uint4(
+                    closure.kind,
+                    closure.lobe,
+                    flags,
+                    0u));
+            if (stores(_profile, StorageField::weight)) {
+                _weight.write(_count,
+                    make_float4(
+                        closure.weight,
+                        closure.allocation_weight));
+            }
+            if (stores(_profile, StorageField::albedo)) {
+                _albedo.write(_count,
+                    make_float4(
+                        closure.albedo,
+                        closure.sample_weight));
+            }
+            if (stores(
+                    _profile,
+                    StorageField::reflection_albedo)) {
+                _reflection_albedo.write(_count,
+                    make_float4(
+                        closure.reflection_albedo,
+                        closure.roughness));
+            }
+            if (stores(
+                    _profile,
+                    StorageField::transmission_albedo)) {
+                _transmission_albedo.write(_count,
+                    make_float4(
+                        closure.transmission_albedo,
+                        closure.diffuse_roughness));
+            }
+            if (stores(_profile, StorageField::normal)) {
+                _normal.write(_count,
+                    make_float4(
+                        closure.normal,
+                        closure.ior));
+            }
         }
         _count += 1u;
     };
@@ -289,8 +347,12 @@ SurfaceClosureRecord SurfaceClosureSet::entry(
     UInt index) const noexcept {
     const auto valid = index < _count;
     const auto safe_index = select(0u, index, valid);
-    const auto identity = _identity.read(safe_index);
     const auto zero = SurfaceClosureRecord::zero();
+    auto identity = make_uint4(
+        zero.kind,
+        zero.lobe,
+        0u,
+        0u);
     auto weight = make_float4(
         zero.weight, zero.allocation_weight);
     auto albedo = make_float4(
@@ -312,41 +374,47 @@ SurfaceClosureRecord SurfaceClosureSet::entry(
         zero.reflection_tint, 0.0f);
     auto transmission_tint = make_float4(
         zero.transmission_tint, 0.0f);
-    if (stores(_profile, StorageField::weight)) {
-        weight = _weight.read(safe_index);
-    }
-    if (stores(_profile, StorageField::albedo)) {
-        albedo = _albedo.read(safe_index);
-    }
-    if (stores(_profile, StorageField::reflection_albedo)) {
-        reflection_albedo = _reflection_albedo.read(safe_index);
-    }
-    if (stores(_profile, StorageField::transmission_albedo)) {
-        transmission_albedo = _transmission_albedo.read(safe_index);
-    }
-    if (stores(_profile, StorageField::color)) {
-        color = _color.read(safe_index);
-    }
-    if (stores(_profile, StorageField::normal)) {
-        normal = _normal.read(safe_index);
-    }
-    if (stores(_profile, StorageField::specular_tint)) {
-        specular_tint = _specular_tint.read(safe_index);
-    }
-    if (stores(_profile, StorageField::evaluation_scale)) {
-        evaluation_scale = _evaluation_scale.read(safe_index);
-    }
-    if (stores(_profile, StorageField::fresnel_f0)) {
-        fresnel_f0 = _fresnel_f0.read(safe_index);
-    }
-    if (stores(_profile, StorageField::fresnel_f90)) {
-        fresnel_f90 = _fresnel_f90.read(safe_index);
-    }
-    if (stores(_profile, StorageField::reflection_tint)) {
-        reflection_tint = _reflection_tint.read(safe_index);
-    }
-    if (stores(_profile, StorageField::transmission_tint)) {
-        transmission_tint = _transmission_tint.read(safe_index);
+    if (_profile == SurfaceClosureStorageProfile::complete) {
+        const auto block_0 = _complete_0.read(safe_index);
+        const auto block_1 = _complete_1.read(safe_index);
+        const auto block_2 = _complete_2.read(safe_index);
+        const auto block_3 = _complete_3.read(safe_index);
+        identity = block_0[0u].bitcast<luisa::uint4>();
+        weight = block_0[1u];
+        albedo = block_0[2u];
+        reflection_albedo = block_0[3u];
+        transmission_albedo = block_1[0u];
+        color = block_1[1u];
+        normal = block_1[2u];
+        specular_tint = block_1[3u];
+        evaluation_scale = block_2[0u];
+        fresnel_f0 = block_2[1u];
+        fresnel_f90 = block_2[2u];
+        reflection_tint = block_2[3u];
+        transmission_tint = block_3[0u];
+    } else {
+        identity = _identity.read(safe_index);
+        if (stores(_profile, StorageField::weight)) {
+            weight = _weight.read(safe_index);
+        }
+        if (stores(_profile, StorageField::albedo)) {
+            albedo = _albedo.read(safe_index);
+        }
+        if (stores(
+                _profile,
+                StorageField::reflection_albedo)) {
+            reflection_albedo =
+                _reflection_albedo.read(safe_index);
+        }
+        if (stores(
+                _profile,
+                StorageField::transmission_albedo)) {
+            transmission_albedo =
+                _transmission_albedo.read(safe_index);
+        }
+        if (stores(_profile, StorageField::normal)) {
+            normal = _normal.read(safe_index);
+        }
     }
     const auto flags = identity.z;
     const auto vector_or_zero =
