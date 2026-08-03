@@ -879,6 +879,100 @@ def _principled_sheen_surface(scene: Any) -> None:
     surface.visible_shadow = False
 
 
+def _principled_coat_surface(scene: Any) -> None:
+    """Exercise Cycles' physical Principled Coat and ordered attenuation."""
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 0.01
+    scene.cycles.use_light_tree = False
+    _bsdf_matrix_sun(scene, transmission=False)
+    cases = (
+        (-1.0, 0.30, 1.50, (1.0, 1.0, 1.0), None),
+        (0.0, 0.30, 1.50, (1.0, 1.0, 1.0), None),
+        (0.5e-5, 0.30, 1.50, (1.0, 1.0, 1.0), None),
+        (1.0e-5, 0.30, 1.50, (1.0, 1.0, 1.0), None),
+        (2.0e-5, 0.30, 1.50, (1.0, 1.0, 1.0), None),
+        (0.70, -0.30, 1.50, (1.0, 1.0, 1.0), None),
+        (0.70, 0.0, 1.50, (1.0, 1.0, 1.0), None),
+        (0.70, 0.001, 1.50, (1.0, 1.0, 1.0), None),
+        (0.70, 0.01, 1.50, (1.0, 1.0, 1.0), None),
+        (0.70, 0.20, 1.0, (1.0, 1.0, 1.0), None),
+        (0.70, 0.20, 1.33, (1.0, 1.0, 1.0), None),
+        (0.70, 0.20, 2.0, (0.2, 0.55, 0.9), None),
+        (1.30, 0.31, 1.45, (0.45, 0.8, 0.2), None),
+        (0.65, 0.27, 1.60, (1.0, 1.0, 1.0), (0.6, 0.0, 0.8)),
+        (0.65, 0.27, 1.60, (1.0, 1.0, 1.0), (0.3, 0.0, 0.4)),
+        (0.65, 0.27, 1.60, (1.0, 1.0, 1.0), (0.0, 0.0, 0.0)),
+    )
+    materials = []
+    for index, (weight, roughness, ior, tint, normal) in enumerate(cases):
+        material, tree, output = _material(
+            f"Principled Coat {index:02d}"
+        )
+        principled = tree.nodes.new("ShaderNodeBsdfPrincipled")
+        principled.name = f"Physical Principled Coat {index:02d}"
+        principled.distribution = "GGX"
+        _input(principled, "Base Color").default_value = (
+            0.38,
+            0.16,
+            0.07,
+            1.0,
+        )
+        _input(principled, "Metallic").default_value = 0.0
+        _input(principled, "Roughness").default_value = 0.4
+        _input(principled, "IOR").default_value = 1.0
+        _input(principled, "Specular IOR Level").default_value = 0.5
+        _input(principled, "Sheen Weight").default_value = 0.0
+        _input(principled, "Alpha").default_value = 1.0
+        weight_node = tree.nodes.new("ShaderNodeValue")
+        weight_node.name = f"Linked Coat Weight {index:02d}"
+        _output(weight_node, "Value").default_value = weight
+        roughness_node = tree.nodes.new("ShaderNodeValue")
+        roughness_node.name = f"Linked Coat Roughness {index:02d}"
+        _output(roughness_node, "Value").default_value = roughness
+        ior_node = tree.nodes.new("ShaderNodeValue")
+        ior_node.name = f"Linked Coat IOR {index:02d}"
+        _output(ior_node, "Value").default_value = ior
+        tree.links.new(
+            _output(weight_node, "Value"),
+            _input(principled, "Coat Weight"),
+        )
+        tree.links.new(
+            _output(roughness_node, "Value"),
+            _input(principled, "Coat Roughness"),
+        )
+        tree.links.new(
+            _output(ior_node, "Value"),
+            _input(principled, "Coat IOR"),
+        )
+        tree.links.new(
+            _linked_vector(tree, f"Linked Coat Tint {index:02d}", tint),
+            _input(principled, "Coat Tint"),
+        )
+        if normal is not None:
+            tree.links.new(
+                _linked_vector(
+                    tree,
+                    f"Linked Coat Normal {index:02d}",
+                    normal,
+                ),
+                _input(principled, "Coat Normal"),
+            )
+        tree.links.new(
+            _output(principled, "BSDF"),
+            _input(output, "Surface"),
+        )
+        materials.append(material)
+    surface = _material_matrix(
+        scene,
+        materials,
+        columns=4,
+        rows=4,
+        name="Principled Coat Surface Matrix",
+        frame_bleed=0.02,
+    )
+    surface.visible_shadow = False
+
+
 def _principled_emission(scene: Any) -> None:
     """Isolate raw Principled Emission Color/Strength evaluation."""
     material, tree, output = _material("Principled Emission Probe")

@@ -170,7 +170,8 @@ namespace psycles::luisa_backend::detail {
     const ShaderServices &services,
     const TracedClosure &closure,
     Float3 incoming,
-    Float3 glossy_normal) noexcept {
+    Float3 glossy_normal,
+    Bool reflective_caustics) noexcept {
     auto adjusted = adjusted_ior(closure);
     auto tint = max(closure.specular_tint, make_float3(0.0f));
     auto dielectric_f0 = clamp(make_float3(adjusted.f0) * tint,
@@ -236,12 +237,18 @@ namespace psycles::luisa_backend::detail {
     auto lower_weight_factor =
         select(1.0f, 1.0f - metallic, metallic_active);
     auto metallic_pre_weight = closure.weight * metallic_factor;
+    auto metallic_allocated_weight =
+        max(metallic_pre_weight, make_float3(0.0f));
     auto metallic_allocation_weight =
-        sample_weight(max(metallic_pre_weight, make_float3(0.0f)));
-    auto metallic_allocated = metallic_allocation_weight >=
-                              cycles_closure::closure_weight_cutoff;
+        sample_weight(metallic_allocated_weight);
+    auto metallic_allocated =
+        reflective_caustics &
+        (metallic_allocation_weight >=
+            cycles_closure::closure_weight_cutoff);
+    auto metallic_recorded_allocation_weight = select(
+        0.0f, metallic_allocation_weight, metallic_allocated);
     auto metallic_weight = select(make_float3(0.0f),
-        metallic_pre_weight * metallic_energy.darkening,
+        metallic_allocated_weight * metallic_energy.darkening,
         metallic_allocated);
     auto metallic_albedo = metallic_weight * metallic_albedo_estimate;
     auto metallic_sample_weight = select(0.0f,
@@ -254,14 +261,18 @@ namespace psycles::luisa_backend::detail {
     auto dielectric_pre_weight = select(make_float3(0.0f),
         closure.weight * lower_weight_factor,
         dielectric_requested);
+    auto dielectric_allocated_weight =
+        max(dielectric_pre_weight, make_float3(0.0f));
     auto dielectric_allocation_weight =
-        sample_weight(max(dielectric_pre_weight, make_float3(0.0f)));
+        sample_weight(dielectric_allocated_weight);
     auto dielectric_allocated =
-        dielectric_requested &
+        dielectric_requested & reflective_caustics &
         (dielectric_allocation_weight >=
             cycles_closure::closure_weight_cutoff);
+    auto dielectric_recorded_allocation_weight = select(
+        0.0f, dielectric_allocation_weight, dielectric_allocated);
     auto dielectric_weight = select(make_float3(0.0f),
-        dielectric_pre_weight * dielectric_energy.darkening,
+        dielectric_allocated_weight * dielectric_energy.darkening,
         dielectric_allocated);
     auto dielectric_albedo =
         dielectric_weight * dielectric_albedo_estimate;
@@ -277,9 +288,10 @@ namespace psycles::luisa_backend::detail {
             0.0f,
             1.0f),
         dielectric_allocated);
-    auto diffuse_weight = closure.weight * lower_weight_factor *
-                          lower_layer_factor *
-                          max(closure.color, make_float3(0.0f));
+    auto diffuse_weight = max(
+        closure.weight * lower_weight_factor * lower_layer_factor *
+            max(closure.color, make_float3(0.0f)),
+        make_float3(0.0f));
     return {.eta = adjusted.eta,
         .dielectric_f0 = dielectric_f0,
         .metallic_f0 = metallic_f0,
@@ -287,11 +299,13 @@ namespace psycles::luisa_backend::detail {
         .dielectric_energy_scale = dielectric_energy.energy_scale,
         .metallic_energy_scale = metallic_energy.energy_scale,
         .dielectric_weight = dielectric_weight,
-        .dielectric_allocation_weight = dielectric_allocation_weight,
+        .dielectric_allocation_weight =
+            dielectric_recorded_allocation_weight,
         .dielectric_sample_weight = dielectric_sample_weight,
         .dielectric_albedo = dielectric_albedo,
         .metallic_weight = metallic_weight,
-        .metallic_allocation_weight = metallic_allocation_weight,
+        .metallic_allocation_weight =
+            metallic_recorded_allocation_weight,
         .metallic_sample_weight = metallic_sample_weight,
         .metallic_albedo = metallic_albedo,
         .diffuse_weight = diffuse_weight};
@@ -606,7 +620,11 @@ namespace psycles::luisa_backend::detail {
 [[nodiscard]] Float ggx_distribution(
     Float n_dot_h, Float alpha) noexcept {
     auto alpha2 = alpha * alpha;
-    auto denominator = n_dot_h * n_dot_h * (alpha2 - 1.0f) + 1.0f;
+    // Keep the Cycles form: at normal incidence `1 + (alpha2 - 1)`
+    // catastrophically cancels when alpha2 is below float epsilon, while
+    // `(1 - cos2) + alpha2 * cos2` preserves the finite GGX peak.
+    auto cosine2 = min(n_dot_h * n_dot_h, 1.0f);
+    auto denominator = (1.0f - cosine2) + alpha2 * cosine2;
     return alpha2 / max(pi * denominator * denominator, 1.0e-20f);
 }
 
@@ -618,7 +636,16 @@ namespace psycles::luisa_backend::detail {
     // widened alpha.
     auto setup_alpha = clamp(closure.roughness, 0.0f, 1.0f);
     setup_alpha *= setup_alpha;
-    return max(max(setup_alpha, glossy_filter_roughness), 1.0e-3f);
+    return max(setup_alpha, glossy_filter_roughness);
+}
+
+[[nodiscard]] Bool microfacet_is_singular(
+    const TracedClosure &closure,
+    Float glossy_filter_roughness) noexcept {
+    const auto alpha = microfacet_alpha(
+        closure, glossy_filter_roughness);
+    return alpha * alpha <=
+           cycles_closure::microfacet_singular_alpha_product;
 }
 
 [[nodiscard]] Float smith_g1(Float n_dot_v, Float alpha) noexcept {
@@ -638,6 +665,24 @@ namespace psycles::luisa_backend::detail {
         closure.metallic);
 }
 
+[[nodiscard]] Float3 microfacet_reflection_fresnel(
+    const TracedClosure &closure,
+    Float cosine) noexcept {
+    if (closure.operation == compiler::ClosureOperation::principled) {
+        if (closure.principled_lobe == PrincipledLobe::metallic) {
+            return fresnel_f82(
+                       cosine, closure.color, closure.specular_tint) *
+                   closure.evaluation_scale;
+        }
+        return generalized_dielectric_fresnel(
+                   cosine, closure.ior, closure.color) *
+               closure.evaluation_scale;
+    }
+    const auto f0 = specular_f0(closure);
+    return f0 + (make_float3(1.0f) - f0) *
+                    pow(1.0f - cosine, 5.0f);
+}
+
 [[nodiscard]] Float3 microfacet_intensity(
     const ShaderServices &services,
     const TracedClosure &closure,
@@ -652,34 +697,22 @@ namespace psycles::luisa_backend::detail {
         safe_normalize(incoming + outgoing, glossy_normal);
     auto n_dot_h = max(dot(glossy_normal, half_vector), 0.0f);
     auto v_dot_h = max(dot(incoming, half_vector), 0.0f);
-    auto alpha = microfacet_alpha(closure, glossy_filter_roughness);
+    const auto singular = microfacet_is_singular(
+        closure, glossy_filter_roughness);
+    auto alpha = max(
+        microfacet_alpha(closure, glossy_filter_roughness), 1.0e-10f);
     auto distribution = ggx_distribution(n_dot_h, alpha);
     auto lambda_v = 1.0f / smith_g1(n_dot_v, alpha) - 1.0f;
     auto lambda_l = 1.0f / smith_g1(n_dot_l, alpha) - 1.0f;
     auto geometry = 1.0f / (1.0f + lambda_v + lambda_l);
-    Float3 fresnel;
-    if (closure.operation == compiler::ClosureOperation::principled) {
-        if (closure.principled_lobe == PrincipledLobe::metallic) {
-            fresnel =
-                fresnel_f82(
-                    v_dot_h, closure.color, closure.specular_tint) *
-                closure.evaluation_scale;
-        } else {
-            fresnel = generalized_dielectric_fresnel(
-                          v_dot_h, closure.ior, closure.color) *
-                      closure.evaluation_scale;
-        }
-    } else {
-        auto f0 = specular_f0(closure);
-        fresnel =
-            f0 + (make_float3(1.0f) - f0) * pow(1.0f - v_dot_h, 5.0f);
-    }
+    const auto fresnel = microfacet_reflection_fresnel(
+        closure, v_dot_h);
     auto intensity = fresnel * distribution * geometry /
                      max(4.0f * n_dot_v, 1.0e-20f);
     return select(make_float3(0.0f),
         intensity,
         (n_dot_v > 0.0f) & (n_dot_l > 0.0f) & (n_dot_h > 0.0f) &
-            (v_dot_h > 0.0f));
+            (v_dot_h > 0.0f) & !singular);
 }
 
 [[nodiscard]] Float microfacet_pdf(const TracedClosure &closure,
@@ -691,7 +724,10 @@ namespace psycles::luisa_backend::detail {
         safe_normalize(incoming + outgoing, glossy_normal);
     auto n_dot_h = max(dot(glossy_normal, half_vector), 0.0f);
     auto v_dot_h = max(dot(incoming, half_vector), 0.0f);
-    auto alpha = microfacet_alpha(closure, glossy_filter_roughness);
+    const auto singular = microfacet_is_singular(
+        closure, glossy_filter_roughness);
+    auto alpha = max(
+        microfacet_alpha(closure, glossy_filter_roughness), 1.0e-10f);
     auto n_dot_v = max(dot(glossy_normal, incoming), 0.0f);
     auto n_dot_l = max(dot(glossy_normal, outgoing), 0.0f);
     auto pdf = ggx_distribution(n_dot_h, alpha) *
@@ -699,19 +735,45 @@ namespace psycles::luisa_backend::detail {
     return select(0.0f,
         pdf,
         (n_dot_v > 0.0f) & (n_dot_l > 0.0f) & (n_dot_h > 0.0f) &
-            (v_dot_h > 0.0f));
+            (v_dot_h > 0.0f) & !singular);
 }
 
-[[nodiscard]] Float3 sample_ggx(const TracedClosure &closure,
+[[nodiscard]] MicrofacetReflectionSample sample_microfacet_reflection(
+    const SurfacePoint &point,
+    Float3 smooth_normal,
+    const TracedClosure &closure,
     Float3 incoming,
     Float2 random,
     Float3 glossy_normal,
     Float glossy_filter_roughness) noexcept {
-    return cycles_sample_mapping::sample_ggx_visible_normal_reflection(
+    const auto alpha = microfacet_alpha(
+        closure, glossy_filter_roughness);
+    const auto regular =
+        cycles_sample_mapping::sample_ggx_visible_normal_reflection(
         glossy_normal,
         incoming,
-        microfacet_alpha(closure, glossy_filter_roughness),
+        max(alpha, 1.0e-10f),
         random);
+    const auto singular_direction =
+        2.0f * dot(glossy_normal, incoming) * glossy_normal - incoming;
+    const auto singular = alpha * alpha <=
+                          cycles_closure::microfacet_singular_alpha_product;
+    const auto direction = select(regular, singular_direction, singular);
+    const auto fresnel = microfacet_reflection_fresnel(
+        closure, max(dot(glossy_normal, incoming), 0.0f));
+    const auto bump_shadowing = bump_shadowing_term(
+        point, smooth_normal, closure, direction, false);
+    const auto valid = (dot(glossy_normal, incoming) > 0.0f) &
+                       (dot(glossy_normal, direction) > 0.0f) &
+                       (dot(point.geometric_normal, direction) > 0.0f) &
+                       (sample_weight(fresnel) > 0.0f);
+    return {.direction = direction,
+        .singular_evaluation =
+            closure.weight * fresnel * bump_shadowing * 1.0e6f,
+        .singular_pdf = 1.0e6f,
+        .alpha = alpha,
+        .singular = singular,
+        .valid = valid};
 }
 
 [[nodiscard]] Float sheen_intensity(const TracedClosure &closure,
@@ -1047,6 +1109,8 @@ struct GlassGeometry {
         expected_negative);
     auto valid = has_lobe & (cosine_half_incoming > 0.0f) &
                  shading_hemisphere_valid & geometric_hemisphere_valid;
+    singular = singular |
+               (transmission & (abs(closure.ior - 1.0f) < 1.0e-4f));
     return {.direction = direction,
         .singular_evaluation =
             closure.weight * closure.color * lobe * 1.0e6f,

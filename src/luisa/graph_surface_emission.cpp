@@ -1,5 +1,5 @@
 #include "graph_surface_internal.h"
-#include "principled_emission_layer.h"
+#include "principled_layer_component.h"
 
 namespace psycles::luisa_backend::detail {
 

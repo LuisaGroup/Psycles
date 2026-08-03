@@ -43,7 +43,8 @@ public:
     [[nodiscard]] UInt runtime_flags(
         const ShaderServices &services,
         const SurfacePoint &point,
-        Expr<float> glossy_filter_roughness) const noexcept override;
+        Expr<float> glossy_filter_roughness,
+        Expr<bool> reflective_caustics) const noexcept override;
 
     [[nodiscard]] SurfaceEvaluation evaluate(
         const ShaderServices &services,
@@ -67,7 +68,8 @@ public:
     [[nodiscard]] SurfaceClosureTrace closure_trace(
         const ShaderServices &services,
         const SurfacePoint &point,
-        Expr<std::uint32_t> requested_index) const noexcept override;
+        Expr<std::uint32_t> requested_index,
+        Expr<bool> reflective_caustics) const noexcept override;
 
     [[nodiscard]] SurfaceSampleTrace sample_trace(
         const ShaderServices &services,

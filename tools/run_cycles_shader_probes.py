@@ -90,6 +90,7 @@ _ALL_PROBES = (
     "point_light_soft_sphere",
     "principled_alpha_surface",
     "principled_bump_glossy",
+    "principled_coat_surface",
     "principled_emission",
     "principled_emission_layers",
     "principled_sheen_surface",
@@ -175,6 +176,14 @@ _PROBE_RATIO_GATES = {
         "Combined": (0.999999, 1.000001),
         "Env": (0.999999, 1.000001),
     },
+    "principled_coat_surface": {
+        "Combined": (0.99999, 1.00001),
+        "DiffDir": (0.99999, 1.00001),
+        "GlossDir": (0.99999, 1.00001),
+        "DiffCol": (0.99999, 1.00001),
+        "GlossCol": (0.99999, 1.00001),
+        "Normal": (0.99999, 1.00001),
+    },
     "principled_emission": {
         "Combined": (0.999999, 1.000001),
         "Emit": (0.999999, 1.000001),
@@ -228,6 +237,14 @@ _PROBE_RELATIVE_RMSE_GATES = {
     "principled_alpha_surface": {
         "Combined": 0.000001,
         "Env": 0.000001,
+    },
+    "principled_coat_surface": {
+        "Combined": 0.0001,
+        "DiffDir": 0.0001,
+        "GlossDir": 0.0001,
+        "DiffCol": 0.0001,
+        "GlossCol": 0.0001,
+        "Normal": 0.0001,
     },
     "principled_emission": {
         "Combined": 0.000001,

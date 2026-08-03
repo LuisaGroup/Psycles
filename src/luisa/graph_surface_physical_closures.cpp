@@ -1,5 +1,5 @@
 #include "graph_surface_internal.h"
-#include "principled_emission_layer.h"
+#include "principled_layer_component.h"
 
 #include <psycles/luisa/cycles_closure.h>
 
@@ -9,6 +9,7 @@ void GraphSurfaceImplementation::for_each_physical_closure(
     const ShaderServices &services,
     const SurfacePoint &point,
     const TracedValues &values,
+    Bool reflective_caustics,
     const ClosureVisitor &function) const noexcept {
     const auto incoming =
         safe_normalize(point.incoming, point.shading_normal);
@@ -98,11 +99,21 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                     graph_closure, closure.weight);
                 function(sheen.closure);
                 closure.weight = sheen.lower_weight;
+                const auto coat = principled_layers.evaluate_coat(
+                    graph_closure,
+                    closure.weight,
+                    reflective_caustics);
+                function(coat.closure);
+                closure.weight = coat.lower_weight;
                 const auto glossy_normal =
                     maybe_ensure_valid_specular_reflection(
                         point, incoming, graph_closure.normal);
                 const auto state = principled_state(
-                    services, closure, incoming, glossy_normal);
+                    services,
+                    closure,
+                    incoming,
+                    glossy_normal,
+                    reflective_caustics);
 
                 auto metallic = closure;
                 metallic.principled_lobe = PrincipledLobe::metallic;

@@ -122,7 +122,8 @@ struct PathKernelInvocation {
     [[nodiscard]] UInt surface_runtime_flags(
         UInt surface_tag,
         const SurfacePoint &point,
-        Float glossy_filter_roughness) const noexcept;
+        Float glossy_filter_roughness,
+        Bool reflective_caustics) const noexcept;
     [[nodiscard]] Float3 surface_emission(UInt surface_tag,
                                           const SurfacePoint &point,
                                           Float3 outgoing) const noexcept;
@@ -138,7 +139,8 @@ struct PathKernelInvocation {
     [[nodiscard]] SurfaceClosureTrace
     trace_surface_closure(UInt surface_tag,
                           const SurfacePoint &point,
-                          UInt requested_index) const noexcept;
+                          UInt requested_index,
+                          Bool reflective_caustics) const noexcept;
     [[nodiscard]] SurfaceSampleTrace
     trace_sample_surface(UInt surface_tag,
                          const SurfacePoint &point,
