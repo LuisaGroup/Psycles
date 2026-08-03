@@ -259,7 +259,6 @@ public:
         const SurfaceClosureExpression &closure)
         const noexcept override {
         return surface_closure_selection(
-            _services,
             _point,
             closure.reference(),
             Expr<luisa::float3>{_incoming.expression()},

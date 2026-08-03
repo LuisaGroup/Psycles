@@ -10,14 +10,16 @@
 namespace psycles::luisa_backend {
 namespace {
 
+template<typename Closure>
 [[nodiscard]] Bool has_kind(
-    const SurfaceClosureRecord &closure,
+    const Closure &closure,
     SurfaceClosureKind kind) noexcept {
     return closure.kind == static_cast<std::uint32_t>(kind);
 }
 
+template<typename Closure>
 [[nodiscard]] Bool has_lobe(
-    const SurfaceClosureRecord &closure,
+    const Closure &closure,
     SurfaceClosureLobe lobe) noexcept {
     return closure.lobe == static_cast<std::uint32_t>(lobe);
 }
@@ -36,28 +38,148 @@ Float3 make_surface_closure_sampling_incoming(
         point.incoming, point.shading_normal);
 }
 
+SurfaceClosureSelectionInput
+make_surface_closure_selection_input(
+    const SurfaceClosureRecord &closure) noexcept {
+    return {
+        .kind = Expr<std::uint32_t>{closure.kind.expression()},
+        .lobe = Expr<std::uint32_t>{closure.lobe.expression()},
+        .allocation_weight =
+            Expr<float>{closure.allocation_weight.expression()},
+        .sample_weight =
+            Expr<float>{closure.sample_weight.expression()},
+        .setup_valid =
+            Expr<bool>{closure.setup_valid.expression()},
+        .normal = Expr<luisa::float3>{closure.normal.expression()},
+        .roughness = Expr<float>{closure.roughness.expression()},
+        .preserve_ggx_energy = Expr<bool>{
+            closure.preserve_ggx_energy.expression()},
+        .beckmann = Expr<bool>{closure.beckmann.expression()}};
+}
+
+SurfaceClosureSelectionInput
+make_surface_closure_selection_input(
+    const SurfaceClosureExpression &closure) noexcept {
+    return {
+        .kind = closure.kind,
+        .lobe = closure.lobe,
+        .allocation_weight = closure.allocation_weight,
+        .sample_weight = closure.sample_weight,
+        .setup_valid = closure.setup_valid,
+        .normal = closure.normal,
+        .roughness = closure.roughness,
+        .preserve_ggx_energy = closure.preserve_ggx_energy,
+        .beckmann = closure.beckmann};
+}
+
+SurfaceClosureSelectionContext
+make_surface_closure_selection_context(
+    const SurfacePoint &point,
+    Expr<luisa::float3> incoming,
+    const SurfaceQuery &query) noexcept {
+    return {
+        .geometric_normal = Expr<luisa::float3>{
+            point.geometric_normal.expression()},
+        .incoming = incoming,
+        .lobe_mask =
+            Expr<std::uint32_t>{query.lobe_mask.expression()},
+        .glossy_filter_roughness = Expr<float>{
+            query.glossy_filter_roughness.expression()},
+        .use_bump_map_correction = Expr<bool>{
+            point.use_bump_map_correction.expression()}};
+}
+
 luisa::compute::Var<SurfaceClosureSelectionCall>
 surface_closure_selection(
-    const ShaderServices &services,
+    const SurfaceClosureSelectionContext &context,
+    const SurfaceClosureSelectionInput &closure) noexcept {
+    const auto identity = detail::SurfaceClosureIdentityExpression{
+        .kind = closure.kind,
+        .lobe = closure.lobe,
+        .allocation_weight = closure.allocation_weight,
+        .setup_valid = closure.setup_valid,
+        .roughness = closure.roughness,
+        .preserve_ggx_energy = closure.preserve_ggx_energy,
+        .beckmann = closure.beckmann};
+    const auto is_diffuse = has_kind(
+        closure, SurfaceClosureKind::diffuse);
+    const auto is_translucent = has_kind(
+        closure, SurfaceClosureKind::translucent);
+    const auto is_principled = has_kind(
+        closure, SurfaceClosureKind::principled);
+    const auto is_sheen =
+        is_principled &
+        has_lobe(closure, SurfaceClosureLobe::sheen);
+    const auto is_glossy = has_kind(
+        closure, SurfaceClosureKind::glossy);
+    const auto is_glass = has_kind(
+        closure, SurfaceClosureKind::glass);
+    const auto is_transparent = has_kind(
+        closure, SurfaceClosureKind::transparent);
+    UInt lobe_mask{context.lobe_mask};
+    const auto diffuse_enabled =
+        (lobe_mask & static_cast<std::uint32_t>(event_diffuse)) != 0u;
+    const auto glossy_enabled =
+        (lobe_mask & static_cast<std::uint32_t>(event_glossy)) != 0u;
+    const auto transparent_enabled =
+        (lobe_mask & static_cast<std::uint32_t>(event_transparent)) !=
+        0u;
+    const auto transmission_enabled =
+        (lobe_mask & static_cast<std::uint32_t>(event_transmission)) !=
+        0u;
+    Bool eligible = false;
+    eligible = select(eligible,
+        transparent_enabled,
+        is_transparent);
+    eligible = select(eligible,
+        diffuse_enabled & transmission_enabled,
+        is_translucent);
+    eligible = select(eligible,
+        diffuse_enabled,
+        is_diffuse | is_sheen);
+    eligible = select(eligible,
+        glossy_enabled,
+        (is_principled & !is_sheen) | is_glossy);
+    eligible = select(eligible,
+        glossy_enabled | transmission_enabled,
+        is_glass);
+    eligible &= detail::closure_allocated(identity) &
+                Bool{closure.setup_valid};
+
+    Float3 geometric_normal{context.geometric_normal};
+    Float3 incoming{context.incoming};
+    Float3 normal{closure.normal};
+    const auto correction_enabled =
+        Bool{context.use_bump_map_correction} &
+        !all(geometric_normal == normal);
+    const auto corrected_normal = select(normal,
+        detail::ensure_valid_specular_reflection(
+            geometric_normal, incoming, normal),
+        correction_enabled);
+    const auto glossy_normal =
+        select(corrected_normal, normal, is_sheen);
+
+    luisa::compute::Var<SurfaceClosureSelectionCall> result;
+    result.weight = select(
+        0.0f, Float{closure.sample_weight}, eligible);
+    result.glossy_normal = glossy_normal;
+    result.runtime_flags = detail::cycles_runtime_flags(
+        identity, Float{context.glossy_filter_roughness});
+    result.closure_type = detail::cycles_closure_type(identity);
+    result.closure_sample_weight = Float{closure.sample_weight};
+    return result;
+}
+
+luisa::compute::Var<SurfaceClosureSelectionCall>
+surface_closure_selection(
     const SurfacePoint &point,
     const SurfaceClosureRecord &closure,
-    Expr<luisa::float3> incoming_expression,
+    Expr<luisa::float3> incoming,
     const SurfaceQuery &query) noexcept {
-    const auto state = detail::closure_selection_state(
-        services,
-        point,
-        closure,
-        Float3{incoming_expression},
-        query);
-    luisa::compute::Var<SurfaceClosureSelectionCall> result;
-    result.weight = state.weight;
-    result.glossy_normal = state.glossy_normal;
-    result.runtime_flags = detail::cycles_runtime_flags(
-        closure, query.glossy_filter_roughness);
-    result.closure_type = detail::cycles_closure_type(closure);
-    result.closure_sample_weight =
-        detail::closure_sample_weight(closure);
-    return result;
+    return surface_closure_selection(
+        make_surface_closure_selection_context(
+            point, incoming, query),
+        make_surface_closure_selection_input(closure));
 }
 
 luisa::compute::Var<SurfaceClosureConditionalSampleCall>

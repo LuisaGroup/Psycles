@@ -10,6 +10,33 @@
 
 namespace psycles::luisa_backend {
 
+// Strongly typed, expression-only projection of the closure fields used by
+// categorical selection. This is intentionally smaller than the conditional
+// BSDF record: graph expansion retains the original socket types and only
+// projects the values consumed by p(i) across a shared callable boundary.
+struct SurfaceClosureSelectionInput {
+    Expr<std::uint32_t> kind;
+    Expr<std::uint32_t> lobe;
+    Expr<float> allocation_weight;
+    Expr<float> sample_weight;
+    Expr<bool> setup_valid;
+    Expr<luisa::float3> normal;
+    Expr<float> roughness;
+    Expr<bool> preserve_ggx_energy;
+    Expr<bool> beckmann;
+};
+
+// The exact surface/query projection needed by closure selection. Keeping
+// this independent of SurfacePoint and SurfaceQuery prevents unrelated graph
+// attributes and resources from becoming part of the callable ABI.
+struct SurfaceClosureSelectionContext {
+    Expr<luisa::float3> geometric_normal;
+    Expr<luisa::float3> incoming;
+    Expr<std::uint32_t> lobe_mask;
+    Expr<float> glossy_filter_roughness;
+    Expr<bool> use_bump_map_correction;
+};
+
 // The complete device-stage projection needed before categorical inversion.
 // It is deliberately independent of storage: both a Local-array evaluator and
 // a branch-local visitor consume this exact result.
@@ -68,10 +95,30 @@ inline constexpr std::uint32_t singular = 1u << 5u;
 [[nodiscard]] Float3 make_surface_closure_sampling_incoming(
     const SurfacePoint &point) noexcept;
 
+[[nodiscard]] SurfaceClosureSelectionInput
+make_surface_closure_selection_input(
+    const SurfaceClosureRecord &closure) noexcept;
+
+[[nodiscard]] SurfaceClosureSelectionInput
+make_surface_closure_selection_input(
+    const SurfaceClosureExpression &closure) noexcept;
+
+[[nodiscard]] SurfaceClosureSelectionContext
+make_surface_closure_selection_context(
+    const SurfacePoint &point,
+    Expr<luisa::float3> incoming,
+    const SurfaceQuery &query) noexcept;
+
 // Canonical p(i) state. `incoming` must be normalized once by the caller.
 [[nodiscard]] luisa::compute::Var<SurfaceClosureSelectionCall>
 surface_closure_selection(
-    const ShaderServices &services,
+    const SurfaceClosureSelectionContext &context,
+    const SurfaceClosureSelectionInput &closure) noexcept;
+
+// Convenience overload for storage-form regression paths. It immediately
+// projects to the same strong typed algebra used by branch-local callables.
+[[nodiscard]] luisa::compute::Var<SurfaceClosureSelectionCall>
+surface_closure_selection(
     const SurfacePoint &point,
     const SurfaceClosureRecord &closure,
     Expr<luisa::float3> incoming,

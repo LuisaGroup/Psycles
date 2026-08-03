@@ -28,39 +28,52 @@ SurfaceClosureSamplingCallables
 make_surface_closure_sampling_callables(
     const std::shared_ptr<LuisaSceneData> &scene) noexcept {
     SurfaceClosureSelectionCallable selection =
-        [scene](
-            BufferFloat4 parameters,
-            BufferFloat cycles_bsdf_tables,
-            BindlessVar textures,
-            BindlessVar geometry_heap,
-            Var<SurfacePointCall> packed_point,
-            Var<SurfaceClosureSamplingQueryCall> packed_query,
-            luisa::compute::Float4x4 block_0,
-            luisa::compute::Float4x4 block_1,
-            luisa::compute::Float4x4 block_2,
-            luisa::compute::Float4x4 block_3) noexcept {
-            BufferShaderServices services{
-                parameters,
-                cycles_bsdf_tables,
-                textures,
-                geometry_heap,
-                scene->attribute_binding_slot,
-                scene->attribute_range_slot,
-                scene->nishita_texture_bindings,
-                scene->shader_color_space};
-            const auto point = unpack_surface_point(packed_point);
-            const auto closure = unpack_surface_closure(
-                Expr<luisa::float4x4>{block_0.expression()},
-                Expr<luisa::float4x4>{block_1.expression()},
-                Expr<luisa::float4x4>{block_2.expression()},
-                Expr<luisa::float4x4>{block_3.expression()});
+        [](Float3 geometric_normal,
+            Float3 incoming,
+            UInt lobe_mask,
+            Float glossy_filter_roughness,
+            Bool use_bump_map_correction,
+            UInt kind,
+            UInt lobe,
+            Float allocation_weight,
+            Float sample_weight,
+            Bool setup_valid,
+            Float3 normal,
+            Float roughness,
+            Bool preserve_ggx_energy,
+            Bool beckmann) noexcept {
+            const auto context = SurfaceClosureSelectionContext{
+                .geometric_normal = Expr<luisa::float3>{
+                    geometric_normal.expression()},
+                .incoming = Expr<luisa::float3>{
+                    incoming.expression()},
+                .lobe_mask = Expr<std::uint32_t>{
+                    lobe_mask.expression()},
+                .glossy_filter_roughness = Expr<float>{
+                    glossy_filter_roughness.expression()},
+                .use_bump_map_correction = Expr<bool>{
+                    use_bump_map_correction.expression()}};
+            const auto closure = SurfaceClosureSelectionInput{
+                .kind = Expr<std::uint32_t>{
+                    kind.expression()},
+                .lobe = Expr<std::uint32_t>{
+                    lobe.expression()},
+                .allocation_weight = Expr<float>{
+                    allocation_weight.expression()},
+                .sample_weight = Expr<float>{
+                    sample_weight.expression()},
+                .setup_valid = Expr<bool>{
+                    setup_valid.expression()},
+                .normal = Expr<luisa::float3>{
+                    normal.expression()},
+                .roughness = Expr<float>{
+                    roughness.expression()},
+                .preserve_ggx_energy = Expr<bool>{
+                    preserve_ggx_energy.expression()},
+                .beckmann = Expr<bool>{
+                    beckmann.expression()}};
             return surface_closure_selection(
-                services,
-                point,
-                closure,
-                Expr<luisa::float3>{
-                    packed_query.incoming.expression()},
-                unpack_sampling_query(packed_query));
+                context, closure);
         };
 
     SurfaceClosureConditionalSampleCallable conditional_sample =
@@ -129,8 +142,13 @@ CallableSurfaceClosureSamplingOperation::
       _textures{textures},
       _geometry_heap{geometry_heap},
       _point{packed_point},
+      _selection_context{make_surface_closure_selection_context(
+          point,
+          Expr<luisa::float3>{
+              make_surface_closure_sampling_incoming(point).expression()},
+          query)},
       _callables{callables} {
-    _query.incoming = make_surface_closure_sampling_incoming(point);
+    _query.incoming = Float3{_selection_context.incoming};
     _query.lobe_mask = query.lobe_mask;
     _query.transport_mode = query.transport_mode;
     _query.glossy_filter_roughness =
@@ -144,18 +162,21 @@ CallableSurfaceClosureSamplingOperation::
 luisa::compute::Var<SurfaceClosureSelectionCall>
 CallableSurfaceClosureSamplingOperation::selection(
     const SurfaceClosureExpression &closure) const noexcept {
-    const auto blocks = pack_surface_closure(closure.reference());
     return _callables.selection(
-        _parameters,
-        _cycles_bsdf_tables,
-        _textures,
-        _geometry_heap,
-        _point,
-        _query,
-        blocks.block_0,
-        blocks.block_1,
-        blocks.block_2,
-        blocks.block_3);
+        _selection_context.geometric_normal,
+        _selection_context.incoming,
+        _selection_context.lobe_mask,
+        _selection_context.glossy_filter_roughness,
+        _selection_context.use_bump_map_correction,
+        closure.kind,
+        closure.lobe,
+        closure.allocation_weight,
+        closure.sample_weight,
+        closure.setup_valid,
+        closure.normal,
+        closure.roughness,
+        closure.preserve_ggx_energy,
+        closure.beckmann);
 }
 
 luisa::compute::Var<SurfaceClosureConditionalSampleCall>

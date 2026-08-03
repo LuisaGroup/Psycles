@@ -25,7 +25,6 @@ SurfaceSampleTrace SurfaceClosureEvaluator::sample_impl(
     UInt index = 0u;
     $while(index < _closures.count()) {
         measure.add(surface_closure_selection(
-            services,
             _point,
             _closures.entry(index),
             Expr<luisa::float3>{incoming.expression()},
@@ -42,7 +41,6 @@ SurfaceSampleTrace SurfaceClosureEvaluator::sample_impl(
     index = 0u;
     $while(index < _closures.count()) {
         const auto selection = surface_closure_selection(
-            services,
             _point,
             _closures.entry(index),
             Expr<luisa::float3>{incoming.expression()},
@@ -61,7 +59,6 @@ SurfaceSampleTrace SurfaceClosureEvaluator::sample_impl(
     $if(inversion.selected()) {
         const auto closure = _closures.entry(selected_index);
         const auto selection = surface_closure_selection(
-            services,
             _point,
             closure,
             Expr<luisa::float3>{incoming.expression()},

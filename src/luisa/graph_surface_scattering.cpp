@@ -398,68 +398,6 @@ template<typename Closure>
         closure.setup_valid);
 }
 
-[[nodiscard]] ClosureSelectionState closure_selection_state(
-    const ShaderServices &services,
-    const SurfacePoint &point,
-    const SurfaceClosureRecord &closure,
-    Float3 incoming,
-    const SurfaceQuery &query) noexcept {
-    static_cast<void>(services);
-    const auto is_diffuse = has_kind(
-        closure, SurfaceClosureKind::diffuse);
-    const auto is_translucent = has_kind(
-        closure, SurfaceClosureKind::translucent);
-    const auto is_principled = has_kind(
-        closure, SurfaceClosureKind::principled);
-    const auto is_sheen =
-        is_principled &
-        has_lobe(closure, SurfaceClosureLobe::sheen);
-    const auto is_glossy = has_kind(
-        closure, SurfaceClosureKind::glossy);
-    const auto is_glass = has_kind(
-        closure, SurfaceClosureKind::glass);
-    const auto is_transparent = has_kind(
-        closure, SurfaceClosureKind::transparent);
-    const auto diffuse_enabled =
-        (query.lobe_mask & static_cast<std::uint32_t>(event_diffuse)) !=
-        0u;
-    const auto glossy_enabled =
-        (query.lobe_mask & static_cast<std::uint32_t>(event_glossy)) !=
-        0u;
-    const auto transparent_enabled =
-        (query.lobe_mask &
-            static_cast<std::uint32_t>(event_transparent)) != 0u;
-    const auto transmission_enabled =
-        (query.lobe_mask &
-            static_cast<std::uint32_t>(event_transmission)) != 0u;
-    Bool eligible = false;
-    eligible = select(eligible,
-        transparent_enabled,
-        is_transparent);
-    eligible = select(eligible,
-        diffuse_enabled & transmission_enabled,
-        is_translucent);
-    eligible = select(eligible,
-        diffuse_enabled,
-        is_diffuse | is_sheen);
-    eligible = select(eligible,
-        glossy_enabled,
-        (is_principled & !is_sheen) | is_glossy);
-    eligible = select(eligible,
-        glossy_enabled | transmission_enabled,
-        is_glass);
-    eligible &= closure_allocated(closure) & closure.setup_valid;
-    const auto glossy_normal = select(
-        maybe_ensure_valid_specular_reflection(
-            point, incoming, closure.normal),
-        closure.normal,
-        is_sheen);
-    return {.eligible = eligible,
-        .weight =
-            select(0.0f, closure_sample_weight(closure), eligible),
-        .glossy_normal = glossy_normal};
-}
-
 [[nodiscard]] Float oren_nayar_g(Float cosine) noexcept {
     auto c = clamp(cosine, 0.0f, 1.0f);
     auto sine = sqrt(max(1.0f - c * c, 0.0f));

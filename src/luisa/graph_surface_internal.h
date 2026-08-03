@@ -163,12 +163,6 @@ struct TransparentClosureState {
     Float sample_weight;
 };
 
-struct ClosureSelectionState {
-    Bool eligible;
-    Float weight;
-    Float3 glossy_normal;
-};
-
 template <typename Id, typename Values>
 [[nodiscard]] const auto &get(Id id, const Values &values) noexcept {
     return values[id.value];
@@ -265,12 +259,6 @@ template <typename Id, typename Values>
     const SurfaceClosureRecord &closure) noexcept;
 [[nodiscard]] UInt cycles_closure_type(
     const SurfaceClosureIdentityExpression &closure) noexcept;
-[[nodiscard]] ClosureSelectionState closure_selection_state(
-    const ShaderServices &services,
-    const SurfacePoint &point,
-    const SurfaceClosureRecord &closure,
-    Float3 incoming,
-    const SurfaceQuery &query) noexcept;
 [[nodiscard]] Float oren_nayar_g(Float cosine) noexcept;
 [[nodiscard]] Float3 diffuse_intensity(const SurfaceClosureRecord &closure,
     Float3 incoming,
