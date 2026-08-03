@@ -342,6 +342,36 @@ for official Cycles HIP on the same RX 9070 XT.
 The complete numerical reports and the inspected triptychs are in
 [`validation/2026-07-31/compact-geometry`](validation/2026-07-31/compact-geometry/README.md).
 
+## HIP callable boundary and complex-shader scaling
+
+Luisa `next@2e179e5f3` replaces the HIP backend's unconditional expansion of
+every generated DSL callable with a two-stage policy: LLVM O3 owns the normal
+whole-module inlining decision, and any generated callable that survives O3
+is emitted as a preserved `noinline` boundary for HIPRTC. A negative-control
+regression expands from 14,611 to 140,435 bytes under the old policy and fails;
+the fixed sixteen-use artifact is 14,643 bytes and all values pass.
+
+On the current 37-material Lone Monk AST, optimized bitcode decreased from
+8,691,124 to 3,420,380 bytes. The previously non-terminating downstream link
+now completes, and the production 640x480/64 spp HIP render succeeds. The
+32-worker project build and all 129 tests pass. Luisa's new callable-boundary
+test and existing HIP shader-cache test also pass.
+
+The complete five-way run records Cycles CPU/HIP and Psycles
+fallback/HIP/Vulkan. Render-only times are 5.029 s, 1.848 s, 21.709 s, 3.537 s,
+and 8.311 s respectively. Warm HIP JIT is 0.665 s; cold JIT is 34.266 s. The
+Vulkan cold path is now the compile bottleneck at 215.332 s, including about
+120.2 s to optimize/translate 3,642,422 SPIR-V words to 3,204,480 words.
+
+All Combined and Normal triptychs were inspected at original resolution. The
+grass and foliage silhouettes align with Cycles across the three Luisa
+backends; the remaining amplified error is predominantly high-frequency
+sampling residual rather than a displaced or missing grass band. Combined
+relative RMSE against Cycles HIP is 0.04219-0.04265, so this checkpoint is not
+claimed as final 1:1 parity. Reports, timings, compiler logs, and the six
+triptychs are in
+[`validation/2026-08-03/hip-callable-boundary`](validation/2026-08-03/hip-callable-boundary/README.md).
+
 ## Target boundaries
 
 The path tracer is split by renderer semantics:
