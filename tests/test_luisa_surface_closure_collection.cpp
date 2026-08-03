@@ -3,6 +3,7 @@
 #include <psycles/compiler/surface_program.h>
 #include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/graph_surface.h>
+#include <psycles/luisa/surface_closure_evaluator.h>
 #include <psycles/luisa/surface_closure_set.h>
 
 #include "luisa_surface_test_support.h"
@@ -31,7 +32,8 @@ using psycles::test_support::ParameterShaderServices;
 
 constexpr auto closure_slots = 8u;
 constexpr auto records_per_slot = 6u;
-constexpr auto storage_records_per_slot = 13u;
+constexpr auto storage_records_per_slot = 14u;
+constexpr auto evaluator_records_per_slot = 10u;
 
 struct CollectedClosureTrace {
     UInt count;
@@ -318,6 +320,8 @@ int main(int argc, char **argv) {
         invalid_setup.ior = 1.2f;
         invalid_setup.setup_valid = false;
         closures.add(invalid_setup);
+        SurfaceClosureSet invalid_setup_only{1u};
+        invalid_setup_only.add(invalid_setup);
 
         auto glass_record = SurfaceClosureRecord::zero();
         glass_record.kind = static_cast<std::uint32_t>(
@@ -424,7 +428,139 @@ int main(int argc, char **argv) {
             make_float4(closure.reflection_tint, 0.0f));
         output.write(base + 12u,
             make_float4(closure.transmission_tint, 0.0f));
+        auto point = make_surface_point();
+        const SurfaceClosureEvaluator invalid_evaluator{
+            point,
+            invalid_setup_only,
+            point.shading_normal};
+        const auto invalid_trace =
+            invalid_evaluator.closure_trace(requested);
+        output.write(base + 13u,
+            make_float4(
+                cast<float>(invalid_trace.count),
+                cast<float>(invalid_trace.type),
+                select(0.0f, 1.0f, invalid_trace.valid),
+                cast<float>(invalid_trace.runtime_flags)));
     };
+
+    const auto write_evaluator_result = [](
+        const BufferFloat4 &output,
+        UInt base,
+        const SurfaceClosureTrace &trace,
+        UInt filtered_runtime_flags,
+        const SurfaceAov &aov) noexcept {
+        output.write(base,
+            make_float4(
+                cast<float>(trace.count),
+                cast<float>(trace.runtime_flags),
+                cast<float>(trace.index),
+                cast<float>(trace.type)));
+        output.write(base + 1u,
+            make_float4(
+                trace.sample_weight,
+                select(0.0f, 1.0f, trace.valid),
+                cast<float>(filtered_runtime_flags),
+                0.0f));
+        output.write(base + 2u,
+            make_float4(trace.weight, 0.0f));
+        output.write(base + 3u,
+            make_float4(trace.normal, 0.0f));
+        output.write(base + 4u,
+            make_float4(aov.albedo, aov.roughness.x));
+        output.write(base + 5u,
+            make_float4(
+                aov.glossy_albedo,
+                aov.roughness.y));
+        output.write(base + 6u,
+            make_float4(
+                aov.transmission_albedo,
+                0.0f));
+        output.write(base + 7u,
+            make_float4(aov.normal, 0.0f));
+        output.write(base + 8u,
+            make_float4(aov.transparency, 0.0f));
+        output.write(base + 9u,
+            make_float4(
+                aov.albedo + aov.glossy_albedo +
+                    aov.transmission_albedo,
+                0.0f));
+    };
+
+    Kernel1D evaluate_shared =
+        [&](BufferFloat4 parameter_buffer,
+            BufferFloat4 output) noexcept {
+            const auto invocation = dispatch_x();
+            const auto material = invocation / closure_slots;
+            const auto requested = invocation % closure_slots;
+            auto point = make_surface_point();
+            point.parameter_block = select(
+                0u, glass_parameter_base, material != 0u);
+            point.back_facing = requested == 7u;
+            ParameterShaderServices services{parameter_buffer};
+            const auto tag = select(
+                UInt{layered_tag},
+                UInt{glass_tag},
+                material != 0u);
+            // Cycles reserves twelve slots for the reachable Principled
+            // graph, which is also the scene maximum for this fixture.
+            SurfaceClosureSet closures{12u};
+            const auto collection = surfaces.collect_closures(
+                tag,
+                services,
+                point,
+                true,
+                true,
+                closures);
+            const SurfaceClosureEvaluator evaluator{
+                point,
+                closures,
+                collection.shading_normal};
+            const auto base =
+                invocation * evaluator_records_per_slot;
+            write_evaluator_result(
+                output,
+                base,
+                evaluator.closure_trace(requested),
+                evaluator.runtime_flags(0.04f),
+                evaluator.aov());
+        };
+
+    Kernel1D evaluate_legacy =
+        [&](BufferFloat4 parameter_buffer,
+            BufferFloat4 output) noexcept {
+            const auto invocation = dispatch_x();
+            const auto material = invocation / closure_slots;
+            const auto requested = invocation % closure_slots;
+            auto point = make_surface_point();
+            point.parameter_block = select(
+                0u, glass_parameter_base, material != 0u);
+            point.back_facing = requested == 7u;
+            ParameterShaderServices services{parameter_buffer};
+            const auto tag = select(
+                UInt{layered_tag},
+                UInt{glass_tag},
+                material != 0u);
+            const auto base =
+                invocation * evaluator_records_per_slot;
+            write_evaluator_result(
+                output,
+                base,
+                surfaces.closure_trace(
+                    tag,
+                    services,
+                    point,
+                    requested,
+                    true,
+                    true),
+                surfaces.runtime_flags(
+                    tag,
+                    services,
+                    point,
+                    0.04f,
+                    true,
+                    true),
+                surfaces.aov(tag, services, point));
+        };
 
     Context context{argv[0]};
     auto device = context.create_device(backend);
@@ -440,16 +576,34 @@ int main(int argc, char **argv) {
         device.create_buffer<luisa::float4>(invocation_count * 3u);
     auto storage_buffer = device.create_buffer<luisa::float4>(
         3u * storage_records_per_slot);
+    auto shared_evaluator_buffer =
+        device.create_buffer<luisa::float4>(
+            invocation_count *
+            evaluator_records_per_slot);
+    auto legacy_evaluator_buffer =
+        device.create_buffer<luisa::float4>(
+            invocation_count *
+            evaluator_records_per_slot);
     auto collect_kernel = device.compile(collect);
     auto legacy_kernel = device.compile(legacy);
     auto retain_kernel = device.compile(retain);
     auto storage_kernel = device.compile(storage);
+    auto shared_evaluator_kernel =
+        device.compile(evaluate_shared);
+    auto legacy_evaluator_kernel =
+        device.compile(evaluate_legacy);
     std::array<luisa::float4, invocation_count * records_per_slot> collected{};
     std::array<luisa::float4, invocation_count * 3u> old{};
     std::array<luisa::float4, invocation_count * 3u> retained{};
     std::array<luisa::float4,
         3u * storage_records_per_slot>
         stored{};
+    std::array<luisa::float4,
+        invocation_count * evaluator_records_per_slot>
+        shared_evaluator{};
+    std::array<luisa::float4,
+        invocation_count * evaluator_records_per_slot>
+        legacy_evaluator{};
     stream << parameter_buffer.copy_from(luisa::span{parameters})
            << collect_kernel(parameter_buffer, collected_buffer)
                   .dispatch(invocation_count)
@@ -462,6 +616,18 @@ int main(int argc, char **argv) {
            << retained_buffer.copy_to(luisa::span{retained})
            << storage_kernel(storage_buffer).dispatch(3u)
            << storage_buffer.copy_to(luisa::span{stored})
+           << shared_evaluator_kernel(
+                  parameter_buffer,
+                  shared_evaluator_buffer)
+                  .dispatch(invocation_count)
+           << shared_evaluator_buffer.copy_to(
+                  luisa::span{shared_evaluator})
+           << legacy_evaluator_kernel(
+                  parameter_buffer,
+                  legacy_evaluator_buffer)
+                  .dispatch(invocation_count)
+           << legacy_evaluator_buffer.copy_to(
+                  luisa::span{legacy_evaluator})
            << synchronize();
 
     constexpr std::array layered_kinds{
@@ -616,7 +782,12 @@ int main(int argc, char **argv) {
             luisa::float4{0.4f, 0.5f, 0.6f, 0.0f}) &&
         approximately_equal(stored[6u],
             luisa::float4{0.0f, 1.0f, 0.0f, 1.2f}) &&
-        approximately_equal(stored[10u].w, 0.0f);
+        approximately_equal(stored[10u].w, 0.0f) &&
+        approximately_equal(stored[13u],
+            luisa::float4{1.0f,
+                static_cast<float>(cycles_closure::type_none),
+                1.0f,
+                0.0f});
     auto glass_round_trip = true;
     for (auto record = 0u;
          record < glass_storage_expected.size();
@@ -645,6 +816,25 @@ int main(int argc, char **argv) {
             << "surface closure Local storage failed on "
             << backend << '\n';
         return EXIT_FAILURE;
+    }
+    for (auto record = std::size_t{0u};
+         record < shared_evaluator.size();
+         ++record) {
+        if (!approximately_equal(
+                shared_evaluator[record],
+                legacy_evaluator[record])) {
+            const auto actual = shared_evaluator[record];
+            const auto expected = legacy_evaluator[record];
+            std::cerr
+                << "shared closure evaluator failed on "
+                << backend << " at record " << record
+                << ": shared {" << actual.x << ", "
+                << actual.y << ", " << actual.z << ", "
+                << actual.w << "}, legacy {" << expected.x
+                << ", " << expected.y << ", " << expected.z
+                << ", " << expected.w << "}\n";
+            return EXIT_FAILURE;
+        }
     }
     return EXIT_SUCCESS;
 }
