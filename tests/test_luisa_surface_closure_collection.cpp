@@ -7,6 +7,7 @@
 #include <psycles/luisa/surface_closure_blocks.h>
 #include <psycles/luisa/surface_closure_evaluation.h>
 #include <psycles/luisa/surface_closure_operations.h>
+#include <psycles/luisa/surface_closure_sampling.h>
 #include <psycles/luisa/surface_closure_set.h>
 
 #include "luisa_surface_test_support.h"
@@ -229,6 +230,60 @@ public:
             _query,
             _policy,
             selected_sample);
+    }
+};
+
+class InlineSurfaceClosureSamplingOperation final
+    : public SurfaceClosureSamplingOperation {
+
+private:
+    const ShaderServices &_services;
+    const SurfacePoint &_point;
+    const SurfaceQuery &_query;
+    Float3 _incoming{make_float3(0.0f)};
+
+public:
+    InlineSurfaceClosureSamplingOperation(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        const SurfaceQuery &query) noexcept
+        : _services{services},
+          _point{point},
+          _query{query},
+          _incoming{make_surface_closure_sampling_incoming(
+              point)} {}
+
+    [[nodiscard]] luisa::compute::Var<
+        SurfaceClosureSelectionCall>
+    selection(
+        const SurfaceClosureExpression &closure)
+        const noexcept override {
+        return surface_closure_selection(
+            _services,
+            _point,
+            closure.reference(),
+            Expr<luisa::float3>{_incoming.expression()},
+            _query);
+    }
+
+    [[nodiscard]] luisa::compute::Var<
+        SurfaceClosureConditionalSampleCall>
+    conditional_sample(
+        Expr<luisa::float3> shading_normal,
+        const SurfaceClosureExpression &closure,
+        Expr<luisa::float3> glossy_normal,
+        Expr<luisa::float2> random_direction,
+        Expr<float> rescaled_lobe) const noexcept override {
+        return surface_closure_conditional_sample(
+            _services,
+            _point,
+            shading_normal,
+            closure.reference(),
+            Expr<luisa::float3>{_incoming.expression()},
+            glossy_normal,
+            random_direction,
+            rescaled_lobe,
+            _query);
     }
 };
 
@@ -1012,26 +1067,37 @@ int main(int argc, char **argv) {
             const auto u_direction = make_float2(
                 0.07f + 0.11f * scenario_float,
                 0.91f - 0.09f * scenario_float);
-            SurfaceClosureSet closures{
+            const auto policy =
+                make_surface_closure_evaluation_policy(
+                    false, Expr<std::uint32_t>{0u});
+            InlineSurfaceClosureEvaluationOperation
+                evaluation_operation{
+                    services,
+                    point,
+                    query,
+                    policy};
+            InlineSurfaceClosureSamplingOperation
+                sampling_operation{
+                    services, point, query};
+            SurfaceClosureSamplingVisitor visitor{
                 12u,
-                SurfaceClosureStorageProfile::complete};
-            const auto collection = surfaces.collect_closures(
+                point,
+                sampling_operation,
+                evaluation_operation,
+                Expr<float>{u_lobe.expression()},
+                Expr<luisa::float2>{u_direction.expression()},
+                true};
+            static_cast<void>(surfaces.collect_closures(
                 tag,
                 services,
                 point,
                 query.reflective_caustics,
                 query.refractive_caustics,
-                closures);
-            const SurfaceClosureEvaluator evaluator{
-                point, closures, collection.shading_normal};
+                visitor));
             write_sampling_result(
                 output,
                 invocation * sampling_records_per_slot,
-                evaluator.sample_trace(
-                    services,
-                    u_lobe,
-                    u_direction,
-                    query));
+                visitor.result());
         };
 
     Kernel1D sample_legacy =

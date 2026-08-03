@@ -2,41 +2,13 @@
 
 #include "path_tracer_shader_services.h"
 #include "path_tracer_surface_closure_evaluation.h"
+#include "path_tracer_surface_closure_sampling.h"
 
-#include <psycles/luisa/surface_closure_evaluator.h>
 #include <psycles/luisa/surface_closure_operations.h>
 
 #include <utility>
 
 namespace psycles::luisa_backend::detail {
-namespace {
-
-template<typename Consumer>
-[[nodiscard]] decltype(auto) evaluate_surface_closures(
-    const LuisaSceneData &scene,
-    SurfaceClosureStorageProfile profile,
-    const ShaderServices &services,
-    UInt surface_tag,
-    const SurfacePoint &point,
-    Bool reflective_caustics,
-    Bool refractive_caustics,
-    Consumer &&consumer) noexcept {
-    SurfaceClosureSet closures{
-        scene.volume_metadata.closure_allocation_budget,
-        profile};
-    const auto collection = scene.surfaces.collect_closures(
-        surface_tag,
-        services,
-        point,
-        reflective_caustics,
-        refractive_caustics,
-        closures);
-    const SurfaceClosureEvaluator evaluator{
-        point, closures, collection.shading_normal};
-    return std::forward<Consumer>(consumer)(evaluator);
-}
-
-}// namespace
 
 SurfaceCallables make_surface_callables(
     const std::shared_ptr<LuisaSceneData> &scene) noexcept {
@@ -46,6 +18,8 @@ SurfaceCallables make_surface_callables(
         make_surface_closure_aov_callable();
     const auto closure_evaluation =
         make_surface_closure_evaluation_callable(scene);
+    const auto closure_sampling =
+        make_surface_closure_sampling_callables(scene);
     SurfaceEvaluateLightCallable evaluate_light =
         [scene, closure_evaluation](
             BufferFloat4 parameters,
@@ -186,7 +160,7 @@ SurfaceCallables make_surface_callables(
                 parameter_block);
         };
     SurfaceSampleCallable sample =
-        [scene](
+        [scene, closure_sampling, closure_evaluation](
             BufferFloat4 parameters,
             BufferFloat cycles_bsdf_tables,
             BindlessVar textures,
@@ -218,23 +192,23 @@ SurfaceCallables make_surface_callables(
                 .refractive_caustics = refractive_caustics};
             const auto point =
                 unpack_surface_point(packed_point);
-            return pack_surface_sample(
-                evaluate_surface_closures(
-                    *scene,
-                    SurfaceClosureStorageProfile::complete,
-                    services,
-                    surface_tag,
-                    point,
-                    reflective_caustics,
-                    refractive_caustics,
-                    [&](const SurfaceClosureEvaluator
-                            &evaluator) noexcept {
-                        return evaluator.sample(
-                            services,
-                            u_lobe,
-                            u_direction,
-                            query);
-                    }));
+            return pack_surface_sample(sample_surface_closures(
+                *scene,
+                closure_sampling,
+                closure_evaluation,
+                parameters,
+                cycles_bsdf_tables,
+                textures,
+                geometry_heap,
+                Expr<std::uint32_t>{surface_tag.expression()},
+                packed_point,
+                services,
+                point,
+                Expr<float>{u_lobe.expression()},
+                Expr<luisa::float2>{u_direction.expression()},
+                query,
+                false)
+                                           .sample);
         };
     SurfaceClosureTraceCallable closure_trace =
         [scene, closure_identity](
@@ -273,7 +247,7 @@ SurfaceCallables make_surface_callables(
             return pack_surface_closure_trace(visitor.result());
         };
     SurfaceSampleTraceCallable sample_trace =
-        [scene](
+        [scene, closure_sampling, closure_evaluation](
             BufferFloat4 parameters,
             BufferFloat cycles_bsdf_tables,
             BindlessVar textures,
@@ -306,22 +280,24 @@ SurfaceCallables make_surface_callables(
             const auto point =
                 unpack_surface_point(packed_point);
             return pack_surface_sample_trace(
-                evaluate_surface_closures(
+                sample_surface_closures(
                     *scene,
-                    SurfaceClosureStorageProfile::complete,
+                    closure_sampling,
+                    closure_evaluation,
+                    parameters,
+                    cycles_bsdf_tables,
+                    textures,
+                    geometry_heap,
+                    Expr<std::uint32_t>{
+                        surface_tag.expression()},
+                    packed_point,
                     services,
-                    surface_tag,
                     point,
-                    reflective_caustics,
-                    refractive_caustics,
-                    [&](const SurfaceClosureEvaluator
-                            &evaluator) noexcept {
-                        return evaluator.sample_trace(
-                            services,
-                            u_lobe,
-                            u_direction,
-                            query);
-                    }));
+                    Expr<float>{u_lobe.expression()},
+                    Expr<luisa::float2>{
+                        u_direction.expression()},
+                    query,
+                    true));
         };
     SurfaceAovCallable aov =
         [scene, closure_aov](
