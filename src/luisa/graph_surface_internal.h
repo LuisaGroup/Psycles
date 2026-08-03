@@ -413,6 +413,12 @@ public:
     ~GraphSurfaceImplementation() noexcept;
 
     [[nodiscard]] SurfaceCapabilities capabilities() const noexcept;
+    [[nodiscard]] SurfaceClosureCollection collect_closures(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        Expr<bool> reflective_caustics,
+        Expr<bool> refractive_caustics,
+        SurfaceClosureCollector &collector) const noexcept;
     [[nodiscard]] UInt runtime_flags(
         const ShaderServices &services,
         const SurfacePoint &point,

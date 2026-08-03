@@ -196,6 +196,112 @@ class VolumePhaseCollector {
         Float3 weight) noexcept = 0;
 };
 
+// Device-side identity of one post-shader Cycles surface closure. Principled
+// is intentionally retained as a family tag: its independently allocated
+// physical lobes remain distinguishable without baking them into a combined
+// BSDF.
+enum class SurfaceClosureKind : std::uint32_t {
+    none,
+    diffuse,
+    translucent,
+    principled,
+    glossy,
+    glass,
+    transparent
+};
+
+enum class SurfaceClosureLobe : std::uint32_t {
+    none,
+    sheen,
+    coat,
+    metallic,
+    transmission,
+    dielectric
+};
+
+// Canonical device-expression record emitted after Cycles-compatible closure
+// allocation and setup. Fields which do not belong to a closure family are
+// explicitly zeroed by the producer. This makes the record safe to retain in
+// backend-independent Local storage and later consume through a runtime tag.
+// No radiance, directional response, or material input is evaluated on the
+// host: the record consists entirely of Luisa expressions recorded into the
+// shader AST.
+struct SurfaceClosureRecord {
+    UInt kind;
+    UInt lobe;
+    Float3 weight;
+    Float allocation_weight;
+    Float sample_weight;
+    Bool setup_valid;
+    Float3 albedo;
+    Float3 reflection_albedo;
+    Float3 transmission_albedo;
+    Float3 color;
+    Float3 normal;
+    Float roughness;
+    Float diffuse_roughness;
+    Float metallic;
+    Float ior;
+    Float specular_ior_level;
+    Float3 specular_tint;
+    Float sheen_transform_a;
+    Float sheen_transform_b;
+    Float3 evaluation_scale;
+    Float3 fresnel_f0;
+    Float3 fresnel_f90;
+    Float3 reflection_tint;
+    Float3 transmission_tint;
+    Bool preserve_ggx_energy;
+    Bool beckmann;
+
+    [[nodiscard]] static SurfaceClosureRecord zero() noexcept {
+        return {
+            .kind = static_cast<std::uint32_t>(
+                SurfaceClosureKind::none),
+            .lobe = static_cast<std::uint32_t>(
+                SurfaceClosureLobe::none),
+            .weight = make_float3(0.0f),
+            .allocation_weight = 0.0f,
+            .sample_weight = 0.0f,
+            .setup_valid = false,
+            .albedo = make_float3(0.0f),
+            .reflection_albedo = make_float3(0.0f),
+            .transmission_albedo = make_float3(0.0f),
+            .color = make_float3(0.0f),
+            .normal = make_float3(0.0f, 0.0f, 1.0f),
+            .roughness = 0.0f,
+            .diffuse_roughness = 0.0f,
+            .metallic = 0.0f,
+            .ior = 1.0f,
+            .specular_ior_level = 0.0f,
+            .specular_tint = make_float3(0.0f),
+            .sheen_transform_a = 0.0f,
+            .sheen_transform_b = 0.0f,
+            .evaluation_scale = make_float3(1.0f),
+            .fresnel_f0 = make_float3(0.0f),
+            .fresnel_f90 = make_float3(0.0f),
+            .reflection_tint = make_float3(0.0f),
+            .transmission_tint = make_float3(0.0f),
+            .preserve_ggx_energy = false,
+            .beckmann = false};
+    }
+};
+
+// Host-stage sink matching VolumePhaseCollector. Surface implementations call
+// add() while Luisa records the selected material branch; a consumer may keep
+// the raw records in device-local storage or expose them to diagnostics.
+class SurfaceClosureCollector {
+
+  public:
+    virtual ~SurfaceClosureCollector() noexcept = default;
+    virtual void add(
+        const SurfaceClosureRecord &closure) noexcept = 0;
+};
+
+struct SurfaceClosureCollection {
+    Float3 shading_normal;
+};
+
 struct SurfaceEvaluation {
     Float3 f;
     Float pdf;
@@ -362,6 +468,18 @@ public:
 
     [[nodiscard]] virtual SurfaceCapabilities capabilities() const noexcept = 0;
 
+    // Record the material's Cycles-ordered physical closure array once. The
+    // default keeps custom diagnostic Surface implementations source
+    // compatible; production GraphSurface overrides this boundary.
+    [[nodiscard]] virtual SurfaceClosureCollection collect_closures(
+        const ShaderServices &,
+        const SurfacePoint &point,
+        Expr<bool>,
+        Expr<bool>,
+        SurfaceClosureCollector &) const noexcept {
+        return {.shading_normal = point.shading_normal};
+    }
+
     // Runtime ShaderData flags produced by closure setup. This is separate
     // from sampling so integrators can apply Cycles' pre-NEE capability gate
     // without selecting a BSDF closure early.
@@ -490,6 +608,26 @@ public:
     }
     [[nodiscard]] SurfaceCapabilities capabilities(std::size_t index) const noexcept {
         return implementation(index)->capabilities();
+    }
+
+    [[nodiscard]] SurfaceClosureCollection collect_closures(
+        Expr<std::uint32_t> tag,
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        Expr<bool> reflective_caustics,
+        Expr<bool> refractive_caustics,
+        SurfaceClosureCollector &collector) const noexcept {
+        auto result = SurfaceClosureCollection{
+            .shading_normal = point.shading_normal};
+        _surfaces.dispatch(tag, [&](const Surface *surface) noexcept {
+            result = surface->collect_closures(
+                services,
+                point,
+                reflective_caustics,
+                refractive_caustics,
+                collector);
+        });
+        return result;
     }
 
     template<typename Implementation, typename... Args>
