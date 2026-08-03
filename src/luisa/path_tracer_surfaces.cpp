@@ -12,6 +12,7 @@ namespace {
 template<typename Consumer>
 [[nodiscard]] decltype(auto) evaluate_surface_closures(
     const LuisaSceneData &scene,
+    SurfaceClosureStorageProfile profile,
     const ShaderServices &services,
     UInt surface_tag,
     const SurfacePoint &point,
@@ -19,7 +20,8 @@ template<typename Consumer>
     Bool refractive_caustics,
     Consumer &&consumer) noexcept {
     SurfaceClosureSet closures{
-        scene.volume_metadata.closure_allocation_budget};
+        scene.volume_metadata.closure_allocation_budget,
+        profile};
     const auto collection = scene.surfaces.collect_closures(
         surface_tag,
         services,
@@ -101,6 +103,7 @@ SurfaceCallables make_surface_callables(
                 unpack_surface_point(packed_point);
             return evaluate_surface_closures(
                 *scene,
+                SurfaceClosureStorageProfile::runtime_flags,
                 services,
                 surface_tag,
                 point,
@@ -215,6 +218,7 @@ SurfaceCallables make_surface_callables(
             return pack_surface_closure_trace(
                 evaluate_surface_closures(
                     *scene,
+                    SurfaceClosureStorageProfile::closure_trace,
                     services,
                     surface_tag,
                     point,
@@ -288,6 +292,7 @@ SurfaceCallables make_surface_callables(
             return pack_surface_aov(
                 evaluate_surface_closures(
                     *scene,
+                    SurfaceClosureStorageProfile::aov,
                     services,
                     surface_tag,
                     point,

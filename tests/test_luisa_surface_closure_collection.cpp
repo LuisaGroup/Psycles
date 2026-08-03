@@ -502,27 +502,64 @@ int main(int argc, char **argv) {
                 UInt{glass_tag},
                 material != 0u);
             // Cycles reserves twelve slots for the reachable Principled
-            // graph, which is also the scene maximum for this fixture.
-            SurfaceClosureSet closures{12u};
-            const auto collection = surfaces.collect_closures(
+            // graph, which is also the scene maximum for this fixture. Each
+            // production callable records only its formal field projection.
+            SurfaceClosureSet runtime_closures{
+                12u,
+                SurfaceClosureStorageProfile::runtime_flags};
+            const auto runtime_collection = surfaces.collect_closures(
                 tag,
                 services,
                 point,
                 true,
                 true,
-                closures);
-            const SurfaceClosureEvaluator evaluator{
+                runtime_closures);
+            const SurfaceClosureEvaluator runtime_evaluator{
                 point,
-                closures,
-                collection.shading_normal};
+                runtime_closures,
+                runtime_collection.shading_normal};
+            const auto runtime_flags =
+                runtime_evaluator.runtime_flags(0.04f);
+
+            SurfaceClosureSet trace_closures{
+                12u,
+                SurfaceClosureStorageProfile::closure_trace};
+            const auto trace_collection = surfaces.collect_closures(
+                tag,
+                services,
+                point,
+                true,
+                true,
+                trace_closures);
+            const SurfaceClosureEvaluator trace_evaluator{
+                point,
+                trace_closures,
+                trace_collection.shading_normal};
+            const auto trace =
+                trace_evaluator.closure_trace(requested);
+
+            SurfaceClosureSet aov_closures{
+                12u,
+                SurfaceClosureStorageProfile::aov};
+            const auto aov_collection = surfaces.collect_closures(
+                tag,
+                services,
+                point,
+                true,
+                true,
+                aov_closures);
+            const SurfaceClosureEvaluator aov_evaluator{
+                point,
+                aov_closures,
+                aov_collection.shading_normal};
             const auto base =
                 invocation * evaluator_records_per_slot;
             write_evaluator_result(
                 output,
                 base,
-                evaluator.closure_trace(requested),
-                evaluator.runtime_flags(0.04f),
-                evaluator.aov());
+                trace,
+                runtime_flags,
+                aov_evaluator.aov());
         };
 
     Kernel1D evaluate_legacy =
