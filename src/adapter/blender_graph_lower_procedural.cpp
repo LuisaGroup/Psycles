@@ -278,6 +278,63 @@ public:
                 .ref = {.node = id, .socket = "Factor"},
                 .type = SocketType::floating});
         }
+        if (type == "TEX_WAVE") {
+            const auto id = context.graph().add_node(
+                compiler::node_type::wave_texture,
+                node_name);
+            if (context.input_source(node, "Vector")) {
+                static_cast<void>(context.bind(
+                    id,
+                    "Vector",
+                    node,
+                    "Vector",
+                    SocketType::vector));
+            } else {
+                static_cast<void>(context.graph().connect(
+                    context.default_generated_coordinates().ref,
+                    id,
+                    "Vector"));
+            }
+            for (const auto &[target, source] : {
+                     std::pair{"Scale", "Scale"},
+                     std::pair{"Distortion", "Distortion"},
+                     std::pair{"Detail", "Detail"},
+                     std::pair{"DetailScale", "Detail Scale"},
+                     std::pair{"DetailRoughness", "Detail Roughness"},
+                     std::pair{"PhaseOffset", "Phase Offset"}}) {
+                static_cast<void>(context.bind(
+                    id,
+                    target,
+                    node,
+                    source,
+                    SocketType::floating));
+            }
+            for (const auto &[target, source, fallback] : {
+                     std::tuple{"WaveType", "wave_type", "BANDS"},
+                     std::tuple{
+                         "BandsDirection", "bands_direction", "X"},
+                     std::tuple{
+                         "RingsDirection", "rings_direction", "X"},
+                     std::tuple{"Profile", "wave_profile", "SIN"}}) {
+                static_cast<void>(context.graph().set_property(
+                    id,
+                    target,
+                    SocketValue::string(context.node_property_text(
+                        node, source, fallback))));
+            }
+            const auto factor = socket == "Fac" || socket == "Factor";
+            static_cast<void>(context.graph().set_property(
+                id,
+                "NeedsColor",
+                SocketValue::boolean(!factor)));
+            return finish({
+                .ref = {
+                    .node = id,
+                    .socket = factor ? "Factor" : "Color"},
+                .type = factor
+                            ? SocketType::floating
+                            : SocketType::color});
+        }
         if (type == "VERTEX_COLOR") {
             const auto id = context.graph().add_node(
                 compiler::node_type::vertex_color,

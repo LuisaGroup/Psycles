@@ -363,6 +363,71 @@ namespace {
         }
         return true;
     }
+    if (node.type == node_type::wave_texture) {
+        auto vector = lower_value_input(node, "Vector");
+        auto scale = lower_value_input(node, "Scale");
+        auto distortion = lower_value_input(node, "Distortion");
+        auto detail = lower_value_input(node, "Detail");
+        auto detail_scale = lower_value_input(node, "DetailScale");
+        auto detail_roughness =
+            lower_value_input(node, "DetailRoughness");
+        auto phase = lower_value_input(node, "PhaseOffset");
+        if (vector && scale && distortion && detail && detail_scale &&
+            detail_roughness && phase) {
+            const auto wave_type =
+                property_string(node, "WaveType", "BANDS") == "RINGS"
+                    ? 1u
+                    : 0u;
+            const auto direction_code = [](std::string_view name,
+                                            std::string_view fourth) noexcept {
+                return name == "Y"
+                           ? 1u
+                           : name == "Z"
+                                 ? 2u
+                                 : name == fourth ? 3u : 0u;
+            };
+            const auto bands_direction = direction_code(
+                property_string(node, "BandsDirection", "X"),
+                "DIAGONAL");
+            const auto rings_direction = direction_code(
+                property_string(node, "RingsDirection", "X"),
+                "SPHERICAL");
+            const auto profile_name =
+                property_string(node, "Profile", "SIN");
+            const auto profile =
+                profile_name == "SAW"
+                    ? 1u
+                    : profile_name == "TRI" ? 2u : 0u;
+            const auto configuration =
+                wave_type |
+                (bands_direction << 8u) |
+                (rings_direction << 16u) |
+                (profile << 24u);
+            const auto needs_color =
+                property_bool(node, "NeedsColor");
+            auto instruction = ValueInstruction{
+                .operation = needs_color
+                                 ? ValueOperation::wave_color
+                                 : ValueOperation::wave_factor,
+                .source_node = node.id,
+                .result_type = needs_color
+                                   ? SocketType::color
+                                   : SocketType::floating,
+                .a = *vector,
+                .b = *scale,
+                .c = *distortion,
+                .d = *detail,
+                .e = *detail_scale,
+                .f = *detail_roughness,
+                .g = *phase,
+                .static_u0 = configuration};
+            publish(
+                node.id,
+                needs_color ? "Color" : "Factor",
+                append(std::move(instruction)));
+        }
+        return true;
+    }
     if (node.type == node_type::color_ramp) {
         if (auto factor = lower_value_input(node, "Factor")) {
             auto instruction = ValueInstruction{

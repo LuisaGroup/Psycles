@@ -41,6 +41,8 @@ namespace {
         case ValueOperation::checker_factor:
         case ValueOperation::brick_color:
         case ValueOperation::brick_factor:
+        case ValueOperation::wave_color:
+        case ValueOperation::wave_factor:
         case ValueOperation::gradient:
         case ValueOperation::hosek_wilkie_sky:
         case ValueOperation::nishita_sky:

@@ -889,6 +889,46 @@
         }
       ]
     },
+    "TEX_WAVE": {
+      "max_rmse": 2e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 1.4188270824888605e-06
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Emit": {
+          "rmse": 1.4188270824888605e-06
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "wave_texture_modes",
+      "samples": 4,
+      "supplemental_probes": [
+        {
+          "max_rmse": 4e-05,
+          "passes": {
+            "Combined": {
+              "rmse": 3.077049404964782e-05
+            },
+            "DiffCol": {
+              "rmse": 0.0
+            },
+            "Emit": {
+              "rmse": 3.077049404964782e-05
+            },
+            "Normal": {
+              "rmse": 0.0
+            }
+          },
+          "probe": "wave_texture_distortion",
+          "samples": 4
+        }
+      ]
+    },
     "TEX_WHITE_NOISE": {
       "max_rmse": 1e-06,
       "passes": {

@@ -59,6 +59,7 @@ CYCLES_VERIFIED = {
     "TEX_ENVIRONMENT",
     "TEX_GRADIENT",
     "TEX_NOISE",
+    "TEX_WAVE",
     "TEX_WHITE_NOISE",
     "VALTORGB",
     "VALUE",

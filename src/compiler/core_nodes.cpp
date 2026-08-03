@@ -398,6 +398,42 @@ NodeRegistry make_core_node_registry() {
         .required_features = feature_bit(ShaderFeature::surface)}));
 
     static_cast<void>(registry.register_schema(NodeSchema{
+        .type = node_type::wave_texture,
+        .inputs = {
+            input("Vector", SocketType::vector, SocketValue::vector({0.0f, 0.0f, 0.0f})),
+            input("Scale", SocketType::floating, SocketValue::floating(5.0f)),
+            input("Distortion", SocketType::floating, SocketValue::floating(0.0f)),
+            input("Detail", SocketType::floating, SocketValue::floating(2.0f)),
+            input("DetailScale", SocketType::floating, SocketValue::floating(1.0f)),
+            input("DetailRoughness", SocketType::floating, SocketValue::floating(0.5f)),
+            input("PhaseOffset", SocketType::floating, SocketValue::floating(0.0f))},
+        .outputs = {
+            output("Color", SocketType::color),
+            output("Factor", SocketType::floating)},
+        .properties = {
+            property(
+                "WaveType",
+                SocketType::string,
+                SocketValue::string("BANDS")),
+            property(
+                "BandsDirection",
+                SocketType::string,
+                SocketValue::string("X")),
+            property(
+                "RingsDirection",
+                SocketType::string,
+                SocketValue::string("X")),
+            property(
+                "Profile",
+                SocketType::string,
+                SocketValue::string("SIN")),
+            property(
+                "NeedsColor",
+                SocketType::boolean,
+                SocketValue::boolean(false))},
+        .required_features = feature_bit(ShaderFeature::surface)}));
+
+    static_cast<void>(registry.register_schema(NodeSchema{
         .type = node_type::gradient_texture,
         .inputs = {
             input("Vector", SocketType::vector, SocketValue::vector({0.0f, 0.0f, 0.0f}))},

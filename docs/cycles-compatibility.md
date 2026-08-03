@@ -482,6 +482,26 @@ combination is emitted once as a Luisa `Callable` and shared by every
 `GraphSurface`, instead of duplicating the full Cycles noise implementation
 inside every material dispatch case.
 
+Wave Texture is `cycles_verified` without material baking. The adapter retains
+the original typed Vector and six scalar inputs plus Wave type, Bands/Rings
+direction, profile, and Color/Factor output identity. The OOP host-stage value
+node expands the finite static configuration while tracing the Luisa AST, and
+one shared callable evaluates Cycles' normalized signed 3D Perlin fBm rather
+than duplicating it per material. Graph lowering emits only the requested
+typed Color or Factor instruction, avoiding a duplicate fBm AST. The two
+probes cover both types, all eight
+type-specific directions, all three profiles, both outputs, implicit Generated
+coordinates, signed/zero scales, linked dynamic sockets, distortion, Detail
+`16`, and the formal negative-fractional Detail loop boundary. Against latest
+Cycles CPU, modes relative RMSE is at most `2.50e-6` and distortion relative
+RMSE at most `4.71e-5` across fallback, HIP, and Vulkan, with zero invalid
+pixels. The larger high-frequency envelope is already present between official
+Cycles CPU and HIP (`3.43e-5` relative RMSE), rather than evidence of a second
+algorithm. The official Barbershop file contains 14 Wave nodes, including the
+exact Detail-16 configuration in the probe. Reports and all visually inspected
+triptychs are in
+[`validation/2026-08-04/wave-texture`](validation/2026-08-04/wave-texture/README.md).
+
 Particle Info's non-particle sentinel contract is also explicit: its Random
 output now follows Cycles rather than reusing Object Info random. The
 `particle_random_nonparticle` probe matches Combined, Normal, and DiffCol

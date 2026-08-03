@@ -124,6 +124,8 @@ enum class ValueOperation : std::uint8_t {
     checker_factor,
     brick_color,
     brick_factor,
+    wave_color,
+    wave_factor,
     gradient,
     color_ramp,
     rgb_curve,

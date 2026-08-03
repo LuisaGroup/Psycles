@@ -115,6 +115,8 @@ _ALL_PROBES = (
     "value_emission",
     "vector_math_matrix",
     "wavelength_matrix",
+    "wave_texture_distortion",
+    "wave_texture_modes",
     "white_noise_dimensions",
 )
 
@@ -139,6 +141,18 @@ _REPORT_PASSES = (
 # mappings are valid. A probe may additionally require a relative-RMSE gate
 # when its purpose is to preserve Cycles' exact sample mapping.
 _PROBE_RATIO_GATES = {
+    "wave_texture_distortion": {
+        # Cycles CPU and Cycles HIP differ by 3.41e-5 relative RMSE on this
+        # deliberately high-frequency saw/triangle matrix. Keep one oracle
+        # (Cycles CPU) for every Luisa backend, while allowing only the same
+        # device-level float32 envelope rather than hiding structural errors.
+        "Combined": (0.99997, 1.00003),
+        "Emit": (0.99997, 1.00003),
+    },
+    "wave_texture_modes": {
+        "Combined": (0.99999, 1.00001),
+        "Emit": (0.99999, 1.00001),
+    },
     "camera_blackman_harris_filter": {
         "Combined": (0.9995, 1.0005),
     },
@@ -229,6 +243,14 @@ _PROBE_RATIO_GATES = {
 }
 
 _PROBE_RELATIVE_RMSE_GATES = {
+    "wave_texture_distortion": {
+        "Combined": 0.00006,
+        "Emit": 0.00006,
+    },
+    "wave_texture_modes": {
+        "Combined": 0.00001,
+        "Emit": 0.00001,
+    },
     "camera_blackman_harris_filter": {
         "Combined": 0.0005,
     },
