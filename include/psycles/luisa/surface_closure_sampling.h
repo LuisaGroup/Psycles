@@ -1,0 +1,248 @@
+#pragma once
+
+#if !defined(PSYCLES_WITH_LUISA)
+#error "Include <psycles/luisa/surface_closure_sampling.h> through the Psycles::luisa target."
+#endif
+
+#include <psycles/luisa/surface_closure_evaluation.h>
+
+#include <luisa/dsl/struct.h>
+
+namespace psycles::luisa_backend {
+
+// The complete device-stage projection needed before categorical inversion.
+// It is deliberately independent of storage: both a Local-array evaluator and
+// a branch-local visitor consume this exact result.
+struct SurfaceClosureSelectionCall {
+    float weight{};
+    luisa::float3 glossy_normal{};
+    luisa::uint runtime_flags{};
+    luisa::uint closure_type{};
+    float closure_sample_weight{};
+};
+
+// Result of the conditional p(w_i | i) sampler for one already selected
+// closure. The categorical choice and closure metadata remain outside this
+// payload, making it impossible for the conditional sampler to change p(i).
+struct SurfaceClosureConditionalSampleCall {
+    luisa::float3 direction{};
+    luisa::float2 roughness{};
+    luisa::float3 singular_evaluation{};
+    float singular_pdf{};
+    float eta{};
+    luisa::uint properties{};
+    bool valid{};
+};
+
+}// namespace psycles::luisa_backend
+
+LUISA_STRUCT(
+    psycles::luisa_backend::SurfaceClosureSelectionCall,
+    weight,
+    glossy_normal,
+    runtime_flags,
+    closure_type,
+    closure_sample_weight) {};
+
+LUISA_STRUCT(
+    psycles::luisa_backend::SurfaceClosureConditionalSampleCall,
+    direction,
+    roughness,
+    singular_evaluation,
+    singular_pdf,
+    eta,
+    properties,
+    valid) {};
+
+namespace psycles::luisa_backend {
+
+namespace surface_closure_sample_property {
+inline constexpr std::uint32_t transparent = 1u << 0u;
+inline constexpr std::uint32_t translucent = 1u << 1u;
+inline constexpr std::uint32_t glossy = 1u << 2u;
+inline constexpr std::uint32_t glass = 1u << 3u;
+inline constexpr std::uint32_t transmission = 1u << 4u;
+inline constexpr std::uint32_t singular = 1u << 5u;
+}// namespace surface_closure_sample_property
+
+// Canonical p(i) state. `incoming` must be normalized once by the caller.
+[[nodiscard]] luisa::compute::Var<SurfaceClosureSelectionCall>
+surface_closure_selection(
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    const SurfaceClosureRecord &closure,
+    Expr<luisa::float3> incoming,
+    const SurfaceQuery &query) noexcept;
+
+// Canonical conditional sampler p(w_i | i). It must only be invoked under the
+// categorical `choose` predicate. In particular, this function never decides
+// which closure was selected and never renormalizes the lobe dimension.
+[[nodiscard]] luisa::compute::Var<
+    SurfaceClosureConditionalSampleCall>
+surface_closure_conditional_sample(
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    Expr<luisa::float3> shading_normal,
+    const SurfaceClosureRecord &closure,
+    Expr<luisa::float3> incoming,
+    Expr<luisa::float3> glossy_normal,
+    Expr<luisa::float2> random_direction,
+    Expr<float> rescaled_lobe,
+    const SurfaceQuery &query) noexcept;
+
+// First pass: construct the finite categorical measure over the retained
+// Cycles allocation sequence. Retained count includes setup-invalid entries,
+// exactly like ShaderData::num_closure; their selection weight remains zero.
+class SurfaceClosureSelectionMeasure {
+
+  private:
+    Float _total_weight{0.0f};
+    UInt _runtime_flags{0u};
+    UInt _retained_count{0u};
+
+  public:
+    explicit SurfaceClosureSelectionMeasure(
+        Expr<bool> back_facing) noexcept;
+
+    void add(
+        const luisa::compute::Var<
+            SurfaceClosureSelectionCall> &selection) noexcept;
+
+    [[nodiscard]] Expr<float> total_weight() const noexcept;
+    [[nodiscard]] Expr<std::uint32_t> runtime_flags() const noexcept;
+    [[nodiscard]] Expr<std::uint32_t> retained_count() const noexcept;
+};
+
+struct SurfaceClosureCategoricalChoice {
+    Bool choose;
+    Float rescaled;
+};
+
+// Second pass: exact inverse-CDF state machine. For retained closure i with
+// mass s_i and total W, consider() returns the unique interval predicate and
+// (u W - sum_{j<i} s_j) / s_i. No BSDF sampling code is part of this state.
+class SurfaceClosureCategoricalInversion {
+
+  private:
+    Float _random_lobe{0.0f};
+    Float _target{0.0f};
+    Float _accumulated{0.0f};
+    UInt _retained_count{0u};
+    Bool _selected{false};
+
+  public:
+    SurfaceClosureCategoricalInversion(
+        Expr<float> random_lobe,
+        const SurfaceClosureSelectionMeasure &measure) noexcept;
+
+    [[nodiscard]] SurfaceClosureCategoricalChoice consider(
+        const luisa::compute::Var<
+            SurfaceClosureSelectionCall> &selection) noexcept;
+
+    [[nodiscard]] Expr<bool> selected() const noexcept;
+};
+
+// Scalar state retained after the selected conditional sampler executes. It
+// contains no closure array and therefore has no runtime-indexed aggregate
+// load. finish() performs the one common Cycles delta/MIS composition.
+class SurfaceClosureSelectedSample {
+
+  private:
+    Bool _selected{false};
+    UInt _closure_index{~std::uint32_t{0u}};
+    UInt _closure_type{0u};
+    Float _closure_sample_weight{0.0f};
+    Float _selection_rescaled{0.0f};
+    Float3 _closure_weight{make_float3(0.0f)};
+    Float3 _closure_normal{make_float3(0.0f, 0.0f, 1.0f)};
+    Float _selected_weight{0.0f};
+    Float3 _direction{make_float3(0.0f, 0.0f, 1.0f)};
+    Float2 _roughness{make_float2(0.0f)};
+    Float3 _singular_evaluation{make_float3(0.0f)};
+    Float _singular_pdf{0.0f};
+    Float _eta{1.0f};
+    UInt _properties{0u};
+    Bool _candidate_valid{true};
+
+  public:
+    SurfaceClosureSelectedSample() noexcept = default;
+
+    // Called only inside the categorical choice branch.
+    void accept(
+        Expr<std::uint32_t> closure_index,
+        Expr<luisa::float3> closure_weight,
+        Expr<luisa::float3> closure_normal,
+        Expr<float> selection_rescaled,
+        const luisa::compute::Var<
+            SurfaceClosureSelectionCall> &selection,
+        const luisa::compute::Var<
+            SurfaceClosureConditionalSampleCall> &sample) noexcept;
+
+    [[nodiscard]] Expr<bool> selected() const noexcept;
+    [[nodiscard]] Expr<std::uint32_t>
+    closure_index() const noexcept;
+    [[nodiscard]] Expr<luisa::float3> direction() const noexcept;
+
+    [[nodiscard]] SurfaceSampleTrace finish(
+        const SurfacePoint &point,
+        const SurfaceClosureSelectionMeasure &measure,
+        const SurfaceEvaluation &mixture_evaluation,
+        bool trace_selection) const noexcept;
+};
+
+// Host/JIT-stage sampling component. Dynamic C++ dispatch selects the
+// resource-bearing callable implementation while the shader AST is recorded.
+class SurfaceClosureSamplingOperation {
+
+  public:
+    virtual ~SurfaceClosureSamplingOperation() noexcept = default;
+
+    [[nodiscard]] virtual luisa::compute::Var<
+        SurfaceClosureSelectionCall>
+    selection(
+        const SurfaceClosureExpression &closure) const noexcept = 0;
+
+    [[nodiscard]] virtual luisa::compute::Var<
+        SurfaceClosureConditionalSampleCall>
+    conditional_sample(
+        Expr<luisa::float3> shading_normal,
+        const SurfaceClosureExpression &closure,
+        Expr<luisa::float2> random_direction,
+        Expr<float> rescaled_lobe) const noexcept = 0;
+};
+
+// Three-pass branch-local implementation of the formal product measure:
+// construct p(i), invert it and execute one p(w_i | i), then evaluate the
+// complete retained mixture at the chosen direction.
+class SurfaceClosureSamplingVisitor final
+    : public SurfaceClosureExpressionVisitor {
+
+  private:
+    const SurfacePoint &_point;
+    const SurfaceClosureSamplingOperation &_sampling;
+    SurfaceClosureEvaluationOperation &_evaluation;
+    Expr<float> _random_lobe;
+    Expr<luisa::float2> _random_direction;
+    bool _trace_selection;
+    SurfaceSampleTrace _result;
+
+  protected:
+    void visit(
+        Expr<luisa::float3> shading_normal,
+        const luisa::vector<SurfaceClosureExpression>
+            &closures) noexcept override;
+
+  public:
+    SurfaceClosureSamplingVisitor(
+        std::size_t capacity,
+        const SurfacePoint &point,
+        const SurfaceClosureSamplingOperation &sampling,
+        SurfaceClosureEvaluationOperation &evaluation,
+        Expr<float> random_lobe,
+        Expr<luisa::float2> random_direction,
+        bool trace_selection) noexcept;
+
+    [[nodiscard]] const SurfaceSampleTrace &result() const noexcept;
+};
+
+}// namespace psycles::luisa_backend

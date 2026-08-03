@@ -71,6 +71,7 @@ class CallableSurfaceClosureEvaluationOperation final
     const BindlessVar &_textures;
     const BindlessVar &_geometry_heap;
     const Var<SurfacePointCall> &_point;
+    const SurfacePoint &_surface_point;
     Var<SurfaceClosureEvaluationQueryCall> _query;
     const SurfaceClosureEvaluationCallable &_callable;
 
@@ -82,10 +83,12 @@ class CallableSurfaceClosureEvaluationOperation final
         const BindlessVar &geometry_heap,
         const Var<SurfacePointCall> &packed_point,
         const SurfacePoint &point,
-        Expr<luisa::float3> outgoing,
         const SurfaceQuery &query,
         const SurfaceClosureEvaluationPolicy &policy,
         const SurfaceClosureEvaluationCallable &callable) noexcept;
+
+    void set_outgoing(
+        Expr<luisa::float3> outgoing) noexcept override;
 
     [[nodiscard]] luisa::compute::Var<
         SurfaceClosureEvaluationContributionCall>

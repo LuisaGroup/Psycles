@@ -197,16 +197,18 @@ public:
     InlineSurfaceClosureEvaluationOperation(
         const ShaderServices &services,
         const SurfacePoint &point,
-        Expr<luisa::float3> outgoing,
         const SurfaceQuery &query,
         const SurfaceClosureEvaluationPolicy &policy) noexcept
         : _services{services},
           _point{point},
           _query{query},
-          _policy{policy} {
+          _policy{policy} {}
+
+    void set_outgoing(
+        Expr<luisa::float3> outgoing) noexcept override {
         const auto directions =
             make_surface_closure_evaluation_directions(
-                point, outgoing);
+                _point, outgoing);
         _incoming = directions.incoming;
         _outgoing = directions.outgoing;
     }
@@ -892,9 +894,10 @@ int main(int argc, char **argv) {
             InlineSurfaceClosureEvaluationOperation regular_operation{
                 services,
                 point,
-                Expr<luisa::float3>{outgoing.expression()},
                 query,
                 regular_policy};
+            regular_operation.set_outgoing(
+                Expr<luisa::float3>{outgoing.expression()});
             SurfaceClosureEvaluationVisitor regular_visitor{
                 12u,
                 regular_operation,
@@ -914,9 +917,10 @@ int main(int argc, char **argv) {
             InlineSurfaceClosureEvaluationOperation light_operation{
                 services,
                 point,
-                Expr<luisa::float3>{outgoing.expression()},
                 query,
                 light_policy};
+            light_operation.set_outgoing(
+                Expr<luisa::float3>{outgoing.expression()});
             SurfaceClosureEvaluationVisitor light_visitor{
                 12u,
                 light_operation,
