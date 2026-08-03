@@ -62,7 +62,9 @@ struct CameraVolumeBoundsQuery {
     float aspect{1.0f};
     float horizontal_tangent{};
     float vertical_tangent{};
-    float orthographic_scale{1.0f};
+    // Full vertical span of the fitted orthographic viewplane. The source
+    // camera scale is normalized once through orthographic_viewplane_span.
+    float orthographic_vertical_span{1.0f};
     float shift_x{};
     float shift_y{};
     float near_clip{};

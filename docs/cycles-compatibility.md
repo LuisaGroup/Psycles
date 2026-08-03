@@ -542,6 +542,19 @@ materials and has no Refraction diagnostic, reducing the scene total from 30
 to 26. Reports and all 15 visually inspected triptychs are in
 [`validation/2026-08-04/refraction-bsdf`](validation/2026-08-04/refraction-bsdf/README.md).
 
+The legacy Attribute node is `device_partial`. Its GEOMETRY color-attribute
+path now preserves raw Color, Vector, Fac, and Alpha output identity: present
+RGBA attributes project to RGB, RGB, mean(RGB), and A, while a missing
+attribute produces zero, zero, zero, and one exactly as Cycles does.
+CORNER/BYTE_COLOR values additionally follow Cycles' sRGB decode and
+OCIO-derived linear Rec.709-to-working-space conversion. A non-square
+eight-cell raw-node probe matches Cycles CPU below `1.94e-7` relative RMSE on
+fallback, HIP, and Vulkan, and removes all four Attribute diagnostics from the
+unchanged Barbershop graph. Arbitrary float/vector attributes and the OBJECT,
+INSTANCER, and VIEW_LAYER modes remain pending, so this is deliberately not
+classified as `cycles_verified`. Reports and visually inspected triptychs are
+in [`validation/2026-08-04/geometry-attribute`](validation/2026-08-04/geometry-attribute/README.md).
+
 Geometry Pointiness now follows Cycles' mesh-sync construction instead of
 using a triangle-normal curvature approximation or a material-side bake. The
 Blender adapter retains evaluated point normals and original edges only for

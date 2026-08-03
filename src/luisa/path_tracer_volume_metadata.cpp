@@ -213,10 +213,10 @@ void grow(
         } else {
             local = {
                 screen.x *
-                    camera.orthographic_scale *
+                    camera.orthographic_vertical_span *
                     camera.aspect * 0.5f,
                 screen.y *
-                    camera.orthographic_scale *
+                    camera.orthographic_vertical_span *
                     0.5f,
                 -near_clip};
         }

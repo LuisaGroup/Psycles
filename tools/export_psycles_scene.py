@@ -38,6 +38,8 @@ import blender_scene_manifest as manifest  # noqa: E402
 _UINT32_MASK = 0xFFFFFFFF
 _CYCLES_DEFAULT_SHADER_COUNT = 5
 _CYCLES_BACKGROUND_SHADER_INDEX = 3
+
+
 def _cycles_shader_color_space() -> dict[str, list[list[float]]]:
     """Reproduce Cycles ShaderManager::init_xyz_transforms from OCIO."""
     xyz_to_rec709 = np.asarray(
@@ -113,6 +115,28 @@ def _cycles_shader_color_space() -> dict[str, list[list[float]]]:
             for row in rec709_to_rgb
         ],
     }
+
+
+def _cycles_color_attribute_value(
+    attribute: Any,
+    index: int,
+    rec709_to_rgb: tuple[tuple[float, float, float], ...],
+) -> tuple[float, float, float, float]:
+    """Return the scene-linear value uploaded by Cycles for this domain."""
+
+    value = tuple(float(component) for component in attribute.data[index].color)
+    # Cycles preserves CORNER/BYTE_COLOR as ATTR_ELEMENT_CORNER_BYTE. Its
+    # device fetch decodes sRGB and then converts linear Rec.709 into the
+    # active scene-linear working space. Blender's `.color` accessor has
+    # already performed the former, so apply exactly the latter here. Other
+    # domains/types take Cycles' float-attribute upload path unchanged.
+    if attribute.data_type != "BYTE_COLOR" or attribute.domain != "CORNER":
+        return value
+    rgb = value[:3]
+    return tuple(
+        sum(row[channel] * rgb[channel] for channel in range(3))
+        for row in rec709_to_rgb
+    ) + (value[3],)
 
 
 def _u32(value: int) -> int:
@@ -352,6 +376,7 @@ def _geometry(
     obj: Any,
     depsgraph: Any,
     stream: Any,
+    rec709_to_rgb: tuple[tuple[float, float, float], ...],
 ) -> dict[str, Any] | None:
     evaluated = obj.evaluated_get(depsgraph)
     try:
@@ -541,12 +566,12 @@ def _geometry(
             if attribute.domain != "POINT":
                 continue
             for vertex in mesh.vertices:
-                # Blender's .color accessor is scene-linear for both
-                # FLOAT_COLOR and BYTE_COLOR. Cycles likewise decodes
-                # ATTR_ELEMENT_CORNER_BYTE from sRGB before shading.
                 color_values[attribute.name].extend(
-                    float(value)
-                    for value in attribute.data[vertex.index].color
+                    _cycles_color_attribute_value(
+                        attribute,
+                        vertex.index,
+                        rec709_to_rgb,
+                    )
                 )
 
         # Match Blender's DisjointSet union-by-rank and Cycles'
@@ -588,12 +613,12 @@ def _geometry(
                 for attribute in color_layers:
                     if attribute.domain != "CORNER":
                         continue
-                    # Blender's .color accessor is scene-linear for both
-                    # FLOAT_COLOR and BYTE_COLOR. Cycles likewise decodes
-                    # ATTR_ELEMENT_CORNER_BYTE from sRGB before shading.
                     color_values[attribute.name].extend(
-                        float(value)
-                        for value in attribute.data[loop_index].color
+                        _cycles_color_attribute_value(
+                            attribute,
+                            loop_index,
+                            rec709_to_rgb,
+                        )
                     )
                 if active_uv_name not in uv_by_layer:
                     uvs.extend((0.0, 0.0))
@@ -985,6 +1010,11 @@ def _export_scene(
             f"graph, received {depsgraph.mode!r}"
         )
 
+    shader_color_space = _cycles_shader_color_space()
+    rec709_to_rgb = tuple(
+        tuple(float(component) for component in row)
+        for row in shader_color_space["rec709_to_rgb"]
+    )
     geometries: list[dict[str, Any]] = []
     geometry_by_source: dict[tuple[Any, ...], int] = {}
     instances: list[dict[str, Any]] = []
@@ -1057,7 +1087,12 @@ def _export_scene(
             key = _geometry_cache_key(original, scene)
             geometry_index = geometry_by_source.get(key)
             if geometry_index is None:
-                geometry_data = _geometry(original, depsgraph, stream)
+                geometry_data = _geometry(
+                    original,
+                    depsgraph,
+                    stream,
+                    rec709_to_rgb,
+                )
                 if geometry_data is None:
                     continue
                 geometry_data["cycles_sync"] = {
@@ -1259,7 +1294,7 @@ def _export_scene(
                 "sequencer_color_space": (
                     scene.sequencer_colorspace_settings.name
                 ),
-                "shader_transforms": _cycles_shader_color_space(),
+                "shader_transforms": shader_color_space,
             },
             "cycles": manifest._cycles_settings(scene),
         },

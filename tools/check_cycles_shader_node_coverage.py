@@ -77,6 +77,7 @@ DEVICE_IMPLEMENTED_UNVERIFIED: set[str] = set()
 # exact Cycles math. Keeping this list separate prevents "works in Lone Monk"
 # from being mistaken for full node support.
 DEVICE_PARTIAL = {
+    "ATTRIBUTE",
     "BSDF_GLOSSY",
     "BSDF_PRINCIPLED",
     "LIGHT_PATH",

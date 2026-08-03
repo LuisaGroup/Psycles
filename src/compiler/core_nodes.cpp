@@ -1041,6 +1041,8 @@ NodeRegistry make_core_node_registry() {
         .inputs = {},
         .outputs = {
             output("Color", SocketType::color),
+            output("Vector", SocketType::vector),
+            output("Factor", SocketType::floating),
             output("Alpha", SocketType::floating)},
         .properties = {
             property(

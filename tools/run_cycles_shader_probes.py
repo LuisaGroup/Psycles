@@ -46,6 +46,7 @@ _ALL_PROBES = (
     "flat_light_distribution",
     "gamma_color",
     "glass_transport",
+    "geometry_attribute_outputs",
     "geometry_pointiness",
     "gradient_matrix",
     "gradient_spherical",
@@ -146,6 +147,10 @@ _REPORT_PASSES = (
 # mappings are valid. A probe may additionally require a relative-RMSE gate
 # when its purpose is to preserve Cycles' exact sample mapping.
 _PROBE_RATIO_GATES = {
+    "geometry_attribute_outputs": {
+        "Combined": (0.99999, 1.00001),
+        "Emit": (0.99999, 1.00001),
+    },
     "geometry_pointiness": {
         "Combined": (0.99999, 1.00001),
         "Emit": (0.99999, 1.00001),
@@ -267,6 +272,10 @@ _PROBE_RATIO_GATES = {
 }
 
 _PROBE_RELATIVE_RMSE_GATES = {
+    "geometry_attribute_outputs": {
+        "Combined": 0.00001,
+        "Emit": 0.00001,
+    },
     "geometry_pointiness": {
         "Combined": 0.00001,
         "Emit": 0.00001,

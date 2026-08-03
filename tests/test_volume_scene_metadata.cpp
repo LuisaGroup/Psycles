@@ -334,7 +334,7 @@ int main() {
         .aspect = 1.0f,
         .horizontal_tangent = 1.0f,
         .vertical_tangent = 1.0f,
-        .orthographic_scale = 2.0f,
+        .orthographic_vertical_span = 2.0f,
         .near_clip = 0.1f,
         .focal_distance = 1.0f,
         .aperture_ratio = 1.0f};
@@ -358,6 +358,23 @@ int main() {
         component.camera_may_be_inside_volume(
             camera_metadata, camera),
         "orthographic view-plane extent missed a volume");
+
+    VolumeSceneMetadata outside_horizontal_fit_viewplane;
+    outside_horizontal_fit_viewplane.objects.emplace_back(
+        VolumeObjectMetadata{
+            .instance = InstanceId{2u},
+            .bounds = {
+                .minimum =
+                    {1.45f, -0.01f, -0.11f},
+                .maximum =
+                    {1.55f, 0.01f, -0.09f},
+                .valid = true}});
+    camera.orthographic_vertical_span = 1.1f;
+    require(
+        !component.camera_may_be_inside_volume(
+            outside_horizontal_fit_viewplane,
+            camera),
+        "horizontal-fit orthographic bounds used the raw source scale");
 
     camera.projection =
         CameraProjection::panorama;

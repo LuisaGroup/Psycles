@@ -15,6 +15,7 @@ namespace {
         case compiler::ValueOperation::environment_color:
         case compiler::ValueOperation::environment_alpha:
         case compiler::ValueOperation::attribute_color:
+        case compiler::ValueOperation::attribute_factor:
         case compiler::ValueOperation::attribute_alpha:
             return true;
         default:
@@ -356,15 +357,30 @@ public:
                     break;
                 }
                 case compiler::ValueOperation::attribute_color:
+                case compiler::ValueOperation::attribute_factor:
                 case compiler::ValueOperation::attribute_alpha: {
                     auto attribute = services.attribute(
                         instruction.static_u0, point);
-                    value =
+                    if (instruction.operation ==
+                        compiler::ValueOperation::attribute_factor) {
+                        value = make_float4(
+                            (attribute.value.x +
+                             attribute.value.y +
+                             attribute.value.z) /
+                            3.0f);
+                    } else if (
                         instruction.operation ==
-                                compiler::ValueOperation::
-                                    attribute_alpha
-                            ? make_float4(attribute.value.w)
-                            : attribute.value;
+                        compiler::ValueOperation::attribute_alpha) {
+                        // Cycles treats a missing attribute as a zero
+                        // FLOAT3 descriptor. Its Alpha projection is one,
+                        // while an existing RGBA attribute supplies w.
+                        value = make_float4(select(
+                            1.0f,
+                            attribute.value.w,
+                            attribute.found));
+                    } else {
+                        value = attribute.value;
+                    }
                     break;
                 }
             default:
