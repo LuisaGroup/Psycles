@@ -81,15 +81,38 @@ texture-color to scalar Math to Principled roughness, and for explicit Cycles
 socket conversions. Closure composition remains a tree in both domains; there
 is no fixed-size `ShaderClosure[]`.
 
+`SurfaceProgramBuilder` emits this stream directly from the topological
+`evaluation_order` produced by graph analysis. While Luisa records a material
+branch,
+`GraphSurfaceImplementation` visits the stream once in that order and retains
+each result as a host-stage `SurfaceValueExpression`. That type is a C++
+`variant<Expr<float>, Expr<float3>>` used only while constructing the AST. The
+selected Luisa expression reaches device code without a runtime tag, union, or
+four-component padding. An edge whose consumer requests the wrong static type
+is an AST-construction error rather than a device-side conversion.
+
 Every unlinked editable socket becomes a typed `ParameterDesc`. A
 `SurfaceParameterBlock` can therefore be regenerated from a new shader graph
 without rebuilding the program if its `structure_signature` still matches.
+Production device storage preserves that type boundary with separate scalar
+and vector buffers. Both use the same `parameter_block + ParameterId` address,
+but a scalar parameter node can only issue a scalar load and a vector parameter
+node can only issue a vector load. The former weak `Buffer<float4>` material ABI
+is not present in surface callables.
+
+Runtime literals deliberately remain parameterized instead of being embedded
+into every material AST. Materials with the same structure signature can then
+share one recorded branch while retaining different raw Blender socket values.
+Literal specialization is a possible compiler optimization only when its extra
+material branches and native-JIT cost are measured to be beneficial; it is not
+the semantic representation and must never become Blender/Cycles material
+pre-baking.
 This gives multistage code a precise binding-time boundary:
 
 | Value | Current representation | Update action |
 |---|---|---|
 | Node topology, static operation, socket type | Program structure | Recompile program |
-| Unlinked color, roughness, strength, mix factor | Parameter block | Rebind data |
+| Unlinked color, roughness, strength, mix factor | Typed scalar/vector parameter block | Rebind data |
 | Position, normals, incoming direction, tangent | Surface point | Evaluate on device |
 
 Emission has two deliberately separate host-stage analyses. The structural

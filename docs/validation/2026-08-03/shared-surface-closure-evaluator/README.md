@@ -24,7 +24,10 @@ bounded. Commit `f075100`, backed by LuisaCompute `next@6a7aabedc`, adds the
 Vulkan cold-compilation safety policy described below. Commit `0664943` defines
 the lossless four-matrix closure-callable ABI, and commit `fbcb7b4` moves
 sampled-light BSDF evaluation to a branch-local visitor over raw closure
-expressions.
+expressions. Commit `c310f77` completes branch-local sampling, `02b7c67` gives
+closure selection a scalar typed ABI, `d0b8916` retains every topologically
+scheduled shader value in its compiler IR type, and `f0e0ae5` removes the weak
+`Buffer<float4>` material-parameter ABI from production.
 
 ## Formal contract
 
@@ -65,6 +68,15 @@ The boundary is defined by invariants rather than material-specific cases:
     one mixture-PDF normalization. The four-matrix callable ABI round-trips all
     26 closure fields without a device pointer, runtime closure index, or
     hidden mutable state.
+12. Shader value instructions are emitted from the compiler's topological
+    `evaluation_order` and recorded exactly once in that order. Every retained
+    edge is an `Expr<float>` or `Expr<float3>` selected from the static socket
+    type; the host-only discriminator never reaches device code.
+13. Editable literals remain runtime data so equal structure signatures share
+    one material branch, but storage and callable arguments preserve their
+    scalar/vector type. A parameter node reads exactly one corresponding typed
+    buffer at `parameter_block + ParameterId`; it cannot recover a scalar or
+    vector by swizzling a weak `float4` value.
 
 The OOP boundary is host/JIT-stage metaprogramming: virtual material components
 record the graph-dependent AST once. Branch-local operation objects then emit
@@ -136,6 +148,94 @@ Normal residual remains concentrated on thin vegetation and geometric edges.
 
 The machine-readable comparison is
 [`reports/branch-local-evaluation-hip-vs-cycles-hip.json`](reports/branch-local-evaluation-hip-vs-cycles-hip.json).
+
+## Typed topological expansion at `f0e0ae5`
+
+### Binding-time design
+
+The shader graph was already scheduled in topological order: graph analysis
+produces `evaluation_order`, `SurfaceProgramBuilder` emits one ordered value
+instruction stream from it, and `GraphSurfaceImplementation` visits that stream
+once while recording each runtime material branch. The remaining problem was
+type erasure. Every node result crossed the topological boundary as `Float4`,
+and a parameter node recorded both a scalar and a vector load before selecting
+one on the host.
+
+Commit `d0b8916` replaces that boundary with the host-only
+`SurfaceValueExpression = variant<Expr<float>, Expr<float3>>`. Static socket
+type selects the alternative while the Luisa AST is being built, so no runtime
+tag or union reaches the device. Four-channel local computations such as RGBA
+texture reads are projected immediately at the producing node; `Float4` no
+longer crosses a value edge. A dependency-mask zero is likewise emitted in the
+instruction's static type, and an invalid extraction fails during AST
+construction instead of silently swizzling another representation.
+
+Commit `f0e0ae5` then splits production material literals into
+`Buffer<float>` and `Buffer<float3>`. They retain one common
+`parameter_block + ParameterId` address, but scalar and vector parameter nodes
+can only call their corresponding typed service and issue one typed load. All
+surface, closure-evaluation, closure-sampling, environment, geometry, and
+volume callables now carry this typed pair; the former weak
+`Buffer<float4>` parameter argument is absent from the production ABI.
+
+Literals are not embedded blindly into every material branch. The same
+structure signature may be shared by materials with different original
+Blender socket values; retaining typed runtime data avoids duplicating that
+branch and its native JIT cost. This is a binding-time choice, not material
+pre-baking. A future literal-specialization pass must justify extra branches
+with measured compiler/runtime benefit and must continue to evaluate the raw
+closure graph in Luisa.
+
+### Regression and HIP measurements
+
+The Release build used `cmake --build build -j32`. The typed scene-majorant
+fixture now uploads genuine scalar and vector buffers and evaluates both
+through the production service. The focused fallback/HIP/Vulkan plus AST
+matrix passed 7/7, and the complete suite passed 132/132 in 91.97 s.
+
+The cold 640x480 Lone Monk smoke used the unchanged 37-material export, one
+sample, and eight samples per dispatch. The previous row is the immediately
+preceding typed-selection ABI checkpoint on the same machine.
+
+| HIP checkpoint | Scene compile | Cold JIT | HIP LLVM | AMDGPU bytes | Linked bytes | Peak RSS |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| typed selection `02b7c67` | 3.476 s | 78.140 s | 21.369 s | 3,840,152 | 6,068,416 | 4,647,012 KiB |
+| typed topology/storage `f0e0ae5` | 3.626 s | 75.385 s | 19.453 s | 3,787,724 | 6,060,480 | 4,291,964 KiB |
+
+Typed storage therefore reduced total cold JIT by 3.5%, HIP LLVM time by 9.0%,
+generated AMDGPU code by 1.4%, and peak RSS by 7.6% in this A/B. The downstream
+HIP bitcode link still took 49.577 s and remains the dominant compile stage.
+The one-sample render took 0.109 s and is not a quality measurement.
+
+Three cached 640x480, 64-spp runs took 3.59308, 3.60068, and 3.59049 s, a
+3.59308 s median. That is 0.54% faster than the typed-selection median of
+3.61242 s, but 2.53% slower than the earlier branch-local sampling median of
+3.50452 s. The change is too small and non-monotonic to claim a material
+throughput speedup; its demonstrated gains are the formal type boundary and
+the cold-compiler reductions. Against the retained 1.894 s Cycles HIP golden,
+the current render is 1.90x slower.
+
+The current EXR versus the pre-storage typed-topology EXR has Combined relative
+RMSE `0.00012385` and a luminance ratio of `0.99999915`, inside the observed
+HIP execution nondeterminism. Against the same Cycles HIP golden, Combined RMSE
+is `0.0664965`, relative RMSE `0.0426518`, and mean-luminance ratio `1.0003312`;
+Normal RMSE is `0.0103943`. Diffuse Color and Glossy Color RMSE are `0.0067261`
+and `0.0012782`, and Transmission Color is exactly zero.
+
+Both triptychs below were opened at original resolution. Architecture, camera,
+material energy, and the placement and density of foreground grass/vegetation
+align. Combined residuals remain finite-sample noise and sparse highlights;
+Normal residuals remain localized to thin vegetation, brick seams, and
+geometric edges. No new grass-band, closure-order, or normal-orientation error
+is visible.
+
+![Cycles HIP, typed-topology Psycles HIP, and amplified Combined difference](triptychs/typed-topology-hip/combined.png)
+
+![Cycles HIP, typed-topology Psycles HIP, and amplified Normal difference](triptychs/typed-topology-hip/normal.png)
+
+The machine-readable comparison is
+[`reports/typed-topology-hip-vs-cycles-hip.json`](reports/typed-topology-hip-vs-cycles-hip.json),
+and the cold plus three warm process logs are under [`logs/`](logs/).
 
 ## Lone Monk five-way result at `cceead9`
 
