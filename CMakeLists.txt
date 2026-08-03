@@ -195,6 +195,7 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/graph_surface_implementation.cpp
             src/luisa/graph_surface_physical_closures.cpp
             src/luisa/surface_closure_set.cpp
+            src/luisa/surface_closure_evaluator.cpp
             src/luisa/microfacet_glass_component.cpp
             src/luisa/principled_base_component.cpp
             src/luisa/principled_layer_component.cpp
