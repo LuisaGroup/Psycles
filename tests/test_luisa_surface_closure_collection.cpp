@@ -4,6 +4,7 @@
 #include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/graph_surface.h>
 #include <psycles/luisa/surface_closure_evaluator.h>
+#include <psycles/luisa/surface_closure_blocks.h>
 #include <psycles/luisa/surface_closure_operations.h>
 #include <psycles/luisa/surface_closure_set.h>
 
@@ -271,6 +272,11 @@ int main(int argc, char **argv) {
         make_surface_closure_identity_callable();
     const auto closure_aov =
         make_surface_closure_aov_callable();
+    Callable<luisa::float4x4(luisa::float4x4)>
+        closure_block_passthrough = [](
+                                        Float4x4 block) noexcept {
+            return block;
+        };
 
     Kernel1D collect = [&](BufferFloat4 parameter_buffer,
                            BufferFloat4 output) noexcept {
@@ -439,63 +445,71 @@ int main(int argc, char **argv) {
         closures.add(overflow);
 
         const auto requested = dispatch_x();
+        const auto write_closure = [&output](
+                                               UInt base,
+                                               UInt count,
+                                               Bool valid,
+                                               const SurfaceClosureRecord
+                                                   &closure) noexcept {
+            const auto flags =
+                select(0u, 1u, closure.setup_valid) |
+                select(0u, 2u, closure.preserve_ggx_energy) |
+                select(0u, 4u, closure.beckmann);
+            output.write(base,
+                make_float4(
+                    cast<float>(count),
+                    cast<float>(closure.kind),
+                    cast<float>(closure.lobe),
+                    select(0.0f, 1.0f, valid)));
+            output.write(base + 1u,
+                make_float4(
+                    closure.weight,
+                    closure.allocation_weight));
+            output.write(base + 2u,
+                make_float4(
+                    closure.albedo,
+                    closure.sample_weight));
+            output.write(base + 3u,
+                make_float4(
+                    closure.reflection_albedo,
+                    closure.roughness));
+            output.write(base + 4u,
+                make_float4(
+                    closure.transmission_albedo,
+                    closure.diffuse_roughness));
+            output.write(base + 5u,
+                make_float4(
+                    closure.color,
+                    closure.metallic));
+            output.write(base + 6u,
+                make_float4(
+                    closure.normal,
+                    closure.ior));
+            output.write(base + 7u,
+                make_float4(
+                    closure.specular_tint,
+                    closure.specular_ior_level));
+            output.write(base + 8u,
+                make_float4(
+                    closure.evaluation_scale,
+                    closure.sheen_transform_a));
+            output.write(base + 9u,
+                make_float4(
+                    closure.fresnel_f0,
+                    closure.sheen_transform_b));
+            output.write(base + 10u,
+                make_float4(
+                    closure.fresnel_f90,
+                    cast<float>(flags)));
+            output.write(base + 11u,
+                make_float4(closure.reflection_tint, 0.0f));
+            output.write(base + 12u,
+                make_float4(closure.transmission_tint, 0.0f));
+        };
         const auto closure = closures.entry(requested);
         const auto valid = requested < closures.count();
-        const auto flags =
-            select(0u, 1u, closure.setup_valid) |
-            select(0u, 2u, closure.preserve_ggx_energy) |
-            select(0u, 4u, closure.beckmann);
         const auto base = requested * storage_records_per_slot;
-        output.write(base,
-            make_float4(
-                cast<float>(closures.count()),
-                cast<float>(closure.kind),
-                cast<float>(closure.lobe),
-                select(0.0f, 1.0f, valid)));
-        output.write(base + 1u,
-            make_float4(
-                closure.weight,
-                closure.allocation_weight));
-        output.write(base + 2u,
-            make_float4(
-                closure.albedo,
-                closure.sample_weight));
-        output.write(base + 3u,
-            make_float4(
-                closure.reflection_albedo,
-                closure.roughness));
-        output.write(base + 4u,
-            make_float4(
-                closure.transmission_albedo,
-                closure.diffuse_roughness));
-        output.write(base + 5u,
-            make_float4(
-                closure.color,
-                closure.metallic));
-        output.write(base + 6u,
-            make_float4(
-                closure.normal,
-                closure.ior));
-        output.write(base + 7u,
-            make_float4(
-                closure.specular_tint,
-                closure.specular_ior_level));
-        output.write(base + 8u,
-            make_float4(
-                closure.evaluation_scale,
-                closure.sheen_transform_a));
-        output.write(base + 9u,
-            make_float4(
-                closure.fresnel_f0,
-                closure.sheen_transform_b));
-        output.write(base + 10u,
-            make_float4(
-                closure.fresnel_f90,
-                cast<float>(flags)));
-        output.write(base + 11u,
-            make_float4(closure.reflection_tint, 0.0f));
-        output.write(base + 12u,
-            make_float4(closure.transmission_tint, 0.0f));
+        write_closure(base, closures.count(), valid, closure);
         auto point = make_surface_point();
         const SurfaceClosureEvaluator invalid_evaluator{
             point,
@@ -509,6 +523,32 @@ int main(int argc, char **argv) {
                 cast<float>(invalid_trace.type),
                 select(0.0f, 1.0f, invalid_trace.valid),
                 cast<float>(invalid_trace.runtime_flags)));
+        $if(requested == 0u) {
+            const auto blocks = pack_surface_closure(glass_record);
+            const auto round_trip = unpack_surface_closure(
+                Expr<luisa::float4x4>{
+                    closure_block_passthrough(blocks.block_0)
+                        .expression()},
+                Expr<luisa::float4x4>{
+                    closure_block_passthrough(blocks.block_1)
+                        .expression()},
+                Expr<luisa::float4x4>{
+                    closure_block_passthrough(blocks.block_2)
+                        .expression()},
+                Expr<luisa::float4x4>{
+                    closure_block_passthrough(blocks.block_3)
+                        .expression()});
+            constexpr auto round_trip_base =
+                3u * storage_records_per_slot;
+            write_closure(
+                round_trip_base,
+                2u,
+                true,
+                round_trip);
+            output.write(
+                round_trip_base + 13u,
+                make_float4(0.0f));
+        };
     };
 
     const auto write_evaluator_result = [](
@@ -970,7 +1010,7 @@ int main(int argc, char **argv) {
     auto retained_buffer =
         device.create_buffer<luisa::float4>(invocation_count * 3u);
     auto storage_buffer = device.create_buffer<luisa::float4>(
-        3u * storage_records_per_slot);
+        4u * storage_records_per_slot);
     auto shared_evaluator_buffer =
         device.create_buffer<luisa::float4>(
             invocation_count *
@@ -1013,7 +1053,7 @@ int main(int argc, char **argv) {
     std::array<luisa::float4, invocation_count * 3u> old{};
     std::array<luisa::float4, invocation_count * 3u> retained{};
     std::array<luisa::float4,
-        3u * storage_records_per_slot>
+        4u * storage_records_per_slot>
         stored{};
     std::array<luisa::float4,
         invocation_count * evaluator_records_per_slot>
@@ -1242,11 +1282,15 @@ int main(int argc, char **argv) {
                 1.0f,
                 0.0f});
     auto glass_round_trip = true;
+    auto callable_round_trip = true;
     for (auto record = 0u;
          record < glass_storage_expected.size();
          ++record) {
         glass_round_trip &= approximately_equal(
             stored[storage_records_per_slot + record],
+            glass_storage_expected[record]);
+        callable_round_trip &= approximately_equal(
+            stored[3u * storage_records_per_slot + record],
             glass_storage_expected[record]);
     }
     const auto overflow_truncated =
@@ -1264,6 +1308,7 @@ int main(int argc, char **argv) {
             luisa::float4{1.0f, 1.0f, 1.0f, 0.0f});
     if (!invalid_setup_retained ||
         !glass_round_trip ||
+        !callable_round_trip ||
         !overflow_truncated) {
         std::cerr
             << "surface closure Local storage failed on "

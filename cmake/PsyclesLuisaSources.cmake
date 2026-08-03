@@ -4,6 +4,7 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/graph_surface_emission.cpp
     src/luisa/graph_surface_implementation.cpp
     src/luisa/graph_surface_physical_closures.cpp
+    src/luisa/surface_closure_blocks.cpp
     src/luisa/surface_closure_visitor.cpp
     src/luisa/surface_closure_operations.cpp
     src/luisa/surface_closure_set.cpp
