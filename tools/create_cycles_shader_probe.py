@@ -28,6 +28,7 @@ if str(_TOOL_DIRECTORY) not in sys.path:
 from cycles_shader_probe import (  # noqa: E402
     closures,
     environment_inputs,
+    geometry_inputs,
     lights_camera,
     procedural_textures,
     support,
@@ -75,6 +76,7 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "fresnel_matrix": texture_inputs._fresnel_matrix,
     "gamma_color": values._gamma_color,
     "glass_transport": closures._glass_transport,
+    "geometry_pointiness": geometry_inputs._geometry_pointiness,
     "gradient_spherical": texture_inputs._gradient_spherical,
     "gradient_matrix": values._gradient_matrix,
     "hosek_wilkie_diffuse_transport": (

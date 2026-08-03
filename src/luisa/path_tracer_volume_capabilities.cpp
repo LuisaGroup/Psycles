@@ -24,6 +24,7 @@ namespace {
         case ValueOperation::particle_index:
         case ValueOperation::particle_random:
         case ValueOperation::back_facing:
+        case ValueOperation::pointiness:
         case ValueOperation::random_per_island:
         case ValueOperation::image_color:
         case ValueOperation::image_alpha:

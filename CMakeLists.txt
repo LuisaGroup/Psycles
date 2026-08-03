@@ -51,6 +51,7 @@ add_library(psycles_core
     src/compiler/surface_program_lower_context.cpp
     src/compiler/surface_program_lower_textures.cpp
     src/compiler/surface_program_lower_values.cpp
+    src/contract/cycles_pointiness.cpp
     src/contract/scene.cpp
     src/contract/shader_graph.cpp
     src/io/image.cpp
@@ -1546,6 +1547,15 @@ if(PSYCLES_ENABLE_LUISA)
                 NAME psycles.blender_import
                 COMMAND psycles_blender_import_tests)
 
+            psycles_add_luisa_backend_test(
+                TARGET
+                    psycles_luisa_pointiness_scene_tests
+                SOURCE
+                    tests/test_luisa_pointiness_scene.cpp
+                TEST_STEM
+                    luisa_pointiness_scene
+                LIBRARIES Psycles::luisa_runtime)
+
             add_executable(
                 psycles_sample_dispatch_partition_tests
                 tests/test_sample_dispatch_partition.cpp)
@@ -1668,6 +1678,19 @@ if(PSYCLES_BUILD_TESTS)
     target_link_libraries(psycles_tests PRIVATE Psycles::core)
     target_compile_features(psycles_tests PRIVATE cxx_std_20)
     add_test(NAME psycles.contracts COMMAND psycles_tests)
+
+    add_executable(
+        psycles_cycles_pointiness_tests
+        tests/test_cycles_pointiness.cpp)
+    target_link_libraries(
+        psycles_cycles_pointiness_tests
+        PRIVATE Psycles::core)
+    target_compile_features(
+        psycles_cycles_pointiness_tests
+        PRIVATE cxx_std_20)
+    add_test(
+        NAME psycles.cycles_pointiness
+        COMMAND psycles_cycles_pointiness_tests)
 
     add_executable(
         psycles_tabulated_sobol_tests
@@ -1823,6 +1846,19 @@ if(PSYCLES_BUILD_TESTS)
                 1
                 --python
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_attribute_domains.py"
+                --
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/export_psycles_scene.py"
+                "$<TARGET_FILE:psycles_inspect_blender_material>")
+        add_test(
+            NAME psycles.blender_export_pointiness_source
+            COMMAND
+                "${PSYCLES_BLENDER_EXECUTABLE}"
+                --background
+                --factory-startup
+                --python-exit-code
+                1
+                --python
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_pointiness_source.py"
                 --
                 "${CMAKE_CURRENT_SOURCE_DIR}/tools/export_psycles_scene.py"
                 "$<TARGET_FILE:psycles_inspect_blender_material>")

@@ -870,6 +870,28 @@ BlenderSceneImport load_blender_scene_bundle(
                         geometry,
                         "triangle_random_per_island"),
                     triangle_count);
+            std::vector<float> pointiness_normal_values;
+            std::vector<std::uint32_t> pointiness_edge_values;
+            auto *pointiness_source =
+                member(geometry, "pointiness_source");
+            const auto has_pointiness_source =
+                pointiness_source != nullptr &&
+                !yyjson_is_null(pointiness_source);
+            if (has_pointiness_source) {
+                const auto edge_count =
+                    static_cast<std::size_t>(unsigned_number(
+                        member(pointiness_source, "edge_count")));
+                pointiness_normal_values = read_values<float>(
+                    geometry_stream,
+                    section_offset(
+                        pointiness_source, "point_normals"),
+                    point_count * 3u);
+                pointiness_edge_values =
+                    read_values<std::uint32_t>(
+                        geometry_stream,
+                        section_offset(pointiness_source, "edges"),
+                        edge_count * 2u);
+            }
 
             TriangleMeshDesc mesh;
             mesh.name = text(member(geometry, "name"));
@@ -928,6 +950,26 @@ BlenderSceneImport load_blender_scene_bundle(
                     matrix(member(
                         geometry,
                         "generated_transform"));
+            }
+            if (has_pointiness_source) {
+                auto &source = mesh.pointiness_source.emplace();
+                source.point_normals.reserve(point_count);
+                for (std::size_t i = 0u; i < point_count; ++i) {
+                    source.point_normals.emplace_back(Vec3f{
+                        pointiness_normal_values[i * 3u],
+                        pointiness_normal_values[i * 3u + 1u],
+                        pointiness_normal_values[i * 3u + 2u]});
+                }
+                source.edges.reserve(
+                    pointiness_edge_values.size() / 2u);
+                for (std::size_t i = 0u;
+                     i < pointiness_edge_values.size();
+                     i += 2u) {
+                    source.edges.emplace_back(
+                        std::array<std::uint32_t, 2u>{
+                            pointiness_edge_values[i],
+                            pointiness_edge_values[i + 1u]});
+                }
             }
             auto *uv_layers = member(geometry, "uv_layers");
             if (uv_layers != nullptr &&

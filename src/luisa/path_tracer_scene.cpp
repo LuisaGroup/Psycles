@@ -11,6 +11,7 @@
 #include "cycles_shader_identity.h"
 
 #include <psycles/compiler/core_nodes.h>
+#include <psycles/contract/cycles_pointiness.h>
 #include <psycles/luisa/cycles_bsdf_tables.h>
 #include <psycles/luisa/cycles_nishita.h>
 #include <psycles/sampling/light_distribution.h>
@@ -138,6 +139,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         volume_surface_flags;
     std::map<std::uint64_t, std::uint32_t>
         surface_tags_by_signature;
+    std::set<contract::MaterialId>
+        pointiness_materials;
     for (const auto &[id, material] :
          data->materials.materials()) {
         const auto base = static_cast<std::uint32_t>(
@@ -204,6 +207,16 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                     snapshot.materials.at(id)
                         .volume_sampling});
         const auto &program = *material.surface_program();
+        if (program.root().valid() &&
+            std::any_of(
+                program.value_instructions().begin(),
+                program.value_instructions().end(),
+                [](const auto &instruction) noexcept {
+                    return instruction.operation ==
+                           compiler::ValueOperation::pointiness;
+                })) {
+            pointiness_materials.emplace(id);
+        }
         const auto scalar_parameter =
             [&](compiler::ValueExpressionId expression)
             -> std::optional<float> {
@@ -395,14 +408,46 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         data->device.create_buffer<float>(
             cycles_bsdf_values.size());
 
+    std::set<contract::GeometryId>
+        override_pointiness_geometries;
+    for (const auto &[instance_id, instance] : snapshot.instances) {
+        static_cast<void>(instance_id);
+        if (std::any_of(
+                instance.material_overrides.begin(),
+                instance.material_overrides.end(),
+                [&](const auto material) noexcept {
+                    return pointiness_materials.contains(material);
+                })) {
+            override_pointiness_geometries.emplace(
+                instance.geometry);
+        }
+    }
     std::size_t attribute_count = 0u;
     for (const auto &[id, geometry] :
          snapshot.geometries) {
-        static_cast<void>(id);
+        const auto requires_pointiness =
+            override_pointiness_geometries.contains(id) ||
+            std::any_of(
+                geometry.material_slots.begin(),
+                geometry.material_slots.end(),
+                [&](const auto material) noexcept {
+                    return pointiness_materials.contains(material);
+                });
+        if (requires_pointiness && !geometry.pointiness_source) {
+            diagnose(
+                result.diagnostics,
+                "Geometry '" + geometry.name +
+                    "' uses Geometry.Pointiness but has no evaluated "
+                    "point normals and original edges.");
+        }
         attribute_count +=
             geometry.color_attributes.size() +
             geometry.uv_layers.size() +
-            geometry.uv_tangent_layers.size();
+            geometry.uv_tangent_layers.size() +
+            (geometry.pointiness_source ? 1u : 0u);
+    }
+    if (!result.diagnostics.empty()) {
+        return result;
     }
     const auto fixed_geometry_slots =
         snapshot.geometries.size() *
@@ -763,6 +808,23 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                     "' has no triangles.");
             continue;
         }
+        std::vector<float> pointiness_values;
+        if (geometry.pointiness_source) {
+            try {
+                pointiness_values =
+                    contract::make_cycles_pointiness_attribute(
+                        geometry.positions,
+                        geometry.pointiness_source->point_normals,
+                        geometry.pointiness_source->edges);
+            } catch (const std::invalid_argument &error) {
+                diagnose(
+                    result.diagnostics,
+                    "Geometry '" + geometry.name +
+                        "' has an invalid Cycles Pointiness source: " +
+                        error.what() + ".");
+                continue;
+            }
+        }
         const auto cycles_primitive_interval =
             cycles_primitive_intervals.resolve(
                 geometry.triangles.size(),
@@ -913,7 +975,19 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         upload.attributes.reserve(
             geometry.color_attributes.size() +
             geometry.uv_layers.size() +
-            geometry.uv_tangent_layers.size());
+            geometry.uv_tangent_layers.size() +
+            (pointiness_values.empty() ? 0u : 1u));
+        if (!pointiness_values.empty()) {
+            auto &attribute = upload.attributes.emplace_back();
+            attribute.id =
+                contract::cycles_pointiness_attribute_id;
+            attribute.domain = attribute_domain_point;
+            attribute.values.reserve(pointiness_values.size());
+            for (const auto value : pointiness_values) {
+                attribute.values.emplace_back(
+                    luisa::make_float4(value, 0.0f, 0.0f, 0.0f));
+            }
+        }
         for (const auto &[name, source] :
              geometry.color_attributes) {
             auto &attribute =

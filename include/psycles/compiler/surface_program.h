@@ -89,6 +89,7 @@ enum class ValueOperation : std::uint8_t {
     particle_index,
     particle_random,
     back_facing,
+    pointiness,
     random_per_island,
     path_is_camera,
     path_is_shadow,

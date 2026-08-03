@@ -259,6 +259,57 @@ def _tree(
     return data
 
 
+def _node_tree_uses_pointiness(
+    tree: Any,
+    visited: set[int] | None = None,
+) -> bool:
+    """Match Cycles' linked Geometry.Pointiness attribute request.
+
+    The test is intentionally structural. It decides whether to retain the
+    evaluated point normals and original edges in the scene contract; it does
+    not evaluate or rewrite any part of the shader graph.
+    """
+
+    if tree is None:
+        return False
+    if visited is None:
+        visited = set()
+    identity = int(tree.as_pointer())
+    if identity in visited:
+        return False
+    visited.add(identity)
+    for node in tree.nodes:
+        if node.bl_idname == "ShaderNodeNewGeometry":
+            output = node.outputs.get("Pointiness")
+            if output is not None and output.is_linked:
+                return True
+        nested = getattr(node, "node_tree", None)
+        if nested is not None and _node_tree_uses_pointiness(
+            nested, visited
+        ):
+            return True
+    return False
+
+
+_POINTINESS_MATERIAL_CACHE: dict[int, bool] = {}
+
+
+def _material_uses_pointiness(material: Any) -> bool:
+    if material is None:
+        return False
+    identity = int(material.as_pointer())
+    cached = _POINTINESS_MATERIAL_CACHE.get(identity)
+    if cached is not None:
+        return cached
+    result = bool(
+        material is not None
+        and material.use_nodes
+        and _node_tree_uses_pointiness(material.node_tree)
+    )
+    _POINTINESS_MATERIAL_CACHE[identity] = result
+    return result
+
+
 def _write_array(stream: Any, values: array.array[Any]) -> dict[str, int]:
     if sys.byteorder != "little":
         values.byteswap()
@@ -314,6 +365,23 @@ def _geometry(
         return None
     owned_mesh = None
     try:
+        needs_pointiness = any(
+            _material_uses_pointiness(slot.material)
+            for slot in obj.material_slots
+        )
+        pointiness_normals = array.array("f")
+        pointiness_edges = array.array("I")
+        if needs_pointiness:
+            pointiness_normals.extend(
+                component
+                for vertex in mesh.vertices
+                for component in vertex.normal
+            )
+            pointiness_edges.extend(
+                int(vertex)
+                for edge in mesh.edges
+                for vertex in edge.vertices
+            )
         # Mesh.calc_tangents rejects n-gons, while Cycles and Psycles both
         # consume triangles. Triangulate only n-gons on Blender's temporary
         # evaluated mesh so tangent generation and exported Accel topology
@@ -557,6 +625,15 @@ def _geometry(
                     _cycles_hash_uint(find_root(first_vertex))
                 )
             )
+        pointiness_source = None
+        if needs_pointiness:
+            pointiness_source = {
+                "point_normals": _write_array(
+                    stream, pointiness_normals
+                ),
+                "edge_count": len(pointiness_edges) // 2,
+                "edges": _write_array(stream, pointiness_edges),
+            }
         return {
             "name": obj.name,
             "point_count": len(mesh.vertices),
@@ -600,6 +677,7 @@ def _geometry(
                 }
                 for attribute in color_layers
             ],
+            "pointiness_source": pointiness_source,
             "indices": _write_array(stream, indices),
             "triangle_material_slots": _write_array(stream, materials),
             "triangle_smooth": _write_array(stream, smooth),
@@ -1053,6 +1131,10 @@ def _export_scene(
         for uv_layer in geometry["uv_layers"]:
             sections.append(uv_layer["values"])
             sections.append(uv_layer["tangents"])
+        pointiness_source = geometry.get("pointiness_source")
+        if pointiness_source is not None:
+            sections.append(pointiness_source["point_normals"])
+            sections.append(pointiness_source["edges"])
         for section in sections:
             end = int(section["offset"]) + int(section["bytes"])
             if (

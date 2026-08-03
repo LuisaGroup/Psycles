@@ -82,6 +82,7 @@ NodeRegistry make_core_node_registry() {
             output("Incoming", SocketType::vector),
             output("Tangent", SocketType::vector),
             output("Backfacing", SocketType::floating),
+            output("Pointiness", SocketType::floating),
             output("RandomPerIsland", SocketType::floating)},
         .properties = {},
         .required_features =

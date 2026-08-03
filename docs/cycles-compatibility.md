@@ -502,6 +502,23 @@ exact Detail-16 configuration in the probe. Reports and all visually inspected
 triptychs are in
 [`validation/2026-08-04/wave-texture`](validation/2026-08-04/wave-texture/README.md).
 
+Geometry Pointiness now follows Cycles' mesh-sync construction instead of
+using a triangle-normal curvature approximation or a material-side bake. The
+Blender adapter retains evaluated point normals and original edges only for
+meshes whose raw node graphs link the Pointiness output. Psycles then applies
+the same coordinate-sum duplicate quotient, normal welding, post-weld edge
+deduplication, one-ring angle, and neighbor blur on the host before uploading
+one point-domain standard attribute. Luisa interpolates that attribute at the
+surface shading point; volume points still receive zero. A split height-field
+probe covers convex and concave curvature, boundary behavior, coincident seam
+vertices, and duplicate welded edges. Against latest Cycles CPU, Combined and
+Emit relative RMSE are `5.65e-8` on fallback and `5.84e-8` on both HIP and
+Vulkan, with maximum absolute error `1.79e-7` and zero invalid pixels. The
+Geometry node remains `device_partial` because its separate Tangent and
+Parametric outputs are not yet complete; this Pointiness output is nevertheless
+strictly gated and documented in
+[`validation/2026-08-04/geometry-pointiness`](validation/2026-08-04/geometry-pointiness/README.md).
+
 Particle Info's non-particle sentinel contract is also explicit: its Random
 output now follows Cycles rather than reusing Object Info random. The
 `particle_random_nonparticle` probe matches Combined, Normal, and DiffCol

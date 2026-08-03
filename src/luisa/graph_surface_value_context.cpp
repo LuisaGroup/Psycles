@@ -1,5 +1,6 @@
 #include "graph_surface_internal.h"
 
+#include <psycles/contract/scene.h>
 #include <psycles/luisa/cycles_color_nodes.h>
 #include <psycles/luisa/cycles_noise.h>
 #include <luisa/dsl/sugar.h>
@@ -30,6 +31,7 @@ namespace {
         case compiler::ValueOperation::particle_index:
         case compiler::ValueOperation::particle_random:
         case compiler::ValueOperation::back_facing:
+        case compiler::ValueOperation::pointiness:
         case compiler::ValueOperation::random_per_island:
         case compiler::ValueOperation::path_is_camera:
         case compiler::ValueOperation::path_is_shadow:
@@ -245,6 +247,13 @@ public:
                 case compiler::ValueOperation::back_facing:
                     value = make_float4(select(
                         0.0f, 1.0f, point.back_facing));
+                    break;
+                case compiler::ValueOperation::pointiness:
+                    value = make_float4(
+                        services.attribute(
+                            contract::cycles_pointiness_attribute_id,
+                            point)
+                            .value.x);
                     break;
                 case compiler::ValueOperation::random_per_island:
                     value = make_float4(
