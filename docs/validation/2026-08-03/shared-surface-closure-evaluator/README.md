@@ -21,7 +21,10 @@ projection explicit. Commit `0d89e8b` moves BSDF evaluation behind the shared
 boundary. Commit `d2b7328` completes the sampling migration and packs each
 lossless record into four matrix blocks to keep the generated control flow
 bounded. Commit `f075100`, backed by LuisaCompute `next@6a7aabedc`, adds the
-Vulkan cold-compilation safety policy described below.
+Vulkan cold-compilation safety policy described below. Commit `0664943` defines
+the lossless four-matrix closure-callable ABI, and commit `fbcb7b4` moves
+sampled-light BSDF evaluation to a branch-local visitor over raw closure
+expressions.
 
 ## Formal contract
 
@@ -57,10 +60,16 @@ The boundary is defined by invariants rather than material-specific cases:
     retained mixture for Cycles' multi-closure MIS. Delta closures contribute
     their singular mass separately; invalid selections remain observationally
     zero.
+11. Per-closure evaluation is a pure contribution function. The complete
+    result is its ordered fold in Cycles allocation order, followed by exactly
+    one mixture-PDF normalization. The four-matrix callable ABI round-trips all
+    26 closure fields without a device pointer, runtime closure index, or
+    hidden mutable state.
 
 The OOP boundary is host/JIT-stage metaprogramming: virtual material components
-record the graph-dependent AST once, while `SurfaceClosureEvaluator` records the
-graph-independent consumer AST after dispatch.
+record the graph-dependent AST once. Branch-local operation objects then emit
+nested callable invocations while recording the shader AST; no C++ virtual
+dispatch remains in generated device code.
 
 ## Regression coverage
 
@@ -83,6 +92,50 @@ The focused matrix passes 3/3 and the complete project suite passes 132/132 with
 32-way CTest scheduling. Sampling comparison uses `1e-4` only for backend
 operation-order rounding; it does not relax closure identity, event, validity,
 or selection-index checks.
+
+## Branch-local light-evaluation checkpoint at `fbcb7b4`
+
+Production `evaluate_light` no longer constructs a runtime-indexed private
+closure array. Each runtime material branch retains its original Luisa
+expressions, packs one raw closure into the lossless callable ABI, evaluates a
+pure per-closure contribution, and folds contributions in allocation order.
+The same algebra still drives the legacy storage path used by the exact
+regression, so the two implementations cannot silently acquire separate BSDF
+formulae. Runtime flags, closure trace, AOV, and sampled-light evaluation now
+all use branch-local visitors. `sample` and `sample_trace` still use the
+complete `Local` storage path and are the next structural migration target.
+
+The focused fallback/HIP/Vulkan matrix passes 3/3. The full project suite
+passes 132/132 in 76.65 s with 32-way CTest scheduling. A cold HIP production
+smoke on the original 37-material Lone Monk export recorded 3.580 s scene
+construction, 53.950 s shader JIT, 21.319 s in HIP LLVM, a 4,884,344-byte linked
+code object, and 3,974,916 KiB peak RSS. The 640x480, 1-spp render took 0.107 s;
+it is only a structural smoke test and is not used as an image-quality result.
+
+The quality run uses 640x480, 64 fixed spp, and eight samples per dispatch. Its
+three warm HIP render times are 3.13597, 3.14253, and 3.14810 s (3.14253 s
+median). This is 2.86% below the preceding checkpoint's 3.235 s single run and
+1.66x the current Cycles HIP golden's 1.894 s. Because the old value is a single
+sample, the speed change is directional rather than a claimed statistically
+controlled improvement. Cold JIT increased from 41.780 s to 53.950 s, so the
+remaining sampling migration must be measured for both compilation and runtime
+rather than judged from kernel size alone.
+
+Direct comparison with the same Cycles HIP multilayer EXR gives Combined RMSE
+0.0664948, relative RMSE 0.0426508, mean-luminance ratio 1.000329, and Normal
+RMSE 0.0103936. These match the previous checkpoint at its recorded precision.
+Both triptychs were opened at their original resolution. Camera and
+architecture align; foreground grass and vegetation remain present in the same
+locations; broad material energy and normal orientation are unchanged. The
+Combined residual remains finite-sample noise and sparse highlights, while the
+Normal residual remains concentrated on thin vegetation and geometric edges.
+
+![Cycles HIP, branch-local Psycles HIP, and amplified Combined difference](triptychs/branch-local-evaluation-hip/combined.png)
+
+![Cycles HIP, branch-local Psycles HIP, and amplified Normal difference](triptychs/branch-local-evaluation-hip/normal.png)
+
+The machine-readable comparison is
+[`reports/branch-local-evaluation-hip-vs-cycles-hip.json`](reports/branch-local-evaluation-hip-vs-cycles-hip.json).
 
 ## Lone Monk five-way result at `cceead9`
 

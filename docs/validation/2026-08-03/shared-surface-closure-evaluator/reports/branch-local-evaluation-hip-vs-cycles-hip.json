@@ -1,0 +1,154 @@
+{
+  "actual_label": "Psycles HIP fbcb7b4",
+  "cycles_channels": [
+    "View Layer.Combined.R",
+    "View Layer.Combined.G",
+    "View Layer.Combined.B",
+    "View Layer.Combined.A",
+    "View Layer.Debug Sample Count.X",
+    "View Layer.Depth.Z",
+    "View Layer.Diffuse Color.R",
+    "View Layer.Diffuse Color.G",
+    "View Layer.Diffuse Color.B",
+    "View Layer.Diffuse Direct.R",
+    "View Layer.Diffuse Direct.G",
+    "View Layer.Diffuse Direct.B",
+    "View Layer.Diffuse Indirect.R",
+    "View Layer.Diffuse Indirect.G",
+    "View Layer.Diffuse Indirect.B",
+    "View Layer.Emission.R",
+    "View Layer.Emission.G",
+    "View Layer.Emission.B",
+    "View Layer.Environment.R",
+    "View Layer.Environment.G",
+    "View Layer.Environment.B",
+    "View Layer.Glossy Color.R",
+    "View Layer.Glossy Color.G",
+    "View Layer.Glossy Color.B",
+    "View Layer.Glossy Direct.R",
+    "View Layer.Glossy Direct.G",
+    "View Layer.Glossy Direct.B",
+    "View Layer.Glossy Indirect.R",
+    "View Layer.Glossy Indirect.G",
+    "View Layer.Glossy Indirect.B",
+    "View Layer.Mist.Z",
+    "View Layer.Normal.X",
+    "View Layer.Normal.Y",
+    "View Layer.Normal.Z",
+    "View Layer.Transmission Color.R",
+    "View Layer.Transmission Color.G",
+    "View Layer.Transmission Color.B",
+    "View Layer.Transmission Direct.R",
+    "View Layer.Transmission Direct.G",
+    "View Layer.Transmission Direct.B",
+    "View Layer.Transmission Indirect.R",
+    "View Layer.Transmission Indirect.G",
+    "View Layer.Transmission Indirect.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        1.0003427267074585,
+        1.0003658533096313,
+        0.9998649954795837
+      ],
+      "cycles": "/var/tmp/psycles-lone-monk-transmission-dbdcb17/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.6276388764381409,
+        0.46366047859191895,
+        0.3885496258735657
+      ],
+      "cycles_luminance_mean": 0.4933455288410187,
+      "cycles_rms": 1.5590529441833496,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.00032928738549,
+      "maximum_absolute_error": 3.4784750938415527,
+      "mean_absolute_error": 0.02084912173449993,
+      "orientation_rmse": {
+        "flip_x": 1.0076568126678467,
+        "flip_xy": 1.8484922647476196,
+        "flip_y": 1.8192237615585327,
+        "identity": 0.06649482250213623
+      },
+      "p95_pixel_rmse": 0.11334268003702164,
+      "p99_pixel_rmse": 0.27919620275497437,
+      "psycles": "/var/tmp/psycles-closure-eval-visitor-hip-64spp.exr",
+      "psycles_channel_mean": [
+        0.6278539896011353,
+        0.4638301134109497,
+        0.38849717378616333
+      ],
+      "psycles_luminance_mean": 0.493507981300354,
+      "psycles_rms": 1.5601388256950994,
+      "relative_rmse": 0.04265077895540424,
+      "rmse": 0.06649482250213623,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 2.3369708083225875,
+        "display_scale": 0.08945795903896896,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles/docs/validation/2026-08-03/shared-surface-closure-evaluator/triptychs/branch-local-evaluation-hip/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "Normal": {
+      "channel_mean_ratio": [
+        0.9443462491035461,
+        0.9996199607849121,
+        1.0080198049545288
+      ],
+      "cycles": "/var/tmp/psycles-lone-monk-transmission-dbdcb17/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.007783045060932636,
+        -0.5520638227462769,
+        0.0654388964176178
+      ],
+      "cycles_luminance_mean": -0.38841909170150757,
+      "cycles_rms": 0.5433954000473022,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": -0.9997454190388809,
+      "maximum_absolute_error": 0.5537518262863159,
+      "mean_absolute_error": 0.002418679418042302,
+      "orientation_rmse": {
+        "flip_x": 0.5121440291404724,
+        "flip_xy": 0.6991649866104126,
+        "flip_y": 0.6312043070793152,
+        "identity": 0.010393587872385979
+      },
+      "p95_pixel_rmse": 0.01668066903948784,
+      "p99_pixel_rmse": 0.047953199595212936,
+      "psycles": "/var/tmp/psycles-closure-eval-visitor-hip-64spp.exr",
+      "psycles_channel_mean": [
+        0.007349889259785414,
+        -0.5518540143966675,
+        0.06596370041370392
+      ],
+      "psycles_luminance_mean": -0.3883202075958252,
+      "psycles_rms": 0.5433100444194506,
+      "relative_rmse": 0.01912711788042597,
+      "rmse": 0.010393587872385979,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 13.02724275321877,
+        "display_scale": 1.0,
+        "mapping": "normal_xyz_to_rgb",
+        "path": "/home/mike/Projects/Psycles/docs/validation/2026-08-03/shared-surface-closure-evaluator/triptychs/branch-local-evaluation-hip/normal.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    }
+  },
+  "reference_label": "Cycles HIP",
+  "schema": "psycles.cycles-differential.v1"
+}
