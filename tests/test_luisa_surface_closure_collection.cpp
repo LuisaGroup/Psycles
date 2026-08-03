@@ -36,6 +36,7 @@ constexpr auto records_per_slot = 6u;
 constexpr auto storage_records_per_slot = 14u;
 constexpr auto evaluator_records_per_slot = 10u;
 constexpr auto scattering_records_per_slot = 6u;
+constexpr auto sampling_records_per_slot = 8u;
 
 struct CollectedClosureTrace {
     UInt count;
@@ -513,6 +514,44 @@ int main(int argc, char **argv) {
                 cast<float>(light.events)));
     };
 
+    const auto write_sampling_result = [](
+        const BufferFloat4 &output,
+        UInt base,
+        const SurfaceSampleTrace &trace) noexcept {
+        const auto &sample = trace.sample;
+        output.write(base,
+            make_float4(
+                sample.evaluation.f,
+                sample.evaluation.pdf));
+        output.write(base + 1u,
+            make_float4(
+                sample.evaluation.diffuse_f,
+                sample.evaluation.diffuse_pdf));
+        output.write(base + 2u,
+            make_float4(
+                sample.evaluation.glossy_f,
+                cast<float>(sample.evaluation.events)));
+        output.write(base + 3u,
+            make_float4(sample.wi, sample.eta));
+        output.write(base + 4u,
+            make_float4(
+                sample.roughness,
+                cast<float>(sample.runtime_flags),
+                select(0.0f, 1.0f, sample.valid)));
+        output.write(base + 5u,
+            make_float4(
+                cast<float>(trace.closure_index),
+                cast<float>(trace.closure_type),
+                trace.closure_sample_weight,
+                trace.selection_rescaled));
+        output.write(base + 6u,
+            make_float4(
+                trace.closure_weight,
+                select(0.0f, 1.0f, trace.closure_valid)));
+        output.write(base + 7u,
+            make_float4(trace.closure_normal, 0.0f));
+    };
+
     const auto scattering_inputs = [](
         UInt scenario) noexcept {
         constexpr auto all_lobes =
@@ -761,6 +800,107 @@ int main(int argc, char **argv) {
                         .shader_flags = shader_flags}));
         };
 
+    Kernel1D sample_shared =
+        [&](BufferFloat4 parameter_buffer,
+            BufferFloat4 output) noexcept {
+            const auto invocation = dispatch_x();
+            const auto material = invocation / closure_slots;
+            const auto scenario = invocation % closure_slots;
+            auto point = make_surface_point();
+            point.parameter_block = select(
+                0u, glass_parameter_base, material != 0u);
+            point.back_facing = scenario == 7u;
+            ParameterShaderServices services{parameter_buffer};
+            const auto tag = select(
+                UInt{layered_tag},
+                UInt{glass_tag},
+                material != 0u);
+            const auto [unused_outgoing, lobe_mask, unused_flags] =
+                scattering_inputs(scenario);
+            static_cast<void>(unused_outgoing);
+            static_cast<void>(unused_flags);
+            const auto query = SurfaceQuery{
+                .lobe_mask = lobe_mask,
+                .transport_mode = static_cast<std::uint32_t>(
+                    TransportMode::radiance),
+                .glossy_filter_roughness = select(
+                    0.0f, 0.08f, scenario == 7u),
+                .reflective_caustics = scenario != 6u,
+                .refractive_caustics = scenario != 2u};
+            const auto scenario_float = cast<float>(scenario);
+            const auto u_lobe = min(
+                0.02f + 0.137f * scenario_float,
+                0.99999994f);
+            const auto u_direction = make_float2(
+                0.07f + 0.11f * scenario_float,
+                0.91f - 0.09f * scenario_float);
+            SurfaceClosureSet closures{
+                12u,
+                SurfaceClosureStorageProfile::complete};
+            const auto collection = surfaces.collect_closures(
+                tag,
+                services,
+                point,
+                query.reflective_caustics,
+                query.refractive_caustics,
+                closures);
+            const SurfaceClosureEvaluator evaluator{
+                point, closures, collection.shading_normal};
+            write_sampling_result(
+                output,
+                invocation * sampling_records_per_slot,
+                evaluator.sample_trace(
+                    services,
+                    u_lobe,
+                    u_direction,
+                    query));
+        };
+
+    Kernel1D sample_legacy =
+        [&](BufferFloat4 parameter_buffer,
+            BufferFloat4 output) noexcept {
+            const auto invocation = dispatch_x();
+            const auto material = invocation / closure_slots;
+            const auto scenario = invocation % closure_slots;
+            auto point = make_surface_point();
+            point.parameter_block = select(
+                0u, glass_parameter_base, material != 0u);
+            point.back_facing = scenario == 7u;
+            ParameterShaderServices services{parameter_buffer};
+            const auto tag = select(
+                UInt{layered_tag},
+                UInt{glass_tag},
+                material != 0u);
+            const auto [unused_outgoing, lobe_mask, unused_flags] =
+                scattering_inputs(scenario);
+            static_cast<void>(unused_outgoing);
+            static_cast<void>(unused_flags);
+            const auto query = SurfaceQuery{
+                .lobe_mask = lobe_mask,
+                .transport_mode = static_cast<std::uint32_t>(
+                    TransportMode::radiance),
+                .glossy_filter_roughness = select(
+                    0.0f, 0.08f, scenario == 7u),
+                .reflective_caustics = scenario != 6u,
+                .refractive_caustics = scenario != 2u};
+            const auto scenario_float = cast<float>(scenario);
+            const auto u_lobe = min(
+                0.02f + 0.137f * scenario_float,
+                0.99999994f);
+            const auto u_direction = make_float2(
+                0.07f + 0.11f * scenario_float,
+                0.91f - 0.09f * scenario_float);
+            write_sampling_result(
+                output,
+                invocation * sampling_records_per_slot,
+                surfaces.sample_trace(tag,
+                    services,
+                    point,
+                    u_lobe,
+                    u_direction,
+                    query));
+        };
+
     Context context{argv[0]};
     auto device = context.create_device(backend);
     auto stream = device.create_stream();
@@ -791,6 +931,12 @@ int main(int argc, char **argv) {
         device.create_buffer<luisa::float4>(
             invocation_count *
             scattering_records_per_slot);
+    auto shared_sampling_buffer =
+        device.create_buffer<luisa::float4>(
+            invocation_count * sampling_records_per_slot);
+    auto legacy_sampling_buffer =
+        device.create_buffer<luisa::float4>(
+            invocation_count * sampling_records_per_slot);
     auto collect_kernel = device.compile(collect);
     auto legacy_kernel = device.compile(legacy);
     auto retain_kernel = device.compile(retain);
@@ -803,6 +949,10 @@ int main(int argc, char **argv) {
         device.compile(scatter_shared);
     auto legacy_scattering_kernel =
         device.compile(scatter_legacy);
+    auto shared_sampling_kernel =
+        device.compile(sample_shared);
+    auto legacy_sampling_kernel =
+        device.compile(sample_legacy);
     std::array<luisa::float4, invocation_count * records_per_slot> collected{};
     std::array<luisa::float4, invocation_count * 3u> old{};
     std::array<luisa::float4, invocation_count * 3u> retained{};
@@ -821,6 +971,12 @@ int main(int argc, char **argv) {
     std::array<luisa::float4,
         invocation_count * scattering_records_per_slot>
         legacy_scattering{};
+    std::array<luisa::float4,
+        invocation_count * sampling_records_per_slot>
+        shared_sampling{};
+    std::array<luisa::float4,
+        invocation_count * sampling_records_per_slot>
+        legacy_sampling{};
     stream << parameter_buffer.copy_from(luisa::span{parameters})
            << collect_kernel(parameter_buffer, collected_buffer)
                   .dispatch(invocation_count)
@@ -857,6 +1013,18 @@ int main(int argc, char **argv) {
                   .dispatch(invocation_count)
            << legacy_scattering_buffer.copy_to(
                   luisa::span{legacy_scattering})
+           << shared_sampling_kernel(
+                  parameter_buffer,
+                  shared_sampling_buffer)
+                  .dispatch(invocation_count)
+           << shared_sampling_buffer.copy_to(
+                  luisa::span{shared_sampling})
+           << legacy_sampling_kernel(
+                  parameter_buffer,
+                  legacy_sampling_buffer)
+                  .dispatch(invocation_count)
+           << legacy_sampling_buffer.copy_to(
+                  luisa::span{legacy_sampling})
            << synchronize();
 
     constexpr std::array layered_kinds{
@@ -1077,6 +1245,27 @@ int main(int argc, char **argv) {
             const auto expected = legacy_scattering[record];
             std::cerr
                 << "shared closure scattering failed on "
+                << backend << " at record " << record
+                << ": shared {" << actual.x << ", "
+                << actual.y << ", " << actual.z << ", "
+                << actual.w << "}, legacy {" << expected.x
+                << ", " << expected.y << ", " << expected.z
+                << ", " << expected.w << "}\n";
+            return EXIT_FAILURE;
+        }
+    }
+    for (auto record = std::size_t{0u};
+         record < shared_sampling.size();
+         ++record) {
+        if (!finite(shared_sampling[record]) ||
+            !approximately_equal(
+                shared_sampling[record],
+                legacy_sampling[record],
+                1.0e-4f)) {
+            const auto actual = shared_sampling[record];
+            const auto expected = legacy_sampling[record];
+            std::cerr
+                << "shared closure sampling failed on "
                 << backend << " at record " << record
                 << ": shared {" << actual.x << ", "
                 << actual.y << ", " << actual.z << ", "

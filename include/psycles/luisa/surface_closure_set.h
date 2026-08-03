@@ -27,13 +27,19 @@ enum class SurfaceClosureStorageProfile : std::uint32_t {
 // Device-local counterpart of Cycles' ShaderData closure array. GraphSurface
 // emits records through the host-stage SurfaceClosureCollector interface;
 // this class alone owns allocation-budget truncation and runtime indexing.
-// The structure is SoA because Luisa Local arrays are backend-independent and
-// allow each shared evaluator to load only the fields it consumes.
+// Complete scattering records use four matrix blocks per entry so one
+// transactional append does not scalarize into thirteen independently
+// branched stores. Projected diagnostic profiles remain SoA and therefore
+// load only the fields consumed by their evaluator.
 class SurfaceClosureSet final : public SurfaceClosureCollector {
 
   private:
     std::size_t _capacity;
     SurfaceClosureStorageProfile _profile;
+    luisa::compute::Local<luisa::float4x4> _complete_0;
+    luisa::compute::Local<luisa::float4x4> _complete_1;
+    luisa::compute::Local<luisa::float4x4> _complete_2;
+    luisa::compute::Local<luisa::float4x4> _complete_3;
     luisa::compute::Local<luisa::uint4> _identity;
     luisa::compute::Local<luisa::float4> _weight;
     luisa::compute::Local<luisa::float4> _albedo;
