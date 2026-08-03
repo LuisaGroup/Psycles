@@ -1,14 +1,14 @@
 # Shared surface-closure evaluator validation
 
-This checkpoint moves the low-risk surface consumers behind a single
-post-material boundary. Runtime material dispatch still evaluates the original
-Blender closure graph as Luisa device expressions. It now emits the resulting
-physical closures in Cycles allocation order, after which shared code computes
-runtime flags, closure diagnostics, and AOVs. No closure is evaluated by a CPU
+This validation line moves the surface consumers behind a single post-material
+boundary. Runtime material dispatch still evaluates the original Blender
+closure graph as Luisa device expressions. It emits the resulting physical
+closures in Cycles allocation order, after which shared code evaluates and
+samples the retained closure mixture. No closure is evaluated by a CPU
 reference model, baked by Blender/Cycles, or replaced with precomputed material
 data.
 
-The implementation landed in four independently tested commits:
+The initial boundary landed in four independently tested commits:
 
 - `514bb67` adds the raw closure-collection boundary;
 - `6d1ca46` adds fixed-capacity device-local storage matching Cycles'
@@ -17,8 +17,11 @@ The implementation landed in four independently tested commits:
 - `cceead9` wires runtime flags, closure trace, and AOV into production.
 
 Commit `3020c88` subsequently makes each production consumer's retained field
-projection explicit. The complete lossless profile remains available for the
-upcoming evaluate/sample migration.
+projection explicit. Commit `0d89e8b` moves BSDF evaluation behind the shared
+boundary. Commit `d2b7328` completes the sampling migration and packs each
+lossless record into four matrix blocks to keep the generated control flow
+bounded. Commit `f075100`, backed by LuisaCompute `next@6a7aabedc`, adds the
+Vulkan cold-compilation safety policy described below.
 
 ## Formal contract
 
@@ -41,6 +44,19 @@ The boundary is defined by invariants rather than material-specific cases:
    retains identity and roughness; `closure_trace` retains the five field groups
    it observes; `aov` retains the six groups it observes; `complete` round-trips
    all 26 fields.
+8. Complete records are packed and unpacked losslessly. Closure kind, lobe, and
+   flags use a bitcast rather than a numeric conversion; the storage layout does
+   not change the closure algebra or material data.
+9. Sampling first constructs the Cycles-aligned categorical measure. If
+   eligible closure weights are `s_i`, `W = sum(s_i)`, and `u` is the lobe
+   dimension, the selected closure is the unique interval containing `u W` and
+   its conditional dimension is `(u W - sum_{j<i}(s_j)) / s_i`. The resulting
+   joint density is therefore `p(i, w_i) = s_i / W * p_i(w_i)`.
+10. Only the selected conditional BSDF sampler executes after categorical
+    inversion. The resulting direction is then evaluated against the complete
+    retained mixture for Cycles' multi-closure MIS. Delta closures contribute
+    their singular mass separately; invalid selections remain observationally
+    zero.
 
 The OOP boundary is host/JIT-stage metaprogramming: virtual material components
 record the graph-dependent AST once, while `SurfaceClosureEvaluator` records the
@@ -57,13 +73,18 @@ shared path with the former Cycles-aligned implementation, including:
 - capacity-prefix truncation and cutoff filtering;
 - setup-invalid slot retention;
 - back-facing and filter-glossy runtime flags;
-- closure type, sample weight, weight, and normal; and
-- every AOV field.
+- closure type, sample weight, weight, and normal;
+- every AOV field;
+- every shared BSDF-evaluation field; and
+- every `SurfaceSampleTrace` field for two runtime-selected materials across
+  eight lobe masks, caustic policies, filter-glossy states, and random samples.
 
 The focused matrix passes 3/3 and the complete project suite passes 132/132 with
-32-way CTest scheduling.
+32-way CTest scheduling. Sampling comparison uses `1e-4` only for backend
+operation-order rounding; it does not relax closure identity, event, validity,
+or selection-index checks.
 
-## Lone Monk five-way result
+## Lone Monk five-way result at `cceead9`
 
 The production run uses Blender 5.3-alpha `b82c3f0da6c1`, the same 37 original
 material graphs, 640x480, 64 spp, and eight samples per Psycles dispatch. Cycles
@@ -145,3 +166,122 @@ material replacement, normal rotation, or closure-order artifact appears.
 The machine-readable matrix is in [`benchmark.json`](benchmark.json), comparison
 reports are in [`reports/`](reports/), and compiler/render logs are in
 [`logs/`](logs/).
+
+## Shared evaluation and sampling result at `d2b7328`
+
+The current production run uses the same original 37 Blender material graphs,
+the same exported geometry, 640x480, 64 fixed spp, and eight samples per Psycles
+dispatch. Cycles is Blender 5.3-alpha `b82c3f0da6c1`; its current CPU and HIP
+goldens took 5.233 s and 1.894 s respectively. The table separates scene
+construction, native shader JIT, and render-only time.
+
+| Renderer | Scene compile | Cold shader JIT | 64 spp render | Relative to Cycles HIP |
+| --- | ---: | ---: | ---: | ---: |
+| Cycles CPU | included | included | 5.233 s | 2.76x slower |
+| Cycles HIP | included | included | 1.894 s | 1.00x |
+| Psycles fallback | 1.321 s | 154.376 s | 8.022 s | 4.24x slower |
+| Psycles HIP | 3.515 s | 41.780 s | 3.235 s | 1.71x slower |
+| Psycles Vulkan, bounded compile | 1.297 s | 111.529 s | 96.015 s | 50.69x slower |
+
+The Vulkan cold JIT and 64-spp render are separate runs: the cold 1-spp process
+measures pipeline construction, while the warm 64-spp process measures the
+bounded pipeline's throughput. A warm cache reduces Vulkan pipeline creation
+to 7.133 ms and total JIT setup to 2.352 s, but it does not remove the runtime
+cost of disabling the driver's optimizing pipeline.
+
+The refactor improves the two production paths that can optimize this kernel.
+HIP cold JIT falls from 69.002 s to 41.780 s (39.5%) and render time falls from
+3.537 s to 3.235 s (9.3%). The HIP LLVM stage takes 17.438 s and emits 3,692,460
+bytes. Fallback no longer emits the warning that its largest function exceeds
+Luisa's 250,000-instruction scalability threshold. It therefore runs the full
+O3 pipeline: cold JIT grows from 83.115 s to 154.376 s, while render time falls
+from 22.162 s to 8.022 s, a 2.76x throughput improvement. This is a compile-time
+versus runtime tradeoff, not a cache hit mislabeled as a cold result.
+
+The complete measurements and output hashes are in
+[`shared-sampling-benchmark.json`](shared-sampling-benchmark.json).
+
+## Vulkan compiler diagnosis and bounded policy
+
+The current monolithic path shader produces 2,766,936 SPIR-V words before the
+SPIR-V optimizer and 2,377,955 after it. The optimized module contains 479,372
+instructions, 7,522 labels, 8,551 phi nodes, 82 loops, 23,170 selects, 34,648
+loads, and 3,598 stores. Packing complete closure records into matrix blocks
+reduced stores from 6,878 to 3,598 without changing the semantic regression.
+
+RADV's default fully optimized pipeline still exceeded 63 GiB and was stopped.
+Disabling individual ACO optimizer, value-numbering, and scheduling stages did
+not bound the compile: the tested processes remained around 38--44 GiB after
+five to six minutes. This rules out a single optional ACO pass as the root
+cause. The pathological interaction is the huge runtime-indexed private
+closure array flowing through RADV NIR and mandatory ACO liveness, spilling,
+and register allocation.
+
+LuisaCompute `next@6a7aabedc` therefore exposes a per-shader
+`enable_driver_optimization` option. Vulkan maps `false` to
+`VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT` and includes the pipeline flags in
+the PSO-cache identity. Its regression proves that optimized and bounded PSOs
+cannot alias while identical SPIR-V is reused. Psycles disables driver
+optimization only for the monolithic Vulkan path kernel; every other scene
+kernel and the HIP/fallback backends remain optimized. Setting
+`PSYCLES_VULKAN_ENABLE_DRIVER_OPTIMIZATION=1` explicitly restores the full
+driver path.
+
+The bounded cold pipeline completes in 109.200 s with 18,282,192 KiB peak RSS,
+instead of growing without a practical bound. It is deliberately a safety net,
+not the performance solution: 64-spp rendering is 10.89x slower than the
+historical fully optimized Vulkan checkpoint. The next structural target is to
+remove the large dynamic private closure storage from the monolithic shader so
+full driver optimization can be restored without an ad hoc material or scene
+exception. Detailed stage observations are in
+[`vulkan-driver-compile.json`](vulkan-driver-compile.json).
+
+## Current numerical and visual inspection
+
+All current comparisons use the linear multilayer EXR and the same Cycles HIP
+golden.
+
+| Psycles backend | Combined RMSE | Relative RMSE | Mean luminance ratio | Normal RMSE |
+| --- | ---: | ---: | ---: | ---: |
+| fallback | 0.0657640 | 0.0421820 | 0.999760 | 0.0103932 |
+| HIP | 0.0664949 | 0.0426509 | 1.000327 | 0.0103942 |
+| Vulkan, bounded compile | 0.0662146 | 0.0424710 | 0.999870 | 0.0103745 |
+
+Diffuse Color RMSE remains about `0.006726`, Glossy Color about `0.001278`, and
+Transmission Color is exactly zero on both sides. Against the previous fully
+optimized Vulkan checkpoint, the current bounded result has Combined RMSE
+`0.00174855`, but its 95th-percentile pixel RMSE is only `1.25e-5`; Normal RMSE
+is `1.40e-7`, and Diffuse/Glossy Color RMSE is below `1.81e-8`. The sparse
+Combined outliers are path-sampling differences between code checkpoints, not
+a geometry, normal, or retained-closure change.
+
+Every current Combined and Normal triptych below was opened at its original
+resolution. Camera, architecture, books and furniture, foreground grass and
+vegetation placement, broad material energy, and normal directions align. The
+Combined residual remains finite-sample noise and sparse highlights; the Normal
+residual remains concentrated on thin vegetation and geometric edges. No new
+missing grass band, density change, material replacement, normal rotation, or
+closure-order artifact is visible.
+
+### Current Combined
+
+![Cycles HIP, current Psycles fallback, amplified difference](triptychs/shared-sampling-fallback/combined.png)
+
+![Cycles HIP, current Psycles HIP, amplified difference](triptychs/shared-sampling-hip/combined.png)
+
+![Cycles HIP, current bounded-compile Psycles Vulkan, amplified difference](triptychs/shared-sampling-vk/combined.png)
+
+### Current Normal
+
+![Cycles HIP, current Psycles fallback, amplified normal difference](triptychs/shared-sampling-fallback/normal.png)
+
+![Cycles HIP, current Psycles HIP, amplified normal difference](triptychs/shared-sampling-hip/normal.png)
+
+![Cycles HIP, current bounded-compile Psycles Vulkan, amplified normal difference](triptychs/shared-sampling-vk/normal.png)
+
+### Vulkan checkpoint A/B
+
+![Previous fully optimized and current bounded-compile Vulkan results](triptychs/vk-bounded-vs-optimized/combined.png)
+
+Full pass metrics and the triptych display transforms are recorded in the
+`shared-sampling-*` and `vk-bounded-*` files under [`reports/`](reports/).

@@ -1,0 +1,106 @@
+{
+  "actual_label": "Psycles Vulkan bounded compile current",
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.DiffCol.R",
+    "ViewLayer.DiffCol.G",
+    "ViewLayer.DiffCol.B",
+    "ViewLayer.DiffDir.R",
+    "ViewLayer.DiffDir.G",
+    "ViewLayer.DiffDir.B",
+    "ViewLayer.DiffInd.R",
+    "ViewLayer.DiffInd.G",
+    "ViewLayer.DiffInd.B",
+    "ViewLayer.Emit.R",
+    "ViewLayer.Emit.G",
+    "ViewLayer.Emit.B",
+    "ViewLayer.Env.R",
+    "ViewLayer.Env.G",
+    "ViewLayer.Env.B",
+    "ViewLayer.GlossCol.R",
+    "ViewLayer.GlossCol.G",
+    "ViewLayer.GlossCol.B",
+    "ViewLayer.GlossDir.R",
+    "ViewLayer.GlossDir.G",
+    "ViewLayer.GlossDir.B",
+    "ViewLayer.GlossInd.R",
+    "ViewLayer.GlossInd.G",
+    "ViewLayer.GlossInd.B",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.TransCol.R",
+    "ViewLayer.TransCol.G",
+    "ViewLayer.TransCol.B",
+    "ViewLayer.TransDir.R",
+    "ViewLayer.TransDir.G",
+    "ViewLayer.TransDir.B",
+    "ViewLayer.TransInd.R",
+    "ViewLayer.TransInd.G",
+    "ViewLayer.TransInd.B",
+    "ViewLayer.VolumeDir.R",
+    "ViewLayer.VolumeDir.G",
+    "ViewLayer.VolumeDir.B",
+    "ViewLayer.VolumeInd.R",
+    "ViewLayer.VolumeInd.G",
+    "ViewLayer.VolumeInd.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        1.0000215768814087,
+        1.0000120401382446,
+        1.0000100135803223
+      ],
+      "cycles": "/var/tmp/psycles-lone-monk-shared-closures-cceead9/psycles/vk.exr",
+      "cycles_channel_mean": [
+        0.6276460289955139,
+        0.46356964111328125,
+        0.38843172788619995
+      ],
+      "cycles_luminance_mean": 0.49327388405799866,
+      "cycles_rms": 1.5598978996276855,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.000015346017965,
+      "maximum_absolute_error": 0.5974937081336975,
+      "mean_absolute_error": 4.3876279960386455e-05,
+      "orientation_rmse": {
+        "flip_x": 1.00706148147583,
+        "flip_xy": 1.8493804931640625,
+        "flip_y": 1.820135235786438,
+        "identity": 0.0017485498683527112
+      },
+      "p95_pixel_rmse": 1.2548858649097383e-05,
+      "p99_pixel_rmse": 0.0003469826187938452,
+      "psycles": "/var/tmp/psycles-vk-fast-policy/vk-64.exr",
+      "psycles_channel_mean": [
+        0.6276595592498779,
+        0.46357524394989014,
+        0.38843560218811035
+      ],
+      "psycles_luminance_mean": 0.49328145384788513,
+      "psycles_rms": 1.5599098863005825,
+      "relative_rmse": 0.0011209386644921138,
+      "rmse": 0.0017485498683527112,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1044.691633937318,
+        "display_scale": 0.0893694900384839,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles/docs/validation/2026-08-03/shared-surface-closure-evaluator/triptychs/vk-bounded-vs-optimized/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    }
+  },
+  "reference_label": "Psycles Vulkan optimized cceead9",
+  "schema": "psycles.cycles-differential.v1"
+}

@@ -1,0 +1,91 @@
+{
+  "schema": "psycles.validation.shared-sampling.v1",
+  "measured_on": "2026-08-03",
+  "psycles_commit": "d2b7328",
+  "luisa_compute_commit": "6a7aabedc",
+  "scene": {
+    "name": "Lone Monk",
+    "bundle": "/var/tmp/psycles-lone-monk-transmission-dbdcb17/export",
+    "source_material_graphs": 37,
+    "geometries": 348,
+    "instances": 87534,
+    "width": 640,
+    "height": 480,
+    "samples": 64,
+    "psycles_samples_per_dispatch": 8,
+    "adaptive_sampling": false,
+    "denoising": false
+  },
+  "devices": {
+    "cpu": "AMD Ryzen 9 9950X3D 16-Core Processor",
+    "gpu": "AMD Radeon RX 9070 XT"
+  },
+  "cycles": {
+    "blender_version": "5.3.0 Alpha",
+    "blender_commit": "b82c3f0da6c1",
+    "cpu": {
+      "render_seconds": 5.233,
+      "exr": "/var/tmp/psycles-lone-monk-transmission-dbdcb17/cycles/cpu.exr"
+    },
+    "hip": {
+      "render_seconds": 1.894,
+      "exr": "/var/tmp/psycles-lone-monk-transmission-dbdcb17/cycles/hip.exr"
+    }
+  },
+  "psycles": {
+    "fallback": {
+      "cache_state": "disabled_cold",
+      "scene_compile_seconds": 1.32091,
+      "shader_jit_seconds": 154.376,
+      "render_seconds": 8.02175,
+      "process_wall_seconds": 164.10,
+      "peak_rss_kib": 3608180,
+      "slowdown_vs_cycles_hip": 4.235348468848997,
+      "slowdown_vs_cycles_cpu": 1.533785990246517,
+      "exr": "/var/tmp/psycles-shared-sampling-current/fallback.exr",
+      "exr_sha256": "1c4a041bedd32b69646bfb46b06a3024bce44e2256f3b4469212dfeb237f3405"
+    },
+    "hip": {
+      "cache_state": "disabled_cold",
+      "scene_compile_seconds": 3.51543,
+      "shader_jit_seconds": 41.7796,
+      "llvm_codegen_seconds": 17.438325141,
+      "generated_amdgpu_bytes": 3692460,
+      "render_seconds": 3.2345,
+      "process_wall_seconds": 48.99,
+      "peak_rss_kib": 3870308,
+      "slowdown_vs_cycles_hip": 1.7077613516367478,
+      "speedup_vs_cycles_cpu": 1.6178698407791001,
+      "exr": "/var/tmp/psycles-shared-sampling-current/hip.exr",
+      "exr_sha256": "bee4410b81d3904bc855823b335a79d5d2ae1e9d713ad029c423dbc0d23e10ea"
+    },
+    "vulkan_bounded_compile": {
+      "cold_measurement_samples": 1,
+      "scene_compile_seconds": 1.29724,
+      "shader_jit_seconds": 111.529,
+      "driver_pipeline_seconds": 109.199664,
+      "cold_process_wall_seconds": 115.24,
+      "cold_peak_rss_kib": 18282192,
+      "warm_shader_jit_seconds": 2.35213,
+      "warm_pipeline_seconds": 0.007133,
+      "render_seconds_64_spp": 96.0154,
+      "warm_process_wall_seconds": 99.72,
+      "warm_peak_rss_kib": 1658564,
+      "slowdown_vs_cycles_hip": 50.69450897571278,
+      "slowdown_vs_fully_optimized_checkpoint": 10.891224328907594,
+      "exr": "/var/tmp/psycles-vk-fast-policy/vk-64.exr",
+      "exr_sha256": "01f0c9aca64a36a5ef03398dc04ed7c9882677e892dfddf8618cf870beee3955"
+    }
+  },
+  "tests": {
+    "build_parallelism": 32,
+    "ctest_total": 132,
+    "ctest_passed": 132,
+    "focused_backends": [
+      "fallback",
+      "hip",
+      "vk"
+    ],
+    "focused_passed": 3
+  }
+}

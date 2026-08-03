@@ -1,0 +1,69 @@
+{
+  "schema": "psycles.validation.vulkan-driver-compile.v1",
+  "measured_on": "2026-08-03",
+  "psycles_commit": "d2b7328",
+  "luisa_compute_commit": "6a7aabedc",
+  "device": "AMD Radeon RX 9070 XT",
+  "driver_stack": "Mesa RADV 26.1.5 / ACO",
+  "scene": "Lone Monk 640x480",
+  "spirv": {
+    "cache_file": "a182da1f377f97db39a0e7b26b4675ff.spv",
+    "words_before_optimizer": 2766936,
+    "words_after_optimizer": 2377955,
+    "instructions": 479372,
+    "labels": 7522,
+    "phi_nodes": 8551,
+    "branches": 2379,
+    "loops": 82,
+    "selections": 2308,
+    "variables": 346,
+    "selects": 23170,
+    "loads": 34648,
+    "stores": 3598,
+    "stores_before_complete_record_matrix_packing": 6878
+  },
+  "full_optimization_attempts": [
+    {
+      "configuration": "RADV default",
+      "result": "terminated",
+      "observed_rss_gib_lower_bound": 63,
+      "reason": "continued unbounded growth"
+    },
+    {
+      "configuration": "ACO_DEBUG=noopt",
+      "result": "terminated",
+      "elapsed_seconds": 315,
+      "observed_rss_gib": 40,
+      "peak_rss_gib": 44,
+      "reason": "disabling the optional ACO optimizer did not bound compilation"
+    },
+    {
+      "configuration": "ACO_DEBUG=novn",
+      "result": "terminated",
+      "elapsed_seconds": 311,
+      "observed_rss_gib": 39,
+      "peak_rss_gib": 44.4,
+      "reason": "disabling ACO value numbering did not bound compilation"
+    },
+    {
+      "configuration": "ACO_DEBUG=noopt,novn,nosched",
+      "result": "terminated",
+      "elapsed_seconds": 395,
+      "observed_rss_gib": 37.9,
+      "reason": "disabling optional optimization, value numbering, and scheduling did not bound compilation"
+    }
+  ],
+  "bounded_pipeline": {
+    "vulkan_flag": "VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT",
+    "scope": "monolithic Psycles path shader only",
+    "cold_driver_pipeline_seconds": 109.199664,
+    "cold_shader_jit_seconds": 111.529,
+    "cold_peak_rss_kib": 18282192,
+    "warm_driver_pipeline_seconds": 0.007133,
+    "warm_shader_jit_seconds": 2.35213,
+    "render_seconds_64_spp": 96.0154,
+    "fully_optimized_checkpoint_render_seconds_64_spp": 8.81585,
+    "runtime_slowdown": 10.891224328907594
+  },
+  "conclusion": "No single optional ACO pass is the root cause. The pathological shape is the enormous runtime-indexed private closure storage entering RADV NIR and mandatory ACO liveness, spilling, and register allocation. The bounded policy is a cold-compilation safety net; the performance fix requires removing that dynamic private storage from the monolithic kernel."
+}
