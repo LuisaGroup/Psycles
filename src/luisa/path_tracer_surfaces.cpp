@@ -93,10 +93,11 @@ SurfaceCallables make_surface_callables(
                 geometry_heap,
                 packed_point,
                 point,
-                Expr<luisa::float3>{outgoing.expression()},
                 query.surface,
                 policy,
                 closure_evaluation};
+            operation.set_outgoing(
+                Expr<luisa::float3>{outgoing.expression()});
             SurfaceClosureEvaluationVisitor visitor{
                 scene->volume_metadata.closure_allocation_budget,
                 operation,

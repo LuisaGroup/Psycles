@@ -110,6 +110,13 @@ class SurfaceClosureEvaluationOperation {
   public:
     virtual ~SurfaceClosureEvaluationOperation() noexcept = default;
 
+    // Bind the one outgoing direction shared by the ordered contribution
+    // fold. Sampling operations call this after categorical inversion; light
+    // evaluation calls it before material dispatch. Implementations must emit
+    // an ordinary DSL assignment, not retain a host-side material value.
+    virtual void set_outgoing(
+        Expr<luisa::float3> outgoing) noexcept = 0;
+
     [[nodiscard]] virtual luisa::compute::Var<
         SurfaceClosureEvaluationContributionCall>
     evaluate(

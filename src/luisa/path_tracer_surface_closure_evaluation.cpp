@@ -76,7 +76,6 @@ CallableSurfaceClosureEvaluationOperation::
         const BindlessVar &geometry_heap,
         const Var<SurfacePointCall> &packed_point,
         const SurfacePoint &point,
-        Expr<luisa::float3> outgoing_expression,
         const SurfaceQuery &query,
         const SurfaceClosureEvaluationPolicy &policy,
         const SurfaceClosureEvaluationCallable &callable) noexcept
@@ -85,12 +84,8 @@ CallableSurfaceClosureEvaluationOperation::
       _textures{textures},
       _geometry_heap{geometry_heap},
       _point{packed_point},
+      _surface_point{point},
       _callable{callable} {
-    const auto directions =
-        make_surface_closure_evaluation_directions(
-            point, outgoing_expression);
-    _query.incoming = directions.incoming;
-    _query.outgoing = directions.outgoing;
     _query.lobe_mask = query.lobe_mask;
     _query.transport_mode = query.transport_mode;
     _query.glossy_filter_roughness =
@@ -105,6 +100,15 @@ CallableSurfaceClosureEvaluationOperation::
         0u, 1u, policy.glossy_included);
     _query.glass_included = select(
         0u, 1u, policy.glass_included);
+}
+
+void CallableSurfaceClosureEvaluationOperation::set_outgoing(
+    Expr<luisa::float3> outgoing) noexcept {
+    const auto directions =
+        make_surface_closure_evaluation_directions(
+            _surface_point, outgoing);
+    _query.incoming = directions.incoming;
+    _query.outgoing = directions.outgoing;
 }
 
 luisa::compute::Var<SurfaceClosureEvaluationContributionCall>

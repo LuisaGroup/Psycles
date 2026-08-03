@@ -10,6 +10,7 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/surface_closure_evaluation.cpp
     src/luisa/surface_closure_set.cpp
     src/luisa/surface_closure_evaluator.cpp
+    src/luisa/surface_closure_sampling_core.cpp
     src/luisa/surface_closure_sampling.cpp
     src/luisa/microfacet_glass_component.cpp
     src/luisa/principled_base_component.cpp
