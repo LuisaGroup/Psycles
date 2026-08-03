@@ -13,28 +13,94 @@ inline constexpr std::uint32_t setup_valid_bit = 1u << 0u;
 inline constexpr std::uint32_t preserve_ggx_energy_bit = 1u << 1u;
 inline constexpr std::uint32_t beckmann_bit = 1u << 2u;
 
+enum class StorageField : std::uint32_t {
+    identity,
+    weight,
+    albedo,
+    reflection_albedo,
+    transmission_albedo,
+    color,
+    normal,
+    specular_tint,
+    evaluation_scale,
+    fresnel_f0,
+    fresnel_f90,
+    reflection_tint,
+    transmission_tint,
+};
+
+[[nodiscard]] bool stores(
+    SurfaceClosureStorageProfile profile,
+    StorageField field) noexcept {
+    if (profile == SurfaceClosureStorageProfile::complete) {
+        return true;
+    }
+    switch (field) {
+        case StorageField::identity:
+        case StorageField::reflection_albedo:
+            return true;
+        case StorageField::weight:
+        case StorageField::albedo:
+        case StorageField::normal:
+            return profile !=
+                   SurfaceClosureStorageProfile::runtime_flags;
+        case StorageField::transmission_albedo:
+            return profile == SurfaceClosureStorageProfile::aov;
+        case StorageField::color:
+        case StorageField::specular_tint:
+        case StorageField::evaluation_scale:
+        case StorageField::fresnel_f0:
+        case StorageField::fresnel_f90:
+        case StorageField::reflection_tint:
+        case StorageField::transmission_tint:
+            return false;
+    }
+    return false;
+}
+
+[[nodiscard]] std::size_t storage_size(
+    SurfaceClosureStorageProfile profile,
+    StorageField field,
+    std::size_t capacity) noexcept {
+    return stores(profile, field) ? capacity : std::size_t{1u};
+}
+
 }// namespace
 
 SurfaceClosureSet::SurfaceClosureSet(
-    std::size_t capacity) noexcept
+    std::size_t capacity,
+    SurfaceClosureStorageProfile profile) noexcept
     : _capacity{std::clamp(
           capacity,
           std::size_t{1u},
           static_cast<std::size_t>(
               maximum_surface_closure_capacity))},
+      _profile{profile},
       _identity{_capacity},
-      _weight{_capacity},
-      _albedo{_capacity},
-      _reflection_albedo{_capacity},
-      _transmission_albedo{_capacity},
-      _color{_capacity},
-      _normal{_capacity},
-      _specular_tint{_capacity},
-      _evaluation_scale{_capacity},
-      _fresnel_f0{_capacity},
-      _fresnel_f90{_capacity},
-      _reflection_tint{_capacity},
-      _transmission_tint{_capacity},
+      _weight{storage_size(
+          profile, StorageField::weight, _capacity)},
+      _albedo{storage_size(
+          profile, StorageField::albedo, _capacity)},
+      _reflection_albedo{storage_size(
+          profile, StorageField::reflection_albedo, _capacity)},
+      _transmission_albedo{storage_size(
+          profile, StorageField::transmission_albedo, _capacity)},
+      _color{storage_size(
+          profile, StorageField::color, _capacity)},
+      _normal{storage_size(
+          profile, StorageField::normal, _capacity)},
+      _specular_tint{storage_size(
+          profile, StorageField::specular_tint, _capacity)},
+      _evaluation_scale{storage_size(
+          profile, StorageField::evaluation_scale, _capacity)},
+      _fresnel_f0{storage_size(
+          profile, StorageField::fresnel_f0, _capacity)},
+      _fresnel_f90{storage_size(
+          profile, StorageField::fresnel_f90, _capacity)},
+      _reflection_tint{storage_size(
+          profile, StorageField::reflection_tint, _capacity)},
+      _transmission_tint{storage_size(
+          profile, StorageField::transmission_tint, _capacity)},
       _count{0u} {
     const auto zero = SurfaceClosureRecord::zero();
     _identity.write(0u, make_uint4(
@@ -42,42 +108,66 @@ SurfaceClosureSet::SurfaceClosureSet(
                             zero.lobe,
                             0u,
                             0u));
-    _weight.write(0u, make_float4(
-                           zero.weight,
-                           zero.allocation_weight));
-    _albedo.write(0u, make_float4(
-                           zero.albedo,
-                           zero.sample_weight));
-    _reflection_albedo.write(0u, make_float4(
-                                      zero.reflection_albedo,
-                                      zero.roughness));
-    _transmission_albedo.write(0u, make_float4(
-                                        zero.transmission_albedo,
-                                        zero.diffuse_roughness));
-    _color.write(0u, make_float4(
-                          zero.color,
-                          zero.metallic));
-    _normal.write(0u, make_float4(
-                           zero.normal,
-                           zero.ior));
-    _specular_tint.write(0u, make_float4(
-                                  zero.specular_tint,
-                                  zero.specular_ior_level));
-    _evaluation_scale.write(0u, make_float4(
-                                     zero.evaluation_scale,
-                                     zero.sheen_transform_a));
-    _fresnel_f0.write(0u, make_float4(
-                               zero.fresnel_f0,
-                               zero.sheen_transform_b));
-    _fresnel_f90.write(0u, make_float4(
-                                zero.fresnel_f90,
-                                0.0f));
-    _reflection_tint.write(0u, make_float4(
-                                    zero.reflection_tint,
+    if (stores(_profile, StorageField::weight)) {
+        _weight.write(0u, make_float4(
+                               zero.weight,
+                               zero.allocation_weight));
+    }
+    if (stores(_profile, StorageField::albedo)) {
+        _albedo.write(0u, make_float4(
+                               zero.albedo,
+                               zero.sample_weight));
+    }
+    if (stores(_profile, StorageField::reflection_albedo)) {
+        _reflection_albedo.write(0u, make_float4(
+                                          zero.reflection_albedo,
+                                          zero.roughness));
+    }
+    if (stores(_profile, StorageField::transmission_albedo)) {
+        _transmission_albedo.write(0u, make_float4(
+                                            zero.transmission_albedo,
+                                            zero.diffuse_roughness));
+    }
+    if (stores(_profile, StorageField::color)) {
+        _color.write(0u, make_float4(
+                              zero.color,
+                              zero.metallic));
+    }
+    if (stores(_profile, StorageField::normal)) {
+        _normal.write(0u, make_float4(
+                               zero.normal,
+                               zero.ior));
+    }
+    if (stores(_profile, StorageField::specular_tint)) {
+        _specular_tint.write(0u, make_float4(
+                                      zero.specular_tint,
+                                      zero.specular_ior_level));
+    }
+    if (stores(_profile, StorageField::evaluation_scale)) {
+        _evaluation_scale.write(0u, make_float4(
+                                         zero.evaluation_scale,
+                                         zero.sheen_transform_a));
+    }
+    if (stores(_profile, StorageField::fresnel_f0)) {
+        _fresnel_f0.write(0u, make_float4(
+                                   zero.fresnel_f0,
+                                   zero.sheen_transform_b));
+    }
+    if (stores(_profile, StorageField::fresnel_f90)) {
+        _fresnel_f90.write(0u, make_float4(
+                                    zero.fresnel_f90,
                                     0.0f));
-    _transmission_tint.write(0u, make_float4(
-                                      zero.transmission_tint,
-                                      0.0f));
+    }
+    if (stores(_profile, StorageField::reflection_tint)) {
+        _reflection_tint.write(0u, make_float4(
+                                        zero.reflection_tint,
+                                        0.0f));
+    }
+    if (stores(_profile, StorageField::transmission_tint)) {
+        _transmission_tint.write(0u, make_float4(
+                                          zero.transmission_tint,
+                                          0.0f));
+    }
 }
 
 void SurfaceClosureSet::add(
@@ -107,60 +197,88 @@ void SurfaceClosureSet::add(
                 closure.lobe,
                 flags,
                 0u));
-        _weight.write(_count,
-            make_float4(
-                closure.weight,
-                closure.allocation_weight));
-        _albedo.write(_count,
-            make_float4(
-                closure.albedo,
-                closure.sample_weight));
-        _reflection_albedo.write(_count,
-            make_float4(
-                closure.reflection_albedo,
-                closure.roughness));
-        _transmission_albedo.write(_count,
-            make_float4(
-                closure.transmission_albedo,
-                closure.diffuse_roughness));
-        _color.write(_count,
-            make_float4(
-                closure.color,
-                closure.metallic));
-        _normal.write(_count,
-            make_float4(
-                closure.normal,
-                closure.ior));
-        _specular_tint.write(_count,
-            make_float4(
-                closure.specular_tint,
-                closure.specular_ior_level));
-        _evaluation_scale.write(_count,
-            make_float4(
-                closure.evaluation_scale,
-                closure.sheen_transform_a));
-        _fresnel_f0.write(_count,
-            make_float4(
-                closure.fresnel_f0,
-                closure.sheen_transform_b));
-        _fresnel_f90.write(_count,
-            make_float4(
-                closure.fresnel_f90,
-                0.0f));
-        _reflection_tint.write(_count,
-            make_float4(
-                closure.reflection_tint,
-                0.0f));
-        _transmission_tint.write(_count,
-            make_float4(
-                closure.transmission_tint,
-                0.0f));
+        if (stores(_profile, StorageField::weight)) {
+            _weight.write(_count,
+                make_float4(
+                    closure.weight,
+                    closure.allocation_weight));
+        }
+        if (stores(_profile, StorageField::albedo)) {
+            _albedo.write(_count,
+                make_float4(
+                    closure.albedo,
+                    closure.sample_weight));
+        }
+        if (stores(_profile, StorageField::reflection_albedo)) {
+            _reflection_albedo.write(_count,
+                make_float4(
+                    closure.reflection_albedo,
+                    closure.roughness));
+        }
+        if (stores(_profile, StorageField::transmission_albedo)) {
+            _transmission_albedo.write(_count,
+                make_float4(
+                    closure.transmission_albedo,
+                    closure.diffuse_roughness));
+        }
+        if (stores(_profile, StorageField::color)) {
+            _color.write(_count,
+                make_float4(
+                    closure.color,
+                    closure.metallic));
+        }
+        if (stores(_profile, StorageField::normal)) {
+            _normal.write(_count,
+                make_float4(
+                    closure.normal,
+                    closure.ior));
+        }
+        if (stores(_profile, StorageField::specular_tint)) {
+            _specular_tint.write(_count,
+                make_float4(
+                    closure.specular_tint,
+                    closure.specular_ior_level));
+        }
+        if (stores(_profile, StorageField::evaluation_scale)) {
+            _evaluation_scale.write(_count,
+                make_float4(
+                    closure.evaluation_scale,
+                    closure.sheen_transform_a));
+        }
+        if (stores(_profile, StorageField::fresnel_f0)) {
+            _fresnel_f0.write(_count,
+                make_float4(
+                    closure.fresnel_f0,
+                    closure.sheen_transform_b));
+        }
+        if (stores(_profile, StorageField::fresnel_f90)) {
+            _fresnel_f90.write(_count,
+                make_float4(
+                    closure.fresnel_f90,
+                    0.0f));
+        }
+        if (stores(_profile, StorageField::reflection_tint)) {
+            _reflection_tint.write(_count,
+                make_float4(
+                    closure.reflection_tint,
+                    0.0f));
+        }
+        if (stores(_profile, StorageField::transmission_tint)) {
+            _transmission_tint.write(_count,
+                make_float4(
+                    closure.transmission_tint,
+                    0.0f));
+        }
         _count += 1u;
     };
 }
 
 std::size_t SurfaceClosureSet::capacity() const noexcept {
     return _capacity;
+}
+
+SurfaceClosureStorageProfile SurfaceClosureSet::profile() const noexcept {
+    return _profile;
 }
 
 UInt SurfaceClosureSet::count() const noexcept {
@@ -172,26 +290,64 @@ SurfaceClosureRecord SurfaceClosureSet::entry(
     const auto valid = index < _count;
     const auto safe_index = select(0u, index, valid);
     const auto identity = _identity.read(safe_index);
-    const auto weight = _weight.read(safe_index);
-    const auto albedo = _albedo.read(safe_index);
-    const auto reflection_albedo =
-        _reflection_albedo.read(safe_index);
-    const auto transmission_albedo =
-        _transmission_albedo.read(safe_index);
-    const auto color = _color.read(safe_index);
-    const auto normal = _normal.read(safe_index);
-    const auto specular_tint =
-        _specular_tint.read(safe_index);
-    const auto evaluation_scale =
-        _evaluation_scale.read(safe_index);
-    const auto fresnel_f0 =
-        _fresnel_f0.read(safe_index);
-    const auto fresnel_f90 =
-        _fresnel_f90.read(safe_index);
-    const auto reflection_tint =
-        _reflection_tint.read(safe_index);
-    const auto transmission_tint =
-        _transmission_tint.read(safe_index);
+    const auto zero = SurfaceClosureRecord::zero();
+    auto weight = make_float4(
+        zero.weight, zero.allocation_weight);
+    auto albedo = make_float4(
+        zero.albedo, zero.sample_weight);
+    auto reflection_albedo = make_float4(
+        zero.reflection_albedo, zero.roughness);
+    auto transmission_albedo = make_float4(
+        zero.transmission_albedo, zero.diffuse_roughness);
+    auto color = make_float4(zero.color, zero.metallic);
+    auto normal = make_float4(zero.normal, zero.ior);
+    auto specular_tint = make_float4(
+        zero.specular_tint, zero.specular_ior_level);
+    auto evaluation_scale = make_float4(
+        zero.evaluation_scale, zero.sheen_transform_a);
+    auto fresnel_f0 = make_float4(
+        zero.fresnel_f0, zero.sheen_transform_b);
+    auto fresnel_f90 = make_float4(zero.fresnel_f90, 0.0f);
+    auto reflection_tint = make_float4(
+        zero.reflection_tint, 0.0f);
+    auto transmission_tint = make_float4(
+        zero.transmission_tint, 0.0f);
+    if (stores(_profile, StorageField::weight)) {
+        weight = _weight.read(safe_index);
+    }
+    if (stores(_profile, StorageField::albedo)) {
+        albedo = _albedo.read(safe_index);
+    }
+    if (stores(_profile, StorageField::reflection_albedo)) {
+        reflection_albedo = _reflection_albedo.read(safe_index);
+    }
+    if (stores(_profile, StorageField::transmission_albedo)) {
+        transmission_albedo = _transmission_albedo.read(safe_index);
+    }
+    if (stores(_profile, StorageField::color)) {
+        color = _color.read(safe_index);
+    }
+    if (stores(_profile, StorageField::normal)) {
+        normal = _normal.read(safe_index);
+    }
+    if (stores(_profile, StorageField::specular_tint)) {
+        specular_tint = _specular_tint.read(safe_index);
+    }
+    if (stores(_profile, StorageField::evaluation_scale)) {
+        evaluation_scale = _evaluation_scale.read(safe_index);
+    }
+    if (stores(_profile, StorageField::fresnel_f0)) {
+        fresnel_f0 = _fresnel_f0.read(safe_index);
+    }
+    if (stores(_profile, StorageField::fresnel_f90)) {
+        fresnel_f90 = _fresnel_f90.read(safe_index);
+    }
+    if (stores(_profile, StorageField::reflection_tint)) {
+        reflection_tint = _reflection_tint.read(safe_index);
+    }
+    if (stores(_profile, StorageField::transmission_tint)) {
+        transmission_tint = _transmission_tint.read(safe_index);
+    }
     const auto flags = identity.z;
     const auto vector_or_zero =
         [&](Float3 value) noexcept {
