@@ -1,0 +1,8 @@
+00:00.127  blend            | Read blend: "/home/mike/Downloads/lone-monk_cycles_and_exposure-node_demo.blend"
+00:00.316  cycles           | WARNING CUEW initialization failed: Error opening the library
+WARNING: Shader warning [node_vertex_color]: Invalid attribute.
+Blender 5.3.0 Alpha (hash b82c3f0da6c1 built 2026-07-31 11:58:59)
+00:05.371  render           | Saved: '/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/cycles/cpu.exr'
+Cycles golden rendered 640x480 at 64 spp on CPU in 5.029s: /var/tmp/psycles-lone-monk-callable-boundary-2e179e5/cycles/cpu.exr
+
+Blender quit

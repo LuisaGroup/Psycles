@@ -1,0 +1,253 @@
+{
+  "commands": {
+    "cycles_cpu": {
+      "command": [
+        "/home/mike/Projects/blender-install-4fe17ef6/blender",
+        "/home/mike/Downloads/lone-monk_cycles_and_exposure-node_demo.blend",
+        "--background",
+        "--python-exit-code",
+        "1",
+        "--python",
+        "/home/mike/Projects/Psycles/tools/render_cycles_golden.py",
+        "--",
+        "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/cycles/cpu.exr",
+        "640",
+        "480",
+        "64",
+        "--cycles-device",
+        "CPU",
+        "--device-name",
+        "Ryzen 9 9950X3D"
+      ],
+      "log": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/logs/cycles-cpu.log",
+      "returncode": 0,
+      "wall_seconds": 5.475044107006397
+    },
+    "cycles_hip": {
+      "command": [
+        "/home/mike/Projects/blender-install-4fe17ef6/blender",
+        "/home/mike/Downloads/lone-monk_cycles_and_exposure-node_demo.blend",
+        "--background",
+        "--python-exit-code",
+        "1",
+        "--python",
+        "/home/mike/Projects/Psycles/tools/render_cycles_golden.py",
+        "--",
+        "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/cycles/hip.exr",
+        "640",
+        "480",
+        "64",
+        "--cycles-device",
+        "HIP",
+        "--device-name",
+        "Radeon RX 9070 XT"
+      ],
+      "log": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/logs/cycles-hip.log",
+      "returncode": 0,
+      "wall_seconds": 2.316148156998679
+    },
+    "export": {
+      "reused": true
+    },
+    "psycles_fallback": {
+      "command": [
+        "/home/mike/Projects/Psycles/build/bin/psycles_render_blender_scene",
+        "/var/tmp/psycles-lone-monk-transmission-dbdcb17/export",
+        "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/psycles/fallback.ppm",
+        "fallback",
+        "640",
+        "480",
+        "64",
+        "8"
+      ],
+      "log": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/logs/psycles-fallback.log",
+      "returncode": 0,
+      "wall_seconds": 24.319372876023408
+    },
+    "psycles_hip": {
+      "command": [
+        "/home/mike/Projects/Psycles/build/bin/psycles_render_blender_scene",
+        "/var/tmp/psycles-lone-monk-transmission-dbdcb17/export",
+        "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/psycles/hip.ppm",
+        "hip",
+        "640",
+        "480",
+        "64",
+        "8"
+      ],
+      "log": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/logs/psycles-hip.log",
+      "returncode": 0,
+      "wall_seconds": 42.13232188799884
+    },
+    "psycles_vk": {
+      "command": [
+        "/home/mike/Projects/Psycles/build/bin/psycles_render_blender_scene",
+        "/var/tmp/psycles-lone-monk-transmission-dbdcb17/export",
+        "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/psycles/vk.ppm",
+        "vk",
+        "640",
+        "480",
+        "64",
+        "8"
+      ],
+      "log": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/logs/psycles-vk.log",
+      "returncode": 0,
+      "wall_seconds": 225.47666127001867
+    }
+  },
+  "comparisons": {
+    "cycles-cpu-vs-cycles-hip": {
+      "actual": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/cycles/cpu.exr",
+      "process_wall_seconds": 1.9212616120348684,
+      "reference": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/cycles/hip.exr",
+      "report": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/comparisons/cycles-cpu-vs-cycles-hip/report.json"
+    },
+    "psycles-fallback-vs-cycles-cpu": {
+      "actual": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/psycles/fallback.exr",
+      "process_wall_seconds": 1.9866077250335366,
+      "reference": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/cycles/cpu.exr",
+      "report": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/comparisons/psycles-fallback-vs-cycles-cpu/report.json"
+    },
+    "psycles-fallback-vs-cycles-hip": {
+      "actual": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/psycles/fallback.exr",
+      "process_wall_seconds": 1.9893640940426849,
+      "reference": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/cycles/hip.exr",
+      "report": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/comparisons/psycles-fallback-vs-cycles-hip/report.json"
+    },
+    "psycles-hip-vs-cycles-cpu": {
+      "actual": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/psycles/hip.exr",
+      "process_wall_seconds": 1.988275126030203,
+      "reference": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/cycles/cpu.exr",
+      "report": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/comparisons/psycles-hip-vs-cycles-cpu/report.json"
+    },
+    "psycles-hip-vs-cycles-hip": {
+      "actual": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/psycles/hip.exr",
+      "process_wall_seconds": 1.9944431470357813,
+      "reference": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/cycles/hip.exr",
+      "report": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/comparisons/psycles-hip-vs-cycles-hip/report.json"
+    },
+    "psycles-vk-vs-cycles-cpu": {
+      "actual": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/psycles/vk.exr",
+      "process_wall_seconds": 1.983011874021031,
+      "reference": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/cycles/cpu.exr",
+      "report": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/comparisons/psycles-vk-vs-cycles-cpu/report.json"
+    },
+    "psycles-vk-vs-cycles-hip": {
+      "actual": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/psycles/vk.exr",
+      "process_wall_seconds": 1.9818214970291592,
+      "reference": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/cycles/hip.exr",
+      "report": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/comparisons/psycles-vk-vs-cycles-hip/report.json"
+    }
+  },
+  "compiler_tmp": "/var/tmp/psycles-compiler-tmp",
+  "matrix": {
+    "cycles": [
+      "cpu",
+      "hip"
+    ],
+    "psycles": [
+      "fallback",
+      "hip",
+      "vk"
+    ]
+  },
+  "relative_performance": {
+    "cycles_cpu": {
+      "slowdown_vs_cycles_hip": 2.7218073081861105,
+      "speedup_over_cycles_hip": 0.3674029373763525
+    },
+    "fallback": {
+      "slowdown_vs_cycles_cpu": 4.317117826854047,
+      "slowdown_vs_cycles_hip": 11.750362851431884,
+      "speedup_over_cycles_cpu": 0.23163602201905062,
+      "speedup_over_cycles_hip": 0.08510375489197265
+    },
+    "hip": {
+      "slowdown_vs_cycles_cpu": 0.7034640984959377,
+      "slowdown_vs_cycles_hip": 1.914693724332797,
+      "speedup_over_cycles_cpu": 1.4215366528840343,
+      "speedup_over_cycles_hip": 0.5222767418577425
+    },
+    "vk": {
+      "slowdown_vs_cycles_cpu": 1.6528243397936304,
+      "slowdown_vs_cycles_hip": 4.498669367198186,
+      "speedup_over_cycles_cpu": 0.6050249720577437,
+      "speedup_over_cycles_hip": 0.22228795192006062
+    }
+  },
+  "renderers": {
+    "cycles": {
+      "cpu": {
+        "device": [
+          {
+            "id": "CPU",
+            "name": "AMD Ryzen 9 9950X3D 16-Core Processor",
+            "type": "CPU"
+          }
+        ],
+        "metadata": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/cycles/cpu.json",
+        "output": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/cycles/cpu.exr",
+        "process_wall_seconds": 5.475044107006397,
+        "render_seconds": 5.02858640201157,
+        "sha256": "7d36a60cd0ddd1e1183b2ead45f3ba069b812d185164249f912b41cdf2b162a7"
+      },
+      "hip": {
+        "device": [
+          {
+            "id": "HIP_AMD Radeon RX 9070 XT_0000:03:00",
+            "name": "AMD Radeon RX 9070 XT",
+            "type": "HIP"
+          }
+        ],
+        "metadata": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/cycles/hip.json",
+        "output": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/cycles/hip.exr",
+        "process_wall_seconds": 2.316148156998679,
+        "render_seconds": 1.8475174149498343,
+        "sha256": "04195cd10e04650a62fc60d8ba0ded9dba3de8f0b99a25d2e905a4b6166ae45a"
+      }
+    },
+    "psycles": {
+      "fallback": {
+        "output": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/psycles/fallback.exr",
+        "process_wall_seconds": 24.319372876023408,
+        "render_seconds": 21.709,
+        "scene_compile_seconds": 1.54991,
+        "sha256": "9f9b243d20557454f772b16f646239ae46ca664bfe9d9af9c8383b71c5a71835",
+        "shader_jit_seconds": 0.677438
+      },
+      "hip": {
+        "output": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/psycles/hip.exr",
+        "process_wall_seconds": 42.13232188799884,
+        "render_seconds": 3.53743,
+        "scene_compile_seconds": 3.84216,
+        "sha256": "70fa26df13712056973cf327567c3edfb40412452950ca6e9db838665dba3861",
+        "shader_jit_seconds": 34.2661
+      },
+      "vk": {
+        "output": "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/psycles/vk.exr",
+        "process_wall_seconds": 225.47666127001867,
+        "render_seconds": 8.31137,
+        "scene_compile_seconds": 1.2872,
+        "sha256": "f8a28c39d466b8aea421b2ef44dfe0a52b3370f27363735c70da6fb4dbe34a04",
+        "shader_jit_seconds": 215.332
+      }
+    }
+  },
+  "scene": {
+    "blend": "/home/mike/Downloads/lone-monk_cycles_and_exposure-node_demo.blend",
+    "bundle": "/var/tmp/psycles-lone-monk-transmission-dbdcb17/export",
+    "geometry_bin_sha256": "c3ede8d3788d1cfe37414f1a15c5e17aa5f202dbd7fee5bed00e2ec789a85f4f",
+    "scene_json_sha256": "52df2652c0325d010d8cf890bdf5aa46145546591cfa1b091fc67c7a3bf2c164",
+    "sha256": "4250d4205d8d01cefd98c15e81021d6dead540b2923797378bf7b32e96e8b8f7"
+  },
+  "schema": "psycles.scene-benchmark.v1",
+  "settings": {
+    "cycles_gpu_device": "HIP",
+    "cycles_gpu_device_name": "Radeon RX 9070 XT",
+    "height": 480,
+    "max_samples_per_dispatch": 8,
+    "samples": 64,
+    "width": 640
+  },
+  "status": "complete"
+}

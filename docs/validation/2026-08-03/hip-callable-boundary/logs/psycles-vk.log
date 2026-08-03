@@ -1,0 +1,20 @@
+warning: Cycles adaptive sampling is enabled in the source scene; Psycles currently renders a fixed sample count. Official differential goldens must disable adaptive sampling.
+warning: Cycles denoising is enabled in the source scene; Psycles outputs un-denoised linear passes. Official differential goldens must disable denoising.
+[2026-08-03 15:16:18.696] [console] [info] Created context for program 'psycles_render_blender_scene'.
+[2026-08-03 15:16:18.696] [console] [info] Runtime directory: /home/mike/Projects/Psycles/build/bin.
+[2026-08-03 15:16:18.697] [console] [info] Loaded dynamic module '/home/mike/Projects/Psycles/build/bin/libluisa-backend-vk.so' in 1.15924 ms.
+WARNING: radv is not a conformant Vulkan implementation, testing use only.
+[2026-08-03 15:16:18.707] [console] [info] Select device: AMD Radeon RX 9070 XT (RADV GFX1201)
+[2026-08-03 15:16:18.707] [console] [info] Vulkan motion blur disabled: rayTracingPipeline=false rayTraversalPrimitiveCulling=false rayTracingMotionBlur=false and required extensions=false
+[2026-08-03 15:16:19.060] [console] [info] SPIR-V optimization preset 'compute' completed: 11482 -> 11235 words (changed)
+[2026-08-03 15:16:19.062] [console] [info] SPIR-V compilation successful, binary size: 11235 words, properties: 5 binds
+[2026-08-03 15:16:19.335] [console] [info] Loaded dynamic module '/home/mike/Projects/Psycles/build/bin/libdxcompiler.so' in 0.6591239999999999 ms.
+[2026-08-03 15:18:19.263] [console] [info] SPIR-V optimization preset 'compute' completed: 3642422 -> 3204480 words (changed)
+[2026-08-03 15:18:20.857] [console] [info] SPIR-V compilation successful, binary size: 3204480 words, properties: 32 binds
+Luisa/vk compiled 348 geometries, 87534 instances, 37 materials in 1.2872 s
+Luisa shader JIT completed in 215.332 s
+Rendered 640x480 at 64 spp in 8.31137 s: "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/psycles/vk.ppm"
+Linear Combined: "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/psycles/vk-combined.pfm"
+Linear Normal:   "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/psycles/vk-normal.pfm"
+Linear Albedo:   "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/psycles/vk-albedo.pfm"
+Multilayer EXR:  "/var/tmp/psycles-lone-monk-callable-boundary-2e179e5/psycles/vk.exr"
