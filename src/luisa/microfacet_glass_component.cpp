@@ -23,8 +23,9 @@ struct GlassGeometry {
     Bool transmission;
 };
 
-[[nodiscard]] GlassFresnel glass_fresnel(const TracedClosure &closure,
-                                         Float cosine_half_incoming) noexcept {
+[[nodiscard]] GlassFresnel glass_fresnel(
+    const SurfaceClosureRecord &closure,
+    Float cosine_half_incoming) noexcept {
     // Cycles' negative generalized-Schlick exponent is a model tag: the
     // physical dielectric curve determines an interpolation coordinate
     // between the authored spectral F0 and F90 endpoints.
@@ -40,10 +41,11 @@ struct GlassGeometry {
                 (make_float3(1.0f) - fresnel) * closure.transmission_tint};
 }
 
-[[nodiscard]] GlassFresnel masked_fresnel(const TracedClosure &closure,
-                                          Float cosine_half_incoming,
-                                          Bool reflection_allowed,
-                                          Bool transmission_allowed) noexcept {
+[[nodiscard]] GlassFresnel masked_fresnel(
+    const SurfaceClosureRecord &closure,
+    Float cosine_half_incoming,
+    Bool reflection_allowed,
+    Bool transmission_allowed) noexcept {
     auto result = glass_fresnel(closure, cosine_half_incoming);
     result.reflection =
         select(make_float3(0.0f), result.reflection, reflection_allowed);
@@ -60,19 +62,18 @@ reflection_probability(const GlassFresnel &fresnel) noexcept {
 }
 
 [[nodiscard]] Float
-glass_microfacet_alpha(const TracedClosure &closure,
+glass_microfacet_alpha(const SurfaceClosureRecord &closure,
                        Float glossy_filter_roughness) noexcept {
     auto alpha = clamp(closure.roughness, 0.0f, 1.0f);
     alpha *= alpha;
     return max(alpha, glossy_filter_roughness);
 }
 
-[[nodiscard]] Float glass_microfacet_distribution(const TracedClosure &closure,
-                                                  Float normal_half_cosine,
-                                                  Float alpha) noexcept {
-    if (!closure.beckmann) {
-        return ggx_distribution(normal_half_cosine, alpha);
-    }
+[[nodiscard]] Float glass_microfacet_distribution(
+    const SurfaceClosureRecord &closure,
+    Float normal_half_cosine,
+    Float alpha) noexcept {
+    const auto ggx = ggx_distribution(normal_half_cosine, alpha);
     const auto cosine_squared =
         min(normal_half_cosine * normal_half_cosine, 1.0f);
     const auto alpha_squared = alpha * alpha;
@@ -80,27 +81,32 @@ glass_microfacet_alpha(const TracedClosure &closure,
         (1.0f - cosine_squared) / (cosine_squared * alpha_squared);
     const auto denominator =
         exp(exponent) * pi * alpha_squared * cosine_squared * cosine_squared;
-    return 1.0f / denominator;
+    const auto beckmann = 1.0f / denominator;
+    return select(ggx, beckmann, closure.beckmann);
 }
 
-[[nodiscard]] Float glass_microfacet_lambda(const TracedClosure &closure,
-                                            Float normal_direction_cosine,
-                                            Float alpha) noexcept {
+[[nodiscard]] Float glass_microfacet_lambda(
+    const SurfaceClosureRecord &closure,
+    Float normal_direction_cosine,
+    Float alpha) noexcept {
     const auto cosine_squared = normal_direction_cosine * normal_direction_cosine;
     const auto squared_alpha_tangent =
         alpha * alpha * max(1.0f / cosine_squared - 1.0f, 0.0f);
-    if (!closure.beckmann) {
-        return 0.5f * (sqrt(1.0f + squared_alpha_tangent) - 1.0f);
-    }
+    const auto ggx =
+        0.5f * (sqrt(1.0f + squared_alpha_tangent) - 1.0f);
     const auto a = rsqrt(squared_alpha_tangent);
     const auto approximation =
         ((0.396f * a - 1.259f) * a + 1.0f) / ((2.181f * a + 3.535f) * a);
-    return select(approximation, 0.0f, squared_alpha_tangent < 0.39f);
+    const auto beckmann =
+        select(approximation, 0.0f, squared_alpha_tangent < 0.39f);
+    return select(ggx, beckmann, closure.beckmann);
 }
 
-[[nodiscard]] GlassGeometry glass_geometry(const TracedClosure &closure,
-                                           Float3 incoming, Float3 outgoing,
-                                           Float3 normal) noexcept {
+[[nodiscard]] GlassGeometry glass_geometry(
+    const SurfaceClosureRecord &closure,
+    Float3 incoming,
+    Float3 outgoing,
+    Float3 normal) noexcept {
     const auto cosine_outgoing = dot(normal, outgoing);
     const auto transmission = cosine_outgoing < 0.0f;
     const auto unnormalized_half = select(
@@ -244,7 +250,8 @@ TracedClosure MicrofacetGlassComponent::setup(
 }
 
 Float3 MicrofacetGlassComponent::intensity(
-    const TracedClosure &closure, Float3 incoming, Float3 outgoing,
+    const SurfaceClosureRecord &closure,
+    Float3 incoming, Float3 outgoing,
     Float3 glossy_normal, Float glossy_filter_roughness) const noexcept {
     static_cast<void>(_services);
     static_cast<void>(_point);
@@ -284,7 +291,8 @@ Float3 MicrofacetGlassComponent::intensity(
 }
 
 Float MicrofacetGlassComponent::pdf(
-    const TracedClosure &closure, Float3 incoming, Float3 outgoing,
+    const SurfaceClosureRecord &closure,
+    Float3 incoming, Float3 outgoing,
     Float3 glossy_normal, Bool reflection_allowed, Bool transmission_allowed,
     Float glossy_filter_roughness) const noexcept {
     static_cast<void>(_services);
@@ -325,7 +333,8 @@ Float MicrofacetGlassComponent::pdf(
 }
 
 GlassSample MicrofacetGlassComponent::sample(
-    const TracedClosure &closure, Float3 incoming, Float3 glossy_normal,
+    const SurfaceClosureRecord &closure,
+    Float3 incoming, Float3 glossy_normal,
     Float2 random_direction, Float random_lobe, Bool reflection_allowed,
     Bool transmission_allowed, Float glossy_filter_roughness) const noexcept {
     static_cast<void>(_services);
@@ -333,14 +342,14 @@ GlassSample MicrofacetGlassComponent::sample(
     auto singular =
         alpha * alpha <= cycles_closure::microfacet_singular_alpha_product;
     const auto sampling_alpha = max(alpha, 1.0e-7f);
-    Float3 sampled_half;
-    if (closure.beckmann) {
-        sampled_half = cycles_sample_mapping::sample_beckmann_visible_normal(
+    const auto ggx_half =
+        cycles_sample_mapping::sample_ggx_visible_normal(
             glossy_normal, incoming, sampling_alpha, random_direction);
-    } else {
-        sampled_half = cycles_sample_mapping::sample_ggx_visible_normal(
+    const auto beckmann_half =
+        cycles_sample_mapping::sample_beckmann_visible_normal(
             glossy_normal, incoming, sampling_alpha, random_direction);
-    }
+    const auto sampled_half = select(
+        ggx_half, beckmann_half, closure.beckmann);
     const auto half_vector = select(sampled_half, glossy_normal, singular);
     const auto cosine_half_incoming = dot(half_vector, incoming);
     const auto fresnel = masked_fresnel(closure, cosine_half_incoming,

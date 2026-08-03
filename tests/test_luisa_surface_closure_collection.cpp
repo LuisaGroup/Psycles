@@ -14,6 +14,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string_view>
+#include <tuple>
 #include <vector>
 
 #include <luisa/luisa-compute.h>
@@ -34,6 +35,7 @@ constexpr auto closure_slots = 8u;
 constexpr auto records_per_slot = 6u;
 constexpr auto storage_records_per_slot = 14u;
 constexpr auto evaluator_records_per_slot = 10u;
+constexpr auto scattering_records_per_slot = 6u;
 
 struct CollectedClosureTrace {
     UInt count;
@@ -483,7 +485,79 @@ int main(int argc, char **argv) {
             make_float4(
                 aov.albedo + aov.glossy_albedo +
                     aov.transmission_albedo,
-                0.0f));
+                    0.0f));
+    };
+
+    const auto write_scattering_result = [](
+        const BufferFloat4 &output,
+        UInt base,
+        const SurfaceEvaluation &regular,
+        const SurfaceEvaluation &light) noexcept {
+        output.write(base,
+            make_float4(regular.f, regular.pdf));
+        output.write(base + 1u,
+            make_float4(
+                regular.diffuse_f, regular.diffuse_pdf));
+        output.write(base + 2u,
+            make_float4(
+                regular.glossy_f,
+                cast<float>(regular.events)));
+        output.write(base + 3u,
+            make_float4(light.f, light.pdf));
+        output.write(base + 4u,
+            make_float4(
+                light.diffuse_f, light.diffuse_pdf));
+        output.write(base + 5u,
+            make_float4(
+                light.glossy_f,
+                cast<float>(light.events)));
+    };
+
+    const auto scattering_inputs = [](
+        UInt scenario) noexcept {
+        constexpr auto all_lobes =
+            static_cast<std::uint32_t>(
+                event_diffuse | event_glossy |
+                event_transmission | event_transparent);
+        UInt lobe_mask = all_lobes;
+        lobe_mask = select(lobe_mask,
+            static_cast<std::uint32_t>(
+                event_diffuse | event_transmission),
+            scenario == 1u);
+        lobe_mask = select(lobe_mask,
+            static_cast<std::uint32_t>(event_glossy),
+            scenario == 2u);
+        lobe_mask = select(lobe_mask,
+            static_cast<std::uint32_t>(
+                event_glossy | event_transmission),
+            scenario == 3u);
+        lobe_mask = select(lobe_mask,
+            static_cast<std::uint32_t>(event_transparent),
+            scenario == 4u);
+        lobe_mask = select(lobe_mask,
+            static_cast<std::uint32_t>(event_diffuse),
+            scenario == 6u);
+        const auto outgoing = select(
+            normalize(make_float3(0.31f, -0.17f, 0.936f)),
+            normalize(make_float3(0.02f, 0.01f, -0.99975f)),
+            (scenario == 1u) | (scenario == 3u) |
+                (scenario == 6u));
+        UInt shader_flags = cycles_abi::shader_use_mis;
+        shader_flags |= select(0u,
+            cycles_abi::shader_exclude_diffuse,
+            (scenario == 1u) | (scenario == 7u));
+        shader_flags |= select(0u,
+            cycles_abi::shader_exclude_glossy,
+            (scenario == 2u) | (scenario == 4u) |
+                (scenario == 7u));
+        shader_flags |= select(0u,
+            cycles_abi::shader_exclude_transmit,
+            (scenario == 3u) | (scenario == 4u) |
+                (scenario == 6u));
+        shader_flags = select(
+            shader_flags, 0u, scenario == 5u);
+        return std::tuple{
+            outgoing, lobe_mask, shader_flags};
     };
 
     Kernel1D evaluate_shared =
@@ -599,6 +673,94 @@ int main(int argc, char **argv) {
                 surfaces.aov(tag, services, point));
         };
 
+    Kernel1D scatter_shared =
+        [&](BufferFloat4 parameter_buffer,
+            BufferFloat4 output) noexcept {
+            const auto invocation = dispatch_x();
+            const auto material = invocation / closure_slots;
+            const auto scenario = invocation % closure_slots;
+            auto point = make_surface_point();
+            point.parameter_block = select(
+                0u, glass_parameter_base, material != 0u);
+            point.back_facing = scenario == 7u;
+            ParameterShaderServices services{parameter_buffer};
+            const auto tag = select(
+                UInt{layered_tag},
+                UInt{glass_tag},
+                material != 0u);
+            const auto [outgoing, lobe_mask, shader_flags] =
+                scattering_inputs(scenario);
+            const auto query = SurfaceQuery{
+                .lobe_mask = lobe_mask,
+                .transport_mode = static_cast<std::uint32_t>(
+                    TransportMode::radiance),
+                .glossy_filter_roughness = select(
+                    0.0f, 0.08f, scenario == 7u),
+                .reflective_caustics = scenario != 6u,
+                .refractive_caustics = scenario != 2u};
+            SurfaceClosureSet closures{
+                12u,
+                SurfaceClosureStorageProfile::complete};
+            const auto collection = surfaces.collect_closures(
+                tag,
+                services,
+                point,
+                query.reflective_caustics,
+                query.refractive_caustics,
+                closures);
+            const SurfaceClosureEvaluator evaluator{
+                point, closures, collection.shading_normal};
+            write_scattering_result(
+                output,
+                invocation * scattering_records_per_slot,
+                evaluator.evaluate(
+                    services, outgoing, query),
+                evaluator.evaluate_light(services,
+                    outgoing,
+                    SurfaceLightQuery{
+                        .surface = query,
+                        .shader_flags = shader_flags}));
+        };
+
+    Kernel1D scatter_legacy =
+        [&](BufferFloat4 parameter_buffer,
+            BufferFloat4 output) noexcept {
+            const auto invocation = dispatch_x();
+            const auto material = invocation / closure_slots;
+            const auto scenario = invocation % closure_slots;
+            auto point = make_surface_point();
+            point.parameter_block = select(
+                0u, glass_parameter_base, material != 0u);
+            point.back_facing = scenario == 7u;
+            ParameterShaderServices services{parameter_buffer};
+            const auto tag = select(
+                UInt{layered_tag},
+                UInt{glass_tag},
+                material != 0u);
+            const auto [outgoing, lobe_mask, shader_flags] =
+                scattering_inputs(scenario);
+            const auto query = SurfaceQuery{
+                .lobe_mask = lobe_mask,
+                .transport_mode = static_cast<std::uint32_t>(
+                    TransportMode::radiance),
+                .glossy_filter_roughness = select(
+                    0.0f, 0.08f, scenario == 7u),
+                .reflective_caustics = scenario != 6u,
+                .refractive_caustics = scenario != 2u};
+            write_scattering_result(
+                output,
+                invocation * scattering_records_per_slot,
+                surfaces.evaluate(
+                    tag, services, point, outgoing, query),
+                surfaces.evaluate_light(tag,
+                    services,
+                    point,
+                    outgoing,
+                    SurfaceLightQuery{
+                        .surface = query,
+                        .shader_flags = shader_flags}));
+        };
+
     Context context{argv[0]};
     auto device = context.create_device(backend);
     auto stream = device.create_stream();
@@ -621,6 +783,14 @@ int main(int argc, char **argv) {
         device.create_buffer<luisa::float4>(
             invocation_count *
             evaluator_records_per_slot);
+    auto shared_scattering_buffer =
+        device.create_buffer<luisa::float4>(
+            invocation_count *
+            scattering_records_per_slot);
+    auto legacy_scattering_buffer =
+        device.create_buffer<luisa::float4>(
+            invocation_count *
+            scattering_records_per_slot);
     auto collect_kernel = device.compile(collect);
     auto legacy_kernel = device.compile(legacy);
     auto retain_kernel = device.compile(retain);
@@ -629,6 +799,10 @@ int main(int argc, char **argv) {
         device.compile(evaluate_shared);
     auto legacy_evaluator_kernel =
         device.compile(evaluate_legacy);
+    auto shared_scattering_kernel =
+        device.compile(scatter_shared);
+    auto legacy_scattering_kernel =
+        device.compile(scatter_legacy);
     std::array<luisa::float4, invocation_count * records_per_slot> collected{};
     std::array<luisa::float4, invocation_count * 3u> old{};
     std::array<luisa::float4, invocation_count * 3u> retained{};
@@ -641,6 +815,12 @@ int main(int argc, char **argv) {
     std::array<luisa::float4,
         invocation_count * evaluator_records_per_slot>
         legacy_evaluator{};
+    std::array<luisa::float4,
+        invocation_count * scattering_records_per_slot>
+        shared_scattering{};
+    std::array<luisa::float4,
+        invocation_count * scattering_records_per_slot>
+        legacy_scattering{};
     stream << parameter_buffer.copy_from(luisa::span{parameters})
            << collect_kernel(parameter_buffer, collected_buffer)
                   .dispatch(invocation_count)
@@ -665,6 +845,18 @@ int main(int argc, char **argv) {
                   .dispatch(invocation_count)
            << legacy_evaluator_buffer.copy_to(
                   luisa::span{legacy_evaluator})
+           << shared_scattering_kernel(
+                  parameter_buffer,
+                  shared_scattering_buffer)
+                  .dispatch(invocation_count)
+           << shared_scattering_buffer.copy_to(
+                  luisa::span{shared_scattering})
+           << legacy_scattering_kernel(
+                  parameter_buffer,
+                  legacy_scattering_buffer)
+                  .dispatch(invocation_count)
+           << legacy_scattering_buffer.copy_to(
+                  luisa::span{legacy_scattering})
            << synchronize();
 
     constexpr std::array layered_kinds{
@@ -864,6 +1056,27 @@ int main(int argc, char **argv) {
             const auto expected = legacy_evaluator[record];
             std::cerr
                 << "shared closure evaluator failed on "
+                << backend << " at record " << record
+                << ": shared {" << actual.x << ", "
+                << actual.y << ", " << actual.z << ", "
+                << actual.w << "}, legacy {" << expected.x
+                << ", " << expected.y << ", " << expected.z
+                << ", " << expected.w << "}\n";
+            return EXIT_FAILURE;
+        }
+    }
+    for (auto record = std::size_t{0u};
+         record < shared_scattering.size();
+         ++record) {
+        if (!finite(shared_scattering[record]) ||
+            !approximately_equal(
+                shared_scattering[record],
+                legacy_scattering[record],
+                1.0e-5f)) {
+            const auto actual = shared_scattering[record];
+            const auto expected = legacy_scattering[record];
+            std::cerr
+                << "shared closure scattering failed on "
                 << backend << " at record " << record
                 << ": shared {" << actual.x << ", "
                 << actual.y << ", " << actual.z << ", "
