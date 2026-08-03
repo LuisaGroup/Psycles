@@ -256,6 +256,8 @@ private:
              static_cast<std::uint32_t>(contract::event_diffuse)) != 0u;
         const auto path_reflective_caustics =
             Bool{reflective_caustics} | !previous_ray_was_diffuse;
+        const auto path_refractive_caustics =
+            Bool{refractive_caustics} | !previous_ray_was_diffuse;
         if (!reflective_caustics) {
             path_lobe_mask =
                 select(path_lobe_mask,
@@ -284,7 +286,9 @@ private:
                                             surface_query.transport_mode,
                                         .glossy_filter_roughness = 0.0f,
                                         .reflective_caustics =
-                                            path_reflective_caustics};
+                                            path_reflective_caustics,
+                                        .refractive_caustics =
+                                            path_refractive_caustics};
         auto blur_pdf = kernel_parameters.filter_glossy * minimum_bsdf_pdf;
         auto filter_glossy_enabled =
             kernel_parameters.filter_glossy < std::numeric_limits<float>::max();

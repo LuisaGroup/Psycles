@@ -16,6 +16,7 @@ using SurfaceEvaluateLightCallable = Callable<SurfaceEvaluationCall(
     luisa::uint,
     float,
     bool,
+    bool,
     luisa::uint)>;
 using SurfaceRuntimeFlagsCallable = Callable<luisa::uint(
     Buffer<luisa::float4>,
@@ -25,6 +26,7 @@ using SurfaceRuntimeFlagsCallable = Callable<luisa::uint(
     luisa::uint,
     SurfacePointCall,
     float,
+    bool,
     bool)>;
 using SurfaceEmissionCallable = Callable<luisa::float3(
     Buffer<luisa::float4>,
@@ -52,6 +54,7 @@ using SurfaceSampleCallable = Callable<SurfaceSampleCall(
     luisa::uint,
     luisa::uint,
     float,
+    bool,
     bool)>;
 using SurfaceClosureTraceCallable =
     Callable<SurfaceClosureTraceCall(
@@ -62,6 +65,7 @@ using SurfaceClosureTraceCallable =
         luisa::uint,
         SurfacePointCall,
         luisa::uint,
+        bool,
         bool)>;
 using SurfaceSampleTraceCallable =
     Callable<SurfaceSampleTraceCall(
@@ -76,6 +80,7 @@ using SurfaceSampleTraceCallable =
         luisa::uint,
         luisa::uint,
         float,
+        bool,
         bool)>;
 using SurfaceAovCallable = Callable<SurfaceAovCall(
     Buffer<luisa::float4>,

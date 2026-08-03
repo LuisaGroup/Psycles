@@ -1,4 +1,5 @@
 #include "graph_surface_internal.h"
+#include "microfacet_glass_component.h"
 #include "principled_layer_component.h"
 
 #include <utility>
@@ -87,6 +88,7 @@ GraphSurfaceImplementation::evaluate_traced(
     auto outgoing = safe_normalize(
         Float3{outgoing_expression}, point.shading_normal);
     auto incoming = safe_normalize(point.incoming, -outgoing);
+    const MicrofacetGlassComponent microfacet_glass{services, point};
     auto light_shader_flags = UInt{context.light_shader_flags};
     auto selected_closure_index = UInt{context.selected_closure_index};
     const auto sampled_light =
@@ -132,6 +134,7 @@ GraphSurfaceImplementation::evaluate_traced(
         point,
         values,
         query.reflective_caustics,
+        query.refractive_caustics,
         [&](const TracedClosure &closure) noexcept {
             const auto allocated = closure_allocated(closure);
             const auto current_closure_index = closure_index;
@@ -207,7 +210,7 @@ GraphSurfaceImplementation::evaluate_traced(
             Float glossy_pdf = 0.0f;
             if (!is_sheen) {
                 glossy_pdf = is_glass
-                                 ? glass_microfacet_pdf(closure,
+                                 ? microfacet_glass.pdf(closure,
                                        incoming,
                                        outgoing,
                                        glossy_normal,
@@ -253,7 +256,7 @@ GraphSurfaceImplementation::evaluate_traced(
                 glossy_contribution = make_float3(0.0f);
                 glass_contribution =
                     closure.weight *
-                    glass_microfacet_intensity(closure,
+                    microfacet_glass.intensity(closure,
                         incoming,
                         outgoing,
                         glossy_normal,
@@ -439,7 +442,8 @@ GraphSurfaceImplementation::evaluate_light(
     const ShaderServices &services,
     const SurfacePoint &point,
     Expr<float> glossy_filter_roughness_expression,
-    Expr<bool> reflective_caustics_expression) const noexcept {
+    Expr<bool> reflective_caustics_expression,
+    Expr<bool> refractive_caustics_expression) const noexcept {
     if (!_program) {
         return 0u;
     }
@@ -447,6 +451,7 @@ GraphSurfaceImplementation::evaluate_light(
     auto glossy_filter_roughness =
         Float{glossy_filter_roughness_expression};
     auto reflective_caustics = Bool{reflective_caustics_expression};
+    auto refractive_caustics = Bool{refractive_caustics_expression};
     UInt result = select(
         0u,
         cycles_closure::runtime_backfacing,
@@ -456,6 +461,7 @@ GraphSurfaceImplementation::evaluate_light(
         point,
         values,
         reflective_caustics,
+        refractive_caustics,
         [&](const TracedClosure &closure) noexcept {
             result |= cycles_runtime_flags(
                 closure,
@@ -469,9 +475,11 @@ GraphSurfaceImplementation::closure_trace(
     const ShaderServices &services,
     const SurfacePoint &point,
     Expr<std::uint32_t> requested_index_expression,
-    Expr<bool> reflective_caustics_expression) const noexcept {
+    Expr<bool> reflective_caustics_expression,
+    Expr<bool> refractive_caustics_expression) const noexcept {
     auto requested_index = UInt{requested_index_expression};
     auto reflective_caustics = Bool{reflective_caustics_expression};
+    auto refractive_caustics = Bool{refractive_caustics_expression};
     auto result = SurfaceClosureTrace::zero(requested_index);
     if (!_program) {
         return result;
@@ -484,6 +492,7 @@ GraphSurfaceImplementation::closure_trace(
         point,
         values,
         reflective_caustics,
+        refractive_caustics,
         [&](const TracedClosure &closure) noexcept {
             runtime_flags |= cycles_runtime_flags(closure);
             auto allocated = closure_allocated(closure);
@@ -522,6 +531,7 @@ GraphSurfaceImplementation::sample_with_trace(
     auto values = trace_values(services, point);
     auto incoming =
         safe_normalize(point.incoming, point.shading_normal);
+    const MicrofacetGlassComponent microfacet_glass{services, point};
     Float total_weight = 0.0f;
     UInt closure_count = 0u;
     UInt surface_runtime_flags = select(
@@ -530,6 +540,7 @@ GraphSurfaceImplementation::sample_with_trace(
         point,
         values,
         query.reflective_caustics,
+        query.refractive_caustics,
         [&](const TracedClosure &closure) noexcept {
             surface_runtime_flags |= cycles_runtime_flags(
                 closure, query.glossy_filter_roughness);
@@ -570,6 +581,7 @@ GraphSurfaceImplementation::sample_with_trace(
         point,
         values,
         query.reflective_caustics,
+        query.refractive_caustics,
         [&](const TracedClosure &closure) noexcept {
             auto is_translucent =
                 closure.operation ==
@@ -634,9 +646,8 @@ GraphSurfaceImplementation::sample_with_trace(
                 candidate_valid = glossy.valid;
             }
             if (is_glass) {
-                const auto glass = sample_glass(closure,
+                const auto glass = microfacet_glass.sample(closure,
                     incoming,
-                    point.geometric_normal,
                     glossy_normal,
                     random_direction,
                     rescaled_selection,
@@ -1001,6 +1012,7 @@ GraphSurfaceImplementation::evaluate_volume(
         point,
         values,
         true,
+        true,
         [&](const TracedClosure &closure) noexcept {
             if (closure.operation ==
                 compiler::ClosureOperation::transparent) {
@@ -1034,11 +1046,8 @@ GraphSurfaceImplementation::evaluate_volume(
             Float diffuse_weight = 0.0f;
             Float glossy_weight = 0.0f;
             if (is_glass) {
-                auto fresnel = fresnel_dielectric_cos(
-                    dot(glossy_normal, incoming), closure.ior);
-                result.glossy_albedo += closure.albedo * fresnel;
-                result.transmission_albedo +=
-                    closure.albedo * (1.0f - fresnel);
+                result.glossy_albedo += closure.reflection_albedo;
+                result.transmission_albedo += closure.transmission_albedo;
                 glossy_weight = pass_weight(closure.weight);
             } else if (is_sheen) {
                 diffuse_albedo = select(make_float3(0.0f),

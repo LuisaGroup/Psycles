@@ -312,6 +312,7 @@ struct ClosureInstruction {
     ValueExpressionId subsurface_weight;
     ValueExpressionId subsurface_radius;
     ValueExpressionId subsurface_scale;
+    ValueExpressionId transmission_weight;
     ValueExpressionId metallic;
     ValueExpressionId ior;
     ValueExpressionId specular_ior_level;

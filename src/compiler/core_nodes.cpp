@@ -974,6 +974,7 @@ NodeRegistry make_core_node_registry() {
             input("SubsurfaceWeight", SocketType::floating, SocketValue::floating(0.0f)),
             input("SubsurfaceRadius", SocketType::vector, SocketValue::vector({1.0f, 0.2f, 0.1f})),
             input("SubsurfaceScale", SocketType::floating, SocketValue::floating(0.005f)),
+            input("TransmissionWeight", SocketType::floating, SocketValue::floating(0.0f)),
             input("IOR", SocketType::floating, SocketValue::floating(1.5f)),
             input("SpecularIORLevel", SocketType::floating, SocketValue::floating(0.5f)),
             input("SpecularTint", SocketType::color, SocketValue::color({1.0f, 1.0f, 1.0f})),

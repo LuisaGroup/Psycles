@@ -73,6 +73,12 @@ public:
                 node,
                 "Subsurface Scale",
                 SocketType::floating));
+            static_cast<void>(context.bind(
+                id,
+                "TransmissionWeight",
+                node,
+                "Transmission Weight",
+                SocketType::floating));
             auto *subsurface_weight =
                 context.raw_input(node, "Subsurface Weight");
             const auto uses_subsurface =

@@ -28,6 +28,7 @@ namespace psycles::compiler::detail {
         std::optional<ValueExpressionId> subsurface_weight;
         std::optional<ValueExpressionId> subsurface_radius;
         std::optional<ValueExpressionId> subsurface_scale;
+        std::optional<ValueExpressionId> transmission_weight;
         std::optional<ValueExpressionId> ior;
         std::optional<ValueExpressionId> specular_ior_level;
         std::optional<ValueExpressionId> specular_tint;
@@ -57,6 +58,8 @@ namespace psycles::compiler::detail {
                 lower_value_input(node, "SubsurfaceRadius");
             subsurface_scale =
                 lower_value_input(node, "SubsurfaceScale");
+            transmission_weight =
+                lower_value_input(node, "TransmissionWeight");
             specular_ior_level =
                 lower_value_input(node, "SpecularIORLevel");
             specular_tint =
@@ -83,7 +86,8 @@ namespace psycles::compiler::detail {
         if (color && roughness && normal &&
             (node.type != node_type::principled_bsdf ||
              (metallic && diffuse_roughness && subsurface_weight &&
-              subsurface_radius && subsurface_scale && ior &&
+              subsurface_radius && subsurface_scale &&
+              transmission_weight && ior &&
               specular_ior_level && specular_tint && alpha &&
               sheen_weight && sheen_roughness && sheen_tint &&
               coat_weight && coat_roughness && coat_ior && coat_tint &&
@@ -118,6 +122,9 @@ namespace psycles::compiler::detail {
                             ValueExpressionId{}),
                     .subsurface_scale =
                         subsurface_scale.value_or(
+                            ValueExpressionId{}),
+                    .transmission_weight =
+                        transmission_weight.value_or(
                             ValueExpressionId{}),
                     .metallic =
                         metallic.value_or(ValueExpressionId{}),

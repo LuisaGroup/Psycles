@@ -143,6 +143,7 @@ CyclesNodeMappingRegistry make_core_cycles_node_mappings() {
             {"Subsurface Weight", "SubsurfaceWeight"},
             {"Subsurface Radius", "SubsurfaceRadius"},
             {"Subsurface Scale", "SubsurfaceScale"},
+            {"Transmission Weight", "TransmissionWeight"},
             {"IOR", "IOR"},
             {"Specular IOR Level", "SpecularIORLevel"},
             {"Specular Tint", "SpecularTint"},

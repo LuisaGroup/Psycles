@@ -194,6 +194,8 @@ if(PSYCLES_ENABLE_LUISA)
             src/luisa/graph_surface_emission.cpp
             src/luisa/graph_surface_implementation.cpp
             src/luisa/graph_surface_physical_closures.cpp
+            src/luisa/microfacet_glass_component.cpp
+            src/luisa/principled_base_component.cpp
             src/luisa/principled_layer_component.cpp
             src/luisa/graph_surface_scattering.cpp
             src/luisa/graph_surface_state.cpp
@@ -1430,6 +1432,15 @@ if(PSYCLES_ENABLE_LUISA)
                         tests/test_luisa_principled_coat.cpp
                     TEST_STEM
                         luisa_principled_coat
+                    LIBRARIES Psycles::luisa)
+
+                psycles_add_luisa_backend_test(
+                    TARGET
+                        psycles_luisa_principled_transmission_tests
+                    SOURCE
+                        tests/test_luisa_principled_transmission.cpp
+                    TEST_STEM
+                        luisa_principled_transmission
                     LIBRARIES Psycles::luisa)
 
                 add_executable(

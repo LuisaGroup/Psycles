@@ -44,7 +44,8 @@ public:
         const ShaderServices &services,
         const SurfacePoint &point,
         Expr<float> glossy_filter_roughness,
-        Expr<bool> reflective_caustics) const noexcept override;
+        Expr<bool> reflective_caustics,
+        Expr<bool> refractive_caustics) const noexcept override;
 
     [[nodiscard]] SurfaceEvaluation evaluate(
         const ShaderServices &services,
@@ -69,7 +70,8 @@ public:
         const ShaderServices &services,
         const SurfacePoint &point,
         Expr<std::uint32_t> requested_index,
-        Expr<bool> reflective_caustics) const noexcept override;
+        Expr<bool> reflective_caustics,
+        Expr<bool> refractive_caustics) const noexcept override;
 
     [[nodiscard]] SurfaceSampleTrace sample_trace(
         const ShaderServices &services,

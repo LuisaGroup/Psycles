@@ -80,12 +80,14 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         auto trace_surface_closure = [&](UInt tag,
                                          const SurfacePoint &surface_point,
                                          UInt requested_index,
-                                         Bool reflective_caustics) noexcept {
+                                         Bool reflective_caustics,
+                                         Bool refractive_caustics) noexcept {
             return invocation.trace_surface_closure(
                 tag,
                 surface_point,
                 requested_index,
-                reflective_caustics);
+                reflective_caustics,
+                refractive_caustics);
         };
         auto trace_write_event = [&](UInt event,
                                      path_trace_schema::EventSlot slot,
@@ -230,14 +232,17 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                     surface.path_surface_query
                         .glossy_filter_roughness,
                     surface.path_surface_query
-                        .reflective_caustics);
+                        .reflective_caustics,
+                    surface.path_surface_query
+                        .refractive_caustics);
         }
         if (path_trace_enabled) {
             const auto closure_summary = trace_surface_closure(
                 surface_tag,
                 point,
                 0u,
-                surface.path_surface_query.reflective_caustics);
+                surface.path_surface_query.reflective_caustics,
+                surface.path_surface_query.refractive_caustics);
             trace_write_event(path_step,
                               path_trace_schema::EventSlot::state_depth,
                               make_float3(cast<float>(path_step),
@@ -318,7 +323,8 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                         surface_tag,
                         point,
                         closure_index,
-                        surface.path_surface_query.reflective_caustics);
+                        surface.path_surface_query.reflective_caustics,
+                        surface.path_surface_query.refractive_caustics);
                 $if(closure.valid) {
                     trace_write_closure(path_step,
                                         closure_index,

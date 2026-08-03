@@ -1208,6 +1208,10 @@ void test_cycles_principled_emission_adapter() {
                     .value = SocketValue::color(
                         {0.9f, 0.35f, 0.12f})},
                 {
+                    .socket = "Transmission Weight",
+                    .source = std::nullopt,
+                    .value = SocketValue::floating(0.42f)},
+                {
                     .socket = "Coat Weight",
                     .source = std::nullopt,
                     .value = SocketValue::floating(0.75f)},
@@ -1274,6 +1278,7 @@ void test_cycles_principled_emission_adapter() {
             closure.sheen_weight.valid() &&
             closure.sheen_roughness.valid() &&
             closure.sheen_tint.valid() &&
+            closure.transmission_weight.valid() &&
             closure.coat_weight.valid() &&
             closure.coat_roughness.valid() &&
             closure.coat_ior.valid() &&

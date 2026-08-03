@@ -1,4 +1,6 @@
 #include "graph_surface_internal.h"
+#include "microfacet_glass_component.h"
+#include "principled_base_component.h"
 #include "principled_layer_component.h"
 
 #include <psycles/luisa/cycles_closure.h>
@@ -10,10 +12,13 @@ void GraphSurfaceImplementation::for_each_physical_closure(
     const SurfacePoint &point,
     const TracedValues &values,
     Bool reflective_caustics,
+    Bool refractive_caustics,
     const ClosureVisitor &function) const noexcept {
     const auto incoming =
         safe_normalize(point.incoming, point.shading_normal);
     const PrincipledLayerComponent principled_layers{services, point};
+    const PrincipledBaseComponent principled_base{services, point};
+    const MicrofacetGlassComponent microfacet_glass{services, point};
     Float3 transparent_weight = make_float3(0.0f);
     Float transparent_sample_weight = 0.0f;
     for_each_closure(
@@ -105,44 +110,11 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                     reflective_caustics);
                 function(coat.closure);
                 closure.weight = coat.lower_weight;
-                const auto glossy_normal =
-                    maybe_ensure_valid_specular_reflection(
-                        point, incoming, graph_closure.normal);
-                const auto state = principled_state(
-                    services,
-                    closure,
-                    incoming,
-                    glossy_normal,
-                    reflective_caustics);
-
-                auto metallic = closure;
-                metallic.principled_lobe = PrincipledLobe::metallic;
-                metallic.weight = state.metallic_weight;
-                metallic.allocation_weight =
-                    state.metallic_allocation_weight;
-                metallic.sample_weight = state.metallic_sample_weight;
-                metallic.albedo = state.metallic_albedo;
-                metallic.color = state.metallic_f0;
-                metallic.normal = glossy_normal;
-                metallic.ior = 1.0f;
-                metallic.specular_tint = state.metallic_b;
-                metallic.evaluation_scale = state.metallic_energy_scale;
-                function(metallic);
-
-                auto dielectric = closure;
-                dielectric.principled_lobe = PrincipledLobe::dielectric;
-                dielectric.weight = state.dielectric_weight;
-                dielectric.allocation_weight =
-                    state.dielectric_allocation_weight;
-                dielectric.sample_weight =
-                    state.dielectric_sample_weight;
-                dielectric.albedo = state.dielectric_albedo;
-                dielectric.color = state.dielectric_f0;
-                dielectric.normal = glossy_normal;
-                dielectric.ior = state.eta;
-                dielectric.evaluation_scale =
-                    state.dielectric_energy_scale;
-                function(dielectric);
+                const auto base = principled_base.evaluate(
+                    closure, reflective_caustics, refractive_caustics);
+                function(base.metallic);
+                function(base.transmission);
+                function(base.dielectric);
 
                 auto diffuse = closure;
                 diffuse.operation = compiler::ClosureOperation::diffuse;
@@ -164,12 +136,12 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                 // This reproduces long-radius color bleed while retaining
                 // the original Principled color for the data pass below.
                 const auto radius_weighted =
-                    state.diffuse_weight * radius_tint;
+                    base.diffuse_weight * radius_tint;
                 const auto radius_weighted_average =
                     sample_weight(radius_weighted);
                 const auto energy_normalized =
                     radius_weighted *
-                    (sample_weight(state.diffuse_weight) /
+                    (sample_weight(base.diffuse_weight) /
                         max(radius_weighted_average, 1.0e-20f));
                 const auto subsurface_weight =
                     select(0.0f,
@@ -183,7 +155,7 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                 const auto grazing_mix = lerp(
                     0.35f, 0.85f, 1.0f - incoming_cosine);
                 diffuse.weight = lerp(
-                    state.diffuse_weight,
+                    base.diffuse_weight,
                     energy_normalized,
                     subsurface_weight * grazing_mix);
                 diffuse.allocation_weight = sample_weight(
@@ -196,7 +168,7 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                     diffuse_allocated);
                 diffuse.sample_weight = select(
                     0.0f, diffuse.allocation_weight, diffuse_allocated);
-                diffuse.albedo = state.diffuse_weight;
+                diffuse.albedo = base.diffuse_weight;
                 diffuse.roughness = graph_closure.diffuse_roughness;
                 diffuse.evaluation_scale = make_float3(1.0f);
                 function(diffuse);
@@ -223,27 +195,28 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                 break;
             }
             case compiler::ClosureOperation::glass: {
-                closure.allocation_weight = sample_weight(
-                    max(closure.weight, make_float3(0.0f)));
-                const auto allocated =
-                    closure.allocation_weight >=
-                    cycles_closure::closure_weight_cutoff;
-                closure.weight = select(make_float3(0.0f),
-                    max(closure.weight, make_float3(0.0f)),
-                    allocated);
-                closure.normal = maybe_ensure_valid_specular_reflection(
-                    point, incoming, graph_closure.normal);
-                closure.ior = select(graph_closure.ior,
-                    1.0f / max(graph_closure.ior, 1.0e-20f),
-                    point.back_facing);
-                closure.color = max(
-                    graph_closure.color, make_float3(0.0f));
-                closure.albedo = closure.weight * closure.color;
-                closure.sample_weight = select(0.0f,
-                    closure.allocation_weight *
-                        sample_weight(closure.color),
-                    allocated);
-                break;
+                const auto color =
+                    max(graph_closure.color, make_float3(0.0f));
+                const auto original_ior = max(graph_closure.ior, 1.0e-5f);
+                function(microfacet_glass.setup(
+                    {.prototype = closure,
+                        .weight = closure.weight,
+                        .normal = graph_closure.normal,
+                        .roughness = graph_closure.roughness,
+                        .ior = original_ior,
+                        .fresnel_f0 = make_float3(f0_from_ior(original_ior)),
+                        .fresnel_f90 = make_float3(1.0f),
+                        .reflection_tint = select(make_float3(0.0f),
+                            color,
+                            reflective_caustics),
+                        .transmission_tint = select(make_float3(0.0f),
+                            color,
+                            refractive_caustics),
+                        .enabled = reflective_caustics | refractive_caustics,
+                        .principled_lobe = PrincipledLobe::none,
+                        .preserve_energy = graph_closure.preserve_ggx_energy,
+                        .beckmann = graph_closure.beckmann}));
+                return;
             }
             case compiler::ClosureOperation::translucent: {
                 closure.allocation_weight = sample_weight(
