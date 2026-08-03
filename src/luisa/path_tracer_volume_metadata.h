@@ -2,6 +2,7 @@
 
 #include <psycles/compiler/material_library.h>
 #include <psycles/contract/scene.h>
+#include <psycles/luisa/surface.h>
 #include <psycles/luisa/volume_stack.h>
 
 #include <cstdint>
@@ -40,7 +41,8 @@ struct VolumeSceneMetadata {
 };
 
 inline constexpr std::uint32_t
-    cycles_max_closure_allocations = 64u;
+    cycles_max_closure_allocations =
+        maximum_surface_closure_capacity;
 inline constexpr std::uint32_t
     cycles_volume_node_closure_allocations =
         maximum_volume_stack_size;
