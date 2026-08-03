@@ -269,6 +269,8 @@ int main(int argc, char **argv) {
                       glass_parameters.end());
     const auto closure_identity =
         make_surface_closure_identity_callable();
+    const auto closure_aov =
+        make_surface_closure_aov_callable();
 
     Kernel1D collect = [&](BufferFloat4 parameter_buffer,
                            BufferFloat4 output) noexcept {
@@ -708,20 +710,17 @@ int main(int argc, char **argv) {
                 trace_visitor));
             const auto &trace = trace_visitor.result();
 
-            SurfaceClosureSet aov_closures{
+            SurfaceAovVisitor aov_visitor{
+                point,
                 12u,
-                SurfaceClosureStorageProfile::aov};
-            const auto aov_collection = surfaces.collect_closures(
+                closure_aov};
+            static_cast<void>(surfaces.collect_closures(
                 tag,
                 services,
                 point,
                 true,
                 true,
-                aov_closures);
-            const SurfaceClosureEvaluator aov_evaluator{
-                point,
-                aov_closures,
-                aov_collection.shading_normal};
+                aov_visitor));
             const auto base =
                 invocation * evaluator_records_per_slot;
             write_evaluator_result(
@@ -729,7 +728,7 @@ int main(int argc, char **argv) {
                 base,
                 trace,
                 runtime_flags,
-                aov_evaluator.aov());
+                aov_visitor.result());
         };
 
     Kernel1D evaluate_legacy =

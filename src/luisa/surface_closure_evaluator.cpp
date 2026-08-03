@@ -4,6 +4,7 @@
 #include "microfacet_glass_component.h"
 
 #include <psycles/luisa/cycles_closure.h>
+#include <psycles/luisa/surface_closure_operations.h>
 
 #include <luisa/dsl/sugar.h>
 
@@ -76,89 +77,23 @@ SurfaceAov SurfaceClosureEvaluator::aov() const noexcept {
     Float roughness_weight = 0.0f;
     Float roughness = 0.0f;
     Float3 normal = make_float3(0.0f);
-    const auto incoming = detail::safe_normalize(
-        _point.incoming, _point.shading_normal);
     UInt index = 0u;
     $while(index < _closures.count()) {
         const auto closure = _closures.entry(index);
-        const auto is_transparent = has_kind(
-            closure, SurfaceClosureKind::transparent);
-        const auto is_diffuse = has_kind(
-            closure, SurfaceClosureKind::diffuse);
-        const auto is_translucent = has_kind(
-            closure, SurfaceClosureKind::translucent);
-        const auto is_principled = has_kind(
-            closure, SurfaceClosureKind::principled);
-        const auto is_sheen =
-            is_principled &
-            has_lobe(closure, SurfaceClosureLobe::sheen);
-        const auto is_glossy = has_kind(
-            closure, SurfaceClosureKind::glossy);
-        const auto is_glass = has_kind(
-            closure, SurfaceClosureKind::glass);
-        const auto generic_glossy =
-            (is_principled & !is_sheen) | is_glossy;
-        const auto glossy_normal = select(
-            detail::maybe_ensure_valid_specular_reflection(
-                _point, incoming, closure.normal),
-            closure.normal,
-            is_sheen);
-
-        result.transparency += select(
-            make_float3(0.0f),
-            closure.weight,
-            is_transparent);
-        result.glossy_albedo += select(
-            make_float3(0.0f),
-            closure.reflection_albedo,
-            is_glass);
-        result.transmission_albedo += select(
-            make_float3(0.0f),
-            closure.transmission_albedo,
-            is_glass);
-        result.glossy_albedo += select(
-            make_float3(0.0f),
-            closure.albedo,
-            generic_glossy);
-
-        const auto diffuse_family =
-            is_diffuse | is_translucent;
-        const auto diffuse_albedo = select(
-            select(
-                make_float3(0.0f),
-                closure.albedo,
-                diffuse_family),
-            select(
-                make_float3(0.0f),
-                closure.albedo,
-                closure.setup_valid),
-            is_sheen);
-        const auto closure_pass_weight =
-            detail::pass_weight(closure.weight);
-        const auto diffuse_weight = select(
-            select(0.0f,
-                closure_pass_weight,
-                diffuse_family),
-            select(0.0f,
-                closure_pass_weight,
-                closure.setup_valid),
-            is_sheen);
-        const auto glossy_weight = select(0.0f,
-            closure_pass_weight,
-            is_glass | generic_glossy);
-        const auto weight =
-            diffuse_weight + glossy_weight;
-        total_weight += weight;
-        roughness_weight += glossy_weight;
-        result.albedo += diffuse_albedo;
-        roughness +=
-            glossy_weight * closure.roughness;
-        normal +=
-            diffuse_weight * select(
-                                 closure.normal,
-                                 glossy_normal,
-                                 is_translucent) +
-            glossy_weight * glossy_normal;
+        const auto contribution =
+            surface_closure_aov_contribution(
+                _point, closure);
+        result.albedo += contribution.albedo;
+        result.glossy_albedo +=
+            contribution.glossy_albedo;
+        result.transmission_albedo +=
+            contribution.transmission_albedo;
+        result.transparency += contribution.transparency;
+        total_weight += contribution.total_weight;
+        roughness_weight +=
+            contribution.roughness_weight;
+        roughness += contribution.roughness;
+        normal += contribution.normal;
         index += 1u;
     };
     const auto valid = total_weight > 0.0f;
