@@ -71,13 +71,22 @@ SurfaceCallables make_surface_callables(
                     .reflective_caustics = reflective_caustics,
                     .refractive_caustics = refractive_caustics},
                 .shader_flags = shader_flags};
+            const auto point =
+                unpack_surface_point(packed_point);
             return pack_surface_evaluation(
-                scene->surfaces.evaluate_light(
-                    surface_tag,
+                evaluate_surface_closures(
+                    *scene,
+                    SurfaceClosureStorageProfile::complete,
                     services,
-                    unpack_surface_point(packed_point),
-                    outgoing,
-                    query));
+                    surface_tag,
+                    point,
+                    reflective_caustics,
+                    refractive_caustics,
+                    [&](const SurfaceClosureEvaluator
+                            &evaluator) noexcept {
+                        return evaluator.evaluate_light(
+                            services, outgoing, query);
+                    }));
         };
     SurfaceRuntimeFlagsCallable runtime_flags =
         [scene](

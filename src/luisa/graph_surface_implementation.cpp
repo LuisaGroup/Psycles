@@ -136,7 +136,9 @@ GraphSurfaceImplementation::evaluate_traced(
         query.reflective_caustics,
         query.refractive_caustics,
         [&](const TracedClosure &closure) noexcept {
-            const auto allocated = closure_allocated(closure);
+            const auto physical =
+                canonical_surface_closure(closure);
+            const auto allocated = closure_allocated(physical);
             const auto current_closure_index = closure_index;
             closure_index += select(0u, 1u, allocated);
             Bool selected_sample = false;
@@ -147,7 +149,7 @@ GraphSurfaceImplementation::evaluate_traced(
             }
             if (closure.operation ==
                 compiler::ClosureOperation::transparent) {
-                auto weight = closure_sample_weight(closure);
+                auto weight = closure_sample_weight(physical);
                 total_sample_weight +=
                     select(0.0f, weight, transparent_enabled);
                 return;
@@ -187,7 +189,7 @@ GraphSurfaceImplementation::evaluate_traced(
                 (abs(closure.ior - 1.0f) < 1.0e-4f);
             const auto bump_shadowing = bump_shadowing_term(point,
                 values.shading_normal,
-                closure,
+                physical,
                 outgoing,
                 !selected_sample);
             const auto bump_direction_valid = bump_shadowing != 0.0f;
@@ -201,7 +203,7 @@ GraphSurfaceImplementation::evaluate_traced(
                 is_translucent ? -glossy_normal : closure.normal;
             auto diffuse_pdf = is_sheen
                                    ? sheen_intensity(
-                                         closure, incoming, outgoing)
+                                         physical, incoming, outgoing)
                                    : max(dot(diffuse_normal, outgoing),
                                          0.0f) *
                                          inverse_pi;
@@ -210,14 +212,14 @@ GraphSurfaceImplementation::evaluate_traced(
             Float glossy_pdf = 0.0f;
             if (!is_sheen) {
                 glossy_pdf = is_glass
-                                 ? microfacet_glass.pdf(closure,
+                                 ? microfacet_glass.pdf(physical,
                                        incoming,
                                        outgoing,
                                        glossy_normal,
                                        glossy_enabled,
                                        transmission_enabled,
                                        query.glossy_filter_roughness)
-                                 : microfacet_pdf(closure,
+                                 : microfacet_pdf(physical,
                                        incoming,
                                        outgoing,
                                        glossy_normal,
@@ -256,7 +258,7 @@ GraphSurfaceImplementation::evaluate_traced(
                 glossy_contribution = make_float3(0.0f);
                 glass_contribution =
                     closure.weight *
-                    microfacet_glass.intensity(closure,
+                    microfacet_glass.intensity(physical,
                         incoming,
                         outgoing,
                         glossy_normal,
@@ -273,7 +275,7 @@ GraphSurfaceImplementation::evaluate_traced(
                 diffuse_contribution = make_float3(0.0f);
                 glossy_contribution =
                     closure.weight * microfacet_intensity(services,
-                                         closure,
+                                         physical,
                                          incoming,
                                          outgoing,
                                          glossy_normal,
@@ -288,7 +290,7 @@ GraphSurfaceImplementation::evaluate_traced(
             } else {
                 diffuse_contribution =
                     closure.weight *
-                    diffuse_intensity(closure, incoming, outgoing) *
+                    diffuse_intensity(physical, incoming, outgoing) *
                     bump_shadowing;
                 glossy_contribution = make_float3(0.0f);
             }
@@ -329,7 +331,7 @@ GraphSurfaceImplementation::evaluate_traced(
             result.glossy_f +=
                 eligible_glossy +
                 eligible_glass_reflection;
-            auto weight = closure_sample_weight(closure);
+            auto weight = closure_sample_weight(physical);
             weight =
                 select(0.0f,
                     weight,
@@ -464,7 +466,7 @@ GraphSurfaceImplementation::evaluate_light(
         refractive_caustics,
         [&](const TracedClosure &closure) noexcept {
             result |= cycles_runtime_flags(
-                closure,
+                canonical_surface_closure(closure),
                 glossy_filter_roughness);
         });
     return result;
@@ -494,13 +496,15 @@ GraphSurfaceImplementation::closure_trace(
         reflective_caustics,
         refractive_caustics,
         [&](const TracedClosure &closure) noexcept {
-            runtime_flags |= cycles_runtime_flags(closure);
-            auto allocated = closure_allocated(closure);
+            const auto physical =
+                canonical_surface_closure(closure);
+            runtime_flags |= cycles_runtime_flags(physical);
+            auto allocated = closure_allocated(physical);
             auto match = allocated & (closure_count == requested_index);
             result.type = select(
-                result.type, cycles_closure_type(closure), match);
+                result.type, cycles_closure_type(physical), match);
             result.sample_weight = select(result.sample_weight,
-                closure_sample_weight(closure),
+                closure_sample_weight(physical),
                 match);
             result.weight =
                 select(result.weight, closure.weight, match);
@@ -542,12 +546,15 @@ GraphSurfaceImplementation::sample_with_trace(
         query.reflective_caustics,
         query.refractive_caustics,
         [&](const TracedClosure &closure) noexcept {
+            const auto physical =
+                canonical_surface_closure(closure);
             surface_runtime_flags |= cycles_runtime_flags(
-                closure, query.glossy_filter_roughness);
+                physical, query.glossy_filter_roughness);
             const auto selection = closure_selection_state(
-                services, point, closure, incoming, query);
+                services, point, physical, incoming, query);
             total_weight += selection.weight;
-            closure_count += select(0u, 1u, closure_allocated(closure));
+            closure_count += select(
+                0u, 1u, closure_allocated(physical));
         });
     result.runtime_flags = surface_runtime_flags;
 
@@ -583,6 +590,8 @@ GraphSurfaceImplementation::sample_with_trace(
         query.reflective_caustics,
         query.refractive_caustics,
         [&](const TracedClosure &closure) noexcept {
+            const auto physical =
+                canonical_surface_closure(closure);
             auto is_translucent =
                 closure.operation ==
                 compiler::ClosureOperation::translucent;
@@ -598,10 +607,10 @@ GraphSurfaceImplementation::sample_with_trace(
                 compiler::ClosureOperation::transparent;
             auto is_glass = closure.operation ==
                             compiler::ClosureOperation::glass;
-            const auto allocated = closure_allocated(closure);
+            const auto allocated = closure_allocated(physical);
             const auto current_closure_index = closure_index;
             const auto selection = closure_selection_state(
-                services, point, closure, incoming, query);
+                services, point, physical, incoming, query);
             const auto glossy_normal = selection.glossy_normal;
             const auto weight = selection.weight;
             auto next = accumulated + weight;
@@ -615,13 +624,13 @@ GraphSurfaceImplementation::sample_with_trace(
                 random_direction);
             auto glossy = sample_microfacet_reflection(point,
                 values.shading_normal,
-                closure,
+                physical,
                 incoming,
                 random_direction,
                 glossy_normal,
                 query.glossy_filter_roughness);
             auto sheen_direction = is_sheen
-                                       ? sample_sheen(closure,
+                                       ? sample_sheen(physical,
                                              incoming,
                                              random_direction)
                                        : make_float3(0.0f, 0.0f, 1.0f);
@@ -646,7 +655,7 @@ GraphSurfaceImplementation::sample_with_trace(
                 candidate_valid = glossy.valid;
             }
             if (is_glass) {
-                const auto glass = microfacet_glass.sample(closure,
+                const auto glass = microfacet_glass.sample(physical,
                     incoming,
                     glossy_normal,
                     random_direction,
@@ -689,11 +698,11 @@ GraphSurfaceImplementation::sample_with_trace(
                 trace.closure_index = select(
                     trace.closure_index, current_closure_index, choose);
                 trace.closure_type = select(trace.closure_type,
-                    cycles_closure_type(closure),
+                    cycles_closure_type(physical),
                     choose);
                 trace.closure_sample_weight =
                     select(trace.closure_sample_weight,
-                        closure_sample_weight(closure),
+                        closure_sample_weight(physical),
                         choose);
                 trace.selection_rescaled =
                     select(trace.selection_rescaled,

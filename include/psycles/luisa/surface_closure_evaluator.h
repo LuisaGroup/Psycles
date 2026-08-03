@@ -15,9 +15,23 @@ namespace psycles::luisa_backend {
 class SurfaceClosureEvaluator {
 
   private:
+    enum class EvaluationMode : std::uint8_t {
+        regular,
+        sampled_light,
+        sampled_bsdf,
+    };
+
     const SurfacePoint &_point;
     const SurfaceClosureSet &_closures;
     Float3 _shading_normal;
+
+    [[nodiscard]] SurfaceEvaluation evaluate_impl(
+        const ShaderServices &services,
+        Float3 outgoing,
+        const SurfaceQuery &query,
+        EvaluationMode mode,
+        UInt light_shader_flags,
+        UInt selected_closure_index) const noexcept;
 
   public:
     SurfaceClosureEvaluator(
@@ -32,6 +46,16 @@ class SurfaceClosureEvaluator {
         UInt requested_index) const noexcept;
 
     [[nodiscard]] SurfaceAov aov() const noexcept;
+
+    [[nodiscard]] SurfaceEvaluation evaluate(
+        const ShaderServices &services,
+        Expr<luisa::float3> outgoing,
+        const SurfaceQuery &query) const noexcept;
+
+    [[nodiscard]] SurfaceEvaluation evaluate_light(
+        const ShaderServices &services,
+        Expr<luisa::float3> outgoing,
+        const SurfaceLightQuery &query) const noexcept;
 };
 
 }// namespace psycles::luisa_backend

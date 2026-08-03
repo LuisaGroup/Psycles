@@ -39,20 +39,31 @@ public:
     [[nodiscard]] TracedClosure
     setup(const MicrofacetGlassSetup &parameters) const noexcept;
 
-    [[nodiscard]] Float3 intensity(const TracedClosure &closure, Float3 incoming,
-                                   Float3 outgoing, Float3 glossy_normal,
-                                   Float glossy_filter_roughness) const noexcept;
+    [[nodiscard]] Float3 intensity(
+        const SurfaceClosureRecord &closure,
+        Float3 incoming,
+        Float3 outgoing,
+        Float3 glossy_normal,
+        Float glossy_filter_roughness) const noexcept;
 
-    [[nodiscard]] Float pdf(const TracedClosure &closure, Float3 incoming,
-                            Float3 outgoing, Float3 glossy_normal,
-                            Bool reflection_allowed, Bool transmission_allowed,
-                            Float glossy_filter_roughness) const noexcept;
+    [[nodiscard]] Float pdf(
+        const SurfaceClosureRecord &closure,
+        Float3 incoming,
+        Float3 outgoing,
+        Float3 glossy_normal,
+        Bool reflection_allowed,
+        Bool transmission_allowed,
+        Float glossy_filter_roughness) const noexcept;
 
     [[nodiscard]] GlassSample
-    sample(const TracedClosure &closure, Float3 incoming, Float3 glossy_normal,
-           Float2 random_direction, Float random_lobe, Bool reflection_allowed,
-           Bool transmission_allowed,
-           Float glossy_filter_roughness) const noexcept;
+    sample(const SurfaceClosureRecord &closure,
+        Float3 incoming,
+        Float3 glossy_normal,
+        Float2 random_direction,
+        Float random_lobe,
+        Bool reflection_allowed,
+        Bool transmission_allowed,
+        Float glossy_filter_roughness) const noexcept;
 };
 
 }// namespace psycles::luisa_backend::detail

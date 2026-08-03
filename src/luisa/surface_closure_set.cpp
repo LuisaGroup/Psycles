@@ -358,6 +358,20 @@ SurfaceClosureRecord SurfaceClosureSet::entry(
         [&](Float value) noexcept {
             return select(0.0f, value, valid);
         };
+    // add() retains only allocated closures. Profiles which project the
+    // weight vector away must still preserve that allocation identity so
+    // canonical consumers may apply closure_allocated() without knowing the
+    // storage layout. The exact allocation weight is not part of those
+    // profiles; the cutoff is the unique minimal representative of the same
+    // predicate.
+    auto allocation_weight =
+        scalar_or_zero(weight.w);
+    if (!stores(_profile, StorageField::weight)) {
+        allocation_weight = select(
+            0.0f,
+            cycles_closure::closure_weight_cutoff,
+            valid);
+    }
     return {
         .kind = select(
             static_cast<std::uint32_t>(SurfaceClosureKind::none),
@@ -368,7 +382,7 @@ SurfaceClosureRecord SurfaceClosureSet::entry(
             identity.y,
             valid),
         .weight = vector_or_zero(weight.xyz()),
-        .allocation_weight = scalar_or_zero(weight.w),
+        .allocation_weight = allocation_weight,
         .sample_weight = scalar_or_zero(albedo.w),
         .setup_valid =
             valid & ((flags & setup_valid_bit) != 0u),

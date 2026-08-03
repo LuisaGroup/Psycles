@@ -6,9 +6,8 @@
 #include <psycles/luisa/cycles_closure.h>
 
 namespace psycles::luisa_backend::detail {
-namespace {
 
-[[nodiscard]] SurfaceClosureRecord canonical_record(
+SurfaceClosureRecord canonical_surface_closure(
     const TracedClosure &closure) noexcept {
     auto result = SurfaceClosureRecord::zero();
     switch (closure.operation) {
@@ -111,8 +110,6 @@ namespace {
     return result;
 }
 
-}// namespace
-
 SurfaceClosureCollection GraphSurfaceImplementation::collect_closures(
     const ShaderServices &services,
     const SurfacePoint &point,
@@ -130,7 +127,7 @@ SurfaceClosureCollection GraphSurfaceImplementation::collect_closures(
         Bool{reflective_caustics_expression},
         Bool{refractive_caustics_expression},
         [&](const TracedClosure &closure) noexcept {
-            collector.add(canonical_record(closure));
+            collector.add(canonical_surface_closure(closure));
         });
     return {.shading_normal = values.shading_normal};
 }

@@ -106,6 +106,11 @@ struct TracedClosure {
     bool beckmann{};
 };
 
+// Project a host-tagged setup closure into the canonical device-tagged
+// physical record consumed by every directional scattering component.
+[[nodiscard]] SurfaceClosureRecord canonical_surface_closure(
+    const TracedClosure &closure) noexcept;
+
 struct GlassSample {
     Float3 direction;
     Float3 singular_evaluation;
@@ -221,12 +226,10 @@ template <typename Id, typename Values>
     const TracedClosure &closure,
     Float incoming_cosine,
     Float3 fss) noexcept;
-[[nodiscard]] bool is_scattering_operation(
-    compiler::ClosureOperation operation) noexcept;
 [[nodiscard]] Float closure_sample_weight(
-    const TracedClosure &closure) noexcept;
+    const SurfaceClosureRecord &closure) noexcept;
 [[nodiscard]] Bool closure_allocated(
-    const TracedClosure &closure) noexcept;
+    const SurfaceClosureRecord &closure) noexcept;
 // Exact Cycles bump_shadowing_term contract. `smooth_normal` is the final
 // shader-wide sd->N; closure.normal may be an independently linked socket.
 // A nonzero factor changes closure energy but never density. A zero factor
@@ -235,43 +238,44 @@ template <typename Id, typename Values>
 // that distinction at the aggregate evaluator.
 [[nodiscard]] Float bump_shadowing_term(const SurfacePoint &point,
     Float3 smooth_normal,
-    const TracedClosure &closure,
+    const SurfaceClosureRecord &closure,
     Float3 direction,
     Bool is_evaluation) noexcept;
-[[nodiscard]] UInt cycles_runtime_flags(const TracedClosure &closure,
+[[nodiscard]] UInt cycles_runtime_flags(const SurfaceClosureRecord &closure,
     Float glossy_filter_roughness = 0.0f) noexcept;
 [[nodiscard]] UInt cycles_closure_type(
-    const TracedClosure &closure) noexcept;
+    const SurfaceClosureRecord &closure) noexcept;
 [[nodiscard]] ClosureSelectionState closure_selection_state(
     const ShaderServices &services,
     const SurfacePoint &point,
-    const TracedClosure &closure,
+    const SurfaceClosureRecord &closure,
     Float3 incoming,
     const SurfaceQuery &query) noexcept;
 [[nodiscard]] Float oren_nayar_g(Float cosine) noexcept;
-[[nodiscard]] Float3 diffuse_intensity(const TracedClosure &closure,
+[[nodiscard]] Float3 diffuse_intensity(const SurfaceClosureRecord &closure,
     Float3 incoming,
     Float3 outgoing) noexcept;
 [[nodiscard]] Float ggx_distribution(
     Float n_dot_h, Float alpha) noexcept;
-[[nodiscard]] Float microfacet_alpha(const TracedClosure &closure,
+[[nodiscard]] Float microfacet_alpha(const SurfaceClosureRecord &closure,
     Float glossy_filter_roughness) noexcept;
 [[nodiscard]] Bool microfacet_is_singular(
-    const TracedClosure &closure,
+    const SurfaceClosureRecord &closure,
     Float glossy_filter_roughness) noexcept;
 [[nodiscard]] Float smith_g1(Float n_dot_v, Float alpha) noexcept;
-[[nodiscard]] Float3 specular_f0(const TracedClosure &closure) noexcept;
+[[nodiscard]] Float3 specular_f0(
+    const SurfaceClosureRecord &closure) noexcept;
 [[nodiscard]] Float3 microfacet_reflection_fresnel(
-    const TracedClosure &closure,
+    const SurfaceClosureRecord &closure,
     Float cosine) noexcept;
 [[nodiscard]] Float3 microfacet_intensity(
     const ShaderServices &services,
-    const TracedClosure &closure,
+    const SurfaceClosureRecord &closure,
     Float3 incoming,
     Float3 outgoing,
     Float3 glossy_normal,
     Float glossy_filter_roughness) noexcept;
-[[nodiscard]] Float microfacet_pdf(const TracedClosure &closure,
+[[nodiscard]] Float microfacet_pdf(const SurfaceClosureRecord &closure,
     Float3 incoming,
     Float3 outgoing,
     Float3 glossy_normal,
@@ -279,15 +283,15 @@ template <typename Id, typename Values>
 [[nodiscard]] MicrofacetReflectionSample sample_microfacet_reflection(
     const SurfacePoint &point,
     Float3 smooth_normal,
-    const TracedClosure &closure,
+    const SurfaceClosureRecord &closure,
     Float3 incoming,
     Float2 random,
     Float3 glossy_normal,
     Float glossy_filter_roughness) noexcept;
-[[nodiscard]] Float sheen_intensity(const TracedClosure &closure,
+[[nodiscard]] Float sheen_intensity(const SurfaceClosureRecord &closure,
     Float3 incoming,
     Float3 outgoing) noexcept;
-[[nodiscard]] Float3 sample_sheen(const TracedClosure &closure,
+[[nodiscard]] Float3 sample_sheen(const SurfaceClosureRecord &closure,
     Float3 incoming,
     Float2 random) noexcept;
 [[nodiscard]] Float3 sample_cosine_hemisphere(
