@@ -435,6 +435,47 @@ NodeRegistry make_core_node_registry() {
         .required_features = feature_bit(ShaderFeature::surface)}));
 
     static_cast<void>(registry.register_schema(NodeSchema{
+        .type = node_type::voronoi_texture,
+        .inputs = {
+            input("Vector", SocketType::vector, SocketValue::vector({0.0f, 0.0f, 0.0f})),
+            input("W", SocketType::floating, SocketValue::floating(0.0f)),
+            input("Scale", SocketType::floating, SocketValue::floating(5.0f)),
+            input("Detail", SocketType::floating, SocketValue::floating(0.0f)),
+            input("Roughness", SocketType::floating, SocketValue::floating(0.5f)),
+            input("Lacunarity", SocketType::floating, SocketValue::floating(2.0f)),
+            input("Smoothness", SocketType::floating, SocketValue::floating(1.0f)),
+            input("Exponent", SocketType::floating, SocketValue::floating(0.5f)),
+            input("Randomness", SocketType::floating, SocketValue::floating(1.0f))},
+        .outputs = {
+            output("Distance", SocketType::floating),
+            output("Color", SocketType::color),
+            output("Position", SocketType::vector),
+            output("W", SocketType::floating),
+            output("Radius", SocketType::floating)},
+        .properties = {
+            property(
+                "Dimensions",
+                SocketType::unsigned_integer,
+                SocketValue::unsigned_integer(3u)),
+            property(
+                "Feature",
+                SocketType::string,
+                SocketValue::string("F1")),
+            property(
+                "DistanceMetric",
+                SocketType::string,
+                SocketValue::string("EUCLIDEAN")),
+            property(
+                "Normalize",
+                SocketType::boolean,
+                SocketValue::boolean(false)),
+            property(
+                "Output",
+                SocketType::string,
+                SocketValue::string("Distance"))},
+        .required_features = feature_bit(ShaderFeature::surface)}));
+
+    static_cast<void>(registry.register_schema(NodeSchema{
         .type = node_type::gradient_texture,
         .inputs = {
             input("Vector", SocketType::vector, SocketValue::vector({0.0f, 0.0f, 0.0f}))},

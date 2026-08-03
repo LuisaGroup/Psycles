@@ -127,6 +127,11 @@ enum class ValueOperation : std::uint8_t {
     brick_factor,
     wave_color,
     wave_factor,
+    voronoi_distance,
+    voronoi_color,
+    voronoi_position,
+    voronoi_w,
+    voronoi_radius,
     gradient,
     color_ramp,
     rgb_curve,
@@ -253,6 +258,29 @@ enum class NoiseType : std::uint8_t {
     hybrid_multifractal,
     ridged_multifractal,
     hetero_terrain
+};
+
+enum class VoronoiFeature : std::uint8_t {
+    f1,
+    f2,
+    smooth_f1,
+    distance_to_edge,
+    n_sphere_radius
+};
+
+enum class VoronoiDistanceMetric : std::uint8_t {
+    euclidean,
+    manhattan,
+    chebychev,
+    minkowski
+};
+
+enum class VoronoiOutput : std::uint8_t {
+    distance,
+    color,
+    position,
+    w,
+    radius
 };
 
 // A single topologically ordered value stream is intentional. Blender shader

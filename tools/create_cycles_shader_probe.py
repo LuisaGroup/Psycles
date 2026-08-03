@@ -34,6 +34,7 @@ from cycles_shader_probe import (  # noqa: E402
     support,
     texture_inputs,
     values,
+    voronoi_inputs,
     wave_inputs,
 )
 
@@ -150,6 +151,9 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "translucent_surface": closures._translucent_surface,
     "value_emission": lights_camera._value_emission,
     "vector_math_matrix": texture_inputs._vector_math_matrix,
+    "voronoi_texture_distance": voronoi_inputs._voronoi_texture_distance,
+    "voronoi_texture_edges": voronoi_inputs._voronoi_texture_edges,
+    "voronoi_texture_fractal": voronoi_inputs._voronoi_texture_fractal,
     "wavelength_matrix": texture_inputs._wavelength_matrix,
     "wave_texture_distortion": wave_inputs._wave_texture_distortion,
     "wave_texture_modes": wave_inputs._wave_texture_modes,

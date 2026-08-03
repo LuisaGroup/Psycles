@@ -115,6 +115,9 @@ _ALL_PROBES = (
     "triangle_light_solid_angle",
     "value_emission",
     "vector_math_matrix",
+    "voronoi_texture_distance",
+    "voronoi_texture_edges",
+    "voronoi_texture_fractal",
     "wavelength_matrix",
     "wave_texture_distortion",
     "wave_texture_modes",
@@ -155,6 +158,14 @@ _PROBE_RATIO_GATES = {
         "Emit": (0.99997, 1.00003),
     },
     "wave_texture_modes": {
+        "Combined": (0.99999, 1.00001),
+        "Emit": (0.99999, 1.00001),
+    },
+    "voronoi_texture_distance": {
+        "Combined": (0.99999, 1.00001),
+        "Emit": (0.99999, 1.00001),
+    },
+    "voronoi_texture_fractal": {
         "Combined": (0.99999, 1.00001),
         "Emit": (0.99999, 1.00001),
     },
@@ -257,6 +268,18 @@ _PROBE_RELATIVE_RMSE_GATES = {
         "Emit": 0.00006,
     },
     "wave_texture_modes": {
+        "Combined": 0.00001,
+        "Emit": 0.00001,
+    },
+    "voronoi_texture_distance": {
+        "Combined": 0.00001,
+        "Emit": 0.00001,
+    },
+    "voronoi_texture_edges": {
+        "Combined": 0.00001,
+        "Emit": 0.00001,
+    },
+    "voronoi_texture_fractal": {
         "Combined": 0.00001,
         "Emit": 0.00001,
     },

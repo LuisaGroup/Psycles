@@ -354,6 +354,120 @@ void test_wave_texture_configuration_lowers_structurally() {
         "unused Wave Factor duplicated the procedural AST");
 }
 
+void test_voronoi_texture_configuration_lowers_structurally() {
+    ShaderCompiler compiler{make_core_node_registry()};
+    ShaderGraph graph;
+    const auto voronoi = graph.add_node(
+        node_type::voronoi_texture,
+        "Voronoi Texture");
+    const auto emission = graph.add_node(
+        node_type::emission,
+        "Emission");
+    expect(
+        graph.set_input(
+            voronoi,
+            "Vector",
+            SocketValue::vector({0.25f, -0.5f, 1.75f})),
+        "failed to set Voronoi Vector");
+    for (const auto &[name, value] : {
+             std::pair{"W", -0.375f},
+             std::pair{"Scale", 7.25f},
+             std::pair{"Detail", 3.75f},
+             std::pair{"Roughness", 0.625f},
+             std::pair{"Lacunarity", 2.25f},
+             std::pair{"Smoothness", 0.35f},
+             std::pair{"Exponent", 1.75f},
+             std::pair{"Randomness", 0.83f}}) {
+        expect(
+            graph.set_input(
+                voronoi,
+                name,
+                SocketValue::floating(value)),
+            std::string{"failed to set Voronoi input "} + name);
+    }
+    expect(
+        graph.set_property(
+            voronoi,
+            "Dimensions",
+            SocketValue::unsigned_integer(4u)),
+        "failed to set Voronoi dimensions");
+    expect(
+        graph.set_property(
+            voronoi,
+            "Feature",
+            SocketValue::string("SMOOTH_F1")),
+        "failed to set Voronoi feature");
+    expect(
+        graph.set_property(
+            voronoi,
+            "DistanceMetric",
+            SocketValue::string("MINKOWSKI")),
+        "failed to set Voronoi metric");
+    expect(
+        graph.set_property(
+            voronoi,
+            "Normalize",
+            SocketValue::boolean(true)),
+        "failed to set Voronoi normalization");
+    expect(
+        graph.set_property(
+            voronoi,
+            "Output",
+            SocketValue::string("Color")),
+        "failed to select Voronoi Color");
+    expect(
+        graph.connect(
+            {.node = voronoi, .socket = "Color"},
+            emission,
+            "Color"),
+        "failed to connect Voronoi Color");
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = emission, .socket = "Closure"});
+
+    auto compiled = compiler.compile(graph);
+    expect(compiled.ok(), "Voronoi graph failed contract compilation");
+    auto surface = compile_surface_program(*compiled.program);
+    expect(surface.ok(), "Voronoi graph failed typed lowering");
+    const auto instruction = std::ranges::find_if(
+        surface.program->value_instructions(),
+        [](const ValueInstruction &value) {
+            return value.operation == ValueOperation::voronoi_color;
+        });
+    expect(
+        instruction != surface.program->value_instructions().end(),
+        "Voronoi Color instruction is missing");
+    constexpr std::uint64_t expected_configuration =
+        4u |
+        (static_cast<std::uint64_t>(VoronoiFeature::smooth_f1) << 8u) |
+        (static_cast<std::uint64_t>(
+             VoronoiDistanceMetric::minkowski)
+            << 16u) |
+        (1ull << 24u);
+    expect(
+        instruction->static_u0 == expected_configuration,
+        "Voronoi static configuration was not encoded structurally");
+    expect(
+        instruction->a.valid() && instruction->b.valid() &&
+            instruction->c.valid() && instruction->d.valid() &&
+            instruction->e.valid() && instruction->f.valid() &&
+            instruction->g.valid() && instruction->h.valid() &&
+            instruction->i.valid(),
+        "Voronoi dynamic inputs were not preserved as typed dependencies");
+    expect(
+        std::ranges::none_of(
+            surface.program->value_instructions(),
+            [](const ValueInstruction &value) {
+                return value.operation ==
+                           ValueOperation::voronoi_distance ||
+                       value.operation ==
+                           ValueOperation::voronoi_position ||
+                       value.operation == ValueOperation::voronoi_w ||
+                       value.operation == ValueOperation::voronoi_radius;
+            }),
+        "unused Voronoi outputs duplicated the procedural AST");
+}
+
 void test_closure_tree_is_preserved() {
     ShaderCompiler compiler{make_core_node_registry()};
     ShaderGraph graph;
@@ -1834,6 +1948,7 @@ int main() {
         test_image_texture_modes_are_structural();
         test_environment_texture_modes_are_structural();
         test_wave_texture_configuration_lowers_structurally();
+        test_voronoi_texture_configuration_lowers_structurally();
         test_closure_tree_is_preserved();
         test_cycles_emission_evaluation_mode();
         test_cycles_principled_emission_metadata();

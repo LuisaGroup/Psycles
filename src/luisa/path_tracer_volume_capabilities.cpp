@@ -44,6 +44,11 @@ namespace {
         case ValueOperation::brick_factor:
         case ValueOperation::wave_color:
         case ValueOperation::wave_factor:
+        case ValueOperation::voronoi_distance:
+        case ValueOperation::voronoi_color:
+        case ValueOperation::voronoi_position:
+        case ValueOperation::voronoi_w:
+        case ValueOperation::voronoi_radius:
         case ValueOperation::gradient:
         case ValueOperation::hosek_wilkie_sky:
         case ValueOperation::nishita_sky:
