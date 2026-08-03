@@ -889,6 +889,65 @@
         }
       ]
     },
+    "TEX_VORONOI": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 6.407300645605574e-08
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Emit": {
+          "rmse": 6.407300645605574e-08
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "voronoi_texture_distance",
+      "samples": 4,
+      "supplemental_probes": [
+        {
+          "max_rmse": 1e-06,
+          "passes": {
+            "Combined": {
+              "rmse": 1.2075405209088785e-07
+            },
+            "DiffCol": {
+              "rmse": 0.0
+            },
+            "Emit": {
+              "rmse": 1.2075405209088785e-07
+            },
+            "Normal": {
+              "rmse": 0.0
+            }
+          },
+          "probe": "voronoi_texture_fractal",
+          "samples": 4
+        },
+        {
+          "max_rmse": 3e-05,
+          "passes": {
+            "Combined": {
+              "rmse": 2.3733204216114245e-05
+            },
+            "DiffCol": {
+              "rmse": 0.0
+            },
+            "Emit": {
+              "rmse": 2.3733204216114245e-05
+            },
+            "Normal": {
+              "rmse": 0.0
+            }
+          },
+          "probe": "voronoi_texture_edges",
+          "samples": 4
+        }
+      ]
+    },
     "TEX_WAVE": {
       "max_rmse": 2e-06,
       "passes": {

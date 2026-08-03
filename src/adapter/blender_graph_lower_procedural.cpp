@@ -278,6 +278,80 @@ public:
                 .ref = {.node = id, .socket = "Factor"},
                 .type = SocketType::floating});
         }
+        if (type == "TEX_VORONOI") {
+            const auto id = context.graph().add_node(
+                compiler::node_type::voronoi_texture,
+                node_name);
+            if (context.input_source(node, "Vector")) {
+                static_cast<void>(context.bind(
+                    id,
+                    "Vector",
+                    node,
+                    "Vector",
+                    SocketType::vector));
+            } else {
+                static_cast<void>(context.graph().connect(
+                    context.default_generated_coordinates().ref,
+                    id,
+                    "Vector"));
+            }
+            for (const auto *name : {
+                     "W",
+                     "Scale",
+                     "Detail",
+                     "Roughness",
+                     "Lacunarity",
+                     "Smoothness",
+                     "Exponent",
+                     "Randomness"}) {
+                static_cast<void>(context.bind(
+                    id,
+                    name,
+                    node,
+                    name,
+                    SocketType::floating));
+            }
+            const auto dimensions =
+                context.node_property_text(
+                    node, "voronoi_dimensions", "3D");
+            static_cast<void>(context.graph().set_property(
+                id,
+                "Dimensions",
+                SocketValue::unsigned_integer(
+                    dimensions == "1D"
+                        ? 1u
+                        : dimensions == "2D"
+                              ? 2u
+                              : dimensions == "4D" ? 4u : 3u)));
+            static_cast<void>(context.graph().set_property(
+                id,
+                "Feature",
+                SocketValue::string(context.node_property_text(
+                    node, "feature", "F1"))));
+            static_cast<void>(context.graph().set_property(
+                id,
+                "DistanceMetric",
+                SocketValue::string(context.node_property_text(
+                    node, "distance", "EUCLIDEAN"))));
+            static_cast<void>(context.graph().set_property(
+                id,
+                "Normalize",
+                SocketValue::boolean(context.node_property_bool(
+                    node, "normalize"))));
+            static_cast<void>(context.graph().set_property(
+                id,
+                "Output",
+                SocketValue::string(socket)));
+            const auto output_type =
+                socket == "Color"
+                    ? SocketType::color
+                    : socket == "Position"
+                          ? SocketType::vector
+                          : SocketType::floating;
+            return finish({
+                .ref = {.node = id, .socket = socket},
+                .type = output_type});
+        }
         if (type == "TEX_WAVE") {
             const auto id = context.graph().add_node(
                 compiler::node_type::wave_texture,

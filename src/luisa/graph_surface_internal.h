@@ -359,6 +359,8 @@ public:
     const compiler::ValueInstruction &instruction) noexcept;
 [[nodiscard]] std::unique_ptr<ValueNode> try_make_wave_value_node(
     const compiler::ValueInstruction &instruction) noexcept;
+[[nodiscard]] std::unique_ptr<ValueNode> try_make_voronoi_value_node(
+    const compiler::ValueInstruction &instruction) noexcept;
 [[nodiscard]] std::unique_ptr<ValueNode> try_make_procedural_value_node(
     const compiler::ValueInstruction &instruction) noexcept;
 

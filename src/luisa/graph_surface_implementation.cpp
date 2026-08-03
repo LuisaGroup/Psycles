@@ -6,6 +6,7 @@
 
 #include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/cycles_noise.h>
+#include <psycles/luisa/cycles_voronoi.h>
 #include <psycles/luisa/cycles_wave.h>
 #include <psycles/luisa/cycles_volume.h>
 #include <psycles/luisa/surface_closure_sampling.h>
@@ -49,6 +50,10 @@ GraphSurfaceImplementation::GraphSurfaceImplementation(
                 instruction.operation ==
                     compiler::ValueOperation::wave_factor) {
                 cycles_wave::prepare_distortion_noise();
+            } else if (cycles_voronoi::is_operation(
+                           instruction.operation)) {
+                cycles_voronoi::prepare(
+                    cycles_voronoi::decode_configuration(instruction));
             }
         }
         for (const auto &closure : _program->closure_instructions()) {

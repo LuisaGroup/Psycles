@@ -428,6 +428,81 @@ namespace {
         }
         return true;
     }
+    if (node.type == node_type::voronoi_texture) {
+        auto vector = lower_value_input(node, "Vector");
+        auto w = lower_value_input(node, "W");
+        auto scale = lower_value_input(node, "Scale");
+        auto detail = lower_value_input(node, "Detail");
+        auto roughness = lower_value_input(node, "Roughness");
+        auto lacunarity = lower_value_input(node, "Lacunarity");
+        auto smoothness = lower_value_input(node, "Smoothness");
+        auto exponent = lower_value_input(node, "Exponent");
+        auto randomness = lower_value_input(node, "Randomness");
+        if (vector && w && scale && detail && roughness &&
+            lacunarity && smoothness && exponent && randomness) {
+            const auto feature_name =
+                property_string(node, "Feature", "F1");
+            const auto feature =
+                feature_name == "F2"
+                    ? VoronoiFeature::f2
+                    : feature_name == "SMOOTH_F1"
+                          ? VoronoiFeature::smooth_f1
+                          : feature_name == "DISTANCE_TO_EDGE"
+                                ? VoronoiFeature::distance_to_edge
+                                : feature_name == "N_SPHERE_RADIUS"
+                                      ? VoronoiFeature::n_sphere_radius
+                                      : VoronoiFeature::f1;
+            const auto metric_name =
+                property_string(
+                    node, "DistanceMetric", "EUCLIDEAN");
+            const auto metric =
+                metric_name == "MANHATTAN"
+                    ? VoronoiDistanceMetric::manhattan
+                    : metric_name == "CHEBYCHEV"
+                          ? VoronoiDistanceMetric::chebychev
+                          : metric_name == "MINKOWSKI"
+                                ? VoronoiDistanceMetric::minkowski
+                                : VoronoiDistanceMetric::euclidean;
+            const auto output_name =
+                property_string(node, "Output", "Distance");
+            auto operation = ValueOperation::voronoi_distance;
+            auto result_type = SocketType::floating;
+            if (output_name == "Color") {
+                operation = ValueOperation::voronoi_color;
+                result_type = SocketType::color;
+            } else if (output_name == "Position") {
+                operation = ValueOperation::voronoi_position;
+                result_type = SocketType::vector;
+            } else if (output_name == "W") {
+                operation = ValueOperation::voronoi_w;
+            } else if (output_name == "Radius") {
+                operation = ValueOperation::voronoi_radius;
+            }
+            const auto configuration =
+                property_uint(node, "Dimensions", 3u) |
+                (static_cast<std::uint64_t>(feature) << 8u) |
+                (static_cast<std::uint64_t>(metric) << 16u) |
+                (property_bool(node, "Normalize") ? 1ull << 24u : 0u);
+            publish(
+                node.id,
+                output_name,
+                append(ValueInstruction{
+                    .operation = operation,
+                    .source_node = node.id,
+                    .result_type = result_type,
+                    .a = *vector,
+                    .b = *w,
+                    .c = *scale,
+                    .d = *detail,
+                    .e = *roughness,
+                    .f = *lacunarity,
+                    .g = *smoothness,
+                    .h = *exponent,
+                    .i = *randomness,
+                    .static_u0 = configuration}));
+        }
+        return true;
+    }
     if (node.type == node_type::color_ramp) {
         if (auto factor = lower_value_input(node, "Factor")) {
             auto instruction = ValueInstruction{

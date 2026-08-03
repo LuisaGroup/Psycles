@@ -502,6 +502,25 @@ exact Detail-16 configuration in the probe. Reports and all visually inspected
 triptychs are in
 [`validation/2026-08-04/wave-texture`](validation/2026-08-04/wave-texture/README.md).
 
+Voronoi Texture is `cycles_verified` without baking coordinates, colors, or
+material results. The adapter retains Blender's raw 1D--4D node, all nine
+dynamic sockets, feature, distance metric, Normalize flag, and requested
+output. Static configuration is expanded while Luisa traces the shader AST;
+the generated program calls a shared specialization instead of carrying a
+weakly typed property switch through every shading point. The implementation
+covers F1, F2, Smooth F1, Distance to Edge, N-Sphere Radius, Euclidean,
+Manhattan, Chebychev, and Minkowski distance, every dimension-dependent
+Distance/Color/Position/W/Radius output, fractional-detail fractal recurrence,
+and Cycles normalization and socket clamps. Three probes exercise 64 cells in
+total. Against Cycles CPU, Combined relative RMSE for distance, fractal, and
+edge/radius is respectively `4.82e-8`, `1.18e-7`, and `3.58e-6` on fallback;
+all three stay below `3.58e-6` on HIP and Vulkan, with zero invalid pixels.
+The official Barbershop asset's 22 reachable Voronoi diagnostics are all
+removed while preserving its original closure graphs; total scene diagnostics
+fall from 52 to 30. Reports and all nine visually inspected backend triptychs
+are in
+[`validation/2026-08-04/voronoi-texture`](validation/2026-08-04/voronoi-texture/README.md).
+
 Geometry Pointiness now follows Cycles' mesh-sync construction instead of
 using a triangle-normal curvature approximation or a material-side bake. The
 Blender adapter retains evaluated point normals and original edges only for
