@@ -77,6 +77,7 @@ inline constexpr auto translucent_bsdf = "psycles.closure.translucent";
 inline constexpr auto principled_bsdf = "psycles.closure.principled";
 inline constexpr auto glossy_bsdf = "psycles.closure.glossy";
 inline constexpr auto glass_bsdf = "psycles.closure.glass";
+inline constexpr auto refraction_bsdf = "psycles.closure.refraction";
 inline constexpr auto emission = "psycles.closure.emission";
 inline constexpr auto transparent_bsdf = "psycles.closure.transparent";
 inline constexpr auto null_closure = "psycles.closure.null";

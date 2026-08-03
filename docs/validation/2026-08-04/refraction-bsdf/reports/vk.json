@@ -1,0 +1,714 @@
+{
+  "actual_label": "Psycles",
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.Depth.Z",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.Diffuse Direct.R",
+    "ViewLayer.Diffuse Direct.G",
+    "ViewLayer.Diffuse Direct.B",
+    "ViewLayer.Diffuse Indirect.R",
+    "ViewLayer.Diffuse Indirect.G",
+    "ViewLayer.Diffuse Indirect.B",
+    "ViewLayer.Diffuse Color.R",
+    "ViewLayer.Diffuse Color.G",
+    "ViewLayer.Diffuse Color.B",
+    "ViewLayer.Glossy Direct.R",
+    "ViewLayer.Glossy Direct.G",
+    "ViewLayer.Glossy Direct.B",
+    "ViewLayer.Glossy Indirect.R",
+    "ViewLayer.Glossy Indirect.G",
+    "ViewLayer.Glossy Indirect.B",
+    "ViewLayer.Glossy Color.R",
+    "ViewLayer.Glossy Color.G",
+    "ViewLayer.Glossy Color.B",
+    "ViewLayer.Transmission Direct.R",
+    "ViewLayer.Transmission Direct.G",
+    "ViewLayer.Transmission Direct.B",
+    "ViewLayer.Transmission Indirect.R",
+    "ViewLayer.Transmission Indirect.G",
+    "ViewLayer.Transmission Indirect.B",
+    "ViewLayer.Transmission Color.R",
+    "ViewLayer.Transmission Color.G",
+    "ViewLayer.Transmission Color.B",
+    "ViewLayer.Emission.R",
+    "ViewLayer.Emission.G",
+    "ViewLayer.Emission.B",
+    "ViewLayer.Environment.R",
+    "ViewLayer.Environment.G",
+    "ViewLayer.Environment.B",
+    "ViewLayer.Debug Sample Count.X"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/refraction_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.008684935048222542,
+        0.025978300720453262,
+        0.015828730538487434
+      ],
+      "cycles_luminance_mean": 0.02156902477145195,
+      "cycles_rms": 0.05635657534003258,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 4.548307117602235e-07,
+      "mean_absolute_error": 1.979071795332743e-09,
+      "orientation_rmse": {
+        "flip_x": 0.07970023155212402,
+        "flip_xy": 0.06811372935771942,
+        "flip_y": 0.07970018684864044,
+        "identity": 8.077042146226177e-09
+      },
+      "p95_pixel_rmse": 2.4428361555806077e-08,
+      "p99_pixel_rmse": 2.4428361555806077e-08,
+      "psycles": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/refraction_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.008684935048222542,
+        0.025978300720453262,
+        0.015828730538487434
+      ],
+      "psycles_luminance_mean": 0.02156902477145195,
+      "psycles_rms": 0.05635658107534249,
+      "relative_rmse": 1.433203152869492e-07,
+      "rmse": 8.077042146226177e-09,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 30198988.8,
+        "display_scale": 2.8228735945918664,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/triptychs/combined.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "DiffCol": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/refraction_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/refraction_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/triptychs/diffcol.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "DiffDir": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/refraction_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/refraction_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/triptychs/diffdir.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "DiffInd": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/refraction_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/refraction_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/triptychs/diffind.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "Emit": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/refraction_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/refraction_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/triptychs/emit.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "Env": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/refraction_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/refraction_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/triptychs/env.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "GlossCol": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/refraction_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/refraction_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/triptychs/glosscol.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "GlossDir": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/refraction_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/refraction_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/triptychs/glossdir.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "GlossInd": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/refraction_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/refraction_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/triptychs/glossind.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "Normal": {
+      "channel_mean_ratio": [
+        1.0,
+        0.0,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/refraction_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.11897291988134384,
+        0.0,
+        0.9569244384765625
+      ],
+      "cycles_luminance_mean": 0.09438285231590271,
+      "cycles_rms": 0.577350378036499,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 5.960464477539063e-08,
+      "mean_absolute_error": 6.2088170160734535e-09,
+      "orientation_rmse": {
+        "flip_x": 0.13208450376987457,
+        "flip_xy": 0.23968151211738586,
+        "flip_y": 0.23968151211738586,
+        "identity": 1.9237315740383565e-08
+      },
+      "p95_pixel_rmse": 3.4412757088375656e-08,
+      "p99_pixel_rmse": 3.4412757088375656e-08,
+      "psycles": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/refraction_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.11897291988134384,
+        0.0,
+        0.9569244384765625
+      ],
+      "psycles_luminance_mean": 0.09438285231590271,
+      "psycles_rms": 0.5773503810310775,
+      "relative_rmse": 3.3320001981825006e-08,
+      "rmse": 1.9237315740383565e-08,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 15099494.4,
+        "display_scale": 1.0,
+        "mapping": "normal_xyz_to_rgb",
+        "path": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/triptychs/normal.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "TransCol": {
+      "channel_mean_ratio": [
+        1.0000011920928955,
+        1.0000001192092896,
+        0.9999993443489075
+      ],
+      "cycles": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/refraction_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.486545205116272,
+        0.4101540148258209,
+        0.5478761196136475
+      ],
+      "cycles_luminance_mean": 0.4363406002521515,
+      "cycles_rms": 0.6720206141471863,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0000003415029723,
+      "maximum_absolute_error": 0.002413034439086914,
+      "mean_absolute_error": 3.4156741435253934e-07,
+      "orientation_rmse": {
+        "flip_x": 0.5540520548820496,
+        "flip_xy": 0.7743635177612305,
+        "flip_y": 0.7522895336151123,
+        "identity": 2.5820063456194475e-05
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/refraction_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.4865458011627197,
+        0.4101540744304657,
+        0.5478757619857788
+      ],
+      "psycles_luminance_mean": 0.4363407492637634,
+      "psycles_rms": 0.6720208519825437,
+      "relative_rmse": 3.842153486461258e-05,
+      "rmse": 2.5820063456194475e-05,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 0.4090898805439225,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/triptychs/transcol.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "TransDir": {
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/refraction_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.02274506166577339,
+        0.04454673454165459,
+        0.06177373230457306
+      ],
+      "cycles_luminance_mean": 0.04115577042102814,
+      "cycles_rms": 0.11565396189689636,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 9.445785735806567e-07,
+      "mean_absolute_error": 4.756994353982691e-09,
+      "orientation_rmse": {
+        "flip_x": 0.16353026032447815,
+        "flip_xy": 0.10368490219116211,
+        "flip_y": 0.16355928778648376,
+        "identity": 1.6711259931412314e-08
+      },
+      "p95_pixel_rmse": 4.214684778958144e-08,
+      "p99_pixel_rmse": 4.214684778958144e-08,
+      "psycles": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/refraction_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.02274506166577339,
+        0.04454673454165459,
+        0.06177373230457306
+      ],
+      "psycles_luminance_mean": 0.04115577042102814,
+      "psycles_rms": 0.11565396728958263,
+      "relative_rmse": 1.4449362267684468e-07,
+      "rmse": 1.6711259931412314e-08,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 15099494.4,
+        "display_scale": 1.6463092871089449,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/triptychs/transdir.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "TransInd": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/refraction_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/refraction_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-refraction-probe-direct0-vk/refraction_bsdf_matrix/triptychs/transind.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    }
+  },
+  "reference_label": "Cycles",
+  "schema": "psycles.cycles-differential.v1"
+}

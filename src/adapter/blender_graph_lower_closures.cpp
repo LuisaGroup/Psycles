@@ -236,9 +236,11 @@ public:
                 .ref = {.node = id, .socket = "Closure"},
                 .type = SocketType::closure});
         }
-        if (type == "BSDF_GLASS") {
+        if (type == "BSDF_GLASS" || type == "BSDF_REFRACTION") {
             const auto id = context.graph().add_node(
-                compiler::node_type::glass_bsdf,
+                type == "BSDF_GLASS"
+                    ? compiler::node_type::glass_bsdf
+                    : compiler::node_type::refraction_bsdf,
                 node_name);
             static_cast<void>(context.graph().set_property(
                 id,

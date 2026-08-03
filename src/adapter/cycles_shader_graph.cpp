@@ -173,6 +173,17 @@ CyclesNodeMappingRegistry make_core_cycles_node_mappings() {
         .outputs = {{"BSDF", "Closure"}},
         .properties = {{"distribution", "Distribution"}}});
     add({
+        .cycles_type = "refraction_bsdf",
+        .cycles_variant = {},
+        .psycles_type = node_type::refraction_bsdf,
+        .inputs = {
+            {"Color", "Color"},
+            {"Roughness", "Roughness"},
+            {"IOR", "IOR"},
+            {"Normal", "Normal"}},
+        .outputs = {{"BSDF", "Closure"}},
+        .properties = {{"distribution", "Distribution"}}});
+    add({
         .cycles_type = "emission",
         .cycles_variant = {},
         .psycles_type = node_type::emission,

@@ -100,6 +100,7 @@ _ALL_PROBES = (
     "principled_sheen_surface",
     "principled_surface",
     "principled_transmission_surface",
+    "refraction_bsdf_matrix",
     "rgb_emission",
     "rgb_curve_matrix",
     "rgb_to_bw",
@@ -238,6 +239,13 @@ _PROBE_RATIO_GATES = {
         "TransDir": (0.99999, 1.00001),
         "Normal": (0.99999, 1.00001),
     },
+    "refraction_bsdf_matrix": {
+        "Combined": (0.99998, 1.00002),
+        "GlossCol": (0.0, 0.0),
+        "TransCol": (0.99999, 1.00001),
+        "TransDir": (0.99998, 1.00002),
+        "Normal": (0.99999, 1.00001),
+    },
     "principled_emission": {
         "Combined": (0.999999, 1.000001),
         "Emit": (0.999999, 1.000001),
@@ -342,6 +350,13 @@ _PROBE_RELATIVE_RMSE_GATES = {
         "GlossCol": 0.000001,
         "TransCol": 0.0000001,
         "TransDir": 0.000002,
+        "Normal": 0.0000001,
+    },
+    "refraction_bsdf_matrix": {
+        "Combined": 0.00001,
+        "GlossCol": 0.0,
+        "TransCol": 0.00005,
+        "TransDir": 0.00001,
         "Normal": 0.0000001,
     },
     "principled_emission": {

@@ -207,7 +207,8 @@ enum class SurfaceClosureKind : std::uint32_t {
     principled,
     glossy,
     glass,
-    transparent
+    transparent,
+    refraction
 };
 
 enum class SurfaceClosureLobe : std::uint32_t {

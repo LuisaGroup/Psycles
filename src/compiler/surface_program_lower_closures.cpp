@@ -14,7 +14,8 @@ namespace psycles::compiler::detail {
     if (node.type == node_type::diffuse_bsdf ||
         node.type == node_type::principled_bsdf ||
         node.type == node_type::glossy_bsdf ||
-        node.type == node_type::glass_bsdf) {
+        node.type == node_type::glass_bsdf ||
+        node.type == node_type::refraction_bsdf) {
         const auto color_name =
             node.type == node_type::principled_bsdf
                 ? "BaseColor"
@@ -45,7 +46,8 @@ namespace psycles::compiler::detail {
         std::optional<ValueExpressionId> emission_color;
         std::optional<ValueExpressionId> emission_strength;
         if (node.type == node_type::principled_bsdf ||
-            node.type == node_type::glass_bsdf) {
+            node.type == node_type::glass_bsdf ||
+            node.type == node_type::refraction_bsdf) {
             ior = lower_value_input(node, "IOR");
         }
         if (node.type == node_type::principled_bsdf) {
@@ -93,20 +95,24 @@ namespace psycles::compiler::detail {
               coat_weight && coat_roughness && coat_ior && coat_tint &&
               coat_normal &&
               emission_color && emission_strength)) &&
-            (node.type != node_type::glass_bsdf || ior)) {
+            ((node.type != node_type::glass_bsdf &&
+                 node.type != node_type::refraction_bsdf) ||
+                ior)) {
+            auto operation = ClosureOperation::diffuse;
+            if (node.type == node_type::principled_bsdf) {
+                operation = ClosureOperation::principled;
+            } else if (node.type == node_type::glass_bsdf) {
+                operation = ClosureOperation::glass;
+            } else if (node.type == node_type::refraction_bsdf) {
+                operation = ClosureOperation::refraction;
+            } else if (node.type == node_type::glossy_bsdf) {
+                operation = ClosureOperation::glossy;
+            }
             publish(
                 node.id,
                 "Closure",
                 append(ClosureInstruction{
-                    .operation =
-                        node.type == node_type::principled_bsdf
-                            ? ClosureOperation::principled
-                            : node.type == node_type::glass_bsdf
-                                  ? ClosureOperation::glass
-                            : node.type ==
-                                      node_type::glossy_bsdf
-                                  ? ClosureOperation::glossy
-                                  : ClosureOperation::diffuse,
+                    .operation = operation,
                     .source_node = node.id,
                     .color = *color,
                     .normal = *normal,

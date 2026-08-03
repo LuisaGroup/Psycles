@@ -33,6 +33,7 @@ make_surface_closure_evaluation_policy(
             .diffuse_included = true,
             .glossy_included = true,
             .glass_included = true,
+            .refraction_included = true,
             .preserve_pdf = true};
     }
     using namespace contract::cycles_abi;
@@ -48,6 +49,8 @@ make_surface_closure_evaluation_policy(
         .glossy_included = !excludes_glossy,
         .glass_included =
             !(excludes_glossy & excludes_transmit),
+        .refraction_included =
+            !excludes_glossy & !excludes_transmit,
         .preserve_pdf =
             (light_shader_flags & shader_use_mis) != 0u};
 }
@@ -97,6 +100,9 @@ surface_closure_evaluation_contribution(
         closure, SurfaceClosureKind::glossy);
     const auto is_glass = has_kind(
         closure, SurfaceClosureKind::glass);
+    const auto is_refraction = has_kind(
+        closure, SurfaceClosureKind::refraction);
+    const auto is_dielectric = is_glass | is_refraction;
     const auto generic_glossy =
         (is_principled & !is_sheen) | is_glossy;
 
@@ -121,7 +127,7 @@ surface_closure_evaluation_contribution(
     const auto glass_is_transmission =
         dot(glossy_normal, outgoing) < 0.0f;
     const auto selected_unit_ior_glass_delta =
-        selected_sample & is_glass & glass_is_transmission &
+        selected_sample & is_dielectric & glass_is_transmission &
         (abs(closure.ior - 1.0f) < 1.0e-4f);
     const auto bump_shadowing = detail::bump_shadowing_term(
         point,
@@ -153,7 +159,7 @@ surface_closure_evaluation_contribution(
             glossy_enabled,
             transmission_enabled,
             query.glossy_filter_roughness),
-        is_glass);
+        is_dielectric);
     glossy_pdf = select(
         0.0f, glossy_pdf, (!is_sheen) & bump_pdf_valid);
     glossy_pdf = select(
@@ -169,15 +175,22 @@ surface_closure_evaluation_contribution(
         is_glass & select(glossy_enabled,
                        transmission_enabled,
                        glass_is_transmission);
+    auto refraction_allowed =
+        is_refraction & glossy_enabled & transmission_enabled;
     diffuse_allowed &= closure.setup_valid;
     glossy_allowed &= closure.setup_valid;
     glass_allowed &= closure.setup_valid;
+    refraction_allowed &= closure.setup_valid;
     const auto diffuse_contributes =
         diffuse_allowed & policy.diffuse_included;
     const auto glossy_contributes =
         glossy_allowed & policy.glossy_included;
     const auto glass_contributes =
         glass_allowed & policy.glass_included;
+    const auto refraction_contributes =
+        refraction_allowed & policy.refraction_included;
+    const auto dielectric_contributes =
+        glass_contributes | refraction_contributes;
 
     const auto diffuse_value =
         closure.weight *
@@ -219,14 +232,15 @@ surface_closure_evaluation_contribution(
     const auto glossy_contribution = select(
         make_float3(0.0f), glossy_value, generic_glossy);
     const auto glass_contribution = select(
-        make_float3(0.0f), glass_value, is_glass);
+        make_float3(0.0f), glass_value, is_dielectric);
 
     const auto pdf = select(
         select(diffuse_pdf, glossy_pdf, glossy_allowed),
         glossy_pdf,
-        is_glass);
+        is_dielectric);
     const auto any_allowed =
-        diffuse_allowed | glossy_allowed | glass_allowed;
+        diffuse_allowed | glossy_allowed | glass_allowed |
+        refraction_allowed;
     const auto enabled_pdf = select(0.0f, pdf, any_allowed);
     const auto eligible_diffuse = select(
         make_float3(0.0f),
@@ -239,7 +253,7 @@ surface_closure_evaluation_contribution(
     const auto eligible_glass = select(
         make_float3(0.0f),
         glass_contribution,
-        glass_contributes);
+        dielectric_contributes);
     const auto eligible_glass_reflection = select(
         make_float3(0.0f),
         glass_contribution,
@@ -271,7 +285,7 @@ surface_closure_evaluation_contribution(
     events |= select(0u,
         static_cast<std::uint32_t>(
             event_glossy | event_transmission),
-        glass_contributes & glass_is_transmission &
+        dielectric_contributes & glass_is_transmission &
             (detail::sample_weight(glass_contribution) > 0.0f));
 
     luisa::compute::Var<

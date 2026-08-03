@@ -31,6 +31,10 @@ SurfaceClosureRecord canonical_surface_closure(
             result.kind = static_cast<std::uint32_t>(
                 SurfaceClosureKind::glass);
             break;
+        case compiler::ClosureOperation::refraction:
+            result.kind = static_cast<std::uint32_t>(
+                SurfaceClosureKind::refraction);
+            break;
         case compiler::ClosureOperation::transparent:
             result.kind = static_cast<std::uint32_t>(
                 SurfaceClosureKind::transparent);
@@ -91,7 +95,8 @@ SurfaceClosureRecord canonical_surface_closure(
         result.sheen_transform_a = closure.sheen_transform_a;
         result.sheen_transform_b = closure.sheen_transform_b;
     }
-    if (closure.operation == compiler::ClosureOperation::glass) {
+    if (closure.operation == compiler::ClosureOperation::glass ||
+        closure.operation == compiler::ClosureOperation::refraction) {
         result.reflection_albedo = closure.reflection_albedo;
         result.transmission_albedo = closure.transmission_albedo;
         result.fresnel_f0 = closure.fresnel_f0;
@@ -101,10 +106,12 @@ SurfaceClosureRecord canonical_surface_closure(
     }
     if (closure.operation == compiler::ClosureOperation::principled ||
         closure.operation == compiler::ClosureOperation::glossy ||
-        closure.operation == compiler::ClosureOperation::glass) {
+        closure.operation == compiler::ClosureOperation::glass ||
+        closure.operation == compiler::ClosureOperation::refraction) {
         result.preserve_ggx_energy = closure.preserve_ggx_energy;
     }
-    if (closure.operation == compiler::ClosureOperation::glass) {
+    if (closure.operation == compiler::ClosureOperation::glass ||
+        closure.operation == compiler::ClosureOperation::refraction) {
         result.beckmann = closure.beckmann;
     }
     return result;
@@ -344,6 +351,24 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                         .enabled = reflective_caustics | refractive_caustics,
                         .principled_lobe = PrincipledLobe::none,
                         .preserve_energy = graph_closure.preserve_ggx_energy,
+                        .beckmann = graph_closure.beckmann}));
+                return;
+            }
+            case compiler::ClosureOperation::refraction: {
+                function(microfacet_glass.setup(
+                    {.prototype = closure,
+                        .weight = closure.weight,
+                        .normal = graph_closure.normal,
+                        .roughness = graph_closure.roughness,
+                        .ior = max(graph_closure.ior, 1.0e-5f),
+                        .fresnel_f0 = make_float3(0.0f),
+                        .fresnel_f90 = make_float3(0.0f),
+                        .reflection_tint = make_float3(0.0f),
+                        .transmission_tint = make_float3(1.0f),
+                        .enabled = refractive_caustics,
+                        .principled_lobe = PrincipledLobe::none,
+                        .refraction_only = true,
+                        .preserve_energy = false,
                         .beckmann = graph_closure.beckmann}));
                 return;
             }

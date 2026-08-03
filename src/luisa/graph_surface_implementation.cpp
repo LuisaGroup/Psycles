@@ -111,6 +111,7 @@ GraphSurfaceImplementation::evaluate_traced(
     Bool light_diffuse_included = true;
     Bool light_glossy_included = true;
     Bool light_glass_included = true;
+    Bool light_refraction_included = true;
     if (sampled_light) {
         using namespace contract::cycles_abi;
         const auto excludes_diffuse =
@@ -125,6 +126,8 @@ GraphSurfaceImplementation::evaluate_traced(
         // each sampled direction to one pure light-visibility class.
         light_glass_included =
             !(excludes_glossy & excludes_transmit);
+        light_refraction_included =
+            !excludes_glossy & !excludes_transmit;
     }
     auto diffuse_enabled =
         (query.lobe_mask & static_cast<std::uint32_t>(event_diffuse)) !=
@@ -182,8 +185,12 @@ GraphSurfaceImplementation::evaluate_traced(
                 closure.operation == compiler::ClosureOperation::glossy;
             const auto is_glass =
                 closure.operation == compiler::ClosureOperation::glass;
+            const auto is_refraction =
+                closure.operation ==
+                compiler::ClosureOperation::refraction;
+            const auto is_dielectric = is_glass || is_refraction;
             if (!is_diffuse && !is_translucent && !is_principled &&
-                !is_glossy && !is_glass) {
+                !is_glossy && !is_dielectric) {
                 return;
             }
             auto glossy_normal = is_sheen
@@ -197,7 +204,7 @@ GraphSurfaceImplementation::evaluate_traced(
             // Such a selected closure is initialized from bsdf_sample() and
             // must not also be accumulated through its regular bsdf_eval().
             const auto selected_unit_ior_glass_delta =
-                selected_sample & Bool{is_glass} &
+                selected_sample & Bool{is_dielectric} &
                 glass_is_transmission &
                 (abs(closure.ior - 1.0f) < 1.0e-4f);
             const auto bump_shadowing = bump_shadowing_term(point,
@@ -224,7 +231,7 @@ GraphSurfaceImplementation::evaluate_traced(
                 0.0f, diffuse_pdf, bump_pdf_valid);
             Float glossy_pdf = 0.0f;
             if (!is_sheen) {
-                glossy_pdf = is_glass
+                glossy_pdf = is_dielectric
                                  ? microfacet_glass.pdf(physical,
                                        incoming,
                                        outgoing,
@@ -254,19 +261,26 @@ GraphSurfaceImplementation::evaluate_traced(
                 is_glass & select(glossy_enabled,
                                transmission_enabled,
                                glass_is_transmission);
+            auto refraction_allowed =
+                is_refraction & glossy_enabled & transmission_enabled;
             diffuse_allowed &= closure.setup_valid;
             glossy_allowed &= closure.setup_valid;
             glass_allowed &= closure.setup_valid;
+            refraction_allowed &= closure.setup_valid;
             const auto diffuse_contributes =
                 diffuse_allowed & light_diffuse_included;
             const auto glossy_contributes =
                 glossy_allowed & light_glossy_included;
             const auto glass_contributes =
                 glass_allowed & light_glass_included;
+            const auto refraction_contributes =
+                refraction_allowed & light_refraction_included;
+            const auto dielectric_contributes =
+                glass_contributes | refraction_contributes;
             Float3 diffuse_contribution;
             Float3 glossy_contribution;
             Float3 glass_contribution = make_float3(0.0f);
-            if (is_glass) {
+            if (is_dielectric) {
                 diffuse_contribution = make_float3(0.0f);
                 glossy_contribution = make_float3(0.0f);
                 glass_contribution =
@@ -307,7 +321,7 @@ GraphSurfaceImplementation::evaluate_traced(
                     bump_shadowing;
                 glossy_contribution = make_float3(0.0f);
             }
-            auto pdf = is_glass
+            auto pdf = is_dielectric
                            ? glossy_pdf
                            : select(diffuse_pdf,
                                  glossy_pdf,
@@ -315,7 +329,8 @@ GraphSurfaceImplementation::evaluate_traced(
             auto enabled_pdf =
                 select(0.0f,
                     pdf,
-                    diffuse_allowed | glossy_allowed | glass_allowed);
+                    diffuse_allowed | glossy_allowed | glass_allowed |
+                        refraction_allowed);
             const auto eligible_diffuse =
                 select(make_float3(0.0f),
                     diffuse_contribution,
@@ -327,7 +342,7 @@ GraphSurfaceImplementation::evaluate_traced(
             const auto eligible_glass =
                 select(make_float3(0.0f),
                     glass_contribution,
-                    glass_contributes);
+                    dielectric_contributes);
             const auto eligible_glass_reflection =
                 select(make_float3(0.0f),
                     glass_contribution,
@@ -348,7 +363,8 @@ GraphSurfaceImplementation::evaluate_traced(
             weight =
                 select(0.0f,
                     weight,
-                    diffuse_allowed | glossy_allowed | glass_allowed);
+                    diffuse_allowed | glossy_allowed | glass_allowed |
+                        refraction_allowed);
             total_sample_weight += weight;
             weighted_pdf += weight * enabled_pdf;
             has_diffuse =
@@ -369,7 +385,7 @@ GraphSurfaceImplementation::evaluate_traced(
                     (sample_weight(glass_contribution) > 0.0f));
             has_glass_transmission =
                 has_glass_transmission |
-                (glass_contributes & glass_is_transmission &
+                (dielectric_contributes & glass_is_transmission &
                     (sample_weight(glass_contribution) > 0.0f));
         });
 
@@ -623,6 +639,9 @@ GraphSurfaceImplementation::sample_with_trace(
                 compiler::ClosureOperation::transparent;
             auto is_glass = closure.operation ==
                             compiler::ClosureOperation::glass;
+            auto is_refraction = closure.operation ==
+                                 compiler::ClosureOperation::refraction;
+            auto is_dielectric = is_glass || is_refraction;
             const auto allocated = closure_allocated(physical);
             const auto current_closure_index = closure_index;
             const auto selection = surface_closure_selection(
@@ -674,7 +693,7 @@ GraphSurfaceImplementation::sample_with_trace(
             if (sample_glossy) {
                 candidate_valid = glossy.valid;
             }
-            if (is_glass) {
+            if (is_dielectric) {
                 const auto glass = microfacet_glass.sample(physical,
                     incoming,
                     glossy_normal,
@@ -706,7 +725,7 @@ GraphSurfaceImplementation::sample_with_trace(
             if (is_sheen) {
                 nontransparent_roughness = make_float2(1.0f);
             }
-            if (is_glass) {
+            if (is_dielectric) {
                 nontransparent_roughness =
                     make_float2(candidate_glass_alpha);
             }
@@ -748,54 +767,58 @@ GraphSurfaceImplementation::sample_with_trace(
                 (is_translucent ? choose : Bool{false});
             selected_glossy =
                 selected_glossy |
-                ((!is_transparent && !is_glass && sample_glossy)
+                ((!is_transparent && !is_dielectric && sample_glossy)
                         ? choose
                         : Bool{false});
             selected_glossy_singular =
                 selected_glossy_singular |
-                ((!is_transparent && !is_glass && sample_glossy)
+                ((!is_transparent && !is_dielectric && sample_glossy)
                         ? (choose & glossy.singular)
                         : Bool{false});
             selected_glass =
-                selected_glass | (is_glass ? choose : Bool{false});
+                selected_glass | (is_dielectric ? choose : Bool{false});
             selected_glass_transmission =
                 selected_glass_transmission |
-                (is_glass ? (choose & glass_transmission) : Bool{false});
+                (is_dielectric
+                        ? (choose & glass_transmission)
+                        : Bool{false});
             selected_glass_singular =
                 selected_glass_singular |
-                (is_glass ? (choose & glass_singular) : Bool{false});
+                (is_dielectric
+                        ? (choose & glass_singular)
+                        : Bool{false});
             selected_candidate_valid = select(selected_candidate_valid,
                 candidate_valid,
                 choose);
             glossy_singular_evaluation = select(
                 glossy_singular_evaluation,
                 glossy.singular_evaluation,
-                (!is_transparent && !is_glass && sample_glossy)
+                (!is_transparent && !is_dielectric && sample_glossy)
                     ? choose
                     : Bool{false});
             glossy_singular_pdf = select(glossy_singular_pdf,
                 glossy.singular_pdf,
-                (!is_transparent && !is_glass && sample_glossy)
+                (!is_transparent && !is_dielectric && sample_glossy)
                     ? choose
                     : Bool{false});
             glossy_sample_weight = select(glossy_sample_weight,
                 weight,
-                (!is_transparent && !is_glass && sample_glossy)
+                (!is_transparent && !is_dielectric && sample_glossy)
                     ? choose
                     : Bool{false});
             glass_singular_evaluation = select(
                 glass_singular_evaluation,
                 candidate_glass_singular_evaluation,
-                is_glass ? choose : Bool{false});
+                is_dielectric ? choose : Bool{false});
             glass_singular_pdf = select(glass_singular_pdf,
                 candidate_glass_singular_pdf,
-                is_glass ? choose : Bool{false});
+                is_dielectric ? choose : Bool{false});
             glass_sample_weight = select(glass_sample_weight,
                 weight,
-                is_glass ? choose : Bool{false});
+                is_dielectric ? choose : Bool{false});
             glass_eta = select(glass_eta,
                 candidate_glass_eta,
-                is_glass ? choose : Bool{false});
+                is_dielectric ? choose : Bool{false});
             selected = selected | choose;
             accumulated = next;
             closure_index += select(0u, 1u, allocated);
@@ -1063,8 +1086,12 @@ GraphSurfaceImplementation::evaluate_volume(
                 closure.operation == compiler::ClosureOperation::glossy;
             const auto is_glass =
                 closure.operation == compiler::ClosureOperation::glass;
+            const auto is_refraction =
+                closure.operation ==
+                compiler::ClosureOperation::refraction;
+            const auto is_dielectric = is_glass || is_refraction;
             if (!is_diffuse && !is_translucent && !is_principled &&
-                !is_glossy && !is_glass) {
+                !is_glossy && !is_dielectric) {
                 return;
             }
             auto glossy_normal = is_sheen
@@ -1074,7 +1101,7 @@ GraphSurfaceImplementation::evaluate_volume(
             Float3 diffuse_albedo = make_float3(0.0f);
             Float diffuse_weight = 0.0f;
             Float glossy_weight = 0.0f;
-            if (is_glass) {
+            if (is_dielectric) {
                 result.glossy_albedo += closure.reflection_albedo;
                 result.transmission_albedo += closure.transmission_albedo;
                 glossy_weight = pass_weight(closure.weight);
