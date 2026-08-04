@@ -1,0 +1,44 @@
+{
+  "adaptive_sampling": false,
+  "blender": "5.3.0 Alpha",
+  "camera": "Probe Camera",
+  "cycles_compute_device_type": "HIP",
+  "cycles_device": "GPU",
+  "cycles_enabled_devices": [
+    {
+      "id": "HIP_AMD Radeon RX 9070 XT_0000:03:00",
+      "name": "AMD Radeon RX 9070 XT",
+      "type": "HIP"
+    }
+  ],
+  "denoising": false,
+  "elapsed_seconds": 0.05913629400311038,
+  "frame": 1,
+  "height": 64,
+  "output": "/var/tmp/psycles-position-color-vk-20260804/geometry_position_color_conversion/geometry_position_color_conversion-cycles.exr",
+  "passes": [
+    "Combined",
+    "Normal",
+    "DiffCol",
+    "DiffDir",
+    "DiffInd",
+    "GlossCol",
+    "GlossDir",
+    "GlossInd",
+    "TransCol",
+    "TransDir",
+    "TransInd",
+    "Emit",
+    "Env",
+    "Depth",
+    "Debug Sample Count"
+  ],
+  "samples": 256,
+  "sampling_pattern": "TABULATED_SOBOL",
+  "schema": "psycles.cycles-golden.v1",
+  "scrambling_distance": 1.0,
+  "seed": 20903,
+  "source": "/var/tmp/psycles-position-color-vk-20260804/geometry_position_color_conversion/geometry_position_color_conversion.blend",
+  "transparent": false,
+  "width": 64
+}

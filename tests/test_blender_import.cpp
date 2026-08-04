@@ -111,6 +111,12 @@ void test_integrator_settings_round_trip() {
             "to_socket": "Shader"
           },
           {
+            "from_node": "Geometry",
+            "from_socket": "Position",
+            "to_node": "Emission",
+            "to_socket": "Color"
+          },
+          {
             "from_node": "Emission",
             "from_socket": "Emission",
             "to_node": "Add Volume",
@@ -263,6 +269,26 @@ void test_integrator_settings_round_trip() {
             "node_tree": null
           },
           {
+            "name": "Geometry",
+            "label": "",
+            "type": "NEW_GEOMETRY",
+            "bl_idname": "ShaderNodeNewGeometry",
+            "inputs": [],
+            "outputs": [
+              {
+                "identifier": "Position",
+                "name": "Position",
+                "type": "NodeSocketVector",
+                "linked": true,
+                "default": [0.0, 0.0, 0.0]
+              }
+            ],
+            "properties": {},
+            "special": {},
+            "image": null,
+            "node_tree": null
+          },
+          {
             "name": "Emission",
             "label": "",
             "type": "EMISSION",
@@ -272,7 +298,7 @@ void test_integrator_settings_round_trip() {
                 "identifier": "Color",
                 "name": "Color",
                 "type": "NodeSocketColor",
-                "linked": false,
+                "linked": true,
                 "default": [0.25, 0.5, 0.75, 1.0]
               },
               {
@@ -702,6 +728,8 @@ void test_integrator_settings_round_trip() {
     bool has_scatter = false;
     bool has_volume_mix = false;
     bool has_volume_emission = false;
+    bool has_point_to_vector = false;
+    bool has_vector_to_color = false;
     bool has_transparent_boundary = false;
     for (const auto &node :
          imported_material->second.shader.nodes()) {
@@ -718,6 +746,12 @@ void test_integrator_settings_round_trip() {
         has_volume_emission |=
             node.type ==
             psycles::compiler::node_type::volume_emission;
+        has_point_to_vector |=
+            node.type ==
+            psycles::compiler::node_type::point_to_vector;
+        has_vector_to_color |=
+            node.type ==
+            psycles::compiler::node_type::vector_to_color;
         has_transparent_boundary |=
             node.type ==
             psycles::compiler::node_type::transparent_bsdf;
@@ -727,6 +761,17 @@ void test_integrator_settings_round_trip() {
             has_volume_emission,
         "Blender Volume closure tree was flattened or typed as a "
         "surface closure");
+    expect(
+        has_point_to_vector && has_vector_to_color,
+        "Geometry Position to Color did not follow the component-preserving "
+        "float3 conversion path");
+    for (const auto &diagnostic : imported.diagnostics) {
+        expect(
+            diagnostic.message.find(
+                "unsupported implicit socket conversion") ==
+                std::string::npos,
+            "supported float3-family conversion emitted a warning");
+    }
     expect(
         has_transparent_boundary,
         "volume-only Blender material did not receive a transparent "

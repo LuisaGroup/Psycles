@@ -9,11 +9,58 @@ import bpy
 
 from .support import (
     _input,
+    _input_identifier,
     _material,
     _material_matrix,
     _output,
     _output_identifier,
 )
+
+
+def _geometry_position_color_conversion(scene: Any) -> None:
+    """Exercise Cycles' component-preserving point-to-color conversion."""
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 0.01
+    scene.cycles.max_bounces = 0
+
+    material, tree, output = _material("Geometry Position to Color")
+    geometry = tree.nodes.new("ShaderNodeNewGeometry")
+    geometry.name = "Barbershop Geometry Position"
+    mix = tree.nodes.new("ShaderNodeMix")
+    mix.name = "Barbershop Position Color Add"
+    mix.data_type = "RGBA"
+    mix.blend_type = "ADD"
+    mix.clamp_factor = True
+    mix.clamp_result = False
+    _input_identifier(mix, "Factor_Float").default_value = 0.2
+    _input_identifier(mix, "A_Color").default_value = (
+        0.5,
+        0.5,
+        0.5,
+        1.0,
+    )
+    tree.links.new(
+        _output(geometry, "Position"),
+        _input_identifier(mix, "B_Color"),
+    )
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Position Color Emission"
+    tree.links.new(
+        _output_identifier(mix, "Result_Color"),
+        _input(emission, "Color"),
+    )
+    tree.links.new(
+        _output(emission, "Emission"),
+        _input(output, "Surface"),
+    )
+    _material_matrix(
+        scene,
+        [material],
+        columns=1,
+        rows=1,
+        name="Geometry Position Color Surface",
+        frame_bleed=0.02,
+    )
 
 
 def _geometry_attribute_outputs(scene: Any) -> None:
