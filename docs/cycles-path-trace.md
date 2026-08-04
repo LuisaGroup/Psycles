@@ -68,6 +68,14 @@ Coordinates use Cycles film convention, with `(0, 0)` at the lower-left of the
 uncropped image. The render remains one pixel in the EXR, but camera projection
 and RNG hashing use the requested full image dimensions.
 
+The oracle also renders exactly one **absolute** sample from a complete Cycles
+sampling sequence. `--total-samples 128 --sample 6` leaves the scene's Samples
+value at 128 and uses Cycles' official sample-subset scheduler for `[6, 7)`.
+This distinction is required for Tabulated Sobol: changing Samples to one or
+substituting a seed would no longer describe sample 6 of the production render.
+The generated `.render.json` records the total, absolute offset, and subset
+length explicitly.
+
 Blender stores normalized render borders as float32 and forms the integer crop
 by truncating each stored border coordinate multiplied by the full extent.
 Exact rational boundaries such as `1041 / 1152` can round below the intended
@@ -87,12 +95,14 @@ SCENE=build/diagnostics/minimal-point/point_light.blend
   --python tools/render_cycles_path_trace.py -- \
   /var/tmp/psycles-trace/cpu.exr \
   --width 32 --height 32 --pixel-x 17 --pixel-y 16 \
+  --total-samples 128 --sample 6 \
   --cycles-device CPU
 
 "$TRACE_BLENDER" "$SCENE" --background --python-exit-code 1 \
   --python tools/render_cycles_path_trace.py -- \
   /var/tmp/psycles-trace/hip.exr \
   --width 32 --height 32 --pixel-x 17 --pixel-y 16 \
+  --total-samples 128 --sample 6 \
   --cycles-device HIP --device-name "RX 9070 XT"
 
 python tools/compare_cycles_path_traces.py \

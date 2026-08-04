@@ -7,7 +7,8 @@ This script requires the diagnostic Cycles build described in
 Usage:
 
     blender scene.blend --background --python render_cycles_path_trace.py -- \
-        trace.exr --pixel-x 320 --pixel-y 240 --cycles-device CPU
+        trace.exr --pixel-x 320 --pixel-y 240 --cycles-device CPU \
+        --total-samples 128 --sample 6
 """
 
 from __future__ import annotations
@@ -87,6 +88,21 @@ def _arguments(scene: Any) -> argparse.Namespace:
         "--seed",
         type=_nonnegative_integer,
         default=scene.cycles.seed,
+    )
+    parser.add_argument(
+        "--total-samples",
+        type=_positive_integer,
+        default=1,
+        help=(
+            "complete sampling-sequence length; this remains the Cycles "
+            "Samples value even though the oracle renders one sample"
+        ),
+    )
+    parser.add_argument(
+        "--sample",
+        type=_nonnegative_integer,
+        default=0,
+        help="zero-based absolute sample to render from the complete sequence",
     )
     parser.add_argument(
         "--cycles-device",
@@ -185,6 +201,30 @@ def _set_if_present(owner: Any, name: str, value: Any) -> None:
         setattr(owner, name, value)
 
 
+def _configure_absolute_sample(
+    cycles: Any,
+    total_samples: int,
+    sample: int,
+) -> None:
+    """Render one absolute sample without changing its sampling sequence.
+
+    Cycles' sample-subset contract keeps ``samples`` as the complete sequence
+    length and independently restricts the scheduler to an offset and length.
+    Setting ``samples = 1`` for a later sample would instead construct a
+    different sequence and is therefore not a valid path-trace oracle.
+    """
+    if total_samples <= 0:
+        raise ValueError("total samples must be positive")
+    if sample < 0 or sample >= total_samples:
+        raise ValueError(
+            f"absolute sample {sample} is outside [0, {total_samples})"
+        )
+    cycles.samples = total_samples
+    cycles.use_sample_subset = True
+    cycles.sample_offset = sample
+    cycles.sample_subset_length = 1
+
+
 def _main() -> None:
     scene = bpy.context.scene
     arguments = _arguments(scene)
@@ -229,7 +269,11 @@ def _main() -> None:
         arguments.device_name,
     )
 
-    scene.cycles.samples = 1
+    _configure_absolute_sample(
+        scene.cycles,
+        arguments.total_samples,
+        arguments.sample,
+    )
     scene.cycles.seed = arguments.seed
     scene.cycles.use_adaptive_sampling = False
     scene.cycles.use_denoising = False
@@ -287,6 +331,9 @@ def _main() -> None:
         "pixel_x": pixel_x,
         "pixel_y": pixel_y,
         "samples": scene.cycles.samples,
+        "total_samples": scene.cycles.samples,
+        "sample": scene.cycles.sample_offset,
+        "sample_subset_length": scene.cycles.sample_subset_length,
         "seed": scene.cycles.seed,
         "effective_seed": cycles_hash.effective_scene_seed(
             scene.cycles.seed,
