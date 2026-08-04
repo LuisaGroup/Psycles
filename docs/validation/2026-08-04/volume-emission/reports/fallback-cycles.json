@@ -1,0 +1,44 @@
+{
+  "adaptive_sampling": false,
+  "blender": "5.3.0 Alpha",
+  "camera": "Probe Camera",
+  "cycles_compute_device_type": "CPU",
+  "cycles_device": "CPU",
+  "cycles_enabled_devices": [
+    {
+      "id": "CPU",
+      "name": "AMD Ryzen 9 9950X3D 16-Core Processor",
+      "type": "CPU"
+    }
+  ],
+  "denoising": false,
+  "elapsed_seconds": 0.03644185798475519,
+  "frame": 1,
+  "height": 64,
+  "output": "/var/tmp/psycles-volume-emission-fallback-20260804/volume_emission_transport/volume_emission_transport-cycles.exr",
+  "passes": [
+    "Combined",
+    "Normal",
+    "DiffCol",
+    "DiffDir",
+    "DiffInd",
+    "GlossCol",
+    "GlossDir",
+    "GlossInd",
+    "TransCol",
+    "TransDir",
+    "TransInd",
+    "Emit",
+    "Env",
+    "Depth",
+    "Debug Sample Count"
+  ],
+  "samples": 256,
+  "sampling_pattern": "TABULATED_SOBOL",
+  "schema": "psycles.cycles-golden.v1",
+  "scrambling_distance": 1.0,
+  "seed": 20903,
+  "source": "/var/tmp/psycles-volume-emission-fallback-20260804/volume_emission_transport/volume_emission_transport.blend",
+  "transparent": false,
+  "width": 64
+}

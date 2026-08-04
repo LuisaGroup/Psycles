@@ -87,7 +87,7 @@ void test_integrator_settings_round_trip() {
         "name": "Raw Volume Material",
         "surface_root": null,
         "volume_root": {
-          "node": "Mix Volume",
+          "node": "Add Volume",
           "socket": "Shader"
         },
         "displacement_root": null,
@@ -102,6 +102,18 @@ void test_integrator_settings_round_trip() {
             "from_node": "Scatter",
             "from_socket": "Volume",
             "to_node": "Mix Volume",
+            "to_socket": "Shader_001"
+          },
+          {
+            "from_node": "Mix Volume",
+            "from_socket": "Shader",
+            "to_node": "Add Volume",
+            "to_socket": "Shader"
+          },
+          {
+            "from_node": "Emission",
+            "from_socket": "Emission",
+            "to_node": "Add Volume",
             "to_socket": "Shader_001"
           }
         ],
@@ -224,6 +236,72 @@ void test_integrator_settings_round_trip() {
                 "linked": false,
                 "default": 0.375
               },
+              {
+                "identifier": "Shader",
+                "name": "Shader",
+                "type": "NodeSocketShader",
+                "linked": true
+              },
+              {
+                "identifier": "Shader_001",
+                "name": "Shader",
+                "type": "NodeSocketShader",
+                "linked": true
+              }
+            ],
+            "outputs": [
+              {
+                "identifier": "Shader",
+                "name": "Shader",
+                "type": "NodeSocketShader",
+                "linked": true
+              }
+            ],
+            "properties": {},
+            "special": {},
+            "image": null,
+            "node_tree": null
+          },
+          {
+            "name": "Emission",
+            "label": "",
+            "type": "EMISSION",
+            "bl_idname": "ShaderNodeEmission",
+            "inputs": [
+              {
+                "identifier": "Color",
+                "name": "Color",
+                "type": "NodeSocketColor",
+                "linked": false,
+                "default": [0.25, 0.5, 0.75, 1.0]
+              },
+              {
+                "identifier": "Strength",
+                "name": "Strength",
+                "type": "NodeSocketFloat",
+                "linked": false,
+                "default": 1.2
+              }
+            ],
+            "outputs": [
+              {
+                "identifier": "Emission",
+                "name": "Emission",
+                "type": "NodeSocketShader",
+                "linked": true
+              }
+            ],
+            "properties": {},
+            "special": {},
+            "image": null,
+            "node_tree": null
+          },
+          {
+            "name": "Add Volume",
+            "label": "",
+            "type": "ADD_SHADER",
+            "bl_idname": "ShaderNodeAddShader",
+            "inputs": [
               {
                 "identifier": "Shader",
                 "name": "Shader",
@@ -623,6 +701,7 @@ void test_integrator_settings_round_trip() {
     bool has_absorption = false;
     bool has_scatter = false;
     bool has_volume_mix = false;
+    bool has_volume_emission = false;
     bool has_transparent_boundary = false;
     for (const auto &node :
          imported_material->second.shader.nodes()) {
@@ -636,12 +715,16 @@ void test_integrator_settings_round_trip() {
         has_volume_mix |=
             node.type ==
             psycles::compiler::node_type::mix_volume;
+        has_volume_emission |=
+            node.type ==
+            psycles::compiler::node_type::volume_emission;
         has_transparent_boundary |=
             node.type ==
             psycles::compiler::node_type::transparent_bsdf;
     }
     expect(
-        has_absorption && has_scatter && has_volume_mix,
+        has_absorption && has_scatter && has_volume_mix &&
+            has_volume_emission,
         "Blender Volume closure tree was flattened or typed as a "
         "surface closure");
     expect(

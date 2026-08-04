@@ -128,6 +128,18 @@ template<typename ScalarReader, typename VectorReader>
                     any(emission != make_float3(0.0f)));
             return result;
         }
+        case compiler::VolumeOperation::emission: {
+            // SVM's emission closure multiplies its closure-tree weight by
+            // object_volume_density during volume shader evaluation. Keep
+            // signed Color/Strength values: emission_setup does not clamp
+            // them as scattering allocation does.
+            const auto emission =
+                vector(volume.color) *
+                scalar(volume.emission_strength) *
+                mix_weight * query.object_density;
+            add_emission(emission, active);
+            return result;
+        }
         case compiler::VolumeOperation::principled: {
             const auto object_weight =
                 mix_weight * query.object_density;

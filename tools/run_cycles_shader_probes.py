@@ -117,6 +117,7 @@ _ALL_PROBES = (
     "translucent_surface",
     "triangle_light_solid_angle",
     "value_emission",
+    "volume_emission_transport",
     "vector_math_matrix",
     "voronoi_texture_distance",
     "voronoi_texture_edges",
@@ -165,6 +166,10 @@ _PROBE_RATIO_GATES = {
         "Emit": (0.99997, 1.00003),
     },
     "wave_texture_modes": {
+        "Combined": (0.99999, 1.00001),
+        "Emit": (0.99999, 1.00001),
+    },
+    "volume_emission_transport": {
         "Combined": (0.99999, 1.00001),
         "Emit": (0.99999, 1.00001),
     },
@@ -288,6 +293,10 @@ _PROBE_RELATIVE_RMSE_GATES = {
     "wave_texture_modes": {
         "Combined": 0.00001,
         "Emit": 0.00001,
+    },
+    "volume_emission_transport": {
+        "Combined": 0.000001,
+        "Emit": 0.000001,
     },
     "voronoi_texture_distance": {
         "Combined": 0.00001,

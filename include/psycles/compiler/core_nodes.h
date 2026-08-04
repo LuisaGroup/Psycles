@@ -90,6 +90,7 @@ inline constexpr auto volume_absorption =
 inline constexpr auto volume_scatter = "psycles.volume.scatter";
 inline constexpr auto volume_coefficients =
     "psycles.volume.coefficients";
+inline constexpr auto volume_emission = "psycles.volume.emission";
 inline constexpr auto principled_volume =
     "psycles.volume.principled";
 inline constexpr auto null_volume = "psycles.volume.null";

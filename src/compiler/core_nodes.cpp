@@ -1304,6 +1304,23 @@ NodeRegistry make_core_node_registry() {
         .required_features = feature_bit(ShaderFeature::volume)}));
 
     static_cast<void>(registry.register_schema(NodeSchema{
+        .type = node_type::volume_emission,
+        .inputs = {
+            input(
+                "Color",
+                SocketType::color,
+                SocketValue::color({0.8f, 0.8f, 0.8f})),
+            input(
+                "Strength",
+                SocketType::floating,
+                SocketValue::floating(1.0f))},
+        .outputs = {output("Volume", SocketType::volume_closure)},
+        .properties = {},
+        .required_features =
+            feature_bit(ShaderFeature::volume) |
+            feature_bit(ShaderFeature::emission)}));
+
+    static_cast<void>(registry.register_schema(NodeSchema{
         .type = node_type::principled_volume,
         .inputs = {
             input(

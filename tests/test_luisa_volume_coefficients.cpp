@@ -243,10 +243,25 @@ void require(bool condition, const char *message) {
                 SocketValue::floating(0.0f)),
         "failed to configure principled volume");
 
+    const auto emission =
+        graph.add_node(node_type::volume_emission, "Emission");
+    require(
+        graph.set_input(
+            emission,
+            "Color",
+            SocketValue::color({0.25f, -0.5f, 0.75f})) &&
+            graph.set_input(
+                emission,
+                "Strength",
+                SocketValue::floating(1.2f)),
+        "failed to configure emission volume");
+
     const auto add_left =
         graph.add_node(node_type::add_volume, "AddLeft");
     const auto add_root =
         graph.add_node(node_type::add_volume, "AddRoot");
+    const auto final_root =
+        graph.add_node(node_type::add_volume, "FinalRoot");
     require(
         graph.connect(
             {.node = mixed, .socket = "Volume"},
@@ -263,11 +278,19 @@ void require(bool condition, const char *message) {
             graph.connect(
                 {.node = principled, .socket = "Volume"},
                 add_root,
+                "B") &&
+            graph.connect(
+                {.node = add_root, .socket = "Volume"},
+                final_root,
+                "A") &&
+            graph.connect(
+                {.node = emission, .socket = "Volume"},
+                final_root,
                 "B"),
         "failed to configure additive volume tree");
     graph.set_root(
         ShaderDomain::volume,
-        OutputRef{.node = add_root, .socket = "Volume"});
+        OutputRef{.node = final_root, .socket = "Volume"});
     return graph;
 }
 
@@ -784,20 +807,21 @@ int main(int argc, char **argv) {
            << output.copy_to(luisa::span{actual})
            << synchronize();
 
-    // Pinned to Cycles main 2bad74a8. These records exercise SVM's raw
+    // Pinned to Cycles main 16f3180f. These records exercise SVM's raw
     // absorption/scatter extinction, volume-only negative-weight clamping,
     // Add/Mix weighting, Principled sqrt(absorption color), implicit density
-    // attribute semantics, object density scaling, and emission suppression.
+    // attribute semantics, signed Emission-node coefficients, object density
+    // scaling, and emission suppression.
     constexpr std::array expected{
         luisa::float4{3.5f, 2.6f, 1.035f, 1.0f},
         luisa::float4{0.85f, 0.65f, 0.625f, 1.0f},
-        luisa::float4{2.8f, 5.2f, 7.6f, 1.0f},
+        luisa::float4{3.4f, 4.0f, 9.4f, 1.0f},
         luisa::float4{0.0f, 0.0f, 0.0f, 0.0f},
         luisa::float4{3.15f, 2.25f, 0.625f, 1.0f},
         luisa::float4{0.65f, 0.4f, 0.225f, 1.0f},
         luisa::float4{3.85f, 2.95f, 1.445f, 1.0f},
         luisa::float4{1.05f, 0.9f, 1.025f, 1.0f},
-        luisa::float4{2.8f, 5.2f, 7.6f, 1.0f}};
+        luisa::float4{3.4f, 4.0f, 9.4f, 1.0f}};
     for (std::size_t index = 0u;
          index < expected.size();
          ++index) {

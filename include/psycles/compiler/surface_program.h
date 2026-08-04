@@ -404,6 +404,7 @@ enum class VolumeOperation : std::uint8_t {
     absorption,
     scatter,
     coefficients,
+    emission,
     principled,
     add,
     mix
