@@ -33,6 +33,11 @@ inline constexpr std::uint32_t
     volume_phase_guiding_distance_dimension = 8u;
 inline constexpr std::uint32_t
     volume_phase_guiding_equiangular_dimension = 9u;
+inline constexpr std::uint32_t subsurface_bsdf_dimension = 0u;
+inline constexpr std::uint32_t subsurface_color_channel_dimension = 1u;
+inline constexpr std::uint32_t subsurface_scatter_distance_dimension = 2u;
+inline constexpr std::uint32_t subsurface_guide_strategy_dimension = 3u;
+inline constexpr std::uint32_t subsurface_guide_direction_dimension = 4u;
 inline constexpr std::uint32_t bounce_dimension_count = 16u;
 inline constexpr std::uint32_t first_bounce_offset =
     bounce_dimension_count;

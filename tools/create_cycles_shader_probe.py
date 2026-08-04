@@ -32,6 +32,7 @@ from cycles_shader_probe import (  # noqa: E402
     lights_camera,
     procedural_textures,
     refraction_closures,
+    subsurface_closures,
     support,
     texture_inputs,
     values,
@@ -142,6 +143,9 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "principled_surface": closures._principled_surface,
     "principled_transmission_surface": closures._principled_transmission_surface,
     "refraction_bsdf_matrix": refraction_closures._refraction_bsdf_matrix,
+    "random_walk_transport": (
+        subsurface_closures._random_walk_transport
+    ),
     "rgb_emission": lights_camera._rgb_emission,
     "rgb_curve_matrix": texture_inputs._rgb_curve_matrix,
     "rgb_to_bw": values._rgb_to_bw,
