@@ -66,6 +66,25 @@ only when the requested bundle has already been produced from the same source
 scene. It is never used to bypass material export: the bundle still contains
 the original node graphs, socket values, closure topology, and scene data.
 
+An interrupted or failed matrix can be continued with `--resume`. The runner
+first requires the manifest schema, renderer matrix, render settings, source
+scene path and hash, and bundle path to match. A completed render is reused
+only when its exact command, successful return code, output path, SHA-256, and
+required timing metadata remain valid. Cycles metadata is parsed again and,
+when available, its own hash is checked. Missing, modified, or incomplete
+outputs are rerun; a changed `--reuse-export` bundle is rejected because its
+relationship to the recorded renders can no longer be proven. Comparisons are
+cheap relative to full rendering and are regenerated from the validated final
+matrix. The manifest's `resume.reused_stages` array makes every reused result
+explicit.
+
+For example, to continue the AMD command above after a backend failure, repeat
+the identical command and append:
+
+```bash
+  --resume
+```
+
 ## Recorded outputs
 
 `benchmark.json` is updated after every completed stage and has

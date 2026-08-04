@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import pathlib
 import sys
+import tempfile
 import unittest
 
 
@@ -198,6 +200,120 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
             2.0,
         )
         self.assertNotIn("cycles_cpu", result)
+
+    def test_resume_requires_identical_render_configuration(self) -> None:
+        expected = {
+            "schema": "psycles.scene-benchmark.v1",
+            "matrix": {
+                "cycles": ["cpu", "hip"],
+                "psycles": ["fallback", "hip", "vk"],
+            },
+            "settings": {"width": 640, "height": 480},
+            "scene": {
+                "blend": "/scene.blend",
+                "sha256": "blend-hash",
+                "bundle": "/bundle",
+            },
+        }
+        previous = json.loads(json.dumps(expected))
+        previous["scene"]["geometry_bin_sha256"] = "geometry-hash"
+        self.runner._validate_resume_configuration(previous, expected)
+
+        changed = json.loads(json.dumps(previous))
+        changed["settings"]["width"] = 1920
+        with self.assertRaisesRegex(RuntimeError, "different settings"):
+            self.runner._validate_resume_configuration(changed, expected)
+
+        changed = json.loads(json.dumps(previous))
+        changed["scene"]["sha256"] = "another-scene"
+        with self.assertRaisesRegex(RuntimeError, "different scene"):
+            self.runner._validate_resume_configuration(changed, expected)
+
+    def test_resume_render_validates_command_output_and_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            output = root / "cpu.exr"
+            metadata = root / "cpu.json"
+            output.write_bytes(b"rendered pixels")
+            metadata.write_text(
+                json.dumps({"elapsed_seconds": 3.5}),
+                encoding="utf-8",
+            )
+            command = ["blender", "scene.blend", "cpu.exr"]
+            manifest = {
+                "commands": {
+                    "cycles_cpu": {
+                        "command": command,
+                        "returncode": 0,
+                    }
+                },
+                "renderers": {
+                    "cycles": {
+                        "cpu": {
+                            "output": str(output),
+                            "sha256": self.runner._sha256(output),
+                            "metadata": str(metadata),
+                            "metadata_sha256": self.runner._sha256(
+                                metadata
+                            ),
+                            "render_seconds": 3.5,
+                        }
+                    }
+                },
+            }
+
+            def can_resume() -> bool:
+                return self.runner._can_resume_render(
+                    manifest,
+                    command_key="cycles_cpu",
+                    renderer_group="cycles",
+                    renderer_key="cpu",
+                    expected_command=command,
+                    expected_output=output,
+                    required_timings=("render_seconds",),
+                    metadata_path=metadata,
+                )
+
+            self.assertTrue(can_resume())
+            output.write_bytes(b"tampered pixels")
+            self.assertFalse(can_resume())
+            output.write_bytes(b"rendered pixels")
+            manifest["commands"]["cycles_cpu"]["command"] = [
+                "different-renderer"
+            ]
+            self.assertFalse(can_resume())
+
+    def test_resume_export_rejects_changed_bundle(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            bundle = pathlib.Path(directory)
+            scene = bundle / "scene.json"
+            geometry = bundle / "geometry.bin"
+            scene.write_text("{}", encoding="utf-8")
+            geometry.write_bytes(b"geometry")
+            command = ["blender", "export.py", str(bundle)]
+            manifest = {
+                "commands": {
+                    "export": {
+                        "command": command,
+                        "returncode": 0,
+                    }
+                },
+                "scene": {
+                    "scene_json_sha256": self.runner._sha256(scene),
+                    "geometry_bin_sha256": self.runner._sha256(geometry),
+                },
+            }
+            self.assertTrue(
+                self.runner._can_resume_export(
+                    manifest, command, bundle
+                )
+            )
+            geometry.write_bytes(b"changed geometry")
+            self.assertFalse(
+                self.runner._can_resume_export(
+                    manifest, command, bundle
+                )
+            )
 
 
 if __name__ == "__main__":

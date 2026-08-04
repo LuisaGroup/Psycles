@@ -140,6 +140,14 @@ def _arguments() -> argparse.Namespace:
         help="reuse an existing bundle instead of exporting the scene",
     )
     parser.add_argument(
+        "--resume",
+        action="store_true",
+        help=(
+            "reuse completed renders from a compatible benchmark.json "
+            "after validating commands and output hashes"
+        ),
+    )
+    parser.add_argument(
         "--cycles-hip-device-name",
         default="",
         help=(
@@ -407,6 +415,145 @@ def _require_output(path: pathlib.Path) -> None:
         raise RuntimeError(f"renderer did not produce output: {path}")
 
 
+def _validate_resume_configuration(
+    previous: dict[str, Any],
+    expected: dict[str, Any],
+) -> None:
+    """Require the render-defining benchmark identity to match exactly."""
+
+    if previous.get("schema") != expected["schema"]:
+        raise RuntimeError(
+            "cannot resume benchmark with a different manifest schema"
+        )
+    for section in ("matrix", "settings"):
+        if previous.get(section) != expected[section]:
+            raise RuntimeError(
+                f"cannot resume benchmark with different {section}"
+            )
+    previous_scene = previous.get("scene")
+    if not isinstance(previous_scene, dict):
+        raise RuntimeError("cannot resume benchmark without scene identity")
+    for key in ("blend", "sha256", "bundle"):
+        if previous_scene.get(key) != expected["scene"][key]:
+            raise RuntimeError(
+                "cannot resume benchmark with a different scene or bundle"
+            )
+
+
+def _has_matching_output(
+    record: Any,
+    expected_output: pathlib.Path,
+) -> bool:
+    if not isinstance(record, dict):
+        return False
+    try:
+        recorded_output = pathlib.Path(record["output"]).resolve()
+        recorded_hash = record["sha256"]
+    except (KeyError, TypeError):
+        return False
+    if recorded_output != expected_output.resolve():
+        return False
+    if not expected_output.is_file() or expected_output.stat().st_size == 0:
+        return False
+    if not isinstance(recorded_hash, str):
+        return False
+    return _sha256(expected_output) == recorded_hash
+
+
+def _can_resume_render(
+    manifest: dict[str, Any],
+    *,
+    command_key: str,
+    renderer_group: str,
+    renderer_key: str,
+    expected_command: list[str],
+    expected_output: pathlib.Path,
+    required_timings: tuple[str, ...],
+    metadata_path: pathlib.Path | None = None,
+) -> bool:
+    commands = manifest.get("commands")
+    renderers = manifest.get("renderers")
+    if not isinstance(commands, dict) or not isinstance(renderers, dict):
+        return False
+    command_record = commands.get(command_key)
+    group = renderers.get(renderer_group)
+    if not isinstance(command_record, dict) or not isinstance(group, dict):
+        return False
+    if command_record.get("returncode") != 0:
+        return False
+    if command_record.get("command") != expected_command:
+        return False
+    record = group.get(renderer_key)
+    if not _has_matching_output(record, expected_output):
+        return False
+    assert isinstance(record, dict)
+    for timing in required_timings:
+        value = record.get(timing)
+        if not isinstance(value, (int, float)) or value < 0.0:
+            return False
+    if metadata_path is not None:
+        recorded_metadata = record.get("metadata")
+        if not isinstance(recorded_metadata, str):
+            return False
+        if pathlib.Path(recorded_metadata).resolve() != metadata_path.resolve():
+            return False
+        if not metadata_path.is_file() or metadata_path.stat().st_size == 0:
+            return False
+        metadata_hash = record.get("metadata_sha256")
+        if metadata_hash is not None and (
+            not isinstance(metadata_hash, str)
+            or _sha256(metadata_path) != metadata_hash
+        ):
+            return False
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            elapsed_seconds = float(metadata["elapsed_seconds"])
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+            return False
+        if elapsed_seconds != float(record["render_seconds"]):
+            return False
+    return True
+
+
+def _bundle_matches_manifest(
+    manifest: dict[str, Any],
+    bundle: pathlib.Path,
+) -> bool:
+    scene = manifest.get("scene")
+    if not isinstance(scene, dict):
+        return False
+    for key, path in (
+        ("scene_json_sha256", bundle / "scene.json"),
+        ("geometry_bin_sha256", bundle / "geometry.bin"),
+    ):
+        recorded_hash = scene.get(key)
+        if (
+            not isinstance(recorded_hash, str)
+            or not path.is_file()
+            or path.stat().st_size == 0
+            or _sha256(path) != recorded_hash
+        ):
+            return False
+    return True
+
+
+def _can_resume_export(
+    manifest: dict[str, Any],
+    expected_command: list[str],
+    bundle: pathlib.Path,
+) -> bool:
+    commands = manifest.get("commands")
+    if not isinstance(commands, dict):
+        return False
+    record = commands.get("export")
+    return (
+        isinstance(record, dict)
+        and record.get("returncode") == 0
+        and record.get("command") == expected_command
+        and _bundle_matches_manifest(manifest, bundle)
+    )
+
+
 def _write_manifest(
     path: pathlib.Path,
     manifest: dict[str, Any],
@@ -499,7 +646,7 @@ def _main() -> int:
 
     output_root.mkdir(parents=True, exist_ok=True)
     manifest_path = output_root / "benchmark.json"
-    manifest: dict[str, Any] = {
+    fresh_manifest: dict[str, Any] = {
         "schema": "psycles.scene-benchmark.v1",
         "status": "running",
         "matrix": {
@@ -530,6 +677,32 @@ def _main() -> int:
         "commands": {},
         "comparisons": {},
     }
+    resumed_existing_manifest = arguments.resume and manifest_path.is_file()
+    if resumed_existing_manifest:
+        try:
+            manifest = json.loads(
+                manifest_path.read_text(encoding="utf-8")
+            )
+        except json.JSONDecodeError as exception:
+            raise RuntimeError(
+                f"cannot resume invalid benchmark manifest: {manifest_path}"
+            ) from exception
+        if not isinstance(manifest, dict):
+            raise RuntimeError(
+                f"cannot resume invalid benchmark manifest: {manifest_path}"
+            )
+        _validate_resume_configuration(manifest, fresh_manifest)
+        manifest["status"] = "running"
+        manifest.pop("error", None)
+        manifest.pop("relative_performance", None)
+        manifest["comparisons"] = {}
+    else:
+        manifest = fresh_manifest
+    manifest["resume"] = {
+        "requested": arguments.resume,
+        "existing_manifest": resumed_existing_manifest,
+        "reused_stages": [],
+    }
     _write_manifest(manifest_path, manifest)
 
     environment = os.environ.copy()
@@ -554,54 +727,101 @@ def _main() -> int:
         for key, device, device_name in cycles_runs:
             output = output_root / "cycles" / f"{key}.exr"
             output.parent.mkdir(parents=True, exist_ok=True)
-            record = _run_logged(
-                _cycles_command(
-                    blender,
-                    blend,
-                    golden_script,
-                    output,
-                    width=arguments.width,
-                    height=arguments.height,
-                    samples=arguments.samples,
-                    device=device,
-                    device_name=device_name,
-                ),
-                output_root / "logs" / f"cycles-{key}.log",
-                environment=environment,
+            command = _cycles_command(
+                blender,
+                blend,
+                golden_script,
+                output,
+                width=arguments.width,
+                height=arguments.height,
+                samples=arguments.samples,
+                device=device,
+                device_name=device_name,
             )
-            _require_output(output)
             metadata_path = output.with_suffix(".json")
-            _require_output(metadata_path)
-            metadata = json.loads(
-                metadata_path.read_text(encoding="utf-8")
-            )
-            manifest["commands"][f"cycles_{key}"] = (
-                _public_process_record(record)
-            )
-            manifest["renderers"]["cycles"][key] = {
-                "output": str(output),
-                "sha256": _sha256(output),
-                "render_seconds": metadata["elapsed_seconds"],
-                "device": metadata["cycles_enabled_devices"],
-                "metadata": str(metadata_path),
-                "process_wall_seconds": record["wall_seconds"],
-            }
+            stage = f"cycles_{key}"
+            if arguments.resume and _can_resume_render(
+                manifest,
+                command_key=stage,
+                renderer_group="cycles",
+                renderer_key=key,
+                expected_command=command,
+                expected_output=output,
+                required_timings=("render_seconds",),
+                metadata_path=metadata_path,
+            ):
+                manifest["resume"]["reused_stages"].append(stage)
+                print(f"Reusing validated benchmark stage: {stage}")
+            else:
+                manifest["commands"].pop(stage, None)
+                manifest["renderers"]["cycles"].pop(key, None)
+                _write_manifest(manifest_path, manifest)
+                record = _run_logged(
+                    command,
+                    output_root / "logs" / f"cycles-{key}.log",
+                    environment=environment,
+                )
+                _require_output(output)
+                _require_output(metadata_path)
+                metadata = json.loads(
+                    metadata_path.read_text(encoding="utf-8")
+                )
+                manifest["commands"][stage] = (
+                    _public_process_record(record)
+                )
+                manifest["renderers"]["cycles"][key] = {
+                    "output": str(output),
+                    "sha256": _sha256(output),
+                    "render_seconds": metadata["elapsed_seconds"],
+                    "device": metadata["cycles_enabled_devices"],
+                    "metadata": str(metadata_path),
+                    "metadata_sha256": _sha256(metadata_path),
+                    "process_wall_seconds": record["wall_seconds"],
+                }
             cycles_outputs[key] = output
             _write_manifest(manifest_path, manifest)
 
+        export_command = _export_command(
+            blender,
+            blend,
+            export_script,
+            bundle,
+        )
         if arguments.reuse_export:
             _require_output(bundle / "scene.json")
+            _require_output(bundle / "geometry.bin")
+            if (
+                resumed_existing_manifest
+                and not _bundle_matches_manifest(manifest, bundle)
+            ):
+                raise RuntimeError(
+                    "cannot resume because the reused export changed"
+                )
             manifest["commands"]["export"] = {
                 "reused": True,
             }
+            if resumed_existing_manifest:
+                manifest["resume"]["reused_stages"].append("export")
+        elif arguments.resume and _can_resume_export(
+            manifest,
+            export_command,
+            bundle,
+        ):
+            manifest["resume"]["reused_stages"].append("export")
+            print("Reusing validated benchmark stage: export")
         else:
+            manifest["commands"].pop("export", None)
+            if resumed_existing_manifest:
+                for backend in arguments.psycles_backends:
+                    manifest["commands"].pop(
+                        f"psycles_{backend}", None
+                    )
+                    manifest["renderers"]["psycles"].pop(
+                        backend, None
+                    )
+            _write_manifest(manifest_path, manifest)
             export_record = _run_logged(
-                _export_command(
-                    blender,
-                    blend,
-                    export_script,
-                    bundle,
-                ),
+                export_command,
                 output_root / "logs/export.log",
                 environment=environment,
             )
@@ -624,34 +844,55 @@ def _main() -> int:
                 output_root / "psycles" / f"{backend}.ppm"
             )
             preview.parent.mkdir(parents=True, exist_ok=True)
-            record = _run_logged(
-                _psycles_command(
-                    renderer,
-                    bundle,
-                    preview,
-                    backend,
-                    width=arguments.width,
-                    height=arguments.height,
-                    samples=arguments.samples,
-                    max_samples_per_dispatch=(
-                        arguments.max_samples_per_dispatch
-                    ),
+            command = _psycles_command(
+                renderer,
+                bundle,
+                preview,
+                backend,
+                width=arguments.width,
+                height=arguments.height,
+                samples=arguments.samples,
+                max_samples_per_dispatch=(
+                    arguments.max_samples_per_dispatch
                 ),
-                output_root / "logs" / f"psycles-{backend}.log",
-                environment=environment,
             )
             exr = preview.with_suffix(".exr")
-            _require_output(exr)
-            timings = _parse_psycles_timings(record["output"])
-            manifest["commands"][f"psycles_{backend}"] = (
-                _public_process_record(record)
-            )
-            manifest["renderers"]["psycles"][backend] = {
-                "output": str(exr),
-                "sha256": _sha256(exr),
-                **timings,
-                "process_wall_seconds": record["wall_seconds"],
-            }
+            stage = f"psycles_{backend}"
+            if arguments.resume and _can_resume_render(
+                manifest,
+                command_key=stage,
+                renderer_group="psycles",
+                renderer_key=backend,
+                expected_command=command,
+                expected_output=exr,
+                required_timings=(
+                    "scene_compile_seconds",
+                    "shader_jit_seconds",
+                    "render_seconds",
+                ),
+            ):
+                manifest["resume"]["reused_stages"].append(stage)
+                print(f"Reusing validated benchmark stage: {stage}")
+            else:
+                manifest["commands"].pop(stage, None)
+                manifest["renderers"]["psycles"].pop(backend, None)
+                _write_manifest(manifest_path, manifest)
+                record = _run_logged(
+                    command,
+                    output_root / "logs" / f"psycles-{backend}.log",
+                    environment=environment,
+                )
+                _require_output(exr)
+                timings = _parse_psycles_timings(record["output"])
+                manifest["commands"][stage] = (
+                    _public_process_record(record)
+                )
+                manifest["renderers"]["psycles"][backend] = {
+                    "output": str(exr),
+                    "sha256": _sha256(exr),
+                    **timings,
+                    "process_wall_seconds": record["wall_seconds"],
+                }
             psycles_outputs[backend] = exr
             _write_manifest(manifest_path, manifest)
 
