@@ -49,6 +49,8 @@ namespace {
         case ValueOperation::checker_factor:
         case ValueOperation::brick_color:
         case ValueOperation::brick_factor:
+        case ValueOperation::magic_color:
+        case ValueOperation::magic_factor:
         case ValueOperation::wave_color:
         case ValueOperation::wave_factor:
         case ValueOperation::voronoi_distance:

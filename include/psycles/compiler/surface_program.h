@@ -132,6 +132,8 @@ enum class ValueOperation : std::uint8_t {
     checker_factor,
     brick_color,
     brick_factor,
+    magic_color,
+    magic_factor,
     wave_color,
     wave_factor,
     voronoi_distance,

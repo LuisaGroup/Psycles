@@ -202,9 +202,9 @@ kind of exact ordered cover over pixels and prove output equivalence.
 | Area | Verified state |
 |---|---|
 | Shader inventory | 96 Cycles-applicable nodes tracked from 105 Blender shader node types |
-| Complete coverage | 43/96 complete: 41 `cycles_verified` device nodes and 2 structural output adapters |
-| Remaining nodes | 12 partial and 41 pending; no implemented node is waiting for a probe, and 1 Cycles OSL-only node is tracked separately |
-| Automated gate | Release configuration builds fallback, HIP, and Vulkan with 32 jobs; Psycles passes 13/13; Luisa `restructure_cfg` passes 51 tests / 1013 assertions; 21/21 structural and 86/86 Vulkan-runtime SPIR-V tests pass; Luisa passes 115/116 overall with only the independently reproducible EASTL `fixed_vector` baseline failure |
+| Complete coverage | 48/96 complete: 46 `cycles_verified` device nodes and 2 structural output adapters |
+| Remaining nodes | 13 partial and 35 pending; no implemented node is waiting for a probe, and 1 Cycles OSL-only node is tracked separately |
+| Automated gate | Release configuration builds fallback, HIP, and Vulkan with 32 jobs; Psycles passes 171/171 in 6.69 s. Luisa `test_device_math vk` passes 388 assertions across native SPIR-V and HLSL-to-SPIR-V, and the CUDA backend target compiles with 32 jobs. |
 | Path-tracer architecture | Public façade plus private modules; unified flat-light CDF is uploaded once and selected through one Luisa upper-bound callable; opaque transparent-extinction dispatch is removed by semantic capability specialization; sample intervals are exact ordered partitions with at most 8 spp per synchronized dispatch |
 | Production Sobol probes | Historical 4.5 emission/diffuse probes remain recorded; current 5.2 flat-light 64×64/256 spp Combined RMSE is `0.000256543`, luminance ratio `1.000089120`, invalid pixels 0, with DiffCol and Normal exact |
 | Analytic lights | 11 Point/Spot/Area/Sun baselines, including shapes, spread, finite Sun disk, and light node trees |

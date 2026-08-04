@@ -59,6 +59,7 @@ CYCLES_VERIFIED = {
     "TEX_CHECKER",
     "TEX_ENVIRONMENT",
     "TEX_GRADIENT",
+    "TEX_MAGIC",
     "TEX_NOISE",
     "TEX_VORONOI",
     "TEX_WAVE",

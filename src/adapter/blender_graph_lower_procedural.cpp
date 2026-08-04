@@ -252,6 +252,55 @@ public:
                         ? SocketType::floating
                         : SocketType::color});
         }
+        if (type == "TEX_MAGIC") {
+            const auto id = context.graph().add_node(
+                compiler::node_type::magic_texture,
+                node_name);
+            if (context.input_source(node, "Vector")) {
+                static_cast<void>(context.bind(
+                    id,
+                    "Vector",
+                    node,
+                    "Vector",
+                    SocketType::vector));
+            } else {
+                static_cast<void>(context.graph().connect(
+                    context.default_generated_coordinates().ref,
+                    id,
+                    "Vector"));
+            }
+            for (const auto *name : {"Scale", "Distortion"}) {
+                static_cast<void>(context.bind(
+                    id,
+                    name,
+                    node,
+                    name,
+                    SocketType::floating));
+            }
+            const auto depth = static_cast<std::uint64_t>(
+                std::clamp(
+                    context.node_property_number(
+                        node, "turbulence_depth", 2.0f),
+                    0.0f,
+                    10.0f));
+            static_cast<void>(context.graph().set_property(
+                id,
+                "Depth",
+                SocketValue::unsigned_integer(depth)));
+            const auto factor =
+                socket == "Fac" || socket == "Factor";
+            static_cast<void>(context.graph().set_property(
+                id,
+                "NeedsColor",
+                SocketValue::boolean(!factor)));
+            return finish({
+                .ref = {
+                    .node = id,
+                    .socket = factor ? "Factor" : "Color"},
+                .type = factor
+                            ? SocketType::floating
+                            : SocketType::color});
+        }
         if (type == "TEX_GRADIENT") {
             const auto id = context.graph().add_node(
                 compiler::node_type::gradient_texture,
