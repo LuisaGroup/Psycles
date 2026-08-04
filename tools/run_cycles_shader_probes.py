@@ -173,6 +173,10 @@ _PROBE_RATIO_GATES = {
         "Combined": (0.99999, 1.00001),
         "Emit": (0.99999, 1.00001),
     },
+    "image_texture_projection_modes": {
+        "Combined": (0.99999, 1.00001),
+        "Emit": (0.99999, 1.00001),
+    },
     "magic_texture_matrix": {
         "Combined": (0.9999, 1.0001),
         "Emit": (0.9999, 1.0001),
@@ -315,6 +319,10 @@ _PROBE_RELATIVE_RMSE_GATES = {
         "Emit": 0.00001,
     },
     "image_texture_node_mapping": {
+        "Combined": 0.00001,
+        "Emit": 0.00001,
+    },
+    "image_texture_projection_modes": {
         "Combined": 0.00001,
         "Emit": 0.00001,
     },
