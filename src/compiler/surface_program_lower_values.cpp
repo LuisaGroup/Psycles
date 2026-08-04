@@ -1,8 +1,32 @@
 #include "surface_program_builder.h"
 
+#include <string_view>
 #include <utility>
 
 namespace psycles::compiler::detail {
+namespace {
+
+[[nodiscard]] std::uint64_t mapping_axis(
+    std::string_view axis) noexcept {
+    return axis == "X"
+               ? 1u
+               : axis == "Y" ? 2u : axis == "Z" ? 3u : 0u;
+}
+
+[[nodiscard]] std::uint64_t mapping_axes(
+    const contract::ShaderNode &node) {
+    const auto x = mapping_axis(
+        property_string(node, "XMapping", "X"));
+    const auto y = mapping_axis(
+        property_string(node, "YMapping", "Y"));
+    const auto z = mapping_axis(
+        property_string(node, "ZMapping", "Z"));
+    return x == 1u && y == 2u && z == 3u
+               ? 0u
+               : x | (y << 2u) | (z << 4u);
+}
+
+}// namespace
 
 // Lowers typed math, conversion, color, and normal nodes. A true result means
 // the node family was recognized, even when input diagnostics prevented an
@@ -36,7 +60,8 @@ namespace psycles::compiler::detail {
                     .b = *location,
                     .c = *rotation,
                     .d = *scale,
-                    .static_u0 = mode}));
+                    .static_u0 = mode,
+                    .static_u1 = mapping_axes(node)}));
         }
         return true;
     }

@@ -1972,6 +1972,10 @@ if(PSYCLES_BUILD_TESTS)
             SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_texture_coordinate_object.py"
             ARGUMENTS "${blender_exporter}")
         psycles_add_blender_test(
+            NAME psycles.blender_export_texture_mapping
+            SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_texture_mapping.py"
+            ARGUMENTS "${blender_exporter}")
+        psycles_add_blender_test(
             NAME psycles.blender_export_particle_info
             SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_particle_info.py"
             NO_EXIT_CODE ARGUMENTS "${blender_exporter}")

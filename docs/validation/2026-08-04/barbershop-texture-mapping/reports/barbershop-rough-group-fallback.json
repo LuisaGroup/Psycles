@@ -1,0 +1,64 @@
+{
+  "actual_label": "Psycles fallback mapped group",
+  "cycles_channels": [
+    "R",
+    "G",
+    "B",
+    "A"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        0.9999721050262451,
+        0.9999721050262451,
+        0.9999721050262451
+      ],
+      "cycles": "/var/tmp/barbershop-floor-probe-rough_group/cycles.exr",
+      "cycles_channel_mean": [
+        0.025863902643322945,
+        0.025863902643322945,
+        0.025863902643322945
+      ],
+      "cycles_luminance_mean": 0.02586406283080578,
+      "cycles_rms": 0.1185772716999054,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999752262459488,
+      "maximum_absolute_error": 0.6736785173416138,
+      "mean_absolute_error": 0.0003773887874558568,
+      "orientation_rmse": {
+        "flip_x": 0.1622520089149475,
+        "flip_xy": 0.16768838465213776,
+        "flip_y": 0.16768838465213776,
+        "identity": 0.0073060509748756886
+      },
+      "p95_pixel_rmse": 0.0006980450707487762,
+      "p99_pixel_rmse": 0.003853939939290285,
+      "psycles": "/var/tmp/barbershop-floor-probe-rough_group/psycles-fallback-texture-mapping.exr",
+      "psycles_channel_mean": [
+        0.025863181799650192,
+        0.025863181799650192,
+        0.025863181799650192
+      ],
+      "psycles_luminance_mean": 0.025863422080874443,
+      "psycles_rms": 0.11856992237172413,
+      "relative_rmse": 0.06161426106485057,
+      "rmse": 0.0073060509748756886,
+      "shape": [
+        480,
+        1152,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 153.72364681795793,
+        "display_scale": 1.0585215449996783,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/barbershop-floor-probe-rough_group/triptychs-fallback-texture-mapping/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 552960
+    }
+  },
+  "reference_label": "Cycles CPU rough group",
+  "schema": "psycles.cycles-differential.v1"
+}

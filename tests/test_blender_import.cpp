@@ -863,6 +863,12 @@ void test_integrator_settings_round_trip() {
                "          {\n"
                "            \"from_node\": \"Projector Coordinates\",\n"
                "            \"from_socket\": \"Object\",\n"
+               "            \"to_node\": \"Legacy Mapped Image\",\n"
+               "            \"to_socket\": \"Vector\"\n"
+               "          },\n"
+               "          {\n"
+               "            \"from_node\": \"Legacy Mapped Image\",\n"
+               "            \"from_socket\": \"Color\",\n"
                "            \"to_node\": \"Diffuse\",\n"
                "            \"to_socket\": \"Color\"\n"
                "          },");
@@ -916,6 +922,49 @@ void test_integrator_settings_round_trip() {
                   0.0, 0.0, 4.0, 0.0,
                   1.0, -2.0, 0.5, 1.0
                 ]
+              }
+            },
+            "image": null,
+            "node_tree": null
+          },
+          {
+            "name": "Legacy Mapped Image",
+            "label": "",
+            "type": "TEX_IMAGE",
+            "bl_idname": "ShaderNodeTexImage",
+            "inputs": [
+              {
+                "identifier": "Vector",
+                "name": "Vector",
+                "type": "NodeSocketVector",
+                "linked": true,
+                "default": [0.0, 0.0, 0.0]
+              }
+            ],
+            "outputs": [
+              {
+                "identifier": "Color",
+                "name": "Color",
+                "type": "NodeSocketColor",
+                "linked": true,
+                "default": [0.0, 0.0, 0.0, 0.0]
+              }
+            ],
+            "properties": {
+              "extension": "REPEAT",
+              "interpolation": "Linear",
+              "projection": "FLAT",
+              "projection_blend": 0.0
+            },
+            "special": {
+              "texture_mapping": {
+                "vector_type": "TEXTURE",
+                "translation": [0.25, -0.5, 1.25],
+                "rotation": [0.125, -0.25, 0.375],
+                "scale": [0.0, -2.0, 0.5],
+                "mapping_x": "Z",
+                "mapping_y": "NONE",
+                "mapping_z": "X"
               }
             },
             "image": null,
@@ -1027,11 +1076,31 @@ void test_integrator_settings_round_trip() {
                  .has_value(),
          "automatic bump was not retained as a displacement root");
   bool has_automatic_bump = false;
+  bool has_texture_mapping_node = false;
   for (const auto &node : bump_material->second.shader.nodes()) {
     has_automatic_bump |= node.type == psycles::compiler::node_type::bump;
+    if (node.type == psycles::compiler::node_type::mapping &&
+        node.label == "Legacy Mapped Image / Texture Mapping") {
+      const auto scale = node.inputs.find("Scale");
+      const auto x_mapping = node.properties.find("XMapping");
+      const auto y_mapping = node.properties.find("YMapping");
+      const auto z_mapping = node.properties.find("ZMapping");
+      has_texture_mapping_node =
+          scale != node.inputs.end() && scale->second.value.has_value() &&
+          std::get<psycles::Vec3f>(scale->second.value->value) ==
+              psycles::Vec3f{1.0e-5f, -2.0f, 0.5f} &&
+          x_mapping != node.properties.end() &&
+          std::get<std::string>(x_mapping->second.value) == "Z" &&
+          y_mapping != node.properties.end() &&
+          std::get<std::string>(y_mapping->second.value) == "NONE" &&
+          z_mapping != node.properties.end() &&
+          std::get<std::string>(z_mapping->second.value) == "X";
+    }
   }
   expect(has_automatic_bump,
          "Blender bump-only displacement did not lower to a bump node");
+  expect(has_texture_mapping_node,
+         "legacy TextureNode mapping inputs were not normalized");
 
   psycles::compiler::ShaderCompiler bump_compiler{
       psycles::compiler::make_core_node_registry()};
@@ -1044,6 +1113,7 @@ void test_integrator_settings_round_trip() {
          "automatic displacement bump did not lower to a surface program");
   bool has_bump_instruction = false;
   bool has_projector_coordinates = false;
+  bool has_texture_mapping = false;
   for (const auto &instruction : bump_surface.program->value_instructions()) {
     has_bump_instruction |=
         instruction.operation == psycles::compiler::ValueOperation::bump;
@@ -1054,11 +1124,16 @@ void test_integrator_settings_round_trip() {
             std::vector<float>{2.0f, -1.0f, 0.25f, 0.0f, 0.5f, 3.0f,
                                0.0f, 0.0f,  0.0f,  0.0f, 4.0f, 0.0f,
                                1.0f, -2.0f, 0.5f,  1.0f};
+    has_texture_mapping |=
+        instruction.operation == psycles::compiler::ValueOperation::mapping &&
+        instruction.static_u0 == 1u && instruction.static_u1 == 19u;
   }
   expect(has_bump_instruction,
          "automatic displacement bump emitted no value instruction");
   expect(has_projector_coordinates,
          "explicit Texture Coordinate object transform was not lowered");
+  expect(has_texture_mapping,
+         "legacy TextureNode mapping type or axis map was not lowered");
 
   auto combined_displacement_scene = bump_scene;
   replace_once(combined_displacement_scene, "\"displacement_method\": \"BUMP\"",

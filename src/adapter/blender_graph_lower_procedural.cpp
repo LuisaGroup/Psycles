@@ -40,12 +40,12 @@ public:
                     std::string_view{target} == "Vector"
                         ? SocketType::vector
                         : SocketType::floating;
-                if (target_type == SocketType::vector &&
-                    !context.input_source(node, source)) {
-                    static_cast<void>(context.graph().connect(
-                        context.default_generated_coordinates().ref,
+                if (target_type == SocketType::vector) {
+                    bind_blender_texture_vector(
+                        context,
                         id,
-                        target));
+                        node,
+                        context.default_generated_coordinates());
                 } else {
                     static_cast<void>(context.bind(
                         id,
@@ -151,12 +151,12 @@ public:
                                   target_view == "Color2"
                               ? SocketType::color
                               : SocketType::floating;
-                if (target_type == SocketType::vector &&
-                    !context.input_source(node, source)) {
-                    static_cast<void>(context.graph().connect(
-                        context.default_generated_coordinates().ref,
+                if (target_type == SocketType::vector) {
+                    bind_blender_texture_vector(
+                        context,
                         id,
-                        target));
+                        node,
+                        context.default_generated_coordinates());
                 } else {
                     static_cast<void>(context.bind(
                         id,
@@ -201,12 +201,12 @@ public:
                                   target_view == "Mortar"
                               ? SocketType::color
                               : SocketType::floating;
-                if (target_type == SocketType::vector &&
-                    !context.input_source(node, source)) {
-                    static_cast<void>(context.graph().connect(
-                        context.default_generated_coordinates().ref,
+                if (target_type == SocketType::vector) {
+                    bind_blender_texture_vector(
+                        context,
                         id,
-                        target));
+                        node,
+                        context.default_generated_coordinates());
                 } else {
                     static_cast<void>(context.bind(
                         id,
@@ -256,19 +256,11 @@ public:
             const auto id = context.graph().add_node(
                 compiler::node_type::magic_texture,
                 node_name);
-            if (context.input_source(node, "Vector")) {
-                static_cast<void>(context.bind(
-                    id,
-                    "Vector",
-                    node,
-                    "Vector",
-                    SocketType::vector));
-            } else {
-                static_cast<void>(context.graph().connect(
-                    context.default_generated_coordinates().ref,
-                    id,
-                    "Vector"));
-            }
+            bind_blender_texture_vector(
+                context,
+                id,
+                node,
+                context.default_generated_coordinates());
             for (const auto *name : {"Scale", "Distortion"}) {
                 static_cast<void>(context.bind(
                     id,
@@ -305,19 +297,11 @@ public:
             const auto id = context.graph().add_node(
                 compiler::node_type::gradient_texture,
                 node_name);
-            if (context.input_source(node, "Vector")) {
-                static_cast<void>(context.bind(
-                    id,
-                    "Vector",
-                    node,
-                    "Vector",
-                    SocketType::vector));
-            } else {
-                static_cast<void>(context.graph().connect(
-                    context.default_generated_coordinates().ref,
-                    id,
-                    "Vector"));
-            }
+            bind_blender_texture_vector(
+                context,
+                id,
+                node,
+                context.default_generated_coordinates());
             static_cast<void>(context.graph().set_property(
                 id,
                 "GradientType",
@@ -331,19 +315,11 @@ public:
             const auto id = context.graph().add_node(
                 compiler::node_type::voronoi_texture,
                 node_name);
-            if (context.input_source(node, "Vector")) {
-                static_cast<void>(context.bind(
-                    id,
-                    "Vector",
-                    node,
-                    "Vector",
-                    SocketType::vector));
-            } else {
-                static_cast<void>(context.graph().connect(
-                    context.default_generated_coordinates().ref,
-                    id,
-                    "Vector"));
-            }
+            bind_blender_texture_vector(
+                context,
+                id,
+                node,
+                context.default_generated_coordinates());
             for (const auto *name : {
                      "W",
                      "Scale",
@@ -405,19 +381,11 @@ public:
             const auto id = context.graph().add_node(
                 compiler::node_type::wave_texture,
                 node_name);
-            if (context.input_source(node, "Vector")) {
-                static_cast<void>(context.bind(
-                    id,
-                    "Vector",
-                    node,
-                    "Vector",
-                    SocketType::vector));
-            } else {
-                static_cast<void>(context.graph().connect(
-                    context.default_generated_coordinates().ref,
-                    id,
-                    "Vector"));
-            }
+            bind_blender_texture_vector(
+                context,
+                id,
+                node,
+                context.default_generated_coordinates());
             for (const auto &[target, source] : {
                      std::pair{"Scale", "Scale"},
                      std::pair{"Distortion", "Distortion"},
@@ -641,19 +609,11 @@ public:
                 const auto id = context.graph().add_node(
                     compiler::node_type::hosek_wilkie_sky,
                     node_name);
-                if (context.input_source(node, "Vector")) {
-                    static_cast<void>(context.bind(
-                        id,
-                        "Vector",
-                        node,
-                        "Vector",
-                        SocketType::vector));
-                } else {
-                    static_cast<void>(context.graph().connect(
-                        context.default_generated_coordinates().ref,
-                        id,
-                        "Vector"));
-                }
+                bind_blender_texture_vector(
+                    context,
+                    id,
+                    node,
+                    context.default_generated_coordinates());
                 const auto sun_direction = float3(
                     member(
                         member(node, "properties"),
@@ -698,19 +658,11 @@ public:
             const auto id = context.graph().add_node(
                 compiler::node_type::nishita_sky,
                 node_name);
-            if (context.input_source(node, "Vector")) {
-                static_cast<void>(context.bind(
-                    id,
-                    "Vector",
-                    node,
-                    "Vector",
-                    SocketType::vector));
-            } else {
-                static_cast<void>(context.graph().connect(
-                    context.default_generated_coordinates().ref,
-                    id,
-                    "Vector"));
-            }
+            bind_blender_texture_vector(
+                context,
+                id,
+                node,
+                context.default_generated_coordinates());
             constexpr auto pi = 3.14159265358979323846f;
             constexpr auto two_pi = 2.0f * pi;
             auto elevation = std::fmod(

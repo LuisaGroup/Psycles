@@ -308,6 +308,23 @@ public:
     }
     case compiler::ValueOperation::mapping: {
       auto input = vector(instruction.a, result);
+      if (instruction.static_u1 != 0u) {
+        const auto component = [&input](std::uint64_t axis) noexcept -> Float {
+          switch (axis) {
+          case 1u:
+            return input.x;
+          case 2u:
+            return input.y;
+          case 3u:
+            return input.z;
+          default:
+            return 0.0f;
+          }
+        };
+        input = make_float3(component(instruction.static_u1 & 0x3u),
+                            component((instruction.static_u1 >> 2u) & 0x3u),
+                            component((instruction.static_u1 >> 4u) & 0x3u));
+      }
       auto location = vector(instruction.b, result);
       auto rotation = vector(instruction.c, result);
       auto scale = vector(instruction.d, result);

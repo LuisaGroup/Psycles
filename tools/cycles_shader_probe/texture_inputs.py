@@ -361,6 +361,100 @@ def _image_texture_srgb(scene: Any) -> None:
     _plane(material)
 
 
+def _image_texture_node_mapping(scene: Any) -> None:
+    """Cover Cycles' hidden TextureNode TexMapping before image lookup."""
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 0.01
+    scene.cycles.max_bounces = 0
+    pixels = np.empty((8, 8, 4), dtype=np.uint8)
+    for y in range(8):
+        for x in range(8):
+            pixels[y, x] = (
+                (29 * x + 47 * y + 11) % 256,
+                (83 * x + 17 * y + 37) % 256,
+                (13 * x + 101 * y + 71) % 256,
+                255,
+            )
+    image = _packed_rgba_image(
+        "TextureNode Mapping Probe",
+        pixels,
+        colorspace="Non-Color",
+        alpha_mode="STRAIGHT",
+    )
+
+    cases = (
+        (
+            "POINT",
+            (0.13, -0.21, 0.37),
+            (0.17, -0.11, 0.23),
+            (0.63, 1.17, -0.81),
+            ("X", "Y", "Z"),
+        ),
+        (
+            "TEXTURE",
+            (-0.19, 0.31, -0.07),
+            (-0.14, 0.27, 0.09),
+            (0.83, -1.31, 0.57),
+            ("Z", "X", "Y"),
+        ),
+        (
+            "VECTOR",
+            (0.0, 0.0, 0.0),
+            (0.21, 0.08, -0.19),
+            (-0.71, 1.23, 0.49),
+            ("Y", "NONE", "X"),
+        ),
+        (
+            "NORMAL",
+            (0.0, 0.0, 0.0),
+            (-0.09, 0.18, 0.31),
+            (0.77, -0.59, 1.41),
+            ("X", "Z", "Y"),
+        ),
+    )
+    materials = []
+    for vector_type, translation, rotation, scale, axes in cases:
+        material, tree, output = _material(
+            f"TextureNode Mapping {vector_type}"
+        )
+        coordinates = tree.nodes.new("ShaderNodeTexCoord")
+        coordinates.name = f"{vector_type} Object Coordinates"
+        texture = tree.nodes.new("ShaderNodeTexImage")
+        texture.name = f"{vector_type} Legacy Texture Mapping"
+        texture.image = image
+        texture.interpolation = "Closest"
+        texture.extension = "REPEAT"
+        mapping = texture.texture_mapping
+        mapping.vector_type = vector_type
+        mapping.translation = translation
+        mapping.rotation = rotation
+        mapping.scale = scale
+        mapping.mapping_x, mapping.mapping_y, mapping.mapping_z = axes
+        emission = tree.nodes.new("ShaderNodeEmission")
+        emission.name = f"{vector_type} Mapping Emission"
+        tree.links.new(
+            _output(coordinates, "Object"),
+            _input(texture, "Vector"),
+        )
+        tree.links.new(
+            _output(texture, "Color"),
+            _input(emission, "Color"),
+        )
+        tree.links.new(
+            _output(emission, "Emission"),
+            _input(output, "Surface"),
+        )
+        materials.append(material)
+    _material_matrix(
+        scene,
+        materials,
+        columns=4,
+        rows=1,
+        name="TextureNode Mapping Matrix",
+        frame_bleed=0.02,
+    )
+
+
 def _image_texture_sampling_modes(scene: Any) -> None:
     """Exercise Cycles' 2D interpolation and extension cross-product."""
     scene.cycles.pixel_filter_type = "BOX"
