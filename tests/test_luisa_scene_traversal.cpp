@@ -79,14 +79,18 @@ int main(int argc, char **argv) {
                                 luisa::float3{2.0f, -2.0f, 4.0f},
                                 luisa::float3{0.0f, 2.0f, 4.0f}};
   constexpr std::array triangles{Triangle{0u, 1u, 2u}};
+  // The two segments are geometrically identical but have distinct Cycles
+  // segment identities. Their device primitive order is deliberately opposite
+  // to the Cycles order: Cycles packs the segment ordinal into prim_type, so
+  // device primitive 0 must win the exact-distance tie on every backend.
   constexpr std::array curve_keys{luisa::float4{-2.0f, 0.0f, 2.0f, 0.4f},
                                   luisa::float4{-1.0f, 0.0f, 2.0f, 0.4f},
                                   luisa::float4{1.0f, 0.0f, 2.0f, 0.4f},
                                   luisa::float4{2.0f, 0.0f, 2.0f, 0.4f},
-                                  luisa::float4{-2.0f, 0.0f, 2.5f, 0.4f},
-                                  luisa::float4{-1.0f, 0.0f, 2.5f, 0.4f},
-                                  luisa::float4{1.0f, 0.0f, 2.5f, 0.4f},
-                                  luisa::float4{2.0f, 0.0f, 2.5f, 0.4f}};
+                                  luisa::float4{-2.0f, 0.0f, 2.0f, 0.4f},
+                                  luisa::float4{-1.0f, 0.0f, 2.0f, 0.4f},
+                                  luisa::float4{1.0f, 0.0f, 2.0f, 0.4f},
+                                  luisa::float4{2.0f, 0.0f, 2.0f, 0.4f}};
   constexpr std::array curve_segments{
       CurveSegmentGpu{.key_before = 0u,
                       .key_begin = 1u,
@@ -94,18 +98,18 @@ int main(int argc, char **argv) {
                       .key_after = 3u,
                       .curve_index = 0u,
                       .cycles_curve_index = 200u,
-                      .cycles_segment_index = 300u},
+                      .cycles_segment_index = 301u},
       CurveSegmentGpu{.key_before = 4u,
                       .key_begin = 5u,
                       .key_end = 6u,
                       .key_after = 7u,
                       .curve_index = 0u,
                       .cycles_curve_index = 200u,
-                      .cycles_segment_index = 301u}};
+                      .cycles_segment_index = 300u}};
   constexpr std::array curve_bounds{AABB{.packed_min = {-2.5f, -0.5f, 1.5f},
                                          .packed_max = {2.5f, 0.5f, 2.5f}},
-                                    AABB{.packed_min = {-2.5f, -0.5f, 2.0f},
-                                         .packed_max = {2.5f, 0.5f, 3.0f}}};
+                                    AABB{.packed_min = {-2.5f, -0.5f, 1.5f},
+                                         .packed_max = {2.5f, 0.5f, 2.5f}}};
   constexpr std::array curve_material_slots{0u};
   constexpr std::array curve_intercepts{0.0f, 0.2f, 0.6f, 1.0f,
                                         0.0f, 0.2f, 0.6f, 1.0f};

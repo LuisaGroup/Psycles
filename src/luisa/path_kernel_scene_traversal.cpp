@@ -37,18 +37,19 @@ private:
   Float _distance{0.0f};
   UInt _object{0u};
   UInt _primitive{0u};
-  UInt _kind{0u};
+  UInt _type_order{0u};
 
 public:
   [[nodiscard]] Bool accepts(Expr<float> distance,
                              Expr<std::uint32_t> object,
                              Expr<std::uint32_t> primitive,
-                             Expr<std::uint32_t> kind) const noexcept {
+                             Expr<std::uint32_t> type_order) const noexcept {
     const auto identity_is_later =
         (object > _object) |
         ((object == _object) &
          ((primitive > _primitive) |
-          ((primitive == _primitive) & (kind > _kind))));
+          ((primitive == _primitive) &
+           (type_order > _type_order))));
     return !_has_hit | (distance < _distance) |
            ((distance == _distance) & identity_is_later);
   }
@@ -56,12 +57,12 @@ public:
   void select(Expr<float> distance,
               Expr<std::uint32_t> object,
               Expr<std::uint32_t> primitive,
-              Expr<std::uint32_t> kind) noexcept {
+              Expr<std::uint32_t> type_order) noexcept {
     _has_hit = true;
     _distance = distance;
     _object = object;
     _primitive = primitive;
-    _kind = kind;
+    _type_order = type_order;
   }
 };
 
@@ -162,6 +163,11 @@ private:
             const auto object =
                 _materials->cycles_object_index(hit->inst, curve.instance);
             const auto primitive = curve.segment.cycles_curve_index;
+            // Cycles packs the segment ordinal above its curve primitive-type
+            // bits. cycles_segment_index is strictly monotonic with that
+            // ordinal within a curve, so it is order-isomorphic to Cycles'
+            // final BVH-reference key without reproducing the packed enum.
+            const auto type_order = curve.segment.cycles_segment_index;
             const auto excluded = source.matches(object, primitive) |
                                   light.matches(object, primitive);
             const auto world_to_object =
@@ -180,7 +186,7 @@ private:
                                     curve.geometry.curve_subdivision_level);
             const auto accepted = closest.accepts(
                 intersection.distance, object, primitive,
-                curve.geometry.primitive_kind);
+                type_order);
             const auto within_cycles_interval =
                 (intersection.distance >= ray->t_min()) &
                 (intersection.distance <= ray->t_max());
@@ -190,7 +196,7 @@ private:
                 candidate.commit(intersection.distance);
               }
               closest.select(intersection.distance, object, primitive,
-                             curve.geometry.primitive_kind);
+                             type_order);
               resolved->inst = hit->inst;
               resolved->prim = hit->prim;
               resolved->bary = make_float2(0.0f);
