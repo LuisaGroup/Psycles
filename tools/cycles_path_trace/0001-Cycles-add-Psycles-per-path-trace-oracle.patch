@@ -4,14 +4,30 @@ Date: Thu, 30 Jul 2026 14:08:56 +0800
 Subject: [PATCH] Cycles: add Psycles per-path trace oracle
 
 ---
- .../kernel/integrator/init_from_camera.h      |  37 +++
- .../cycles/kernel/integrator/psycles_trace.h  | 168 ++++++++++++
+ intern/cycles/kernel/data_template.h           |   3 +
+ .../kernel/integrator/init_from_camera.h      |  38 +++-
+ .../cycles/kernel/integrator/psycles_trace.h  | 169 ++++++++++++
  .../cycles/kernel/integrator/shade_surface.h  | 242 +++++++++++++++++-
- 3 files changed, 439 insertions(+), 8 deletions(-)
+ intern/cycles/scene/integrator.cpp             |   1 +
+ 5 files changed, 444 insertions(+), 9 deletions(-)
  create mode 100644 intern/cycles/kernel/integrator/psycles_trace.h
 
+diff --git a/intern/cycles/kernel/data_template.h b/intern/cycles/kernel/data_template.h
+index cda78449..b3343058 100644
+--- a/intern/cycles/kernel/data_template.h
++++ b/intern/cycles/kernel/data_template.h
+@@ -198,6 +198,9 @@ KERNEL_STRUCT_MEMBER(integrator, float, filter_glossy)
+ /* Seed. */
+ KERNEL_STRUCT_MEMBER_DONT_SPECIALIZE
+ KERNEL_STRUCT_MEMBER(integrator, int, seed)
++/* Diagnostic sample captured by the Psycles path-trace oracle. */
++KERNEL_STRUCT_MEMBER_DONT_SPECIALIZE
++KERNEL_STRUCT_MEMBER(integrator, int, psycles_trace_sample)
+ /* Clamp. */
+ KERNEL_STRUCT_MEMBER(integrator, float, sample_clamp_direct)
+ KERNEL_STRUCT_MEMBER(integrator, float, sample_clamp_indirect)
 diff --git a/intern/cycles/kernel/integrator/init_from_camera.h b/intern/cycles/kernel/integrator/init_from_camera.h
-index 948a83a7..b1429b53 100644
+index 948a83a7..fd7d0eac 100644
 --- a/intern/cycles/kernel/integrator/init_from_camera.h
 +++ b/intern/cycles/kernel/integrator/init_from_camera.h
 @@ -10,6 +10,7 @@
@@ -22,19 +38,42 @@ index 948a83a7..b1429b53 100644
  
  #include "kernel/integrator/state_util.h"
  #include "kernel/sample/pattern.h"
-@@ -139,6 +140,42 @@ ccl_device bool integrator_init_from_camera(KernelGlobals kg,
+@@ -22,6 +23,8 @@ ccl_device_inline Spectrum integrate_camera_sample(KernelGlobals kg,
+                                                    const int y,
+                                                    const uint rng_pixel,
+                                                    ccl_private Ray *ray,
++                                                   ccl_private float2 *rand_filter_out,
++                                                   ccl_private float3 *rand_time_lens_out,
+                                                    ccl_private int &r_cache_miss)
+ {
+   /* Filter sampling. */
+@@ -35,6 +38,8 @@ ccl_device_inline Spectrum integrate_camera_sample(KernelGlobals kg,
+   const float3 rand_time_lens = (use_motionblur || use_dof || use_custom_cam) ?
+                                     path_rng_3D(kg, rng_pixel, sample, PRNG_LENS_TIME) :
+                                     zero_float3();
++  *rand_filter_out = rand_filter;
++  *rand_time_lens_out = rand_time_lens;
+ 
+   /* We use x for time and y,z for lens because in practice with Sobol
+    * sampling this seems to give better convergence when an object is
+@@ -94,8 +99,11 @@ ccl_device bool integrator_init_from_camera(KernelGlobals kg,
+ 
+   /* Generate camera ray. */
+   Ray ray;
++  float2 trace_filter;
++  float3 trace_time_lens;
+   int cache_miss = 0;
+-  Spectrum T = integrate_camera_sample(kg, sample, x, y, rng_pixel, &ray, cache_miss);
++  Spectrum T = integrate_camera_sample(
++      kg, sample, x, y, rng_pixel, &ray, &trace_filter, &trace_time_lens, cache_miss);
+   if (cache_miss) {
+     if (tile != nullptr) {
+       integrator_path_init(state, DEVICE_KERNEL_INTEGRATOR_INIT_FROM_CAMERA);
+@@ -139,6 +147,34 @@ ccl_device bool integrator_init_from_camera(KernelGlobals kg,
      }
    }
  
-+  if (sample == 0) {
-+    const float2 trace_filter = make_float2(0.5f, 0.5f);
-+    const bool trace_use_motionblur = kernel_data.cam.shuttertime != -1.0f;
-+    const bool trace_use_dof = kernel_data.cam.aperturesize > 0.0f;
-+    const bool trace_use_custom_cam = kernel_data.cam.type == CAMERA_CUSTOM;
-+    const float3 trace_time_lens = (trace_use_motionblur || trace_use_dof ||
-+                                    trace_use_custom_cam) ?
-+                                       path_rng_3D(kg, rng_pixel, sample, PRNG_LENS_TIME) :
-+                                       zero_float3();
++  if (sample == kernel_data.integrator.psycles_trace_sample) {
 +    const float rng_low = float(rng_pixel & 0xffffu);
 +    const float rng_high = float(rng_pixel >> 16);
 +    psycles_trace_write(kg,
@@ -176,7 +215,8 @@ index 00000000..9b946fb1
 +  return kernel_data.film.pass_aov_color != PASS_UNUSED &&
 +         kernel_data.film.pass_stride >=
 +             kernel_data.film.pass_aov_color + PSYCLES_TRACE_AOV_COUNT * 4 &&
-+         INTEGRATOR_STATE(state, path, sample) == 0 && slot >= 0 && slot < PSYCLES_TRACE_AOV_COUNT;
++         INTEGRATOR_STATE(state, path, sample) == kernel_data.integrator.psycles_trace_sample &&
++         slot >= 0 && slot < PSYCLES_TRACE_AOV_COUNT;
 +}
 +
 +ccl_device_forceinline void psycles_trace_write(KernelGlobals kg,
@@ -568,6 +608,17 @@ index 33b875a0..75f1078c 100644
  #ifdef __VOLUME__
    }
    else {
+diff --git a/intern/cycles/scene/integrator.cpp b/intern/cycles/scene/integrator.cpp
+index 77ca236c..91f2a131 100644
+--- a/intern/cycles/scene/integrator.cpp
++++ b/intern/cycles/scene/integrator.cpp
+@@ -315,6 +315,7 @@ void Integrator::device_update(Device *device, DeviceScene *dscene, Scene *scene
+ 
+   const int clamped_aa_samples = min(aa_samples, MAX_SAMPLES);
+ 
++  kintegrator->psycles_trace_sample = use_sample_subset ? sample_subset_offset : 0;
+   kintegrator->sampling_pattern = sampling_pattern;
+   kintegrator->scrambling_distance = scrambling_distance;
+   kintegrator->sobol_index_mask = reverse_integer_bits(next_power_of_two(clamped_aa_samples - 1) -
 -- 
 2.55.0
-

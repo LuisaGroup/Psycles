@@ -2,12 +2,16 @@
 
 `0001-Cycles-add-Psycles-per-path-trace-oracle.patch` applies the version-1
 trace instrumentation to official Blender commit
-`ff404d072bb4bae52c578d2be3aeeea2a057ab63`.
+`29ccd5e2e824128c86fc6174c9c502c02212434a`.
+
+The kernel target is the official sample-subset offset. Camera filter and lens
+randoms are observed from the same camera-sample evaluation that produced the
+ray, so tracing an absolute sample never substitutes sample-zero state.
 
 Apply it only to a dedicated diagnostic checkout:
 
 ```bash
-git switch --detach ff404d072bb4bae52c578d2be3aeeea2a057ab63
+git switch --detach 29ccd5e2e824128c86fc6174c9c502c02212434a
 git am /path/to/Psycles/tools/cycles_path_trace/0001-Cycles-add-Psycles-per-path-trace-oracle.patch
 ```
 

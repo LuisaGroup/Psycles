@@ -79,6 +79,31 @@ class CyclesPathTraceRenderTests(unittest.TestCase):
 
         self.assertEqual(vars(cycles), {})
 
+    def test_cycles_patch_observes_the_scheduled_sample_randoms(self) -> None:
+        patch = (
+            ROOT
+            / "tools"
+            / "cycles_path_trace"
+            / "0001-Cycles-add-Psycles-per-path-trace-oracle.patch"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(
+            "path, sample) == kernel_data.integrator.psycles_trace_sample",
+            patch,
+        )
+        self.assertIn(
+            "&ray, &trace_filter, &trace_time_lens, cache_miss",
+            patch,
+        )
+        self.assertIn(
+            "make_float3(trace_filter.x, trace_filter.y, 0.0f)",
+            patch,
+        )
+        self.assertNotIn(
+            "const float2 trace_filter = make_float2(0.5f, 0.5f)",
+            patch,
+        )
+
 
 class PsyclesRawPathTraceDecoderTests(unittest.TestCase):
     def test_raw_rgba_slots_use_the_shared_schema(self) -> None:
