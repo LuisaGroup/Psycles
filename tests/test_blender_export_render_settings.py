@@ -111,6 +111,20 @@ def _main() -> None:
             "Cycles golden did not pin the path-sampler contract"
         )
 
+    view_layer = scene.view_layers[0]
+    view_layer.cycles.use_pass_volume_direct = False
+    view_layer.cycles.use_pass_volume_indirect = False
+    golden["_configure_view_layer_passes"](view_layer)
+    if (
+        not view_layer.cycles.use_pass_volume_direct
+        or not view_layer.cycles.use_pass_volume_indirect
+        or "Volume Direct" not in golden["_GOLDEN_PASSES"]
+        or "Volume Indirect" not in golden["_GOLDEN_PASSES"]
+    ):
+        raise AssertionError(
+            "Cycles golden did not enable the canonical volume passes"
+        )
+
     scene.cycles.sampling_pattern = "AUTOMATIC"
     probes["_PROBES"]["camera_dof_disk"](scene)
     if (
