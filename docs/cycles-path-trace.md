@@ -125,6 +125,55 @@ EXR or this raw Psycles JSON. Trace capture is observational: it targets one
 full-film pixel/sample and does not alter sample dispatch partitioning or
 request another random value.
 
+### Absolute sample ranges and progressive pixel chunks
+
+The same renderer exposes absolute subranges of the complete sampling
+sequence after the trace arguments:
+
+```text
+[sample-first=0] [sample-count=samples-sample-first]
+```
+
+`samples` remains the whole-sequence total used to construct the Tabulated
+Sobol table. Splitting a render therefore preserves the absolute Cycles sample
+identity instead of silently generating a shorter random sequence. Pass `-`
+as the path-trace filename when only the later diagnostic arguments are
+needed.
+
+Three additional arguments capture one film pixel after every progressive
+sample chunk:
+
+```text
+[sample-chunk-pixel.json] [probe-chunk-size=1] [probe-full-frame=0]
+```
+
+For example, this records 32 four-sample chunks while keeping the production
+full-frame dispatch shape:
+
+```bash
+build/bin/psycles_render_blender_scene \
+  export /var/tmp/unused.ppm hip 1152 480 128 4 \
+  - 1047 253 0 0 128 \
+  /var/tmp/chunks.json 4 1
+```
+
+Coordinates retain the lower-left Cycles film convention. With
+`probe-full-frame=0`, the render window is reduced to the requested pixel but
+camera projection and RNG hashing still use the full extent. Value arrays use
+the explicit relation
+
+```text
+delta(progressive_output * rendered_sample_count)
+```
+
+This is an exact additive chunk contribution for linear passes such as
+Combined. A pass divided by another accumulated pass is nonlinear; its record
+retains the stated scaled-output-delta meaning and must not be mislabeled as
+per-sample radiance. `ProgressivePixelAccumulator` implements and validates
+that relation independently of a renderer backend, and
+`psycles.progressive_pixel_probe` covers pixel extraction, progressive
+reconstruction, pass-layout rejection, and transactional failure behavior.
+
 Blender 5.3 writes each AOV as a separate OpenEXR multipart subimage. The
 decoder enumerates every subimage and also accepts older single-part,
 multi-channel files. `tests/test_cycles_path_trace_decoder.py` locks the

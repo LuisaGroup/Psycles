@@ -1,19 +1,24 @@
 #include <psycles/adapter/blender_scene.h>
 #include <psycles/contract/render.h>
 #include <psycles/io/image.h>
+#include <psycles/io/progressive_pixel_probe.h>
 #include <psycles/luisa/path_tracer.h>
 
+#include <algorithm>
 #include <array>
 #include <charconv>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include <luisa/luisa-compute.h>
 #include <yyjson.h>
@@ -106,6 +111,88 @@ public:
     return written;
 }
 
+[[nodiscard]] bool write_sample_chunk_probe(
+    const std::filesystem::path &path,
+    std::uint32_t pixel_x,
+    std::uint32_t pixel_y,
+    std::uint32_t total_samples,
+    std::span<const psycles::io::ProgressiveSampleChunk> records) {
+    auto *document = yyjson_mut_doc_new(nullptr);
+    if (document == nullptr) {
+        return false;
+    }
+    auto *root = yyjson_mut_obj(document);
+    yyjson_mut_doc_set_root(document, root);
+    yyjson_mut_obj_add_str(
+        document,
+        root,
+        "schema",
+        "psycles.sample-chunk-pixel.v1");
+    yyjson_mut_obj_add_uint(
+        document, root, "pixel_x", pixel_x);
+    yyjson_mut_obj_add_uint(
+        document, root, "pixel_y", pixel_y);
+    yyjson_mut_obj_add_str(
+        document,
+        root,
+        "coordinate_convention",
+        "Cycles film coordinates; origin lower-left");
+    yyjson_mut_obj_add_uint(
+        document, root, "total_samples", total_samples);
+    yyjson_mut_obj_add_str(
+        document,
+        root,
+        "value_semantics",
+        "delta(progressive_output * rendered_sample_count)");
+    auto *chunk_array = yyjson_mut_arr(document);
+    for (const auto &record : records) {
+        auto *chunk = yyjson_mut_obj(document);
+        yyjson_mut_obj_add_uint(
+            document,
+            chunk,
+            "sample_first",
+            record.sample_first);
+        yyjson_mut_obj_add_uint(
+            document,
+            chunk,
+            "sample_count",
+            record.sample_count);
+        auto *passes = yyjson_mut_obj(document);
+        for (const auto &pass : record.passes) {
+            auto *values = yyjson_mut_arr(document);
+            for (const auto value : pass.values) {
+                yyjson_mut_arr_add_real(
+                    document, values, value);
+            }
+            yyjson_mut_obj_add_val(
+                document,
+                passes,
+                pass.pass.name.c_str(),
+                values);
+        }
+        yyjson_mut_obj_add_val(
+            document, chunk, "passes", passes);
+        yyjson_mut_arr_add_val(chunk_array, chunk);
+    }
+    yyjson_mut_obj_add_val(
+        document, root, "chunks", chunk_array);
+    yyjson_write_err error{};
+    const auto written = yyjson_mut_write_file(
+        path.string().c_str(),
+        document,
+        YYJSON_WRITE_PRETTY,
+        nullptr,
+        &error);
+    if (!written) {
+        std::cerr
+            << "error: could not write sample-chunk probe JSON: "
+            << (error.msg != nullptr ? error.msg : "unknown error")
+            << '\n';
+    }
+    yyjson_mut_doc_free(document);
+    return written;
+}
+
 }// namespace
 
 int main(int argc, char **argv) {
@@ -115,8 +202,11 @@ int main(int argc, char **argv) {
                "<export-directory> <output.ppm> "
                "[backend=fallback] [width] [height] [samples] "
                "[max-samples-per-dispatch=4] "
-               "[path-trace.json] [trace-x] [trace-y] "
-               "[trace-sample=0]\n";
+               "[path-trace.json|-] [trace-x] [trace-y] "
+               "[trace-sample=0] [sample-first=0] "
+               "[sample-count=samples-sample-first] "
+               "[sample-chunk-pixel.json] "
+               "[probe-chunk-size=1] [probe-full-frame=0]\n";
         return EXIT_FAILURE;
     }
     const auto bundle = std::filesystem::path{argv[1]};
@@ -175,7 +265,7 @@ int main(int argc, char **argv) {
     auto path_trace_x = width / 2u;
     auto path_trace_y = height / 2u;
     auto path_trace_sample = std::uint32_t{0u};
-    if (argc > 8) {
+    if (argc > 8 && std::string_view{argv[8]} != "-") {
         path_trace_output =
             std::filesystem::path{argv[8]};
     }
@@ -199,6 +289,62 @@ int main(int argc, char **argv) {
             return EXIT_FAILURE;
         }
         path_trace_sample = *value;
+    }
+    auto sample_first = std::uint32_t{0u};
+    if (argc > 12) {
+        auto value = parse_unsigned<std::uint32_t>(argv[12]);
+        if (!value || *value >= samples) {
+            return EXIT_FAILURE;
+        }
+        sample_first = *value;
+    }
+    auto sample_count = samples - sample_first;
+    if (argc > 13) {
+        auto value = parse_unsigned<std::uint32_t>(argv[13]);
+        if (!value || *value == 0u ||
+            static_cast<std::uint64_t>(sample_first) +
+                    static_cast<std::uint64_t>(*value) >
+                static_cast<std::uint64_t>(samples)) {
+            return EXIT_FAILURE;
+        }
+        sample_count = *value;
+    }
+    if (path_trace_output) {
+        if (argc <= 11) {
+            path_trace_sample = sample_first;
+        }
+        const auto sample_end =
+            static_cast<std::uint64_t>(sample_first) +
+            static_cast<std::uint64_t>(sample_count);
+        if (path_trace_sample < sample_first ||
+            static_cast<std::uint64_t>(path_trace_sample) >=
+                sample_end) {
+            return EXIT_FAILURE;
+        }
+    }
+    std::optional<std::filesystem::path> sample_chunk_output;
+    if (argc > 14) {
+        sample_chunk_output =
+            std::filesystem::path{argv[14]};
+        if (sample_chunk_output->empty()) {
+            return EXIT_FAILURE;
+        }
+    }
+    auto probe_chunk_size = std::uint32_t{1u};
+    if (argc > 15) {
+        auto value = parse_unsigned<std::uint32_t>(argv[15]);
+        if (!value || *value == 0u || *value > sample_count) {
+            return EXIT_FAILURE;
+        }
+        probe_chunk_size = *value;
+    }
+    auto probe_full_frame = false;
+    if (argc > 16) {
+        auto value = parse_unsigned<std::uint32_t>(argv[16]);
+        if (!value || *value > 1u) {
+            return EXIT_FAILURE;
+        }
+        probe_full_frame = *value != 0u;
     }
     auto path_trace_sink =
         path_trace_output
@@ -239,7 +385,13 @@ int main(int argc, char **argv) {
 
     const psycles::contract::RenderSettings settings{
         .full_extent = {.width = width, .height = height},
-        .window = {},
+        .window = sample_chunk_output && !probe_full_frame
+                      ? psycles::contract::PixelWindow{
+                            .x = path_trace_x,
+                            .y = height - 1u - path_trace_y,
+                            .width = 1u,
+                            .height = 1u}
+                      : psycles::contract::PixelWindow{},
         .seed = imported.seed,
         .transparent_background =
             imported.transparent_background,
@@ -336,11 +488,102 @@ int main(int argc, char **argv) {
         std::chrono::duration<double>(
             std::chrono::steady_clock::now() - session_begin)
             .count();
+    if (sample_chunk_output) {
+        const auto raster_y = height - 1u - path_trace_y;
+        psycles::io::PixelOutputSink pixel_sink{
+            path_trace_x, raster_y};
+        psycles::io::ProgressivePixelAccumulator accumulator;
+        std::vector<psycles::io::ProgressiveSampleChunk> records;
+        records.reserve(
+            (sample_count + probe_chunk_size - 1u) /
+            probe_chunk_size);
+        const auto render_begin =
+            std::chrono::steady_clock::now();
+        for (std::uint32_t offset = 0u;
+             offset < sample_count;) {
+            const auto absolute_sample = sample_first + offset;
+            const auto chunk_count = std::min(
+                probe_chunk_size, sample_count - offset);
+            if (!session->render_samples(
+                    {.first = absolute_sample,
+                     .count = chunk_count,
+                     .offset = 0u,
+                     .total = samples},
+                    pixel_sink) ||
+                pixel_sink.cancelled()) {
+                std::cerr
+                    << "error: sample-chunk pixel probe failed at "
+                    << absolute_sample << '\n';
+                return EXIT_FAILURE;
+            }
+            const auto &captures = pixel_sink.passes();
+            if (captures.size() != settings.passes.size()) {
+                std::cerr
+                    << "error: sample-chunk pixel probe returned "
+                    << captures.size() << " passes, expected "
+                    << settings.passes.size() << '\n';
+                return EXIT_FAILURE;
+            }
+            auto record = accumulator.append(
+                absolute_sample, chunk_count, captures);
+            if (!record) {
+                std::cerr
+                    << "error: sample-chunk pixel probe changed pass "
+                       "layout at "
+                    << absolute_sample << '\n';
+                return EXIT_FAILURE;
+            }
+            records.emplace_back(std::move(*record));
+            offset += chunk_count;
+        }
+        if (!sample_chunk_output->parent_path().empty()) {
+            std::filesystem::create_directories(
+                sample_chunk_output->parent_path());
+        }
+        if (!write_sample_chunk_probe(
+                *sample_chunk_output,
+                path_trace_x,
+                path_trace_y,
+                samples,
+                records)) {
+            return EXIT_FAILURE;
+        }
+        if (path_trace_output) {
+            if (!path_trace_output->parent_path().empty()) {
+                std::filesystem::create_directories(
+                    path_trace_output->parent_path());
+            }
+            if (!path_trace_sink->trace() ||
+                !write_raw_path_trace(
+                    *path_trace_sink->trace(),
+                    *path_trace_output)) {
+                return EXIT_FAILURE;
+            }
+        }
+        const auto render_seconds =
+            std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - render_begin)
+                .count();
+        std::cout
+            << "Luisa/" << backend_name << " compiled "
+            << imported.scene->geometries.size() << " geometries, "
+            << imported.scene->instances.size() << " instances, "
+            << imported.scene->materials.size() << " materials in "
+            << compile_seconds << " s\n"
+            << "Luisa shader JIT completed in "
+            << session_seconds << " s\n"
+            << "Captured " << records.size()
+            << " sample-chunk records for pixel ("
+            << path_trace_x << ", " << path_trace_y << ") in "
+            << render_seconds << " s: "
+            << *sample_chunk_output << '\n';
+        return EXIT_SUCCESS;
+    }
     psycles::io::MemoryOutputSink sink;
     const auto render_begin = std::chrono::steady_clock::now();
     if (!session->render_samples(
-            {.first = 0u,
-             .count = samples,
+            {.first = sample_first,
+             .count = sample_count,
              .offset = 0u,
              .total = samples},
             sink)) {
@@ -474,7 +717,9 @@ int main(int argc, char **argv) {
         << "Luisa shader JIT completed in "
         << session_seconds << " s\n"
         << "Rendered " << width << 'x' << height << " at "
-        << samples << " spp in " << render_seconds << " s: "
+        << sample_count << " spp from absolute sample range ["
+        << sample_first << ", " << sample_first + sample_count
+        << ") of " << samples << " in " << render_seconds << " s: "
         << output << '\n'
         << "Linear Combined: " << combined_path << '\n'
         << "Linear Normal:   " << normal_path << '\n'
