@@ -356,8 +356,15 @@ private:
             input = "Vector";
             output = "Value";
         } else if (
-            source.type == SocketType::vector &&
+            vector_like(source.type) &&
             target == SocketType::color) {
+            // Cycles treats vector, point, normal, and float3 as one
+            // component-preserving float3 family. Route the family through
+            // our canonical vector type instead of enumerating pairwise
+            // scene-specific casts.
+            if (source.type != SocketType::vector) {
+                source = conversion(source, SocketType::vector);
+            }
             node_type = compiler::node_type::vector_to_color;
             input = "Vector";
             output = "Color";
@@ -368,8 +375,12 @@ private:
             input = "Color";
             output = "Vector";
         } else if (
-            source.type == SocketType::vector &&
+            (source.type == SocketType::color ||
+             vector_like(source.type)) &&
             target == SocketType::normal) {
+            if (source.type != SocketType::vector) {
+                source = conversion(source, SocketType::vector);
+            }
             node_type = compiler::node_type::vector_to_normal;
             input = "Vector";
             output = "Normal";
@@ -392,22 +403,16 @@ private:
             input = "Value";
             output = "Vector";
         } else if (
-            source.type == SocketType::color &&
-            target == SocketType::normal) {
-            return conversion(
-                conversion(source, SocketType::vector),
-                target);
-        } else if (
-            source.type == SocketType::normal &&
-            target == SocketType::color) {
-            return conversion(
-                conversion(source, SocketType::vector),
-                target);
-        } else if (
             source.type == SocketType::floating &&
             target == SocketType::vector) {
             return conversion(
                 conversion(source, SocketType::color),
+                target);
+        } else if (
+            source.type == SocketType::floating &&
+            target == SocketType::normal) {
+            return conversion(
+                conversion(source, SocketType::vector),
                 target);
         }
 

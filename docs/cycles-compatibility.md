@@ -889,6 +889,14 @@ exact fallback/HIP/Vulkan coefficient regressions and Cycles CPU/HIP EXR
 differentials are recorded in
 [`validation/2026-08-04/volume-emission`](validation/2026-08-04/volume-emission/README.md).
 
+Implicit conversions among the supported color/vector/point/normal/float3
+family now follow Cycles' component-preserving law through a canonical typed
+vector route. The exact Barbershop `Geometry.Position -> Mix.B_Color` links
+remain live instead of falling back to zero. Importer regressions, all three
+Luisa backends, Cycles CPU/HIP EXR differentials, and inspected triptychs are
+recorded in
+[`validation/2026-08-04/geometry-float3-conversion`](validation/2026-08-04/geometry-float3-conversion/README.md).
+
 Adaptive sampling and denoising are exported and diagnosed but are not part of
 the path-integrator estimator. Psycles renders fixed-count, un-denoised linear
 passes; authoritative Cycles differential renders disable both. A connected

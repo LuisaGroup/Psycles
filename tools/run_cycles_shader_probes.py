@@ -47,6 +47,7 @@ _ALL_PROBES = (
     "gamma_color",
     "glass_transport",
     "geometry_attribute_outputs",
+    "geometry_position_color_conversion",
     "geometry_pointiness",
     "gradient_matrix",
     "gradient_spherical",
@@ -150,6 +151,10 @@ _REPORT_PASSES = (
 # when its purpose is to preserve Cycles' exact sample mapping.
 _PROBE_RATIO_GATES = {
     "geometry_attribute_outputs": {
+        "Combined": (0.99999, 1.00001),
+        "Emit": (0.99999, 1.00001),
+    },
+    "geometry_position_color_conversion": {
         "Combined": (0.99999, 1.00001),
         "Emit": (0.99999, 1.00001),
     },
@@ -281,6 +286,10 @@ _PROBE_RELATIVE_RMSE_GATES = {
     "geometry_attribute_outputs": {
         "Combined": 0.00001,
         "Emit": 0.00001,
+    },
+    "geometry_position_color_conversion": {
+        "Combined": 0.000001,
+        "Emit": 0.000001,
     },
     "geometry_pointiness": {
         "Combined": 0.00001,
