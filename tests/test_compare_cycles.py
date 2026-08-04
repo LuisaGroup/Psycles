@@ -54,6 +54,36 @@ class ChannelResolutionTests(unittest.TestCase):
                 ["R", "G", "B"], "DiffDir"
             )
 
+    def test_psycles_compact_volume_pass_names_are_aliases(self) -> None:
+        self.assertEqual(
+            self.comparison._find_cycles_channels(
+                [
+                    "ViewLayer.VolumeDir.R",
+                    "ViewLayer.VolumeDir.G",
+                    "ViewLayer.VolumeDir.B",
+                    "ViewLayer.VolumeInd.R",
+                    "ViewLayer.VolumeInd.G",
+                    "ViewLayer.VolumeInd.B",
+                ],
+                "Volume Direct",
+            ),
+            [0, 1, 2],
+        )
+        self.assertEqual(
+            self.comparison._find_cycles_channels(
+                [
+                    "ViewLayer.VolumeDir.R",
+                    "ViewLayer.VolumeDir.G",
+                    "ViewLayer.VolumeDir.B",
+                    "ViewLayer.VolumeInd.R",
+                    "ViewLayer.VolumeInd.G",
+                    "ViewLayer.VolumeInd.B",
+                ],
+                "Volume Indirect",
+            ),
+            [3, 4, 5],
+        )
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
