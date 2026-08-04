@@ -28,6 +28,10 @@ inline constexpr std::uint32_t type_microfacet_beckmann_glass = 24u;
 inline constexpr std::uint32_t type_microfacet_ggx_glass = 25u;
 inline constexpr std::uint32_t type_microfacet_multi_ggx_glass = 26u;
 inline constexpr std::uint32_t type_transparent = 30u;
+inline constexpr std::uint32_t type_bssrdf_burley = 31u;
+inline constexpr std::uint32_t type_bssrdf_random_walk = 32u;
+inline constexpr std::uint32_t type_bssrdf_random_walk_legacy = 33u;
+inline constexpr std::uint32_t type_bssrdf_random_walk_skin = 34u;
 inline constexpr std::uint32_t type_principled_virtual = 43u;
 
 inline constexpr std::uint32_t label_none = 0u;
@@ -102,6 +106,12 @@ label_from_events(luisa::compute::UInt events) noexcept {
         (events &
          static_cast<std::uint32_t>(
              contract::event_transparent)) != 0u);
+    label |= select(
+        0u,
+        label_subsurface_scatter,
+        (events &
+         static_cast<std::uint32_t>(
+             contract::event_subsurface)) != 0u);
     return label;
 }
 

@@ -4,6 +4,8 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/graph_surface_emission.cpp
     src/luisa/graph_surface_implementation.cpp
     src/luisa/graph_surface_physical_closures.cpp
+    src/luisa/bssrdf_closure_component.cpp
+    src/luisa/subsurface_exit_closure_component.cpp
     src/luisa/surface_closure_blocks.cpp
     src/luisa/surface_closure_visitor.cpp
     src/luisa/surface_closure_operations.cpp
@@ -86,6 +88,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_kernel_surface_geometry.cpp
     src/luisa/path_kernel_surface_scatter.cpp
     src/luisa/path_kernel_surface_shading.cpp
+    src/luisa/path_kernel_subsurface.cpp
     src/luisa/path_kernel_triangle_geometry.cpp
     src/luisa/path_kernel_triangle_primitive.cpp
     src/luisa/path_kernel_volume_boundary.cpp

@@ -46,16 +46,18 @@ struct CyclesKernelBounceLimits {
   std::uint32_t maximum_path_steps{};
 };
 
-// A path can scatter through at most `maximum` non-transparent surfaces and
-// max(transparent_maximum, 1) transparent surfaces before Cycles marks it for
-// termination. One final intersection is required to retain background or
-// surface-emission contribution. The cap bounds malformed scene input and
+// A path can scatter through at most `maximum` non-transparent surfaces. Each
+// one may require two scheduled surface iterations: a BSSRDF entry does not
+// advance Cycles' bounce counter, and its selected exit is shaded by a second
+// iteration whose synthetic diffuse bounce does. Add the independently
+// bounded transparent surfaces and one terminal intersection so background or
+// surface emission is retained. The cap bounds malformed scene input and
 // device work without changing any Blender-representable setting.
 [[nodiscard]] constexpr std::uint32_t
 cycles_path_step_limit(std::uint32_t synced_maximum,
                        std::uint32_t transparent_maximum) noexcept {
   const auto required =
-      static_cast<std::uint64_t>(synced_maximum) +
+      2u * static_cast<std::uint64_t>(synced_maximum) +
       static_cast<std::uint64_t>(std::max(transparent_maximum, 1u)) + 1u;
   return static_cast<std::uint32_t>(
       std::min<std::uint64_t>(required, cycles_device_path_step_cap));

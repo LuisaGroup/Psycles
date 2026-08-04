@@ -17,6 +17,7 @@ namespace psycles::luisa_backend {
 struct SurfaceClosureSelectionInput {
     Expr<std::uint32_t> kind;
     Expr<std::uint32_t> lobe;
+    Expr<std::uint32_t> bssrdf_method;
     Expr<float> allocation_weight;
     Expr<float> sample_weight;
     Expr<bool> setup_valid;
@@ -58,6 +59,13 @@ struct SurfaceClosureConditionalSampleCall {
     float singular_pdf{};
     float eta{};
     luisa::uint properties{};
+    luisa::uint bssrdf_method{};
+    luisa::float3 bssrdf_radius{};
+    luisa::float3 bssrdf_albedo{};
+    luisa::float3 bssrdf_normal{};
+    float bssrdf_ior{};
+    float bssrdf_roughness{};
+    float bssrdf_anisotropy{};
     bool valid{};
 };
 
@@ -79,6 +87,13 @@ LUISA_STRUCT(
     singular_pdf,
     eta,
     properties,
+    bssrdf_method,
+    bssrdf_radius,
+    bssrdf_albedo,
+    bssrdf_normal,
+    bssrdf_ior,
+    bssrdf_roughness,
+    bssrdf_anisotropy,
     valid) {};
 
 namespace psycles::luisa_backend {
@@ -90,6 +105,7 @@ inline constexpr std::uint32_t glossy = 1u << 2u;
 inline constexpr std::uint32_t glass = 1u << 3u;
 inline constexpr std::uint32_t transmission = 1u << 4u;
 inline constexpr std::uint32_t singular = 1u << 5u;
+inline constexpr std::uint32_t bssrdf = 1u << 6u;
 }// namespace surface_closure_sample_property
 
 [[nodiscard]] Float3 make_surface_closure_sampling_incoming(
@@ -212,6 +228,13 @@ class SurfaceClosureSelectedSample {
     Float _singular_pdf{0.0f};
     Float _eta{1.0f};
     UInt _properties{0u};
+    UInt _bssrdf_method{0u};
+    Float3 _bssrdf_radius{make_float3(0.0f)};
+    Float3 _bssrdf_albedo{make_float3(0.0f)};
+    Float3 _bssrdf_normal{make_float3(0.0f, 0.0f, 1.0f)};
+    Float _bssrdf_ior{1.4f};
+    Float _bssrdf_roughness{1.0f};
+    Float _bssrdf_anisotropy{0.0f};
     Bool _candidate_valid{true};
 
   public:

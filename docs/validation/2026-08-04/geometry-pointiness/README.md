@@ -128,6 +128,23 @@ Smoke is deprecated, and embedded `generate_customprops.py` is skipped because
 scripts are disabled. Those messages predate this implementation and are kept
 separate from Psycles' 52 material diagnostics.
 
+### Output-reachability follow-up
+
+A later full HIP render found that import success was not sufficient: eager
+lowering emitted unused outputs of a reachable Geometry node, so a dead
+Pointiness instruction in Barbershop's `Razor_Blade_Wood.001` caused the Luisa
+runtime to demand source data that the exporter had correctly omitted. The
+surface compiler now performs root reachability over its typed value,
+surface-closure and volume-closure DAGs and densely remaps the surviving IDs.
+The affected program shrank from 81 to 65 value instructions. This is a
+general output-level dead-code elimination pass, not a Pointiness exception.
+
+The Blender regression now includes the same nested Normal-only Geometry
+shape, and the fallback/HIP/Vulkan runtime regression proves both halves of
+the contract: dead Pointiness needs no source, while live Pointiness without a
+source is still rejected. The successful Barbershop HIP render and triptychs
+are recorded in the [native Burley checkpoint](../barbershop-burley-bssrdf/README.md).
+
 ## Regression gates
 
 The regression set includes an analytic split-cube quotient test, isolated and
@@ -135,10 +152,10 @@ invalid-topology cases, a Blender quad export proving that the original four
 edges are retained without a tessellation diagonal, C++ bundle import and
 lowering, and backend scene tests that reject missing sources and accept valid
 ones on fallback, HIP, and Vulkan. The Release build used all 32 build jobs.
-The complete suite passed `139/139` tests with 32 parallel lanes: 32.63 s on
-the first backend-cache population and 4.22 s on the final warm-cache run. The
-source-size gate passed for 369 first-party files (119,858 lines, 2,000-line
-per-file limit).
+After the output-reachability and native-Burley follow-ups, the complete suite
+passed `148/148` tests with 32 parallel lanes in 4.53 s on the warm backend
+caches. The source-size gate passed for 384 first-party files (125,493 lines,
+2,000-line per-file limit).
 
 Geometry remains `device_partial` in the versioned Cycles node inventory
 because its independent Tangent and Parametric outputs are not complete.

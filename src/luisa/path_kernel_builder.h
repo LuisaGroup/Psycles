@@ -243,6 +243,11 @@ struct PathSampleContext {
     Float optical_depth;
     Bool terminate_after_transparent;
     Bool terminate_on_next_surface;
+    // A successful BSSRDF traversal carries its exact selected intersection
+    // into the next shading iteration. Re-tracing a short ray would change
+    // the hit identity at shared edges and would not match Cycles.
+    Bool pending_subsurface_exit;
+    Var<luisa::compute::CommittedHit> pending_subsurface_hit;
 
     [[nodiscard]] Float3 trace_uint32(UInt value) const noexcept;
     void trace_write(UInt slot, Float3 value) const noexcept;
@@ -293,6 +298,7 @@ struct PathBounceContext {
     Float3 bsdf_sample;
     Var<luisa::compute::CommittedHit> hit;
     Float closest_surface_distance;
+    Bool subsurface_exit;
 };
 
 // Exactly one of analytic_light, surface, and background is true. The
@@ -431,7 +437,23 @@ class SurfaceScatterStage {
 
   public:
     virtual ~SurfaceScatterStage() noexcept = default;
-    virtual void emit(DirectLightingContext &context) const noexcept = 0;
+    struct Result {
+        SurfaceSample sample;
+        Bool subsurface;
+    };
+    [[nodiscard]] virtual Result
+    emit(DirectLightingContext &context) const noexcept = 0;
+};
+
+class SubsurfaceTransportStage {
+
+  public:
+    virtual ~SubsurfaceTransportStage() noexcept = default;
+    // Returns false when the sampled profile finds no valid same-object exit;
+    // Cycles terminates that path rather than substituting another closure.
+    [[nodiscard]] virtual Bool
+    emit(DirectLightingContext &context,
+         const SurfaceSample &sample) const noexcept = 0;
 };
 
 [[nodiscard]] std::unique_ptr<PathBounceSetupStage>
@@ -458,6 +480,8 @@ make_emissive_mesh_lighting_component(
 make_analytic_lighting_component(
     std::shared_ptr<const DirectLightTraceRecorder> trace);
 [[nodiscard]] std::unique_ptr<SurfaceScatterStage> make_surface_scatter_stage();
+[[nodiscard]] std::unique_ptr<SubsurfaceTransportStage>
+make_subsurface_transport_stage();
 
 class PathKernelPipeline {
 

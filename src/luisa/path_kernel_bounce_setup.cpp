@@ -37,6 +37,10 @@ class PathBounceSetupStageImpl final
             sample.ray_source_instance;
         auto &ray_source_primitive =
             sample.ray_source_primitive;
+        auto &pending_subsurface_exit =
+            sample.pending_subsurface_exit;
+        auto &pending_subsurface_hit =
+            sample.pending_subsurface_hit;
 
         continuation_probability = 1.0f;
         continuation_decided_in_volume =
@@ -93,42 +97,44 @@ class PathBounceSetupStageImpl final
                         tabulated_sobol::
                             surface_bsdf_dimension));
 
-        // Match Cycles' RaySelfPrimitives contract: the previous committed
-        // primitive is rejected by identity during traversal. This is
-        // independent of origin offset and remains active for transparent
-        // and non-transparent bounces.
-        Var<luisa::compute::CommittedHit> hit =
-            scene->accel
-                ->traverse(
-                    ray,
-                    {.visibility_mask =
-                         ray_visibility})
-                .on_surface_candidate(
-                    [&](luisa::compute::
-                            SurfaceCandidate
-                                &candidate) noexcept {
-                        auto candidate_hit =
-                            candidate.hit();
-                        $if(!surface_ray::
-                                same_primitive(
-                                    candidate_hit
-                                        ->inst,
-                                    candidate_hit
-                                        ->prim,
-                                    ray_source_instance,
-                                    ray_source_primitive)) {
-                            candidate.commit();
-                        };
-                    })
-                .on_procedural_candidate(
-                    [](luisa::compute::
-                           ProceduralCandidate &) noexcept {})
-                .trace();
+        const Bool subsurface_exit = pending_subsurface_exit;
+        Var<luisa::compute::CommittedHit> hit;
         Float closest_surface_distance =
             ray->t_max();
-        $if(!hit->miss()) {
-            closest_surface_distance =
-                hit->committed_ray_t;
+        $if(subsurface_exit) {
+            // The local BSSRDF traversal has already selected the exact
+            // intersection. Preserve it directly, as Cycles does between
+            // INTERSECT_SUBSURFACE and SHADE_SURFACE.
+            hit = pending_subsurface_hit;
+            closest_surface_distance = hit->committed_ray_t;
+            pending_subsurface_exit = false;
+        }
+        $else {
+            // Match Cycles' RaySelfPrimitives contract: the previous
+            // committed primitive is rejected by identity during traversal.
+            // This remains independent of the geometric origin offset.
+            hit = scene->accel
+                      ->traverse(
+                          ray,
+                          {.visibility_mask = ray_visibility})
+                      .on_surface_candidate(
+                          [&](luisa::compute::SurfaceCandidate
+                                  &candidate) noexcept {
+                              auto candidate_hit = candidate.hit();
+                              $if(!surface_ray::same_primitive(
+                                  candidate_hit->inst,
+                                  candidate_hit->prim,
+                                  ray_source_instance,
+                                  ray_source_primitive)) {
+                                  candidate.commit();
+                              };
+                          })
+                      .on_procedural_candidate(
+                          [](luisa::compute::ProceduralCandidate &) noexcept {})
+                      .trace();
+            $if(!hit->miss()) {
+                closest_surface_distance = hit->committed_ray_t;
+            };
         };
 
         return {
@@ -141,7 +147,8 @@ class PathBounceSetupStageImpl final
             std::move(bsdf_sample),
             std::move(hit),
             std::move(
-                closest_surface_distance)};
+                closest_surface_distance),
+            std::move(subsurface_exit)};
     }
 };
 

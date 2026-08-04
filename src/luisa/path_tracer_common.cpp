@@ -188,6 +188,13 @@ pack_surface_evaluation(
     result.eta = sample.eta;
     result.roughness = sample.roughness;
     result.runtime_flags = sample.runtime_flags;
+    result.bssrdf_method = sample.bssrdf_method;
+    result.bssrdf_radius = sample.bssrdf_radius;
+    result.bssrdf_albedo = sample.bssrdf_albedo;
+    result.bssrdf_normal = sample.bssrdf_normal;
+    result.bssrdf_ior = sample.bssrdf_ior;
+    result.bssrdf_roughness = sample.bssrdf_roughness;
+    result.bssrdf_anisotropy = sample.bssrdf_anisotropy;
     result.valid = select(0u, 1u, sample.valid);
     return result;
 }
@@ -206,6 +213,13 @@ pack_surface_evaluation(
         .eta = sample.eta,
         .roughness = sample.roughness,
         .runtime_flags = sample.runtime_flags,
+        .bssrdf_method = sample.bssrdf_method,
+        .bssrdf_radius = sample.bssrdf_radius,
+        .bssrdf_albedo = sample.bssrdf_albedo,
+        .bssrdf_normal = sample.bssrdf_normal,
+        .bssrdf_ior = sample.bssrdf_ior,
+        .bssrdf_roughness = sample.bssrdf_roughness,
+        .bssrdf_anisotropy = sample.bssrdf_anisotropy,
         .valid = sample.valid != 0u};
 }
 
@@ -256,6 +270,13 @@ pack_surface_sample_trace(
     result.roughness = trace.sample.roughness;
     result.runtime_flags =
         trace.sample.runtime_flags;
+    result.bssrdf_method = trace.sample.bssrdf_method;
+    result.bssrdf_radius = trace.sample.bssrdf_radius;
+    result.bssrdf_albedo = trace.sample.bssrdf_albedo;
+    result.bssrdf_normal = trace.sample.bssrdf_normal;
+    result.bssrdf_ior = trace.sample.bssrdf_ior;
+    result.bssrdf_roughness = trace.sample.bssrdf_roughness;
+    result.bssrdf_anisotropy = trace.sample.bssrdf_anisotropy;
     result.valid =
         select(0u, 1u, trace.sample.valid);
     result.closure_index = trace.closure_index;
@@ -287,6 +308,13 @@ unpack_surface_sample_trace(
             .eta = trace.eta,
             .roughness = trace.roughness,
             .runtime_flags = trace.runtime_flags,
+            .bssrdf_method = trace.bssrdf_method,
+            .bssrdf_radius = trace.bssrdf_radius,
+            .bssrdf_albedo = trace.bssrdf_albedo,
+            .bssrdf_normal = trace.bssrdf_normal,
+            .bssrdf_ior = trace.bssrdf_ior,
+            .bssrdf_roughness = trace.bssrdf_roughness,
+            .bssrdf_anisotropy = trace.bssrdf_anisotropy,
             .valid = trace.valid != 0u},
         .closure_index = trace.closure_index,
         .closure_type = trace.closure_type,

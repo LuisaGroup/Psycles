@@ -56,6 +56,34 @@ def _material(name: str, pointiness: bool) -> Any:
     return material
 
 
+def _normal_only_geometry_material(name: str) -> Any:
+    """Replicate a nested Geometry node whose Pointiness output is dead."""
+
+    material = bpy.data.materials.new(name)
+    material.use_nodes = True
+    tree = material.node_tree
+    tree.nodes.clear()
+    output = tree.nodes.new("ShaderNodeOutputMaterial")
+    diffuse = tree.nodes.new("ShaderNodeBsdfDiffuse")
+    tree.links.new(diffuse.outputs["BSDF"], output.inputs["Surface"])
+
+    group = bpy.data.node_groups.new(
+        f"{name} Nested Geometry", "ShaderNodeTree"
+    )
+    group.interface.new_socket(
+        name="Normal",
+        in_out="OUTPUT",
+        socket_type="NodeSocketVector",
+    )
+    geometry = group.nodes.new("ShaderNodeNewGeometry")
+    group_output = group.nodes.new("NodeGroupOutput")
+    group.links.new(geometry.outputs["Normal"], group_output.inputs["Normal"])
+    instance = tree.nodes.new("ShaderNodeGroup")
+    instance.node_tree = group
+    tree.links.new(instance.outputs["Normal"], diffuse.inputs["Normal"])
+    return material
+
+
 def _object(
     scene: Any,
     name: str,
@@ -109,8 +137,12 @@ def _main() -> None:
 
     pointiness_material = _material("Pointiness Material", True)
     plain_material = _material("Plain Material", False)
+    normal_material = _normal_only_geometry_material(
+        "Normal-only Geometry Material"
+    )
     _object(scene, "Pointiness Object", pointiness_material, -1.5)
     _object(scene, "Plain Object", plain_material, 1.5)
+    _object(scene, "Normal-only Geometry Object", normal_material, 4.5)
     bpy.context.view_layer.update()
 
     with tempfile.TemporaryDirectory(
@@ -133,11 +165,16 @@ def _main() -> None:
         }
         pointiness_geometry = geometry_by_name["Pointiness Object"]
         plain_geometry = geometry_by_name["Plain Object"]
+        normal_geometry = geometry_by_name["Normal-only Geometry Object"]
         source = pointiness_geometry.get("pointiness_source")
         if source is None:
             raise AssertionError("linked Pointiness source was not exported")
         if plain_geometry.get("pointiness_source") is not None:
             raise AssertionError("unused Pointiness source was exported")
+        if normal_geometry.get("pointiness_source") is not None:
+            raise AssertionError(
+                "dead nested Geometry.Pointiness output retained a source"
+            )
         if int(source["edge_count"]) != 4:
             raise AssertionError(
                 f"expected four pre-tessellation edges, got {source}"

@@ -16,6 +16,7 @@ namespace {
     return identity(
         closure.kind,
         closure.lobe,
+        closure.bssrdf_method,
         closure.allocation_weight,
         closure.setup_valid,
         closure.roughness,
@@ -69,6 +70,9 @@ aov_contribution(
     const auto is_refraction =
         closure.kind == static_cast<std::uint32_t>(
                             SurfaceClosureKind::refraction);
+    const auto is_bssrdf =
+        closure.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::bssrdf);
     const auto is_dielectric = is_glass | is_refraction;
     const auto generic_glossy =
         (is_principled & !is_sheen) | is_glossy;
@@ -90,7 +94,7 @@ aov_contribution(
         is_sheen);
 
     const auto diffuse_family =
-        is_diffuse | is_translucent;
+        is_diffuse | is_translucent | is_bssrdf;
     const auto diffuse_albedo = select(
         select(
             make_float3(0.0f),
@@ -156,6 +160,7 @@ make_surface_closure_identity_callable() noexcept {
     return [](
                UInt kind,
                UInt lobe,
+               UInt bssrdf_method,
                Float allocation_weight,
                Bool setup_valid,
                Float roughness,
@@ -166,6 +171,8 @@ make_surface_closure_identity_callable() noexcept {
             detail::SurfaceClosureIdentityExpression{
                 .kind = Expr<std::uint32_t>{kind.expression()},
                 .lobe = Expr<std::uint32_t>{lobe.expression()},
+                .bssrdf_method = Expr<std::uint32_t>{
+                    bssrdf_method.expression()},
                 .allocation_weight =
                     Expr<float>{allocation_weight.expression()},
                 .setup_valid =

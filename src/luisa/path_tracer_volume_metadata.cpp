@@ -263,6 +263,11 @@ cycles_program_closure_allocation_count(
             case compiler::ClosureOperation::transparent:
                 add(1u);
                 break;
+            case compiler::ClosureOperation::subsurface:
+                // Cycles reserves the BSSRDF plus per-channel diffuse
+                // fallback storage for radii below BSSRDF_MIN_RADIUS.
+                add(3u);
+                break;
             case compiler::ClosureOperation::glossy:
                 // Cycles counts MULTI_GGX as a two-closure family. The
                 // lowered instruction retains this static Distribution

@@ -246,7 +246,7 @@ private:
                     material_flag_use_bump_map_correction) != 0u,
             .back_facing = back_facing};
         Float3 shadow_shading_normal = shading_normal;
-        $if(triangle_smooth &
+        $if((!bounce.subsurface_exit) & triangle_smooth &
             (instance.shadow_terminator_geometry_offset > 0.0f)) {
             shadow_shading_normal = surface_shading_normal(surface_tag, point);
         };
@@ -288,7 +288,9 @@ private:
                                         .reflective_caustics =
                                             path_reflective_caustics,
                                         .refractive_caustics =
-                                            path_refractive_caustics};
+                                            path_refractive_caustics,
+                                        .subsurface_exit =
+                                            bounce.subsurface_exit};
         auto blur_pdf = kernel_parameters.filter_glossy * minimum_bsdf_pdf;
         auto filter_glossy_enabled =
             kernel_parameters.filter_glossy < std::numeric_limits<float>::max();

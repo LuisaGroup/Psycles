@@ -174,6 +174,7 @@ PrincipledBaseComponent::evaluate(const TracedClosure &closure,
     return {.metallic = metallic,
             .transmission = transmission,
             .dielectric = dielectric,
+            .base_weight = lower_weight,
             .diffuse_weight = max(lower_weight * base_color, make_float3(0.0f))};
 }
 

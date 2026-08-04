@@ -322,9 +322,21 @@ enum class ClosureOperation : std::uint8_t {
     glass,
     emission,
     transparent,
+    subsurface,
     add,
     mix,
     refraction
+};
+
+// Static Cycles BSSRDF family selected by a Blender node property. Keeping
+// this out of the dynamically typed value stream makes the shader topology
+// (and therefore the Luisa JIT specialization) describe the transport model
+// exactly; only authored numeric sockets remain device values.
+enum class BssrdfMethod : std::uint8_t {
+    burley,
+    random_walk,
+    random_walk_legacy,
+    random_walk_skin
 };
 
 // Scheduling contract for Cycles' next-event light-shader evaluation. This is
@@ -347,6 +359,9 @@ struct ClosureInstruction {
     ValueExpressionId subsurface_weight;
     ValueExpressionId subsurface_radius;
     ValueExpressionId subsurface_scale;
+    ValueExpressionId subsurface_ior;
+    ValueExpressionId subsurface_anisotropy;
+    BssrdfMethod subsurface_method{BssrdfMethod::random_walk};
     ValueExpressionId transmission_weight;
     ValueExpressionId metallic;
     ValueExpressionId ior;
@@ -433,6 +448,7 @@ private:
     std::vector<VolumeInstruction> _volume_instructions;
     ClosureExpressionId _root;
     VolumeExpressionId _volume_root;
+    ValueExpressionId _displacement_root;
     EmissionEvaluationMode _emission_evaluation{
         EmissionEvaluationMode::none};
 
@@ -444,7 +460,8 @@ public:
         std::vector<ClosureInstruction> closure_instructions,
         ClosureExpressionId root,
         std::vector<VolumeInstruction> volume_instructions = {},
-        VolumeExpressionId volume_root = {}) noexcept;
+        VolumeExpressionId volume_root = {},
+        ValueExpressionId displacement_root = {}) noexcept;
 
     [[nodiscard]] std::uint64_t structure_signature() const noexcept {
         return _structure_signature;
@@ -469,6 +486,10 @@ public:
     }
     [[nodiscard]] VolumeExpressionId volume_root() const noexcept {
         return _volume_root;
+    }
+    [[nodiscard]] ValueExpressionId
+    displacement_root() const noexcept {
+        return _displacement_root;
     }
     [[nodiscard]] EmissionEvaluationMode
     emission_evaluation() const noexcept {

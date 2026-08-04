@@ -1,4 +1,5 @@
 #include "surface_program_builder.h"
+#include "surface_program_compaction.h"
 
 #include <cstdlib>
 #include <utility>
@@ -710,21 +711,60 @@ SurfaceProgramBuilder::build() {
         }
     }
 
+    ValueExpressionId lowered_displacement_root;
+    const auto &displacement_root =
+        _shader.graph().root(
+            contract::ShaderDomain::displacement);
+    if (displacement_root) {
+        auto iter = _outputs.find(
+            {.node = displacement_root->node,
+             .socket = displacement_root->socket});
+        if (iter == _outputs.end()) {
+            diagnose(
+                SurfaceProgramDiagnosticCode::missing_output,
+                "displacement root was not lowered",
+                displacement_root->node,
+                displacement_root->socket);
+        } else if (
+            const auto *value =
+                std::get_if<ValueExpressionId>(
+                    &iter->second)) {
+            lowered_displacement_root = *value;
+        } else {
+            diagnose(
+                SurfaceProgramDiagnosticCode::type_mismatch,
+                "displacement root did not lower to a value",
+                displacement_root->node,
+                displacement_root->socket);
+        }
+    }
+
     if (!_diagnostics.empty()) {
         return {
             .program = nullptr,
             .diagnostics = std::move(_diagnostics)};
     }
 
+    auto storage = compact_surface_program(
+        SurfaceProgramStorage{
+            .parameters = std::move(_parameters),
+            .values = std::move(_value_instructions),
+            .closures = std::move(_closure_instructions),
+            .root = lowered_root,
+            .volumes = std::move(_volume_instructions),
+            .volume_root = lowered_volume_root,
+            .displacement_root =
+                lowered_displacement_root});
     return {
         .program = std::make_shared<const SurfaceProgram>(
             _shader.analysis().structure_signature,
-            std::move(_parameters),
-            std::move(_value_instructions),
-            std::move(_closure_instructions),
-            lowered_root,
-            std::move(_volume_instructions),
-            lowered_volume_root),
+            std::move(storage.parameters),
+            std::move(storage.values),
+            std::move(storage.closures),
+            storage.root,
+            std::move(storage.volumes),
+            storage.volume_root,
+            storage.displacement_root),
         .diagnostics = {}};
 }
 

@@ -33,6 +33,8 @@ class PathKernelPipeline::Impl {
     std::vector<std::unique_ptr<DirectLightingComponent>> direct_lighting;
     std::unique_ptr<SurfaceScatterStage> surface_scatter{
         make_surface_scatter_stage()};
+    std::unique_ptr<SubsurfaceTransportStage> subsurface_transport{
+        make_subsurface_transport_stage()};
 
     explicit Impl(
         const PathKernelConfig &config)
@@ -81,7 +83,11 @@ void PathKernelPipeline::emit(PathSampleContext &sample) const noexcept {
         // at which volume transport is inserted.
         UInt previous_analytic_light =
             surface_ray::invalid_primitive;
-        Bool search_events = true;
+        // A successful spatial BSSRDF query already selected an exact
+        // same-object surface hit.  Cycles shades that stored hit directly;
+        // tracing the synthetic exit ray again would make the result depend
+        // on an epsilon and on backend-specific BVH traversal.
+        Bool search_events = !bounce.subsurface_exit;
         Bool path_terminated = false;
         Bool volume_scattered = false;
         $while(search_events &
@@ -145,7 +151,18 @@ void PathKernelPipeline::emit(PathSampleContext &sample) const noexcept {
                 }
             };
         }
-        _impl->surface_scatter->emit(lighting);
+        const auto scatter = _impl->surface_scatter->emit(lighting);
+        $if(scatter.subsurface) {
+            const auto transported =
+                _impl->subsurface_transport->emit(
+                    lighting, scatter.sample);
+            $if(transported) {
+                $continue;
+            }
+            $else {
+                $break;
+            };
+        };
     };
 }
 

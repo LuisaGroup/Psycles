@@ -33,7 +33,13 @@ SurfaceClosureExpression::SurfaceClosureExpression(
       reflection_tint{closure.reflection_tint.expression()},
       transmission_tint{closure.transmission_tint.expression()},
       preserve_ggx_energy{closure.preserve_ggx_energy.expression()},
-      beckmann{closure.beckmann.expression()} {}
+      beckmann{closure.beckmann.expression()},
+      bssrdf_method{closure.bssrdf_method.expression()},
+      bssrdf_radius{closure.bssrdf_radius.expression()},
+      bssrdf_albedo{closure.bssrdf_albedo.expression()},
+      bssrdf_ior{closure.bssrdf_ior.expression()},
+      bssrdf_roughness{closure.bssrdf_roughness.expression()},
+      bssrdf_anisotropy{closure.bssrdf_anisotropy.expression()} {}
 
 SurfaceClosureRecord SurfaceClosureExpression::reference() const noexcept {
     return {
@@ -62,7 +68,13 @@ SurfaceClosureRecord SurfaceClosureExpression::reference() const noexcept {
         .reflection_tint = Float3{reflection_tint.expression()},
         .transmission_tint = Float3{transmission_tint.expression()},
         .preserve_ggx_energy = Bool{preserve_ggx_energy.expression()},
-        .beckmann = Bool{beckmann.expression()}};
+        .beckmann = Bool{beckmann.expression()},
+        .bssrdf_method = UInt{bssrdf_method.expression()},
+        .bssrdf_radius = Float3{bssrdf_radius.expression()},
+        .bssrdf_albedo = Float3{bssrdf_albedo.expression()},
+        .bssrdf_ior = Float{bssrdf_ior.expression()},
+        .bssrdf_roughness = Float{bssrdf_roughness.expression()},
+        .bssrdf_anisotropy = Float{bssrdf_anisotropy.expression()}};
 }
 
 SurfaceClosureExpressionVisitor::SurfaceClosureExpressionVisitor(

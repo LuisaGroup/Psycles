@@ -3,6 +3,7 @@
 #include <psycles/luisa/path_tracer.h>
 
 #include <cstdlib>
+#include <cstdint>
 #include <iostream>
 #include <string_view>
 #include <utility>
@@ -35,20 +36,38 @@ using namespace psycles::contract;
     return graph;
 }
 
+[[nodiscard]] ShaderGraph normal_only_geometry_shader() {
+    ShaderGraph graph;
+    const auto geometry =
+        graph.add_node(node_type::geometry, "Raw Geometry");
+    const auto diffuse =
+        graph.add_node(node_type::diffuse_bsdf, "Diffuse");
+    static_cast<void>(graph.connect(
+        {.node = geometry, .socket = "Normal"},
+        diffuse,
+        "Normal"));
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = diffuse, .socket = "Closure"});
+    return graph;
+}
+
 [[nodiscard]] SceneSnapshot pointiness_scene(
-    const bool include_source) {
+    ShaderGraph shader,
+    const bool include_source,
+    const std::uint64_t revision) {
     constexpr MaterialId material_id{1u};
     constexpr GeometryId geometry_id{2u};
     constexpr InstanceId instance_id{3u};
     constexpr CameraId camera_id{4u};
 
     SceneSnapshot scene;
-    scene.revision = 1u;
+    scene.revision = revision;
     scene.materials.emplace(
         material_id,
         MaterialDesc{
             .name = "Pointiness material",
-            .shader = pointiness_shader()});
+            .shader = std::move(shader)});
 
     TriangleMeshDesc mesh;
     mesh.name = "Pointiness triangle";
@@ -98,7 +117,7 @@ int main(int argc, char **argv) {
         std::move(device), {}};
 
     const auto rejected = renderer.compile_scene(
-        pointiness_scene(false));
+        pointiness_scene(pointiness_shader(), false, 1u));
     if (rejected.ok()) {
         std::cerr << "missing Pointiness source was accepted on "
                   << backend << '\n';
@@ -116,8 +135,24 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
+    // Blender Geometry nodes expose every output in the raw graph. Using
+    // Normal must not make the dead Pointiness output an attribute demand.
+    // This is the topology found in Barbershop's Razor_Blade_Wood.001.
+    const auto normal_only = renderer.compile_scene(
+        pointiness_scene(
+            normal_only_geometry_shader(), false, 2u));
+    if (!normal_only.ok()) {
+        for (const auto &diagnostic : normal_only.diagnostics) {
+            std::cerr << diagnostic.message << '\n';
+        }
+        std::cerr
+            << "dead Geometry.Pointiness output required a source on "
+            << backend << '\n';
+        return EXIT_FAILURE;
+    }
+
     const auto accepted = renderer.compile_scene(
-        pointiness_scene(true));
+        pointiness_scene(pointiness_shader(), true, 3u));
     if (!accepted.ok()) {
         for (const auto &diagnostic : accepted.diagnostics) {
             std::cerr << diagnostic.message << '\n';

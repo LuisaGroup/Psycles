@@ -134,6 +134,11 @@ struct SurfaceQuery {
     // transport is enabled, with the disabled Fresnel branch carrying zero
     // tint.
     Bool refractive_caustics{true};
+    // The Cycles subsurface intersection kernel shades the selected exit
+    // point with one synthetic unit Lambert closure. This is integrator
+    // state, not a material rewrite: the original graph remains untouched
+    // and is still evaluated at ordinary surface entries.
+    Bool subsurface_exit{false};
 };
 
 // Cycles sampled-light visibility is deliberately separate from the path
@@ -208,7 +213,8 @@ enum class SurfaceClosureKind : std::uint32_t {
     glossy,
     glass,
     transparent,
-    refraction
+    refraction,
+    bssrdf
 };
 
 enum class SurfaceClosureLobe : std::uint32_t {
@@ -218,6 +224,13 @@ enum class SurfaceClosureLobe : std::uint32_t {
     metallic,
     transmission,
     dielectric
+};
+
+enum class SurfaceBssrdfMethod : std::uint32_t {
+    burley,
+    random_walk,
+    random_walk_legacy,
+    random_walk_skin
 };
 
 // Cycles kernel/types.h::MAX_CLOSURE. Scene analysis may specialize to a
@@ -260,6 +273,12 @@ struct SurfaceClosureRecord {
     Float3 transmission_tint;
     Bool preserve_ggx_energy;
     Bool beckmann;
+    UInt bssrdf_method;
+    Float3 bssrdf_radius;
+    Float3 bssrdf_albedo;
+    Float bssrdf_ior;
+    Float bssrdf_roughness;
+    Float bssrdf_anisotropy;
 
     [[nodiscard]] static SurfaceClosureRecord zero() noexcept {
         return {
@@ -290,7 +309,14 @@ struct SurfaceClosureRecord {
             .reflection_tint = make_float3(0.0f),
             .transmission_tint = make_float3(0.0f),
             .preserve_ggx_energy = false,
-            .beckmann = false};
+            .beckmann = false,
+            .bssrdf_method = static_cast<std::uint32_t>(
+                SurfaceBssrdfMethod::random_walk),
+            .bssrdf_radius = make_float3(0.0f),
+            .bssrdf_albedo = make_float3(0.0f),
+            .bssrdf_ior = 1.4f,
+            .bssrdf_roughness = 1.0f,
+            .bssrdf_anisotropy = 0.0f};
     }
 };
 
@@ -326,6 +352,12 @@ struct SurfaceClosureExpression {
     Expr<luisa::float3> transmission_tint;
     Expr<bool> preserve_ggx_energy;
     Expr<bool> beckmann;
+    Expr<std::uint32_t> bssrdf_method;
+    Expr<luisa::float3> bssrdf_radius;
+    Expr<luisa::float3> bssrdf_albedo;
+    Expr<float> bssrdf_ior;
+    Expr<float> bssrdf_roughness;
+    Expr<float> bssrdf_anisotropy;
 
     explicit SurfaceClosureExpression(
         const SurfaceClosureRecord &closure) noexcept;
@@ -381,6 +413,13 @@ struct SurfaceSample {
     Float eta;
     Float2 roughness;
     UInt runtime_flags;
+    UInt bssrdf_method;
+    Float3 bssrdf_radius;
+    Float3 bssrdf_albedo;
+    Float3 bssrdf_normal;
+    Float bssrdf_ior;
+    Float bssrdf_roughness;
+    Float bssrdf_anisotropy;
     Bool valid;
 
     [[nodiscard]] static SurfaceSample zero() noexcept {
@@ -390,6 +429,14 @@ struct SurfaceSample {
             .eta = 1.0f,
             .roughness = make_float2(0.0f),
             .runtime_flags = 0u,
+            .bssrdf_method = static_cast<std::uint32_t>(
+                SurfaceBssrdfMethod::random_walk),
+            .bssrdf_radius = make_float3(0.0f),
+            .bssrdf_albedo = make_float3(0.0f),
+            .bssrdf_normal = make_float3(0.0f, 0.0f, 1.0f),
+            .bssrdf_ior = 1.4f,
+            .bssrdf_roughness = 1.0f,
+            .bssrdf_anisotropy = 0.0f,
             .valid = false};
     }
 };

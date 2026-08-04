@@ -814,10 +814,22 @@ int main(int argc, char **argv) {
         [&](BufferFloat4 parameters, BufferFloat4 output) noexcept {
             ParameterShaderServices services{parameters};
             const auto point = make_surface_point();
+            const auto query = SurfaceQuery{
+                .lobe_mask = ~std::uint32_t{0u},
+                .transport_mode = static_cast<std::uint32_t>(
+                    TransportMode::radiance),
+                .glossy_filter_roughness = 0.0f};
             const auto closure = surfaces.closure_trace(
                 UInt{subsurface_surface_tag}, services, point, 1u);
             const auto aov = surfaces.aov(
                 UInt{subsurface_surface_tag}, services, point);
+            const auto sample = surfaces.sample_trace(
+                UInt{subsurface_surface_tag},
+                services,
+                point,
+                0.99f,
+                make_float2(0.37f, 0.61f),
+                query);
             output.write(0u,
                 make_float4(closure.weight,
                     select(0.0f, 1.0f, closure.valid)));
@@ -828,6 +840,28 @@ int main(int argc, char **argv) {
                     closure.sample_weight,
                     0.0f,
                     0.0f));
+            output.write(3u,
+                make_float4(cast<float>(sample.closure_index),
+                    cast<float>(sample.closure_type),
+                    sample.closure_sample_weight,
+                    sample.selection_rescaled));
+            output.write(4u,
+                make_float4(sample.sample.evaluation.f,
+                    sample.sample.evaluation.pdf));
+            output.write(5u,
+                make_float4(sample.sample.bssrdf_radius,
+                    cast<float>(sample.sample.bssrdf_method)));
+            output.write(6u,
+                make_float4(sample.sample.bssrdf_albedo,
+                    sample.sample.bssrdf_ior));
+            output.write(7u,
+                make_float4(sample.sample.bssrdf_normal,
+                    sample.sample.bssrdf_roughness));
+            output.write(8u,
+                make_float4(sample.sample.bssrdf_anisotropy,
+                    cast<float>(sample.sample.evaluation.events),
+                    select(0.0f, 1.0f, sample.sample.valid),
+                    select(0.0f, 1.0f, sample.closure_valid)));
         };
 
     Kernel1D evaluate_principled_emission =
@@ -1212,7 +1246,7 @@ int main(int argc, char **argv) {
         parameter_data(*subsurface_program.program);
     auto subsurface_parameter_buffer =
         device.create_buffer<luisa::float4>(subsurface_parameters.size());
-    auto subsurface_output = device.create_buffer<luisa::float4>(3u);
+    auto subsurface_output = device.create_buffer<luisa::float4>(9u);
     const auto principled_emission_parameters =
         parameter_data(*principled_emission_program.program);
     auto principled_emission_parameter_buffer =
@@ -1277,7 +1311,7 @@ int main(int argc, char **argv) {
     std::array<luisa::float4, 11u> actual{};
     std::array<luisa::float4, 8u> physical_actual{};
     std::array<luisa::float4, 4u> transparent_order_actual{};
-    std::array<luisa::float4, 3u> subsurface_actual{};
+    std::array<luisa::float4, 9u> subsurface_actual{};
     std::array<luisa::float4, 2u>
         principled_emission_actual{};
     std::array<luisa::float4, 6u>
@@ -1610,18 +1644,48 @@ int main(int argc, char **argv) {
     const auto subsurface_weight = subsurface_actual[0u];
     const auto subsurface_aov = subsurface_actual[1u];
     const auto subsurface_meta = subsurface_actual[2u];
+    const auto subsurface_sample_meta = subsurface_actual[3u];
+    const auto subsurface_sample = subsurface_actual[4u];
+    const auto subsurface_radius = subsurface_actual[5u];
+    const auto subsurface_albedo = subsurface_actual[6u];
+    const auto subsurface_normal = subsurface_actual[7u];
+    const auto subsurface_payload_meta = subsurface_actual[8u];
     if (!approximately_equal(subsurface_weight.w, 1.0f) ||
         !approximately_equal(subsurface_aov.w, 2.0f) ||
         !approximately_equal(subsurface_meta.x,
-            static_cast<float>(cycles_closure::type_diffuse)) ||
+            static_cast<float>(
+                cycles_closure::type_bssrdf_random_walk)) ||
         !(subsurface_meta.y > 0.0f) ||
-        !(subsurface_weight.x > subsurface_weight.y &&
-            subsurface_weight.z > subsurface_weight.y &&
-            subsurface_weight.x * subsurface_aov.z >
-                subsurface_weight.z * subsurface_aov.x) ||
-        !(subsurface_aov.z > subsurface_aov.x &&
-            subsurface_aov.x > subsurface_aov.y)) {
-        std::cerr << "Principled subsurface approximation failed on "
+        !approximately_equal(subsurface_aov,
+            luisa::float4{subsurface_weight.x,
+                subsurface_weight.y,
+                subsurface_weight.z,
+                2.0f}) ||
+        !approximately_equal(subsurface_sample_meta.x, 1.0f) ||
+        !approximately_equal(subsurface_sample_meta.y,
+            static_cast<float>(
+                cycles_closure::type_bssrdf_random_walk)) ||
+        !approximately_equal(
+            subsurface_sample_meta.z, subsurface_meta.y) ||
+        !approximately_equal(subsurface_sample.w, 1.0f) ||
+        !(subsurface_sample.x > 0.0f &&
+            subsurface_sample.y > 0.0f &&
+            subsurface_sample.z > 0.0f) ||
+        !approximately_equal(subsurface_radius,
+            luisa::float4{3.0f,
+                0.6f,
+                0.3f,
+                static_cast<float>(SurfaceBssrdfMethod::random_walk)}) ||
+        !approximately_equal(subsurface_albedo,
+            luisa::float4{0.35f, 0.24f, 0.8f, 1.45f}) ||
+        !approximately_equal(subsurface_normal,
+            luisa::float4{0.0f, 0.0f, 1.0f, 0.09f}) ||
+        !approximately_equal(subsurface_payload_meta.x, 0.0f) ||
+        !approximately_equal(subsurface_payload_meta.y,
+            static_cast<float>(event_subsurface)) ||
+        !approximately_equal(subsurface_payload_meta.z, 1.0f) ||
+        !approximately_equal(subsurface_payload_meta.w, 1.0f)) {
+        std::cerr << "Native Principled BSSRDF contract failed on "
                   << backend << ": weight {" << subsurface_weight.x
                   << ", " << subsurface_weight.y << ", "
                   << subsurface_weight.z << ", "
@@ -1630,7 +1694,27 @@ int main(int argc, char **argv) {
                   << ", " << subsurface_aov.z << ", "
                   << subsurface_aov.w << "}, meta {"
                   << subsurface_meta.x << ", "
-                  << subsurface_meta.y << "}\n";
+                  << subsurface_meta.y << "}, sample meta {"
+                  << subsurface_sample_meta.x << ", "
+                  << subsurface_sample_meta.y << ", "
+                  << subsurface_sample_meta.z << ", "
+                  << subsurface_sample_meta.w << "}, radius {"
+                  << subsurface_radius.x << ", "
+                  << subsurface_radius.y << ", "
+                  << subsurface_radius.z << ", "
+                  << subsurface_radius.w << "}, albedo/ior {"
+                  << subsurface_albedo.x << ", "
+                  << subsurface_albedo.y << ", "
+                  << subsurface_albedo.z << ", "
+                  << subsurface_albedo.w << "}, normal/roughness {"
+                  << subsurface_normal.x << ", "
+                  << subsurface_normal.y << ", "
+                  << subsurface_normal.z << ", "
+                  << subsurface_normal.w << "}, payload meta {"
+                  << subsurface_payload_meta.x << ", "
+                  << subsurface_payload_meta.y << ", "
+                  << subsurface_payload_meta.z << ", "
+                  << subsurface_payload_meta.w << "}\n";
         return EXIT_FAILURE;
     }
 

@@ -31,6 +31,11 @@ public:
                 "Distribution",
                 SocketValue::string(context.node_property_text(
                     node, "distribution", "GGX"))));
+            static_cast<void>(context.graph().set_property(
+                id,
+                "SubsurfaceMethod",
+                SocketValue::string(context.node_property_text(
+                    node, "subsurface_method", "RANDOM_WALK"))));
             static_cast<void>(context.bind(
                 id,
                 "BaseColor",
@@ -75,24 +80,22 @@ public:
                 SocketType::floating));
             static_cast<void>(context.bind(
                 id,
+                "SubsurfaceIOR",
+                node,
+                "Subsurface IOR",
+                SocketType::floating));
+            static_cast<void>(context.bind(
+                id,
+                "SubsurfaceAnisotropy",
+                node,
+                "Subsurface Anisotropy",
+                SocketType::floating));
+            static_cast<void>(context.bind(
+                id,
                 "TransmissionWeight",
                 node,
                 "Transmission Weight",
                 SocketType::floating));
-            auto *subsurface_weight =
-                context.raw_input(node, "Subsurface Weight");
-            const auto uses_subsurface =
-                subsurface_weight != nullptr &&
-                (boolean(member(subsurface_weight, "linked")) ||
-                    number(member(subsurface_weight, "default")) >
-                        1.0e-5f);
-            if (uses_subsurface) {
-                context.warn_once(
-                    "principled-subsurface-approximation:" + node_name,
-                    "Principled subsurface transport uses a "
-                    "radius-weighted diffuse approximation; "
-                    "spatial BSSRDF random walks are not yet implemented");
-            }
             static_cast<void>(context.bind(
                 id, "IOR", node, "IOR", SocketType::floating));
             static_cast<void>(context.bind(
@@ -171,6 +174,30 @@ public:
                 SocketType::floating));
             static_cast<void>(context.bind(
                 id, "Normal", node, "Normal", SocketType::normal));
+            return finish({
+                .ref = {.node = id, .socket = "Closure"},
+                .type = SocketType::closure});
+        }
+        if (type == "SUBSURFACE_SCATTERING") {
+            const auto id = context.graph().add_node(
+                compiler::node_type::subsurface_scattering,
+                node_name);
+            static_cast<void>(context.graph().set_property(
+                id,
+                "Method",
+                SocketValue::string(context.node_property_text(
+                    node, "falloff", "RANDOM_WALK"))));
+            for (const auto &[target, source, socket_type] : {
+                     std::tuple{"Color", "Color", SocketType::color},
+                     std::tuple{"Scale", "Scale", SocketType::floating},
+                     std::tuple{"Radius", "Radius", SocketType::vector},
+                     std::tuple{"IOR", "IOR", SocketType::floating},
+                     std::tuple{"Roughness", "Roughness", SocketType::floating},
+                     std::tuple{"Anisotropy", "Anisotropy", SocketType::floating},
+                     std::tuple{"Normal", "Normal", SocketType::normal}}) {
+                static_cast<void>(context.bind(
+                    id, target, node, source, socket_type));
+            }
             return finish({
                 .ref = {.node = id, .socket = "Closure"},
                 .type = SocketType::closure});

@@ -35,6 +35,7 @@ make_surface_closure_sampling_callables(
             Bool use_bump_map_correction,
             UInt kind,
             UInt lobe,
+            UInt bssrdf_method,
             Float allocation_weight,
             Float sample_weight,
             Bool setup_valid,
@@ -58,6 +59,8 @@ make_surface_closure_sampling_callables(
                     kind.expression()},
                 .lobe = Expr<std::uint32_t>{
                     lobe.expression()},
+                .bssrdf_method = Expr<std::uint32_t>{
+                    bssrdf_method.expression()},
                 .allocation_weight = Expr<float>{
                     allocation_weight.expression()},
                 .sample_weight = Expr<float>{
@@ -174,6 +177,7 @@ CallableSurfaceClosureSamplingOperation::selection(
         _selection_context.use_bump_map_correction,
         closure.kind,
         closure.lobe,
+        closure.bssrdf_method,
         closure.allocation_weight,
         closure.sample_weight,
         closure.setup_valid,
