@@ -119,6 +119,13 @@ EnvironmentCallables make_environment_callables(
                             .object_random = 0.0f,
                             .particle_index = 0u,
                             .random_per_island = 0.0f,
+                            .is_curve = false,
+                            .curve_intercept = 0.0f,
+                            .curve_length = 0.0f,
+                            .curve_thickness = 0.0f,
+                            .curve_tangent_normal =
+                                make_float3(0.0f),
+                            .curve_random = 0.0f,
                             .ray_visibility = 0u,
                             .ray_events = 0u,
                             .ray_depth = 0u,

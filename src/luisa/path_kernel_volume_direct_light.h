@@ -13,8 +13,10 @@ struct VolumeDirectLightSample {
     Float3 radiance;
     Float pdf;
     Float maximum_distance;
-    UInt light_instance;
+    UInt light_object;
     UInt light_primitive;
+    UInt light_instance;
+    UInt light_accel_primitive;
     Bool use_mis;
     Bool valid;
 };

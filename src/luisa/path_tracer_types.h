@@ -184,6 +184,12 @@ struct SurfacePointCall {
     float object_random{};
     luisa::uint particle_index{};
     float random_per_island{};
+    luisa::uint is_curve{};
+    float curve_intercept{};
+    float curve_length{};
+    float curve_thickness{};
+    luisa::float3 curve_tangent_normal{};
+    float curve_random{};
     luisa::uint ray_visibility{};
     luisa::uint ray_events{};
     luisa::uint ray_depth{};
@@ -476,6 +482,12 @@ LUISA_STRUCT(
     object_random,
     particle_index,
     random_per_island,
+    is_curve,
+    curve_intercept,
+    curve_length,
+    curve_thickness,
+    curve_tangent_normal,
+    curve_random,
     ray_visibility,
     ray_events,
     ray_depth,

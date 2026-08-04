@@ -1,4 +1,5 @@
 #include "path_kernel_builder.h"
+#include "path_kernel_curve_primitive.h"
 #include "path_kernel_triangle_primitive.h"
 
 #include <psycles/luisa/analytic_light_intersection.h>
@@ -14,8 +15,10 @@ class ClosestEventStageImpl final
 
   private:
     std::shared_ptr<const TrianglePrimitiveComponent>
-        _primitive{
+        _triangles{
             make_triangle_primitive_component()};
+    std::shared_ptr<const CurvePrimitiveComponent>
+        _curves{make_curve_primitive_component()};
 
   public:
     ClosestPathEvent
@@ -216,14 +219,26 @@ class ClosestEventStageImpl final
             bounce.hit->miss();
         Bool surface_may_emit = false;
         $if(surface) {
-            const auto primitive =
-                _primitive->emit(
+            $if(bounce.hit->is_procedural()) {
+                const auto primitive =
+                    _curves->emit(
+                        scene,
+                        bounce.hit->inst,
+                        bounce.hit->prim);
+                surface_may_emit =
+                    (primitive.material_binding.flags &
+                     material_flag_may_emit) != 0u;
+            }
+            $else {
+                const auto primitive =
+                    _triangles->emit(
                     scene,
                     bounce.hit->inst,
                     bounce.hit->prim);
-            surface_may_emit =
-                (primitive.material_binding.flags &
-                 material_flag_may_emit) != 0u;
+                surface_may_emit =
+                    (primitive.material_binding.flags &
+                     material_flag_may_emit) != 0u;
+            };
         };
         return {
             bounce,

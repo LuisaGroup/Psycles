@@ -120,8 +120,8 @@ class PathVolumeSegmentStageImpl final
             sample.terminate_on_next_surface;
         auto &terminate_after_transparent =
             sample.terminate_after_transparent;
-        auto &ray_source_instance =
-            sample.ray_source_instance;
+        auto &ray_source_object =
+            sample.ray_source_object;
         auto &ray_source_primitive =
             sample.ray_source_primitive;
         auto &ray_dP = sample.ray_dP;
@@ -229,9 +229,13 @@ class PathVolumeSegmentStageImpl final
             .pdf = 0.0f,
             .maximum_distance =
                 ray_maximum,
-            .light_instance =
+            .light_object =
                 surface_ray::invalid_primitive,
             .light_primitive =
+                surface_ray::invalid_primitive,
+            .light_instance =
+                surface_ray::invalid_primitive,
+            .light_accel_primitive =
                 surface_ray::invalid_primitive,
             .use_mis = false,
             .valid = false};
@@ -611,7 +615,7 @@ class PathVolumeSegmentStageImpl final
                 ray_dD,
                 result_phase
                     .sampled_roughness);
-            ray_source_instance =
+            ray_source_object =
                 surface_ray::invalid_primitive;
             ray_source_primitive =
                 surface_ray::invalid_primitive;

@@ -7,8 +7,10 @@ namespace psycles::luisa_backend::detail {
 using TraceShadowCallable =
     Callable<luisa::float3(
         luisa::compute::Ray,
+        // Exact Cycles source (object, primitive) identity.
         luisa::uint,
         luisa::uint,
+        // Exact Cycles light (object, primitive) identity.
         luisa::uint,
         luisa::uint,
         luisa::uint,

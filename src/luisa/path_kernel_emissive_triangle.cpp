@@ -377,6 +377,12 @@ class PathEmissiveTriangleComponent final
             .random_per_island =
                 attributes
                     .random_per_island,
+            .is_curve = false,
+            .curve_intercept = 0.0f,
+            .curve_length = 0.0f,
+            .curve_thickness = 0.0f,
+            .curve_tangent_normal = make_float3(0.0f),
+            .curve_random = 0.0f,
             .ray_visibility =
                 shadow_visibility,
             .ray_events = 0u,

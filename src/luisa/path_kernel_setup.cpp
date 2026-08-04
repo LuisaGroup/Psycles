@@ -529,7 +529,7 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
         trace_write_global(path_trace_schema::GlobalSlot::ray_range,
                            make_float3(ray->t_min(), ray->t_max(), 0.5f));
     }
-    UInt ray_source_instance = surface_ray::invalid_primitive;
+    UInt ray_source_object = surface_ray::invalid_primitive;
     UInt ray_source_primitive = surface_ray::invalid_primitive;
     UInt ray_visibility = camera_visibility;
 
@@ -611,7 +611,7 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
             std::move(ray),
             std::move(ray_dP),
             std::move(ray_dD),
-            std::move(ray_source_instance),
+            std::move(ray_source_object),
             std::move(ray_source_primitive),
             std::move(ray_visibility),
             std::move(radiance),
@@ -828,6 +828,12 @@ PathSampleContext::analytic_light_shader(Var<LightGpu> light,
             .object_random = 0.0f,
             .particle_index = 0u,
             .random_per_island = 0.0f,
+            .is_curve = false,
+            .curve_intercept = 0.0f,
+            .curve_length = 0.0f,
+            .curve_thickness = 0.0f,
+            .curve_tangent_normal = make_float3(0.0f),
+            .curve_random = 0.0f,
             .ray_visibility = ray_visibility,
             .ray_events = ray_events,
             .ray_depth = path_depth,

@@ -177,15 +177,15 @@ class EmissiveMeshLightingComponent final
                             select(
                                 surface_ray::
                                     invalid_primitive,
-                                hit->inst,
+                                surface.cycles_object_index,
                                 shadow.skip_self),
                             select(
                                 surface_ray::
                                     invalid_primitive,
-                                hit->prim,
+                                surface.cycles_primitive_index,
                                 shadow.skip_self),
-                            emitter.instance_index,
-                            emitter.primitive_index,
+                            emitter.cycles_object_index,
+                            emitter.cycles_primitive_index,
                             invocation.parameters
                                 .transparent_max_bounces,
                             pack_shader_evaluation_state(

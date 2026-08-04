@@ -23,6 +23,9 @@ struct CurvePrimitiveContext {
   UInt cycles_surface_shader;
   UInt cycles_object_index;
   UInt cycles_primitive_index;
+  Bool has_volume;
+
+  [[nodiscard]] VolumeStackEntry volume_stack_entry() const noexcept;
 };
 
 // Curves use a segment AABB as the acceleration primitive while Cycles uses

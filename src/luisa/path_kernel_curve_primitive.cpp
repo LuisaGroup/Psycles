@@ -1,5 +1,6 @@
 #include "path_kernel_curve_primitive.h"
 
+#include "cycles_shader_identity.h"
 #include "path_kernel_primitive_material.h"
 
 #include <utility>
@@ -61,11 +62,26 @@ public:
             .material_binding = std::move(material.binding),
             .cycles_surface_shader = std::move(material.cycles_surface_shader),
             .cycles_object_index = std::move(material.cycles_object_index),
-            .cycles_primitive_index = std::move(cycles_primitive_index)};
+            .cycles_primitive_index = std::move(cycles_primitive_index),
+            .has_volume = std::move(material.has_volume)};
   }
 };
 
 } // namespace
+
+VolumeStackEntry CurvePrimitiveContext::volume_stack_entry() const noexcept {
+  const auto valid = has_volume & ((material_binding.cycles_shader_index !=
+                                    cycles_shader_identity::invalid_index) |
+                                   (material_binding.material_identity !=
+                                    cycles_shader_identity::invalid_index));
+  return {.object = cycles_object_index,
+          .shader = cycles_surface_shader,
+          .surface_tag = material_binding.surface_tag,
+          .parameter_block = material_binding.parameter_block,
+          .instance_id = curve.instance_id,
+          .sample_method = material_binding.volume_sampling,
+          .valid = valid};
+}
 
 std::shared_ptr<const CurvePrimitiveComponent>
 make_curve_primitive_component() {

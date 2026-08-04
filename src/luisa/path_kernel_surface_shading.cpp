@@ -113,27 +113,29 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
             emitted, make_float3(0.0f), bounce.subsurface_exit);
         Float emission_weight = 1.0f;
         if (next_event_estimation && scene->emissive_triangle_count > 0u) {
-            Bool competing = (path_depth > 0u) & (!previous_delta);
-            const auto oriented_geometric_normal =
-                select(
-                    point.geometric_normal,
-                    -point.geometric_normal,
-                    point.back_facing);
-            const auto light_pdf =
-                _emissive_triangle
-                    ->from_intersection(
-                        scene,
-                        hit->inst,
-                        hit->prim,
-                        ray->origin(),
-                        hit_position,
-                        wp0,
-                        wp1,
-                        wp2,
-                        oriented_geometric_normal)
-                    .value;
-            emission_weight = forward_light_weight(
-                previous_bsdf_pdf, light_pdf, competing, light_pdf > 0.0f);
+            $if(!surface.is_curve) {
+                Bool competing = (path_depth > 0u) & (!previous_delta);
+                const auto oriented_geometric_normal =
+                    select(
+                        point.geometric_normal,
+                        -point.geometric_normal,
+                        point.back_facing);
+                const auto light_pdf =
+                    _emissive_triangle
+                        ->from_intersection(
+                            scene,
+                            hit->inst,
+                            hit->prim,
+                            ray->origin(),
+                            hit_position,
+                            wp0,
+                            wp1,
+                            wp2,
+                            oriented_geometric_normal)
+                        .value;
+                emission_weight = forward_light_weight(
+                    previous_bsdf_pdf, light_pdf, competing, light_pdf > 0.0f);
+            };
         }
         Float3 emission_contribution = clamp_contribution(
             throughput * emitted * emission_weight, path_depth);
