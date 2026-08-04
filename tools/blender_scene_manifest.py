@@ -19,6 +19,14 @@ from typing import Any
 import bpy
 
 
+def _column_major(matrix: Any) -> list[float]:
+    return [
+        float(matrix[row][column])
+        for column in range(4)
+        for row in range(4)
+    ]
+
+
 def _json_value(value: Any) -> Any:
     if value is None or isinstance(value, (bool, int, float, str)):
         return value
@@ -95,6 +103,20 @@ def _node_properties(node: Any) -> dict[str, Any]:
 
 def _node_special_data(node: Any) -> dict[str, Any]:
     result: dict[str, Any] = {}
+    if node.bl_idname == "ShaderNodeTexCoord":
+        coordinate_object = getattr(node, "object", None)
+        if coordinate_object is not None:
+            # Cycles' NODE_TEXCO_OBJECT_WITH_TRANSFORM applies the inverse
+            # of the explicitly referenced object's object-to-world matrix
+            # to the world-space shading point. Preserve that immutable
+            # affine transform in column-major order; the helper object need
+            # not itself be renderable or present in the instance table.
+            result["object_coordinates"] = {
+                "object": coordinate_object.name,
+                "world_to_object": _column_major(
+                    coordinate_object.matrix_world.inverted_safe()
+                ),
+            }
     if hasattr(node, "color_ramp"):
         ramp = node.color_ramp
         result["color_ramp"] = {

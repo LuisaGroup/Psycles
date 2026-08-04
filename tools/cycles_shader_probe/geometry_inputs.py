@@ -6,6 +6,7 @@ import math
 from typing import Any
 
 import bpy
+from mathutils import Matrix
 
 from .support import (
     _input,
@@ -59,6 +60,64 @@ def _geometry_position_color_conversion(scene: Any) -> None:
         columns=1,
         rows=1,
         name="Geometry Position Color Surface",
+        frame_bleed=0.02,
+    )
+
+
+def _texture_coordinate_object_transform(scene: Any) -> None:
+    """Pin Cycles' explicit-projector versus shading-object coordinates."""
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 0.01
+    scene.cycles.max_bounces = 0
+
+    projector = bpy.data.objects.new("Coordinate Projector", None)
+    projector.matrix_world = Matrix(
+        (
+            (0.75, -0.20, 0.00, 0.35),
+            (0.15, 1.10, 0.00, -0.25),
+            (0.00, 0.00, 1.00, 0.10),
+            (0.00, 0.00, 0.00, 1.00),
+        )
+    )
+    scene.collection.objects.link(projector)
+
+    materials = []
+    for explicit in (False, True):
+        label = "Explicit Projector" if explicit else "Shading Object"
+        material, tree, output = _material(
+            f"Texture Coordinate Object - {label}"
+        )
+        coordinates = tree.nodes.new("ShaderNodeTexCoord")
+        coordinates.name = f"{label} Coordinates"
+        if explicit:
+            coordinates.object = projector
+        mapping = tree.nodes.new("ShaderNodeMapping")
+        mapping.name = f"{label} Display Mapping"
+        mapping.vector_type = "POINT"
+        _input(mapping, "Location").default_value = (0.5, 0.5, 0.5)
+        _input(mapping, "Scale").default_value = (0.25, 0.25, 0.25)
+        emission = tree.nodes.new("ShaderNodeEmission")
+        emission.name = f"{label} Emission"
+        tree.links.new(
+            _output(coordinates, "Object"),
+            _input(mapping, "Vector"),
+        )
+        tree.links.new(
+            _output(mapping, "Vector"),
+            _input(emission, "Color"),
+        )
+        tree.links.new(
+            _output(emission, "Emission"),
+            _input(output, "Surface"),
+        )
+        materials.append(material)
+
+    _material_matrix(
+        scene,
+        materials,
+        columns=2,
+        rows=1,
+        name="Texture Coordinate Object Matrix",
         frame_bleed=0.02,
     )
 
