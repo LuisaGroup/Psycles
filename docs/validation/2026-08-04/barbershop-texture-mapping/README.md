@@ -1,5 +1,14 @@
 # Barbershop texture-coordinate alignment
 
+> Follow-up, 2026-08-05: the explicit Object-coordinate and per-texture
+> mapping corrections documented here remain valid. A later audit found two
+> additional independent contracts: selection of Blender's render/default UV
+> layer and the shading-normal sign used by back-facing Image Texture `BOX`
+> projection. The newer staged and full-scene results are recorded in
+> [the render-UV/BOX checkpoint](../../2026-08-05/barbershop-render-uv-box/README.md);
+> the full-scene numbers below are retained as historical before/after data for
+> this checkpoint.
+
 ## Conclusion
 
 The visible Barbershop floor mismatch was not a mesh UV inversion. The base

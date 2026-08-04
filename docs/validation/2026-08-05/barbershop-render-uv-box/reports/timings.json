@@ -1,0 +1,35 @@
+{
+  "cycles_oracle_commit": "61f93ccb14781f8f1f877a5bb8db04ede49672b3",
+  "extent": [
+    1152,
+    480
+  ],
+  "psycles_commit": "40145a0556a84b95b22fd5d3238e4f9a47db3f5c",
+  "psycles_hip_cold": {
+    "code_object_bytes": 27261832,
+    "comgr_ir_to_code_object_seconds": 1351.84275262,
+    "hip_llvm_codegen_seconds": 191.799295826,
+    "maximum_resident_kib": 31413000,
+    "process_wall_seconds": 1836.93,
+    "render_seconds": 196.56,
+    "scene_seconds": 17.1861,
+    "shader_jit_seconds": 1621.3
+  },
+  "psycles_hip_warm": {
+    "maximum_resident_kib": 11440824,
+    "process_wall_seconds": 218.07,
+    "render_seconds": 196.67,
+    "scene_seconds": 17.1818,
+    "shader_jit_seconds": 2.4863
+  },
+  "reference_render_seconds": {
+    "cycles_cpu": 28.107,
+    "cycles_hip": 19.161
+  },
+  "samples": 128,
+  "schema": "psycles.validation.timing.v1",
+  "slowdown_render_interval": {
+    "psycles_hip_vs_cycles_cpu": 6.993276,
+    "psycles_hip_vs_cycles_hip": 10.258337
+  }
+}

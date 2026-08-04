@@ -1,0 +1,111 @@
+{
+  "actual_label": "Psycles HIP",
+  "cycles_channels": [
+    "RenderLayer.Ambient Occlusion.R",
+    "RenderLayer.Ambient Occlusion.G",
+    "RenderLayer.Ambient Occlusion.B",
+    "RenderLayer.Combined.R",
+    "RenderLayer.Combined.G",
+    "RenderLayer.Combined.B",
+    "RenderLayer.Combined.A",
+    "RenderLayer.Debug Sample Count.X",
+    "RenderLayer.Depth.Z",
+    "RenderLayer.Diffuse Color.R",
+    "RenderLayer.Diffuse Color.G",
+    "RenderLayer.Diffuse Color.B",
+    "RenderLayer.Diffuse Direct.R",
+    "RenderLayer.Diffuse Direct.G",
+    "RenderLayer.Diffuse Direct.B",
+    "RenderLayer.Diffuse Indirect.R",
+    "RenderLayer.Diffuse Indirect.G",
+    "RenderLayer.Diffuse Indirect.B",
+    "RenderLayer.Emission.R",
+    "RenderLayer.Emission.G",
+    "RenderLayer.Emission.B",
+    "RenderLayer.Environment.R",
+    "RenderLayer.Environment.G",
+    "RenderLayer.Environment.B",
+    "RenderLayer.Glossy Color.R",
+    "RenderLayer.Glossy Color.G",
+    "RenderLayer.Glossy Color.B",
+    "RenderLayer.Glossy Direct.R",
+    "RenderLayer.Glossy Direct.G",
+    "RenderLayer.Glossy Direct.B",
+    "RenderLayer.Glossy Indirect.R",
+    "RenderLayer.Glossy Indirect.G",
+    "RenderLayer.Glossy Indirect.B",
+    "RenderLayer.Normal.X",
+    "RenderLayer.Normal.Y",
+    "RenderLayer.Normal.Z",
+    "RenderLayer.Transmission Color.R",
+    "RenderLayer.Transmission Color.G",
+    "RenderLayer.Transmission Color.B",
+    "RenderLayer.Transmission Direct.R",
+    "RenderLayer.Transmission Direct.G",
+    "RenderLayer.Transmission Direct.B",
+    "RenderLayer.Transmission Indirect.R",
+    "RenderLayer.Transmission Indirect.G",
+    "RenderLayer.Transmission Indirect.B",
+    "RenderLayer.Volume Direct.R",
+    "RenderLayer.Volume Direct.G",
+    "RenderLayer.Volume Direct.B",
+    "RenderLayer.Volume Indirect.R",
+    "RenderLayer.Volume Indirect.G",
+    "RenderLayer.Volume Indirect.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        0.9999991655349731,
+        0.9999985098838806,
+        0.9999995827674866
+      ],
+      "cycles": "/var/tmp/barbershop-stage-wall-detail_image-20260805/cycles-4.exr",
+      "cycles_channel_mean": [
+        0.182503804564476,
+        0.16959109902381897,
+        0.14412972331047058
+      ],
+      "cycles_luminance_mean": 0.17057481408119202,
+      "cycles_rms": 0.19928911328315735,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.999999563207462,
+      "maximum_absolute_error": 0.01661980152130127,
+      "mean_absolute_error": 8.196710950869601e-06,
+      "orientation_rmse": {
+        "flip_x": 0.1125229150056839,
+        "flip_xy": 0.11385820060968399,
+        "flip_y": 0.07056081295013428,
+        "identity": 0.00010580207163002342
+      },
+      "p95_pixel_rmse": 1.3138130270817783e-05,
+      "p99_pixel_rmse": 3.7590802094200626e-05,
+      "psycles": "/var/tmp/barbershop-stage-wall-detail_image-20260805/psycles-hip-4-fixed.exr",
+      "psycles_channel_mean": [
+        0.18250365555286407,
+        0.16959084570407867,
+        0.1441296637058258
+      ],
+      "psycles_luminance_mean": 0.17057473957538605,
+      "psycles_rms": 0.19928906639649735,
+      "relative_rmse": 0.0005308973976902387,
+      "rmse": 0.00010580207163002342,
+      "shape": [
+        480,
+        1152,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 3307.1666765448936,
+        "display_scale": 2.930775463541437,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/barbershop-stage-wall-detail_image-20260805/triptychs-hip-4-fixed/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 552960
+    }
+  },
+  "reference_label": "Cycles CPU",
+  "schema": "psycles.cycles-differential.v1"
+}
