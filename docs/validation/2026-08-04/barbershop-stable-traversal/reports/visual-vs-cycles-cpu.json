@@ -1,0 +1,315 @@
+{
+  "actual_label": "Psycles HIP",
+  "cycles_channels": [
+    "RenderLayer.Ambient Occlusion.R",
+    "RenderLayer.Ambient Occlusion.G",
+    "RenderLayer.Ambient Occlusion.B",
+    "RenderLayer.Combined.R",
+    "RenderLayer.Combined.G",
+    "RenderLayer.Combined.B",
+    "RenderLayer.Combined.A",
+    "RenderLayer.Debug Sample Count.X",
+    "RenderLayer.Depth.Z",
+    "RenderLayer.Diffuse Color.R",
+    "RenderLayer.Diffuse Color.G",
+    "RenderLayer.Diffuse Color.B",
+    "RenderLayer.Diffuse Direct.R",
+    "RenderLayer.Diffuse Direct.G",
+    "RenderLayer.Diffuse Direct.B",
+    "RenderLayer.Diffuse Indirect.R",
+    "RenderLayer.Diffuse Indirect.G",
+    "RenderLayer.Diffuse Indirect.B",
+    "RenderLayer.Emission.R",
+    "RenderLayer.Emission.G",
+    "RenderLayer.Emission.B",
+    "RenderLayer.Environment.R",
+    "RenderLayer.Environment.G",
+    "RenderLayer.Environment.B",
+    "RenderLayer.Glossy Color.R",
+    "RenderLayer.Glossy Color.G",
+    "RenderLayer.Glossy Color.B",
+    "RenderLayer.Glossy Direct.R",
+    "RenderLayer.Glossy Direct.G",
+    "RenderLayer.Glossy Direct.B",
+    "RenderLayer.Glossy Indirect.R",
+    "RenderLayer.Glossy Indirect.G",
+    "RenderLayer.Glossy Indirect.B",
+    "RenderLayer.Normal.X",
+    "RenderLayer.Normal.Y",
+    "RenderLayer.Normal.Z",
+    "RenderLayer.Transmission Color.R",
+    "RenderLayer.Transmission Color.G",
+    "RenderLayer.Transmission Color.B",
+    "RenderLayer.Transmission Direct.R",
+    "RenderLayer.Transmission Direct.G",
+    "RenderLayer.Transmission Direct.B",
+    "RenderLayer.Transmission Indirect.R",
+    "RenderLayer.Transmission Indirect.G",
+    "RenderLayer.Transmission Indirect.B",
+    "RenderLayer.Volume Direct.R",
+    "RenderLayer.Volume Direct.G",
+    "RenderLayer.Volume Direct.B",
+    "RenderLayer.Volume Indirect.R",
+    "RenderLayer.Volume Indirect.G",
+    "RenderLayer.Volume Indirect.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        1.0527026653289795,
+        1.0899641513824463,
+        1.13835608959198
+      ],
+      "cycles": "/var/tmp/psycles-barbershop-volume-20260804/cycles/cpu-main-61f.exr",
+      "cycles_channel_mean": [
+        0.05973087623715401,
+        0.0401231087744236,
+        0.02817424386739731
+      ],
+      "cycles_luminance_mean": 0.04343521595001221,
+      "cycles_rms": 0.18923427164554596,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0812965197976732,
+      "maximum_absolute_error": 19.126773834228516,
+      "mean_absolute_error": 0.03906599059700966,
+      "orientation_rmse": {
+        "flip_x": 0.26961323618888855,
+        "flip_xy": 0.2738999128341675,
+        "flip_y": 0.27182909846305847,
+        "identity": 0.17723049223423004
+      },
+      "p95_pixel_rmse": 0.17713482677936554,
+      "p99_pixel_rmse": 0.46680304408073425,
+      "psycles": "/var/tmp/psycles-barbershop-volume-20260804/hip-stable-final-16spp.exr",
+      "psycles_channel_mean": [
+        0.06287885457277298,
+        0.04373275116086006,
+        0.03207232058048248
+      ],
+      "psycles_luminance_mean": 0.046966347843408585,
+      "psycles_rms": 0.2103141297990019,
+      "relative_rmse": 0.9365665674249527,
+      "rmse": 0.17723049223423004,
+      "shape": [
+        480,
+        1152,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.3279538904899135,
+        "display_scale": 1.0345822689683308,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles/docs/validation/2026-08-04/barbershop-stable-traversal/triptychs/cycles-cpu/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 552960
+    },
+    "Emit": {
+      "channel_mean_ratio": [
+        0.9815730452537537,
+        0.973378598690033,
+        0.9611848592758179
+      ],
+      "cycles": "/var/tmp/psycles-barbershop-volume-20260804/cycles/cpu-main-61f.exr",
+      "cycles_channel_mean": [
+        0.01974833570420742,
+        0.012419828213751316,
+        0.006422475911676884
+      ],
+      "cycles_luminance_mean": 0.013545169495046139,
+      "cycles_rms": 0.07845330238342285,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9755172832261243,
+      "maximum_absolute_error": 0.4678648114204407,
+      "mean_absolute_error": 0.0009343533893115819,
+      "orientation_rmse": {
+        "flip_x": 0.10528603196144104,
+        "flip_xy": 0.10782238841056824,
+        "flip_y": 0.10402344912290573,
+        "identity": 0.0102516645565629
+      },
+      "p95_pixel_rmse": 4.470258136279881e-05,
+      "p99_pixel_rmse": 0.043208152055740356,
+      "psycles": "/var/tmp/psycles-barbershop-volume-20260804/hip-stable-final-16spp.exr",
+      "psycles_channel_mean": [
+        0.019384434446692467,
+        0.012089194729924202,
+        0.006173186469823122
+      ],
+      "psycles_luminance_mean": 0.013213546946644783,
+      "psycles_rms": 0.0759348114738666,
+      "relative_rmse": 0.13067218644870038,
+      "rmse": 0.0102516645565629,
+      "shape": [
+        480,
+        1152,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 13.988266508559994,
+        "display_scale": 1.3701015324599717,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles/docs/validation/2026-08-04/barbershop-stable-traversal/triptychs/cycles-cpu/emit.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 552960
+    },
+    "Normal": {
+      "channel_mean_ratio": [
+        0.9733311533927917,
+        0.9929717779159546,
+        0.7623279690742493
+      ],
+      "cycles": "/var/tmp/psycles-barbershop-volume-20260804/cycles/cpu-main-61f.exr",
+      "cycles_channel_mean": [
+        0.1675472855567932,
+        0.32744258642196655,
+        0.03759850934147835
+      ],
+      "cycles_luminance_mean": 0.27249008417129517,
+      "cycles_rms": 0.5488906502723694,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9881198698493424,
+      "maximum_absolute_error": 0.7661778926849365,
+      "mean_absolute_error": 0.03094550035893917,
+      "orientation_rmse": {
+        "flip_x": 0.7542198300361633,
+        "flip_xy": 0.8445323705673218,
+        "flip_y": 0.6586054563522339,
+        "identity": 0.06631898134946823
+      },
+      "p95_pixel_rmse": 0.15022380650043488,
+      "p99_pixel_rmse": 0.26673969626426697,
+      "psycles": "/var/tmp/psycles-barbershop-volume-20260804/hip-stable-final-16spp.exr",
+      "psycles_channel_mean": [
+        0.16307899355888367,
+        0.3251412510871887,
+        0.028662394732236862
+      ],
+      "psycles_luminance_mean": 0.26925286650657654,
+      "psycles_rms": 0.5488905141536539,
+      "relative_rmse": 0.12082366736718791,
+      "rmse": 0.06631898134946823,
+      "shape": [
+        480,
+        1152,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 2.4042967335898267,
+        "display_scale": 1.0,
+        "mapping": "normal_xyz_to_rgb",
+        "path": "/home/mike/Projects/Psycles/docs/validation/2026-08-04/barbershop-stable-traversal/triptychs/cycles-cpu/normal.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 552960
+    },
+    "Volume Direct": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-barbershop-volume-20260804/cycles/cpu-main-61f.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-barbershop-volume-20260804/hip-stable-final-16spp.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        1152,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles/docs/validation/2026-08-04/barbershop-stable-traversal/triptychs/cycles-cpu/volume-direct.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 552960
+    },
+    "Volume Indirect": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-barbershop-volume-20260804/cycles/cpu-main-61f.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-barbershop-volume-20260804/hip-stable-final-16spp.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        1152,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles/docs/validation/2026-08-04/barbershop-stable-traversal/triptychs/cycles-cpu/volume-indirect.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 552960
+    }
+  },
+  "reference_label": "Cycles CPU",
+  "schema": "psycles.cycles-differential.v1"
+}

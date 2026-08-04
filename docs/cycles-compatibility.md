@@ -906,6 +906,17 @@ exact fallback/HIP/Vulkan coefficient regressions and Cycles CPU/HIP EXR
 differentials are recorded in
 [`validation/2026-08-04/volume-emission`](validation/2026-08-04/volume-emission/README.md).
 
+The official Barbershop Interior graph audit confirms that its only connected
+Volume root is the `fog` material's Emission closure. It contains no reachable
+volume scattering or absorption closure, and Cycles main produces identically
+zero Volume Direct and Volume Indirect passes. Full-scene work exposed exact
+coincident triangle and curve hits instead: scene traversal now models
+Cycles' closed ray interval and stable primitive identity relation explicitly,
+with endpoint, exclusion, coincident-instance, and curve-segment regressions
+on fallback, HIP, and Vulkan. The latest-Cycles CPU/HIP differential,
+independent HIP repeat, performance, and inspected triptychs are recorded in
+[`validation/2026-08-04/barbershop-stable-traversal`](validation/2026-08-04/barbershop-stable-traversal/README.md).
+
 Implicit conversions among the supported color/vector/point/normal/float3
 family now follow Cycles' component-preserving law through a canonical typed
 vector route. The exact Barbershop `Geometry.Position -> Mix.B_Color` links
