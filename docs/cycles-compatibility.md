@@ -925,6 +925,17 @@ Luisa backends, Cycles CPU/HIP EXR differentials, and inspected triptychs are
 recorded in
 [`validation/2026-08-04/geometry-float3-conversion`](validation/2026-08-04/geometry-float3-conversion/README.md).
 
+Blender's unnamed/default UV now follows the render-active map returned by
+`Mesh::default_uv_map_name()`, independently of the layer selected for UI
+editing; its default tangent frame follows the same map while every named UV
+attribute remains addressable. Image Texture `BOX` projection now also uses
+the post-shader-setup normal sign on back-facing hits, matching Cycles'
+cube-face selection and orientation relation. Exporter byte-range checks, an
+independently rendered back-facing projection matrix on fallback/HIP/Vulkan,
+official Barbershop staged node differentials, and inspected triptychs are
+recorded in
+[`validation/2026-08-05/barbershop-render-uv-box`](validation/2026-08-05/barbershop-render-uv-box/README.md).
+
 Adaptive sampling and denoising are exported and diagnosed but are not part of
 the path-integrator estimator. Psycles renders fixed-count, un-denoised linear
 passes; authoritative Cycles differential renders disable both. A connected
