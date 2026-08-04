@@ -1403,18 +1403,7 @@ if(PSYCLES_ENABLE_LUISA)
                         luisa_attribute
                     LIBRARIES Psycles::luisa)
 
-                psycles_add_luisa_backend_test(
-                    TARGET
-                        psycles_luisa_curve_ribbon_tests
-                    SOURCE
-                        tests/test_luisa_curve_ribbon.cpp
-                    TEST_STEM
-                        luisa_curve_ribbon
-                    LIBRARIES Psycles::luisa)
-                target_include_directories(
-                    psycles_luisa_curve_ribbon_tests
-                    PRIVATE
-                        "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
+                include(cmake/PsyclesCurveTests.cmake)
 
                 add_executable(
                     psycles_luisa_cycles_path_state_tests

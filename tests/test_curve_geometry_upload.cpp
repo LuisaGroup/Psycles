@@ -1,0 +1,129 @@
+#include "path_tracer_curve_scene.h"
+
+#include <cmath>
+#include <cstdlib>
+#include <iostream>
+#include <limits>
+#include <stdexcept>
+#include <string>
+
+namespace {
+
+using psycles::contract::CurveGeometryDesc;
+using psycles::contract::CurveShape;
+using psycles::contract::MaterialId;
+using psycles::luisa_backend::detail::build_curve_geometry_upload;
+using psycles::luisa_backend::detail::CurveSegmentGpu;
+
+void expect(bool condition, const std::string &message) {
+  if (!condition) {
+    throw std::runtime_error{message};
+  }
+}
+
+void expect_segment(const CurveSegmentGpu &segment, std::uint32_t key_before,
+                    std::uint32_t key_begin, std::uint32_t key_end,
+                    std::uint32_t key_after, std::uint32_t curve_index,
+                    std::uint32_t cycles_curve_index,
+                    std::uint32_t cycles_segment_index) {
+  expect(segment.key_before == key_before, "wrong preceding key");
+  expect(segment.key_begin == key_begin, "wrong segment-begin key");
+  expect(segment.key_end == key_end, "wrong segment-end key");
+  expect(segment.key_after == key_after, "wrong following key");
+  expect(segment.curve_index == curve_index, "wrong local curve index");
+  expect(segment.cycles_curve_index == cycles_curve_index,
+         "wrong global Cycles curve index");
+  expect(segment.cycles_segment_index == cycles_segment_index,
+         "wrong global Cycles segment index");
+}
+
+void test_typed_segments_and_cycles_identity() {
+  const CurveGeometryDesc geometry{
+      .name = "Two Curves",
+      .shape = CurveShape::ribbon,
+      .subdivisions = 3u,
+      .keys = {{-8.0f, 0.0f, 0.0f, 0.0f},
+               {0.0f, 0.0f, 0.0f, 0.2f},
+               {0.0f, 0.0f, 0.0f, 0.2f},
+               {-8.0f, 0.0f, 0.0f, 0.0f},
+               {2.0f, 0.0f, 0.0f, 0.1f},
+               {3.0f, 0.0f, 0.0f, 0.1f},
+               {4.0f, 0.0f, 0.0f, 0.1f}},
+      .curve_first_key = {0u, 4u},
+      .material_slots = {MaterialId{41u}, MaterialId{43u}},
+      .curve_material_slots = {1u, 0u},
+      .intercept = {0.0f, 0.25f, 0.75f, 1.0f, 0.0f, 0.5f, 1.0f},
+      .length = {8.0f, 2.0f},
+      .random = {}};
+
+  const auto upload = build_curve_geometry_upload(geometry, 17u, 31u);
+  expect(upload.keys.size() == 7u, "curve keys were not preserved");
+  expect(upload.segments.size() == 5u, "wrong segment count");
+  expect(upload.bounds.size() == 5u, "wrong AABB count");
+  expect(upload.material_slots.size() == 2u, "wrong material-slot count");
+  expect(upload.intercept.size() == 7u, "wrong Intercept domain");
+  expect(upload.length.size() == 2u, "wrong Length domain");
+  expect(upload.random.size() == 2u, "wrong Random domain");
+
+  expect_segment(upload.segments[0u], 0u, 0u, 1u, 2u, 0u, 17u, 31u);
+  expect_segment(upload.segments[1u], 0u, 1u, 2u, 3u, 0u, 17u, 32u);
+  expect_segment(upload.segments[2u], 1u, 2u, 3u, 3u, 0u, 17u, 33u);
+  expect_segment(upload.segments[3u], 4u, 4u, 5u, 6u, 1u, 18u, 34u);
+  expect_segment(upload.segments[4u], 4u, 5u, 6u, 6u, 1u, 18u, 35u);
+
+  expect(upload.material_slots[0u] == 1u, "first material slot changed");
+  expect(upload.material_slots[1u] == 0u, "second material slot changed");
+  expect(upload.intercept[2u] == 0.75f, "Intercept value changed");
+  expect(upload.intercept[6u] == 1.0f, "final Intercept value changed");
+  expect(upload.length[1u] == 2.0f, "Length value changed");
+  expect(upload.random[0u] == 0.0f, "missing Random was not zero");
+  expect(upload.random[1u] == 0.0f, "missing Random was not zero");
+}
+
+void test_bounds_include_internal_catmull_rom_extrema() {
+  const CurveGeometryDesc geometry{.name = "Analytic Extremum",
+                                   .shape = CurveShape::ribbon,
+                                   .keys = {{-8.0f, 0.0f, 0.0f, 0.0f},
+                                            {0.0f, 0.0f, 0.0f, 0.2f},
+                                            {0.0f, 0.0f, 0.0f, 0.2f},
+                                            {-8.0f, 0.0f, 0.0f, 0.0f}},
+                                   .curve_first_key = {0u}};
+  const auto upload = build_curve_geometry_upload(geometry, 0u, 0u);
+
+  // The middle span is x(u) = 4u(1-u), whose center reaches 1 at u=1/2.
+  // Its radius is r(u) = 0.2 + 0.1u(1-u), reaching 0.225 at the same
+  // parameter. Endpoint-only bounds would miss this exact interior maximum.
+  const auto &bounds = upload.bounds[1u];
+  const auto exact_extent = 1.125 * static_cast<double>(0.2f);
+  const auto expected_min =
+      std::nextafter(static_cast<float>(-exact_extent),
+                     -std::numeric_limits<float>::infinity());
+  const auto expected_max =
+      std::nextafter(static_cast<float>(1.0 + exact_extent),
+                     std::numeric_limits<float>::infinity());
+  expect(bounds.packed_min[0u] == expected_min, "wrong analytic AABB minimum");
+  expect(bounds.packed_max[0u] == expected_max, "interior maximum was clipped");
+  expect(bounds.packed_min[1u] == expected_min &&
+             bounds.packed_min[2u] == expected_min,
+         "radius was not applied to lower transverse bounds");
+  expect(bounds.packed_max[1u] ==
+                 std::nextafter(static_cast<float>(exact_extent),
+                                std::numeric_limits<float>::infinity()) &&
+             bounds.packed_max[2u] ==
+                 std::nextafter(static_cast<float>(exact_extent),
+                                std::numeric_limits<float>::infinity()),
+         "radius was not applied to upper transverse bounds");
+}
+
+} // namespace
+
+int main() {
+  try {
+    test_typed_segments_and_cycles_identity();
+    test_bounds_include_internal_catmull_rom_extrema();
+    return EXIT_SUCCESS;
+  } catch (const std::exception &error) {
+    std::cerr << "curve geometry upload test failed: " << error.what() << '\n';
+    return EXIT_FAILURE;
+  }
+}

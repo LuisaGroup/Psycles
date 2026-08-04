@@ -13,10 +13,28 @@ struct GeometryGpu {
     luisa::uint material_count{};
     luisa::uint attribute_domains{};
     luisa::uint cycles_primitive_offset{};
+    luisa::uint cycles_segment_offset{};
+    luisa::uint primitive_kind{};
+    luisa::uint curve_shape{};
+    luisa::uint curve_subdivision_level{};
     // Cycles ATTR_STD_GENERATED_TRANSFORM. Surface points retain explicit
     // per-vertex Generated values; volume points apply this transform to
     // object-space P because they have no primitive to interpolate.
     luisa::float4x4 generated_transform{};
+};
+
+inline constexpr std::uint32_t geometry_kind_triangle = 0u;
+inline constexpr std::uint32_t geometry_kind_curve = 1u;
+
+struct CurveSegmentGpu {
+    luisa::uint key_before{};
+    luisa::uint key_begin{};
+    luisa::uint key_end{};
+    luisa::uint key_after{};
+    luisa::uint curve_index{};
+    luisa::uint cycles_curve_index{};
+    luisa::uint cycles_segment_index{};
+    luisa::uint padding{};
 };
 
 struct AttributeBindingGpu {
@@ -316,7 +334,21 @@ LUISA_STRUCT(
     material_count,
     attribute_domains,
     cycles_primitive_offset,
+    cycles_segment_offset,
+    primitive_kind,
+    curve_shape,
+    curve_subdivision_level,
     generated_transform) {};
+LUISA_STRUCT(
+    psycles::luisa_backend::detail::CurveSegmentGpu,
+    key_before,
+    key_begin,
+    key_end,
+    key_after,
+    curve_index,
+    cycles_curve_index,
+    cycles_segment_index,
+    padding) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::AttributeBindingGpu,
     id,

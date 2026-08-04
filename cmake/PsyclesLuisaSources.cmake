@@ -70,6 +70,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_tracer.cpp
     src/luisa/path_tracer_camera.cpp
     src/luisa/path_tracer_common.cpp
+    src/luisa/path_tracer_curve_scene.cpp
     src/luisa/path_tracer_environment.cpp
     src/luisa/path_tracer_generated_coordinates.cpp
     src/luisa/path_tracer_geometry.cpp
