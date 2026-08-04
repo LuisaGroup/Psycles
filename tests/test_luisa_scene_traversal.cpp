@@ -20,7 +20,7 @@ using namespace luisa::compute;
 using namespace psycles::luisa_backend::detail;
 using psycles::luisa_backend::surface_ray::invalid_primitive;
 
-inline constexpr std::size_t record_count = 10u;
+inline constexpr std::size_t record_count = 16u;
 
 [[nodiscard]] bool near(float actual, float expected,
                         float tolerance = 2.0e-6f) noexcept {
@@ -61,7 +61,9 @@ int main(int argc, char **argv) {
       InstanceGpu{.geometry_index = 1u,
                   .override_offset = 0u,
                   .override_count = 1u,
-                  .cycles_object_index = 22u}};
+                  .cycles_object_index = 22u},
+      InstanceGpu{.geometry_index = 0u, .cycles_object_index = 489u},
+      InstanceGpu{.geometry_index = 0u, .cycles_object_index = 1936u}};
   constexpr std::array geometry_materials{
       MaterialBindingGpu{.surface_tag = 41u,
                          .cycles_shader_index = 5u,
@@ -145,6 +147,9 @@ int main(int argc, char **argv) {
   scene->accel = device.create_accel();
   scene->accel.emplace_back(mesh, make_float4x4(1.0f), 0xffu, false, 0u);
   scene->accel.emplace_back(curves, make_float4x4(1.0f), 0xffu, 1u);
+  const auto coincident_transform = translation(make_float3(5.0f, 0.0f, 0.0f));
+  scene->accel.emplace_back(mesh, coincident_transform, 0xffu, false, 2u);
+  scene->accel.emplace_back(mesh, coincident_transform, 0xffu, false, 3u);
 
   auto output = device.create_buffer<luisa::float4>(record_count);
   const auto traversal = make_scene_traversal_component();
@@ -164,11 +169,22 @@ int main(int argc, char **argv) {
     source_primitive = select(source_primitive, 100u, test == 4u);
     source_object = select(source_object, 1u, test == 5u);
     source_primitive = select(source_primitive, 0u, test == 5u);
+    const auto exclude_later_coincident =
+        (test == 11u) | (test == 13u) | (test == 15u);
+    source_object =
+        select(source_object, 1936u, exclude_later_coincident);
+    source_primitive =
+        select(source_primitive, 100u, exclude_later_coincident);
     light_object = select(light_object, 22u, test == 3u);
     light_primitive = select(light_primitive, 200u, test == 3u);
 
-    const auto ray = make_ray(make_float3(0.0f, 0.0f, 0.0f),
-                              make_float3(0.0f, 0.0f, 1.0f), 0.0f, 10.0f);
+    const auto ray_x = select(0.0f, 5.0f, test >= 10u);
+    const auto ray_z = select(0.0f, 4.0f,
+                              (test == 12u) | (test == 13u));
+    const auto ray_maximum = select(10.0f, 4.0f, test >= 14u);
+    const auto ray = make_ray(make_float3(ray_x, 0.0f, ray_z),
+                              make_float3(0.0f, 0.0f, 1.0f), 0.0f,
+                              ray_maximum);
     const auto hit = traversal->closest_shadow(
         scene, ray, 0xffu,
         {.object = source_object, .primitive = source_primitive},
@@ -177,6 +193,18 @@ int main(int argc, char **argv) {
                   make_float4(hit->committed_ray_t, cast<float>(hit->inst),
                               cast<float>(hit->prim),
                               select(0.0f, 1.0f, hit->is_procedural())));
+
+    $if(test >= 10u) {
+      const auto instance = scene->instance_buffer->read(hit->inst);
+      const auto geometry =
+          scene->geometry_buffer->read(instance.geometry_index);
+      records.write(test,
+                    make_float4(hit->committed_ray_t,
+                                cast<float>(instance.cycles_object_index),
+                                cast<float>(geometry.cycles_primitive_offset +
+                                           hit->prim),
+                                cast<float>(hit->inst)));
+    };
 
     $if(test == 6u) {
       const auto primitive = curve_primitive->emit(scene, 1u, 0u);
@@ -239,7 +267,13 @@ int main(int argc, char **argv) {
                                 luisa::float4{77.0f, 22.0f, 200.0f, 9.0f},
                                 luisa::float4{0.5f, 0.0f, 0.4f, 3.5f},
                                 luisa::float4{0.8f, 0.25f, -1.0f, -1.0f},
-                                luisa::float4{0.0f, 0.0f, 2.0f, 2.25f}};
+                                luisa::float4{0.0f, 0.0f, 2.0f, 2.25f},
+                                luisa::float4{4.0f, 1936.0f, 100.0f, 3.0f},
+                                luisa::float4{4.0f, 489.0f, 100.0f, 2.0f},
+                                luisa::float4{0.0f, 1936.0f, 100.0f, 3.0f},
+                                luisa::float4{0.0f, 489.0f, 100.0f, 2.0f},
+                                luisa::float4{4.0f, 1936.0f, 100.0f, 3.0f},
+                                luisa::float4{4.0f, 489.0f, 100.0f, 2.0f}};
   for (auto index = std::size_t{0u}; index < expected.size(); ++index) {
     if (!equal_record(actual[index], expected[index])) {
       std::cerr << "scene traversal failed on " << backend << " at record "
