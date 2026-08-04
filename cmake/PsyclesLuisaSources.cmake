@@ -77,6 +77,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_kernel_background_event.cpp
     src/luisa/path_kernel_bounce_setup.cpp
     src/luisa/path_kernel_closest_event.cpp
+    src/luisa/path_kernel_curve_primitive.cpp
     src/luisa/path_kernel_direct_light_trace.cpp
     src/luisa/path_kernel_emissive_triangle.cpp
     src/luisa/path_kernel_environment_light.cpp
@@ -86,6 +87,8 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_kernel_nee_emissive_mesh.cpp
     src/luisa/path_kernel_nee_environment.cpp
     src/luisa/path_kernel_pipeline.cpp
+    src/luisa/path_kernel_primitive_material.cpp
+    src/luisa/path_kernel_scene_traversal.cpp
     src/luisa/path_kernel_setup.cpp
     src/luisa/path_kernel_surface_geometry.cpp
     src/luisa/path_kernel_surface_scatter.cpp

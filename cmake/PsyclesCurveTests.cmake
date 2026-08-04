@@ -29,3 +29,16 @@ target_compile_features(
 add_test(
     NAME psycles.curve_geometry_upload
     COMMAND psycles_curve_geometry_upload_tests)
+
+psycles_add_luisa_backend_test(
+    TARGET
+        psycles_luisa_scene_traversal_tests
+    SOURCE
+        tests/test_luisa_scene_traversal.cpp
+    TEST_STEM
+        luisa_scene_traversal
+    LIBRARIES Psycles::luisa_runtime)
+target_include_directories(
+    psycles_luisa_scene_traversal_tests
+    PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
