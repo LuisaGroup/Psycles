@@ -75,6 +75,8 @@ inline constexpr auto vertex_color = "psycles.attribute.vertex_color";
 inline constexpr auto diffuse_bsdf = "psycles.closure.diffuse";
 inline constexpr auto translucent_bsdf = "psycles.closure.translucent";
 inline constexpr auto principled_bsdf = "psycles.closure.principled";
+inline constexpr auto subsurface_scattering =
+    "psycles.closure.subsurface_scattering";
 inline constexpr auto glossy_bsdf = "psycles.closure.glossy";
 inline constexpr auto glass_bsdf = "psycles.closure.glass";
 inline constexpr auto refraction_bsdf = "psycles.closure.refraction";

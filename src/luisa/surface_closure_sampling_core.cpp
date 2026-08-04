@@ -44,6 +44,8 @@ make_surface_closure_selection_input(
     return {
         .kind = Expr<std::uint32_t>{closure.kind.expression()},
         .lobe = Expr<std::uint32_t>{closure.lobe.expression()},
+        .bssrdf_method = Expr<std::uint32_t>{
+            closure.bssrdf_method.expression()},
         .allocation_weight =
             Expr<float>{closure.allocation_weight.expression()},
         .sample_weight =
@@ -63,6 +65,7 @@ make_surface_closure_selection_input(
     return {
         .kind = closure.kind,
         .lobe = closure.lobe,
+        .bssrdf_method = closure.bssrdf_method,
         .allocation_weight = closure.allocation_weight,
         .sample_weight = closure.sample_weight,
         .setup_valid = closure.setup_valid,
@@ -96,6 +99,7 @@ surface_closure_selection(
     const auto identity = detail::SurfaceClosureIdentityExpression{
         .kind = closure.kind,
         .lobe = closure.lobe,
+        .bssrdf_method = closure.bssrdf_method,
         .allocation_weight = closure.allocation_weight,
         .setup_valid = closure.setup_valid,
         .roughness = closure.roughness,
@@ -118,6 +122,8 @@ surface_closure_selection(
         closure, SurfaceClosureKind::refraction);
     const auto is_transparent = has_kind(
         closure, SurfaceClosureKind::transparent);
+    const auto is_bssrdf = has_kind(
+        closure, SurfaceClosureKind::bssrdf);
     UInt lobe_mask{context.lobe_mask};
     const auto diffuse_enabled =
         (lobe_mask & static_cast<std::uint32_t>(event_diffuse)) != 0u;
@@ -138,7 +144,7 @@ surface_closure_selection(
         is_translucent);
     eligible = select(eligible,
         diffuse_enabled,
-        is_diffuse | is_sheen);
+        is_diffuse | is_sheen | is_bssrdf);
     eligible = select(eligible,
         glossy_enabled,
         (is_principled & !is_sheen) | is_glossy);
@@ -221,6 +227,8 @@ surface_closure_conditional_sample(
         closure, SurfaceClosureKind::glass);
     const auto is_refraction = has_kind(
         closure, SurfaceClosureKind::refraction);
+    const auto is_bssrdf = has_kind(
+        closure, SurfaceClosureKind::bssrdf);
     const auto is_dielectric = is_glass | is_refraction;
     const auto sample_glossy =
         is_glossy | (is_principled & !is_sheen);
@@ -237,7 +245,11 @@ surface_closure_conditional_sample(
     // This device branch executes only after the outer categorical inversion
     // has selected this closure. Exactly one conditional sampler is therefore
     // active for a surface sample.
-    $if(is_transparent) {
+    $if(is_bssrdf) {
+        // Spatial transport consumes the payload after the categorical
+        // closure choice. A BSSRDF has no conditional surface direction.
+    }
+    $elif(is_transparent) {
         direction = -point.incoming;
         roughness = make_float2(0.0f);
     }
@@ -303,6 +315,10 @@ surface_closure_conditional_sample(
     properties |= select(0u,
         surface_closure_sample_property::singular,
         singular);
+    properties |= select(
+        0u,
+        surface_closure_sample_property::bssrdf,
+        is_bssrdf);
 
     luisa::compute::Var<SurfaceClosureConditionalSampleCall> result;
     result.direction = direction;
@@ -311,6 +327,13 @@ surface_closure_conditional_sample(
     result.singular_pdf = singular_pdf;
     result.eta = eta;
     result.properties = properties;
+    result.bssrdf_method = closure.bssrdf_method;
+    result.bssrdf_radius = closure.bssrdf_radius;
+    result.bssrdf_albedo = closure.bssrdf_albedo;
+    result.bssrdf_normal = closure.normal;
+    result.bssrdf_ior = closure.bssrdf_ior;
+    result.bssrdf_roughness = closure.bssrdf_roughness;
+    result.bssrdf_anisotropy = closure.bssrdf_anisotropy;
     result.valid = valid;
     return result;
 }
@@ -402,6 +425,13 @@ void SurfaceClosureSelectedSample::accept(
     _singular_pdf = sample.singular_pdf;
     _eta = sample.eta;
     _properties = sample.properties;
+    _bssrdf_method = sample.bssrdf_method;
+    _bssrdf_radius = sample.bssrdf_radius;
+    _bssrdf_albedo = sample.bssrdf_albedo;
+    _bssrdf_normal = sample.bssrdf_normal;
+    _bssrdf_ior = sample.bssrdf_ior;
+    _bssrdf_roughness = sample.bssrdf_roughness;
+    _bssrdf_anisotropy = sample.bssrdf_anisotropy;
     _candidate_valid = sample.valid;
 }
 
@@ -438,6 +468,10 @@ SurfaceSampleTrace SurfaceClosureSelectedSample::finish(
     const auto selected_singular =
         has_property(_properties,
             surface_closure_sample_property::singular);
+    const auto selected_bssrdf =
+        _selected & has_property(
+            _properties,
+            surface_closure_sample_property::bssrdf);
 
     const auto reflection_geometric_valid =
         dot(point.geometric_normal, _direction) > 0.0f;
@@ -449,25 +483,26 @@ SurfaceSampleTrace SurfaceClosureSelectedSample::finish(
         selected_translucent | selected_glass_transmission);
     const auto sample_valid =
         _selected & _candidate_valid &
-        (selected_transparent | geometric_valid);
+        (selected_bssrdf | selected_transparent | geometric_valid);
 
     auto regular = SurfaceEvaluation::zero();
+    const auto regular_valid = sample_valid & !selected_bssrdf;
     regular.f = select(
-        make_float3(0.0f), mixture_evaluation.f, sample_valid);
+        make_float3(0.0f), mixture_evaluation.f, regular_valid);
     regular.pdf = select(
-        0.0f, mixture_evaluation.pdf, sample_valid);
+        0.0f, mixture_evaluation.pdf, regular_valid);
     regular.diffuse_f = select(
         make_float3(0.0f),
         mixture_evaluation.diffuse_f,
-        sample_valid);
+        regular_valid);
     regular.glossy_f = select(
         make_float3(0.0f),
         mixture_evaluation.glossy_f,
-        sample_valid);
+        regular_valid);
     regular.diffuse_pdf = select(
-        0.0f, mixture_evaluation.diffuse_pdf, sample_valid);
+        0.0f, mixture_evaluation.diffuse_pdf, regular_valid);
     regular.events = select(
-        0u, mixture_evaluation.events, sample_valid);
+        0u, mixture_evaluation.events, regular_valid);
 
     const auto transparent_singular =
         sample_valid & selected_transparent;
@@ -503,12 +538,20 @@ SurfaceSampleTrace SurfaceClosureSelectedSample::finish(
     result.wi = _direction;
     result.runtime_flags = measure.runtime_flags();
     result.valid = sample_valid;
-    result.evaluation.f =
-        regular.f + transparent_delta +
-        glossy_delta + glass_delta;
-    result.evaluation.pdf =
+    const auto bssrdf_transport_weight = select(
+        make_float3(0.0f),
+        _closure_weight * measure.total_weight() /
+            max(_closure_sample_weight, 1.0e-20f),
+        selected_bssrdf & sample_valid);
+    result.evaluation.f = select(
+        regular.f + transparent_delta + glossy_delta + glass_delta,
+        bssrdf_transport_weight,
+        selected_bssrdf);
+    result.evaluation.pdf = select(
         regular.pdf + delta_pdf_numerator /
-                          max(measure.total_weight(), 1.0e-20f);
+                          max(measure.total_weight(), 1.0e-20f),
+        1.0f,
+        selected_bssrdf & sample_valid);
     result.evaluation.diffuse_f = regular.diffuse_f;
     result.evaluation.glossy_f =
         regular.glossy_f + glossy_delta +
@@ -550,10 +593,36 @@ SurfaceSampleTrace SurfaceClosureSelectedSample::finish(
         selected_transparent);
     result.evaluation.events = select(
         0u, result.evaluation.events, sample_valid);
+    result.evaluation.events = select(
+        result.evaluation.events,
+        static_cast<std::uint32_t>(event_subsurface),
+        selected_bssrdf & sample_valid);
     result.eta = select(
         1.0f, _eta, selected_glass & sample_valid);
     result.roughness = select(
         make_float2(0.0f), _roughness, sample_valid);
+    result.bssrdf_method = select(
+        static_cast<std::uint32_t>(SurfaceBssrdfMethod::random_walk),
+        _bssrdf_method,
+        selected_bssrdf & sample_valid);
+    result.bssrdf_radius = select(
+        make_float3(0.0f),
+        _bssrdf_radius,
+        selected_bssrdf & sample_valid);
+    result.bssrdf_albedo = select(
+        make_float3(0.0f),
+        _bssrdf_albedo,
+        selected_bssrdf & sample_valid);
+    result.bssrdf_normal = select(
+        make_float3(0.0f, 0.0f, 1.0f),
+        _bssrdf_normal,
+        selected_bssrdf & sample_valid);
+    result.bssrdf_ior = select(
+        1.4f, _bssrdf_ior, selected_bssrdf & sample_valid);
+    result.bssrdf_roughness = select(
+        1.0f, _bssrdf_roughness, selected_bssrdf & sample_valid);
+    result.bssrdf_anisotropy = select(
+        0.0f, _bssrdf_anisotropy, selected_bssrdf & sample_valid);
 
     if (trace_selection) {
         trace.closure_index = select(
@@ -668,6 +737,14 @@ void SurfaceClosureSamplingVisitor::visit(
     _result.sample.eta = result.sample.eta;
     _result.sample.roughness = result.sample.roughness;
     _result.sample.runtime_flags = result.sample.runtime_flags;
+    _result.sample.bssrdf_method = result.sample.bssrdf_method;
+    _result.sample.bssrdf_radius = result.sample.bssrdf_radius;
+    _result.sample.bssrdf_albedo = result.sample.bssrdf_albedo;
+    _result.sample.bssrdf_normal = result.sample.bssrdf_normal;
+    _result.sample.bssrdf_ior = result.sample.bssrdf_ior;
+    _result.sample.bssrdf_roughness = result.sample.bssrdf_roughness;
+    _result.sample.bssrdf_anisotropy =
+        result.sample.bssrdf_anisotropy;
     _result.sample.valid = result.sample.valid;
     _result.closure_index = result.closure_index;
     _result.closure_type = result.closure_type;

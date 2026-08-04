@@ -74,6 +74,10 @@ struct TracedClosure {
     Float subsurface_weight;
     Float3 subsurface_radius;
     Float subsurface_scale;
+    compiler::BssrdfMethod subsurface_method{
+        compiler::BssrdfMethod::random_walk};
+    Float subsurface_ior;
+    Float subsurface_anisotropy;
     Float transmission_weight;
     Float metallic;
     Float ior;
@@ -143,6 +147,7 @@ struct MicrofacetReflectionSample {
 struct SurfaceClosureIdentityExpression {
     Expr<std::uint32_t> kind;
     Expr<std::uint32_t> lobe;
+    Expr<std::uint32_t> bssrdf_method;
     Expr<float> allocation_weight;
     Expr<bool> setup_valid;
     Expr<float> roughness;

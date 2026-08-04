@@ -44,6 +44,7 @@ using SurfaceClosureIdentityCallable =
     luisa::compute::Callable<luisa::uint2(
         luisa::uint,
         luisa::uint,
+        luisa::uint,
         float,
         bool,
         float,

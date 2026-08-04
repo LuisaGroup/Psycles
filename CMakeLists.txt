@@ -47,6 +47,7 @@ add_library(psycles_core
     src/compiler/shader_program.cpp
     src/compiler/surface_program.cpp
     src/compiler/surface_program_builder.cpp
+    src/compiler/surface_program_compaction.cpp
     src/compiler/surface_program_lower_closures.cpp
     src/compiler/surface_program_lower_context.cpp
     src/compiler/surface_program_lower_textures.cpp
@@ -1332,6 +1333,15 @@ if(PSYCLES_ENABLE_LUISA)
                         tests/test_luisa_cycles_closure.cpp
                     TEST_STEM
                         luisa_cycles_closure
+                    LIBRARIES Psycles::luisa)
+
+                psycles_add_luisa_backend_test(
+                    TARGET
+                        psycles_luisa_bssrdf_tests
+                    SOURCE
+                        tests/test_luisa_bssrdf.cpp
+                    TEST_STEM
+                        luisa_bssrdf
                     LIBRARIES Psycles::luisa)
 
                 psycles_add_luisa_backend_test(

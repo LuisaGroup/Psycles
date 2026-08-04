@@ -3,6 +3,28 @@
 #include <utility>
 
 namespace psycles::compiler::detail {
+namespace {
+
+[[nodiscard]] BssrdfMethod bssrdf_method(
+    const contract::ShaderNode &node,
+    std::string_view property) {
+    const auto method = property_string(
+        node, property, "RANDOM_WALK");
+    if (method == "BURLEY" || method == "burley") {
+        return BssrdfMethod::burley;
+    }
+    if (method == "RANDOM_WALK_LEGACY" ||
+        method == "random_walk_legacy") {
+        return BssrdfMethod::random_walk_legacy;
+    }
+    if (method == "RANDOM_WALK_SKIN" ||
+        method == "random_walk_skin") {
+        return BssrdfMethod::random_walk_skin;
+    }
+    return BssrdfMethod::random_walk;
+}
+
+}// namespace
 
 // Lowers surface and volume closure nodes. A true result means the node
 // family was recognized, even when input diagnostics prevented an
@@ -13,6 +35,7 @@ namespace psycles::compiler::detail {
 
     if (node.type == node_type::diffuse_bsdf ||
         node.type == node_type::principled_bsdf ||
+        node.type == node_type::subsurface_scattering ||
         node.type == node_type::glossy_bsdf ||
         node.type == node_type::glass_bsdf ||
         node.type == node_type::refraction_bsdf) {
@@ -29,6 +52,8 @@ namespace psycles::compiler::detail {
         std::optional<ValueExpressionId> subsurface_weight;
         std::optional<ValueExpressionId> subsurface_radius;
         std::optional<ValueExpressionId> subsurface_scale;
+        std::optional<ValueExpressionId> subsurface_ior;
+        std::optional<ValueExpressionId> subsurface_anisotropy;
         std::optional<ValueExpressionId> transmission_weight;
         std::optional<ValueExpressionId> ior;
         std::optional<ValueExpressionId> specular_ior_level;
@@ -60,6 +85,10 @@ namespace psycles::compiler::detail {
                 lower_value_input(node, "SubsurfaceRadius");
             subsurface_scale =
                 lower_value_input(node, "SubsurfaceScale");
+            subsurface_ior =
+                lower_value_input(node, "SubsurfaceIOR");
+            subsurface_anisotropy =
+                lower_value_input(node, "SubsurfaceAnisotropy");
             transmission_weight =
                 lower_value_input(node, "TransmissionWeight");
             specular_ior_level =
@@ -84,23 +113,35 @@ namespace psycles::compiler::detail {
                 lower_value_input(node, "EmissionColor");
             emission_strength =
                 lower_value_input(node, "EmissionStrength");
+        } else if (node.type == node_type::subsurface_scattering) {
+            subsurface_radius = lower_value_input(node, "Radius");
+            subsurface_scale = lower_value_input(node, "Scale");
+            subsurface_ior = lower_value_input(node, "IOR");
+            subsurface_anisotropy =
+                lower_value_input(node, "Anisotropy");
         }
         if (color && roughness && normal &&
             (node.type != node_type::principled_bsdf ||
              (metallic && diffuse_roughness && subsurface_weight &&
               subsurface_radius && subsurface_scale &&
+              subsurface_ior && subsurface_anisotropy &&
               transmission_weight && ior &&
               specular_ior_level && specular_tint && alpha &&
               sheen_weight && sheen_roughness && sheen_tint &&
               coat_weight && coat_roughness && coat_ior && coat_tint &&
               coat_normal &&
               emission_color && emission_strength)) &&
+            (node.type != node_type::subsurface_scattering ||
+                (subsurface_radius && subsurface_scale &&
+                 subsurface_ior && subsurface_anisotropy)) &&
             ((node.type != node_type::glass_bsdf &&
                  node.type != node_type::refraction_bsdf) ||
                 ior)) {
             auto operation = ClosureOperation::diffuse;
             if (node.type == node_type::principled_bsdf) {
                 operation = ClosureOperation::principled;
+            } else if (node.type == node_type::subsurface_scattering) {
+                operation = ClosureOperation::subsurface;
             } else if (node.type == node_type::glass_bsdf) {
                 operation = ClosureOperation::glass;
             } else if (node.type == node_type::refraction_bsdf) {
@@ -129,6 +170,17 @@ namespace psycles::compiler::detail {
                     .subsurface_scale =
                         subsurface_scale.value_or(
                             ValueExpressionId{}),
+                    .subsurface_ior =
+                        subsurface_ior.value_or(
+                            ValueExpressionId{}),
+                    .subsurface_anisotropy =
+                        subsurface_anisotropy.value_or(
+                            ValueExpressionId{}),
+                    .subsurface_method = bssrdf_method(
+                        node,
+                        node.type == node_type::principled_bsdf
+                            ? "SubsurfaceMethod"
+                            : "Method"),
                     .transmission_weight =
                         transmission_weight.value_or(
                             ValueExpressionId{}),

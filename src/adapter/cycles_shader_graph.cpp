@@ -143,6 +143,8 @@ CyclesNodeMappingRegistry make_core_cycles_node_mappings() {
             {"Subsurface Weight", "SubsurfaceWeight"},
             {"Subsurface Radius", "SubsurfaceRadius"},
             {"Subsurface Scale", "SubsurfaceScale"},
+            {"Subsurface IOR", "SubsurfaceIOR"},
+            {"Subsurface Anisotropy", "SubsurfaceAnisotropy"},
             {"Transmission Weight", "TransmissionWeight"},
             {"IOR", "IOR"},
             {"Specular IOR Level", "SpecularIORLevel"},
@@ -160,7 +162,23 @@ CyclesNodeMappingRegistry make_core_cycles_node_mappings() {
             {"Emission Strength", "EmissionStrength"},
             {"Normal", "Normal"}},
         .outputs = {{"BSDF", "Closure"}},
-        .properties = {{"distribution", "Distribution"}}});
+        .properties = {
+            {"distribution", "Distribution"},
+            {"subsurface_method", "SubsurfaceMethod"}}});
+    add({
+        .cycles_type = "subsurface_scattering",
+        .cycles_variant = {},
+        .psycles_type = node_type::subsurface_scattering,
+        .inputs = {
+            {"Color", "Color"},
+            {"Scale", "Scale"},
+            {"Radius", "Radius"},
+            {"IOR", "IOR"},
+            {"Roughness", "Roughness"},
+            {"Anisotropy", "Anisotropy"},
+            {"Normal", "Normal"}},
+        .outputs = {{"BSSRDF", "Closure"}},
+        .properties = {{"method", "Method"}}});
     add({
         .cycles_type = "glass_bsdf",
         .cycles_variant = {},

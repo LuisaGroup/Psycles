@@ -1,4 +1,5 @@
 #include "path_kernel_builder.h"
+#include "subsurface_exit_closure_component.h"
 
 #include <psycles/luisa/analytic_light_sampling.h>
 
@@ -217,7 +218,7 @@ SurfaceEvaluation PathKernelInvocation::evaluate_light_surface(
     Float3 outgoing,
     const SurfaceQuery &query,
     UInt shader_flags) const noexcept {
-    return unpack_surface_evaluation(
+    auto result = unpack_surface_evaluation(
         config.surfaces.evaluate_light(
             config.scene->scalar_parameter_buffer,
             config.scene->vector_parameter_buffer,
@@ -233,6 +234,11 @@ SurfaceEvaluation PathKernelInvocation::evaluate_light_surface(
             query.reflective_caustics,
             query.refractive_caustics,
             shader_flags));
+    $if(query.subsurface_exit) {
+        result = SubsurfaceExitClosureComponent{}.evaluate_light(
+            point, outgoing, query, shader_flags);
+    };
+    return result;
 }
 
 UInt PathKernelInvocation::surface_runtime_flags(
@@ -290,7 +296,7 @@ PathKernelInvocation::sample_surface(UInt surface_tag,
                                      Float u_lobe,
                                      Float2 u_direction,
                                      const SurfaceQuery &query) const noexcept {
-    return unpack_surface_sample(
+    auto result = unpack_surface_sample(
         config.surfaces.sample(config.scene->scalar_parameter_buffer,
                                config.scene->vector_parameter_buffer,
                                config.scene->cycles_bsdf_table_buffer,
@@ -305,6 +311,11 @@ PathKernelInvocation::sample_surface(UInt surface_tag,
                                query.glossy_filter_roughness,
                                query.reflective_caustics,
                                query.refractive_caustics));
+    $if(query.subsurface_exit) {
+        result = SubsurfaceExitClosureComponent{}.sample(
+            point, u_direction, query);
+    };
+    return result;
 }
 
 SurfaceClosureTrace PathKernelInvocation::trace_surface_closure(
@@ -332,7 +343,7 @@ SurfaceSampleTrace PathKernelInvocation::trace_sample_surface(
     Float u_lobe,
     Float2 u_direction,
     const SurfaceQuery &query) const noexcept {
-    return unpack_surface_sample_trace(
+    auto result = unpack_surface_sample_trace(
         config.surfaces.sample_trace(config.scene->scalar_parameter_buffer,
                                      config.scene->vector_parameter_buffer,
                                      config.scene->cycles_bsdf_table_buffer,
@@ -347,6 +358,11 @@ SurfaceSampleTrace PathKernelInvocation::trace_sample_surface(
                                      query.glossy_filter_roughness,
                                      query.reflective_caustics,
                                      query.refractive_caustics));
+    $if(query.subsurface_exit) {
+        result = SubsurfaceExitClosureComponent{}.sample_trace(
+            point, u_direction, query);
+    };
+    return result;
 }
 
 SurfaceAov
@@ -577,6 +593,14 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
     Float optical_depth = 0.0f;
     Bool terminate_after_transparent = false;
     Bool terminate_on_next_surface = false;
+    Bool pending_subsurface_exit = false;
+    Var<luisa::compute::CommittedHit> pending_subsurface_hit;
+    pending_subsurface_hit.inst = surface_ray::invalid_primitive;
+    pending_subsurface_hit.prim = surface_ray::invalid_primitive;
+    pending_subsurface_hit.bary = make_float2(0.0f);
+    pending_subsurface_hit.hit_type =
+        static_cast<std::uint32_t>(luisa::compute::HitType::Miss);
+    pending_subsurface_hit.committed_ray_t = 0.0f;
     return {invocation,
             std::move(sample_index),
             std::move(cycles_y),
@@ -633,7 +657,9 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
             std::move(volume_bounds_bounce),
             std::move(optical_depth),
             std::move(terminate_after_transparent),
-            std::move(terminate_on_next_surface)};
+            std::move(terminate_on_next_surface),
+            std::move(pending_subsurface_exit),
+            std::move(pending_subsurface_hit)};
 }
 
 void PathSampleContext::accumulate_light_pass(

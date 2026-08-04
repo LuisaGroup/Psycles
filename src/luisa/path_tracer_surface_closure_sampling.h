@@ -38,6 +38,7 @@ using SurfaceClosureSelectionCallable =
         bool,
         luisa::uint,
         luisa::uint,
+        luisa::uint,
         float,
         float,
         bool,

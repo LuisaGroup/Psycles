@@ -27,7 +27,7 @@ SurfaceClosureBlocks pack_surface_closure(
                 closure.kind,
                 closure.lobe,
                 flags,
-                0u)
+                closure.bssrdf_method)
                 .bitcast<luisa::float4>(),
             make_float4(
                 closure.weight,
@@ -67,9 +67,13 @@ SurfaceClosureBlocks pack_surface_closure(
         .block_3 = make_float4x4(
             make_float4(
                 closure.transmission_tint,
-                0.0f),
-            zero,
-            zero,
+                closure.bssrdf_ior),
+            make_float4(
+                closure.bssrdf_radius,
+                closure.bssrdf_anisotropy),
+            make_float4(
+                closure.bssrdf_albedo,
+                closure.bssrdf_roughness),
             zero)};
 }
 
@@ -118,7 +122,13 @@ SurfaceClosureRecord unpack_surface_closure(
         .preserve_ggx_energy =
             (flags & preserve_ggx_energy_bit) != 0u,
         .beckmann =
-            (flags & beckmann_bit) != 0u};
+            (flags & beckmann_bit) != 0u,
+        .bssrdf_method = identity.w,
+        .bssrdf_radius = block_3[1u].xyz(),
+        .bssrdf_albedo = block_3[2u].xyz(),
+        .bssrdf_ior = block_3[0u].w,
+        .bssrdf_roughness = block_3[2u].w,
+        .bssrdf_anisotropy = block_3[1u].w};
 }
 
 }// namespace psycles::luisa_backend

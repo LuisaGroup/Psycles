@@ -4,13 +4,15 @@
 #include <psycles/luisa/cycles_path_state.h>
 #include <psycles/luisa/surface_ray.h>
 
+#include <utility>
+
 namespace psycles::luisa_backend::detail {
 namespace {
 
 class SurfaceScatterStageImpl final : public SurfaceScatterStage {
 
   public:
-    void emit(DirectLightingContext &context) const noexcept override {
+    Result emit(DirectLightingContext &context) const noexcept override {
         auto &bounce = context.bounce;
         auto &sample = bounce.sample;
         auto &invocation = sample.invocation;
@@ -150,6 +152,9 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
         Bool singular =
             (surface_sample.evaluation.events &
              static_cast<std::uint32_t>(contract::event_singular)) != 0u;
+        Bool subsurface =
+            (surface_sample.evaluation.events &
+             static_cast<std::uint32_t>(contract::event_subsurface)) != 0u;
         const auto cycles_label =
             cycles_closure::label_from_events(surface_sample.evaluation.events);
 
@@ -158,6 +163,10 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
         auto sampled_glossy_weight = light_component_ratio(
             surface_sample.evaluation.glossy_f,
             surface_sample.evaluation.f);
+        sampled_diffuse_weight = select(
+            sampled_diffuse_weight, 1.0f, subsurface);
+        sampled_glossy_weight = select(
+            sampled_glossy_weight, 0.0f, subsurface);
         auto records_first_surface = (path_depth == 0u) & (!transparent);
         path_diffuse_weight = select(
             path_diffuse_weight, sampled_diffuse_weight, records_first_surface);
@@ -171,81 +180,105 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
             $break;
         };
 
-        ray_events = select(surface_sample.evaluation.events,
-                            ray_events | surface_sample.evaluation.events,
-                            transparent);
-        const auto next_cycles_path_state = cycles_path_state::next_surface(
-            {.flag = path_flags,
-             .visibility = cycles_path_visibility,
-             .bounce = path_depth,
-             .diffuse_bounce = diffuse_depth,
-             .glossy_bounce = glossy_depth,
-             .transmission_bounce = transmission_depth,
-             .transparent_bounce = transparent_depth,
-             .rng_offset = cycles_rng_offset},
-            cycles_label,
-            cycles_surface_runtime_flags,
-            {.maximum = kernel_parameters.max_bounces,
-             .maximum_diffuse = kernel_parameters.max_diffuse_bounces,
-             .maximum_glossy = kernel_parameters.max_glossy_bounces,
-             .maximum_transmission = kernel_parameters.max_transmission_bounces,
-             .maximum_transparent = kernel_parameters.transparent_max_bounces});
-        path_flags = next_cycles_path_state.flag;
-        cycles_path_visibility = next_cycles_path_state.visibility;
-        path_depth = next_cycles_path_state.bounce;
-        diffuse_depth = next_cycles_path_state.diffuse_bounce;
-        glossy_depth = next_cycles_path_state.glossy_bounce;
-        transmission_depth = next_cycles_path_state.transmission_bounce;
-        transparent_depth = next_cycles_path_state.transparent_bounce;
-        cycles_rng_offset = next_cycles_path_state.rng_offset;
-        if (config.volume_state) {
-            config.volume_state->cross_surface(
-                sample.volume,
-                surface.volume_stack_entry,
-                point.back_facing,
-                surface.surface_has_volume,
-                cycles_label);
+        $if(subsurface) {
+            // Cycles schedules INTERSECT_SUBSURFACE without applying
+            // path_state_next: no bounce counter or forward-MIS state moves
+            // at the entry. The local transport owns the next RNG block.
+            cycles_rng_offset += cycles_path_state::bounce_dimension_count;
+            cycles_path_visibility &=
+                ~cycles_path_state::visibility_camera;
+            ray_visibility = cycles_path_state::contract_visibility(
+                cycles_path_visibility);
+            ray_dP = differential_radius;
         }
-        ray_visibility =
-            cycles_path_state::contract_visibility(cycles_path_visibility);
-        terminate_on_next_surface =
-            (path_flags & cycles_path_state::flag_terminate_on_next_surface) !=
-            0u;
-        terminate_after_transparent =
-            (path_flags &
-             cycles_path_state::flag_terminate_after_transparent) != 0u;
-        // Cycles does not update forward-MIS state for a
-        // transparent bounce. The next emitter remains paired
-        // with the most recent non-transparent BSDF technique.
-        previous_bsdf_pdf = select(
-            surface_sample.evaluation.pdf, previous_bsdf_pdf, transparent);
-        minimum_bsdf_pdf =
-            select(min(minimum_bsdf_pdf, surface_sample.evaluation.pdf),
-                   minimum_bsdf_pdf,
-                   transparent);
-        previous_delta = select(singular, previous_delta, transparent);
-        previous_mis_origin_normal = select(
-            point.shading_normal, previous_mis_origin_normal, transparent);
-        // A transparent Cycles bounce keeps the complete ray line and
-        // advances only tmin to the next representable float after
-        // the committed distance. A regular surface bounce starts a
-        // new ray and uses the conditional triangle-origin policy.
-        const auto normalized_surface_direction = normalize(surface_sample.wi);
-        Float3 next_origin =
-            select(make_surface_ray_origin(normalized_surface_direction),
-                   ray->origin(),
-                   transparent);
-        Float3 next_direction =
-            select(normalized_surface_direction, ray->direction(), transparent);
-        Float next_minimum =
-            select(0.0f,
-                   surface_ray::intersection_t_offset(hit->committed_ray_t),
-                   transparent);
-        Float next_maximum = select(ray_maximum, ray->t_max(), transparent);
-        ray_source_instance = hit->inst;
-        ray_source_primitive = hit->prim;
-        ray_dP = differential_radius;
-        ray = make_ray(next_origin, next_direction, next_minimum, next_maximum);
+        $else {
+            ray_events = select(surface_sample.evaluation.events,
+                                ray_events | surface_sample.evaluation.events,
+                                transparent);
+            const auto next_cycles_path_state = cycles_path_state::next_surface(
+                {.flag = path_flags,
+                 .visibility = cycles_path_visibility,
+                 .bounce = path_depth,
+                 .diffuse_bounce = diffuse_depth,
+                 .glossy_bounce = glossy_depth,
+                 .transmission_bounce = transmission_depth,
+                 .transparent_bounce = transparent_depth,
+                 .rng_offset = cycles_rng_offset},
+                cycles_label,
+                cycles_surface_runtime_flags,
+                {.maximum = kernel_parameters.max_bounces,
+                 .maximum_diffuse = kernel_parameters.max_diffuse_bounces,
+                 .maximum_glossy = kernel_parameters.max_glossy_bounces,
+                 .maximum_transmission =
+                     kernel_parameters.max_transmission_bounces,
+                 .maximum_transparent =
+                     kernel_parameters.transparent_max_bounces});
+            path_flags = next_cycles_path_state.flag;
+            cycles_path_visibility = next_cycles_path_state.visibility;
+            path_depth = next_cycles_path_state.bounce;
+            diffuse_depth = next_cycles_path_state.diffuse_bounce;
+            glossy_depth = next_cycles_path_state.glossy_bounce;
+            transmission_depth = next_cycles_path_state.transmission_bounce;
+            transparent_depth = next_cycles_path_state.transparent_bounce;
+            cycles_rng_offset = next_cycles_path_state.rng_offset;
+            if (config.volume_state) {
+                config.volume_state->cross_surface(
+                    sample.volume,
+                    surface.volume_stack_entry,
+                    point.back_facing,
+                    surface.surface_has_volume,
+                    cycles_label);
+            }
+            ray_visibility = cycles_path_state::contract_visibility(
+                cycles_path_visibility);
+            terminate_on_next_surface =
+                (path_flags &
+                 cycles_path_state::flag_terminate_on_next_surface) != 0u;
+            terminate_after_transparent =
+                (path_flags &
+                 cycles_path_state::flag_terminate_after_transparent) != 0u;
+            // Cycles does not update forward-MIS state for a transparent
+            // bounce. The next emitter remains paired with the most recent
+            // non-transparent BSDF technique.
+            previous_bsdf_pdf = select(
+                surface_sample.evaluation.pdf,
+                previous_bsdf_pdf,
+                transparent);
+            minimum_bsdf_pdf = select(
+                min(minimum_bsdf_pdf, surface_sample.evaluation.pdf),
+                minimum_bsdf_pdf,
+                transparent);
+            previous_delta = select(singular, previous_delta, transparent);
+            previous_mis_origin_normal = select(
+                point.shading_normal,
+                previous_mis_origin_normal,
+                transparent);
+            const auto normalized_surface_direction =
+                normalize(surface_sample.wi);
+            Float3 next_origin = select(
+                make_surface_ray_origin(normalized_surface_direction),
+                ray->origin(),
+                transparent);
+            Float3 next_direction = select(
+                normalized_surface_direction,
+                ray->direction(),
+                transparent);
+            Float next_minimum = select(
+                0.0f,
+                surface_ray::intersection_t_offset(
+                    hit->committed_ray_t),
+                transparent);
+            Float next_maximum = select(
+                ray_maximum, ray->t_max(), transparent);
+            ray_source_instance = hit->inst;
+            ray_source_primitive = hit->prim;
+            ray_dP = differential_radius;
+            ray = make_ray(
+                next_origin,
+                next_direction,
+                next_minimum,
+                next_maximum);
+        };
         if (path_trace_enabled) {
             trace_write_event(path_step,
                               path_trace_schema::EventSlot::post_depth,
@@ -274,6 +307,9 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
                 path_trace_schema::EventSlot::post_visibility,
                 make_float3(trace_uint32(cycles_path_visibility).xy(), 0.0f));
         }
+        return {
+            .sample = std::move(surface_sample),
+            .subsurface = std::move(subsurface)};
     }
 };
 

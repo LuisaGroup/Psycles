@@ -199,6 +199,13 @@ struct SurfaceSampleCall {
     float eta{};
     luisa::float2 roughness{};
     luisa::uint runtime_flags{};
+    luisa::uint bssrdf_method{};
+    luisa::float3 bssrdf_radius{};
+    luisa::float3 bssrdf_albedo{};
+    luisa::float3 bssrdf_normal{};
+    float bssrdf_ior{};
+    float bssrdf_roughness{};
+    float bssrdf_anisotropy{};
     luisa::uint valid{};
 };
 
@@ -224,6 +231,13 @@ struct SurfaceSampleTraceCall {
     float eta{};
     luisa::float2 roughness{};
     luisa::uint runtime_flags{};
+    luisa::uint bssrdf_method{};
+    luisa::float3 bssrdf_radius{};
+    luisa::float3 bssrdf_albedo{};
+    luisa::float3 bssrdf_normal{};
+    float bssrdf_ior{};
+    float bssrdf_roughness{};
+    float bssrdf_anisotropy{};
     luisa::uint valid{};
     luisa::uint closure_index{};
     luisa::uint closure_type{};
@@ -461,6 +475,13 @@ LUISA_STRUCT(
     eta,
     roughness,
     runtime_flags,
+    bssrdf_method,
+    bssrdf_radius,
+    bssrdf_albedo,
+    bssrdf_normal,
+    bssrdf_ior,
+    bssrdf_roughness,
+    bssrdf_anisotropy,
     valid) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::SurfaceClosureTraceCall,
@@ -484,6 +505,13 @@ LUISA_STRUCT(
     eta,
     roughness,
     runtime_flags,
+    bssrdf_method,
+    bssrdf_radius,
+    bssrdf_albedo,
+    bssrdf_normal,
+    bssrdf_ior,
+    bssrdf_roughness,
+    bssrdf_anisotropy,
     valid,
     closure_index,
     closure_type,

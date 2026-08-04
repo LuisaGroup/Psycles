@@ -55,6 +55,7 @@ struct EmissionProof {
             case ClosureOperation::glass:
             case ClosureOperation::refraction:
             case ClosureOperation::transparent:
+            case ClosureOperation::subsurface:
                 break;
             case ClosureOperation::principled:
                 // Cycles never exposes Principled through the constant
@@ -111,7 +112,8 @@ SurfaceProgram::SurfaceProgram(
     std::vector<ClosureInstruction> closure_instructions,
     ClosureExpressionId root,
     std::vector<VolumeInstruction> volume_instructions,
-    VolumeExpressionId volume_root) noexcept
+    VolumeExpressionId volume_root,
+    ValueExpressionId displacement_root) noexcept
     : _structure_signature{structure_signature},
       _parameters{std::move(parameters)},
       _value_instructions{std::move(value_instructions)},
@@ -119,6 +121,7 @@ SurfaceProgram::SurfaceProgram(
       _volume_instructions{std::move(volume_instructions)},
       _root{root},
       _volume_root{volume_root},
+      _displacement_root{displacement_root},
       _emission_evaluation{analyze_emission_evaluation(
           _value_instructions,
           _closure_instructions,
@@ -277,6 +280,7 @@ Vec3f estimate_surface_emission(
             case ClosureOperation::glass:
             case ClosureOperation::refraction:
             case ClosureOperation::transparent:
+            case ClosureOperation::subsurface:
                 break;
         }
         estimates.emplace_back(estimate);

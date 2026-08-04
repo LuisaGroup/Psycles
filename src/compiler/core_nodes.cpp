@@ -1082,6 +1082,8 @@ NodeRegistry make_core_node_registry() {
             input("SubsurfaceWeight", SocketType::floating, SocketValue::floating(0.0f)),
             input("SubsurfaceRadius", SocketType::vector, SocketValue::vector({1.0f, 0.2f, 0.1f})),
             input("SubsurfaceScale", SocketType::floating, SocketValue::floating(0.005f)),
+            input("SubsurfaceIOR", SocketType::floating, SocketValue::floating(1.4f)),
+            input("SubsurfaceAnisotropy", SocketType::floating, SocketValue::floating(0.0f)),
             input("TransmissionWeight", SocketType::floating, SocketValue::floating(0.0f)),
             input("IOR", SocketType::floating, SocketValue::floating(1.5f)),
             input("SpecularIORLevel", SocketType::floating, SocketValue::floating(0.5f)),
@@ -1100,10 +1102,28 @@ NodeRegistry make_core_node_registry() {
             input("Normal", SocketType::normal, SocketValue::normal({0.0f, 0.0f, 0.0f}))},
         .outputs = {output("Closure", SocketType::closure)},
         .properties = {
-            property("Distribution", SocketType::string, SocketValue::string("GGX"))},
+            property("Distribution", SocketType::string, SocketValue::string("GGX")),
+            property("SubsurfaceMethod", SocketType::string, SocketValue::string("RANDOM_WALK"))},
         .required_features =
             feature_bit(ShaderFeature::surface) |
             feature_bit(ShaderFeature::emission)}));
+
+    static_cast<void>(registry.register_schema(NodeSchema{
+        .type = node_type::subsurface_scattering,
+        .inputs = {
+            input("Color", SocketType::color, SocketValue::color({0.8f, 0.8f, 0.8f})),
+            input("Scale", SocketType::floating, SocketValue::floating(0.005f)),
+            input("Radius", SocketType::vector, SocketValue::vector({1.0f, 0.2f, 0.1f})),
+            input("IOR", SocketType::floating, SocketValue::floating(1.4f)),
+            input("Roughness", SocketType::floating, SocketValue::floating(1.0f)),
+            input("Anisotropy", SocketType::floating, SocketValue::floating(0.0f)),
+            input("Normal", SocketType::normal, SocketValue::normal({0.0f, 0.0f, 0.0f}))},
+        .outputs = {output("Closure", SocketType::closure)},
+        .properties = {
+            property("Method", SocketType::string, SocketValue::string("RANDOM_WALK"))},
+        .required_features =
+            feature_bit(ShaderFeature::surface) |
+            feature_bit(ShaderFeature::subsurface)}));
 
     static_cast<void>(registry.register_schema(NodeSchema{
         .type = node_type::glossy_bsdf,

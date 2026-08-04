@@ -102,6 +102,8 @@ surface_closure_evaluation_contribution(
         closure, SurfaceClosureKind::glass);
     const auto is_refraction = has_kind(
         closure, SurfaceClosureKind::refraction);
+    const auto is_bssrdf = has_kind(
+        closure, SurfaceClosureKind::bssrdf);
     const auto is_dielectric = is_glass | is_refraction;
     const auto generic_glossy =
         (is_principled & !is_sheen) | is_glossy;
@@ -168,7 +170,7 @@ surface_closure_evaluation_contribution(
     auto translucent_allowed =
         diffuse_enabled & transmission_enabled & is_translucent;
     auto diffuse_allowed =
-        (diffuse_enabled & (is_diffuse | is_sheen)) |
+        (diffuse_enabled & (is_diffuse | is_sheen | is_bssrdf)) |
         translucent_allowed;
     auto glossy_allowed = glossy_enabled & generic_glossy;
     auto glass_allowed =
@@ -238,10 +240,12 @@ surface_closure_evaluation_contribution(
         select(diffuse_pdf, glossy_pdf, glossy_allowed),
         glossy_pdf,
         is_dielectric);
+    const auto directional_pdf = select(pdf, 0.0f, is_bssrdf);
     const auto any_allowed =
         diffuse_allowed | glossy_allowed | glass_allowed |
         refraction_allowed;
-    const auto enabled_pdf = select(0.0f, pdf, any_allowed);
+    const auto enabled_pdf = select(
+        0.0f, directional_pdf, any_allowed);
     const auto eligible_diffuse = select(
         make_float3(0.0f),
         diffuse_contribution,

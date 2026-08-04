@@ -59,7 +59,7 @@ void test_structural_mapping() {
   static_assert(kernel.maximum_volume == 7u);
   static_assert(kernel.transparent_minimum == 6u);
   static_assert(kernel.transparent_maximum == 9u);
-  static_assert(kernel.maximum_path_steps == 19u);
+  static_assert(kernel.maximum_path_steps == 28u);
 }
 
 void test_path_step_upper_bound() {
@@ -68,14 +68,14 @@ void test_path_step_upper_bound() {
     for (auto transparent_maximum = 0u; transparent_maximum <= 32u;
          ++transparent_maximum) {
       const auto required =
-          static_cast<std::uint64_t>(scene_maximum) + 1u +
+          2u * (static_cast<std::uint64_t>(scene_maximum) + 1u) +
           static_cast<std::uint64_t>(
               transparent_maximum == 0u ? 1u : transparent_maximum) +
           1u;
       require(cycles_path_step_limit(synced_maximum, transparent_maximum) ==
                   required,
-              "uncapped path did not reserve every scatter "
-              "and its terminal intersection");
+              "uncapped path did not reserve every BSSRDF entry/exit, "
+              "ordinary scatter, and terminal intersection");
     }
   }
 
@@ -84,11 +84,13 @@ void test_path_step_upper_bound() {
               cycles_device_path_step_cap,
           "malformed scene limits escaped the device path cap");
 
-  // Lone Monk's current values: UI max=8, transparent max=8. Nine opaque
-  // scatters, eight transparent scatters, and one terminal intersection.
+  // Lone Monk's current values: UI max=8, transparent max=8. In the formal
+  // worst case all nine opaque scatters are BSSRDF exit bounces, each preceded
+  // by an entry iteration, followed by eight transparent scatters and one
+  // terminal intersection.
   require(
       cycles_kernel_bounce_limits({.maximum = 8u, .transparent_maximum = 8u})
-              .maximum_path_steps == 18u,
+              .maximum_path_steps == 27u,
       "Lone Monk path-step boundary regressed");
 }
 

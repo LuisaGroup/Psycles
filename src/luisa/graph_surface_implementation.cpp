@@ -69,7 +69,9 @@ GraphSurfaceImplementation::GraphSurfaceImplementation(
                     compiler::ClosureOperation::principled;
             _capabilities.may_have_subsurface |=
                 closure.operation ==
-                compiler::ClosureOperation::principled;
+                    compiler::ClosureOperation::principled ||
+                closure.operation ==
+                    compiler::ClosureOperation::subsurface;
         }
         _capabilities.emission_is_constant =
             _program->emission_evaluation() !=
@@ -168,6 +170,15 @@ GraphSurfaceImplementation::evaluate_traced(
                 auto weight = closure_sample_weight(physical);
                 total_sample_weight +=
                     select(0.0f, weight, transparent_enabled);
+                return;
+            }
+            if (closure.operation ==
+                compiler::ClosureOperation::subsurface) {
+                const auto weight = closure_sample_weight(physical);
+                total_sample_weight += select(
+                    0.0f,
+                    weight,
+                    diffuse_enabled & closure.setup_valid);
                 return;
             }
             const auto is_diffuse = closure.operation ==
@@ -603,6 +614,7 @@ GraphSurfaceImplementation::sample_with_trace(
     Bool selected_glass = false;
     Bool selected_glass_transmission = false;
     Bool selected_glass_singular = false;
+    Bool selected_bssrdf = false;
     Bool selected_candidate_valid = true;
     UInt selected_closure_index = ~std::uint32_t{0u};
     Float3 transparent_weight = make_float3(0.0f);
@@ -614,6 +626,16 @@ GraphSurfaceImplementation::sample_with_trace(
     Float glass_singular_pdf = 0.0f;
     Float glass_sample_weight = 0.0f;
     Float glass_eta = 1.0f;
+    Float3 selected_bssrdf_weight = make_float3(0.0f);
+    Float selected_bssrdf_sample_weight = 0.0f;
+    UInt selected_bssrdf_method = static_cast<std::uint32_t>(
+        SurfaceBssrdfMethod::random_walk);
+    Float3 selected_bssrdf_radius = make_float3(0.0f);
+    Float3 selected_bssrdf_albedo = make_float3(0.0f);
+    Float3 selected_bssrdf_normal = make_float3(0.0f, 0.0f, 1.0f);
+    Float selected_bssrdf_ior = 1.4f;
+    Float selected_bssrdf_roughness = 1.0f;
+    Float selected_bssrdf_anisotropy = 0.0f;
     UInt closure_index = 0u;
 
     for_each_physical_closure(services,
@@ -641,6 +663,8 @@ GraphSurfaceImplementation::sample_with_trace(
                             compiler::ClosureOperation::glass;
             auto is_refraction = closure.operation ==
                                  compiler::ClosureOperation::refraction;
+            auto is_bssrdf = closure.operation ==
+                              compiler::ClosureOperation::subsurface;
             auto is_dielectric = is_glass || is_refraction;
             const auto allocated = closure_allocated(physical);
             const auto current_closure_index = closure_index;
@@ -678,6 +702,8 @@ GraphSurfaceImplementation::sample_with_trace(
                 is_glossy || (is_principled && !is_sheen);
             auto candidate_direction = is_transparent
                                            ? transparent_direction
+                                       : is_bssrdf
+                                           ? make_float3(0.0f, 0.0f, 1.0f)
                                        : is_sheen ? sheen_direction
                                                   : select(diffuse_direction,
                                                         glossy.direction,
@@ -787,6 +813,45 @@ GraphSurfaceImplementation::sample_with_trace(
                 (is_dielectric
                         ? (choose & glass_singular)
                         : Bool{false});
+            selected_bssrdf =
+                selected_bssrdf |
+                (is_bssrdf ? choose : Bool{false});
+            selected_bssrdf_weight = select(
+                selected_bssrdf_weight,
+                closure.weight,
+                is_bssrdf ? choose : Bool{false});
+            selected_bssrdf_sample_weight = select(
+                selected_bssrdf_sample_weight,
+                physical.sample_weight,
+                is_bssrdf ? choose : Bool{false});
+            selected_bssrdf_method = select(
+                selected_bssrdf_method,
+                physical.bssrdf_method,
+                is_bssrdf ? choose : Bool{false});
+            selected_bssrdf_radius = select(
+                selected_bssrdf_radius,
+                physical.bssrdf_radius,
+                is_bssrdf ? choose : Bool{false});
+            selected_bssrdf_albedo = select(
+                selected_bssrdf_albedo,
+                physical.bssrdf_albedo,
+                is_bssrdf ? choose : Bool{false});
+            selected_bssrdf_normal = select(
+                selected_bssrdf_normal,
+                physical.normal,
+                is_bssrdf ? choose : Bool{false});
+            selected_bssrdf_ior = select(
+                selected_bssrdf_ior,
+                physical.bssrdf_ior,
+                is_bssrdf ? choose : Bool{false});
+            selected_bssrdf_roughness = select(
+                selected_bssrdf_roughness,
+                physical.bssrdf_roughness,
+                is_bssrdf ? choose : Bool{false});
+            selected_bssrdf_anisotropy = select(
+                selected_bssrdf_anisotropy,
+                physical.bssrdf_anisotropy,
+                is_bssrdf ? choose : Bool{false});
             selected_candidate_valid = select(selected_candidate_valid,
                 candidate_valid,
                 choose);
@@ -832,7 +897,8 @@ GraphSurfaceImplementation::sample_with_trace(
         transmission_geometric_valid,
         selected_translucent | selected_glass_transmission);
     auto sample_valid = selected & selected_candidate_valid &
-                        (selected_transparent | geometric_valid);
+                        (selected_bssrdf | selected_transparent |
+                         geometric_valid);
     auto diffuse_evaluation =
         evaluate_traced(services,
             values,
@@ -846,20 +912,22 @@ GraphSurfaceImplementation::sample_with_trace(
     // selected BSDF returns a zero PDF (for example a sampled reflection
     // below Ng). Keep invalid sample payloads observationally zero instead
     // of relying on downstream code to ignore result.valid.
+    const auto directional_sample_valid =
+        sample_valid & !selected_bssrdf;
     diffuse_evaluation.f = select(
-        make_float3(0.0f), diffuse_evaluation.f, sample_valid);
+        make_float3(0.0f), diffuse_evaluation.f, directional_sample_valid);
     diffuse_evaluation.pdf = select(
-        0.0f, diffuse_evaluation.pdf, sample_valid);
+        0.0f, diffuse_evaluation.pdf, directional_sample_valid);
     diffuse_evaluation.diffuse_f = select(make_float3(0.0f),
         diffuse_evaluation.diffuse_f,
-        sample_valid);
+        directional_sample_valid);
     diffuse_evaluation.glossy_f = select(make_float3(0.0f),
         diffuse_evaluation.glossy_f,
-        sample_valid);
+        directional_sample_valid);
     diffuse_evaluation.diffuse_pdf = select(
-        0.0f, diffuse_evaluation.diffuse_pdf, sample_valid);
+        0.0f, diffuse_evaluation.diffuse_pdf, directional_sample_valid);
     diffuse_evaluation.events = select(
-        0u, diffuse_evaluation.events, sample_valid);
+        0u, diffuse_evaluation.events, directional_sample_valid);
     result.valid = sample_valid;
     const auto transparent_singular =
         sample_valid & selected_transparent;
@@ -886,11 +954,21 @@ GraphSurfaceImplementation::sample_with_trace(
         select(0.0f,
             glass_singular_pdf * glass_sample_weight,
             glass_singular);
-    result.evaluation.f = diffuse_evaluation.f + transparent_delta +
-                          glossy_delta + glass_delta;
-    result.evaluation.pdf =
+    const auto bssrdf_transport_weight = select(
+        make_float3(0.0f),
+        selected_bssrdf_weight * total_weight /
+            max(selected_bssrdf_sample_weight, 1.0e-20f),
+        selected_bssrdf & sample_valid);
+    result.evaluation.f = select(
+        diffuse_evaluation.f + transparent_delta +
+            glossy_delta + glass_delta,
+        bssrdf_transport_weight,
+        selected_bssrdf);
+    result.evaluation.pdf = select(
         diffuse_evaluation.pdf +
-        delta_pdf_numerator / max(total_weight, 1.0e-20f);
+            delta_pdf_numerator / max(total_weight, 1.0e-20f),
+        1.0f,
+        selected_bssrdf & sample_valid);
     result.evaluation.diffuse_f = diffuse_evaluation.diffuse_f;
     result.evaluation.glossy_f =
         diffuse_evaluation.glossy_f + glossy_delta +
@@ -925,10 +1003,40 @@ GraphSurfaceImplementation::sample_with_trace(
         selected_transparent);
     result.evaluation.events = select(
         0u, result.evaluation.events, sample_valid);
+    result.evaluation.events = select(
+        result.evaluation.events,
+        static_cast<std::uint32_t>(event_subsurface),
+        selected_bssrdf & sample_valid);
     result.eta = select(
         1.0f, glass_eta, selected_glass & sample_valid);
     result.roughness = select(
         make_float2(0.0f), result.roughness, sample_valid);
+    result.bssrdf_method = select(
+        static_cast<std::uint32_t>(SurfaceBssrdfMethod::random_walk),
+        selected_bssrdf_method,
+        selected_bssrdf & sample_valid);
+    result.bssrdf_radius = select(
+        make_float3(0.0f),
+        selected_bssrdf_radius,
+        selected_bssrdf & sample_valid);
+    result.bssrdf_albedo = select(
+        make_float3(0.0f),
+        selected_bssrdf_albedo,
+        selected_bssrdf & sample_valid);
+    result.bssrdf_normal = select(
+        make_float3(0.0f, 0.0f, 1.0f),
+        selected_bssrdf_normal,
+        selected_bssrdf & sample_valid);
+    result.bssrdf_ior = select(
+        1.4f, selected_bssrdf_ior, selected_bssrdf & sample_valid);
+    result.bssrdf_roughness = select(
+        1.0f,
+        selected_bssrdf_roughness,
+        selected_bssrdf & sample_valid);
+    result.bssrdf_anisotropy = select(
+        0.0f,
+        selected_bssrdf_anisotropy,
+        selected_bssrdf & sample_valid);
     if (trace_selection) {
         trace.closure_valid = selected;
     }
@@ -1089,9 +1197,12 @@ GraphSurfaceImplementation::evaluate_volume(
             const auto is_refraction =
                 closure.operation ==
                 compiler::ClosureOperation::refraction;
+            const auto is_bssrdf =
+                closure.operation ==
+                compiler::ClosureOperation::subsurface;
             const auto is_dielectric = is_glass || is_refraction;
             if (!is_diffuse && !is_translucent && !is_principled &&
-                !is_glossy && !is_dielectric) {
+                !is_glossy && !is_dielectric && !is_bssrdf) {
                 return;
             }
             auto glossy_normal = is_sheen
@@ -1115,7 +1226,7 @@ GraphSurfaceImplementation::evaluate_volume(
             } else if (is_principled || is_glossy) {
                 result.glossy_albedo += closure.albedo;
                 glossy_weight = pass_weight(closure.weight);
-            } else if (is_diffuse || is_translucent) {
+            } else if (is_diffuse || is_translucent || is_bssrdf) {
                 diffuse_albedo = closure.albedo;
                 diffuse_weight = pass_weight(closure.weight);
             }

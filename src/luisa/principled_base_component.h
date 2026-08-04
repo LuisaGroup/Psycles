@@ -9,6 +9,7 @@ struct PrincipledBaseResult {
     TracedClosure metallic;
     TracedClosure transmission;
     TracedClosure dielectric;
+    Float3 base_weight;
     Float3 diffuse_weight;
 };
 

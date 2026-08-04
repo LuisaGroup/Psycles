@@ -26,6 +26,8 @@ template<typename Closure>
     return {
         .kind = Expr<std::uint32_t>{closure.kind.expression()},
         .lobe = Expr<std::uint32_t>{closure.lobe.expression()},
+        .bssrdf_method = Expr<std::uint32_t>{
+            closure.bssrdf_method.expression()},
         .allocation_weight =
             Expr<float>{closure.allocation_weight.expression()},
         .setup_valid = Expr<bool>{closure.setup_valid.expression()},
@@ -306,6 +308,8 @@ template<typename Closure>
         closure, SurfaceClosureKind::refraction);
     const auto is_transparent = has_kind(
         closure, SurfaceClosureKind::transparent);
+    const auto is_bssrdf = has_kind(
+        closure, SurfaceClosureKind::bssrdf);
 
     const auto bsdf = cycles_closure::runtime_bsdf;
     const auto has_eval =
@@ -340,6 +344,9 @@ template<typename Closure>
     flags = select(flags,
         bsdf | cycles_closure::runtime_transparent,
         is_transparent);
+    flags = select(flags,
+        UInt{cycles_closure::runtime_bssrdf},
+        is_bssrdf);
     flags |= select(0u,
         has_eval,
         glossy_filter_roughness * glossy_filter_roughness >
@@ -373,6 +380,8 @@ template<typename Closure>
         closure, SurfaceClosureKind::refraction);
     const auto is_transparent = has_kind(
         closure, SurfaceClosureKind::transparent);
+    const auto is_bssrdf = has_kind(
+        closure, SurfaceClosureKind::bssrdf);
 
     UInt type = cycles_closure::type_none;
     type = select(type,
@@ -406,6 +415,23 @@ template<typename Closure>
     type = select(type,
         UInt{cycles_closure::type_sheen},
         is_sheen);
+    auto bssrdf_type = UInt{cycles_closure::type_bssrdf_random_walk};
+    bssrdf_type = select(
+        bssrdf_type,
+        UInt{cycles_closure::type_bssrdf_burley},
+        closure.bssrdf_method == static_cast<std::uint32_t>(
+            SurfaceBssrdfMethod::burley));
+    bssrdf_type = select(
+        bssrdf_type,
+        UInt{cycles_closure::type_bssrdf_random_walk_legacy},
+        closure.bssrdf_method == static_cast<std::uint32_t>(
+            SurfaceBssrdfMethod::random_walk_legacy));
+    bssrdf_type = select(
+        bssrdf_type,
+        UInt{cycles_closure::type_bssrdf_random_walk_skin},
+        closure.bssrdf_method == static_cast<std::uint32_t>(
+            SurfaceBssrdfMethod::random_walk_skin));
+    type = select(type, bssrdf_type, is_bssrdf);
     return select(UInt{cycles_closure::type_none},
         type,
         closure.setup_valid);

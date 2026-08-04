@@ -1,5 +1,6 @@
 #include "path_kernel_builder.h"
 #include "path_kernel_emissive_triangle.h"
+#include "subsurface_exit_closure_component.h"
 
 #include <utility>
 
@@ -108,6 +109,8 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
             return invocation.surface_aov(tag, surface_point);
         };
         Float3 emitted = surface_emission(surface_tag, point, point.incoming);
+        emitted = select(
+            emitted, make_float3(0.0f), bounce.subsurface_exit);
         Float emission_weight = 1.0f;
         if (next_event_estimation && scene->emissive_triangle_count > 0u) {
             Bool competing = (path_depth > 0u) & (!previous_delta);
@@ -151,7 +154,7 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         // PATH_RAY_TERMINATE_ON_NEXT_SURFACE still records
         // surface emission, then stops before data passes, direct
         // lighting, or another closure sample.
-        $if(terminate_on_next_surface) {
+        $if(terminate_on_next_surface & !bounce.subsurface_exit) {
             $break;
         };
 
@@ -160,67 +163,62 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         // surface-emission contributions above are therefore
         // retained even when the path does not continue
         // scattering.
-        $if(continuation_decided_in_volume) {
-            $if(continuation_probability <= 0.0f) {
-                $break;
-            };
-            $if(continuation_probability != 1.0f) {
-                throughput /=
-                    continuation_probability;
-            };
-        }
-        $else {
-            continuation_probability =
-                cycles_path_state::
-                    continuation_probability(
+        $if(!bounce.subsurface_exit) {
+            $if(continuation_decided_in_volume) {
+                $if(continuation_probability <= 0.0f) {
+                    $break;
+                };
+                $if(continuation_probability != 1.0f) {
+                    throughput /= continuation_probability;
+                };
+            }
+            $else {
+                continuation_probability =
+                    cycles_path_state::continuation_probability(
                         path_flags,
                         path_depth,
                         transparent_depth,
-                        kernel_parameters
-                            .min_bounces,
-                        kernel_parameters
-                            .transparent_min_bounces,
+                        kernel_parameters.min_bounces,
+                        kernel_parameters.transparent_min_bounces,
                         throughput);
-            $if(continuation_probability <=
-                0.0f) {
-                $break;
-            };
-            $if(continuation_probability !=
-                1.0f) {
-                $if(terminate_sample >=
-                    continuation_probability) {
+                $if(continuation_probability <= 0.0f) {
                     $break;
                 };
-                throughput /=
-                    continuation_probability;
+                $if(continuation_probability != 1.0f) {
+                    $if(terminate_sample >= continuation_probability) {
+                        $break;
+                    };
+                    throughput /= continuation_probability;
+                };
             };
-        };
 
-        // Cycles writes camera data passes before recording/sampling the
-        // surface. SINGLE_PASS_DONE therefore describes whether this exact
-        // surface crossed the View Layer alpha threshold; transparent
-        // surfaces below the threshold must preserve the unset bit.
-        $if(path_depth == 0u) {
-            auto aov = surface_aov(surface_tag, point);
-            sample_albedo += throughput * aov.albedo;
-            sample_glossy_color += throughput * aov.glossy_albedo;
-            sample_transmission_color += throughput * aov.transmission_albedo;
-            auto surface_alpha = clamp(make_float3(1.0f) - aov.transparency,
-                                       make_float3(0.0f),
-                                       make_float3(1.0f));
-            auto average_alpha =
-                (surface_alpha.x + surface_alpha.y + surface_alpha.z) *
-                (1.0f / 3.0f);
-            auto writes_normal =
-                (!primary_recorded) &
-                ((kernel_parameters.pass_alpha_threshold == 0.0f) |
-                 (average_alpha >= kernel_parameters.pass_alpha_threshold));
-            sample_normal = select(sample_normal, aov.normal, writes_normal);
-            primary_recorded = primary_recorded | writes_normal;
-            path_flags |= select(
-                0u,
-                cycles_path_state::flag_single_pass_done,
-                writes_normal);
+            // Cycles writes camera data passes only at the entry surface.
+            // A BSSRDF exit skips them along with duplicate roulette.
+            $if(path_depth == 0u) {
+                auto aov = surface_aov(surface_tag, point);
+                sample_albedo += throughput * aov.albedo;
+                sample_glossy_color += throughput * aov.glossy_albedo;
+                sample_transmission_color +=
+                    throughput * aov.transmission_albedo;
+                auto surface_alpha = clamp(
+                    make_float3(1.0f) - aov.transparency,
+                    make_float3(0.0f),
+                    make_float3(1.0f));
+                auto average_alpha =
+                    (surface_alpha.x + surface_alpha.y + surface_alpha.z) *
+                    (1.0f / 3.0f);
+                auto writes_normal =
+                    (!primary_recorded) &
+                    ((kernel_parameters.pass_alpha_threshold == 0.0f) |
+                     (average_alpha >=
+                      kernel_parameters.pass_alpha_threshold));
+                sample_normal = select(sample_normal, aov.normal, writes_normal);
+                primary_recorded = primary_recorded | writes_normal;
+                path_flags |= select(
+                    0u,
+                    cycles_path_state::flag_single_pass_done,
+                    writes_normal);
+            };
         };
 
         UInt cycles_surface_runtime_flags = 0u;
@@ -235,14 +233,22 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                         .reflective_caustics,
                     surface.path_surface_query
                         .refractive_caustics);
+            cycles_surface_runtime_flags = select(
+                cycles_surface_runtime_flags,
+                SubsurfaceExitClosureComponent{}.runtime_flags(point),
+                bounce.subsurface_exit);
         }
         if (path_trace_enabled) {
-            const auto closure_summary = trace_surface_closure(
+            auto closure_summary = trace_surface_closure(
                 surface_tag,
                 point,
                 0u,
                 surface.path_surface_query.reflective_caustics,
                 surface.path_surface_query.refractive_caustics);
+            $if(bounce.subsurface_exit) {
+                closure_summary = SubsurfaceExitClosureComponent{}.trace(
+                    point, 0u);
+            };
             trace_write_event(path_step,
                               path_trace_schema::EventSlot::state_depth,
                               make_float3(cast<float>(path_step),
@@ -318,13 +324,17 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
             for (auto closure_index = 0u;
                  closure_index < path_trace_schema::max_closures;
                  ++closure_index) {
-                const auto closure =
+                auto closure =
                     trace_surface_closure(
                         surface_tag,
                         point,
                         closure_index,
                         surface.path_surface_query.reflective_caustics,
                         surface.path_surface_query.refractive_caustics);
+                $if(bounce.subsurface_exit) {
+                    closure = SubsurfaceExitClosureComponent{}.trace(
+                        point, closure_index);
+                };
                 $if(closure.valid) {
                     trace_write_closure(path_step,
                                         closure_index,

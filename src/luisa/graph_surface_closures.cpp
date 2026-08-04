@@ -122,6 +122,18 @@ void GraphSurfaceImplementation::for_each_closure(
                                   values),
                               0.0f)
                         : Float{0.0f};
+                auto subsurface_ior =
+                    closure.operation ==
+                            compiler::ClosureOperation::principled
+                        ? scalar(closure.subsurface_ior, values)
+                        : Float{1.4f};
+                auto subsurface_anisotropy =
+                    closure.operation ==
+                            compiler::ClosureOperation::principled
+                        ? scalar(
+                              closure.subsurface_anisotropy,
+                              values)
+                        : Float{0.0f};
                 auto transmission_weight =
                     closure.operation ==
                             compiler::ClosureOperation::principled
@@ -211,6 +223,10 @@ void GraphSurfaceImplementation::for_each_closure(
                         subsurface_radius,
                     .subsurface_scale =
                         subsurface_scale,
+                    .subsurface_method = closure.subsurface_method,
+                    .subsurface_ior = subsurface_ior,
+                    .subsurface_anisotropy =
+                        subsurface_anisotropy,
                     .transmission_weight =
                         transmission_weight,
                     .metallic = metallic,
@@ -232,6 +248,33 @@ void GraphSurfaceImplementation::for_each_closure(
                     .emission = emission,
                     .preserve_ggx_energy =
                         closure.preserve_ggx_energy});
+                return;
+            }
+            case compiler::ClosureOperation::subsurface: {
+                const auto color = vector(closure.color, values);
+                function(TracedClosure{
+                    .operation = compiler::ClosureOperation::subsurface,
+                    // Standalone SVM BSSRDF allocates the authored Color
+                    // through the closure-tree mix weight; its transport
+                    // albedo remains the unscaled Color socket.
+                    .weight = color * mix_weight,
+                    .color = color,
+                    .normal = safe_normalize(
+                        vector(closure.normal, values),
+                        values.shading_normal),
+                    .roughness = scalar(closure.roughness, values),
+                    .subsurface_radius = max(
+                        vector(closure.subsurface_radius, values),
+                        make_float3(0.0f)),
+                    .subsurface_scale = max(
+                        scalar(closure.subsurface_scale, values),
+                        0.0f),
+                    .subsurface_method = closure.subsurface_method,
+                    .subsurface_ior = scalar(
+                        closure.subsurface_ior, values),
+                    .subsurface_anisotropy = scalar(
+                        closure.subsurface_anisotropy, values),
+                    .ior = 1.0f});
                 return;
             }
             case compiler::ClosureOperation::glass:

@@ -1,4 +1,5 @@
 #include "graph_surface_internal.h"
+#include "bssrdf_closure_component.h"
 #include "microfacet_glass_component.h"
 #include "principled_base_component.h"
 #include "principled_layer_component.h"
@@ -6,6 +7,24 @@
 #include <psycles/luisa/cycles_closure.h>
 
 namespace psycles::luisa_backend::detail {
+namespace {
+
+[[nodiscard]] SurfaceBssrdfMethod surface_bssrdf_method(
+    compiler::BssrdfMethod method) noexcept {
+    switch (method) {
+        case compiler::BssrdfMethod::burley:
+            return SurfaceBssrdfMethod::burley;
+        case compiler::BssrdfMethod::random_walk:
+            return SurfaceBssrdfMethod::random_walk;
+        case compiler::BssrdfMethod::random_walk_legacy:
+            return SurfaceBssrdfMethod::random_walk_legacy;
+        case compiler::BssrdfMethod::random_walk_skin:
+            return SurfaceBssrdfMethod::random_walk_skin;
+    }
+    return SurfaceBssrdfMethod::random_walk;
+}
+
+}// namespace
 
 SurfaceClosureRecord canonical_surface_closure(
     const TracedClosure &closure) noexcept {
@@ -38,6 +57,10 @@ SurfaceClosureRecord canonical_surface_closure(
         case compiler::ClosureOperation::transparent:
             result.kind = static_cast<std::uint32_t>(
                 SurfaceClosureKind::transparent);
+            break;
+        case compiler::ClosureOperation::subsurface:
+            result.kind = static_cast<std::uint32_t>(
+                SurfaceClosureKind::bssrdf);
             break;
         case compiler::ClosureOperation::null_closure:
         case compiler::ClosureOperation::emission:
@@ -114,6 +137,15 @@ SurfaceClosureRecord canonical_surface_closure(
         closure.operation == compiler::ClosureOperation::refraction) {
         result.beckmann = closure.beckmann;
     }
+    if (closure.operation == compiler::ClosureOperation::subsurface) {
+        result.bssrdf_method = static_cast<std::uint32_t>(
+            surface_bssrdf_method(closure.subsurface_method));
+        result.bssrdf_radius = closure.subsurface_radius;
+        result.bssrdf_albedo = closure.color;
+        result.bssrdf_ior = closure.subsurface_ior;
+        result.bssrdf_roughness = closure.roughness;
+        result.bssrdf_anisotropy = closure.subsurface_anisotropy;
+    }
     return result;
 }
 
@@ -155,6 +187,7 @@ void GraphSurfaceImplementation::for_each_physical_closure(
     const PrincipledLayerComponent principled_layers{services, point};
     const PrincipledBaseComponent principled_base{services, point};
     const MicrofacetGlassComponent microfacet_glass{services, point};
+    const BssrdfClosureComponent bssrdf_closure{point};
     Float3 transparent_weight = make_float3(0.0f);
     Float transparent_sample_weight = 0.0f;
     for_each_closure(
@@ -252,48 +285,45 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                 function(base.transmission);
                 function(base.dielectric);
 
+                const auto subsurface_weight =
+                    clamp(graph_closure.subsurface_weight, 0.0f, 1.0f);
+                auto bssrdf = closure;
+                bssrdf.operation = compiler::ClosureOperation::subsurface;
+                bssrdf.principled_lobe = PrincipledLobe::none;
+                bssrdf.weight =
+                    min(max(graph_closure.color, make_float3(0.0f)),
+                        make_float3(1.0f)) *
+                    subsurface_weight * base.base_weight;
+                bssrdf.color = min(
+                    max(graph_closure.color, make_float3(0.0f)),
+                    make_float3(1.0f));
+                bssrdf.normal = maybe_ensure_valid_specular_reflection(
+                    point, incoming, graph_closure.normal);
+                const auto surface_roughness =
+                    clamp(graph_closure.roughness, 0.0f, 1.0f);
+                bssrdf.roughness = surface_roughness * surface_roughness;
+                bssrdf.subsurface_radius =
+                    graph_closure.subsurface_radius;
+                bssrdf.subsurface_scale =
+                    graph_closure.subsurface_scale;
+                bssrdf.subsurface_method =
+                    graph_closure.subsurface_method;
+                bssrdf.subsurface_ior =
+                    graph_closure.subsurface_method ==
+                            compiler::BssrdfMethod::random_walk_skin
+                        ? graph_closure.subsurface_ior
+                        : adjusted_ior(graph_closure).eta;
+                bssrdf.subsurface_anisotropy =
+                    graph_closure.subsurface_anisotropy;
+                const auto bssrdf_setup = bssrdf_closure.setup(bssrdf);
+                function(bssrdf_setup.bssrdf);
+                function(bssrdf_setup.diffuse_fallback);
+
                 auto diffuse = closure;
                 diffuse.operation = compiler::ClosureOperation::diffuse;
                 diffuse.principled_lobe = PrincipledLobe::none;
-                const auto effective_radius =
-                    max(graph_closure.subsurface_radius *
-                            graph_closure.subsurface_scale,
-                        make_float3(0.0f));
-                const auto maximum_radius =
-                    max_component(effective_radius);
-                const auto radius_tint = select(
-                    make_float3(0.0f),
-                    effective_radius /
-                        max(maximum_radius, 1.0e-20f),
-                    maximum_radius > 1.0e-20f);
-                // A full spatial BSSRDF walk is not available yet. Use the
-                // per-channel mean free paths as a scattering tint, then
-                // normalize it back to the original average diffuse energy.
-                // This reproduces long-radius color bleed while retaining
-                // the original Principled color for the data pass below.
-                const auto radius_weighted =
-                    base.diffuse_weight * radius_tint;
-                const auto radius_weighted_average =
-                    sample_weight(radius_weighted);
-                const auto energy_normalized =
-                    radius_weighted *
-                    (sample_weight(base.diffuse_weight) /
-                        max(radius_weighted_average, 1.0e-20f));
-                const auto subsurface_weight =
-                    select(0.0f,
-                        clamp(graph_closure.subsurface_weight, 0.0f, 1.0f),
-                        radius_weighted_average > 1.0e-20f);
-                // Spatial diffusion is most visible near silhouettes. Bias
-                // the tint toward grazing views so broad front-facing areas
-                // retain more of the original surface color.
-                const auto incoming_cosine = clamp(
-                    abs(dot(diffuse.normal, incoming)), 0.0f, 1.0f);
-                const auto grazing_mix = lerp(
-                    0.35f, 0.85f, 1.0f - incoming_cosine);
-                diffuse.weight = lerp(
-                    base.diffuse_weight,
-                    energy_normalized,
-                    subsurface_weight * grazing_mix);
+                diffuse.weight =
+                    base.diffuse_weight * (1.0f - subsurface_weight);
                 diffuse.allocation_weight = sample_weight(
                     max(diffuse.weight, make_float3(0.0f)));
                 const auto diffuse_allocated =
@@ -304,10 +334,18 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                     diffuse_allocated);
                 diffuse.sample_weight = select(
                     0.0f, diffuse.allocation_weight, diffuse_allocated);
-                diffuse.albedo = base.diffuse_weight;
+                diffuse.albedo = diffuse.weight;
                 diffuse.roughness = graph_closure.diffuse_roughness;
                 diffuse.evaluation_scale = make_float3(1.0f);
                 function(diffuse);
+                return;
+            }
+            case compiler::ClosureOperation::subsurface: {
+                closure.normal = maybe_ensure_valid_specular_reflection(
+                    point, incoming, graph_closure.normal);
+                const auto setup = bssrdf_closure.setup(closure);
+                function(setup.bssrdf);
+                function(setup.diffuse_fallback);
                 return;
             }
             case compiler::ClosureOperation::glossy: {
