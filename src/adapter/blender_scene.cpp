@@ -23,6 +23,8 @@ using contract::CameraDesc;
 using contract::CameraId;
 using contract::CameraProjection;
 using contract::CameraSensorFit;
+using contract::CurveGeometryDesc;
+using contract::CurveShape;
 using contract::EnvironmentDesc;
 using contract::EnvironmentSunDesc;
 using contract::EmissionSampling;
@@ -88,6 +90,21 @@ using detail::unsigned_number;
     }
     throw std::runtime_error(
         "unsupported mesh attribute domain '" + name + "'");
+}
+
+[[nodiscard]] CurveShape curve_shape(yyjson_val *value) {
+    const auto name = text(value);
+    if (name == "RIBBON" || name == "RIBBONS") {
+        return CurveShape::ribbon;
+    }
+    if (name == "THICK") {
+        return CurveShape::thick;
+    }
+    if (name == "THICK_LINEAR") {
+        return CurveShape::thick_linear;
+    }
+    throw std::runtime_error(
+        "unsupported Cycles curve shape '" + name + "'");
 }
 
 template<typename T>
@@ -1109,6 +1126,128 @@ BlenderSceneImport load_blender_scene_bundle(
                 std::move(mesh));
         }
 
+        const auto mesh_geometry_count = geometry_index - 1u;
+        auto *curve_geometries = member(root, "curve_geometries");
+        if (curve_geometries != nullptr &&
+            yyjson_is_arr(curve_geometries)) {
+            yyjson_arr_iter curve_geometry_iterator =
+                yyjson_arr_iter_with(curve_geometries);
+            while (auto *geometry = yyjson_arr_iter_next(
+                       &curve_geometry_iterator)) {
+                const auto key_count = static_cast<std::size_t>(
+                    unsigned_number(member(geometry, "key_count")));
+                const auto curve_count = static_cast<std::size_t>(
+                    unsigned_number(member(geometry, "curve_count")));
+                auto key_values = read_values<float>(
+                    geometry_stream,
+                    section_offset(geometry, "keys"),
+                    key_count * 4u);
+                auto first_key_values = read_values<std::uint32_t>(
+                    geometry_stream,
+                    section_offset(geometry, "curve_first_key"),
+                    curve_count);
+                auto material_values = read_values<std::uint32_t>(
+                    geometry_stream,
+                    section_offset(
+                        geometry, "curve_material_slots"),
+                    curve_count);
+                auto intercept_values = read_values<float>(
+                    geometry_stream,
+                    section_offset(geometry, "intercept"),
+                    key_count);
+                auto length_values = read_values<float>(
+                    geometry_stream,
+                    section_offset(geometry, "length"),
+                    curve_count);
+                auto random_values = read_values<float>(
+                    geometry_stream,
+                    section_offset(geometry, "random"),
+                    curve_count);
+
+                CurveGeometryDesc curves;
+                curves.name = text(member(geometry, "name"));
+                curves.shape = curve_shape(
+                    member(geometry, "shape"));
+                curves.subdivisions =
+                    static_cast<std::uint32_t>(unsigned_number(
+                        member(geometry, "subdivisions"), 2u));
+                curves.keys.reserve(key_count);
+                for (std::size_t i = 0u; i < key_count; ++i) {
+                    curves.keys.emplace_back(Vec4f{
+                        key_values[i * 4u],
+                        key_values[i * 4u + 1u],
+                        key_values[i * 4u + 2u],
+                        key_values[i * 4u + 3u]});
+                }
+                curves.curve_first_key =
+                    std::move(first_key_values);
+                curves.curve_material_slots =
+                    std::move(material_values);
+                curves.intercept = std::move(intercept_values);
+                curves.length = std::move(length_values);
+                curves.random = std::move(random_values);
+                curves.cycles_curve_offset =
+                    optional_unsigned_number(member(
+                        member(geometry, "cycles_sync"),
+                        "curve_offset"));
+                curves.cycles_segment_offset =
+                    optional_unsigned_number(member(
+                        member(geometry, "cycles_sync"),
+                        "segment_offset"));
+
+                auto *slots = member(geometry, "material_slots");
+                yyjson_arr_iter slot_iterator =
+                    yyjson_arr_iter_with(slots);
+                while (auto *slot =
+                           yyjson_arr_iter_next(&slot_iterator)) {
+                    if (yyjson_is_null(slot)) {
+                        curves.material_slots.emplace_back(
+                            default_material);
+                        continue;
+                    }
+                    const auto iter =
+                        material_ids.find(text(slot));
+                    curves.material_slots.emplace_back(
+                        iter == material_ids.end()
+                            ? default_material
+                            : iter->second);
+                }
+                if (curves.material_slots.empty()) {
+                    curves.material_slots.emplace_back(
+                        default_material);
+                }
+
+                std::size_t segment_count = 0u;
+                for (std::size_t curve = 0u;
+                     curve < curves.curve_first_key.size();
+                     ++curve) {
+                    const auto begin = static_cast<std::size_t>(
+                        curves.curve_first_key[curve]);
+                    const auto end =
+                        curve + 1u <
+                                curves.curve_first_key.size()
+                            ? static_cast<std::size_t>(
+                                  curves.curve_first_key[
+                                      curve + 1u])
+                            : curves.keys.size();
+                    if (end > begin) {
+                        segment_count += end - begin - 1u;
+                    }
+                }
+                if (segment_count != static_cast<std::size_t>(
+                                         unsigned_number(
+                                             member(
+                                                 geometry,
+                                                 "segment_count")))) {
+                    throw std::runtime_error(
+                        "curve geometry has an invalid segment count");
+                }
+                scene.curve_geometries.emplace(
+                    GeometryId{geometry_index++},
+                    std::move(curves));
+            }
+        }
+
         auto *instances = member(root, "instances");
         yyjson_arr_iter instance_iterator =
             yyjson_arr_iter_with(instances);
@@ -1117,6 +1256,19 @@ BlenderSceneImport load_blender_scene_bundle(
                    yyjson_arr_iter_next(&instance_iterator)) {
             const auto geometry =
                 unsigned_number(member(instance, "geometry"));
+            const auto geometry_type = text(
+                member(instance, "geometry_type"), "MESH");
+            const auto geometry_id =
+                geometry_type == "CURVE"
+                    ? GeometryId{
+                          mesh_geometry_count + geometry + 1u}
+                    : GeometryId{geometry + 1u};
+            if (geometry_type != "MESH" &&
+                geometry_type != "CURVE") {
+                throw std::runtime_error(
+                    "instance has unsupported geometry type '" +
+                    geometry_type + "'");
+            }
             auto *visibility = member(instance, "visibility");
             auto *cycles_sync =
                 member(instance, "cycles_sync");
@@ -1124,7 +1276,7 @@ BlenderSceneImport load_blender_scene_bundle(
                 InstanceId{instance_index++},
                 contract::InstanceDesc{
                     .name = text(member(instance, "name")),
-                    .geometry = GeometryId{geometry + 1u},
+                    .geometry = geometry_id,
                     .transform =
                         matrix(member(instance, "transform")),
                     .motion = {},

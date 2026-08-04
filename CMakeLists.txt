@@ -36,6 +36,7 @@ set(PSYCLES_LUISA_SUBMODULE_DIR
 
 if(PSYCLES_BUILD_TESTS)
     include(CTest)
+    include(cmake/PsyclesBlenderTest.cmake)
     include(cmake/PsyclesLuisaBackendTest.cmake)
 endif()
 
@@ -1588,6 +1589,19 @@ if(PSYCLES_ENABLE_LUISA)
                 NAME psycles.blender_import
                 COMMAND psycles_blender_import_tests)
 
+            add_executable(
+                psycles_blender_curve_import_tests
+                tests/test_blender_curve_import.cpp)
+            target_link_libraries(
+                psycles_blender_curve_import_tests
+                PRIVATE Psycles::luisa_runtime)
+            target_compile_features(
+                psycles_blender_curve_import_tests
+                PRIVATE cxx_std_20)
+            add_test(
+                NAME psycles.blender_curve_import
+                COMMAND psycles_blender_curve_import_tests)
+
             psycles_add_luisa_backend_test(
                 TARGET
                     psycles_luisa_pointiness_scene_tests
@@ -1719,6 +1733,19 @@ if(PSYCLES_BUILD_TESTS)
     target_link_libraries(psycles_tests PRIVATE Psycles::core)
     target_compile_features(psycles_tests PRIVATE cxx_std_20)
     add_test(NAME psycles.contracts COMMAND psycles_tests)
+
+    add_executable(
+        psycles_curve_scene_contract_tests
+        tests/test_curve_scene_contract.cpp)
+    target_link_libraries(
+        psycles_curve_scene_contract_tests
+        PRIVATE Psycles::core)
+    target_compile_features(
+        psycles_curve_scene_contract_tests
+        PRIVATE cxx_std_20)
+    add_test(
+        NAME psycles.curve_scene_contract
+        COMMAND psycles_curve_scene_contract_tests)
 
     add_executable(
         psycles_cycles_pointiness_tests
@@ -1867,134 +1894,47 @@ if(PSYCLES_BUILD_TESTS)
 
     find_program(PSYCLES_BLENDER_EXECUTABLE NAMES blender)
     if(PSYCLES_BLENDER_EXECUTABLE)
-        add_test(
+        set(blender_exporter
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/export_psycles_scene.py")
+        set(blender_inspector
+            "$<TARGET_FILE:psycles_inspect_blender_material>")
+        psycles_add_blender_test(
             NAME psycles.blender_export_geometry_cache
-            COMMAND
-                "${PSYCLES_BLENDER_EXECUTABLE}"
-                --background
-                --factory-startup
-                --python
-                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_geometry_cache.py"
-                --
-                "${CMAKE_CURRENT_SOURCE_DIR}/tools/export_psycles_scene.py")
-        add_test(
+            SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_geometry_cache.py"
+            NO_EXIT_CODE ARGUMENTS "${blender_exporter}")
+        psycles_add_blender_test(
             NAME psycles.blender_export_attribute_domains
-            COMMAND
-                "${PSYCLES_BLENDER_EXECUTABLE}"
-                --background
-                --factory-startup
-                --python-exit-code
-                1
-                --python
-                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_attribute_domains.py"
-                --
-                "${CMAKE_CURRENT_SOURCE_DIR}/tools/export_psycles_scene.py"
-                "$<TARGET_FILE:psycles_inspect_blender_material>")
-        add_test(
+            SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_attribute_domains.py"
+            ARGUMENTS "${blender_exporter}" "${blender_inspector}")
+        psycles_add_blender_test(
             NAME psycles.blender_export_pointiness_source
-            COMMAND
-                "${PSYCLES_BLENDER_EXECUTABLE}"
-                --background
-                --factory-startup
-                --python-exit-code
-                1
-                --python
-                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_pointiness_source.py"
-                --
-                "${CMAKE_CURRENT_SOURCE_DIR}/tools/export_psycles_scene.py"
-                "$<TARGET_FILE:psycles_inspect_blender_material>")
-        add_test(
-            NAME psycles.blender_export_linked_images
-            COMMAND
-                "${PSYCLES_BLENDER_EXECUTABLE}"
-                --background
-                --factory-startup
-                --python-exit-code
-                1
-                --python
-                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_linked_images.py"
-                --
-                "${CMAKE_CURRENT_SOURCE_DIR}/tools/export_psycles_scene.py")
-        add_test(
-            NAME psycles.blender_export_generated_images
-            COMMAND
-                "${PSYCLES_BLENDER_EXECUTABLE}"
-                --background
-                --factory-startup
-                --python-exit-code
-                1
-                --python
-                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_generated_images.py"
-                --
-                "${CMAKE_CURRENT_SOURCE_DIR}/tools/export_psycles_scene.py")
-        add_test(
+            SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_pointiness_source.py"
+            ARGUMENTS "${blender_exporter}" "${blender_inspector}")
+        foreach(test IN ITEMS linked_images generated_images particle_hair cycles_identity)
+            psycles_add_blender_test(
+                NAME "psycles.blender_export_${test}"
+                SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_${test}.py"
+                ARGUMENTS "${blender_exporter}")
+        endforeach()
+        psycles_add_blender_test(
             NAME psycles.blender_export_particle_info
-            COMMAND
-                "${PSYCLES_BLENDER_EXECUTABLE}"
-                --background
-                --factory-startup
-                --python
-                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_particle_info.py"
-                --
-                "${CMAKE_CURRENT_SOURCE_DIR}/tools/export_psycles_scene.py")
-        add_test(
+            SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_particle_info.py"
+            NO_EXIT_CODE ARGUMENTS "${blender_exporter}")
+        psycles_add_blender_test(
             NAME psycles.blender_export_render_settings
-            COMMAND
-                "${PSYCLES_BLENDER_EXECUTABLE}"
-                --background
-                --factory-startup
-                --python-exit-code
-                1
-                --python
-                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_render_settings.py"
-                --
-                "${CMAKE_CURRENT_SOURCE_DIR}/tools/export_psycles_scene.py"
+            SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_render_settings.py"
+            ARGUMENTS
+                "${blender_exporter}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tools/create_cycles_shader_probe.py")
-        add_test(
-            NAME psycles.blender_export_cycles_identity
-            COMMAND
-                "${PSYCLES_BLENDER_EXECUTABLE}"
-                --background
-                --factory-startup
-                --python-exit-code
-                1
-                --python
-                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_cycles_identity.py"
-                --
-                "${CMAKE_CURRENT_SOURCE_DIR}/tools/export_psycles_scene.py")
-        add_test(
+        psycles_add_blender_test(
             NAME psycles.blender_diagnostic_probes
-            COMMAND
-                "${PSYCLES_BLENDER_EXECUTABLE}"
-                --background
-                --factory-startup
-                --python-exit-code
-                1
-                --python
-                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_diagnostic_probes.py"
-                --
+            SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_diagnostic_probes.py"
+            ARGUMENTS
                 "${CMAKE_CURRENT_SOURCE_DIR}/tools/create_blender_shader_stage_probe.py"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tools/probe_cycles_world.py")
-        add_test(
+        psycles_add_blender_test(
             NAME psycles.blender_multilayer_exr_api
-            COMMAND
-                "${PSYCLES_BLENDER_EXECUTABLE}"
-                --background
-                --factory-startup
-                --python
-                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_multilayer_exr_api.py")
-        set_tests_properties(
-            psycles.blender_export_geometry_cache
-            psycles.blender_export_attribute_domains
-            psycles.blender_export_linked_images
-            psycles.blender_export_generated_images
-            psycles.blender_export_particle_info
-            psycles.blender_export_render_settings
-            psycles.blender_export_cycles_identity
-            psycles.blender_diagnostic_probes
-            psycles.blender_multilayer_exr_api
-            PROPERTIES
-                ENVIRONMENT
-                    "SDL_AUDIODRIVER=dummy;ALSOFT_DRIVERS=null")
+            SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_multilayer_exr_api.py"
+            NO_EXIT_CODE)
     endif()
 endif()

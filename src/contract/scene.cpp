@@ -183,17 +183,131 @@ template<typename Id>
         }
     }
 
+    for (const auto &[id, curves] : scene.curve_geometries) {
+        if (!valid_id(id)) {
+            diagnose(
+                SceneDiagnosticCode::invalid_id,
+                "scene contains an invalid curve geometry identifier");
+        }
+        if (scene.geometries.contains(id)) {
+            diagnose(
+                SceneDiagnosticCode::invalid_id,
+                "scene reuses one geometry identifier for a mesh and curves");
+        }
+        if (curves.keys.empty() || curves.curve_first_key.empty()) {
+            diagnose(
+                SceneDiagnosticCode::invalid_mesh,
+                "curve geometry '" + curves.name +
+                    "' has no keys or curves");
+            continue;
+        }
+        if (curves.subdivisions > 4u) {
+            diagnose(
+                SceneDiagnosticCode::invalid_mesh,
+                "curve geometry '" + curves.name +
+                    "' has an out-of-range Cycles subdivision level");
+        }
+        if (curves.curve_first_key.front() != 0u) {
+            diagnose(
+                SceneDiagnosticCode::invalid_mesh,
+                "curve geometry '" + curves.name +
+                    "' does not begin at key zero");
+        }
+        for (std::size_t curve = 0u;
+             curve < curves.curve_first_key.size();
+             ++curve) {
+            const auto begin = static_cast<std::size_t>(
+                curves.curve_first_key[curve]);
+            const auto end =
+                curve + 1u < curves.curve_first_key.size()
+                    ? static_cast<std::size_t>(
+                          curves.curve_first_key[curve + 1u])
+                    : curves.keys.size();
+            if (begin >= end || end > curves.keys.size() ||
+                end - begin < 2u) {
+                diagnose(
+                    SceneDiagnosticCode::invalid_mesh,
+                    "curve geometry '" + curves.name +
+                        "' contains an invalid key range");
+                break;
+            }
+        }
+        if (std::any_of(
+                curves.keys.begin(),
+                curves.keys.end(),
+                [](const auto &key) noexcept {
+                    return !std::isfinite(key.x) ||
+                           !std::isfinite(key.y) ||
+                           !std::isfinite(key.z) ||
+                           !std::isfinite(key.w) || key.w < 0.0f;
+                })) {
+            diagnose(
+                SceneDiagnosticCode::invalid_mesh,
+                "curve geometry '" + curves.name +
+                    "' contains a non-finite key or negative radius");
+        }
+        const auto curve_count = curves.curve_first_key.size();
+        const auto validate_count =
+            [&](std::string_view attribute,
+                std::size_t actual,
+                std::size_t expected) {
+                if (actual == 0u || actual == expected) {
+                    return;
+                }
+                diagnose(
+                    SceneDiagnosticCode::invalid_mesh,
+                    "curve geometry '" + curves.name +
+                        "' has a mismatched " +
+                        std::string{attribute} + " count");
+            };
+        validate_count(
+            "material slot", curves.curve_material_slots.size(),
+            curve_count);
+        validate_count(
+            "Intercept attribute", curves.intercept.size(),
+            curves.keys.size());
+        validate_count(
+            "Length attribute", curves.length.size(), curve_count);
+        validate_count(
+            "Random attribute", curves.random.size(), curve_count);
+        for (auto material : curves.material_slots) {
+            if (!scene.materials.contains(material)) {
+                diagnose(
+                    SceneDiagnosticCode::invalid_reference,
+                    "curve geometry '" + curves.name +
+                        "' references a missing material");
+            }
+        }
+        if (!curves.curve_material_slots.empty() &&
+            std::any_of(
+                curves.curve_material_slots.begin(),
+                curves.curve_material_slots.end(),
+                [&](auto slot) noexcept {
+                    return static_cast<std::size_t>(slot) >=
+                           curves.material_slots.size();
+                })) {
+            diagnose(
+                SceneDiagnosticCode::invalid_mesh,
+                "curve geometry '" + curves.name +
+                    "' contains an out-of-range material slot");
+        }
+    }
+
     for (const auto &[id, instance] : scene.instances) {
         if (!valid_id(id)) {
             diagnose(
                 SceneDiagnosticCode::invalid_id,
                 "scene contains an invalid instance identifier");
         }
-        if (!scene.geometries.contains(instance.geometry)) {
+        const auto is_mesh =
+            scene.geometries.contains(instance.geometry);
+        const auto is_curve =
+            scene.curve_geometries.contains(instance.geometry);
+        if (is_mesh == is_curve) {
             diagnose(
                 SceneDiagnosticCode::invalid_reference,
                 "instance '" + instance.name +
-                    "' references missing geometry");
+                    "' must reference exactly one geometry kind");
         }
         for (auto material : instance.material_overrides) {
             if (!scene.materials.contains(material)) {
@@ -348,6 +462,15 @@ SceneApplyResult SceneDatabase::apply(const SceneDelta &delta) {
                     changes |= change_bit(SceneChange::geometry);
                 } else if constexpr (std::is_same_v<T, RemoveGeometry>) {
                     candidate.geometries.erase(operation.id);
+                    changes |= change_bit(SceneChange::geometry);
+                } else if constexpr (
+                    std::is_same_v<T, UpsertCurveGeometry>) {
+                    candidate.curve_geometries.insert_or_assign(
+                        operation.id, operation.value);
+                    changes |= change_bit(SceneChange::geometry);
+                } else if constexpr (
+                    std::is_same_v<T, RemoveCurveGeometry>) {
+                    candidate.curve_geometries.erase(operation.id);
                     changes |= change_bit(SceneChange::geometry);
                 } else if constexpr (std::is_same_v<T, UpsertInstance>) {
                     candidate.instances.insert_or_assign(

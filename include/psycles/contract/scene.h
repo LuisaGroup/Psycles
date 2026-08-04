@@ -196,6 +196,41 @@ struct TriangleMeshDesc {
     std::optional<std::uint32_t> cycles_primitive_offset;
 };
 
+// Cycles keeps legacy particle hair as an independent Geometry rather than
+// tessellating it into the emitter mesh. The control points and radii below
+// are therefore source geometry, not a render-time mesh approximation. A
+// renderer backend is responsible for applying the selected Cycles curve
+// intersection model to every adjacent key pair.
+enum class CurveShape : std::uint8_t {
+    ribbon,
+    thick,
+    thick_linear
+};
+
+struct CurveGeometryDesc {
+    std::string name;
+    CurveShape shape{CurveShape::ribbon};
+    // Cycles subdivides each Catmull-Rom key interval into 2^subdivisions
+    // intersection intervals, clamped by its scene parameter range.
+    std::uint32_t subdivisions{2u};
+    // xyz is the object-space key position and w is the object-space radius.
+    std::vector<Vec4f> keys;
+    // One entry per curve. The end of a curve is the next entry, or
+    // keys.size() for the final curve.
+    std::vector<std::uint32_t> curve_first_key;
+    std::vector<MaterialId> material_slots;
+    std::vector<std::uint32_t> curve_material_slots;
+    // Cycles Hair Info attributes retain their native domains: Intercept is
+    // per key, while Length and Random are per curve.
+    std::vector<float> intercept;
+    std::vector<float> length;
+    std::vector<float> random;
+    // Curves and curve segments occupy independent Cycles primitive spaces;
+    // neither offset may be reconstructed from triangle primitive offsets.
+    std::optional<std::uint32_t> cycles_curve_offset;
+    std::optional<std::uint32_t> cycles_segment_offset;
+};
+
 struct MotionTransform {
     float time{};
     Mat4f transform;
@@ -374,6 +409,7 @@ struct SceneSnapshot {
     std::map<MaterialId, MaterialDesc> materials;
     std::map<ImageId, ImageDesc> images;
     std::map<GeometryId, TriangleMeshDesc> geometries;
+    std::map<GeometryId, CurveGeometryDesc> curve_geometries;
     std::map<InstanceId, InstanceDesc> instances;
     std::map<CameraId, CameraDesc> cameras;
     std::map<LightId, LightDesc> lights;
@@ -419,6 +455,13 @@ struct UpsertGeometry {
 struct RemoveGeometry {
     GeometryId id;
 };
+struct UpsertCurveGeometry {
+    GeometryId id;
+    CurveGeometryDesc value;
+};
+struct RemoveCurveGeometry {
+    GeometryId id;
+};
 struct UpsertInstance {
     InstanceId id;
     InstanceDesc value;
@@ -457,6 +500,8 @@ using SceneCommand = std::variant<
     RemoveImage,
     UpsertGeometry,
     RemoveGeometry,
+    UpsertCurveGeometry,
+    RemoveCurveGeometry,
     UpsertInstance,
     RemoveInstance,
     UpsertCamera,
