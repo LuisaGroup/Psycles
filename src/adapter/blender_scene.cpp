@@ -529,7 +529,9 @@ BlenderSceneImport load_blender_scene_bundle(
         }
         auto *cycles = member(render, "cycles");
         result.seed = static_cast<std::uint32_t>(
-            unsigned_number(member(cycles, "seed")));
+            unsigned_number(
+                member(cycles, "effective_seed"),
+                unsigned_number(member(cycles, "seed"))));
         result.adaptive_sampling = boolean(
             member(cycles, "use_adaptive_sampling"));
         result.denoising =

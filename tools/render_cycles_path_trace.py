@@ -25,6 +25,7 @@ _TOOLS = pathlib.Path(__file__).resolve().parent
 if str(_TOOLS) not in sys.path:
     sys.path.insert(0, str(_TOOLS))
 
+import cycles_hash  # noqa: E402
 from cycles_path_trace_schema import (  # noqa: E402
     AOV_COUNT,
     SCHEMA_VERSION,
@@ -287,6 +288,15 @@ def _main() -> None:
         "pixel_y": pixel_y,
         "samples": scene.cycles.samples,
         "seed": scene.cycles.seed,
+        "effective_seed": cycles_hash.effective_scene_seed(
+            scene.cycles.seed,
+            scene.frame_current,
+            scene.frame_subframe,
+            bool(getattr(scene.cycles, "use_animated_seed", False)),
+        ),
+        "use_animated_seed": bool(
+            getattr(scene.cycles, "use_animated_seed", False)
+        ),
         "sampling_pattern": getattr(
             scene.cycles,
             "sampling_pattern",

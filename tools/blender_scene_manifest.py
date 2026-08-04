@@ -18,6 +18,9 @@ from typing import Any
 
 import bpy
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import cycles_hash  # noqa: E402
+
 
 def _column_major(matrix: Any) -> list[float]:
     return [
@@ -411,7 +414,6 @@ def _cycles_settings(scene: Any) -> dict[str, Any]:
     cycles = scene.cycles
     names = [
         "samples",
-        "seed",
         "use_adaptive_sampling",
         "adaptive_threshold",
         "adaptive_min_samples",
@@ -434,11 +436,35 @@ def _cycles_settings(scene: Any) -> dict[str, Any]:
         "film_exposure",
         "use_denoising",
     ]
-    return {
+    result = {
         name: _json_value(getattr(cycles, name))
         for name in names
         if hasattr(cycles, name)
     }
+    base_seed = int(cycles.seed)
+    use_animated_seed = bool(
+        getattr(cycles, "use_animated_seed", False)
+    )
+    frame = int(scene.frame_current)
+    subframe = float(getattr(scene, "frame_subframe", 0.0))
+    result.update(
+        {
+            # Preserve the authored value and expose the exact seed passed to
+            # Cycles' Integrator. The runtime consumes the latter; old scene
+            # bundles without it remain supported by the importer.
+            "seed": base_seed,
+            "use_animated_seed": use_animated_seed,
+            "effective_seed": cycles_hash.effective_scene_seed(
+                base_seed,
+                frame,
+                subframe,
+                use_animated_seed,
+            ),
+            "seed_frame": frame,
+            "seed_subframe": subframe,
+        }
+    )
+    return result
 
 
 def _main() -> None:

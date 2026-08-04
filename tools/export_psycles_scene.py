@@ -33,9 +33,9 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import blender_scene_manifest as manifest  # noqa: E402
+import cycles_hash  # noqa: E402
 
 
-_UINT32_MASK = 0xFFFFFFFF
 _CYCLES_DEFAULT_SHADER_COUNT = 5
 _CYCLES_BACKGROUND_SHADER_INDEX = 3
 
@@ -139,53 +139,12 @@ def _cycles_color_attribute_value(
     ) + (value[3],)
 
 
-def _u32(value: int) -> int:
-    return value & _UINT32_MASK
-
-
-def _rotate_left_u32(value: int, bits: int) -> int:
-    value = _u32(value)
-    return _u32((value << bits) | (value >> (32 - bits)))
-
-
-def _cycles_hash_final(a: int, b: int, c: int) -> tuple[int, int, int]:
-    # Jenkins lookup3 final(), copied arithmetically from Cycles util/hash.h.
-    c = _u32((c ^ b) - _rotate_left_u32(b, 14))
-    a = _u32((a ^ c) - _rotate_left_u32(c, 11))
-    b = _u32((b ^ a) - _rotate_left_u32(a, 25))
-    c = _u32((c ^ b) - _rotate_left_u32(b, 16))
-    a = _u32((a ^ c) - _rotate_left_u32(c, 4))
-    b = _u32((b ^ a) - _rotate_left_u32(a, 14))
-    c = _u32((c ^ b) - _rotate_left_u32(b, 24))
-    return a, b, c
-
-
-def _cycles_hash_uint(value: int) -> int:
-    a = b = c = _u32(0xDEADBEEF + (1 << 2) + 13)
-    a = _u32(a + value)
-    return _cycles_hash_final(a, b, c)[2]
-
-
-def _cycles_hash_uint2(x: int, y: int) -> int:
-    a = b = c = _u32(0xDEADBEEF + (2 << 2) + 13)
-    b = _u32(b + y)
-    a = _u32(a + x)
-    return _cycles_hash_final(a, b, c)[2]
-
-
-def _cycles_hash_string(value: str) -> int:
-    result = 0
-    for byte in value.encode("utf-8"):
-        result = _u32(result * 37 + byte)
-    return result
-
-
 def _cycles_uint_to_float(value: int) -> float:
-    return float(_u32(value)) / float(_UINT32_MASK)
+    return float(cycles_hash.u32(value)) / float(cycles_hash.UINT32_MASK)
 
 
 def _cycles_object_random_id(name: str) -> int:
-    return _cycles_hash_uint2(_cycles_hash_string(name), 0)
+    return cycles_hash.hash_uint2(cycles_hash.hash_string(name), 0)
 
 
 def _cycles_particle_index(object_instance: Any) -> int:
@@ -211,7 +170,7 @@ def _cycles_particle_index(object_instance: Any) -> int:
     parent_count = len(particle_system.particles)
     if persistent_index < 0 or persistent_index >= parent_count:
         return 0
-    return persistent_index & _UINT32_MASK
+    return persistent_index & cycles_hash.UINT32_MASK
 
 
 def _column_major(matrix: Any) -> list[float]:
@@ -647,7 +606,7 @@ def _geometry(
             first_vertex = mesh.loops[triangle.loops[0]].vertex_index
             random_per_island.append(
                 _cycles_uint_to_float(
-                    _cycles_hash_uint(find_root(first_vertex))
+                    cycles_hash.hash_uint(find_root(first_vertex))
                 )
             )
         pointiness_source = None
@@ -900,7 +859,7 @@ def _particle_hair_geometry(
             lengths.append(float(curve_length))
             randoms.append(
                 _cycles_uint_to_float(
-                    _cycles_hash_uint2(curve_index, 0)
+                    cycles_hash.hash_uint2(curve_index, 0)
                 )
             )
             segment_count += key_count - 1
@@ -1238,7 +1197,7 @@ def _geometry_instance(
             if object_instance.is_instance
             else _cycles_object_random_id(object_instance.object.name)
         )
-        & _UINT32_MASK,
+        & cycles_hash.UINT32_MASK,
         "shadow_terminator_geometry_offset": float(
             original.cycles.shadow_terminator_geometry_offset
         ),

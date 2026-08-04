@@ -23,6 +23,12 @@ from typing import Any
 
 import bpy
 
+_TOOLS = pathlib.Path(__file__).resolve().parent
+if str(_TOOLS) not in sys.path:
+    sys.path.insert(0, str(_TOOLS))
+
+import cycles_hash  # noqa: E402
+
 
 _GOLDEN_PASSES = (
     "Combined",
@@ -309,6 +315,15 @@ def _main() -> None:
         "height": height,
         "samples": samples,
         "seed": scene.cycles.seed,
+        "effective_seed": cycles_hash.effective_scene_seed(
+            scene.cycles.seed,
+            scene.frame_current,
+            scene.frame_subframe,
+            bool(getattr(scene.cycles, "use_animated_seed", False)),
+        ),
+        "use_animated_seed": bool(
+            getattr(scene.cycles, "use_animated_seed", False)
+        ),
         "sampling_pattern": getattr(
             scene.cycles,
             "sampling_pattern",
