@@ -55,6 +55,8 @@ _REPORT_PASSES = (
     "TransInd",
     "Emit",
     "Env",
+    "Volume Direct",
+    "Volume Indirect",
 )
 _PSYCLES_TIMING_PATTERNS = {
     "scene_compile_seconds": re.compile(

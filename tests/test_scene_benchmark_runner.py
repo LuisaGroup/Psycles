@@ -37,6 +37,10 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
             ("fallback", "hip", "vk"),
         )
 
+    def test_canonical_report_includes_volume_passes(self) -> None:
+        self.assertIn("Volume Direct", self.runner._REPORT_PASSES)
+        self.assertIn("Volume Indirect", self.runner._REPORT_PASSES)
+
     def test_native_apple_matrix_is_accepted(self) -> None:
         self.assertEqual(
             self.runner._backend_list("fallback,metal"),

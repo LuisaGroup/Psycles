@@ -57,6 +57,8 @@ _CYCLES_PASS_ALIASES = {
     "TransInd": ("TransInd", "Transmission Indirect"),
     "Emit": ("Emit", "Emission"),
     "Env": ("Env", "Environment"),
+    "Volume Direct": ("Volume Direct", "VolumeDir"),
+    "Volume Indirect": ("Volume Indirect", "VolumeInd"),
 }
 
 
