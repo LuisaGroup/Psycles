@@ -880,6 +880,15 @@ inspected triptychs, and the accompanying Luisa Vulkan optimized-XIR Accel
 metadata fix are recorded in
 [`validation/2026-08-01/volume-majorant-production-scene`](validation/2026-08-01/volume-majorant-production-scene/README.md).
 
+An ordinary Blender Emission node reached from Material Output Volume now
+lowers to a typed `volume_emission` operation instead of an unsupported
+surface-to-volume closure conversion. Its live Color and Strength expressions,
+Add/Mix weight, signed coefficient, object-volume-density scale, and
+shadow/extinction query suppression follow current Cycles SVM semantics. The
+exact fallback/HIP/Vulkan coefficient regressions and Cycles CPU/HIP EXR
+differentials are recorded in
+[`validation/2026-08-04/volume-emission`](validation/2026-08-04/volume-emission/README.md).
+
 Adaptive sampling and denoising are exported and diagnosed but are not part of
 the path-integrator estimator. Psycles renders fixed-count, un-denoised linear
 passes; authoritative Cycles differential renders disable both. A connected

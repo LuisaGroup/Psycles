@@ -295,6 +295,12 @@ cycles_program_closure_allocation_count(
                 add(
                     cycles_volume_node_closure_allocations);
                 break;
+            case compiler::VolumeOperation::emission:
+                // EmissionNode has CLOSURE_EMISSION_ID in Cycles and counts
+                // as one closure even when reached from the volume output;
+                // unlike phase closures it does not reserve a volume block.
+                add(1u);
+                break;
         }
     }
     return count;

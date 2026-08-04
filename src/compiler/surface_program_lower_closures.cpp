@@ -388,6 +388,21 @@ namespace {
         }
         return true;
     }
+    if (node.type == node_type::volume_emission) {
+        auto color = lower_value_input(node, "Color");
+        auto strength = lower_value_input(node, "Strength");
+        if (color && strength) {
+            publish(
+                node.id,
+                "Volume",
+                append(VolumeInstruction{
+                    .operation = VolumeOperation::emission,
+                    .source_node = node.id,
+                    .color = *color,
+                    .emission_strength = *strength}));
+        }
+        return true;
+    }
     if (node.type == node_type::principled_volume) {
         auto color = lower_value_input(node, "Color");
         auto density = lower_value_input(node, "Density");

@@ -36,6 +36,7 @@ from cycles_shader_probe import (  # noqa: E402
     support,
     texture_inputs,
     values,
+    volume_closures,
     voronoi_inputs,
     wave_inputs,
 )
@@ -159,6 +160,9 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "translucent_bsdf_matrix": closures._translucent_bsdf_matrix,
     "translucent_surface": closures._translucent_surface,
     "value_emission": lights_camera._value_emission,
+    "volume_emission_transport": (
+        volume_closures._volume_emission_transport
+    ),
     "vector_math_matrix": texture_inputs._vector_math_matrix,
     "voronoi_texture_distance": voronoi_inputs._voronoi_texture_distance,
     "voronoi_texture_edges": voronoi_inputs._voronoi_texture_edges,

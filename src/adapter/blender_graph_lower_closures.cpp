@@ -304,8 +304,17 @@ public:
                 .type = SocketType::closure});
         }
         if (type == "EMISSION" || type == "BACKGROUND") {
+            // Cycles uses the same Emission node in surface and volume
+            // shader evaluation. In the volume domain its closure weight is
+            // accumulated as an emission coefficient and scaled by the
+            // object's volume density; it is not a surface closure cast.
+            const auto volume =
+                type == "EMISSION" &&
+                requested == SocketType::volume_closure;
             const auto id = context.graph().add_node(
-                compiler::node_type::emission,
+                volume
+                    ? compiler::node_type::volume_emission
+                    : compiler::node_type::emission,
                 node_name);
             static_cast<void>(context.bind(
                 id, "Color", node, "Color", SocketType::color));
@@ -316,8 +325,12 @@ public:
                 "Strength",
                 SocketType::floating));
             return finish({
-                .ref = {.node = id, .socket = "Closure"},
-                .type = SocketType::closure});
+                .ref = {
+                    .node = id,
+                    .socket = volume ? "Volume" : "Closure"},
+                .type = volume
+                            ? SocketType::volume_closure
+                            : SocketType::closure});
         }
         if (type == "BSDF_TRANSPARENT") {
             const auto id = context.graph().add_node(

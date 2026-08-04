@@ -379,6 +379,7 @@ void GraphSurfaceImplementation::for_each_volume(
             case compiler::VolumeOperation::absorption:
             case compiler::VolumeOperation::scatter:
             case compiler::VolumeOperation::coefficients:
+            case compiler::VolumeOperation::emission:
             case compiler::VolumeOperation::principled:
                 function(volume, mix_weight);
                 return;
