@@ -67,6 +67,23 @@ def _main() -> None:
         ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0))
     ):
         uv.data[index].uv = value
+    edit_uv = mesh.uv_layers.new(name="Editing UV")
+    for index, value in enumerate(
+        ((8.0, 3.0), (9.0, 3.0), (9.0, 4.0), (8.0, 4.0))
+    ):
+        edit_uv.data[index].uv = value
+    # Cycles' default Texture Coordinate UV follows the render/default map,
+    # not the UV layer selected for editing in Blender's UI.
+    mesh.uv_layers.active = edit_uv
+    uv.active_render = True
+    if (
+        mesh.uv_layers.active != edit_uv
+        or mesh.uv_layers.active_render != uv
+    ):
+        raise AssertionError(
+            "multi-UV regression setup did not separate editing and "
+            "render/default UV maps"
+        )
 
     point_color = mesh.color_attributes.new(
         name="Point Color",
@@ -280,6 +297,38 @@ def _main() -> None:
         }
         if uv_layers["Domain UV"]["domain"] != "CORNER":
             raise AssertionError("UV layer lost its corner domain")
+        primary_uv = _read_section(geometry_path, geometry["uv"])
+        render_uv = _read_section(
+            geometry_path,
+            uv_layers["Domain UV"]["values"],
+        )
+        editing_uv = _read_section(
+            geometry_path,
+            uv_layers["Editing UV"]["values"],
+        )
+        if primary_uv != render_uv:
+            raise AssertionError(
+                "default Texture Coordinate UV did not use Blender's "
+                "render/default UV map"
+            )
+        if primary_uv == editing_uv:
+            raise AssertionError(
+                "default Texture Coordinate UV incorrectly followed the "
+                "UI/editing-active UV map"
+            )
+        primary_tangents = _read_section(
+            geometry_path,
+            geometry["uv_tangents"],
+        )
+        render_tangents = _read_section(
+            geometry_path,
+            uv_layers["Domain UV"]["tangents"],
+        )
+        if primary_tangents != render_tangents:
+            raise AssertionError(
+                "default tangent frame did not follow the render/default "
+                "UV map"
+            )
         colors = {
             attribute["name"]: attribute
             for attribute in geometry["color_attributes"]
