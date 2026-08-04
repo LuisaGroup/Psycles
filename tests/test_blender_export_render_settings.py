@@ -70,6 +70,60 @@ def _main() -> None:
                 f"{blackman_harris}"
             )
 
+        # Cycles does not pass the authored seed straight to the sampler when
+        # Animated Seed is enabled. These constants are pinned from official
+        # Cycles hash_uint2 scene sync, including its float32 subframe step.
+        original_frame = scene.frame_current
+        original_subframe = scene.frame_subframe
+        original_seed = scene.cycles.seed
+        original_animated_seed = scene.cycles.use_animated_seed
+        try:
+            scene.frame_set(7, subframe=0.25)
+            scene.cycles.seed = 12345
+            scene.cycles.use_animated_seed = True
+            animated = _export(exporter, root / "animated-seed")[
+                "render"
+            ]["cycles"]
+            if (
+                animated["seed"] != 12345
+                or animated["effective_seed"] != 4188122935
+                or not animated["use_animated_seed"]
+                or animated["seed_frame"] != 7
+                or float(animated["seed_subframe"]) != 0.25
+            ):
+                raise AssertionError(
+                    "Animated Seed did not match Cycles scene sync: "
+                    f"{animated}"
+                )
+
+            # This is the exact configuration that exposed the production
+            # Barbershop mismatch: frame one, authored seed zero.
+            scene.frame_set(1, subframe=0.0)
+            scene.cycles.seed = 0
+            barbershop = _export(
+                exporter, root / "barbershop-animated-seed"
+            )["render"]["cycles"]
+            if barbershop["effective_seed"] != 1267069554:
+                raise AssertionError(
+                    "Barbershop Animated Seed regression changed: "
+                    f"{barbershop}"
+                )
+
+            scene.cycles.use_animated_seed = False
+            scene.cycles.seed = 12345
+            static = _export(exporter, root / "static-seed")["render"][
+                "cycles"
+            ]
+            if static["effective_seed"] != 12345:
+                raise AssertionError(
+                    "disabled Animated Seed changed the authored seed: "
+                    f"{static}"
+                )
+        finally:
+            scene.frame_set(original_frame, subframe=original_subframe)
+            scene.cycles.seed = original_seed
+            scene.cycles.use_animated_seed = original_animated_seed
+
     probes = runpy.run_path(
         str(probe_creator),
         run_name="psycles_test_cycles_shader_probes",

@@ -584,6 +584,7 @@ void test_integrator_settings_round_trip() {
     "cycles": {
       "samples": 37,
       "seed": 305419896,
+      "effective_seed": 2271560481,
       "use_adaptive_sampling": false,
       "use_denoising": false,
       "max_bounces": 11,
@@ -641,7 +642,8 @@ void test_integrator_settings_round_trip() {
   expect(imported.width == 240u, "render width did not round-trip");
   expect(imported.height == 135u, "render height did not round-trip");
   expect(imported.samples == 37u, "sample count did not round-trip");
-  expect(imported.seed == 305419896u, "sampling seed did not round-trip");
+  expect(imported.seed == 2271560481u,
+         "effective Cycles sampling seed did not round-trip");
   expect(imported.transparent_background,
          "transparent-film setting did not round-trip");
   expect_near(imported.pass_alpha_threshold, 0.375f,
@@ -839,6 +841,18 @@ void test_integrator_settings_round_trip() {
            "bump regression fixture is missing its insertion point");
     text.replace(position, before.size(), after);
   };
+  auto legacy_seed_scene = light_tree_scene;
+  replace_once(legacy_seed_scene,
+               "      \"effective_seed\": 2271560481,\n", "");
+  {
+    std::ofstream scene{temporary.path() / "scene.json"};
+    scene << legacy_seed_scene;
+  }
+  const auto legacy_seed_imported =
+      load_blender_scene_bundle(temporary.path());
+  expect(legacy_seed_imported.ok() &&
+             legacy_seed_imported.seed == 305419896u,
+         "legacy authored sampling seed fallback did not round-trip");
   replace_once(bump_scene, "\"volume_sampling\": \"EQUIANGULAR\",",
                "\"volume_sampling\": \"EQUIANGULAR\",\n"
                "      \"displacement_method\": \"BUMP\",");
