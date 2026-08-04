@@ -603,26 +603,36 @@ def _image_texture_projection_modes(scene: Any) -> None:
         alpha_mode="STRAIGHT",
     )
     cases = (
-        ("FLAT", 0.0, (0.173, 0.617, 0.83), (0.0, 0.0, 1.0)),
-        ("FLAT", 0.0, (-0.213, 1.137, 0.31), (0.0, 0.0, 1.0)),
-        ("FLAT", 0.0, (0.917, 0.081, 0.57), (0.0, 0.0, 1.0)),
-        ("FLAT", 0.0, (1.271, -0.191, 0.49), (0.0, 0.0, 1.0)),
-        ("SPHERE", 0.0, (0.83, 0.71, 0.26), (0.0, 0.0, 1.0)),
-        ("SPHERE", 0.0, (0.19, 0.87, 0.63), (0.0, 0.0, 1.0)),
-        ("SPHERE", 0.0, (0.51, 0.49, 0.93), (0.0, 0.0, 1.0)),
-        ("SPHERE", 0.0, (0.5, 0.5, 0.5), (0.0, 0.0, 1.0)),
-        ("TUBE", 0.0, (0.83, 0.71, 0.26), (0.0, 0.0, 1.0)),
-        ("TUBE", 0.0, (0.19, 0.87, 0.63), (0.0, 0.0, 1.0)),
-        ("TUBE", 0.0, (0.51, 0.49, 0.93), (0.0, 0.0, 1.0)),
-        ("TUBE", 0.0, (0.5, 0.5, 0.5), (0.0, 0.0, 1.0)),
-        ("BOX", 0.0, (0.21, 0.73, 0.42), (0.93, 0.21, 0.30)),
-        ("BOX", 0.2, (0.67, 0.18, 0.91), (-0.31, 0.89, 0.34)),
-        ("BOX", 0.55, (0.37, 0.82, 0.14), (0.41, -0.52, 0.75)),
-        ("BOX", 1.0, (0.76, 0.29, 0.58), (-0.58, -0.49, 0.65)),
+        ("FLAT", 0.0, (0.173, 0.617, 0.83), (0.0, 0.0, 1.0), False),
+        ("FLAT", 0.0, (-0.213, 1.137, 0.31), (0.0, 0.0, 1.0), False),
+        ("FLAT", 0.0, (0.917, 0.081, 0.57), (0.0, 0.0, 1.0), False),
+        ("FLAT", 0.0, (1.271, -0.191, 0.49), (0.0, 0.0, 1.0), False),
+        ("SPHERE", 0.0, (0.83, 0.71, 0.26), (0.0, 0.0, 1.0), False),
+        ("SPHERE", 0.0, (0.19, 0.87, 0.63), (0.0, 0.0, 1.0), False),
+        ("SPHERE", 0.0, (0.51, 0.49, 0.93), (0.0, 0.0, 1.0), False),
+        ("SPHERE", 0.0, (0.5, 0.5, 0.5), (0.0, 0.0, 1.0), False),
+        ("TUBE", 0.0, (0.83, 0.71, 0.26), (0.0, 0.0, 1.0), False),
+        ("TUBE", 0.0, (0.19, 0.87, 0.63), (0.0, 0.0, 1.0), False),
+        ("TUBE", 0.0, (0.51, 0.49, 0.93), (0.0, 0.0, 1.0), False),
+        ("TUBE", 0.0, (0.5, 0.5, 0.5), (0.0, 0.0, 1.0), False),
+        ("BOX", 0.0, (0.21, 0.73, 0.42), (0.93, 0.21, 0.30), False),
+        ("BOX", 0.2, (0.67, 0.18, 0.91), (-0.31, 0.89, 0.34), False),
+        ("BOX", 0.55, (0.37, 0.82, 0.14), (0.41, -0.52, 0.75), False),
+        # This face is deliberately wound away from the camera. Cycles flips
+        # sd->N during shader setup before BOX projection, which changes all
+        # three cube-face orientation tests, not merely the blend weights.
+        ("BOX", 1.0, (0.76, 0.29, 0.58), (0.58, 0.49, -0.65), True),
     )
     materials = []
     normals = []
-    for index, (projection, blend, coordinate, normal) in enumerate(cases):
+    back_facing = []
+    for index, (
+        projection,
+        blend,
+        coordinate,
+        normal,
+        is_back_facing,
+    ) in enumerate(cases):
         name = f"Image Projection {index:02d} {projection}"
         material, tree, output = _material(name)
         mapping = tree.nodes.new("ShaderNodeMapping")
@@ -673,6 +683,7 @@ def _image_texture_projection_modes(scene: Any) -> None:
             _input(output, "Surface"),
         )
         materials.append(material)
+        back_facing.append(is_back_facing)
         length = sum(component * component for component in normal) ** 0.5
         normals.append(tuple(component / length for component in normal))
 
@@ -695,7 +706,11 @@ def _image_texture_projection_modes(scene: Any) -> None:
                 (x0, y1, 0.0),
             )
         )
-        faces.append((first, first + 1, first + 2, first + 3))
+        faces.append(
+            (first, first + 3, first + 2, first + 1)
+            if back_facing[index]
+            else (first, first + 1, first + 2, first + 3)
+        )
     mesh = bpy.data.meshes.new("Image Projection Modes Matrix Mesh")
     mesh.from_pydata(vertices, [], faces)
     for material in materials:

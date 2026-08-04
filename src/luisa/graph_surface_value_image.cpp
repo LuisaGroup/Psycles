@@ -158,8 +158,16 @@ public:
                         sampled = sample_uv(uv);
                     } else if (projection == 1u) {
                         // Cycles' object-normal weighted box projection.
-                        auto signed_normal =
-                            point.object_shading_normal;
+                        // Cycles flips sd->N when shader setup marks a
+                        // triangle back-facing, then transforms that normal
+                        // back to object space for box projection. Keep the
+                        // raw pre-flip object normal for tangent-space Normal
+                        // Map evaluation, but apply the same post-setup sign
+                        // here before choosing and orienting cube faces.
+                        auto signed_normal = select(
+                            point.object_shading_normal,
+                            -point.object_shading_normal,
+                            point.back_facing);
                         auto normal = abs(signed_normal);
                         auto normal_sum =
                             normal.x + normal.y + normal.z;
