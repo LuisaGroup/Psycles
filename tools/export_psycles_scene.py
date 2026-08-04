@@ -720,6 +720,220 @@ def _geometry(
         evaluated.to_mesh_clear()
 
 
+def _particle_hair_systems(evaluated: Any) -> list[tuple[Any, Any]]:
+    """Return the final-render legacy hair systems consumed by Cycles.
+
+    Cycles walks evaluated particle-system modifiers, checks the modifier's
+    render bit, and accepts only HAIR/PATH systems. Keeping this predicate in
+    one place makes object-index assignment and geometry extraction agree.
+    """
+
+    systems: list[tuple[Any, Any]] = []
+    for modifier in evaluated.modifiers:
+        if modifier.type != "PARTICLE_SYSTEM" or not modifier.show_render:
+            continue
+        particle_system = getattr(modifier, "particle_system", None)
+        if particle_system is None:
+            continue
+        settings = particle_system.settings
+        if settings.type == "HAIR" and settings.render_type == "PATH":
+            systems.append((particle_system, settings))
+    return systems
+
+
+def _object_has_particle_hair(obj: Any, depsgraph: Any) -> bool:
+    if obj.type != "MESH":
+        return False
+    return bool(_particle_hair_systems(obj.evaluated_get(depsgraph)))
+
+
+def _cycles_shape_radius(
+    shape: np.float32,
+    root: np.float32,
+    tip: np.float32,
+    intercept: np.float32,
+) -> np.float32:
+    """Evaluate Cycles' particle-hair radius curve in float32."""
+
+    radius = np.float32(np.float32(1.0) - intercept)
+    if shape < np.float32(0.0):
+        radius = np.float32(
+            np.power(radius, np.float32(np.float32(1.0) + shape))
+        )
+    elif shape > np.float32(0.0):
+        radius = np.float32(
+            np.power(
+                radius,
+                np.float32(
+                    np.float32(1.0)
+                    / np.float32(np.float32(1.0) - shape)
+                ),
+            )
+        )
+    return np.float32(
+        np.float32(radius * np.float32(root - tip)) + tip
+    )
+
+
+def _particle_hair_geometry(
+    obj: Any,
+    depsgraph: Any,
+    stream: Any,
+    shape: str,
+    subdivisions: int,
+) -> dict[str, Any] | None:
+    """Extract Cycles legacy particle hair without tessellating or baking it."""
+
+    evaluated = obj.evaluated_get(depsgraph)
+    systems = _particle_hair_systems(evaluated)
+    if not systems:
+        return None
+
+    object_to_world = np.asarray(evaluated.matrix_world, dtype=np.float32)
+    world_to_object = np.linalg.inv(object_to_world).astype(
+        np.float32, copy=False
+    )
+    keys = array.array("f")
+    curve_first_key = array.array("I")
+    curve_material_slots = array.array("I")
+    intercepts = array.array("f")
+    lengths = array.array("f")
+    randoms = array.array("f")
+    segment_count = 0
+    curve_index = 0
+    material_slot_count = max(len(obj.material_slots), 1)
+
+    for particle_system, settings in systems:
+        parent_count = len(particle_system.particles)
+        child_count = len(particle_system.child_particles)
+        first_particle = (
+            parent_count
+            if settings.child_type != "NONE" and child_count != 0
+            else 0
+        )
+        particle_end = parent_count + child_count
+        key_count = (1 << int(settings.render_step)) + 1
+        if settings.kink == "SPIRAL":
+            key_count += int(settings.kink_extra_steps)
+        if particle_end <= first_particle or key_count < 2:
+            continue
+
+        base_radius = np.float32(
+            np.float32(settings.radius_scale) * np.float32(0.5)
+        )
+        root_radius = np.float32(
+            base_radius * np.float32(settings.root_radius)
+        )
+        tip_radius = np.float32(
+            base_radius * np.float32(settings.tip_radius)
+        )
+        radius_shape = np.float32(settings.shape)
+        close_tip = bool(settings.use_close_tip)
+        material_slot = min(
+            max(int(settings.material) - 1, 0),
+            material_slot_count - 1,
+        )
+
+        for particle_no in range(first_particle, particle_end):
+            curve_first_key.append(len(keys) // 4)
+            positions: list[np.ndarray[Any, np.dtype[np.float32]]] = []
+            curve_times: list[np.float32] = []
+            curve_length = np.float32(0.0)
+            previous: np.ndarray[Any, np.dtype[np.float32]] | None = None
+            for step in range(key_count):
+                coordinate = particle_system.co_hair(
+                    object=evaluated,
+                    particle_no=particle_no,
+                    step=step,
+                )
+                world = np.asarray(
+                    (
+                        float(coordinate[0]),
+                        float(coordinate[1]),
+                        float(coordinate[2]),
+                        1.0,
+                    ),
+                    dtype=np.float32,
+                )
+                local = np.asarray(
+                    (world_to_object @ world)[:3],
+                    dtype=np.float32,
+                )
+                if previous is not None:
+                    delta = np.asarray(local - previous, dtype=np.float32)
+                    squared_length = np.float32(np.dot(delta, delta))
+                    curve_length = np.float32(
+                        curve_length
+                        + np.float32(np.sqrt(squared_length))
+                    )
+                positions.append(local)
+                curve_times.append(curve_length)
+                previous = local
+
+            for key, (position, curve_time) in enumerate(
+                zip(positions, curve_times, strict=True)
+            ):
+                intercept = np.float32(
+                    np.float32(curve_time / curve_length)
+                    if curve_length > np.float32(0.0)
+                    else np.float32(0.0)
+                )
+                radius = _cycles_shape_radius(
+                    radius_shape,
+                    root_radius,
+                    tip_radius,
+                    intercept,
+                )
+                if close_tip and key + 1 == key_count:
+                    radius = np.float32(0.0)
+                keys.extend(
+                    (
+                        float(position[0]),
+                        float(position[1]),
+                        float(position[2]),
+                        float(radius),
+                    )
+                )
+                intercepts.append(float(intercept))
+
+            curve_material_slots.append(material_slot)
+            lengths.append(float(curve_length))
+            randoms.append(
+                _cycles_uint_to_float(
+                    _cycles_hash_uint2(curve_index, 0)
+                )
+            )
+            segment_count += key_count - 1
+            curve_index += 1
+
+    if curve_index == 0:
+        return None
+    return {
+        "name": f"{obj.name}.particle_hair",
+        "shape": {
+            "RIBBONS": "RIBBON",
+            "THICK": "THICK",
+            "THICK_LINEAR": "THICK_LINEAR",
+        }[shape],
+        "subdivisions": int(subdivisions),
+        "key_count": len(keys) // 4,
+        "curve_count": curve_index,
+        "segment_count": segment_count,
+        "keys": _write_array(stream, keys),
+        "curve_first_key": _write_array(stream, curve_first_key),
+        "curve_material_slots": _write_array(
+            stream, curve_material_slots
+        ),
+        "intercept": _write_array(stream, intercepts),
+        "length": _write_array(stream, lengths),
+        "random": _write_array(stream, randoms),
+        "material_slots": [
+            slot.material.name if slot.material else None
+            for slot in obj.material_slots
+        ],
+    }
+
+
 def _image_extension(image: Any) -> str:
     if image.source == "GENERATED":
         return ".png"
@@ -998,6 +1212,47 @@ def _instance_ray_visibility(
     }
 
 
+def _geometry_instance(
+    object_instance: Any,
+    original: Any,
+    geometry_type: str,
+    geometry_index: int,
+    cycles_object_index: int,
+    light_groups: dict[str, int],
+) -> dict[str, Any]:
+    return {
+        "name": object_instance.object.name,
+        "geometry_type": geometry_type,
+        "geometry": geometry_index,
+        "transform": _column_major(object_instance.matrix_world),
+        "persistent_id": list(object_instance.persistent_id),
+        "is_instance": bool(object_instance.is_instance),
+        # Match Cycles' parent-only particle table. Child particles retain
+        # the zero sentinel for both surface and hair objects.
+        "particle_index": _cycles_particle_index(object_instance),
+        # Cycles uses the dependency-graph random id for duplis and hashes
+        # the object name for ordinary objects. Its separate hair object
+        # intentionally receives the same random id.
+        "random_id": int(
+            object_instance.random_id
+            if object_instance.is_instance
+            else _cycles_object_random_id(object_instance.object.name)
+        )
+        & _UINT32_MASK,
+        "shadow_terminator_geometry_offset": float(
+            original.cycles.shadow_terminator_geometry_offset
+        ),
+        "visibility": _instance_ray_visibility(object_instance),
+        "is_shadow_catcher": _cycles_shadow_catcher(object_instance),
+        "cycles_sync": {
+            "object_index": cycles_object_index,
+            "light_group": _cycles_light_group(
+                object_instance, light_groups
+            ),
+        },
+    }
+
+
 def _export_scene(
     output: pathlib.Path,
     depsgraph: Any,
@@ -1017,6 +1272,8 @@ def _export_scene(
     )
     geometries: list[dict[str, Any]] = []
     geometry_by_source: dict[tuple[Any, ...], int] = {}
+    curve_geometries: list[dict[str, Any]] = []
+    curve_geometry_by_source: dict[tuple[Any, ...], int] = {}
     instances: list[dict[str, Any]] = []
     lights: list[dict[str, Any]] = []
     light_shader_indices, material_shader_indices = (
@@ -1028,28 +1285,35 @@ def _export_scene(
     }
     cycles_object_index = 0
     cycles_primitive_offset = 0
+    cycles_curve_offset = 0
+    cycles_curve_segment_offset = 0
+    curve_shape = str(scene.cycles_curves.shape)
+    curve_subdivisions = int(scene.cycles_curves.subdivisions)
     with (output / "geometry.bin").open("wb") as stream:
         stream.write(b"PSYGEO2\0")
         stream.write(struct.pack("<II", 2, 0))
         for object_instance in depsgraph.object_instances:
+            obj = object_instance.object
+            original = obj.original if obj.original is not None else obj
             source_object_index: int | None = None
             if _cycles_object_is_geometry(object_instance):
                 source_object_index = cycles_object_index
                 cycles_object_index += 1
+            hair_object_index: int | None = None
+            if (
+                bool(object_instance.show_particles)
+                and _object_has_particle_hair(original, depsgraph)
+            ):
+                hair_object_index = cycles_object_index
+                cycles_object_index += 1
 
-            # Match Cycles' OB_VISIBLE_SELF gate exactly. A particle emitter
-            # or collection instancer remains present in the render
-            # dependency graph even when its own geometry is disabled; its
-            # generated instances are separate iterator entries with their
-            # own show_self value and must remain exportable.
-            if not object_instance.show_self:
-                continue
-            obj = object_instance.object
-            original = obj.original if obj.original is not None else obj
             if original.hide_render:
                 continue
             if obj.type == "LIGHT":
-                if source_object_index is None:
+                if (
+                    not object_instance.show_self
+                    or source_object_index is None
+                ):
                     continue
                 light_data = _original_id(obj.data)
                 light_shader_index = light_shader_indices.get(
@@ -1082,67 +1346,90 @@ def _export_scene(
                 continue
             if obj.type not in {"MESH", "CURVE", "SURFACE", "FONT", "META"}:
                 continue
-            if source_object_index is None:
-                continue
-            key = _geometry_cache_key(original, scene)
-            geometry_index = geometry_by_source.get(key)
-            if geometry_index is None:
-                geometry_data = _geometry(
-                    original,
-                    depsgraph,
-                    stream,
-                    rec709_to_rgb,
-                )
-                if geometry_data is None:
-                    continue
-                geometry_data["cycles_sync"] = {
-                    "primitive_offset": cycles_primitive_offset,
-                }
-                cycles_primitive_offset += int(
-                    geometry_data["triangle_count"]
-                )
-                geometry_index = len(geometries)
-                geometry_by_source[key] = geometry_index
-                geometries.append(geometry_data)
-            instances.append(
-                {
-                    "name": object_instance.object.name,
-                    "geometry": geometry_index,
-                    "transform": _column_major(object_instance.matrix_world),
-                    "persistent_id": list(object_instance.persistent_id),
-                    "is_instance": bool(object_instance.is_instance),
-                    # Match Cycles' parent-only particle table. Child
-                    # particles deliberately retain the zero sentinel.
-                    "particle_index": _cycles_particle_index(
-                        object_instance
-                    ),
-                    # Cycles uses the dependency-graph random id for duplis,
-                    # and hash_uint2(hash_string(object name), 0) otherwise.
-                    "random_id": int(
-                        object_instance.random_id
-                        if object_instance.is_instance
-                        else _cycles_object_random_id(
-                            object_instance.object.name
+            # Cycles syncs the emitter surface first, then its independent
+            # hair object. OB_VISIBLE_SELF gates only the former.
+            if (
+                object_instance.show_self
+                and source_object_index is not None
+            ):
+                key = _geometry_cache_key(original, scene)
+                geometry_index = geometry_by_source.get(key)
+                if geometry_index is None:
+                    geometry_data = _geometry(
+                        original,
+                        depsgraph,
+                        stream,
+                        rec709_to_rgb,
+                    )
+                    if geometry_data is not None:
+                        geometry_data["cycles_sync"] = {
+                            "primitive_offset": cycles_primitive_offset,
+                        }
+                        cycles_primitive_offset += int(
+                            geometry_data["triangle_count"]
+                        )
+                        geometry_index = len(geometries)
+                        geometry_by_source[key] = geometry_index
+                        geometries.append(geometry_data)
+                if geometry_index is not None:
+                    instances.append(
+                        _geometry_instance(
+                            object_instance,
+                            original,
+                            "MESH",
+                            geometry_index,
+                            source_object_index,
+                            light_groups,
                         )
                     )
-                    & _UINT32_MASK,
-                    "shadow_terminator_geometry_offset": float(
-                        original.cycles.shadow_terminator_geometry_offset
-                    ),
-                    "visibility": _instance_ray_visibility(
-                        object_instance
-                    ),
-                    "is_shadow_catcher": _cycles_shadow_catcher(
-                        object_instance
-                    ),
-                    "cycles_sync": {
-                        "object_index": source_object_index,
-                        "light_group": _cycles_light_group(
-                            object_instance, light_groups
-                        ),
-                    },
-                }
-            )
+
+            if hair_object_index is not None:
+                hair_key = (
+                    "particle_hair",
+                    original.as_pointer(),
+                    curve_shape,
+                    curve_subdivisions,
+                )
+                curve_geometry_index = curve_geometry_by_source.get(
+                    hair_key
+                )
+                if curve_geometry_index is None:
+                    curve_geometry = _particle_hair_geometry(
+                        original,
+                        depsgraph,
+                        stream,
+                        curve_shape,
+                        curve_subdivisions,
+                    )
+                    if curve_geometry is not None:
+                        curve_geometry["cycles_sync"] = {
+                            "curve_offset": cycles_curve_offset,
+                            "segment_offset": (
+                                cycles_curve_segment_offset
+                            ),
+                        }
+                        cycles_curve_offset += int(
+                            curve_geometry["curve_count"]
+                        )
+                        cycles_curve_segment_offset += int(
+                            curve_geometry["segment_count"]
+                        )
+                        curve_geometry_index = len(curve_geometries)
+                        curve_geometry_by_source[hair_key] = (
+                            curve_geometry_index
+                        )
+                        curve_geometries.append(curve_geometry)
+                if curve_geometry_index is not None:
+                    instances.append(
+                        _geometry_instance(
+                            object_instance,
+                            original,
+                            "CURVE",
+                            curve_geometry_index,
+                            hair_object_index,
+                            light_groups,
+                        )
+                    )
 
     geometry_size = (output / "geometry.bin").stat().st_size
     for geometry in geometries:
@@ -1171,6 +1458,27 @@ def _export_scene(
             sections.append(pointiness_source["point_normals"])
             sections.append(pointiness_source["edges"])
         for section in sections:
+            end = int(section["offset"]) + int(section["bytes"])
+            if (
+                int(section["offset"]) < 0
+                or int(section["bytes"]) < 0
+                or end > geometry_size
+            ):
+                raise RuntimeError(
+                    f"incomplete geometry.bin section for "
+                    f"{geometry['name']!r}: {section}, "
+                    f"file size {geometry_size}"
+                )
+    for geometry in curve_geometries:
+        for name in (
+            "keys",
+            "curve_first_key",
+            "curve_material_slots",
+            "intercept",
+            "length",
+            "random",
+        ):
+            section = geometry[name]
             end = int(section["offset"]) + int(section["bytes"])
             if (
                 int(section["offset"]) < 0
@@ -1299,6 +1607,7 @@ def _export_scene(
             "cycles": manifest._cycles_settings(scene),
         },
         "geometries": geometries,
+        "curve_geometries": curve_geometries,
         "instances": instances,
         "materials": materials,
         "lights": lights,
@@ -1403,7 +1712,9 @@ def _export_scene(
         encoding="utf-8",
     )
     print(
-        f"Exported {len(geometries)} geometries, {len(instances)} "
+        f"Exported {len(geometries)} meshes, "
+        f"{len(curve_geometries)} curve geometries, "
+        f"{len(instances)} "
         f"instances, {len(materials)} materials, "
         f"{len(payload['images'])} images to {output}"
     )
