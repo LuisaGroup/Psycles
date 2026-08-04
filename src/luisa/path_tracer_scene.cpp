@@ -1,5 +1,6 @@
 #include "path_tracer_internal.h"
 #include "graph_surface_value_expression.h"
+#include "path_tracer_curve_scene.h"
 #include "path_tracer_environment.h"
 #include "path_tracer_generated_coordinates.h"
 #include "path_tracer_image_decode.h"
@@ -450,7 +451,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         return result;
     }
     const auto fixed_geometry_slots =
-        snapshot.geometries.size() *
+        (snapshot.geometries.size() +
+         snapshot.curve_geometries.size()) *
         geometry_bindless_stride;
     const auto attribute_binding_slot =
         fixed_geometry_slots +
@@ -485,7 +487,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     luisa::vector<AttributeRangeGpu>
         attribute_ranges;
     attribute_ranges.reserve(
-        snapshot.geometries.size());
+        snapshot.geometries.size() +
+        snapshot.curve_geometries.size());
     luisa::vector<MaterialBindingGpu> geometry_materials;
     auto next_attribute_slot =
         static_cast<std::uint32_t>(
@@ -1245,6 +1248,20 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         return result;
     }
 
+    const auto curve_upload =
+        CurveSceneUploadComponent{}.upload(
+            data,
+            snapshot,
+            stream,
+            geometry_indices,
+            geometry_gpu,
+            geometry_materials,
+            attribute_ranges);
+    if (!curve_upload.ok()) {
+        diagnose(result.diagnostics, curve_upload.diagnostic);
+        return result;
+    }
+
     std::map<contract::MaterialId, bool> material_may_emit;
     std::map<
         contract::MaterialId,
@@ -1341,6 +1358,20 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 instance.cycles_light_group,
             .is_shadow_catcher =
                 instance.is_shadow_catcher ? 1u : 0u});
+        if (const auto curve_resource =
+                curve_upload.resource_indices.find(instance.geometry);
+            curve_resource !=
+            curve_upload.resource_indices.end()) {
+            data->accel.emplace_back(
+                data->curve_geometries[
+                    curve_resource->second]
+                    .primitive,
+                to_luisa(instance.transform),
+                static_cast<std::uint8_t>(
+                    normalized_visibility),
+                instance_index);
+            continue;
+        }
         const auto &geometry =
             snapshot.geometries.at(instance.geometry);
         const auto light_visible =

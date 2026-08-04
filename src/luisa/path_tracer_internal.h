@@ -43,6 +43,7 @@
 #include <luisa/runtime/image.h>
 #include <luisa/runtime/rtx/accel.h>
 #include <luisa/runtime/rtx/mesh.h>
+#include <luisa/runtime/rtx/procedural_primitive.h>
 #include <luisa/runtime/shader.h>
 #include <luisa/runtime/stream.h>
 
@@ -92,6 +93,7 @@ using luisa::compute::Kernel1D;
 using luisa::compute::Kernel2D;
 using luisa::compute::Image;
 using luisa::compute::Mesh;
+using luisa::compute::ProceduralPrimitive;
 using luisa::compute::Shader1D;
 using luisa::compute::Stream;
 using luisa::compute::Triangle;
@@ -194,6 +196,17 @@ struct GeometryResource {
     Mesh mesh;
 };
 
+struct CurveGeometryResource {
+    Buffer<luisa::compute::AABB> bounds;
+    Buffer<CurveSegmentGpu> segments;
+    Buffer<luisa::float4> keys;
+    Buffer<luisa::uint> material_slots;
+    Buffer<float> intercept;
+    Buffer<float> length;
+    Buffer<float> random;
+    ProceduralPrimitive primitive;
+};
+
 struct AttributeUpload {
     std::uint64_t id{};
     std::uint32_t domain{};
@@ -246,6 +259,7 @@ struct LuisaSceneData {
     Buffer<luisa::float3> vector_parameter_buffer;
     Buffer<float> cycles_bsdf_table_buffer;
     std::vector<GeometryResource> geometries;
+    std::vector<CurveGeometryResource> curve_geometries;
     std::vector<Image<float>> images;
     BindlessArray texture_heap;
     std::optional<std::uint32_t> environment_texture_slot;
