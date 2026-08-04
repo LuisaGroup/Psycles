@@ -48,6 +48,22 @@ def _positive_integer(value: str) -> int:
     return result
 
 
+def _single_pixel_border(pixel: int, extent: int) -> tuple[float, float]:
+    """Return border coordinates that robustly truncate to one pixel.
+
+    Blender stores render-border coordinates as float32. Exact rational pixel
+    boundaries can round outside their intended interval and make a one-pixel
+    crop two pixels wide or tall. It then truncates each coordinate multiplied
+    by the image extent to an integer edge. Put each endpoint one quarter pixel
+    inside its respective truncation interval, clamping the final upper edge to
+    one, so the resulting integer rectangle is exactly [pixel, pixel + 1).
+    """
+    return (
+        (pixel + 0.25) / extent,
+        min((pixel + 1.25) / extent, 1.0),
+    )
+
+
 def _arguments(scene: Any) -> argparse.Namespace:
     argv = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
     parser = argparse.ArgumentParser(
@@ -229,10 +245,12 @@ def _main() -> None:
     scene.render.resolution_percentage = 100
     scene.render.use_border = True
     scene.render.use_crop_to_border = True
-    scene.render.border_min_x = pixel_x / width
-    scene.render.border_max_x = (pixel_x + 1) / width
-    scene.render.border_min_y = pixel_y / height
-    scene.render.border_max_y = (pixel_y + 1) / height
+    border_min_x, border_max_x = _single_pixel_border(pixel_x, width)
+    border_min_y, border_max_y = _single_pixel_border(pixel_y, height)
+    scene.render.border_min_x = border_min_x
+    scene.render.border_max_x = border_max_x
+    scene.render.border_min_y = border_min_y
+    scene.render.border_max_y = border_max_y
     scene.render.use_compositing = False
     scene.render.use_sequencer = False
     scene.render.filepath = str(output)

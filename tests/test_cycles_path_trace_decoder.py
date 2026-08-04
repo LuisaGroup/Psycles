@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import json
 import pathlib
+import struct
 import sys
 import tempfile
+import types
 import unittest
+from unittest import mock
 
 try:
     import numpy
@@ -22,6 +25,29 @@ if str(TOOLS) not in sys.path:
     sys.path.insert(0, str(TOOLS))
 
 import cycles_path_trace_schema as schema
+
+
+class CyclesPathTraceRenderTests(unittest.TestCase):
+    def test_single_pixel_border_survives_blender_float32_storage(self) -> None:
+        with mock.patch.dict(
+            sys.modules,
+            {"bpy": types.ModuleType("bpy")},
+        ):
+            import render_cycles_path_trace as renderer
+
+        def float32(value: float) -> float:
+            return struct.unpack("f", struct.pack("f", value))[0]
+
+        # 480/1152 include the exact Barbershop trace crop that previously
+        # expanded to two rows/columns. The complete small/production extents
+        # also cover both image edges and every interior pixel.
+        for extent in (1, 2, 3, 7, 480, 1152, 2160, 8192):
+            for pixel in range(extent):
+                lower, upper = renderer._single_pixel_border(pixel, extent)
+                stored_lower = float32(lower)
+                stored_upper = float32(upper)
+                self.assertEqual(int(stored_lower * extent), pixel)
+                self.assertEqual(int(stored_upper * extent), pixel + 1)
 
 
 class PsyclesRawPathTraceDecoderTests(unittest.TestCase):
