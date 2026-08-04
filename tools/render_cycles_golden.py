@@ -24,6 +24,27 @@ from typing import Any
 import bpy
 
 
+_GOLDEN_PASSES = (
+    "Combined",
+    "Normal",
+    "DiffCol",
+    "DiffDir",
+    "DiffInd",
+    "GlossCol",
+    "GlossDir",
+    "GlossInd",
+    "TransCol",
+    "TransDir",
+    "TransInd",
+    "Emit",
+    "Env",
+    "Volume Direct",
+    "Volume Indirect",
+    "Depth",
+    "Debug Sample Count",
+)
+
+
 def _positive_integer(value: str) -> int:
     result = int(value)
     if result <= 0:
@@ -158,6 +179,36 @@ def _configure_cycles_device(
     return [_device_record(device) for device in selected]
 
 
+def _configure_view_layer_passes(view_layer: Any) -> None:
+    """Enable every linear pass used by the canonical differential report."""
+    view_layer.use_pass_combined = True
+    view_layer.use_pass_normal = True
+    view_layer.use_pass_diffuse_color = True
+    view_layer.use_pass_diffuse_direct = True
+    view_layer.use_pass_diffuse_indirect = True
+    view_layer.use_pass_glossy_color = True
+    view_layer.use_pass_glossy_direct = True
+    view_layer.use_pass_glossy_indirect = True
+    view_layer.use_pass_transmission_color = True
+    view_layer.use_pass_transmission_direct = True
+    view_layer.use_pass_transmission_indirect = True
+    view_layer.use_pass_emit = True
+    view_layer.use_pass_environment = True
+    view_layer.use_pass_z = True
+    view_layer.cycles.use_pass_volume_direct = True
+    view_layer.cycles.use_pass_volume_indirect = True
+    if hasattr(
+        view_layer.cycles,
+        "use_pass_debug_sample_count",
+    ):
+        view_layer.cycles.use_pass_debug_sample_count = True
+    elif hasattr(
+        view_layer.cycles,
+        "pass_debug_sample_count",
+    ):
+        view_layer.cycles.pass_debug_sample_count = True
+
+
 def _set_if_present(owner: Any, name: str, value: Any) -> None:
     if hasattr(owner, name):
         setattr(owner, name, value)
@@ -236,30 +287,7 @@ def _main() -> None:
 
     for view_layer in scene.view_layers:
         view_layer.use = True
-        view_layer.use_pass_combined = True
-        view_layer.use_pass_normal = True
-        view_layer.use_pass_diffuse_color = True
-        view_layer.use_pass_diffuse_direct = True
-        view_layer.use_pass_diffuse_indirect = True
-        view_layer.use_pass_glossy_color = True
-        view_layer.use_pass_glossy_direct = True
-        view_layer.use_pass_glossy_indirect = True
-        view_layer.use_pass_transmission_color = True
-        view_layer.use_pass_transmission_direct = True
-        view_layer.use_pass_transmission_indirect = True
-        view_layer.use_pass_emit = True
-        view_layer.use_pass_environment = True
-        view_layer.use_pass_z = True
-        if hasattr(
-            view_layer.cycles,
-            "use_pass_debug_sample_count",
-        ):
-            view_layer.cycles.use_pass_debug_sample_count = True
-        elif hasattr(
-            view_layer.cycles,
-            "pass_debug_sample_count",
-        ):
-            view_layer.cycles.pass_debug_sample_count = True
+        _configure_view_layer_passes(view_layer)
 
     begin = time.perf_counter()
     bpy.ops.render.render(write_still=True)
@@ -295,23 +323,7 @@ def _main() -> None:
         "denoising": scene.cycles.use_denoising,
         "transparent": scene.render.film_transparent,
         "elapsed_seconds": elapsed,
-        "passes": [
-            "Combined",
-            "Normal",
-            "DiffCol",
-            "DiffDir",
-            "DiffInd",
-            "GlossCol",
-            "GlossDir",
-            "GlossInd",
-            "TransCol",
-            "TransDir",
-            "TransInd",
-            "Emit",
-            "Env",
-            "Depth",
-            "Debug Sample Count",
-        ],
+        "passes": list(_GOLDEN_PASSES),
     }
     output.with_suffix(".json").write_text(
         json.dumps(metadata, indent=2, sort_keys=True) + "\n",
