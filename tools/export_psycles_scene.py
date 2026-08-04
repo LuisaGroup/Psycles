@@ -400,9 +400,12 @@ def _geometry(
         if not mesh.loop_triangles:
             return None
         uv_layer_names = [layer.name for layer in mesh.uv_layers]
-        active_uv_name = (
-            mesh.uv_layers.active.name
-            if mesh.uv_layers.active is not None
+        # Cycles maps ATTR_STD_UV to Mesh::default_uv_map_name(), exposed
+        # through Blender's active_render UV layer. The UI/editing-active
+        # layer is an independent choice and may intentionally differ.
+        default_uv_name = (
+            mesh.uv_layers.active_render.name
+            if mesh.uv_layers.active_render is not None
             else None
         )
         uv_by_layer: dict[str, list[tuple[float, float]]] = {}
@@ -579,17 +582,17 @@ def _geometry(
                             rec709_to_rgb,
                         )
                     )
-                if active_uv_name not in uv_by_layer:
+                if default_uv_name not in uv_by_layer:
                     uvs.extend((0.0, 0.0))
                 else:
                     uvs.extend(
-                        uv_by_layer[active_uv_name][loop_index]
+                        uv_by_layer[default_uv_name][loop_index]
                     )
-                if active_uv_name not in tangent_by_layer:
+                if default_uv_name not in tangent_by_layer:
                     uv_tangents.extend((0.0, 0.0, 0.0, 0.0))
                 else:
                     uv_tangents.extend(
-                        tangent_by_layer[active_uv_name][loop_index]
+                        tangent_by_layer[default_uv_name][loop_index]
                     )
                 for layer_name, values in uv_by_layer.items():
                     uv_layer_values[layer_name].extend(
