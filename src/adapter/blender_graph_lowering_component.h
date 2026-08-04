@@ -143,6 +143,16 @@ public:
         const BlenderNodeLoweringRequest &request) const = 0;
 };
 
+// Cycles' TextureNode base class applies Blender's legacy per-node
+// TexMapping before the concrete image/procedural texture. Keep that
+// coordinate policy in one adapter component so every supported texture
+// receives the same transform and implicit-coordinate behavior.
+void bind_blender_texture_vector(
+    BlenderNodeLoweringContext &context,
+    contract::NodeId destination,
+    yyjson_val *raw_node,
+    TypedOutput implicit_coordinates);
+
 [[nodiscard]] std::unique_ptr<BlenderNodeLoweringComponent>
 make_blender_input_lowering_component();
 [[nodiscard]] std::unique_ptr<BlenderNodeLoweringComponent>

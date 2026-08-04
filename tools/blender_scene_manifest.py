@@ -117,6 +117,35 @@ def _node_special_data(node: Any) -> dict[str, Any]:
                     coordinate_object.matrix_world.inverted_safe()
                 ),
             }
+    if hasattr(node, "texture_mapping"):
+        mapping = node.texture_mapping
+        translation = tuple(float(value) for value in mapping.translation)
+        rotation = tuple(float(value) for value in mapping.rotation)
+        scale = tuple(float(value) for value in mapping.scale)
+        axes = (
+            mapping.mapping_x,
+            mapping.mapping_y,
+            mapping.mapping_z,
+        )
+        # Cycles attaches this legacy TexMapping to every TextureNode and
+        # elides it only when translation/rotation/scale and the axis map are
+        # exactly identity. Old production .blend files still use it even
+        # though the modern UI normally exposes a separate Mapping node.
+        if (
+            translation != (0.0, 0.0, 0.0)
+            or rotation != (0.0, 0.0, 0.0)
+            or scale != (1.0, 1.0, 1.0)
+            or axes != ("X", "Y", "Z")
+        ):
+            result["texture_mapping"] = {
+                "vector_type": mapping.vector_type,
+                "translation": list(translation),
+                "rotation": list(rotation),
+                "scale": list(scale),
+                "mapping_x": axes[0],
+                "mapping_y": axes[1],
+                "mapping_z": axes[2],
+            }
     if hasattr(node, "color_ramp"):
         ramp = node.color_ramp
         result["color_ramp"] = {

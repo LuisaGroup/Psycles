@@ -67,6 +67,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/adapter/blender_graph_lower_values.cpp
     src/adapter/blender_graph_lowering_components.cpp
     src/adapter/blender_graph_normalizer.cpp
+    src/adapter/blender_graph_texture_mapping.cpp
     src/adapter/blender_scene.cpp
     src/adapter/blender_scene_json.cpp
     src/luisa/path_tracer.cpp

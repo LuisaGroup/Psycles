@@ -312,13 +312,8 @@ public:
     if (type == "TEX_IMAGE") {
       const auto id = context.graph().add_node(
           compiler::node_type::image_texture, node_name);
-      if (context.input_source(node, "Vector")) {
-        static_cast<void>(
-            context.bind(id, "Vector", node, "Vector", SocketType::vector));
-      } else {
-        static_cast<void>(context.graph().connect(
-            context.default_image_coordinates().ref, id, "Vector"));
-      }
+      bind_blender_texture_vector(context, id, node,
+                                  context.default_image_coordinates());
       const auto image = resolve_image_binding(context, node, true);
       set_image_resource_properties(context, id, image);
       static_cast<void>(context.graph().set_property(
@@ -348,18 +343,14 @@ public:
     if (type == "TEX_ENVIRONMENT") {
       const auto id = context.graph().add_node(
           compiler::node_type::environment_texture, node_name);
-      if (context.input_source(node, "Vector")) {
-        static_cast<void>(
-            context.bind(id, "Vector", node, "Vector", SocketType::vector));
-      } else {
-        // Cycles marks Environment Texture's implicit input as
-        // LINK_POSITION. shader_setup_from_background assigns the
-        // ray direction to that position for world evaluation.
-        const auto position = context.conversion(
-            context.geometry_output("Position", SocketType::point),
-            SocketType::vector);
-        static_cast<void>(context.graph().connect(position.ref, id, "Vector"));
-      }
+      // Cycles marks Environment Texture's implicit input as LINK_POSITION.
+      // shader_setup_from_background assigns the ray direction to that
+      // position for world evaluation.
+      bind_blender_texture_vector(
+          context, id, node,
+          context.conversion(
+              context.geometry_output("Position", SocketType::point),
+              SocketType::vector));
       const auto image = resolve_image_binding(context, node, false);
       set_image_resource_properties(context, id, image);
       static_cast<void>(context.graph().set_property(

@@ -98,6 +98,9 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     ),
     "hue_saturation_value": values._hue_saturation_value,
     "image_texture_srgb": texture_inputs._image_texture_srgb,
+    "image_texture_node_mapping": (
+        texture_inputs._image_texture_node_mapping
+    ),
     "image_texture_sampling_modes": texture_inputs._image_texture_sampling_modes,
     "image_texture_projection_modes": texture_inputs._image_texture_projection_modes,
     "indirect_diffuse": closures._indirect_diffuse,

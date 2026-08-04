@@ -54,6 +54,7 @@ _ALL_PROBES = (
     "hosek_wilkie_diffuse_transport",
     "hue_saturation_value",
     "image_texture_srgb",
+    "image_texture_node_mapping",
     "image_texture_sampling_modes",
     "image_texture_projection_modes",
     "indirect_diffuse",
@@ -165,6 +166,10 @@ _PROBE_RATIO_GATES = {
         "Emit": (0.99999, 1.00001),
     },
     "texture_coordinate_object_transform": {
+        "Combined": (0.99999, 1.00001),
+        "Emit": (0.99999, 1.00001),
+    },
+    "image_texture_node_mapping": {
         "Combined": (0.99999, 1.00001),
         "Emit": (0.99999, 1.00001),
     },
@@ -306,6 +311,10 @@ _PROBE_RELATIVE_RMSE_GATES = {
         "Emit": 0.00001,
     },
     "texture_coordinate_object_transform": {
+        "Combined": 0.00001,
+        "Emit": 0.00001,
+    },
+    "image_texture_node_mapping": {
         "Combined": 0.00001,
         "Emit": 0.00001,
     },

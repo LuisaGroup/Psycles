@@ -175,20 +175,24 @@ NodeRegistry make_core_node_registry() {
                  .required_features = feature_bit(ShaderFeature::surface) |
                                       feature_bit(ShaderFeature::ray_state)}));
 
-  static_cast<void>(registry.register_schema(
-      NodeSchema{.type = node_type::mapping,
-                 .inputs = {input("Vector", SocketType::vector,
-                                  SocketValue::vector({0.0f, 0.0f, 0.0f})),
-                            input("Location", SocketType::vector,
-                                  SocketValue::vector({0.0f, 0.0f, 0.0f})),
-                            input("Rotation", SocketType::vector,
-                                  SocketValue::vector({0.0f, 0.0f, 0.0f})),
-                            input("Scale", SocketType::vector,
-                                  SocketValue::vector({1.0f, 1.0f, 1.0f}))},
-                 .outputs = {output("Vector", SocketType::vector)},
-                 .properties = {property("VectorType", SocketType::string,
-                                         SocketValue::string("POINT"))},
-                 .required_features = feature_bit(ShaderFeature::surface)}));
+  static_cast<void>(registry.register_schema(NodeSchema{
+      .type = node_type::mapping,
+      .inputs = {input("Vector", SocketType::vector,
+                       SocketValue::vector({0.0f, 0.0f, 0.0f})),
+                 input("Location", SocketType::vector,
+                       SocketValue::vector({0.0f, 0.0f, 0.0f})),
+                 input("Rotation", SocketType::vector,
+                       SocketValue::vector({0.0f, 0.0f, 0.0f})),
+                 input("Scale", SocketType::vector,
+                       SocketValue::vector({1.0f, 1.0f, 1.0f}))},
+      .outputs = {output("Vector", SocketType::vector)},
+      .properties =
+          {property("VectorType", SocketType::string,
+                    SocketValue::string("POINT")),
+           property("XMapping", SocketType::string, SocketValue::string("X")),
+           property("YMapping", SocketType::string, SocketValue::string("Y")),
+           property("ZMapping", SocketType::string, SocketValue::string("Z"))},
+      .required_features = feature_bit(ShaderFeature::surface)}));
 
   static_cast<void>(registry.register_schema(NodeSchema{
       .type = node_type::image_texture,
