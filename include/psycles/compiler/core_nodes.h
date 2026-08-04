@@ -19,6 +19,7 @@ inline constexpr auto white_noise_texture =
 inline constexpr auto checker_texture =
     "psycles.texture.checker";
 inline constexpr auto brick_texture = "psycles.texture.brick";
+inline constexpr auto magic_texture = "psycles.texture.magic";
 inline constexpr auto wave_texture = "psycles.texture.wave";
 inline constexpr auto voronoi_texture = "psycles.texture.voronoi";
 inline constexpr auto gradient_texture = "psycles.texture.gradient";

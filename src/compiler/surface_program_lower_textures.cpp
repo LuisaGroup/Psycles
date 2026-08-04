@@ -343,6 +343,34 @@ namespace {
         }
         return true;
     }
+    if (node.type == node_type::magic_texture) {
+        auto vector = lower_value_input(node, "Vector");
+        auto scale = lower_value_input(node, "Scale");
+        auto distortion = lower_value_input(node, "Distortion");
+        if (vector && scale && distortion) {
+            const auto needs_color =
+                property_bool(node, "NeedsColor");
+            const auto depth = std::min(
+                property_uint(node, "Depth", 2u),
+                std::uint64_t{10u});
+            publish(
+                node.id,
+                needs_color ? "Color" : "Factor",
+                append(ValueInstruction{
+                    .operation = needs_color
+                                     ? ValueOperation::magic_color
+                                     : ValueOperation::magic_factor,
+                    .source_node = node.id,
+                    .result_type = needs_color
+                                       ? SocketType::color
+                                       : SocketType::floating,
+                    .a = *vector,
+                    .b = *scale,
+                    .c = *distortion,
+                    .static_u0 = depth}));
+        }
+        return true;
+    }
     if (node.type == node_type::gradient_texture) {
         if (auto vector = lower_value_input(node, "Vector")) {
             const auto kind = property_string(

@@ -482,6 +482,23 @@ combination is emitted once as a Luisa `Callable` and shared by every
 `GraphSurface`, instead of duplicating the full Cycles noise implementation
 inside every material dispatch case.
 
+Magic Texture is `cycles_verified` without baking coordinates, colors, or
+closures. The adapter retains Vector, Scale, Distortion, depth, and the
+requested Color/Factor output. Depth is a finite host-stage specialization:
+Luisa emits one typed callable for each used depth while all authored sockets
+remain device expressions. The callable follows Cycles' exact recurrence and
+Factor is the average of the resulting RGB color. A 16-cell matrix covers
+every depth from 0 through 10, both outputs, implicit Generated coordinates,
+signed and zero Scale/Distortion, and an extreme `1e20` coordinate. Against
+Cycles CPU, Combined relative RMSE is `6.57e-7`, `8.22e-7`, and `8.20e-7` on
+fallback, HIP, and Vulkan respectively, with zero invalid pixels. The extreme
+case also exposed a general Luisa bug: expanding floating remainder as
+`x - y * trunc(x / y)` loses the remainder for wide quotients. Luisa `next`
+now preserves remainder as an IR primitive and implements exact binary32
+semantics across the active code generators. Reports, regression details, and
+the visually inspected triptychs are in
+[`validation/2026-08-04/magic-texture`](validation/2026-08-04/magic-texture/README.md).
+
 Wave Texture is `cycles_verified` without material baking. The adapter retains
 the original typed Vector and six scalar inputs plus Wave type, Bands/Rings
 direction, profile, and Color/Factor output identity. The OOP host-stage value

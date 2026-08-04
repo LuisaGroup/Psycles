@@ -829,6 +829,25 @@
       "probe": "gradient_matrix",
       "samples": 4
     },
+    "TEX_MAGIC": {
+      "max_rmse": 1e-06,
+      "passes": {
+        "Combined": {
+          "rmse": 4.4198847604093316e-07
+        },
+        "DiffCol": {
+          "rmse": 0.0
+        },
+        "Emit": {
+          "rmse": 4.4198847604093316e-07
+        },
+        "Normal": {
+          "rmse": 0.0
+        }
+      },
+      "probe": "magic_texture_matrix",
+      "samples": 16
+    },
     "TEX_NOISE": {
       "max_rmse": 1e-06,
       "passes": {

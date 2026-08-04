@@ -1403,6 +1403,24 @@ if(PSYCLES_ENABLE_LUISA)
                         luisa_attribute
                     LIBRARIES Psycles::luisa)
 
+                psycles_add_luisa_backend_test(
+                    TARGET
+                        psycles_luisa_fmod_tests
+                    SOURCE
+                        tests/test_luisa_fmod.cpp
+                    TEST_STEM
+                        luisa_fmod
+                    LIBRARIES Psycles::luisa)
+
+                psycles_add_luisa_backend_test(
+                    TARGET
+                        psycles_luisa_magic_texture_tests
+                    SOURCE
+                        tests/test_luisa_magic_texture.cpp
+                    TEST_STEM
+                        luisa_magic_texture
+                    LIBRARIES Psycles::luisa)
+
                 include(cmake/PsyclesCurveTests.cmake)
 
                 add_executable(

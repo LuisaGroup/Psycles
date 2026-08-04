@@ -66,6 +66,7 @@ _ALL_PROBES = (
     "math_edge_cases",
     "math_operations",
     "mapping_modes",
+    "magic_texture_matrix",
     "mix_color_modes",
     "mix_color_edge_cases",
     "mix_data_types",
@@ -161,6 +162,10 @@ _PROBE_RATIO_GATES = {
     "geometry_pointiness": {
         "Combined": (0.99999, 1.00001),
         "Emit": (0.99999, 1.00001),
+    },
+    "magic_texture_matrix": {
+        "Combined": (0.9999, 1.0001),
+        "Emit": (0.9999, 1.0001),
     },
     "wave_texture_distortion": {
         # Cycles CPU and Cycles HIP differ by 3.41e-5 relative RMSE on this
@@ -294,6 +299,10 @@ _PROBE_RELATIVE_RMSE_GATES = {
     "geometry_pointiness": {
         "Combined": 0.00001,
         "Emit": 0.00001,
+    },
+    "magic_texture_matrix": {
+        "Combined": 0.0001,
+        "Emit": 0.0001,
     },
     "wave_texture_distortion": {
         "Combined": 0.00006,

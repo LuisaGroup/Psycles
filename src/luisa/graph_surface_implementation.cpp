@@ -5,6 +5,7 @@
 #include <utility>
 
 #include <psycles/luisa/cycles_closure.h>
+#include <psycles/luisa/cycles_magic.h>
 #include <psycles/luisa/cycles_noise.h>
 #include <psycles/luisa/cycles_voronoi.h>
 #include <psycles/luisa/cycles_wave.h>
@@ -44,6 +45,14 @@ GraphSurfaceImplementation::GraphSurfaceImplementation(
                     static_cast<std::uint32_t>(instruction.static_u0),
                     instruction.operation ==
                         compiler::ValueOperation::white_noise_color);
+            } else if (
+                instruction.operation ==
+                    compiler::ValueOperation::magic_color ||
+                instruction.operation ==
+                    compiler::ValueOperation::magic_factor) {
+                cycles_magic::prepare(
+                    static_cast<std::uint32_t>(
+                        instruction.static_u0));
             } else if (
                 instruction.operation ==
                     compiler::ValueOperation::wave_color ||

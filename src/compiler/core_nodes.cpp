@@ -414,6 +414,35 @@ NodeRegistry make_core_node_registry() {
         .required_features = feature_bit(ShaderFeature::surface)}));
 
     static_cast<void>(registry.register_schema(NodeSchema{
+        .type = node_type::magic_texture,
+        .inputs = {
+            input(
+                "Vector",
+                SocketType::vector,
+                SocketValue::vector({0.0f, 0.0f, 0.0f})),
+            input(
+                "Scale",
+                SocketType::floating,
+                SocketValue::floating(5.0f)),
+            input(
+                "Distortion",
+                SocketType::floating,
+                SocketValue::floating(1.0f))},
+        .outputs = {
+            output("Color", SocketType::color),
+            output("Factor", SocketType::floating)},
+        .properties = {
+            property(
+                "Depth",
+                SocketType::unsigned_integer,
+                SocketValue::unsigned_integer(2u)),
+            property(
+                "NeedsColor",
+                SocketType::boolean,
+                SocketValue::boolean(false))},
+        .required_features = feature_bit(ShaderFeature::surface)}));
+
+    static_cast<void>(registry.register_schema(NodeSchema{
         .type = node_type::wave_texture,
         .inputs = {
             input("Vector", SocketType::vector, SocketValue::vector({0.0f, 0.0f, 0.0f})),
