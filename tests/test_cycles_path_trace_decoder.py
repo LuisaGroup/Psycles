@@ -28,12 +28,17 @@ import cycles_path_trace_schema as schema
 
 
 class CyclesPathTraceRenderTests(unittest.TestCase):
-    def test_single_pixel_border_survives_blender_float32_storage(self) -> None:
+    @staticmethod
+    def _renderer():
         with mock.patch.dict(
             sys.modules,
             {"bpy": types.ModuleType("bpy")},
         ):
             import render_cycles_path_trace as renderer
+        return renderer
+
+    def test_single_pixel_border_survives_blender_float32_storage(self) -> None:
+        renderer = self._renderer()
 
         def float32(value: float) -> float:
             return struct.unpack("f", struct.pack("f", value))[0]
@@ -48,6 +53,31 @@ class CyclesPathTraceRenderTests(unittest.TestCase):
                 stored_upper = float32(upper)
                 self.assertEqual(int(stored_lower * extent), pixel)
                 self.assertEqual(int(stored_upper * extent), pixel + 1)
+
+    def test_absolute_sample_preserves_the_complete_sequence(self) -> None:
+        renderer = self._renderer()
+        cycles = types.SimpleNamespace(
+            samples=1,
+            use_sample_subset=False,
+            sample_offset=0,
+            sample_subset_length=2048,
+        )
+
+        renderer._configure_absolute_sample(cycles, 128, 6)
+
+        self.assertEqual(cycles.samples, 128)
+        self.assertTrue(cycles.use_sample_subset)
+        self.assertEqual(cycles.sample_offset, 6)
+        self.assertEqual(cycles.sample_subset_length, 1)
+
+    def test_absolute_sample_must_belong_to_the_complete_sequence(self) -> None:
+        renderer = self._renderer()
+        cycles = types.SimpleNamespace()
+
+        with self.assertRaisesRegex(ValueError, r"outside \[0, 128\)"):
+            renderer._configure_absolute_sample(cycles, 128, 128)
+
+        self.assertEqual(vars(cycles), {})
 
 
 class PsyclesRawPathTraceDecoderTests(unittest.TestCase):
