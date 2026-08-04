@@ -1,5 +1,6 @@
 #include "path_kernel_builder.h"
 #include "path_kernel_triangle_geometry.h"
+#include "subsurface_random_walk_component.h"
 
 #include <psycles/luisa/cycles_noise.h>
 #include <psycles/luisa/cycles_path_state.h>
@@ -123,6 +124,7 @@ private:
     std::shared_ptr<const TriangleGeometryComponent>
         _triangle_geometry{
             make_triangle_geometry_component()};
+    SubsurfaceRandomWalkComponent _random_walk;
 
 public:
     Bool emit(DirectLightingContext &context,
@@ -418,6 +420,9 @@ public:
                 ray_dD = 0.0f;
                 rng_offset += cycles_path_state::bounce_dimension_count;
             };
+        }
+        $else {
+            success = _random_walk.transport(context, closure_sample);
         };
         return success;
     }

@@ -542,6 +542,15 @@ RNG-dimension order. A new transport feature extends a component or a typed
 context instead of relying on textual inclusion into another function's
 lexical scope.
 
+Subsurface transport follows that boundary. `SubsurfaceTransportStage`
+selects the statically typed Burley or Random Walk family while tracing the
+path AST. `SubsurfaceRandomWalkComponent` owns coefficient remapping, entry
+sampling, and the local volumetric walk as ordinary `.h`/`.cpp` host methods;
+its values and 256-event loop are still Luisa device expressions in the one
+fused kernel. The component mutates only the INTERSECT_SUBSURFACE-owned state:
+throughput, exact pending hit, synthetic exit ray, and RNG offset. It neither
+reconstructs shader graphs nor introduces a host reference transport.
+
 Triangle reconstruction is a pair of composable host-stage components.
 `TrianglePrimitiveComponent` is the shared semantic boundary for instance and
 geometry lookup, face material selection, instance overrides, smooth flags,

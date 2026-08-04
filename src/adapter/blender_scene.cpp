@@ -1187,6 +1187,14 @@ BlenderSceneImport load_blender_scene_bundle(
                 number(member(light, "size"), 0.0f);
             const auto shape =
                 text(member(light, "shape"), "POINT");
+            // Blender stores size_y for every area-light shape, but Cycles
+            // deliberately ignores it for SQUARE and DISK. Those shapes use
+            // area_size on both axes; only RECTANGLE and ELLIPSE consume
+            // area_sizey (BlenderSync::sync_light).
+            const auto size_y =
+                shape == "SQUARE" || shape == "DISK"
+                    ? size
+                    : number(member(light, "size_y"), size);
             std::optional<MaterialId> light_shader;
             auto *light_tree = member(light, "node_tree");
             if (light_tree != nullptr &&
@@ -1235,8 +1243,7 @@ BlenderSceneImport load_blender_scene_bundle(
                             member(light, "exposure"),
                             0.0f)),
                     .size = size,
-                    .size_y = number(
-                        member(light, "size_y"), size),
+                    .size_y = size_y,
                     .spread =
                         number(member(light, "spread"), 3.14159265f),
                     .spot_angle = number(

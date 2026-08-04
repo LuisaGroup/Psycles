@@ -679,6 +679,19 @@ Psycles-Luisa/fallback match pixel-for-pixel at 64×64/4 spp: Combined,
 Diffuse Color, Normal, every direct/indirect light pass, emission, and
 environment passes all have zero RMSE and zero maximum absolute error.
 
+Subsurface Random Walk is now `cycles_verified` for Standard, Legacy, and Skin
+transport. The typed Luisa component implements current coefficient remapping,
+Skin's mixed entry, exact Tabulated Sobol domains, 256-event local transport,
+similarity reduction, Henyey-Greenstein/Dwivedi proposal mixtures, and exact
+object/primitive ray-query filtering. The first query uses `tmin = 0` and
+rejects only the entry primitive identity; no epsilon self-intersection filter
+or host prebake is used. At 64x64/4,096 spp, Combined energy is within
+`1.24e-6` of Cycles and Combined relative RMSE is at most `1.27e-4` across
+fallback, HIP, and Vulkan. Direct diffuse remains below `1.27e-4`; the more
+sensitive indirect diffuse pass remains below `2.35e-3`. Reports, focused path
+traces, performance ratios, and twelve visually inspected triptychs are in
+[`validation/2026-08-04/subsurface-random-walk`](validation/2026-08-04/subsurface-random-walk/README.md).
+
 Math and Mix are now `cycles_verified`. Two Math probes cover all 41 Blender
 4.5.10 operations plus signed, zero-divisor, invalid-domain, epsilon-compare,
 three-input, and output-clamp branches; all recorded passes have zero RMSE.

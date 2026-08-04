@@ -8,12 +8,15 @@ Barbershop Interior scene reaches a complete HIP render and writes linear
 multilayer OpenEXR output. Blender/Cycles is used only as the rendering oracle;
 no closure, texture, material, or transport result is baked or pre-evaluated.
 
-This is a feature checkpoint, not a Barbershop parity claim. Burley is the
-implemented spatial method. Random Walk, Random Walk Legacy, and Random Walk
-Skin still require their native Luisa transports, and the full scene still
-reports explicit unsupported or unavailable inputs. The 320x180 comparison
-below is deliberately diagnostic and below the later production gate of at
-least 480p.
+This is a feature checkpoint, not a Barbershop parity claim. At the time of
+the retained render, Burley was the implemented spatial method and Random Walk,
+Random Walk Legacy, and Random Walk Skin were the next transport gap. Those
+three methods are now implemented and independently verified in the follow-up
+[`subsurface-random-walk`](../subsurface-random-walk/README.md) checkpoint; the
+historical 320x180 Barbershop comparison below has not been relabeled as a
+post-Random-Walk result. The full scene still reports explicit unsupported or
+unavailable inputs, and this diagnostic remains below the later production
+gate of at least 480p.
 
 The source asset is the user-provided URL:
 
@@ -103,8 +106,9 @@ transport albedo, sample/PDF/event payload, full-channel allocation, the
 diffuse-ancestor occupied-none/fallback ordering, partial tiny-radius channel
 fallback, and summed diffuse-color AOV. The same kernel passes on fallback,
 HIP, and Vulkan. The existing Principled closure regression independently
-checks ABI type 32 and native Random Walk payload construction; spatial Random
-Walk transport is intentionally not claimed by this checkpoint.
+checks ABI type 32 and native Random Walk payload construction. Spatial Random
+Walk transport was intentionally outside this retained checkpoint and is
+claimed only by the separate follow-up validation linked above.
 
 ## Full-scene HIP measurements
 

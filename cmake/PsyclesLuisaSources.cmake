@@ -89,6 +89,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_kernel_surface_scatter.cpp
     src/luisa/path_kernel_surface_shading.cpp
     src/luisa/path_kernel_subsurface.cpp
+    src/luisa/subsurface_random_walk_component.cpp
     src/luisa/path_kernel_triangle_geometry.cpp
     src/luisa/path_kernel_triangle_primitive.cpp
     src/luisa/path_kernel_volume_boundary.cpp

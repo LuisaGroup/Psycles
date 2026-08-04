@@ -259,7 +259,7 @@ void test_integrator_settings_round_trip() {
   "lights": [
     {
       "name": "Key",
-      "type": "POINT",
+      "type": "AREA",
       "transform": [
         1, 0, 0, 0,
         0, 1, 0, 0,
@@ -268,6 +268,9 @@ void test_integrator_settings_round_trip() {
       ],
       "color": [1, 1, 1],
       "energy": 10,
+      "shape": "DISK",
+      "size": 1.3,
+      "size_y": 0.25,
       "use_multiple_importance_sampling": false,
       "cast_shadow": false,
       "visibility": {
@@ -650,6 +653,11 @@ void test_integrator_settings_round_trip() {
             psycles::contract::LightId{1u});
     expect(
         imported_light != imported.scene->lights.end() &&
+            imported_light->second.type ==
+                psycles::contract::LightType::area &&
+            imported_light->second.ellipse &&
+            std::abs(imported_light->second.size - 1.3f) <= 1.0e-6f &&
+            std::abs(imported_light->second.size_y - 1.3f) <= 1.0e-6f &&
             !imported_light->second.use_mis &&
             !imported_light->second.cast_shadow &&
             imported_light->second.is_shadow_catcher &&
@@ -665,7 +673,7 @@ void test_integrator_settings_round_trip() {
                      psycles::contract::RayVisibility::transmission) |
                  psycles::contract::visibility_bit(
                      psycles::contract::RayVisibility::shadow)),
-        "light Cycles identity or shader policy did not round-trip");
+        "light shape, Cycles identity, or shader policy did not round-trip");
     const auto imported_world =
         imported.scene->materials.find(
             psycles::contract::MaterialId{3u});
