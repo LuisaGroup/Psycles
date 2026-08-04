@@ -118,6 +118,7 @@ _ALL_PROBES = (
     "translucent_bsdf_matrix",
     "translucent_surface",
     "triangle_light_solid_angle",
+    "texture_coordinate_object_transform",
     "value_emission",
     "volume_emission_transport",
     "vector_math_matrix",
@@ -160,6 +161,10 @@ _PROBE_RATIO_GATES = {
         "Emit": (0.99999, 1.00001),
     },
     "geometry_pointiness": {
+        "Combined": (0.99999, 1.00001),
+        "Emit": (0.99999, 1.00001),
+    },
+    "texture_coordinate_object_transform": {
         "Combined": (0.99999, 1.00001),
         "Emit": (0.99999, 1.00001),
     },
@@ -297,6 +302,10 @@ _PROBE_RELATIVE_RMSE_GATES = {
         "Emit": 0.000001,
     },
     "geometry_pointiness": {
+        "Combined": 0.00001,
+        "Emit": 0.00001,
+    },
+    "texture_coordinate_object_transform": {
         "Combined": 0.00001,
         "Emit": 0.00001,
     },

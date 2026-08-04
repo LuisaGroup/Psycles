@@ -1405,6 +1405,15 @@ if(PSYCLES_ENABLE_LUISA)
 
                 psycles_add_luisa_backend_test(
                     TARGET
+                        psycles_luisa_texture_coordinate_tests
+                    SOURCE
+                        tests/test_luisa_texture_coordinate.cpp
+                    TEST_STEM
+                        luisa_texture_coordinate
+                    LIBRARIES Psycles::luisa)
+
+                psycles_add_luisa_backend_test(
+                    TARGET
                         psycles_luisa_fmod_tests
                     SOURCE
                         tests/test_luisa_fmod.cpp
@@ -1958,6 +1967,10 @@ if(PSYCLES_BUILD_TESTS)
                 SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_${test}.py"
                 ARGUMENTS "${blender_exporter}")
         endforeach()
+        psycles_add_blender_test(
+            NAME psycles.blender_export_texture_coordinate_object
+            SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_texture_coordinate_object.py"
+            ARGUMENTS "${blender_exporter}")
         psycles_add_blender_test(
             NAME psycles.blender_export_particle_info
             SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_particle_info.py"
