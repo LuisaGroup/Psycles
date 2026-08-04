@@ -92,10 +92,16 @@ class EnvironmentVolumeLightProvider final
                 _result.pdf = light.pdf;
                 _result.maximum_distance =
                     ray_maximum;
-                _result.light_instance =
+                _result.light_object =
                     surface_ray::
                         invalid_primitive;
                 _result.light_primitive =
+                    surface_ray::
+                        invalid_primitive;
+                _result.light_instance =
+                    surface_ray::
+                        invalid_primitive;
+                _result.light_accel_primitive =
                     surface_ray::
                         invalid_primitive;
                 _result.use_mis = true;

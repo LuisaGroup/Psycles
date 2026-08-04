@@ -46,7 +46,7 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
         auto &minimum_bsdf_pdf = sample.minimum_bsdf_pdf;
         auto &previous_delta = sample.previous_delta;
         auto &previous_mis_origin_normal = sample.previous_mis_origin_normal;
-        auto &ray_source_instance = sample.ray_source_instance;
+        auto &ray_source_object = sample.ray_source_object;
         auto &ray_source_primitive = sample.ray_source_primitive;
         auto &ray_dP = sample.ray_dP;
         auto &continuation_probability = sample.continuation_probability;
@@ -270,8 +270,8 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
                 transparent);
             Float next_maximum = select(
                 ray_maximum, ray->t_max(), transparent);
-            ray_source_instance = hit->inst;
-            ray_source_primitive = hit->prim;
+            ray_source_object = surface.cycles_object_index;
+            ray_source_primitive = surface.cycles_primitive_index;
             ray_dP = differential_radius;
             ray = make_ray(
                 next_origin,

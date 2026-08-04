@@ -133,6 +133,21 @@ NodeRegistry make_core_node_registry() {
             feature_bit(ShaderFeature::attributes)}));
 
     static_cast<void>(registry.register_schema(NodeSchema{
+        .type = node_type::hair_info,
+        .inputs = {},
+        .outputs = {
+            output("IsStrand", SocketType::floating),
+            output("Intercept", SocketType::floating),
+            output("Length", SocketType::floating),
+            output("Thickness", SocketType::floating),
+            output("TangentNormal", SocketType::normal),
+            output("Random", SocketType::floating)},
+        .properties = {},
+        .required_features =
+            feature_bit(ShaderFeature::surface) |
+            feature_bit(ShaderFeature::attributes)}));
+
+    static_cast<void>(registry.register_schema(NodeSchema{
         .type = node_type::light_path,
         .inputs = {},
         .outputs = {

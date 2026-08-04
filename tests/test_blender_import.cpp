@@ -117,6 +117,12 @@ void test_integrator_settings_round_trip() {
             "to_socket": "Color"
           },
           {
+            "from_node": "Hair Info",
+            "from_socket": "Intercept",
+            "to_node": "Emission",
+            "to_socket": "Strength"
+          },
+          {
             "from_node": "Emission",
             "from_socket": "Emission",
             "to_node": "Add Volume",
@@ -289,6 +295,26 @@ void test_integrator_settings_round_trip() {
             "node_tree": null
           },
           {
+            "name": "Hair Info",
+            "label": "",
+            "type": "HAIR_INFO",
+            "bl_idname": "ShaderNodeHairInfo",
+            "inputs": [],
+            "outputs": [
+              {
+                "identifier": "Intercept",
+                "name": "Intercept",
+                "type": "NodeSocketFloat",
+                "linked": true,
+                "default": 0.0
+              }
+            ],
+            "properties": {},
+            "special": {},
+            "image": null,
+            "node_tree": null
+          },
+          {
             "name": "Emission",
             "label": "",
             "type": "EMISSION",
@@ -305,7 +331,7 @@ void test_integrator_settings_round_trip() {
                 "identifier": "Strength",
                 "name": "Strength",
                 "type": "NodeSocketFloat",
-                "linked": false,
+                "linked": true,
                 "default": 1.2
               }
             ],
@@ -728,6 +754,7 @@ void test_integrator_settings_round_trip() {
     bool has_scatter = false;
     bool has_volume_mix = false;
     bool has_volume_emission = false;
+    bool has_hair_info = false;
     bool has_point_to_vector = false;
     bool has_vector_to_color = false;
     bool has_transparent_boundary = false;
@@ -746,6 +773,9 @@ void test_integrator_settings_round_trip() {
         has_volume_emission |=
             node.type ==
             psycles::compiler::node_type::volume_emission;
+        has_hair_info |=
+            node.type ==
+            psycles::compiler::node_type::hair_info;
         has_point_to_vector |=
             node.type ==
             psycles::compiler::node_type::point_to_vector;
@@ -758,9 +788,9 @@ void test_integrator_settings_round_trip() {
     }
     expect(
         has_absorption && has_scatter && has_volume_mix &&
-            has_volume_emission,
+            has_volume_emission && has_hair_info,
         "Blender Volume closure tree was flattened or typed as a "
-        "surface closure");
+        "surface closure, or Hair Info was not retained");
     expect(
         has_point_to_vector && has_vector_to_color,
         "Geometry Position to Color did not follow the component-preserving "
@@ -771,6 +801,9 @@ void test_integrator_settings_round_trip() {
                 "unsupported implicit socket conversion") ==
                 std::string::npos,
             "supported float3-family conversion emitted a warning");
+        expect(
+            diagnostic.message.find("Hair Info") == std::string::npos,
+            "supported Hair Info emitted an importer warning");
     }
     expect(
         has_transparent_boundary,

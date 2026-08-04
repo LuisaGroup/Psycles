@@ -1613,6 +1613,15 @@ if(PSYCLES_ENABLE_LUISA)
                     luisa_pointiness_scene
                 LIBRARIES Psycles::luisa_runtime)
 
+            psycles_add_luisa_backend_test(
+                TARGET
+                    psycles_luisa_curve_path_tests
+                SOURCE
+                    tests/test_luisa_curve_path.cpp
+                TEST_STEM
+                    luisa_curve_path
+                LIBRARIES Psycles::luisa_runtime)
+
             add_executable(
                 psycles_sample_dispatch_partition_tests
                 tests/test_sample_dispatch_partition.cpp)
@@ -1735,6 +1744,19 @@ if(PSYCLES_BUILD_TESTS)
     target_link_libraries(psycles_tests PRIVATE Psycles::core)
     target_compile_features(psycles_tests PRIVATE cxx_std_20)
     add_test(NAME psycles.contracts COMMAND psycles_tests)
+
+    add_executable(
+        psycles_hair_info_graph_tests
+        tests/test_hair_info_graph.cpp)
+    target_link_libraries(
+        psycles_hair_info_graph_tests
+        PRIVATE Psycles::core)
+    target_compile_features(
+        psycles_hair_info_graph_tests
+        PRIVATE cxx_std_20)
+    add_test(
+        NAME psycles.hair_info_graph
+        COMMAND psycles_hair_info_graph_tests)
 
     add_executable(
         psycles_curve_scene_contract_tests

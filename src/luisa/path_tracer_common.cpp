@@ -83,6 +83,12 @@ unpack_shader_evaluation_state(
     result.object_random = point.object_random;
     result.particle_index = point.particle_index;
     result.random_per_island = point.random_per_island;
+    result.is_curve = select(0u, 1u, point.is_curve);
+    result.curve_intercept = point.curve_intercept;
+    result.curve_length = point.curve_length;
+    result.curve_thickness = point.curve_thickness;
+    result.curve_tangent_normal = point.curve_tangent_normal;
+    result.curve_random = point.curve_random;
     result.ray_visibility = point.ray_visibility;
     result.ray_events = point.ray_events;
     result.ray_depth = point.ray_depth;
@@ -137,6 +143,12 @@ unpack_shader_evaluation_state(
         .object_random = point.object_random,
         .particle_index = point.particle_index,
         .random_per_island = point.random_per_island,
+        .is_curve = point.is_curve != 0u,
+        .curve_intercept = point.curve_intercept,
+        .curve_length = point.curve_length,
+        .curve_thickness = point.curve_thickness,
+        .curve_tangent_normal = point.curve_tangent_normal,
+        .curve_random = point.curve_random,
         .ray_visibility = point.ray_visibility,
         .ray_events = point.ray_events,
         .ray_depth = point.ray_depth,

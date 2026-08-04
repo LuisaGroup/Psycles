@@ -33,6 +33,12 @@ namespace {
         case compiler::ValueOperation::back_facing:
         case compiler::ValueOperation::pointiness:
         case compiler::ValueOperation::random_per_island:
+        case compiler::ValueOperation::curve_is_strand:
+        case compiler::ValueOperation::curve_intercept:
+        case compiler::ValueOperation::curve_length:
+        case compiler::ValueOperation::curve_thickness:
+        case compiler::ValueOperation::curve_tangent_normal:
+        case compiler::ValueOperation::curve_random:
         case compiler::ValueOperation::path_is_camera:
         case compiler::ValueOperation::path_is_shadow:
         case compiler::ValueOperation::path_is_diffuse:
@@ -258,6 +264,26 @@ public:
                 case compiler::ValueOperation::random_per_island:
                     value = make_float4(
                         point.random_per_island);
+                    break;
+                case compiler::ValueOperation::curve_is_strand:
+                    value = make_float4(select(
+                        0.0f, 1.0f, point.is_curve));
+                    break;
+                case compiler::ValueOperation::curve_intercept:
+                    value = make_float4(point.curve_intercept);
+                    break;
+                case compiler::ValueOperation::curve_length:
+                    value = make_float4(point.curve_length);
+                    break;
+                case compiler::ValueOperation::curve_thickness:
+                    value = make_float4(point.curve_thickness);
+                    break;
+                case compiler::ValueOperation::curve_tangent_normal:
+                    value = make_float4(
+                        point.curve_tangent_normal, 0.0f);
+                    break;
+                case compiler::ValueOperation::curve_random:
+                    value = make_float4(point.curve_random);
                     break;
                 case compiler::ValueOperation::path_is_camera:
                     value = make_float4(select(

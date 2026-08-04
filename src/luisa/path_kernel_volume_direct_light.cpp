@@ -1026,7 +1026,7 @@ class PathVolumeDirectLightingComponent final
                             invalid_primitive,
                         surface_ray::
                             invalid_primitive,
-                        light.light_instance,
+                        light.light_object,
                         light.light_primitive,
                         invocation.parameters
                             .transparent_max_bounces,
@@ -1046,7 +1046,7 @@ class PathVolumeDirectLightingComponent final
                         path_stack,
                         volume_shadow_ray,
                         light.light_instance,
-                        light.light_primitive);
+                        light.light_accel_primitive);
                 const auto continuation =
                     volume.throughput /
                     sample

@@ -191,7 +191,7 @@ struct PathSampleContext {
     Var<luisa::compute::Ray> ray;
     Float ray_dP;
     Float ray_dD;
-    UInt ray_source_instance;
+    UInt ray_source_object;
     UInt ray_source_primitive;
     UInt ray_visibility;
     Float3 radiance;
@@ -342,6 +342,7 @@ struct SurfaceGeometryContext {
     Float3 hit_position;
     Float3 object_hit_position;
     Float differential_radius;
+    Bool is_curve;
     Bool triangle_smooth;
     Float3 shadow_shading_normal;
     UInt surface_tag;

@@ -1,5 +1,6 @@
 #include "surface_program_builder.h"
 
+#include <tuple>
 #include <utility>
 
 namespace psycles::compiler::detail {
@@ -151,6 +152,36 @@ namespace psycles::compiler::detail {
                 .operation = ValueOperation::particle_random,
                 .source_node = node.id,
                 .result_type = SocketType::floating}));
+        return true;
+    }
+    if (node.type == node_type::hair_info) {
+        for (const auto &[output_name, operation, type] : {
+                 std::tuple{"IsStrand",
+                            ValueOperation::curve_is_strand,
+                            SocketType::floating},
+                 std::tuple{"Intercept",
+                            ValueOperation::curve_intercept,
+                            SocketType::floating},
+                 std::tuple{"Length",
+                            ValueOperation::curve_length,
+                            SocketType::floating},
+                 std::tuple{"Thickness",
+                            ValueOperation::curve_thickness,
+                            SocketType::floating},
+                 std::tuple{"TangentNormal",
+                            ValueOperation::curve_tangent_normal,
+                            SocketType::normal},
+                 std::tuple{"Random",
+                            ValueOperation::curve_random,
+                            SocketType::floating}}) {
+            publish(
+                node.id,
+                output_name,
+                append(ValueInstruction{
+                    .operation = operation,
+                    .source_node = node.id,
+                    .result_type = type}));
+        }
         return true;
     }
     if (node.type == node_type::light_path) {

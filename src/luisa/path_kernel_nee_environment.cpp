@@ -162,10 +162,10 @@ class EnvironmentLightingComponent final : public DirectLightingComponent {
                 Float3 shadow_transmittance =
                     trace_shadow(environment_shadow_ray,
                                  select(surface_ray::invalid_primitive,
-                                        hit->inst,
+                                        surface.cycles_object_index,
                                         shadow.skip_self),
                                  select(surface_ray::invalid_primitive,
-                                        hit->prim,
+                                        surface.cycles_primitive_index,
                                         shadow.skip_self),
                                  surface_ray::invalid_primitive,
                                  surface_ray::invalid_primitive,

@@ -1,4 +1,5 @@
 #include "path_kernel_builder.h"
+#include "path_kernel_scene_traversal.h"
 
 #include <psycles/luisa/surface_ray.h>
 
@@ -9,6 +10,10 @@ namespace {
 
 class PathBounceSetupStageImpl final
     : public PathBounceSetupStage {
+
+  private:
+    std::shared_ptr<const SceneTraversalComponent> _traversal{
+        make_scene_traversal_component()};
 
   public:
     PathBounceContext
@@ -33,8 +38,8 @@ class PathBounceSetupStageImpl final
         auto &ray = sample.ray;
         auto &ray_visibility =
             sample.ray_visibility;
-        auto &ray_source_instance =
-            sample.ray_source_instance;
+        auto &ray_source_object =
+            sample.ray_source_object;
         auto &ray_source_primitive =
             sample.ray_source_primitive;
         auto &pending_subsurface_exit =
@@ -113,25 +118,10 @@ class PathBounceSetupStageImpl final
             // Match Cycles' RaySelfPrimitives contract: the previous
             // committed primitive is rejected by identity during traversal.
             // This remains independent of the geometric origin offset.
-            hit = scene->accel
-                      ->traverse(
-                          ray,
-                          {.visibility_mask = ray_visibility})
-                      .on_surface_candidate(
-                          [&](luisa::compute::SurfaceCandidate
-                                  &candidate) noexcept {
-                              auto candidate_hit = candidate.hit();
-                              $if(!surface_ray::same_primitive(
-                                  candidate_hit->inst,
-                                  candidate_hit->prim,
-                                  ray_source_instance,
-                                  ray_source_primitive)) {
-                                  candidate.commit();
-                              };
-                          })
-                      .on_procedural_candidate(
-                          [](luisa::compute::ProceduralCandidate &) noexcept {})
-                      .trace();
+            hit = _traversal->closest(
+                scene, ray, ray_visibility,
+                {.object = ray_source_object,
+                 .primitive = ray_source_primitive});
             $if(!hit->miss()) {
                 closest_surface_distance = hit->committed_ray_t;
             };

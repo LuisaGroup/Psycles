@@ -189,6 +189,20 @@ public:
                 .ref = {.node = id, .socket = output_socket},
                 .type = SocketType::floating});
         }
+        if (type == "HAIR_INFO") {
+            const auto id = context.graph().add_node(
+                compiler::node_type::hair_info,
+                node_name);
+            const auto output_socket =
+                socket == "Is Strand" ? "IsStrand" :
+                socket == "Tangent Normal" ? "TangentNormal" :
+                socket;
+            return finish({
+                .ref = {.node = id, .socket = output_socket},
+                .type = socket == "Tangent Normal"
+                            ? SocketType::normal
+                            : SocketType::floating});
+        }
         if (type == "LIGHT_FALLOFF") {
             // Cycles applies the selected distance law before its smooth
             // near-light attenuation. Analytic-light shader points carry the

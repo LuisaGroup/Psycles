@@ -1,4 +1,5 @@
 #include "cycles_shader_identity.h"
+#include "path_kernel_curve_geometry.h"
 #include "path_kernel_curve_primitive.h"
 #include "path_kernel_scene_traversal.h"
 
@@ -19,7 +20,7 @@ using namespace luisa::compute;
 using namespace psycles::luisa_backend::detail;
 using psycles::luisa_backend::surface_ray::invalid_primitive;
 
-inline constexpr std::size_t record_count = 7u;
+inline constexpr std::size_t record_count = 10u;
 
 [[nodiscard]] bool near(float actual, float expected,
                         float tolerance = 2.0e-6f) noexcept {
@@ -104,6 +105,10 @@ int main(int argc, char **argv) {
                                     AABB{.packed_min = {-2.5f, -0.5f, 2.0f},
                                          .packed_max = {2.5f, 0.5f, 3.0f}}};
   constexpr std::array curve_material_slots{0u};
+  constexpr std::array curve_intercepts{0.0f, 0.2f, 0.6f, 1.0f,
+                                        0.0f, 0.2f, 0.6f, 1.0f};
+  constexpr std::array curve_lengths{3.5f};
+  constexpr std::array curve_randoms{0.25f};
 
   scene->geometry_buffer = device.create_buffer<GeometryGpu>(geometries.size());
   scene->instance_buffer = device.create_buffer<InstanceGpu>(instances.size());
@@ -120,13 +125,23 @@ int main(int argc, char **argv) {
   auto key_buffer = device.create_buffer<luisa::float4>(curve_keys.size());
   auto curve_material_buffer =
       device.create_buffer<luisa::uint>(curve_material_slots.size());
+  auto curve_intercept_buffer =
+      device.create_buffer<float>(curve_intercepts.size());
+  auto curve_length_buffer = device.create_buffer<float>(curve_lengths.size());
+  auto curve_random_buffer = device.create_buffer<float>(curve_randoms.size());
   auto curves = device.create_procedural_primitive(bounds_buffer);
 
   scene->heap = device.create_bindless_array(2u * geometry_bindless_stride);
   scene->heap.emplace_on_update(curve_bindless_base, segment_buffer);
   scene->heap.emplace_on_update(curve_bindless_base + 1u, key_buffer);
+  scene->heap.emplace_on_update(curve_bindless_base + 3u,
+                                curve_intercept_buffer);
   scene->heap.emplace_on_update(curve_bindless_base + 4u,
                                 curve_material_buffer);
+  scene->heap.emplace_on_update(curve_bindless_base + 5u,
+                                curve_length_buffer);
+  scene->heap.emplace_on_update(curve_bindless_base + 6u,
+                                curve_random_buffer);
   scene->accel = device.create_accel();
   scene->accel.emplace_back(mesh, make_float4x4(1.0f), 0xffu, false, 0u);
   scene->accel.emplace_back(curves, make_float4x4(1.0f), 0xffu, 1u);
@@ -134,8 +149,9 @@ int main(int argc, char **argv) {
   auto output = device.create_buffer<luisa::float4>(record_count);
   const auto traversal = make_scene_traversal_component();
   const auto curve_primitive = make_curve_primitive_component();
-  Kernel1D evaluate = [scene, traversal,
-                       curve_primitive](BufferFloat4 records) noexcept {
+  const auto curve_geometry = make_curve_geometry_component();
+  Kernel1D evaluate = [scene, traversal, curve_primitive,
+                       curve_geometry](BufferFloat4 records) noexcept {
     const UInt test = dispatch_x();
     UInt source_object = invalid_primitive;
     UInt source_primitive = invalid_primitive;
@@ -151,7 +167,7 @@ int main(int argc, char **argv) {
     light_object = select(light_object, 22u, test == 3u);
     light_primitive = select(light_primitive, 200u, test == 3u);
 
-    const auto ray = make_ray(make_float3(0.0f, 0.1f, 0.0f),
+    const auto ray = make_ray(make_float3(0.0f, 0.0f, 0.0f),
                               make_float3(0.0f, 0.0f, 1.0f), 0.0f, 10.0f);
     const auto hit = traversal->closest_shadow(
         scene, ray, 0xffu,
@@ -171,6 +187,26 @@ int main(int argc, char **argv) {
                             cast<float>(primitive.cycles_surface_shader &
                                         cycles_shader_identity::shader_mask)));
     };
+    $if(test == 7u) {
+      const auto geometry = curve_geometry->emit(scene, 1u, 0u, ray, 2.0f);
+      records.write(test,
+                    make_float4(geometry.intersection.u,
+                                geometry.intersection.v, geometry.intercept,
+                                geometry.length));
+    };
+    $if(test == 8u) {
+      const auto geometry = curve_geometry->emit(scene, 1u, 0u, ray, 2.0f);
+      records.write(test,
+                    make_float4(geometry.thickness, geometry.random,
+                                geometry.tangent_normal.z,
+                                geometry.shading_normal.z));
+    };
+    $if(test == 9u) {
+      const auto geometry = curve_geometry->emit(scene, 1u, 0u, ray, 2.0f);
+      records.write(test,
+                    make_float4(geometry.position.x, geometry.position.y,
+                                geometry.position.z, geometry.dpdu.x));
+    };
   };
   auto shader = device.compile(evaluate);
 
@@ -187,6 +223,9 @@ int main(int argc, char **argv) {
          << segment_buffer.copy_from(luisa::span{curve_segments})
          << key_buffer.copy_from(luisa::span{curve_keys})
          << curve_material_buffer.copy_from(luisa::span{curve_material_slots})
+         << curve_intercept_buffer.copy_from(luisa::span{curve_intercepts})
+         << curve_length_buffer.copy_from(luisa::span{curve_lengths})
+         << curve_random_buffer.copy_from(luisa::span{curve_randoms})
          << scene->heap.update() << mesh.build() << curves.build()
          << scene->accel.build() << shader(output).dispatch(record_count)
          << output.copy_to(luisa::span{actual}) << synchronize();
@@ -197,7 +236,10 @@ int main(int argc, char **argv) {
                                 luisa::float4{4.0f, 0.0f, 0.0f, 0.0f},
                                 luisa::float4{2.0f, 1.0f, 0.0f, 1.0f},
                                 luisa::float4{2.0f, 1.0f, 0.0f, 1.0f},
-                                luisa::float4{77.0f, 22.0f, 200.0f, 9.0f}};
+                                luisa::float4{77.0f, 22.0f, 200.0f, 9.0f},
+                                luisa::float4{0.5f, 0.0f, 0.4f, 3.5f},
+                                luisa::float4{0.8f, 0.25f, -1.0f, -1.0f},
+                                luisa::float4{0.0f, 0.0f, 2.0f, 2.25f}};
   for (auto index = std::size_t{0u}; index < expected.size(); ++index) {
     if (!equal_record(actual[index], expected[index])) {
       std::cerr << "scene traversal failed on " << backend << " at record "

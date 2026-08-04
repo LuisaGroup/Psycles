@@ -111,11 +111,19 @@ class MeshVolumeLightProvider final
                 _result.pdf = light.pdf;
                 _result.maximum_distance =
                     light.light.distance;
+                _result.light_object =
+                    light.geometry
+                        .emitter
+                        .cycles_object_index;
+                _result.light_primitive =
+                    light.geometry
+                        .emitter
+                        .cycles_primitive_index;
                 _result.light_instance =
                     light.geometry
                         .emitter
                         .instance_index;
-                _result.light_primitive =
+                _result.light_accel_primitive =
                     light.geometry
                         .emitter
                         .primitive_index;

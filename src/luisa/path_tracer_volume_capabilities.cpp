@@ -26,6 +26,12 @@ namespace {
         case ValueOperation::back_facing:
         case ValueOperation::pointiness:
         case ValueOperation::random_per_island:
+        case ValueOperation::curve_is_strand:
+        case ValueOperation::curve_intercept:
+        case ValueOperation::curve_length:
+        case ValueOperation::curve_thickness:
+        case ValueOperation::curve_tangent_normal:
+        case ValueOperation::curve_random:
         case ValueOperation::image_color:
         case ValueOperation::image_alpha:
         case ValueOperation::environment_color:

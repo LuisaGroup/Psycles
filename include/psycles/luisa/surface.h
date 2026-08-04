@@ -102,6 +102,16 @@ struct SurfacePoint {
     Float object_random;
     UInt particle_index;
     Float random_per_island;
+    // Native Cycles curve state. These are zero for non-curve primitives.
+    // Keeping the values on the typed shading point preserves the original
+    // Hair Info graph and avoids translating curve attributes into material
+    // parameters or baked textures.
+    Bool is_curve;
+    Float curve_intercept;
+    Float curve_length;
+    Float curve_thickness;
+    Float3 curve_tangent_normal;
+    Float curve_random;
     UInt ray_visibility;
     UInt ray_events;
     UInt ray_depth;

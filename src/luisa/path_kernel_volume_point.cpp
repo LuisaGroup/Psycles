@@ -214,6 +214,12 @@ class SceneVolumeStackEntryPointProvider final
             .particle_index =
                 std::move(particle_index),
             .random_per_island = 0.0f,
+            .is_curve = false,
+            .curve_intercept = 0.0f,
+            .curve_length = 0.0f,
+            .curve_thickness = 0.0f,
+            .curve_tangent_normal = make_float3(0.0f),
+            .curve_random = 0.0f,
             .ray_visibility =
                 state.ray_visibility,
             .ray_events = state.ray_events,
