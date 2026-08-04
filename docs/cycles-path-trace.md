@@ -68,6 +68,17 @@ Coordinates use Cycles film convention, with `(0, 0)` at the lower-left of the
 uncropped image. The render remains one pixel in the EXR, but camera projection
 and RNG hashing use the requested full image dimensions.
 
+Blender stores normalized render borders as float32 and forms the integer crop
+by truncating each stored border coordinate multiplied by the full extent.
+Exact rational boundaries such as `1041 / 1152` can round below the intended
+edge and silently produce a 2x1 or 1x2 oracle. The harness therefore places
+the lower and upper coordinates one quarter pixel inside the truncation
+intervals for `p` and `p + 1`, respectively. The regression checks every pixel
+of representative extents through 8192 after an explicit float32 round-trip.
+The original Barbershop failure at Cycles pixel `(1041, 254)` was also rerun at
+1152x480 with the instrumented Blender build; `oiiotool --info` reports the
+result as exactly 1x1 with all 1,228 trace/pass channels.
+
 ```bash
 TRACE_BLENDER=/home/mike/Projects/blender-install-psycles-trace/blender
 SCENE=build/diagnostics/minimal-point/point_light.blend
