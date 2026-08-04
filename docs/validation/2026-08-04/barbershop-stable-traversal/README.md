@@ -188,3 +188,53 @@ Equivalent [Cycles HIP triptychs](triptychs/cycles-hip/) are retained beside
 the CPU inspection set. The official scene reports the same two missing
 external textures (`generic_scratches.png` and `guilder_ornament.png`) in both
 Cycles reference renders; no replacement or pre-baking was introduced.
+
+## 128 spp follow-up
+
+The same unchanged scene and sampler contract were rerun at 128 spp after the
+16 spp checkpoint. The standalone Psycles render is retained as
+[an 1152x480 PNG](renders/psycles-hip-128spp.png); its 46-channel linear EXR
+was used for every differential below.
+
+| Renderer | device | 128 spp time | Psycles slowdown |
+| --- | --- | ---: | ---: |
+| Cycles main | Ryzen 9 9950X3D CPU | 28.107 s | 7.268x |
+| Cycles main | Radeon RX 9070 XT HIP | 19.161 s | 10.661x |
+| Psycles/Luisa | Radeon RX 9070 XT HIP | 204.281 s | 1.000x |
+
+The Psycles scene compilation and warm-cache JIT were another 17.369 and
+2.459 seconds. Its render cost scales almost linearly from 16 spp, while
+Cycles amortizes scene/device setup and processes the extra samples much more
+efficiently. The higher-spp same-device result therefore exposes a much
+larger throughput gap than the 16 spp timing.
+
+| 128 spp comparison | Combined RMSE | Normal RMSE | Emit RMSE | Combined mean luminance ratio | Emit mean luminance ratio |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Psycles HIP vs Cycles CPU | 0.083270 | 0.052539 | 0.006118 | 1.08949 | 0.97720 |
+| Psycles HIP vs Cycles HIP | 0.074093 | 0.052530 | 0.006127 | 1.11865 | 0.97717 |
+| Cycles CPU vs Cycles HIP | 0.042635 | 0.003088 | 0.000318 | 0.97393 | 1.00003 |
+
+Full metrics are in the
+[128 spp Cycles CPU report](reports/psycles-hip-vs-cycles-cpu-128spp.json),
+[128 spp Cycles HIP report](reports/psycles-hip-vs-cycles-hip-128spp.json), and
+[128 spp Cycles device-floor report](reports/cycles-cpu-vs-cycles-hip-128spp.json).
+Both volume-scattering passes remain exactly zero.
+
+The extra samples reduce stochastic RMSE, but do not remove the systematic
+gap. Psycles remains about 8.95% brighter than Cycles CPU and 11.87% brighter
+than Cycles HIP in mean Combined luminance. Its Combined, Normal, and Emit
+RMSE are 1.95x, 17.01x, and 19.26x the Cycles CPU/HIP floor. In the inspected
+triptychs, the orange volume-emission field still matches in broad shape and
+color, while the remaining error is visible over lit surfaces, silhouettes,
+the window, lamps, and fine geometry. This confirms that the residual is not
+merely low-spp noise and must remain an open alignment item.
+
+![Psycles HIP Barbershop at 128 spp](renders/psycles-hip-128spp.png)
+
+![128 spp Combined Cycles CPU, Psycles HIP, and difference](triptychs/cycles-cpu-128spp/combined.png)
+
+![128 spp Emission Cycles CPU, Psycles HIP, and difference](triptychs/cycles-cpu-128spp/emit.png)
+
+The corresponding [Normal triptych](triptychs/cycles-cpu-128spp/normal.png)
+and [Cycles HIP triptychs](triptychs/cycles-hip-128spp/) are retained with the
+reports.
