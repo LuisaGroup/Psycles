@@ -74,6 +74,16 @@ struct SurfacePoint {
     Float3 object_shading_normal;
     Float3 object_tangent;
     Float tangent_sign;
+    // Cycles' BOTH bump program temporarily evaluates from the geometry
+    // state saved immediately before true displacement. Normal Map's
+    // ORIGINAL base consumes the same normal/tangent attributes. These are
+    // first-class geometry values, never reconstructed from a baked shader.
+    Float3 undisplaced_position;
+    Float3 undisplaced_object_position;
+    Float3 undisplaced_shading_normal;
+    Float3 undisplaced_object_shading_normal;
+    Float3 undisplaced_object_tangent;
+    Float undisplaced_tangent_sign;
     Float3 normal_to_world_x;
     Float3 normal_to_world_y;
     Float3 normal_to_world_z;
@@ -83,6 +93,10 @@ struct SurfacePoint {
     Float3 dPdy;
     Float3 object_dPdx;
     Float3 object_dPdy;
+    Float3 undisplaced_dPdx;
+    Float3 undisplaced_dPdy;
+    Float3 undisplaced_object_dPdx;
+    Float3 undisplaced_object_dPdy;
     Float3 generated_dx;
     Float3 generated_dy;
     Float3 incoming;

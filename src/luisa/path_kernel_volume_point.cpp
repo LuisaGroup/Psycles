@@ -159,17 +159,25 @@ class SceneVolumeStackEntryPointProvider final
         SurfacePoint point{
             .position = state.position,
             .object_position =
-                std::move(object_position),
+                object_position,
             .object_location =
                 std::move(object_location),
             .generated = std::move(generated),
             .geometric_normal = state.incoming,
             .shading_normal = state.incoming,
             .object_shading_normal =
-                std::move(object_shading_normal),
+                object_shading_normal,
             .object_tangent =
                 make_float3(0.0f),
             .tangent_sign = 0.0f,
+            .undisplaced_position = state.position,
+            .undisplaced_object_position = object_position,
+            .undisplaced_shading_normal = state.incoming,
+            .undisplaced_object_shading_normal =
+                object_shading_normal,
+            .undisplaced_object_tangent =
+                make_float3(0.0f),
+            .undisplaced_tangent_sign = 0.0f,
             .normal_to_world_x =
                 std::move(normal_to_world_x),
             .normal_to_world_y =
@@ -183,6 +191,12 @@ class SceneVolumeStackEntryPointProvider final
             .object_dPdx =
                 make_float3(0.0f),
             .object_dPdy =
+                make_float3(0.0f),
+            .undisplaced_dPdx = make_float3(0.0f),
+            .undisplaced_dPdy = make_float3(0.0f),
+            .undisplaced_object_dPdx =
+                make_float3(0.0f),
+            .undisplaced_object_dPdy =
                 make_float3(0.0f),
             .generated_dx =
                 make_float3(0.0f),

@@ -1228,6 +1228,19 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 bindless_base + 9u,
                 resource.positions);
         }
+        // The pre-displacement representation is a total geometry
+        // interface. Ordinary meshes alias it to their live buffers;
+        // MeshDisplacementSceneComponent replaces these bindings with saved
+        // immutable buffers before modifying the mesh.
+        data->heap.emplace_on_update(
+            bindless_base + 10u,
+            resource.positions);
+        data->heap.emplace_on_update(
+            bindless_base + 11u,
+            resource.normals);
+        data->heap.emplace_on_update(
+            bindless_base + 12u,
+            resource.uv_tangents);
         const auto attribute_offset =
             static_cast<std::uint32_t>(
                 attribute_bindings.size());

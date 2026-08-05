@@ -93,6 +93,17 @@ GraphSurfaceImplementation::GraphSurfaceImplementation(
         if (_program->surface_normal_root().valid()) {
             _surface_normal_dependency_mask = value_dependency_mask(
                 _program->surface_normal_root());
+            const auto &instructions =
+                _program->value_instructions();
+            for (std::size_t index = 0u;
+                 index < instructions.size();
+                 ++index) {
+                _automatic_bump_uses_undisplaced_geometry |=
+                    _surface_normal_dependency_mask[index] &&
+                    instructions[index].operation ==
+                        compiler::ValueOperation::bump &&
+                    (instructions[index].static_u0 & 4u) != 0u;
+            }
         }
     }
 }
@@ -1167,7 +1178,9 @@ GraphSurfaceImplementation::evaluate_volume(
         return point.shading_normal;
     }
     const auto values = trace_value_stage(
-        services, point, &_surface_normal_dependency_mask);
+        services,
+        automatic_bump_point(point),
+        &_surface_normal_dependency_mask);
     return values.values[
         _program->surface_normal_root().value].vector();
 }

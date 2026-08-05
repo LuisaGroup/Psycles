@@ -294,6 +294,41 @@ MeshDisplacementSceneComponent::build(
         }
         auto &upload = uploads[geometry_index];
         auto &resource = scene->geometries[geometry_index];
+        // Cycles Mesh::add_undisplaced snapshots these attributes before
+        // any vertex is moved. BOTH's bump-eval state and Normal Map's
+        // ORIGINAL base must read the immutable representation even when a
+        // neighboring TRUE triangle later changes shared normals.
+        upload.undisplaced_positions = upload.positions;
+        upload.undisplaced_normals = upload.normals;
+        upload.undisplaced_uv_tangents = upload.uv_tangents;
+        resource.undisplaced_positions.emplace(
+            scene->device.create_buffer<luisa::float3>(
+                upload.undisplaced_positions.size()));
+        resource.undisplaced_normals.emplace(
+            scene->device.create_buffer<luisa::float3>(
+                upload.undisplaced_normals.size()));
+        resource.undisplaced_uv_tangents.emplace(
+            scene->device.create_buffer<luisa::float4>(
+                upload.undisplaced_uv_tangents.size()));
+        const auto bindless_base =
+            geometry_index * geometry_bindless_stride;
+        scene->heap.emplace_on_update(
+            bindless_base + 10u,
+            *resource.undisplaced_positions);
+        scene->heap.emplace_on_update(
+            bindless_base + 11u,
+            *resource.undisplaced_normals);
+        scene->heap.emplace_on_update(
+            bindless_base + 12u,
+            *resource.undisplaced_uv_tangents);
+        stream
+            << resource.undisplaced_positions->copy_from(
+                   luisa::span{upload.undisplaced_positions})
+            << resource.undisplaced_normals->copy_from(
+                   luisa::span{upload.undisplaced_normals})
+            << resource.undisplaced_uv_tangents->copy_from(
+                   luisa::span{upload.undisplaced_uv_tangents})
+            << scene->heap.update();
         const auto corner_normals =
             (upload.attribute_domains & geometry_normal_corner) != 0u;
         std::vector<luisa::float3> pre_displacement_vertex_normals;
@@ -510,6 +545,17 @@ MeshDisplacementSceneComponent::build(
                         .object_shading_normal = object_shading_normal,
                         .object_tangent = packed_object_tangent.xyz(),
                         .tangent_sign = packed_object_tangent.w,
+                        // This kernel runs before any vertex is displaced,
+                        // so both geometry states are exactly identical.
+                        .undisplaced_position = position,
+                        .undisplaced_object_position = object_position,
+                        .undisplaced_shading_normal = shading_normal,
+                        .undisplaced_object_shading_normal =
+                            object_shading_normal,
+                        .undisplaced_object_tangent =
+                            packed_object_tangent.xyz(),
+                        .undisplaced_tangent_sign =
+                            packed_object_tangent.w,
                         .normal_to_world_x =
                             (normal_to_world *
                              make_float4(1.0f, 0.0f, 0.0f, 0.0f))
@@ -528,6 +574,10 @@ MeshDisplacementSceneComponent::build(
                         .dPdy = world_dpdv,
                         .object_dPdx = p1 - p0,
                         .object_dPdy = p2 - p0,
+                        .undisplaced_dPdx = world_dpdu,
+                        .undisplaced_dPdy = world_dpdv,
+                        .undisplaced_object_dPdx = p1 - p0,
+                        .undisplaced_object_dPdy = p2 - p0,
                         .generated_dx = generated1 - generated0,
                         .generated_dy = generated2 - generated0,
                         .incoming = shading_normal,

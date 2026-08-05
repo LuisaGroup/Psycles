@@ -41,6 +41,15 @@ public:
     Float3 n0 = make_float3(0.0f);
     Float3 n1 = make_float3(0.0f);
     Float3 n2 = make_float3(0.0f);
+    Float3 undisplaced_p0 = make_float3(0.0f);
+    Float3 undisplaced_p1 = make_float3(0.0f);
+    Float3 undisplaced_p2 = make_float3(0.0f);
+    Float3 undisplaced_n0 = make_float3(0.0f);
+    Float3 undisplaced_n1 = make_float3(0.0f);
+    Float3 undisplaced_n2 = make_float3(0.0f);
+    Float4 undisplaced_tangent0 = make_float4(0.0f);
+    Float4 undisplaced_tangent1 = make_float4(0.0f);
+    Float4 undisplaced_tangent2 = make_float4(0.0f);
     Float3 wp0 = make_float3(0.0f);
     Float3 wp1 = make_float3(0.0f);
     Float3 wp2 = make_float3(0.0f);
@@ -132,6 +141,15 @@ public:
       n0 = triangle.n0;
       n1 = triangle.n1;
       n2 = triangle.n2;
+      undisplaced_p0 = triangle.undisplaced_p0;
+      undisplaced_p1 = triangle.undisplaced_p1;
+      undisplaced_p2 = triangle.undisplaced_p2;
+      undisplaced_n0 = triangle.undisplaced_n0;
+      undisplaced_n1 = triangle.undisplaced_n1;
+      undisplaced_n2 = triangle.undisplaced_n2;
+      undisplaced_tangent0 = triangle.undisplaced_tangent0;
+      undisplaced_tangent1 = triangle.undisplaced_tangent1;
+      undisplaced_tangent2 = triangle.undisplaced_tangent2;
       wp0 = (object_to_world * make_float4(p0, 1.0f)).xyz();
       wp1 = (object_to_world * make_float4(p1, 1.0f)).xyz();
       wp2 = (object_to_world * make_float4(p2, 1.0f)).xyz();
@@ -213,6 +231,18 @@ public:
     const Float3 object_dPdy =
         (world_to_object * make_float4(dPdy, 0.0f)).xyz();
 
+    Float3 undisplaced_position = hit_position;
+    Float3 undisplaced_object_position = object_position;
+    Float3 undisplaced_shading_normal = shading_normal;
+    Float3 undisplaced_object_shading_normal =
+        object_shading_normal;
+    Float3 undisplaced_object_tangent = object_tangent;
+    Float undisplaced_tangent_sign = tangent_sign;
+    Float3 undisplaced_dPdx = dPdx;
+    Float3 undisplaced_dPdy = dPdy;
+    Float3 undisplaced_object_dPdx = object_dPdx;
+    Float3 undisplaced_object_dPdy = object_dPdy;
+
     $if(!is_curve) {
       const Float3 edge1 = wp1 - wp0;
       const Float3 edge2 = wp2 - wp0;
@@ -244,6 +274,70 @@ public:
               (uv2 - uv0) * barycentric_dx.y;
       uv_dy = (uv1 - uv0) * barycentric_dy.x +
               (uv2 - uv0) * barycentric_dy.y;
+
+      // Cycles NODE_ENTER_BUMP_EVAL interpolates ATTR_STD_POSITION_
+      // UNDISPLACED with the hit's current barycentric differentials. It
+      // restores P afterwards but deliberately keeps the bump result in N.
+      const auto undisplaced_object_geometric_normal = safe_normalize(
+          cross(undisplaced_p1 - undisplaced_p0,
+                undisplaced_p2 - undisplaced_p0),
+          make_float3(0.0f, 0.0f, 1.0f));
+      undisplaced_object_shading_normal = select(
+          undisplaced_object_geometric_normal,
+          triangle_interpolate(
+              barycentric,
+              undisplaced_n0,
+              undisplaced_n1,
+              undisplaced_n2),
+          triangle_smooth);
+      undisplaced_shading_normal = safe_normalize(
+          (normal_to_world *
+           make_float4(
+               undisplaced_object_shading_normal,
+               0.0f))
+              .xyz(),
+          geometric_normal);
+      undisplaced_shading_normal = select(
+          undisplaced_shading_normal,
+          -undisplaced_shading_normal,
+          back_facing);
+      undisplaced_object_position = triangle_interpolate(
+          barycentric,
+          undisplaced_p0,
+          undisplaced_p1,
+          undisplaced_p2);
+      undisplaced_position =
+          (object_to_world *
+           make_float4(undisplaced_object_position, 1.0f))
+              .xyz();
+      undisplaced_object_dPdx =
+          (undisplaced_p1 - undisplaced_p0) *
+              barycentric_dx.x +
+          (undisplaced_p2 - undisplaced_p0) *
+              barycentric_dx.y;
+      undisplaced_object_dPdy =
+          (undisplaced_p1 - undisplaced_p0) *
+              barycentric_dy.x +
+          (undisplaced_p2 - undisplaced_p0) *
+              barycentric_dy.y;
+      undisplaced_dPdx =
+          (object_to_world *
+           make_float4(undisplaced_object_dPdx, 0.0f))
+              .xyz();
+      undisplaced_dPdy =
+          (object_to_world *
+           make_float4(undisplaced_object_dPdy, 0.0f))
+              .xyz();
+      const auto packed_undisplaced_tangent =
+          triangle_interpolate(
+              barycentric,
+              undisplaced_tangent0,
+              undisplaced_tangent1,
+              undisplaced_tangent2);
+      undisplaced_object_tangent =
+          packed_undisplaced_tangent.xyz();
+      undisplaced_tangent_sign =
+          packed_undisplaced_tangent.w;
     };
 
     const auto object_hit_position =
@@ -259,6 +353,17 @@ public:
         .object_shading_normal = object_shading_normal,
         .object_tangent = object_tangent,
         .tangent_sign = tangent_sign,
+        .undisplaced_position = undisplaced_position,
+        .undisplaced_object_position =
+            undisplaced_object_position,
+        .undisplaced_shading_normal =
+            undisplaced_shading_normal,
+        .undisplaced_object_shading_normal =
+            undisplaced_object_shading_normal,
+        .undisplaced_object_tangent =
+            undisplaced_object_tangent,
+        .undisplaced_tangent_sign =
+            undisplaced_tangent_sign,
         .normal_to_world_x =
             (normal_to_world * make_float4(1.0f, 0.0f, 0.0f, 0.0f)).xyz(),
         .normal_to_world_y =
@@ -271,6 +376,12 @@ public:
         .dPdy = dPdy,
         .object_dPdx = object_dPdx,
         .object_dPdy = object_dPdy,
+        .undisplaced_dPdx = undisplaced_dPdx,
+        .undisplaced_dPdy = undisplaced_dPdy,
+        .undisplaced_object_dPdx =
+            undisplaced_object_dPdx,
+        .undisplaced_object_dPdy =
+            undisplaced_object_dPdy,
         .generated_dx = generated_dx,
         .generated_dy = generated_dy,
         .incoming = -ray->direction(),

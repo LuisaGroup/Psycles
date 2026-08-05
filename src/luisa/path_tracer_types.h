@@ -166,6 +166,12 @@ struct SurfacePointCall {
     luisa::float3 object_shading_normal{};
     luisa::float3 object_tangent{};
     float tangent_sign{};
+    luisa::float3 undisplaced_position{};
+    luisa::float3 undisplaced_object_position{};
+    luisa::float3 undisplaced_shading_normal{};
+    luisa::float3 undisplaced_object_shading_normal{};
+    luisa::float3 undisplaced_object_tangent{};
+    float undisplaced_tangent_sign{};
     luisa::float3 normal_to_world_x{};
     luisa::float3 normal_to_world_y{};
     luisa::float3 normal_to_world_z{};
@@ -175,6 +181,10 @@ struct SurfacePointCall {
     luisa::float3 dPdy{};
     luisa::float3 object_dPdx{};
     luisa::float3 object_dPdy{};
+    luisa::float3 undisplaced_dPdx{};
+    luisa::float3 undisplaced_dPdy{};
+    luisa::float3 undisplaced_object_dPdx{};
+    luisa::float3 undisplaced_object_dPdy{};
     luisa::float3 generated_dx{};
     luisa::float3 generated_dy{};
     luisa::float3 incoming{};
@@ -469,6 +479,12 @@ LUISA_STRUCT(
     object_shading_normal,
     object_tangent,
     tangent_sign,
+    undisplaced_position,
+    undisplaced_object_position,
+    undisplaced_shading_normal,
+    undisplaced_object_shading_normal,
+    undisplaced_object_tangent,
+    undisplaced_tangent_sign,
     normal_to_world_x,
     normal_to_world_y,
     normal_to_world_z,
@@ -478,6 +494,10 @@ LUISA_STRUCT(
     dPdy,
     object_dPdx,
     object_dPdy,
+    undisplaced_dPdx,
+    undisplaced_dPdy,
+    undisplaced_object_dPdx,
+    undisplaced_object_dPdy,
     generated_dx,
     generated_dy,
     incoming,

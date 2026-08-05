@@ -20,6 +20,15 @@ struct TriangleGeometryContext {
     Float4 tangent0;
     Float4 tangent1;
     Float4 tangent2;
+    Float3 undisplaced_p0;
+    Float3 undisplaced_p1;
+    Float3 undisplaced_p2;
+    Float3 undisplaced_n0;
+    Float3 undisplaced_n1;
+    Float3 undisplaced_n2;
+    Float4 undisplaced_tangent0;
+    Float4 undisplaced_tangent1;
+    Float4 undisplaced_tangent2;
     Float3 generated0;
     Float3 generated1;
     Float3 generated2;
