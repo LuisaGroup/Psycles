@@ -21,7 +21,7 @@ using namespace luisa::compute;
 using namespace psycles::luisa_backend::detail;
 using psycles::luisa_backend::surface_ray::invalid_primitive;
 
-inline constexpr std::size_t record_count = 21u;
+inline constexpr std::size_t record_count = 22u;
 
 [[nodiscard]] bool near(float actual, float expected,
                         float tolerance = 2.0e-6f) noexcept {
@@ -103,6 +103,16 @@ int main(int argc, char **argv) {
                   .material_offset = 0u,
                   .material_count = 1u,
                   .cycles_primitive_offset = 700000u,
+                  .primitive_kind = geometry_kind_triangle},
+      GeometryGpu{.bindless_base = 5u * geometry_bindless_stride,
+                  .material_offset = 0u,
+                  .material_count = 1u,
+                  .cycles_primitive_offset = 94356u,
+                  .primitive_kind = geometry_kind_triangle},
+      GeometryGpu{.bindless_base = 6u * geometry_bindless_stride,
+                  .material_offset = 0u,
+                  .material_count = 1u,
+                  .cycles_primitive_offset = 950264u,
                   .primitive_kind = geometry_kind_triangle}};
   const std::array instances{
       InstanceGpu{.geometry_index = 0u, .cycles_object_index = 11u},
@@ -136,7 +146,28 @@ int main(int argc, char **argv) {
                   .cycles_world_to_object = overlap_a_world_to_object},
       InstanceGpu{.geometry_index = 4u,
                   .cycles_object_index = 5066u,
-                  .cycles_world_to_object = overlap_b_world_to_object}};
+                  .cycles_world_to_object = overlap_b_world_to_object},
+      InstanceGpu{.geometry_index = 5u,
+                  .cycles_object_index = 6u,
+                  .coincident_next = 9u,
+                  .coincident_count = 2u,
+                  .cycles_transform_applied = 1u},
+      InstanceGpu{.geometry_index = 6u,
+                  .cycles_object_index = 71u,
+                  .coincident_next = 8u,
+                  .coincident_count = 2u,
+                  .cycles_transform_applied = 1u}};
+  constexpr std::array cycles_object_instance_map{
+      luisa::uint2{6u, 8u},
+      luisa::uint2{11u, 0u},
+      luisa::uint2{22u, 1u},
+      luisa::uint2{71u, 9u},
+      luisa::uint2{489u, 2u},
+      luisa::uint2{1936u, 3u},
+      luisa::uint2{2131u, 4u},
+      luisa::uint2{2372u, 5u},
+      luisa::uint2{5011u, 6u},
+      luisa::uint2{5066u, 7u}};
   constexpr std::array geometry_materials{
       MaterialBindingGpu{.surface_tag = 41u,
                          .cycles_shader_index = 5u,
@@ -162,6 +193,19 @@ int main(int argc, char **argv) {
       luisa::float3{-0.18065254390239716f,
                     -0.016480661928653717f,
                     -0.002021433785557747f}};
+  // Official Barbershop floor object 71, primitive 950264. Object 6 carries
+  // the bit-identical support as primitive 94356. Cycles CPU and HIP both
+  // skip only object 71 and accept object 6 at the closed t == 0 endpoint.
+  constexpr std::array barbershop_floor_vertices{
+      luisa::float3{2.943859100341797f,
+                    2.5070724487304688f,
+                    -0.0029841959476470947f},
+      luisa::float3{2.943913221359253f,
+                    2.4047765731811523f,
+                    -0.0029841959476470947f},
+      luisa::float3{2.9934756755828857f,
+                    2.4047765731811523f,
+                    -0.0029841959476470947f}};
   constexpr std::array bottle_vertices{
       luisa::float3{0.04980994760990143f,
                     -0.015110095962882042f,
@@ -222,6 +266,10 @@ int main(int argc, char **argv) {
 
   scene->geometry_buffer = device.create_buffer<GeometryGpu>(geometries.size());
   scene->instance_buffer = device.create_buffer<InstanceGpu>(instances.size());
+  scene->cycles_object_instance_map_buffer =
+      device.create_buffer<luisa::uint2>(cycles_object_instance_map.size());
+  scene->cycles_object_instance_map_count =
+      static_cast<std::uint32_t>(cycles_object_instance_map.size());
   scene->geometry_material_buffer =
       device.create_buffer<MaterialBindingGpu>(geometry_materials.size());
   scene->override_material_buffer =
@@ -243,6 +291,13 @@ int main(int argc, char **argv) {
       device.create_buffer<Triangle>(triangles.size());
   auto overlap_mesh =
       device.create_mesh(overlap_vertex_buffer, overlap_triangle_buffer);
+  auto barbershop_floor_vertex_buffer =
+      device.create_buffer<luisa::float3>(barbershop_floor_vertices.size());
+  auto barbershop_floor_triangle_buffer =
+      device.create_buffer<Triangle>(triangles.size());
+  auto barbershop_floor_mesh = device.create_mesh(
+      barbershop_floor_vertex_buffer,
+      barbershop_floor_triangle_buffer);
   auto bounds_buffer = device.create_buffer<AABB>(curve_bounds.size());
   auto segment_buffer =
       device.create_buffer<CurveSegmentGpu>(curve_segments.size());
@@ -255,7 +310,7 @@ int main(int argc, char **argv) {
   auto curve_random_buffer = device.create_buffer<float>(curve_randoms.size());
   auto curves = device.create_procedural_primitive(bounds_buffer);
 
-  scene->heap = device.create_bindless_array(5u * geometry_bindless_stride);
+  scene->heap = device.create_bindless_array(7u * geometry_bindless_stride);
   scene->heap.emplace_on_update(0u, triangle_buffer);
   scene->heap.emplace_on_update(9u, vertex_buffer);
   scene->heap.emplace_on_update(curve_bindless_base, segment_buffer);
@@ -280,6 +335,14 @@ int main(int argc, char **argv) {
                                 overlap_triangle_buffer);
   scene->heap.emplace_on_update(4u * geometry_bindless_stride + 9u,
                                 overlap_vertex_buffer);
+  scene->heap.emplace_on_update(5u * geometry_bindless_stride,
+                                barbershop_floor_triangle_buffer);
+  scene->heap.emplace_on_update(5u * geometry_bindless_stride + 9u,
+                                barbershop_floor_vertex_buffer);
+  scene->heap.emplace_on_update(6u * geometry_bindless_stride,
+                                barbershop_floor_triangle_buffer);
+  scene->heap.emplace_on_update(6u * geometry_bindless_stride + 9u,
+                                barbershop_floor_vertex_buffer);
   scene->accel = device.create_accel();
   scene->accel.emplace_back(mesh, make_float4x4(1.0f), 0xffu, false, 0u);
   scene->accel.emplace_back(curves, make_float4x4(1.0f), 0xffu, 1u);
@@ -295,6 +358,10 @@ int main(int argc, char **argv) {
       overlap_mesh, to_luisa(overlap_a_transform), 0xffu, false, 6u);
   scene->accel.emplace_back(
       overlap_mesh, to_luisa(overlap_b_transform), 0xffu, false, 7u);
+  scene->accel.emplace_back(
+      barbershop_floor_mesh, make_float4x4(1.0f), 0xffu, false, 8u);
+  scene->accel.emplace_back(
+      barbershop_floor_mesh, make_float4x4(1.0f), 0xffu, false, 9u);
 
   auto output = device.create_buffer<luisa::float4>(record_count);
   const auto traversal = make_scene_traversal_component();
@@ -328,13 +395,16 @@ int main(int argc, char **argv) {
     light_primitive = select(light_primitive, 20474114u, test == 18u);
     source_object = select(source_object, 2372u, test == 19u);
     source_primitive = select(source_primitive, 3396299u, test == 19u);
+    source_object = select(source_object, 71u, test == 21u);
+    source_primitive = select(source_primitive, 950264u, test == 21u);
     const auto ray_x = select(0.0f, 5.0f, test >= 10u);
     const auto ray_z = select(0.0f, 4.0f,
                               (test == 12u) | (test == 13u));
     const auto ray_maximum = select(10.0f, 4.0f, test >= 14u);
     const auto bottle_test = (test >= 16u) & (test <= 19u);
     const auto overlap_test = test == 20u;
-    const auto ray_origin = select(
+    const auto barbershop_endpoint_test = test == 21u;
+    const auto ray_origin = select(select(
         select(make_float3(ray_x, 0.0f, ray_z),
                make_float3(1.8301146030426025f,
                            9.144867897033691f,
@@ -343,8 +413,12 @@ int main(int argc, char **argv) {
         make_float3(2.7035441398620605f,
                     8.901592254638672f,
                     1.234214186668396f),
-        overlap_test);
-    const auto ray_direction = select(
+        overlap_test),
+        make_float3(2.974536657333374f,
+                    2.4320390224456787f,
+                    -0.0029841959476470947f),
+        barbershop_endpoint_test);
+    const auto ray_direction = select(select(
         select(make_float3(0.0f, 0.0f, 1.0f),
                make_float3(-0.8146389126777649f,
                            -0.5793101787567139f,
@@ -353,14 +427,21 @@ int main(int argc, char **argv) {
         make_float3(-0.23053720593452454f,
                     -0.9327327013015747f,
                     -0.27724069356918335f),
-        overlap_test);
+        overlap_test),
+        make_float3(-0.1057601049542427f,
+                    -0.393018901348114f,
+                    0.9134281277656555f),
+        barbershop_endpoint_test);
     const auto ray = make_ray(
         ray_origin,
         ray_direction,
         0.0f,
-        select(select(ray_maximum, 125.67607116699219f, bottle_test),
-               101.64700317382812f,
-               overlap_test));
+        select(select(
+                   select(ray_maximum, 125.67607116699219f, bottle_test),
+                   101.64700317382812f,
+                   overlap_test),
+               2.4996728897094727f,
+               barbershop_endpoint_test));
     const auto hit = traversal->closest_shadow(
         scene, ray, 0xffu,
         {.object = source_object, .primitive = source_primitive},
@@ -416,7 +497,8 @@ int main(int argc, char **argv) {
                       hit->committed_ray_t));
     };
 
-    $if((test >= 10u) & (test <= 19u)) {
+    $if(((test >= 10u) & (test <= 19u)) |
+        barbershop_endpoint_test) {
       const auto instance = scene->instance_buffer->read(hit->inst);
       const auto geometry =
           scene->geometry_buffer->read(instance.geometry_index);
@@ -463,6 +545,8 @@ int main(int argc, char **argv) {
   std::array<luisa::float4, record_count> actual{};
   stream << scene->geometry_buffer.copy_from(luisa::span{geometries})
          << scene->instance_buffer.copy_from(luisa::span{instances})
+         << scene->cycles_object_instance_map_buffer.copy_from(
+                luisa::span{cycles_object_instance_map})
          << scene->geometry_material_buffer.copy_from(
                 luisa::span{geometry_materials})
          << scene->override_material_buffer.copy_from(
@@ -475,6 +559,10 @@ int main(int argc, char **argv) {
          << bottle_triangle_buffer.copy_from(luisa::span{triangles})
          << overlap_vertex_buffer.copy_from(luisa::span{overlap_vertices})
          << overlap_triangle_buffer.copy_from(luisa::span{triangles})
+         << barbershop_floor_vertex_buffer.copy_from(
+                luisa::span{barbershop_floor_vertices})
+         << barbershop_floor_triangle_buffer.copy_from(
+                luisa::span{triangles})
          << bounds_buffer.copy_from(luisa::span{curve_bounds})
          << segment_buffer.copy_from(luisa::span{curve_segments})
          << key_buffer.copy_from(luisa::span{curve_keys})
@@ -483,7 +571,7 @@ int main(int argc, char **argv) {
          << curve_length_buffer.copy_from(luisa::span{curve_lengths})
          << curve_random_buffer.copy_from(luisa::span{curve_randoms})
          << scene->heap.update() << mesh.build() << bottle_mesh.build()
-         << overlap_mesh.build()
+         << overlap_mesh.build() << barbershop_floor_mesh.build()
          << curves.build()
          << scene->accel.build() << shader(output).dispatch(record_count)
          << output.copy_to(luisa::span{actual}) << synchronize();
@@ -513,7 +601,8 @@ int main(int argc, char **argv) {
                                 luisa::float4{1.6995198f, 2131.0f,
                                               20474114.0f, 4.0f},
                                 luisa::float4{5066.0f, 700000.0f, 1.0f,
-                                              4.4699316f}};
+                                              4.4699316f},
+                                luisa::float4{0.0f, 6.0f, 94356.0f, 8.0f}};
   for (auto index = std::size_t{0u}; index < expected.size(); ++index) {
     if (!equal_record(actual[index], expected[index])) {
       std::cerr << "scene traversal failed on " << backend << " at record "
