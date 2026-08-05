@@ -227,6 +227,9 @@ if(PSYCLES_ENABLE_LUISA)
             PUBLIC
                 $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
                 $<INSTALL_INTERFACE:include>)
+        target_include_directories(psycles_luisa_runtime
+            SYSTEM PRIVATE
+                ${CMAKE_CURRENT_SOURCE_DIR}/third_party/mikktspace)
         target_compile_features(
             psycles_luisa_runtime
             PUBLIC cxx_std_20)
@@ -1339,6 +1342,15 @@ if(PSYCLES_ENABLE_LUISA)
 
                 psycles_add_luisa_backend_test(
                     TARGET
+                        psycles_luisa_normal_map_tests
+                    SOURCE
+                        tests/test_luisa_normal_map.cpp
+                    TEST_STEM
+                        luisa_normal_map
+                    LIBRARIES Psycles::luisa)
+
+                psycles_add_luisa_backend_test(
+                    TARGET
                         psycles_luisa_cycles_film_light_tests
                     SOURCE
                         tests/test_luisa_cycles_film_light.cpp
@@ -1703,6 +1715,32 @@ if(PSYCLES_ENABLE_LUISA)
             add_test(
                 NAME psycles.cycles_shader_identity
                 COMMAND psycles_cycles_shader_identity_tests)
+
+            add_executable(
+                psycles_cycles_tangent_space_tests
+                tests/test_cycles_tangent_space.cpp)
+            target_link_libraries(
+                psycles_cycles_tangent_space_tests
+                PRIVATE Psycles::luisa_runtime)
+            target_compile_features(
+                psycles_cycles_tangent_space_tests
+                PRIVATE cxx_std_20)
+            add_test(
+                NAME psycles.cycles_tangent_space
+                COMMAND psycles_cycles_tangent_space_tests)
+
+            add_executable(
+                psycles_normal_map_semantics_tests
+                tests/test_normal_map_semantics.cpp)
+            target_link_libraries(
+                psycles_normal_map_semantics_tests
+                PRIVATE Psycles::core)
+            target_compile_features(
+                psycles_normal_map_semantics_tests
+                PRIVATE cxx_std_20)
+            add_test(
+                NAME psycles.normal_map_semantics
+                COMMAND psycles_normal_map_semantics_tests)
         endif()
 
         if(PSYCLES_BUILD_EXAMPLES)

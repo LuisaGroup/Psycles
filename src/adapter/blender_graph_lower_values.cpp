@@ -659,6 +659,9 @@ public:
                 node_name);
             const auto uv_map =
                 context.node_property_text(node, "uv_map");
+            const auto base =
+                context.node_property_text(
+                    node, "base", "ORIGINAL");
             static_cast<void>(context.bind(
                 id,
                 "Strength",
@@ -674,6 +677,15 @@ public:
                     node, "space", "TANGENT"))));
             static_cast<void>(context.graph().set_property(
                 id,
+                "Convention",
+                SocketValue::string(context.node_property_text(
+                    node, "convention", "OPENGL"))));
+            static_cast<void>(context.graph().set_property(
+                id,
+                "Base",
+                SocketValue::string(base)));
+            static_cast<void>(context.graph().set_property(
+                id,
                 "UvMapNamed",
                 SocketValue::boolean(!uv_map.empty())));
             static_cast<void>(context.graph().set_property(
@@ -682,8 +694,12 @@ public:
                 SocketValue::unsigned_integer(
                     uv_map.empty()
                         ? 0u
-                        : contract::uv_tangent_attribute_id(
-                              uv_map))));
+                        : base == "ORIGINAL"
+                              ? contract::
+                                    uv_undisplaced_tangent_attribute_id(
+                                        uv_map)
+                              : contract::uv_tangent_attribute_id(
+                                    uv_map))));
             return finish({
                 .ref = {.node = id, .socket = "Normal"},
                 .type = SocketType::normal});

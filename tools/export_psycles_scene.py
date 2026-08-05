@@ -647,6 +647,7 @@ def _geometry(
             "normal_domain": normal_domain,
             "normals": _write_array(stream, normals),
             "uv_domain": "CORNER",
+            "default_uv_available": default_uv_name in uv_by_layer,
             "uv": _write_array(stream, uvs),
             "uv_tangent_domain": "CORNER",
             "uv_tangents": _write_array(stream, uv_tangents),

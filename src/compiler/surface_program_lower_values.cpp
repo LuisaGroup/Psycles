@@ -540,6 +540,16 @@ namespace {
                                             blender_world
                                       : NormalMapSpace::
                                             tangent;
+            const auto normal_map_base =
+                property_string(
+                    node, "Base", "ORIGINAL") == "DISPLACED"
+                    ? NormalMapBase::displaced
+                    : NormalMapBase::original;
+            const auto normal_map_convention =
+                property_string(
+                    node, "Convention", "OPENGL") == "DIRECTX"
+                    ? NormalMapConvention::direct_x
+                    : NormalMapConvention::open_gl;
             publish(
                 node.id,
                 "Normal",
@@ -549,13 +559,11 @@ namespace {
                     .result_type = SocketType::normal,
                     .a = *color,
                     .b = *strength,
-                    .static_u0 =
-                        static_cast<std::uint64_t>(
-                            normal_map_space) |
-                        (property_bool(
-                             node, "UvMapNamed")
-                             ? 0x100u
-                             : 0u),
+                    .static_u0 = encode_normal_map_configuration(
+                        normal_map_space,
+                        property_bool(node, "UvMapNamed"),
+                        normal_map_base,
+                        normal_map_convention),
                     .static_u1 =
                         property_uint(node, "UvMapId")}));
         }

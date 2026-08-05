@@ -426,6 +426,14 @@ public:
             normal_map,
             "Space",
             SocketValue::string("TANGENT")) &&
+        graph.set_property(
+            normal_map,
+            "Base",
+            SocketValue::string("DISPLACED")) &&
+        graph.set_property(
+            normal_map,
+            "Convention",
+            SocketValue::string("OPENGL")) &&
         graph.set_input(
             diffuse,
             "Color",
@@ -1721,7 +1729,9 @@ int main(int argc, char **argv) {
     // Current Cycles normalizes the interpolated object-space normal
     // before constructing the MikkTSpace frame. A unit-only fixture
     // cannot distinguish that contract from the old scale-dependent
-    // behavior, so retain an explicitly non-unit base normal here.
+    // behavior, so retain an explicitly non-unit base normal here. Its
+    // zero variant follows Cycles' smooth-normal fallback to the current
+    // geometric frame and therefore produces the same mapped direction.
     constexpr std::array tangent_normal_expected{
         luisa::float4{
             0.557086014f,
@@ -1729,9 +1739,9 @@ int main(int argc, char **argv) {
             0.742781341f,
             1.0f},
         luisa::float4{
-            0.0f,
-            0.0f,
-            1.0f,
+            0.557086014f,
+            -0.371390671f,
+            0.742781341f,
             1.0f}};
     for (std::size_t index = 0u;
          index < tangent_normal_expected.size();
