@@ -23,6 +23,7 @@ struct SurfacePrimitiveGeometryContext {
   Float3 object_hit_position;
   Float differential_radius;
   Bool is_curve;
+  Bool cycles_transform_applied;
   Bool triangle_smooth;
   UInt surface_tag;
   UInt cycles_surface_shader;

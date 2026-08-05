@@ -176,6 +176,7 @@ int main(int argc, char **argv) {
                         index == 1u),
                     index != 0u,
                     make_float4x4(1.0f),
+                    false,
                     make_float2(
                         1.0f / 3.0f,
                         1.0f / 3.0f),
@@ -222,6 +223,7 @@ int main(int argc, char **argv) {
                         false,
                         make_float4x4(1.0f),
                         make_float4x4(1.0f),
+                        false,
                         barycentric,
                         curved_p0,
                         curved_p1,
