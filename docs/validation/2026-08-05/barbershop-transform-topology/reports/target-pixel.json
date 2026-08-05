@@ -1,0 +1,67 @@
+{
+  "schema": "psycles.barbershop-transform-topology.v1",
+  "scene": "official Barbershop Interior isolated floor/wall/cupboard validation scene",
+  "resolution": [1152, 480],
+  "pixel": [373, 60],
+  "absolute_sample": 0,
+  "camera_ray": {
+    "origin": [3.016374349594116, 8.8129301071167, 1.1619937419891357],
+    "direction": [0.04216083139181137, -0.9476428627967834, -0.31653693318367004]
+  },
+  "cycles_cpu": {
+    "distance": 3.7182536125183105,
+    "barycentric": [0.2667428255081177, 0.0039400821551680565],
+    "object": 0,
+    "primitive": 54,
+    "shader": 1073741846,
+    "shader_low16": 22,
+    "surface_p": [3.1731390953063965, 5.289353370666504, -0.014970183372497559],
+    "surface_ng": [0.004901521373540163, 0.0018698932835832238, 0.9999862313270569]
+  },
+  "cycles_hip": {
+    "distance": 3.7182538509368896,
+    "barycentric": [0.26674097776412964, 0.0039397068321704865],
+    "object": 80,
+    "primitive": 1077458,
+    "shader": 1073741869,
+    "shader_low16": 45,
+    "surface_p": [3.1731390953063965, 5.289353847503662, -0.01497030258178711],
+    "surface_ng": [0.004902334418147802, 0.0018696965416893363, 0.9999862313270569]
+  },
+  "psycles_hip": {
+    "distance": 3.7182514667510986,
+    "barycentric": [0.26673582196235657, 0.0039384495466947556],
+    "object": 80,
+    "primitive": 1077458,
+    "shader": 1073741869,
+    "shader_low16": 45,
+    "surface_p": [3.1731390953063965, 5.289356231689453, -0.014970183372497559],
+    "surface_ng": [0.004902333952486515, 0.0018696384504437447, 0.9999862313270569]
+  },
+  "psycles_hip_object_0_only": {
+    "distance": 3.7182514667510986,
+    "object": 0,
+    "primitive": 54,
+    "shader": 1073741846,
+    "shader_low16": 22,
+    "surface_p": [3.1731390953063965, 5.289356231689453, -0.014970183372497559],
+    "surface_ng": [0.004902333952486515, 0.0018696384504437447, 0.9999862313270569]
+  },
+  "psycles_hip_object_80_only": {
+    "distance": 3.7182514667510986,
+    "object": 80,
+    "primitive": 1077458,
+    "shader": 1073741869,
+    "shader_low16": 45,
+    "surface_p": [3.1731390953063965, 5.289356231689453, -0.014970183372497559],
+    "surface_ng": [0.004902333952486515, 0.0018696384504437447, 0.9999862313270569]
+  },
+  "interpretation": {
+    "global_transform_error": false,
+    "exact_overlap": true,
+    "cycles_device_identity_divergence": true,
+    "cycles_cpu_identity": "object 0 / primitive 54 / shader 22",
+    "cycles_hip_identity": "object 80 / primitive 1077458 / shader 45",
+    "psycles_hip_identity": "object 80 / primitive 1077458 / shader 45"
+  }
+}

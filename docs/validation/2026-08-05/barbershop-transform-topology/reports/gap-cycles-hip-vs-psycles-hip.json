@@ -1,0 +1,56 @@
+{
+  "absolute_tolerance": 1e-06,
+  "actual": "/var/tmp/barbershop-three-material-original-20260805/gap-373-60-corner-tris-psycles-hip.raw.json",
+  "checked": {
+    "exact": 24,
+    "float32": 32,
+    "random_exact": 13,
+    "topology": 3
+  },
+  "failure_count": 3,
+  "failures": [
+    {
+      "actual": false,
+      "field": "events[0].closure.0.meta.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[0].closure.0.weight.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[0].closure.0.normal.written",
+      "policy": "exact",
+      "reference": true
+    }
+  ],
+  "max_absolute_error": 1.52587890625e-05,
+  "max_error_field": "global.ray_range.tmax",
+  "max_relative_error": 3.106987914688712e-05,
+  "passed": false,
+  "reference": "/var/tmp/barbershop-three-material-original-20260805/gap-373-60-cycles-hip.exr",
+  "relative_tolerance": 2e-06,
+  "schema": "psycles.cycles-path-trace-comparison.v1",
+  "topology_equivalent": [
+    {
+      "absolute_error": 5.155801773071289e-06,
+      "actual": 0.26673582196235657,
+      "bound": 1.5334819555282592e-06,
+      "field": "events[0].isect_coord.u",
+      "policy": "topology",
+      "reference": 0.26674097776412964
+    },
+    {
+      "absolute_error": 1.257285475730896e-06,
+      "actual": 0.0039384495466947556,
+      "bound": 1.007879413664341e-06,
+      "field": "events[0].isect_coord.v",
+      "policy": "topology",
+      "reference": 0.0039397068321704865
+    }
+  ]
+}

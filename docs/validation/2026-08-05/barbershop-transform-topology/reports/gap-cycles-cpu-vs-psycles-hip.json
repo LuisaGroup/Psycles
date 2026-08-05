@@ -1,0 +1,57 @@
+{
+  "absolute_tolerance": 1e-06,
+  "actual": "/var/tmp/barbershop-three-material-original-20260805/gap-373-60-corner-tris-psycles-hip.raw.json",
+  "checked": {
+    "exact": 24,
+    "float32": 32,
+    "random_exact": 13,
+    "topology": 3
+  },
+  "failure_count": 5,
+  "failures": [
+    {
+      "absolute_error": 7.0035457611083984e-06,
+      "actual": 0.26673582196235657,
+      "bound": 1.5334856510162352e-06,
+      "field": "events[0].isect_coord.u",
+      "policy": "topology",
+      "reference": 0.2667428255081177
+    },
+    {
+      "absolute_error": 1.6326084733009338e-06,
+      "actual": 0.0039384495466947556,
+      "bound": 1.007880164310336e-06,
+      "field": "events[0].isect_coord.v",
+      "policy": "topology",
+      "reference": 0.0039400821551680565
+    },
+    {
+      "actual": 80.0,
+      "field": "events[0].isect_id.object",
+      "policy": "exact",
+      "reference": 0.0
+    },
+    {
+      "absolute_error": 1077404.0,
+      "actual": 1077458.0,
+      "bound": 2.154917,
+      "field": "events[0].isect_id.primitive",
+      "policy": "topology",
+      "reference": 54.0
+    },
+    {
+      "actual": 45.0,
+      "field": "events[0].surface_meta.shader_low16",
+      "policy": "exact",
+      "reference": 22.0
+    }
+  ],
+  "max_absolute_error": 1.52587890625e-05,
+  "max_error_field": "global.ray_range.tmax",
+  "max_relative_error": 0.00016575348685494108,
+  "passed": false,
+  "reference": "/var/tmp/barbershop-three-material-original-20260805/gap-373-60-cycles-cpu.exr",
+  "relative_tolerance": 2e-06,
+  "schema": "psycles.cycles-path-trace-comparison.v1",
+  "topology_equivalent": []
+}
