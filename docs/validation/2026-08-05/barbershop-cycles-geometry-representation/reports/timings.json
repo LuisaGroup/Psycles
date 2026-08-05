@@ -1,0 +1,58 @@
+{
+  "schema": "psycles.validation.timings.v1",
+  "scene": "official Blender Barbershop Interior",
+  "extent": [1152, 480],
+  "psycles_commit": "b2d0533",
+  "cycles_commit": "61f93ccb14781f8f1f877a5bb8db04ede49672b3",
+  "cycles_128_spp_seconds": {
+    "cpu": 28.107,
+    "hip": 19.161
+  },
+  "psycles_hip_production_cold": {
+    "samples": 128,
+    "scene_seconds": 18.0158,
+    "jit_seconds": 2191.68,
+    "llvm_codegen_seconds": 242.040086968,
+    "comgr_link_seconds": 1867.756343972,
+    "render_seconds": 200.198,
+    "wall_seconds": 2411.93,
+    "max_rss_kib": 31416672,
+    "code_object_bytes": 27270664,
+    "compiler_concurrent_with_fallback": true
+  },
+  "psycles_hip_production_warm": {
+    "samples": 128,
+    "scene_seconds": 17.6783,
+    "jit_seconds": 2.42711,
+    "render_seconds": 200.398,
+    "wall_seconds": 222.34,
+    "max_rss_kib": 11620476,
+    "exclusive": true
+  },
+  "psycles_hip_trace_cold": {
+    "absolute_sample": 6,
+    "samples": 1,
+    "scene_seconds": 17.7948,
+    "jit_seconds": 2314.14,
+    "render_seconds": 3.893,
+    "wall_seconds": 2338.59,
+    "max_rss_kib": 32123048
+  },
+  "psycles_fallback_trace_cold": {
+    "absolute_sample": 6,
+    "samples": 1,
+    "scene_seconds": 6.70173,
+    "jit_seconds": 4207.41,
+    "render_seconds": 122.929,
+    "wall_seconds": 4338.99,
+    "max_rss_kib": 59514832,
+    "llvm_function_instructions": 980466,
+    "threads": 32
+  },
+  "derived": {
+    "warm_render_slowdown_vs_cycles_cpu": 7.129,
+    "warm_render_slowdown_vs_cycles_hip": 10.458,
+    "warm_render_change_vs_40145a0_percent": 1.895,
+    "fallback_trace_render_slowdown_vs_hip": 31.576
+  }
+}
