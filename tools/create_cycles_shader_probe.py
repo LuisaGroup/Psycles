@@ -88,6 +88,9 @@ _PROBES: dict[str, Callable[[Any], None]] = {
         geometry_inputs._geometry_position_color_conversion
     ),
     "geometry_pointiness": geometry_inputs._geometry_pointiness,
+    "geometry_displacement_methods": (
+        geometry_inputs._geometry_displacement_methods
+    ),
     "texture_coordinate_object_transform": (
         geometry_inputs._texture_coordinate_object_transform
     ),

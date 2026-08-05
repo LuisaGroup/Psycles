@@ -47,6 +47,7 @@ _ALL_PROBES = (
     "gamma_color",
     "glass_transport",
     "geometry_attribute_outputs",
+    "geometry_displacement_methods",
     "geometry_position_color_conversion",
     "geometry_pointiness",
     "gradient_matrix",
@@ -156,6 +157,15 @@ _PROBE_RATIO_GATES = {
     "geometry_attribute_outputs": {
         "Combined": (0.99999, 1.00001),
         "Emit": (0.99999, 1.00001),
+    },
+    "geometry_displacement_methods": {
+        # This probe deliberately includes silhouette pixels, where Cycles
+        # CPU and the Luisa raster-independent path can differ at the last
+        # few filter samples. The energy gate remains tight enough to reject
+        # either true-displacement mode being evaluated as bump-only.
+        "Combined": (0.9995, 1.0005),
+        "DiffCol": (0.9995, 1.0005),
+        "Normal": (0.9995, 1.0005),
     },
     "geometry_position_color_conversion": {
         "Combined": (0.99999, 1.00001),
@@ -305,6 +315,11 @@ _PROBE_RELATIVE_RMSE_GATES = {
     "geometry_attribute_outputs": {
         "Combined": 0.00001,
         "Emit": 0.00001,
+    },
+    "geometry_displacement_methods": {
+        "Combined": 0.00005,
+        "DiffCol": 0.000001,
+        "Normal": 0.00005,
     },
     "geometry_position_color_conversion": {
         "Combined": 0.000001,

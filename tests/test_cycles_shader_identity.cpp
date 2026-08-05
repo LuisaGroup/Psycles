@@ -1,12 +1,16 @@
 #include "../src/luisa/cycles_shader_identity.h"
+#include "../src/luisa/path_tracer_displacement_plan.h"
 #include "../src/luisa/path_tracer_scene_geometry.h"
 
+#include <array>
 #include <cstdlib>
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <set>
 #include <string_view>
+#include <vector>
 
 namespace {
 
@@ -27,6 +31,8 @@ using psycles::luisa_backend::detail::
     cycles_inverse_transform;
 using psycles::luisa_backend::detail::
     cycles_transform_point;
+using psycles::luisa_backend::detail::
+    make_cycles_mesh_displacement_plan;
 
 void require(bool condition, std::string_view message) {
     if (!condition) {
@@ -346,6 +352,98 @@ void test_cycles_intersection_representation_plan() {
         "Cycles affine inverse does not round-trip a point");
 }
 
+void test_cycles_displacement_vertex_ownership() {
+    using namespace psycles::contract;
+    const auto displacement_graph = [] {
+        ShaderGraph graph;
+        const auto output = graph.add_node("test_displacement");
+        graph.set_root(
+            ShaderDomain::displacement,
+            OutputRef{output, "Vector"});
+        return graph;
+    };
+    std::map<MaterialId, MaterialDesc> materials;
+    materials.emplace(
+        MaterialId{1u},
+        MaterialDesc{
+            .name = "bump",
+            .shader = displacement_graph(),
+            .displacement_method = DisplacementMethod::bump});
+    materials.emplace(
+        MaterialId{2u},
+        MaterialDesc{
+            .name = "both",
+            .shader = displacement_graph(),
+            .displacement_method = DisplacementMethod::both});
+    materials.emplace(
+        MaterialId{3u},
+        MaterialDesc{
+            .name = "true",
+            .shader = displacement_graph(),
+            .displacement_method = DisplacementMethod::displacement});
+    materials.emplace(
+        MaterialId{4u},
+        MaterialDesc{
+            .name = "unconnected true",
+            .displacement_method = DisplacementMethod::displacement});
+
+    TriangleMeshDesc geometry{
+        .name = "shared displacement support",
+        .positions = {
+            {0.0f, 0.0f, 0.0f},
+            {1.0f, 0.0f, 0.0f},
+            {0.0f, 1.0f, 0.0f},
+            {1.0f, 1.0f, 0.0f},
+            {2.0f, 1.0f, 0.0f}},
+        .triangles = {
+            {0u, 1u, 2u},
+            {2u, 1u, 3u},
+            {3u, 2u, 4u},
+            {0u, 4u, 1u}},
+        .material_slots = {
+            MaterialId{1u},
+            MaterialId{2u},
+            MaterialId{3u},
+            MaterialId{4u}},
+        // The last out-of-range slot must clamp to the last material exactly
+        // like the render-time triangle-material lookup.
+        .triangle_material_slots = {0u, 1u, 2u, 99u}};
+    const auto plan = make_cycles_mesh_displacement_plan(
+        geometry, materials);
+    require(
+        plan.evaluations.size() == 4u,
+        "Cycles displacement did not evaluate each eligible vertex once");
+    const auto expected = std::array{
+        std::array{2u, 1u, 0u, 2u},
+        std::array{1u, 1u, 1u, 2u},
+        std::array{3u, 1u, 2u, 2u},
+        std::array{4u, 2u, 2u, 3u}};
+    for (std::size_t index = 0u; index < expected.size(); ++index) {
+        const auto &actual = plan.evaluations[index];
+        require(
+            actual.vertex_index == expected[index][0u] &&
+                actual.primitive_index == expected[index][1u] &&
+                actual.corner_index == expected[index][2u] &&
+                actual.material.value == expected[index][3u],
+            "Cycles first-eligible-triangle displacement order diverged");
+    }
+    require(
+        plan.true_displacement_triangles ==
+            std::vector<bool>{false, false, true, false},
+        "BOTH incorrectly requested post-displacement vertex normals");
+
+    const std::array overrides{MaterialId{3u}};
+    const auto overridden = make_cycles_mesh_displacement_plan(
+        geometry, materials, overrides);
+    require(
+        overridden.evaluations.size() == 5u &&
+            overridden.evaluations.front().primitive_index == 0u &&
+            overridden.evaluations.front().material == MaterialId{3u} &&
+            overridden.true_displacement_triangles ==
+                std::vector<bool>{true, false, true, false},
+        "first Cycles object material override did not own displacement");
+}
+
 }// namespace
 
 int main() {
@@ -353,5 +451,6 @@ int main() {
     test_light_shader_composition();
     test_geometry_identity();
     test_cycles_intersection_representation_plan();
+    test_cycles_displacement_vertex_ownership();
     return EXIT_SUCCESS;
 }

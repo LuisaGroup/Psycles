@@ -6,7 +6,7 @@ import math
 from typing import Any
 
 import bpy
-from mathutils import Matrix
+from mathutils import Matrix, Vector
 
 from .support import (
     _input,
@@ -253,3 +253,151 @@ def _geometry_pointiness(scene: Any) -> None:
     mesh.update()
     surface = bpy.data.objects.new("Probe Surface", mesh)
     scene.collection.objects.link(surface)
+
+
+def _displacement_material(
+    name: str,
+    method: str,
+    color: tuple[float, float, float, float],
+) -> Any:
+    material, tree, output = _material(name)
+    # Blender 4.1 moved the Cycles displacement mode from the custom Cycles
+    # settings onto Material itself.
+    material.displacement_method = method
+    diffuse = tree.nodes.new("ShaderNodeBsdfDiffuse")
+    diffuse.name = f"{name} Diffuse"
+    _input(diffuse, "Color").default_value = color
+    _input(diffuse, "Roughness").default_value = 0.35
+    tree.links.new(
+        _output(diffuse, "BSDF"),
+        _input(output, "Surface"),
+    )
+
+    coordinates = tree.nodes.new("ShaderNodeTexCoord")
+    coordinates.name = f"{name} Coordinates"
+    separate = tree.nodes.new("ShaderNodeSeparateXYZ")
+    separate.name = f"{name} Separate UV"
+    tree.links.new(
+        _output(coordinates, "UV"),
+        _input(separate, "Vector"),
+    )
+    frequency = tree.nodes.new("ShaderNodeMath")
+    frequency.name = f"{name} Frequency"
+    frequency.operation = "MULTIPLY"
+    _input(frequency, "Value").default_value = 11.0
+    tree.links.new(
+        _output(separate, "X"),
+        frequency.inputs[0],
+    )
+    sine = tree.nodes.new("ShaderNodeMath")
+    sine.name = f"{name} Sine Height"
+    sine.operation = "SINE"
+    tree.links.new(
+        _output(frequency, "Value"),
+        sine.inputs[0],
+    )
+    displacement = tree.nodes.new("ShaderNodeDisplacement")
+    displacement.name = f"{name} Displacement"
+    _input(displacement, "Midlevel").default_value = 0.0
+    _input(displacement, "Scale").default_value = 0.22
+    tree.links.new(
+        _output(sine, "Value"),
+        _input(displacement, "Height"),
+    )
+    tree.links.new(
+        _output(displacement, "Displacement"),
+        _input(output, "Displacement"),
+    )
+    return material
+
+
+def _displacement_grid(
+    scene: Any,
+    name: str,
+    x_center: float,
+    materials: list[Any],
+    *,
+    mixed: bool = False,
+) -> None:
+    resolution = 12
+    vertices = []
+    faces = []
+    for y_index in range(resolution + 1):
+        y = -0.62 + 1.24 * y_index / resolution
+        for x_index in range(resolution + 1):
+            x = -0.52 + 1.04 * x_index / resolution
+            vertices.append((x, y, 0.0))
+    for y_index in range(resolution):
+        for x_index in range(resolution):
+            lower = y_index * (resolution + 1) + x_index
+            faces.append(
+                (
+                    lower,
+                    lower + 1,
+                    lower + resolution + 2,
+                    lower + resolution + 1,
+                )
+            )
+    mesh = bpy.data.meshes.new(f"{name} Mesh")
+    mesh.from_pydata(vertices, (), faces)
+    for material in materials:
+        mesh.materials.append(material)
+    for index, polygon in enumerate(mesh.polygons):
+        polygon.use_smooth = True
+        if mixed:
+            polygon.material_index = (index // resolution + index) & 1
+    uv = mesh.uv_layers.new(name="UVMap")
+    for loop in mesh.loops:
+        vertex = mesh.vertices[loop.vertex_index].co
+        uv.data[loop.index].uv = (
+            (vertex.x + 0.52) / 1.04,
+            (vertex.y + 0.62) / 1.24,
+        )
+    mesh.update()
+    surface = bpy.data.objects.new(name, mesh)
+    surface.location.x = x_center
+    scene.collection.objects.link(surface)
+
+
+def _geometry_displacement_methods(scene: Any) -> None:
+    """True/BOTH geometry, shared-vertex ownership, and bump-only control."""
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 0.01
+    scene.cycles.max_bounces = 1
+    scene.cycles.diffuse_bounces = 1
+    scene.cycles.glossy_bounces = 0
+    scene.cycles.light_sampling_threshold = 0.0
+
+    camera = scene.camera
+    camera.data.ortho_scale = 4.9
+    camera.location = (3.4, -4.6, 3.2)
+    camera.rotation_euler = (
+        Vector((0.0, 0.0, 0.0)) - camera.location
+    ).to_track_quat("-Z", "Y").to_euler()
+
+    light_data = bpy.data.lights.new("Displacement Sun", type="SUN")
+    light_data.energy = 2.5
+    light_data.angle = 0.0
+    light = bpy.data.objects.new(light_data.name, light_data)
+    light.rotation_euler = (0.55, -0.35, -0.4)
+    scene.collection.objects.link(light)
+
+    bump = _displacement_material(
+        "Bump Control", "BUMP", (0.55, 0.16, 0.08, 1.0)
+    )
+    true = _displacement_material(
+        "True Displacement", "DISPLACEMENT", (0.08, 0.48, 0.16, 1.0)
+    )
+    both = _displacement_material(
+        "Both Displacement", "BOTH", (0.08, 0.2, 0.62, 1.0)
+    )
+    _displacement_grid(scene, "Bump Control", -1.65, [bump])
+    _displacement_grid(scene, "True Displacement", -0.55, [true])
+    _displacement_grid(scene, "Both Displacement", 0.55, [both])
+    _displacement_grid(
+        scene,
+        "Mixed Shared Vertices",
+        1.65,
+        [bump, true],
+        mixed=True,
+    )

@@ -1,0 +1,210 @@
+{
+  "actual_label": "Psycles Vulkan",
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.Depth.Z",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.Diffuse Direct.R",
+    "ViewLayer.Diffuse Direct.G",
+    "ViewLayer.Diffuse Direct.B",
+    "ViewLayer.Diffuse Indirect.R",
+    "ViewLayer.Diffuse Indirect.G",
+    "ViewLayer.Diffuse Indirect.B",
+    "ViewLayer.Diffuse Color.R",
+    "ViewLayer.Diffuse Color.G",
+    "ViewLayer.Diffuse Color.B",
+    "ViewLayer.Glossy Direct.R",
+    "ViewLayer.Glossy Direct.G",
+    "ViewLayer.Glossy Direct.B",
+    "ViewLayer.Glossy Indirect.R",
+    "ViewLayer.Glossy Indirect.G",
+    "ViewLayer.Glossy Indirect.B",
+    "ViewLayer.Glossy Color.R",
+    "ViewLayer.Glossy Color.G",
+    "ViewLayer.Glossy Color.B",
+    "ViewLayer.Transmission Direct.R",
+    "ViewLayer.Transmission Direct.G",
+    "ViewLayer.Transmission Direct.B",
+    "ViewLayer.Transmission Indirect.R",
+    "ViewLayer.Transmission Indirect.G",
+    "ViewLayer.Transmission Indirect.B",
+    "ViewLayer.Transmission Color.R",
+    "ViewLayer.Transmission Color.G",
+    "ViewLayer.Transmission Color.B",
+    "ViewLayer.Volume Direct.R",
+    "ViewLayer.Volume Direct.G",
+    "ViewLayer.Volume Direct.B",
+    "ViewLayer.Volume Indirect.R",
+    "ViewLayer.Volume Indirect.G",
+    "ViewLayer.Volume Indirect.B",
+    "ViewLayer.Emission.R",
+    "ViewLayer.Emission.G",
+    "ViewLayer.Emission.B",
+    "ViewLayer.Environment.R",
+    "ViewLayer.Environment.G",
+    "ViewLayer.Environment.B",
+    "ViewLayer.Debug Sample Count.X"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        0.9997889399528503,
+        1.0000115633010864,
+        1.0000231266021729
+      ],
+      "cycles": "/var/tmp/psycles-displacement-probe-20260805/cycles.exr",
+      "cycles_channel_mean": [
+        0.02171074040234089,
+        0.023089652881026268,
+        0.019453687593340874
+      ],
+      "cycles_luminance_mean": 0.02253396064043045,
+      "cycles_rms": 0.07402601838111877,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999659443000842,
+      "maximum_absolute_error": 0.030615877360105515,
+      "mean_absolute_error": 0.00011470277240732685,
+      "orientation_rmse": {
+        "flip_x": 0.09334533661603928,
+        "flip_xy": 0.06893926858901978,
+        "flip_y": 0.08990009129047394,
+        "identity": 0.0009717212524265051
+      },
+      "p95_pixel_rmse": 2.6183065529039595e-06,
+      "p99_pixel_rmse": 0.004320183303207159,
+      "psycles": "/var/tmp/psycles-displacement-probe-20260805/vk.exr",
+      "psycles_channel_mean": [
+        0.02170615829527378,
+        0.023089921101927757,
+        0.01945413649082184
+      ],
+      "psycles_luminance_mean": 0.022533193230628967,
+      "psycles_rms": 0.0740191102335757,
+      "relative_rmse": 0.013126752913058934,
+      "rmse": 0.0009717212524265051,
+      "shape": [
+        192,
+        256,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 146.15508681046828,
+        "display_scale": 2.2848291344535325,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-displacement-probe-20260805/vk-triptychs/combined.png",
+        "pixel_scale": 2
+      },
+      "valid_pixels": 49152
+    },
+    "DiffCol": {
+      "channel_mean_ratio": [
+        0.9996780157089233,
+        0.9999181628227234,
+        0.9999119639396667
+      ],
+      "cycles": "/var/tmp/psycles-displacement-probe-20260805/cycles.exr",
+      "cycles_channel_mean": [
+        0.03407066687941551,
+        0.03679080680012703,
+        0.03087647259235382
+      ],
+      "cycles_luminance_mean": 0.03578665480017662,
+      "cycles_rms": 0.11673612147569656,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9998699826064,
+      "maximum_absolute_error": 0.04843749850988388,
+      "mean_absolute_error": 0.00017622197628952563,
+      "orientation_rmse": {
+        "flip_x": 0.1468176543712616,
+        "flip_xy": 0.10882644355297089,
+        "flip_y": 0.1414525955915451,
+        "identity": 0.0014876697678118944
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.005921036470681429,
+      "psycles": "/var/tmp/psycles-displacement-probe-20260805/vk.exr",
+      "psycles_channel_mean": [
+        0.03405969589948654,
+        0.03678779676556587,
+        0.030873754993081093
+      ],
+      "psycles_luminance_mean": 0.03578200191259384,
+      "psycles_rms": 0.11672061261193517,
+      "relative_rmse": 0.012743868384573786,
+      "rmse": 0.0014876697678118944,
+      "shape": [
+        192,
+        256,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 90.00008583077033,
+        "display_scale": 1.4516126129555862,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-displacement-probe-20260805/vk-triptychs/diffcol.png",
+        "pixel_scale": 2
+      },
+      "valid_pixels": 49152
+    },
+    "Normal": {
+      "channel_mean_ratio": [
+        0.9998055696487427,
+        0.09816180169582367,
+        0.9998155236244202
+      ],
+      "cycles": "/var/tmp/psycles-displacement-probe-20260805/cycles.exr",
+      "cycles_channel_mean": [
+        -0.014499626122415066,
+        2.2549793357029557e-06,
+        0.12761498987674713
+      ],
+      "cycles_luminance_mean": 0.006132788956165314,
+      "cycles_rms": 0.20498543977737427,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.999581247289307,
+      "maximum_absolute_error": 0.07779035717248917,
+      "mean_absolute_error": 0.00012468940985854715,
+      "orientation_rmse": {
+        "flip_x": 0.2480267733335495,
+        "flip_xy": 0.11802086979150772,
+        "flip_y": 0.24867801368236542,
+        "identity": 0.0017752223648130894
+      },
+      "p95_pixel_rmse": 1.308224909735145e-05,
+      "p99_pixel_rmse": 0.009021089412271976,
+      "psycles": "/var/tmp/psycles-displacement-probe-20260805/vk.exr",
+      "psycles_channel_mean": [
+        -0.014496807008981705,
+        2.2135283472835e-07,
+        0.12759144604206085
+      ],
+      "psycles_luminance_mean": 0.0061302208341658115,
+      "psycles_rms": 0.2049711038995491,
+      "relative_rmse": 0.008660236389184913,
+      "rmse": 0.0017752223648130894,
+      "shape": [
+        192,
+        256,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 191.22877638277194,
+        "display_scale": 1.0,
+        "mapping": "normal_xyz_to_rgb",
+        "path": "/var/tmp/psycles-displacement-probe-20260805/vk-triptychs/normal.png",
+        "pixel_scale": 2
+      },
+      "valid_pixels": 49152
+    }
+  },
+  "reference_label": "Cycles CPU",
+  "schema": "psycles.cycles-differential.v1"
+}

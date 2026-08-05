@@ -1,6 +1,7 @@
 #include "path_tracer_internal.h"
 #include "graph_surface_value_expression.h"
 #include "path_tracer_curve_scene.h"
+#include "path_tracer_displacement_scene.h"
 #include "path_tracer_environment.h"
 #include "path_tracer_generated_coordinates.h"
 #include "path_tracer_image_decode.h"
@@ -18,7 +19,6 @@
 #include <psycles/sampling/light_distribution.h>
 
 #include "cycles_shader_tables_4_5_10.inl"
-
 namespace psycles::luisa_backend {
 
 using namespace detail;
@@ -36,6 +36,10 @@ namespace {
             return attribute_domain_face;
     }
     return attribute_domain_point;
+}
+
+[[nodiscard]] Vec3f from_luisa(luisa::float3 value) noexcept {
+    return {value.x, value.y, value.z};
 }
 
 }// namespace
@@ -1275,8 +1279,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                                   .triangle_random_per_island})
                << resource.triangle_smooth.copy_from(
                       luisa::span{
-                          upload.triangle_smooth})
-               << resource.mesh.build();
+                          upload.triangle_smooth});
         if (resource.cycles_intersection_positions) {
             stream << resource.cycles_intersection_positions->copy_from(
                 luisa::span{upload.cycles_intersection_positions});
@@ -1312,6 +1315,19 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             attribute_ranges);
     if (!curve_upload.ok()) {
         diagnose(result.diagnostics, curve_upload.diagnostic);
+        return result;
+    }
+
+    const auto displacement = MeshDisplacementSceneComponent{}.build(
+        data,
+        stream,
+        snapshot,
+        geometry_indices,
+        uploads,
+        attribute_bindings,
+        attribute_ranges);
+    if (!displacement.ok()) {
+        diagnose(result.diagnostics, displacement.diagnostic);
         return result;
     }
 
@@ -1557,9 +1573,12 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 emissive_triangle_areas.emplace_back(
                     world_triangle_area(
                         instance.transform,
-                        geometry.positions[triangle[0u]],
-                        geometry.positions[triangle[1u]],
-                        geometry.positions[triangle[2u]]));
+                        from_luisa(uploads[geometry_iter->second]
+                                       .positions[triangle[0u]]),
+                        from_luisa(uploads[geometry_iter->second]
+                                       .positions[triangle[1u]]),
+                        from_luisa(uploads[geometry_iter->second]
+                                       .positions[triangle[2u]])));
             }
         }
         const auto visibility =
@@ -1898,20 +1917,22 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     data->geometry_buffer =
         data->device.create_buffer<GeometryGpu>(
             geometry_gpu.size());
-    data->attribute_binding_buffer =
-        data->device.create_buffer<
-            AttributeBindingGpu>(
-            attribute_bindings.size());
-    data->attribute_range_buffer =
-        data->device.create_buffer<
-            AttributeRangeGpu>(
-            attribute_ranges.size());
-    data->heap.emplace_on_update(
-        data->attribute_binding_slot,
-        data->attribute_binding_buffer);
-    data->heap.emplace_on_update(
-        data->attribute_range_slot,
-        data->attribute_range_buffer);
+    if (!data->attribute_binding_buffer) {
+        data->attribute_binding_buffer =
+            data->device.create_buffer<AttributeBindingGpu>(
+                attribute_bindings.size());
+        data->heap.emplace_on_update(
+            data->attribute_binding_slot,
+            data->attribute_binding_buffer);
+    }
+    if (!data->attribute_range_buffer) {
+        data->attribute_range_buffer =
+            data->device.create_buffer<AttributeRangeGpu>(
+                attribute_ranges.size());
+        data->heap.emplace_on_update(
+            data->attribute_range_slot,
+            data->attribute_range_buffer);
+    }
     data->instance_buffer =
         data->device.create_buffer<InstanceGpu>(
             instances.size());
