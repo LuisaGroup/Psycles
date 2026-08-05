@@ -155,6 +155,8 @@ public:
             (instruction.static_u0 & 2u) != 0u
                 ? vector(instruction.e, result)
                 : result.shading_normal;
+        const auto use_object_space =
+            (instruction.static_u0 & 4u) != 0u;
         auto filter_width = max(
             scalar(instruction.d, result), 0.0f);
 
@@ -209,12 +211,38 @@ public:
             scalar(instruction.a, values_x);
         const auto height_y =
             scalar(instruction.a, values_y);
+        auto dPdx = point.dPdx;
+        auto dPdy = point.dPdy;
+        if (use_object_space) {
+            // The stored columns form the object-to-world normal matrix.
+            // Its inverse maps an arbitrary world normal back to object
+            // space, including under non-uniform instance transforms.
+            const auto column_x = point.normal_to_world_x;
+            const auto column_y = point.normal_to_world_y;
+            const auto column_z = point.normal_to_world_z;
+            const auto transform_determinant = dot(
+                column_x, cross(column_y, column_z));
+            const auto inverse_determinant =
+                1.0f / select(
+                    1.0f,
+                    transform_determinant,
+                    abs(transform_determinant) > 1.0e-20f);
+            normal_in = safe_normalize(
+                make_float3(
+                    dot(normal_in, cross(column_y, column_z)),
+                    dot(normal_in, cross(column_z, column_x)),
+                    dot(normal_in, cross(column_x, column_y))) *
+                    inverse_determinant,
+                point.object_shading_normal);
+            dPdx = point.object_dPdx;
+            dPdy = point.object_dPdy;
+        }
         const auto rx =
-            cross(point.dPdy, normal_in);
+            cross(dPdy, normal_in);
         const auto ry =
-            cross(normal_in, point.dPdx);
+            cross(normal_in, dPdx);
         const auto determinant =
-            dot(point.dPdx, rx);
+            dot(dPdx, rx);
         const auto surface_gradient =
             (height_x - height_center) * rx +
             (height_y - height_center) * ry;
@@ -250,13 +278,18 @@ public:
                     (1.0f - strength) *
                         normal_in,
                 make_float3(0.0f));
-        const auto normal_out =
+        auto normal_out =
             select(
                 normal_in,
                 blended,
                 perturbed_valid);
-        result.shading_normal =
-            normal_out;
+        if (use_object_space) {
+            normal_out = safe_normalize(
+                point.normal_to_world_x * normal_out.x +
+                    point.normal_to_world_y * normal_out.y +
+                    point.normal_to_world_z * normal_out.z,
+                point.shading_normal);
+        }
         return SurfaceValueExpression::from_vector(
             Expr<luisa::float3>{normal_out.expression()});
     }

@@ -1131,11 +1131,15 @@ void test_integrator_settings_round_trip() {
   expect(bump_surface.ok(),
          "automatic displacement bump did not lower to a surface program");
   bool has_bump_instruction = false;
+  bool bump_uses_object_space = false;
   bool has_projector_coordinates = false;
   bool has_texture_mapping = false;
   for (const auto &instruction : bump_surface.program->value_instructions()) {
     has_bump_instruction |=
         instruction.operation == psycles::compiler::ValueOperation::bump;
+    bump_uses_object_space |=
+        instruction.operation == psycles::compiler::ValueOperation::bump &&
+        (instruction.static_u0 & 4u) != 0u;
     has_projector_coordinates |=
         instruction.operation ==
             psycles::compiler::ValueOperation::object_position_with_transform &&
@@ -1149,6 +1153,8 @@ void test_integrator_settings_round_trip() {
   }
   expect(has_bump_instruction,
          "automatic displacement bump emitted no value instruction");
+  expect(!bump_uses_object_space,
+         "BUMP-only displacement incorrectly selected object-space bump");
   expect(has_projector_coordinates,
          "explicit Texture Coordinate object transform was not lowered");
   expect(has_texture_mapping,
@@ -1178,6 +1184,24 @@ void test_integrator_settings_round_trip() {
               .root(psycles::contract::ShaderDomain::displacement)
               .has_value(),
       "combined displacement did not retain both semantic roots");
+  const auto combined_shader =
+      bump_compiler.compile(combined_material.shader);
+  expect(combined_shader.ok(),
+         "combined displacement graph did not validate");
+  const auto combined_surface =
+      psycles::compiler::compile_surface_program(
+          *combined_shader.program);
+  expect(combined_surface.ok(),
+         "combined displacement graph did not lower");
+  bool combined_bump_uses_object_space = false;
+  for (const auto &instruction :
+       combined_surface.program->value_instructions()) {
+    combined_bump_uses_object_space |=
+        instruction.operation == psycles::compiler::ValueOperation::bump &&
+        (instruction.static_u0 & 4u) != 0u;
+  }
+  expect(combined_bump_uses_object_space,
+         "BOTH automatic bump lost Cycles object-space semantics");
 
   auto true_displacement_scene = bump_scene;
   replace_once(true_displacement_scene, "\"displacement_method\": \"BUMP\"",

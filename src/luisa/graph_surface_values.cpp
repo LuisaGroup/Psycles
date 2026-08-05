@@ -67,7 +67,7 @@ std::vector<bool> GraphSurfaceImplementation::value_dependency_mask(
     return active;
 }
 
-TracedValues GraphSurfaceImplementation::trace_values(
+TracedValues GraphSurfaceImplementation::trace_value_stage(
     const ShaderServices &services,
     const SurfacePoint &point,
     const std::vector<bool> *active_mask) const noexcept {
@@ -95,6 +95,31 @@ TracedValues GraphSurfaceImplementation::trace_values(
             _value_nodes[instruction_index]->evaluate(context));
     }
     return result;
+}
+
+TracedValues GraphSurfaceImplementation::trace_values(
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    const std::vector<bool> *active_mask) const noexcept {
+    // Explicit masks denote isolated compiler domains (displacement or a
+    // Bump offset sample) and must not recursively enter SetNormal.
+    if (active_mask != nullptr ||
+        !_program->surface_normal_root().valid()) {
+        return trace_value_stage(services, point, active_mask);
+    }
+
+    // Cycles executes the automatic bump region, stores its root in sd->N,
+    // and only then enters the surface region. Re-recording the typed value
+    // program with an updated point is the Luisa multistage equivalent: all
+    // later context nodes observe the new normal, while ordinary Bump nodes
+    // remain pure values.
+    const auto bump_values = trace_value_stage(
+        services, point, &_surface_normal_dependency_mask);
+    auto surface_point = point;
+    surface_point.shading_normal =
+        bump_values.values[
+            _program->surface_normal_root().value].vector();
+    return trace_value_stage(services, surface_point, nullptr);
 }
 
 }// namespace psycles::luisa_backend::detail

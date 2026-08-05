@@ -589,6 +589,10 @@ namespace {
                         (property_bool(
                              node, "NormalLinked")
                              ? 2u
+                             : 0u) |
+                        (property_bool(
+                             node, "UseObjectSpace")
+                             ? 4u
                              : 0u)}));
         }
         return true;

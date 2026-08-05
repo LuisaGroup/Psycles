@@ -838,6 +838,12 @@ NodeRegistry make_core_node_registry() {
       .properties = {property("Invert", SocketType::boolean,
                               SocketValue::boolean(false)),
                      property("NormalLinked", SocketType::boolean,
+                              SocketValue::boolean(false)),
+                     // Cycles enables this only for the automatic bump
+                     // stage of a BOTH displacement material. It changes
+                     // the differential frame in which the surface
+                     // gradient is constructed.
+                     property("UseObjectSpace", SocketType::boolean,
                               SocketValue::boolean(false))},
       .required_features = feature_bit(ShaderFeature::surface) |
                            feature_bit(ShaderFeature::derivatives)}));
