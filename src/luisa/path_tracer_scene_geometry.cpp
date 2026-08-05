@@ -77,23 +77,6 @@ namespace {
     return true;
 }
 
-[[nodiscard]] bool same_support_bits(
-    const contract::TriangleMeshDesc &a,
-    const contract::TriangleMeshDesc &b) noexcept {
-    if (a.positions.size() != b.positions.size() ||
-        a.triangles.size() != b.triangles.size()) {
-        return false;
-    }
-    for (std::size_t i = 0u; i < a.positions.size(); ++i) {
-        if (!same_bits(a.positions[i].x, b.positions[i].x) ||
-            !same_bits(a.positions[i].y, b.positions[i].y) ||
-            !same_bits(a.positions[i].z, b.positions[i].z)) {
-            return false;
-        }
-    }
-    return a.triangles == b.triangles;
-}
-
 void hash_word(std::uint64_t &hash, std::uint32_t word) noexcept {
     constexpr auto prime = std::uint64_t{1099511628211ull};
     for (auto byte = 0u; byte < 4u; ++byte) {
@@ -102,28 +85,11 @@ void hash_word(std::uint64_t &hash, std::uint32_t word) noexcept {
     }
 }
 
-[[nodiscard]] std::uint64_t support_hash(
-    const contract::TriangleMeshDesc &geometry) noexcept {
-    auto hash = std::uint64_t{14695981039346656037ull};
-    hash_word(hash, static_cast<std::uint32_t>(geometry.positions.size()));
-    hash_word(hash, static_cast<std::uint32_t>(geometry.triangles.size()));
-    for (const auto point : geometry.positions) {
-        hash_word(hash, std::bit_cast<std::uint32_t>(point.x));
-        hash_word(hash, std::bit_cast<std::uint32_t>(point.y));
-        hash_word(hash, std::bit_cast<std::uint32_t>(point.z));
-    }
-    for (const auto triangle : geometry.triangles) {
-        hash_word(hash, triangle[0u]);
-        hash_word(hash, triangle[1u]);
-        hash_word(hash, triangle[2u]);
-    }
-    return hash;
-}
-
 [[nodiscard]] std::uint64_t instance_support_hash(
-    std::uint64_t geometry_hash,
+    std::uint32_t support_class,
     const Mat4f &transform) noexcept {
-    auto hash = geometry_hash;
+    auto hash = std::uint64_t{14695981039346656037ull};
+    hash_word(hash, support_class);
     for (const auto value : transform.elements) {
         hash_word(hash, std::bit_cast<std::uint32_t>(value));
     }
@@ -283,58 +249,71 @@ build_cycles_instance_intersection_plan(
             .world_to_object = cycles_inverse_transform(instance.transform)});
     }
 
+    return result;
+}
+
+bool finalize_cycles_instance_intersection_plan(
+    const contract::SceneSnapshot &scene,
+    const std::map<contract::GeometryId, std::uint32_t>
+        &final_triangle_support_classes,
+    std::span<CyclesInstanceIntersectionPlan> plan) {
+    if (plan.size() != scene.instances.size()) {
+        return false;
+    }
+    for (std::size_t index = 0u; index < plan.size(); ++index) {
+        plan[index].coincident_next = static_cast<std::uint32_t>(index);
+        plan[index].coincident_count = 1u;
+    }
     struct Group {
-        contract::GeometryId geometry;
+        std::uint32_t support_class{};
         Mat4f transform;
         std::vector<std::uint32_t> instances;
     };
-    std::map<contract::GeometryId, std::uint64_t> geometry_hashes;
     std::vector<Group> groups;
     std::unordered_map<std::uint64_t, std::vector<std::size_t>> buckets;
-    for (std::size_t index = 0u; index < ordered_instances.size(); ++index) {
-        const auto &instance = *ordered_instances[index];
-        const auto geometry_iter = scene.geometries.find(instance.geometry);
-        if (geometry_iter == scene.geometries.end()) {
+    auto index = std::size_t{0u};
+    for (const auto &[instance_id, instance] : scene.instances) {
+        static_cast<void>(instance_id);
+        const auto support =
+            final_triangle_support_classes.find(instance.geometry);
+        if (support == final_triangle_support_classes.end()) {
+            ++index;
             continue;
         }
-        const auto geometry_hash = geometry_hashes.try_emplace(
-            instance.geometry,
-            support_hash(geometry_iter->second)).first->second;
         const auto hash = instance_support_hash(
-            geometry_hash, instance.transform);
-        auto &candidate_groups = buckets[hash];
+            support->second, instance.transform);
+        auto &candidates = buckets[hash];
         std::optional<std::size_t> matching_group;
-        for (const auto group_index : candidate_groups) {
-            const auto &group = groups[group_index];
-            if (same_transform_bits(group.transform, instance.transform) &&
-                same_support_bits(
-                    scene.geometries.at(group.geometry),
-                    geometry_iter->second)) {
-                matching_group = group_index;
+        for (const auto candidate : candidates) {
+            const auto &group = groups[candidate];
+            if (group.support_class == support->second &&
+                same_transform_bits(group.transform, instance.transform)) {
+                matching_group = candidate;
                 break;
             }
         }
         if (!matching_group) {
             matching_group = groups.size();
-            candidate_groups.emplace_back(*matching_group);
+            candidates.emplace_back(*matching_group);
             groups.emplace_back(Group{
-                .geometry = instance.geometry,
+                .support_class = support->second,
                 .transform = instance.transform,
                 .instances = {}});
         }
         groups[*matching_group].instances.emplace_back(
             static_cast<std::uint32_t>(index));
+        ++index;
     }
     for (const auto &group : groups) {
         const auto count = static_cast<std::uint32_t>(group.instances.size());
         for (std::size_t i = 0u; i < group.instances.size(); ++i) {
             const auto current = group.instances[i];
             const auto next = group.instances[(i + 1u) % group.instances.size()];
-            result[current].coincident_next = next;
-            result[current].coincident_count = count;
+            plan[current].coincident_next = next;
+            plan[current].coincident_count = count;
         }
     }
-    return result;
+    return true;
 }
 
 }// namespace psycles::luisa_backend::detail

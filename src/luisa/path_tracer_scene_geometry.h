@@ -4,8 +4,10 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <set>
+#include <span>
 #include <vector>
 
 namespace psycles::luisa_backend::detail {
@@ -61,6 +63,17 @@ struct CyclesInstanceIntersectionPlan {
 build_cycles_instance_intersection_plan(
     const contract::SceneSnapshot &scene,
     const std::set<contract::MaterialId> &surface_bssrdf_materials);
+
+// Completes the plan only after every geometry mutation is finished. The
+// class identifier must denote bitwise equality of the final position and
+// triangle-index arrays used to build the acceleration structure. Keeping
+// this phase separate prevents true displacement from invalidating an alias
+// relation derived from the source mesh.
+[[nodiscard]] bool finalize_cycles_instance_intersection_plan(
+    const contract::SceneSnapshot &scene,
+    const std::map<contract::GeometryId, std::uint32_t>
+        &final_triangle_support_classes,
+    std::span<CyclesInstanceIntersectionPlan> plan);
 
 // Host forms of Cycles' affine geometry operations. Static-transform vertices
 // and object-space rays are uploaded as floats so every device backend sees

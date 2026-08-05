@@ -28,6 +28,8 @@ using psycles::luisa_backend::detail::
 using psycles::luisa_backend::detail::
     build_cycles_instance_intersection_plan;
 using psycles::luisa_backend::detail::
+    finalize_cycles_instance_intersection_plan;
+using psycles::luisa_backend::detail::
     cycles_inverse_transform;
 using psycles::luisa_backend::detail::
     cycles_transform_point;
@@ -319,16 +321,30 @@ void test_cycles_intersection_representation_plan() {
 
     const auto plan = build_cycles_instance_intersection_plan(
         scene, std::set<MaterialId>{bssrdf_material});
-    require(plan.size() == 6u, "instance intersection plan changed size");
+    auto finalized_plan = plan;
     require(
-        plan[0u].coincident_count == 2u &&
-            plan[0u].coincident_next == 1u &&
-            plan[1u].coincident_count == 2u &&
-            plan[1u].coincident_next == 0u,
+        finalize_cycles_instance_intersection_plan(
+            scene,
+            std::map<GeometryId, std::uint32_t>{
+                {GeometryId{1u}, 0u},
+                {GeometryId{2u}, 0u},
+                {GeometryId{3u}, 1u},
+                {GeometryId{4u}, 2u},
+                {GeometryId{5u}, 0u}},
+            finalized_plan),
+        "final instance intersection plan rejected matching inputs");
+    require(
+        finalized_plan.size() == 6u,
+        "instance intersection plan changed size");
+    require(
+        finalized_plan[0u].coincident_count == 2u &&
+            finalized_plan[0u].coincident_next == 1u &&
+            finalized_plan[1u].coincident_count == 2u &&
+            finalized_plan[1u].coincident_next == 0u,
         "exact support ignored or included shading attributes");
     require(
-        plan[2u].coincident_count == 1u &&
-            plan[3u].coincident_count == 1u,
+        finalized_plan[2u].coincident_count == 1u &&
+            finalized_plan[3u].coincident_count == 1u,
         "one-bit transform or support changes were grouped");
     require(
         plan[0u].transform_applied &&
@@ -350,6 +366,30 @@ void test_cycles_intersection_representation_plan() {
             std::abs(round_trip.y - point.y) < 1.0e-6f &&
             std::abs(round_trip.z - point.z) < 1.0e-6f,
         "Cycles affine inverse does not round-trip a point");
+
+    // A non-diagonal transform with negative determinant catches both a
+    // row/column-major transpose and an accidental handedness conversion.
+    Mat4f reflected;
+    reflected.elements = {
+        0.0f, 2.0f, 0.0f, 0.0f,
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 3.0f, 0.0f,
+        4.0f, -5.0f, 6.0f, 1.0f};
+    const auto reflected_point = Vec3f{1.0f, 2.0f, 3.0f};
+    const auto reflected_world =
+        cycles_transform_point(reflected, reflected_point);
+    require(
+        reflected_world.x == 6.0f &&
+            reflected_world.y == -3.0f &&
+            reflected_world.z == 15.0f,
+        "Cycles affine transform changed matrix convention or handedness");
+    const auto reflected_round_trip = cycles_transform_point(
+        cycles_inverse_transform(reflected), reflected_world);
+    require(
+        std::abs(reflected_round_trip.x - reflected_point.x) < 1.0e-6f &&
+            std::abs(reflected_round_trip.y - reflected_point.y) < 1.0e-6f &&
+            std::abs(reflected_round_trip.z - reflected_point.z) < 1.0e-6f,
+        "reflected Cycles affine transform does not round-trip");
 }
 
 void test_cycles_displacement_vertex_ownership() {
