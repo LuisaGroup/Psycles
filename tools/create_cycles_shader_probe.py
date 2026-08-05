@@ -140,6 +140,9 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "normal_map_surface": closures._normal_map_surface,
     "normal_map_matrix": closures._normal_map_matrix,
     "normal_map_named_uv_matrix": closures._normal_map_named_uv_matrix,
+    "normal_map_displacement_matrix": (
+        geometry_inputs._normal_map_displacement_matrix
+    ),
     "particle_random_instances": procedural_textures._particle_random_instances,
     "particle_random_nonparticle": procedural_textures._particle_random_nonparticle,
     "point_light": lights_camera._point_light,

@@ -88,6 +88,7 @@ _ALL_PROBES = (
     "normal_map_surface",
     "normal_map_matrix",
     "normal_map_named_uv_matrix",
+    "normal_map_displacement_matrix",
     "particle_random_instances",
     "particle_random_nonparticle",
     "point_light",
@@ -165,6 +166,14 @@ _PROBE_RATIO_GATES = {
         # either true-displacement mode being evaluated as bump-only.
         "Combined": (0.9995, 1.0005),
         "DiffCol": (0.9995, 1.0005),
+        "Normal": (0.9995, 1.0005),
+    },
+    "normal_map_displacement_matrix": {
+        # Combined/Emit encode the signed Normal Map result directly. Normal
+        # is itself signed and has a small luminance mean, so its ratio needs
+        # the same stable signed-vector envelope as the displacement probe.
+        "Combined": (0.99999, 1.00001),
+        "Emit": (0.99999, 1.00001),
         "Normal": (0.9995, 1.0005),
     },
     "geometry_position_color_conversion": {
@@ -319,6 +328,14 @@ _PROBE_RELATIVE_RMSE_GATES = {
     "geometry_displacement_methods": {
         "Combined": 0.00005,
         "DiffCol": 0.000001,
+        "Normal": 0.00005,
+    },
+    "normal_map_displacement_matrix": {
+        # Reject collapsing true displacement into bump, merging ORIGINAL
+        # and DISPLACED Mikk frames, losing named-UV handedness, or ignoring
+        # the OpenGL/DirectX convention on any Luisa backend.
+        "Combined": 0.00005,
+        "Emit": 0.00005,
         "Normal": 0.00005,
     },
     "geometry_position_color_conversion": {

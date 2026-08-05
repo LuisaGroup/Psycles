@@ -401,3 +401,228 @@ def _geometry_displacement_methods(scene: Any) -> None:
         [bump, true],
         mixed=True,
     )
+
+
+def _normal_map_displacement_material(
+    name: str,
+    *,
+    base: str,
+    convention: str,
+    uv_map: str,
+) -> Any:
+    """Build one unbaked Cycles displacement/normal-map combination."""
+    material, tree, output = _material(name)
+    material.displacement_method = "DISPLACEMENT"
+
+    coordinates = tree.nodes.new("ShaderNodeTexCoord")
+    coordinates.name = f"{name} Displacement Coordinates"
+    separate = tree.nodes.new("ShaderNodeSeparateXYZ")
+    separate.name = f"{name} Separate UV"
+    tree.links.new(
+        _output(coordinates, "UV"),
+        _input(separate, "Vector"),
+    )
+
+    waves = []
+    for axis, frequency, weight in (
+        ("X", 2.0 * math.pi, 0.72),
+        ("Y", 4.0 * math.pi, 0.43),
+    ):
+        frequency_node = tree.nodes.new("ShaderNodeMath")
+        frequency_node.name = f"{name} {axis} Frequency"
+        frequency_node.operation = "MULTIPLY"
+        _input_identifier(frequency_node, "Value_001").default_value = (
+            frequency
+        )
+        tree.links.new(
+            _output(separate, axis),
+            _input(frequency_node, "Value"),
+        )
+        sine = tree.nodes.new("ShaderNodeMath")
+        sine.name = f"{name} {axis} Sine"
+        sine.operation = "SINE"
+        tree.links.new(
+            _output(frequency_node, "Value"),
+            _input(sine, "Value"),
+        )
+        amplitude = tree.nodes.new("ShaderNodeMath")
+        amplitude.name = f"{name} {axis} Amplitude"
+        amplitude.operation = "MULTIPLY"
+        _input_identifier(amplitude, "Value_001").default_value = weight
+        tree.links.new(
+            _output(sine, "Value"),
+            _input(amplitude, "Value"),
+        )
+        waves.append(amplitude)
+
+    add_height = tree.nodes.new("ShaderNodeMath")
+    add_height.name = f"{name} Add Height"
+    add_height.operation = "ADD"
+    tree.links.new(
+        _output(waves[0], "Value"),
+        _input(add_height, "Value"),
+    )
+    tree.links.new(
+        _output(waves[1], "Value"),
+        _input_identifier(add_height, "Value_001"),
+    )
+    displacement = tree.nodes.new("ShaderNodeDisplacement")
+    displacement.name = f"{name} True Displacement"
+    _input(displacement, "Midlevel").default_value = 0.0
+    _input(displacement, "Scale").default_value = 0.16
+    tree.links.new(
+        _output(add_height, "Value"),
+        _input(displacement, "Height"),
+    )
+    tree.links.new(
+        _output(displacement, "Displacement"),
+        _input(output, "Displacement"),
+    )
+
+    normal_map = tree.nodes.new("ShaderNodeNormalMap")
+    normal_map.name = f"{name} Normal Map"
+    normal_map.space = "TANGENT"
+    normal_map.base = base
+    normal_map.convention = convention
+    normal_map.uv_map = uv_map
+    _input(normal_map, "Strength").default_value = 0.68
+    _input(normal_map, "Color").default_value = (
+        0.82,
+        0.21,
+        0.91,
+        1.0,
+    )
+
+    # Encode the signed world-space normal into [0, 1] without baking it.
+    # The Normal Map closure remains part of the original surface graph.
+    bias = tree.nodes.new("ShaderNodeMixRGB")
+    bias.name = f"{name} Encode Bias"
+    bias.blend_type = "ADD"
+    _input(bias, "Fac").default_value = 1.0
+    _input(bias, "Color2").default_value = (1.0, 1.0, 1.0, 1.0)
+    scale = tree.nodes.new("ShaderNodeMixRGB")
+    scale.name = f"{name} Encode Scale"
+    scale.blend_type = "MULTIPLY"
+    _input(scale, "Fac").default_value = 1.0
+    _input(scale, "Color2").default_value = (0.5, 0.5, 0.5, 1.0)
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = f"{name} Encoded Normal Emission"
+    tree.links.new(
+        _output(normal_map, "Normal"),
+        _input(bias, "Color1"),
+    )
+    tree.links.new(
+        _output(bias, "Color"),
+        _input(scale, "Color1"),
+    )
+    tree.links.new(
+        _output(scale, "Color"),
+        _input(emission, "Color"),
+    )
+    tree.links.new(
+        _output(emission, "Emission"),
+        _input(output, "Surface"),
+    )
+    return material
+
+
+def _normal_map_displacement_matrix(scene: Any) -> None:
+    """Pin Cycles' post-displacement MikkTSpace stage semantics.
+
+    Every cell uses real vector displacement. The upper row selects the
+    render UV while the lower row selects an independently mirrored UV
+    layer, so the matrix covers current/original tangent identity, handedness,
+    and OpenGL/DirectX green-channel convention without a bump substitute.
+    """
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 0.01
+    scene.cycles.max_bounces = 0
+
+    cases = tuple(
+        (base, convention, uv_map)
+        for uv_map in ("", "DetailUV")
+        for convention in ("OPENGL", "DIRECTX")
+        for base in ("ORIGINAL", "DISPLACED")
+    )
+    materials = [
+        _normal_map_displacement_material(
+            f"Displaced Normal {index:02d} {base} {convention}",
+            base=base,
+            convention=convention,
+            uv_map=uv_map,
+        )
+        for index, (base, convention, uv_map) in enumerate(cases)
+    ]
+
+    columns = 4
+    rows = 2
+    resolution = 24
+    extent = 1.1
+    bleed = 0.03
+    vertices: list[tuple[float, float, float]] = []
+    vertex_uvs: list[tuple[float, float]] = []
+    faces: list[tuple[int, int, int, int]] = []
+    face_materials: list[int] = []
+    for index in range(len(materials)):
+        column = index % columns
+        row = index // columns
+        x0 = -extent + 2.0 * extent * column / columns
+        x1 = -extent + 2.0 * extent * (column + 1) / columns
+        y0 = -extent + 2.0 * extent * row / rows
+        y1 = -extent + 2.0 * extent * (row + 1) / rows
+        if column == 0:
+            x0 -= bleed
+        if column + 1 == columns:
+            x1 += bleed
+        if row == 0:
+            y0 -= bleed
+        if row + 1 == rows:
+            y1 += bleed
+        first = len(vertices)
+        stride = resolution + 1
+        for y_index in range(stride):
+            v = y_index / resolution
+            for x_index in range(stride):
+                u = x_index / resolution
+                vertices.append(
+                    (
+                        x0 + (x1 - x0) * u,
+                        y0 + (y1 - y0) * v,
+                        0.0,
+                    )
+                )
+                vertex_uvs.append((u, v))
+        for y_index in range(resolution):
+            for x_index in range(resolution):
+                lower = first + y_index * stride + x_index
+                faces.append(
+                    (
+                        lower,
+                        lower + 1,
+                        lower + stride + 1,
+                        lower + stride,
+                    )
+                )
+                face_materials.append(index)
+
+    mesh = bpy.data.meshes.new("Normal Map Displacement Matrix Mesh")
+    mesh.from_pydata(vertices, (), faces)
+    for material in materials:
+        mesh.materials.append(material)
+    for polygon, material_index in zip(
+        mesh.polygons, face_materials, strict=True
+    ):
+        polygon.material_index = material_index
+        polygon.use_smooth = True
+    render_uv = mesh.uv_layers.new(name="UVMap", do_init=False)
+    detail_uv = mesh.uv_layers.new(name="DetailUV", do_init=False)
+    render_uv.active_render = True
+    mesh.uv_layers.active = render_uv
+    for loop in mesh.loops:
+        u, v = vertex_uvs[loop.vertex_index]
+        render_uv.data[loop.index].uv = (u, v)
+        # Swap U/V to change tangent direction and reverse handedness.
+        detail_uv.data[loop.index].uv = (v, u)
+    mesh.update()
+    surface = bpy.data.objects.new("Normal Map Displacement Matrix", mesh)
+    scene.collection.objects.link(surface)
