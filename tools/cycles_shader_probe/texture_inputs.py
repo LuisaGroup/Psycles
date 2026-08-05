@@ -1247,24 +1247,24 @@ def _checker_texture_matrix(scene: Any) -> None:
 
 
 def _fresnel_matrix(scene: Any) -> None:
-    """Cover Fresnel IOR, grazing angles, clamp, and backfacing eta."""
+    """Cover Fresnel socket vectors, IOR clamp, and backfacing eta."""
     scene.cycles.pixel_filter_type = "BOX"
     scene.cycles.filter_width = 0.01
     cases = (
-        (1.5, (0.0, 0.0, 1.0)),
+        (1.5, None),
         (1.0, (0.0, 0.0, 1.0)),
         (0.0, (0.0, 0.0, 1.0)),
         (0.5, (0.0, 0.0, 1.0)),
-        (1.33, (0.9682458, 0.0, 0.25)),
+        (1.45, (0.07807466, 0.10947394, 0.8824053)),
+        (1.33, (0.0, 0.0, 0.0)),
         (2.5, (0.8660254, 0.0, 0.5)),
-        (1.1, (0.4358899, 0.0, 0.9)),
         (10.0, (1.0, 0.0, 0.0)),
-        (1.5, (0.0, 0.0, 1.0)),
+        (1.5, None),
         (0.5, (0.0, 0.0, 1.0)),
-        (1.33, (0.9682458, 0.0, 0.25)),
+        (1.33, (0.21650635, 0.0, 0.125)),
         (2.5, (0.8660254, 0.0, 0.5)),
         (1.0, (1.0, 0.0, 0.0)),
-        (0.0, (0.4358899, 0.0, 0.9)),
+        (0.0, (0.0, 0.0, 0.0)),
         (-2.0, (0.9682458, 0.0, 0.25)),
         (10.0, (0.9999995, 0.0, 0.001)),
     )
@@ -1273,19 +1273,20 @@ def _fresnel_matrix(scene: Any) -> None:
         material, tree, output = _material(
             f"Fresnel {index:02d}"
         )
-        normal_node = tree.nodes.new("ShaderNodeRGB")
-        normal_node.name = f"Fresnel Normal {index:02d}"
-        _output(normal_node, "Color").default_value = (
-            *normal,
-            1.0,
-        )
         fresnel = tree.nodes.new("ShaderNodeFresnel")
         fresnel.name = f"Fresnel {index:02d}"
         _input(fresnel, "IOR").default_value = ior
-        tree.links.new(
-            _output(normal_node, "Color"),
-            _input(fresnel, "Normal"),
-        )
+        if normal is not None:
+            normal_node = tree.nodes.new("ShaderNodeRGB")
+            normal_node.name = f"Fresnel Normal {index:02d}"
+            _output(normal_node, "Color").default_value = (
+                *normal,
+                1.0,
+            )
+            tree.links.new(
+                _output(normal_node, "Color"),
+                _input(fresnel, "Normal"),
+            )
         emission = tree.nodes.new("ShaderNodeEmission")
         emission.name = f"Fresnel Emission {index:02d}"
         tree.links.new(

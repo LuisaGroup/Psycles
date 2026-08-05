@@ -198,7 +198,11 @@ SurfaceProgramBuilder::lower_context_node(const contract::ShaderNode &node) {
                                       .source_node = node.id,
                                       .result_type = SocketType::floating,
                                       .a = *ior,
-                                      .b = *normal}));
+                                      .b = *normal,
+                                      .static_u0 =
+                                          property_bool(node, "NormalLinked")
+                                              ? 1u
+                                              : 0u}));
     }
     return true;
   }

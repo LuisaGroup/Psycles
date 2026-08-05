@@ -171,7 +171,8 @@ NodeRegistry make_core_node_registry() {
                             input("Normal", SocketType::normal,
                                   SocketValue::normal({0.0f, 0.0f, 0.0f}))},
                  .outputs = {output("Factor", SocketType::floating)},
-                 .properties = {},
+                 .properties = {property("NormalLinked", SocketType::boolean,
+                                         SocketValue::boolean(false))},
                  .required_features = feature_bit(ShaderFeature::surface) |
                                       feature_bit(ShaderFeature::ray_state)}));
 
