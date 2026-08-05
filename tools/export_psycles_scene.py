@@ -527,11 +527,30 @@ def _geometry(
             for value in generated_by_vertex
             for component in value
         )
-        normal_domain = (
-            "CORNER"
-            if str(getattr(mesh, "normals_domain", "CORNER")) == "CORNER"
-            else "POINT"
+        blender_normal_domain = str(
+            getattr(mesh, "normals_domain", "CORNER")
         )
+        use_corner_normals = blender_normal_domain == "CORNER"
+        # Match Cycles create_mesh() and Mesh::pack_shaders(), rather than
+        # MeshPolygon.use_smooth. The latter only reflects sharp_face and can
+        # still report true when sharp edges make Blender's effective normal
+        # domain FACE. Conversely, Cycles always enables interpolated shading
+        # when corner normals exist because flatness is already encoded in the
+        # three corner values.
+        sharp_face_attribute = mesh.attributes.get("sharp_face")
+        if use_corner_normals:
+            smooth_by_polygon = None
+            smooth_without_attribute = True
+        elif sharp_face_attribute is not None:
+            smooth_by_polygon = tuple(
+                not bool(item.value)
+                for item in sharp_face_attribute.data
+            )
+            smooth_without_attribute = False
+        else:
+            smooth_by_polygon = None
+            smooth_without_attribute = blender_normal_domain != "FACE"
+        normal_domain = "CORNER" if use_corner_normals else "POINT"
         if normal_domain == "POINT":
             normals.extend(
                 component
@@ -618,7 +637,11 @@ def _geometry(
                 indices.append(int(loop.vertex_index))
             materials.append(int(triangle.material_index))
             smooth.append(
-                int(mesh.polygons[triangle.polygon_index].use_smooth)
+                int(
+                    smooth_without_attribute
+                    if smooth_by_polygon is None
+                    else smooth_by_polygon[triangle.polygon_index]
+                )
             )
             first_vertex = mesh.loops[triangle.loops[0]].vertex_index
             random_per_island.append(
