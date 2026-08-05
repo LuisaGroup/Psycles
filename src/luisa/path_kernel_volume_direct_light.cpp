@@ -1019,7 +1019,7 @@ class PathVolumeDirectLightingComponent final
                             light.direction,
                             0.0f,
                             light.maximum_distance);
-                const auto surface_transmittance =
+                const auto surface_shadow =
                     _config.trace_shadow(
                         surface_shadow_ray,
                         surface_ray::
@@ -1040,6 +1040,8 @@ class PathVolumeDirectLightingComponent final
                                         .transparent_depth,
                                     sample
                                         .transmission_depth)));
+                const auto surface_transmittance =
+                    surface_shadow->transmittance;
                 const auto volume_transmittance =
                     _volume_shadow->emit(
                         sample,

@@ -1,17 +1,17 @@
-From 2a8ab92adce988d80101226d1a7f3325fd5e518d Mon Sep 17 00:00:00 2001
+From be18d2a2ac55b1874558eb70bc36398f0edaf846 Mon Sep 17 00:00:00 2001
 From: Mike Smith <mango@live.cn>
-Date: Wed, 5 Aug 2026 21:55:43 +0800
+Date: Wed, 5 Aug 2026 22:36:09 +0800
 Subject: [PATCH] Cycles: add Psycles per-path trace oracle
 
 ---
  intern/cycles/kernel/data_template.h          |   3 +
  .../kernel/integrator/init_from_camera.h      |  38 ++-
- .../cycles/kernel/integrator/psycles_trace.h  | 232 ++++++++++++++
+ .../cycles/kernel/integrator/psycles_trace.h  | 265 +++++++++++++++
  intern/cycles/kernel/integrator/shade_light.h |  31 +-
  .../cycles/kernel/integrator/shade_shadow.h   |   7 +
- .../cycles/kernel/integrator/shade_surface.h  | 291 +++++++++++++++++-
+ .../cycles/kernel/integrator/shade_surface.h  | 318 +++++++++++++++++-
  intern/cycles/scene/integrator.cpp            |   1 +
- 7 files changed, 591 insertions(+), 12 deletions(-)
+ 7 files changed, 651 insertions(+), 12 deletions(-)
  create mode 100644 intern/cycles/kernel/integrator/psycles_trace.h
 
 diff --git a/intern/cycles/kernel/data_template.h b/intern/cycles/kernel/data_template.h
@@ -108,10 +108,10 @@ index 948a83a7..fd7d0eac 100644
  
 diff --git a/intern/cycles/kernel/integrator/psycles_trace.h b/intern/cycles/kernel/integrator/psycles_trace.h
 new file mode 100644
-index 00000000..23b96e02
+index 00000000..1d0e1337
 --- /dev/null
 +++ b/intern/cycles/kernel/integrator/psycles_trace.h
-@@ -0,0 +1,232 @@
+@@ -0,0 +1,265 @@
 +/* SPDX-FileCopyrightText: 2026 Psycles Authors
 + *
 + * SPDX-License-Identifier: Apache-2.0 */
@@ -132,14 +132,17 @@ index 00000000..23b96e02
 +
 +CCL_NAMESPACE_BEGIN
 +
-+static constexpr int PSYCLES_TRACE_SCHEMA_VERSION = 1;
++static constexpr int PSYCLES_TRACE_SCHEMA_VERSION = 2;
 +static constexpr int PSYCLES_TRACE_GLOBAL_SLOTS = 8;
 +static constexpr int PSYCLES_TRACE_EVENT_SLOTS = 72;
++static constexpr int PSYCLES_TRACE_SHADOW_EVENT_SLOTS = 8;
 +static constexpr int PSYCLES_TRACE_MAX_EVENTS = 4;
 +static constexpr int PSYCLES_TRACE_MAX_CLOSURES = 8;
-+static constexpr int PSYCLES_TRACE_AOV_COUNT = PSYCLES_TRACE_GLOBAL_SLOTS +
-+                                               PSYCLES_TRACE_EVENT_SLOTS *
-+                                                   PSYCLES_TRACE_MAX_EVENTS;
++static constexpr int PSYCLES_TRACE_SHADOW_EVENT_BASE =
++    PSYCLES_TRACE_GLOBAL_SLOTS + PSYCLES_TRACE_EVENT_SLOTS * PSYCLES_TRACE_MAX_EVENTS;
++static constexpr int PSYCLES_TRACE_AOV_COUNT =
++    PSYCLES_TRACE_SHADOW_EVENT_BASE +
++    PSYCLES_TRACE_SHADOW_EVENT_SLOTS * PSYCLES_TRACE_MAX_EVENTS;
 +
 +enum PsyclesTraceGlobalSlot {
 +  PSYCLES_TRACE_GLOBAL_HEADER = 0,
@@ -202,6 +205,17 @@ index 00000000..23b96e02
 +  PSYCLES_TRACE_EVENT_NEE_UNSHADOWED = 46,
 +  PSYCLES_TRACE_EVENT_NEE_CONTRIBUTION = 47,
 +  PSYCLES_TRACE_EVENT_CLOSURE_BASE = 48,
++};
++
++enum PsyclesTraceShadowEventSlot {
++  PSYCLES_TRACE_SHADOW_EVENT_RAY_P = 0,
++  PSYCLES_TRACE_SHADOW_EVENT_RAY_D = 1,
++  PSYCLES_TRACE_SHADOW_EVENT_RAY_RANGE = 2,
++  PSYCLES_TRACE_SHADOW_EVENT_SOURCE = 3,
++  PSYCLES_TRACE_SHADOW_EVENT_LIGHT = 4,
++  PSYCLES_TRACE_SHADOW_EVENT_HIT_ID = 5,
++  PSYCLES_TRACE_SHADOW_EVENT_HIT_COORD = 6,
++  PSYCLES_TRACE_SHADOW_EVENT_TRANSMITTANCE = 7,
 +};
 +
 +ccl_device_forceinline int psycles_trace_event_index(ConstIntegratorState state)
@@ -279,6 +293,25 @@ index 00000000..23b96e02
 +                      render_buffer,
 +                      PSYCLES_TRACE_GLOBAL_SLOTS + event * PSYCLES_TRACE_EVENT_SLOTS +
 +                          relative_slot,
++                      value);
++}
++
++ccl_device_forceinline void psycles_trace_write_shadow_event_from_main(
++    KernelGlobals kg,
++    ConstIntegratorState state,
++    ccl_global float *ccl_restrict render_buffer,
++    const int relative_slot,
++    const float3 value)
++{
++  const int event = psycles_trace_event_index(state);
++  if (event < 0 || event >= PSYCLES_TRACE_MAX_EVENTS) {
++    return;
++  }
++  psycles_trace_write(kg,
++                      state,
++                      render_buffer,
++                      PSYCLES_TRACE_SHADOW_EVENT_BASE +
++                          event * PSYCLES_TRACE_SHADOW_EVENT_SLOTS + relative_slot,
 +                      value);
 +}
 +
@@ -452,7 +485,7 @@ index e2825b2b..bf84bc72 100644
    film_write_direct_light(kg, state, render_buffer);
    integrator_shadow_path_terminate(state, DEVICE_KERNEL_INTEGRATOR_SHADE_SHADOW);
 diff --git a/intern/cycles/kernel/integrator/shade_surface.h b/intern/cycles/kernel/integrator/shade_surface.h
-index 33b875a0..c0800927 100644
+index 33b875a0..c6582596 100644
 --- a/intern/cycles/kernel/integrator/shade_surface.h
 +++ b/intern/cycles/kernel/integrator/shade_surface.h
 @@ -5,6 +5,7 @@
@@ -606,7 +639,41 @@ index 33b875a0..c0800927 100644
  
      /* Create shadow ray. */
      light_sample_to_surface_shadow_ray(kg, sd, &ls, &ray);
-@@ -491,8 +579,10 @@ ccl_device_forceinline int integrate_surface_bsdf_bssrdf_bounce(
+@@ -441,6 +529,33 @@ ccl_device
+     ray.P = integrate_surface_ray_offset(kg, sd, ray.P, ray.D);
+   }
+ 
++  psycles_trace_write_shadow_event_from_main(
++      kg, state, render_buffer, PSYCLES_TRACE_SHADOW_EVENT_RAY_P, ray.P);
++  psycles_trace_write_shadow_event_from_main(
++      kg, state, render_buffer, PSYCLES_TRACE_SHADOW_EVENT_RAY_D, ray.D);
++  psycles_trace_write_shadow_event_from_main(
++      kg,
++      state,
++      render_buffer,
++      PSYCLES_TRACE_SHADOW_EVENT_RAY_RANGE,
++      make_float3(ray.tmin,
++                  ray.tmax,
++                  (ls.shader & SHADER_CAST_SHADOW) != 0 ? 1.0f : 0.0f));
++  psycles_trace_write_shadow_event_from_main(
++      kg,
++      state,
++      render_buffer,
++      PSYCLES_TRACE_SHADOW_EVENT_SOURCE,
++      make_float3(float(ray.self.object),
++                  float(ray.self.prim),
++                  ray.self.object != OBJECT_NONE ? 1.0f : 0.0f));
++  psycles_trace_write_shadow_event_from_main(
++      kg,
++      state,
++      render_buffer,
++      PSYCLES_TRACE_SHADOW_EVENT_LIGHT,
++      make_float3(float(ray.self.light_object), float(ray.self.light_prim), 0.0f));
++
+   /* Branch off shadow kernel. */
+   IntegratorShadowState shadow_state = integrate_direct_light_shadow_init_common(
+       kg,
+@@ -491,8 +606,10 @@ ccl_device_forceinline int integrate_surface_bsdf_bssrdf_bounce(
      KernelGlobals kg,
      IntegratorState state,
      ccl_private ShaderData *sd,
@@ -618,7 +685,7 @@ index 33b875a0..c0800927 100644
    /* Sample BSDF or BSSRDF. */
    if (!(sd->runtime_flag & (SR_BSDF | SR_BSSRDF))) {
      return LABEL_NONE;
-@@ -500,6 +590,23 @@ ccl_device_forceinline int integrate_surface_bsdf_bssrdf_bounce(
+@@ -500,6 +617,23 @@ ccl_device_forceinline int integrate_surface_bsdf_bssrdf_bounce(
  
    float3 rand_bsdf = path_state_rng_3D(kg, rng_state, PRNG_SURFACE_BSDF);
    const ccl_private ShaderClosure *sc = surface_shader_bsdf_bssrdf_pick(sd, &rand_bsdf);
@@ -642,7 +709,7 @@ index 33b875a0..c0800927 100644
  
  #ifdef __SUBSURFACE__
    /* BSSRDF closure, we schedule subsurface intersection kernel. */
-@@ -570,6 +677,24 @@ ccl_device_forceinline int integrate_surface_bsdf_bssrdf_bounce(
+@@ -570,6 +704,24 @@ ccl_device_forceinline int integrate_surface_bsdf_bssrdf_bounce(
      unguided_bsdf_pdf = bsdf_pdf;
    }
  
@@ -667,7 +734,7 @@ index 33b875a0..c0800927 100644
    if (label & LABEL_TRANSPARENT) {
      /* Only need to modify start distance for transparent. */
      INTEGRATOR_STATE_WRITE(state, ray, tmin) = intersection_t_offset(sd->ray_length);
-@@ -619,6 +744,57 @@ ccl_device_forceinline int integrate_surface_bsdf_bssrdf_bounce(
+@@ -619,6 +771,57 @@ ccl_device_forceinline int integrate_surface_bsdf_bssrdf_bounce(
    }
  
    path_state_next(kg, state, label, sd->runtime_flag);
@@ -725,7 +792,7 @@ index 33b875a0..c0800927 100644
  
    guiding_record_surface_bounce(kg,
                                  state,
-@@ -841,6 +1017,104 @@ ccl_device int integrate_surface(KernelGlobals kg,
+@@ -841,6 +1044,104 @@ ccl_device int integrate_surface(KernelGlobals kg,
      /* Load random number state. */
      RNGState rng_state;
      path_state_rng_load(state, &rng_state);
@@ -830,7 +897,7 @@ index 33b875a0..c0800927 100644
  
  #if defined(__PATH_GUIDING__) && PATH_GUIDING_LEVEL >= 4
      if (kernel_data.kernel_features & KERNEL_FEATURE_PATH_GUIDING) {
-@@ -851,7 +1125,7 @@ ccl_device int integrate_surface(KernelGlobals kg,
+@@ -851,7 +1152,7 @@ ccl_device int integrate_surface(KernelGlobals kg,
      /* Direct light. */
      PROFILING_EVENT(PROFILING_SHADE_SURFACE_DIRECT_LIGHT);
      const ShaderEvalResult result = integrate_surface_direct_light<node_feature_mask>(
@@ -839,7 +906,7 @@ index 33b875a0..c0800927 100644
      if (result == SHADER_EVAL_CACHE_MISS) {
        return LABEL_CACHE_MISS;
      }
-@@ -865,7 +1139,8 @@ ccl_device int integrate_surface(KernelGlobals kg,
+@@ -865,7 +1166,8 @@ ccl_device int integrate_surface(KernelGlobals kg,
  #endif
  
      PROFILING_EVENT(PROFILING_SHADE_SURFACE_INDIRECT_LIGHT);

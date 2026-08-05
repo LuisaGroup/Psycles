@@ -12,13 +12,15 @@ from typing import Iterable
 
 
 SCHEMA_NAME = "psycles.cycles-path-trace"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 AOV_PREFIX = "PsyTrace"
 GLOBAL_SLOT_COUNT = 8
 EVENT_SLOT_COUNT = 72
+SHADOW_EVENT_SLOT_COUNT = 8
 MAX_EVENTS = 4
 MAX_CLOSURES = 8
-AOV_COUNT = GLOBAL_SLOT_COUNT + EVENT_SLOT_COUNT * MAX_EVENTS
+SHADOW_EVENT_BASE = GLOBAL_SLOT_COUNT + EVENT_SLOT_COUNT * MAX_EVENTS
+AOV_COUNT = SHADOW_EVENT_BASE + SHADOW_EVENT_SLOT_COUNT * MAX_EVENTS
 
 COMPARE_EXACT = "exact"
 COMPARE_RANDOM_EXACT = "random_exact"
@@ -131,6 +133,20 @@ _EVENT_LAYOUT = (
     ("nee_light_shader", ("r", "g", "b")),
     ("nee_unshadowed", ("r", "g", "b")),
     ("nee_contribution", ("r", "g", "b")),
+)
+
+# Shadow diagnostics are appended after every stable version-1 event block.
+# Keeping this as a separate tail preserves every existing event and closure
+# index while allowing the trace to describe the ray-query boundary itself.
+_SHADOW_EVENT_LAYOUT = (
+    ("shadow_ray_p", ("x", "y", "z")),
+    ("shadow_ray_d", ("x", "y", "z")),
+    ("shadow_ray_range", ("tmin", "tmax", "cast_shadow")),
+    ("shadow_source", ("object", "primitive", "skip_self")),
+    ("shadow_light", ("object", "primitive", "reserved")),
+    ("shadow_hit_id", ("object", "primitive", "kind")),
+    ("shadow_hit_coord", ("distance", "u", "v")),
+    ("shadow_transmittance", ("r", "g", "b")),
 )
 
 
@@ -248,6 +264,28 @@ _EVENT_COMPARISON = {
     "nee_light_shader": (COMPARE_FLOAT32,) * 3,
     "nee_unshadowed": (COMPARE_FLOAT32,) * 3,
     "nee_contribution": (COMPARE_FLOAT32,) * 3,
+    "shadow_ray_p": (COMPARE_FLOAT32,) * 3,
+    "shadow_ray_d": (COMPARE_FLOAT32,) * 3,
+    "shadow_ray_range": (
+        COMPARE_FLOAT32,
+        COMPARE_FLOAT32,
+        COMPARE_EXACT,
+    ),
+    "shadow_source": (COMPARE_EXACT,) * 3,
+    "shadow_light": (
+        COMPARE_EXACT,
+        COMPARE_EXACT,
+        COMPARE_RESERVED,
+    ),
+    # Backend traversal identities are diagnostic evidence rather than a
+    # cross-implementation equality gate: a false Psycles hit is expected to
+    # have no Cycles counterpart. The written bit is ignored with the values.
+    "shadow_hit_id": (COMPARE_RESERVED,) * 3,
+    "shadow_hit_coord": (COMPARE_RESERVED,) * 3,
+    # Cycles' shadow wavefront stores radiance after transport rather than a
+    # standalone transmittance. Psycles records the latter to diagnose its
+    # traversal, but the cross-oracle gate remains nee_contribution above.
+    "shadow_transmittance": (COMPARE_RESERVED,) * 3,
 }
 
 
@@ -317,6 +355,20 @@ def slots() -> tuple[TraceSlot, ...]:
             for relative, (name, components) in enumerate(_EVENT_LAYOUT)
         )
         result.extend(_closure_slots(event, event_base))
+    for event in range(MAX_EVENTS):
+        shadow_base = SHADOW_EVENT_BASE + event * SHADOW_EVENT_SLOT_COUNT
+        result.extend(
+            TraceSlot(
+                shadow_base + relative,
+                "event",
+                name,
+                components,
+                event=event,
+            )
+            for relative, (name, components) in enumerate(
+                _SHADOW_EVENT_LAYOUT
+            )
+        )
     if len(result) != AOV_COUNT:
         raise AssertionError(
             f"trace schema has {len(result)} slots, expected {AOV_COUNT}"
@@ -360,6 +412,14 @@ def cpp_header() -> str:
             "inline constexpr std::uint32_t event_slot_count = "
             f"{EVENT_SLOT_COUNT}u;"
         ),
+        (
+            "inline constexpr std::uint32_t shadow_event_slot_count = "
+            f"{SHADOW_EVENT_SLOT_COUNT}u;"
+        ),
+        (
+            "inline constexpr std::uint32_t shadow_event_base = "
+            f"{SHADOW_EVENT_BASE}u;"
+        ),
         f"inline constexpr std::uint32_t max_events = {MAX_EVENTS}u;",
         f"inline constexpr std::uint32_t max_closures = {MAX_CLOSURES}u;",
         f"inline constexpr std::uint32_t slot_count = {AOV_COUNT}u;",
@@ -373,9 +433,20 @@ def cpp_header() -> str:
         f"    closure_base = {len(_EVENT_LAYOUT)}u,",
         "};",
         "",
+        "enum class ShadowEventSlot : std::uint32_t {",
+        *enum_members(_SHADOW_EVENT_LAYOUT),
+        "};",
+        "",
         "[[nodiscard]] constexpr std::uint32_t index(",
         "    GlobalSlot slot) noexcept {",
         "    return static_cast<std::uint32_t>(slot);",
+        "}",
+        "",
+        "[[nodiscard]] constexpr std::uint32_t shadow_index(",
+        "    std::uint32_t event,",
+        "    ShadowEventSlot slot) noexcept {",
+        "    return shadow_event_base + event * shadow_event_slot_count +",
+        "           static_cast<std::uint32_t>(slot);",
         "}",
         "",
         "[[nodiscard]] constexpr std::uint32_t index(",
@@ -407,6 +478,8 @@ def schema_document() -> dict[str, object]:
         "aov_count": AOV_COUNT,
         "global_slot_count": GLOBAL_SLOT_COUNT,
         "event_slot_count": EVENT_SLOT_COUNT,
+        "shadow_event_slot_count": SHADOW_EVENT_SLOT_COUNT,
+        "shadow_event_base": SHADOW_EVENT_BASE,
         "max_events": MAX_EVENTS,
         "max_closures": MAX_CLOSURES,
         "slots": [

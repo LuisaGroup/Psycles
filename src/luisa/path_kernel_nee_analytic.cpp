@@ -1,5 +1,7 @@
 #include "path_kernel_builder.h"
 
+#include "cycles_shader_identity.h"
+
 #include "path_kernel_area_light.h"
 #include "path_kernel_direct_light_trace.h"
 
@@ -338,16 +340,27 @@ class AnalyticLightingComponent final : public DirectLightingComponent {
                             shadow_direction,
                             0.0f,
                             shadow_maximum);
-                        const auto shadow_transmittance = trace_shadow(
+                        const auto source_object = select(
+                            surface_ray::invalid_primitive,
+                            surface.cycles_object_index,
+                            shadow.skip_self);
+                        const auto source_primitive = select(
+                            surface_ray::invalid_primitive,
+                            surface.cycles_primitive_index,
+                            shadow.skip_self);
+                        const auto light_object =
+                            light.cycles_object_index;
+                        const auto light_primitive =
+                            UInt{surface_ray::invalid_primitive};
+                        const auto cast_shadow =
+                            (light.cycles_shader_flags &
+                             cycles_shader_identity::cast_shadow) != 0u;
+                        const auto shadow_result = trace_shadow(
                             shadow_ray,
-                            select(surface_ray::invalid_primitive,
-                                   surface.cycles_object_index,
-                                   shadow.skip_self),
-                            select(surface_ray::invalid_primitive,
-                                   surface.cycles_primitive_index,
-                                   shadow.skip_self),
-                            surface_ray::invalid_primitive,
-                            surface_ray::invalid_primitive,
+                            source_object,
+                            source_primitive,
+                            light_object,
+                            light_primitive,
                             kernel_parameters.transparent_max_bounces,
                             pack_shader_evaluation_state(
                                 cycles_path_state::shadow_shader_state(
@@ -356,6 +369,33 @@ class AnalyticLightingComponent final : public DirectLightingComponent {
                                     glossy_depth,
                                     transparent_depth,
                                     transmission_depth)));
+                        const auto shadow_transmittance =
+                            shadow_result->transmittance;
+                        _trace->record_shadow(
+                            bounce,
+                            {.origin = shadow_ray->origin(),
+                             .direction = shadow_ray->direction(),
+                             .minimum = shadow_ray->t_min(),
+                             .maximum = shadow_ray->t_max(),
+                             .cast_shadow = cast_shadow,
+                             .source_object = source_object,
+                             .source_primitive = source_primitive,
+                             .skip_self = shadow.skip_self,
+                             .light_object = light_object,
+                             .light_primitive = light_primitive,
+                             .first_hit =
+                                 shadow_result->first_hit != 0u,
+                             .first_object =
+                                 shadow_result->first_object,
+                             .first_primitive =
+                                 shadow_result->first_primitive,
+                             .first_kind =
+                                 shadow_result->first_kind,
+                             .first_distance =
+                                 shadow_result->first_distance,
+                             .first_barycentric =
+                                 shadow_result->first_barycentric,
+                             .transmittance = shadow_transmittance});
                         $if(any(shadow_transmittance > 0.0f)) {
                             const auto unclamped_contribution =
                                 throughput * surviving_unshadowed *

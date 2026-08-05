@@ -217,31 +217,48 @@ private:
           } $else {
             const auto geometry =
                 scene->geometry_buffer->read(instance.geometry_index);
+            const auto triangle =
+                scene->heap
+                    ->buffer<Triangle>(geometry.bindless_base)
+                    .read(hit->prim);
+            const auto positions =
+                scene->heap->buffer<luisa::float3>(
+                    geometry.bindless_base + 9u);
+            // Hardware triangle queries are a broad-phase candidate source.
+            // Resolve every candidate with Cycles' Pluecker predicate so a
+            // backend-specific near-origin hit cannot become a shadow or
+            // closest-surface event that Cycles itself would reject.
+            const auto intersection = _triangle_intersection->intersect(
+                ray,
+                instance.cycles_world_to_object,
+                instance.cycles_transform_applied,
+                positions.read(triangle.i0),
+                positions.read(triangle.i1),
+                positions.read(triangle.i2));
             const auto object =
                 _materials->cycles_object_index(hit->inst, instance);
             const auto primitive =
                 geometry.cycles_primitive_offset + hit->prim;
             const auto excluded = source.matches(object, primitive) |
                                   light.matches(object, primitive);
-            const auto within_cycles_interval =
-                (hit->committed_ray_t >= ray->t_min()) &
-                (hit->committed_ray_t <= ray->t_max());
+            const auto visible =
+                (instance.visibility_mask & visibility_mask) != 0u;
             const auto accepted =
-                within_cycles_interval &
-                closest.accepts(hit->committed_ray_t, object, primitive,
+                intersection.valid & visible &
+                closest.accepts(intersection.distance, object, primitive,
                                 geometry.primitive_kind);
             $if(!excluded & accepted) {
               if (commit_candidate) {
                 candidate.commit();
               }
-              closest.select(hit->committed_ray_t, object, primitive,
+              closest.select(intersection.distance, object, primitive,
                              geometry.primitive_kind);
               resolved->inst = hit->inst;
               resolved->prim = hit->prim;
-              resolved->bary = hit->bary;
+              resolved->bary = intersection.barycentric;
               resolved->hit_type = static_cast<std::uint32_t>(
                   luisa::compute::HitType::Surface);
-              resolved->committed_ray_t = hit->committed_ray_t;
+              resolved->committed_ray_t = intersection.distance;
             };
           };
         };

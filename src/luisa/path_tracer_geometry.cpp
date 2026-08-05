@@ -12,7 +12,7 @@ namespace psycles::luisa_backend::detail {
 namespace {
 
 using EvaluateShadowSurfaceCallable =
-    Callable<luisa::float3(
+    Callable<ShadowSurfaceEvaluationCall(
         luisa::compute::Ray,
         luisa::compute::CommittedHit,
         ShaderEvaluationStateCall)>;
@@ -44,11 +44,19 @@ make_evaluate_shadow_surface_callable(
             auto point = std::move(primitive.point);
             point.ray_visibility = shadow_visibility;
             cycles_path_state::apply_shader_state(point, shader_state);
-            return clamp(
+            Var<ShadowSurfaceEvaluationCall> result;
+            result->transmittance = clamp(
                 scene->surfaces.transparent_extinction(
                     primitive.surface_tag, services, point),
                 make_float3(0.0f),
                 make_float3(1.0f));
+            result->object = primitive.cycles_object_index;
+            result->primitive = primitive.cycles_primitive_index;
+            result->kind = select(
+                geometry_kind_triangle,
+                geometry_kind_curve,
+                primitive.is_curve);
+            return result;
         };
     return evaluate_shadow_surface;
 }
@@ -75,6 +83,12 @@ TraceShadowCallable make_trace_shadow_callable(
             Float3 transmittance = make_float3(1.0f);
             UInt transparent_depth = initial_shader_state.transparent_depth;
             Bool active = true;
+            Bool first_hit = false;
+            UInt first_object = surface_ray::invalid_primitive;
+            UInt first_primitive = surface_ray::invalid_primitive;
+            UInt first_kind = surface_ray::invalid_primitive;
+            Float first_distance = 0.0f;
+            Float2 first_barycentric = make_float2(0.0f);
 
             // Candidate callbacks have no traversal-order contract. Cycles
             // shades transparent shadow hits after sorting by t, so iterate
@@ -102,10 +116,19 @@ TraceShadowCallable make_trace_shadow_callable(
                     $else {
                         auto shader_state = initial_shader_state;
                         shader_state.transparent_depth = transparent_depth;
-                        const auto transparent = evaluate_shadow_surface(
+                        const auto surface = evaluate_shadow_surface(
                             shadow_ray,
                             committed,
                             pack_shader_evaluation_state(shader_state));
+                        $if(!first_hit) {
+                            first_hit = true;
+                            first_object = surface->object;
+                            first_primitive = surface->primitive;
+                            first_kind = surface->kind;
+                            first_distance = committed->committed_ray_t;
+                            first_barycentric = committed->bary;
+                        };
+                        const auto transparent = surface->transmittance;
                         const auto carries_light =
                             max(transparent.x,
                                 max(transparent.y, transparent.z)) >
@@ -124,7 +147,15 @@ TraceShadowCallable make_trace_shadow_callable(
                     };
                 };
             };
-            return transmittance;
+            Var<ShadowTraceResultCall> result;
+            result->transmittance = transmittance;
+            result->first_hit = cast<uint>(first_hit);
+            result->first_object = first_object;
+            result->first_primitive = first_primitive;
+            result->first_kind = first_kind;
+            result->first_distance = first_distance;
+            result->first_barycentric = first_barycentric;
+            return result;
         };
     return trace_shadow;
 }

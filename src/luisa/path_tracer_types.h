@@ -156,6 +156,23 @@ struct ShaderEvaluationStateCall {
     luisa::uint transmission_depth{};
 };
 
+struct ShadowSurfaceEvaluationCall {
+    luisa::float3 transmittance{};
+    luisa::uint object{};
+    luisa::uint primitive{};
+    luisa::uint kind{};
+};
+
+struct ShadowTraceResultCall {
+    luisa::float3 transmittance{};
+    luisa::uint first_hit{};
+    luisa::uint first_object{};
+    luisa::uint first_primitive{};
+    luisa::uint first_kind{};
+    float first_distance{};
+    luisa::float2 first_barycentric{};
+};
+
 struct SurfacePointCall {
     luisa::float3 position{};
     luisa::float3 object_position{};
@@ -469,6 +486,21 @@ LUISA_STRUCT(
     glossy_depth,
     transparent_depth,
     transmission_depth) {};
+LUISA_STRUCT(
+    psycles::luisa_backend::detail::ShadowSurfaceEvaluationCall,
+    transmittance,
+    object,
+    primitive,
+    kind) {};
+LUISA_STRUCT(
+    psycles::luisa_backend::detail::ShadowTraceResultCall,
+    transmittance,
+    first_hit,
+    first_object,
+    first_primitive,
+    first_kind,
+    first_distance,
+    first_barycentric) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::SurfacePointCall,
     position,

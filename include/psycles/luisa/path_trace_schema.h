@@ -8,12 +8,14 @@
 namespace psycles::luisa_backend::path_trace_schema {
 
 inline constexpr std::string_view name{"psycles.cycles-path-trace"};
-inline constexpr std::uint32_t version = 1u;
+inline constexpr std::uint32_t version = 2u;
 inline constexpr std::uint32_t global_slot_count = 8u;
 inline constexpr std::uint32_t event_slot_count = 72u;
+inline constexpr std::uint32_t shadow_event_slot_count = 8u;
+inline constexpr std::uint32_t shadow_event_base = 296u;
 inline constexpr std::uint32_t max_events = 4u;
 inline constexpr std::uint32_t max_closures = 8u;
-inline constexpr std::uint32_t slot_count = 296u;
+inline constexpr std::uint32_t slot_count = 328u;
 
 enum class GlobalSlot : std::uint32_t {
     header = 0u,
@@ -78,9 +80,27 @@ enum class EventSlot : std::uint32_t {
     closure_base = 48u,
 };
 
+enum class ShadowEventSlot : std::uint32_t {
+    shadow_ray_p = 0u,
+    shadow_ray_d = 1u,
+    shadow_ray_range = 2u,
+    shadow_source = 3u,
+    shadow_light = 4u,
+    shadow_hit_id = 5u,
+    shadow_hit_coord = 6u,
+    shadow_transmittance = 7u,
+};
+
 [[nodiscard]] constexpr std::uint32_t index(
     GlobalSlot slot) noexcept {
     return static_cast<std::uint32_t>(slot);
+}
+
+[[nodiscard]] constexpr std::uint32_t shadow_index(
+    std::uint32_t event,
+    ShadowEventSlot slot) noexcept {
+    return shadow_event_base + event * shadow_event_slot_count +
+           static_cast<std::uint32_t>(slot);
 }
 
 [[nodiscard]] constexpr std::uint32_t index(
