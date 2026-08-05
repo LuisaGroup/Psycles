@@ -242,6 +242,10 @@ _PROBE_RATIO_GATES = {
         "Combined": (0.99999, 1.00001),
         "Env": (0.99999, 1.00001),
     },
+    "fresnel_matrix": {
+        "Combined": (0.99999, 1.00001),
+        "Emit": (0.99999, 1.00001),
+    },
     "glass_transport": {
         "Combined": (0.9999, 1.0001),
         "GlossCol": (0.9999, 1.0001),
@@ -403,6 +407,10 @@ _PROBE_RELATIVE_RMSE_GATES = {
     "environment_texture_world_default": {
         "Combined": 0.00001,
         "Env": 0.00001,
+    },
+    "fresnel_matrix": {
+        "Combined": 0.00001,
+        "Emit": 0.00001,
     },
     "glass_transport": {
         "Combined": 0.0002,

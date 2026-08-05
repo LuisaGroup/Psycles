@@ -254,6 +254,10 @@ public:
     if (type == "FRESNEL") {
       const auto id =
           context.graph().add_node(compiler::node_type::fresnel, node_name);
+      static_cast<void>(context.graph().set_property(
+          id, "NormalLinked",
+          SocketValue::boolean(
+              context.input_source(node, "Normal").has_value())));
       static_cast<void>(
           context.bind(id, "IOR", node, "IOR", SocketType::floating));
       static_cast<void>(

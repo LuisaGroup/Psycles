@@ -281,8 +281,12 @@ public:
     case compiler::ValueOperation::fresnel: {
       auto eta = max(scalar(instruction.a, result), 1.0e-5f);
       eta = select(eta, 1.0f / eta, point.back_facing);
-      auto normal =
-          safe_normalize(vector(instruction.b, result), result.shading_normal);
+      // Cycles' stack_load_float3_default substitutes sd->N only for an
+      // unconnected socket. A connected vector is consumed verbatim: shader
+      // vector sockets do not acquire an implicit normalization operation.
+      const auto normal = instruction.static_u0 != 0u
+                              ? vector(instruction.b, result)
+                              : result.shading_normal;
       value =
           make_float4(fresnel_dielectric_cos(dot(point.incoming, normal), eta));
       break;
