@@ -936,6 +936,20 @@ official Barbershop staged node differentials, and inspected triptychs are
 recorded in
 [`validation/2026-08-05/barbershop-render-uv-box`](validation/2026-08-05/barbershop-render-uv-box/README.md).
 
+Exact-support aliases now reproduce Cycles' per-object geometry
+representation instead of inheriting the first acceleration-backend
+candidate. Bit-identical position/index support at a bit-identical transform
+forms an exact class; each member then uses either Cycles' static-transformed
+vertices or its object-space ray relation according to geometry user count,
+motion, adaptive subdivision, BSSRDF, and true-displacement gates. An
+explicit FMA-ordered Pluecker component evaluates those candidates before
+visibility, exclusion, closed-interval, and stable identity selection. The
+official Barbershop sample-6 object/primitive regression passes on
+fallback/HIP/Vulkan, and the 128 spp Cycles CPU/HIP differential, fallback
+full-scene run, performance cost, inspected triptychs, sparse repeat
+nondeterminism, and remaining event-3 residual are recorded in
+[`validation/2026-08-05/barbershop-cycles-geometry-representation`](validation/2026-08-05/barbershop-cycles-geometry-representation/README.md).
+
 Adaptive sampling and denoising are exported and diagnosed but are not part of
 the path-integrator estimator. Psycles renders fixed-count, un-denoised linear
 passes; authoritative Cycles differential renders disable both. A connected
