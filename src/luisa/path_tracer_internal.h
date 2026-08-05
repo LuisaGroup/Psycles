@@ -309,8 +309,8 @@ struct LuisaSceneData {
     BindlessArray heap;
     Buffer<GeometryGpu> geometry_buffer;
     Buffer<InstanceGpu> instance_buffer;
-    Buffer<CoincidentPrimitiveGpu> coincident_primitive_buffer;
-    Buffer<luisa::uint> coincident_primitive_instance_buffer;
+    Buffer<PrimitiveCompletionGpu> primitive_completion_buffer;
+    Buffer<luisa::uint> primitive_completion_instance_buffer;
     // Sorted (Cycles object index, Luisa TLAS instance index) pairs. Cycles
     // excludes only the exact source primitive, so traversal must be able to
     // recover the source's exact-support class even when a backend does not

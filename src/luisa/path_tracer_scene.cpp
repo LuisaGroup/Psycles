@@ -146,7 +146,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     auto cycles_instance_intersection_plan =
         build_cycles_instance_intersection_plan(
             snapshot, surface_bssrdf_materials);
-    CyclesPrimitiveIntersectionPlan cycles_primitive_intersection_plan;
+    CyclesPrimitiveCompletionPlan cycles_primitive_completion_plan;
     std::map<contract::GeometryId, Mat4f>
         cycles_static_transform_by_geometry;
     auto source_instance_index = std::size_t{0u};
@@ -1392,7 +1392,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             geometry_indices,
             uploads,
             cycles_instance_intersection_plan,
-            cycles_primitive_intersection_plan)) {
+            cycles_primitive_completion_plan)) {
         diagnose(
             result.diagnostics,
             "Cycles instance intersection plan has inconsistent final "
@@ -1427,9 +1427,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     }
 
     luisa::vector<InstanceGpu> instances;
-    auto coincident_primitive_upload =
-        make_coincident_primitive_upload(
-            cycles_primitive_intersection_plan);
+    auto primitive_completion_upload =
+        make_primitive_completion_upload(
+            cycles_primitive_completion_plan);
     luisa::vector<MaterialBindingGpu> override_materials;
     luisa::vector<EmissiveTriangleGpu> emissive_triangles;
     std::vector<float> emissive_triangle_areas;
@@ -1507,10 +1507,10 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 intersection_plan.coincident_next,
             .coincident_count =
                 intersection_plan.coincident_count,
-            .coincident_primitive_offset =
-                intersection_plan.coincident_primitive_offset,
-            .coincident_primitive_count =
-                intersection_plan.coincident_primitive_count,
+            .primitive_completion_offset =
+                intersection_plan.primitive_completion_offset,
+            .primitive_completion_count =
+                intersection_plan.primitive_completion_count,
             .cycles_transform_applied =
                 intersection_plan.transform_applied ? 1u : 0u,
             .cycles_world_to_object =
@@ -1953,10 +1953,10 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
          .attribute_bindings = attribute_bindings,
          .attribute_ranges = attribute_ranges,
          .instances = instances,
-         .coincident_primitives =
-             coincident_primitive_upload.records,
-         .coincident_primitive_instances =
-             coincident_primitive_upload.instances,
+         .primitive_completions =
+             primitive_completion_upload.records,
+         .primitive_completion_instances =
+             primitive_completion_upload.instances,
          .geometry_materials = geometry_materials,
          .override_materials = override_materials,
          .lights = lights,

@@ -163,21 +163,35 @@ void hash_word(std::uint64_t &hash, std::uint32_t word) noexcept {
     return true;
 }
 
-[[nodiscard]] std::array<std::uint32_t, 9u>
-primitive_support_signature(
-    std::span<const Vec3f> world_positions,
-    std::array<std::uint32_t, 3u> triangle) noexcept {
-    std::array<std::uint32_t, 9u> result{};
-    for (auto corner = 0u; corner < 3u; ++corner) {
-        const auto point = world_positions[triangle[corner]];
-        result[corner * 3u + 0u] =
-            std::bit_cast<std::uint32_t>(point.x);
-        result[corner * 3u + 1u] =
-            std::bit_cast<std::uint32_t>(point.y);
-        result[corner * 3u + 2u] =
-            std::bit_cast<std::uint32_t>(point.z);
-    }
-    return result;
+struct ClosedPrimitiveBounds {
+    Vec3f minimum;
+    Vec3f maximum;
+};
+
+[[nodiscard]] ClosedPrimitiveBounds primitive_bounds(
+    Vec3f p0,
+    Vec3f p1,
+    Vec3f p2) noexcept {
+    return {
+        .minimum = {
+            std::min({p0.x, p1.x, p2.x}),
+            std::min({p0.y, p1.y, p2.y}),
+            std::min({p0.z, p1.z, p2.z})},
+        .maximum = {
+            std::max({p0.x, p1.x, p2.x}),
+            std::max({p0.y, p1.y, p2.y}),
+            std::max({p0.z, p1.z, p2.z})}};
+}
+
+[[nodiscard]] bool closed_bounds_overlap(
+    const ClosedPrimitiveBounds &a,
+    const ClosedPrimitiveBounds &b) noexcept {
+    return a.minimum.x <= b.maximum.x &&
+           b.minimum.x <= a.maximum.x &&
+           a.minimum.y <= b.maximum.y &&
+           b.minimum.y <= a.maximum.y &&
+           a.minimum.z <= b.maximum.z &&
+           b.minimum.z <= a.maximum.z;
 }
 
 }// namespace
@@ -308,7 +322,7 @@ bool finalize_cycles_instance_intersection_plan(
     const std::map<contract::GeometryId, CyclesGeometrySupportView>
         &final_supports,
     std::span<CyclesInstanceIntersectionPlan> plan,
-    CyclesPrimitiveIntersectionPlan &primitive_plan) {
+    CyclesPrimitiveCompletionPlan &primitive_plan) {
     constexpr auto maximum_index =
         std::numeric_limits<std::uint32_t>::max();
     primitive_plan = {};
@@ -319,8 +333,8 @@ bool finalize_cycles_instance_intersection_plan(
     for (std::size_t index = 0u; index < plan.size(); ++index) {
         plan[index].coincident_next = static_cast<std::uint32_t>(index);
         plan[index].coincident_count = 1u;
-        plan[index].coincident_primitive_offset = 0u;
-        plan[index].coincident_primitive_count = 0u;
+        plan[index].primitive_completion_offset = 0u;
+        plan[index].primitive_completion_count = 0u;
     }
 
     struct InstanceSupport {
@@ -390,8 +404,10 @@ bool finalize_cycles_instance_intersection_plan(
         whole_support_representative[instance] =
             static_cast<std::uint32_t>(instance);
     }
-    std::vector<std::vector<CyclesCoincidentPrimitiveRecord>>
+    std::vector<std::vector<CyclesPrimitiveCompletionRecord>>
         records_by_instance(plan.size());
+    std::map<std::vector<std::uint32_t>, std::uint32_t>
+        completion_instance_offsets;
 
     for (auto &[support_class, entries] : support_groups) {
         if (entries.empty()) {
@@ -457,18 +473,33 @@ bool finalize_cycles_instance_intersection_plan(
                 whole_support_representative[current] = representative;
             }
         }
+        // A singleton whole-support group already represents every instance
+        // in this local-support class. No sparse cross-group completion can
+        // exist, so avoid a per-primitive sweep for the common case.
+        if (whole_groups.size() < 2u) {
+            continue;
+        }
 
         struct PrimitiveCandidate {
-            std::array<std::uint32_t, 9u> signature;
+            ClosedPrimitiveBounds bounds;
+            std::size_t entry{};
             std::uint32_t instance{};
         };
         std::vector<PrimitiveCandidate> candidates;
         candidates.reserve(entries.size());
+        std::vector<std::vector<std::uint32_t>> adjacent_instances(
+            entries.size());
         for (std::size_t primitive = 0u;
              primitive < triangle_count;
              ++primitive) {
             candidates.clear();
-            for (const auto &entry : entries) {
+            for (auto &adjacent : adjacent_instances) {
+                adjacent.clear();
+            }
+            for (std::size_t entry_index = 0u;
+                 entry_index < entries.size();
+                 ++entry_index) {
+                const auto &entry = entries[entry_index];
                 const auto triangle = entry.support.triangle(primitive);
                 const auto p0 = entry.world_positions[triangle[0u]];
                 const auto p1 = entry.world_positions[triangle[1u]];
@@ -477,61 +508,84 @@ bool finalize_cycles_instance_intersection_plan(
                     continue;
                 }
                 candidates.emplace_back(PrimitiveCandidate{
-                    .signature = primitive_support_signature(
-                        entry.world_positions, triangle),
+                    .bounds = primitive_bounds(p0, p1, p2),
+                    .entry = entry_index,
                     .instance = entry.instance});
+                adjacent_instances[entry_index].emplace_back(
+                    entry.instance);
             }
             std::sort(
                 candidates.begin(), candidates.end(),
                 [](const PrimitiveCandidate &a,
                    const PrimitiveCandidate &b) noexcept {
-                    if (a.signature != b.signature) {
-                        return a.signature < b.signature;
+                    if (a.bounds.minimum.x != b.bounds.minimum.x) {
+                        return a.bounds.minimum.x < b.bounds.minimum.x;
                     }
                     return a.instance < b.instance;
                 });
+            // A source endpoint common to two closed triangles necessarily
+            // lies in both of their closed AABBs. This sweep therefore forms
+            // a conservative finite broad phase without a spatial epsilon;
+            // false positives are rejected by the device's Cycles predicate.
             for (std::size_t first = 0u;
-                 first < candidates.size();) {
-                auto last = first + 1u;
-                while (last < candidates.size() &&
-                       candidates[last].signature ==
-                           candidates[first].signature) {
-                    ++last;
+                 first < candidates.size();
+                 ++first) {
+                for (auto second = first + 1u;
+                     second < candidates.size() &&
+                     candidates[second].bounds.minimum.x <=
+                         candidates[first].bounds.maximum.x;
+                     ++second) {
+                    if (!closed_bounds_overlap(
+                            candidates[first].bounds,
+                            candidates[second].bounds)) {
+                        continue;
+                    }
+                    adjacent_instances[candidates[first].entry]
+                        .emplace_back(candidates[second].instance);
+                    adjacent_instances[candidates[second].entry]
+                        .emplace_back(candidates[first].instance);
                 }
-                auto spans_whole_groups = false;
-                for (auto member = first + 1u;
-                     member < last;
-                     ++member) {
-                    spans_whole_groups |=
-                        whole_support_representative[
-                            candidates[member].instance] !=
-                        whole_support_representative[
-                            candidates[first].instance];
+            }
+            for (const auto &candidate : candidates) {
+                auto &adjacent = adjacent_instances[candidate.entry];
+                std::sort(adjacent.begin(), adjacent.end());
+                const auto source_representative =
+                    whole_support_representative[candidate.instance];
+                const auto spans_whole_groups = std::any_of(
+                    adjacent.begin(), adjacent.end(),
+                    [&](std::uint32_t instance) noexcept {
+                        return whole_support_representative[instance] !=
+                               source_representative;
+                    });
+                if (!spans_whole_groups) {
+                    continue;
                 }
-                if (last - first > 1u && spans_whole_groups) {
-                    if (primitive_plan.instances.size() > maximum_index -
-                            (last - first)) {
+                std::uint32_t instance_offset{};
+                if (const auto existing =
+                        completion_instance_offsets.find(adjacent);
+                    existing != completion_instance_offsets.end()) {
+                    instance_offset = existing->second;
+                } else {
+                    if (primitive_plan.instances.size() >
+                        maximum_index - adjacent.size()) {
                         return false;
                     }
-                    const auto alias_offset =
+                    instance_offset =
                         static_cast<std::uint32_t>(
                             primitive_plan.instances.size());
-                    const auto alias_count =
-                        static_cast<std::uint32_t>(last - first);
-                    for (auto member = first; member < last; ++member) {
-                        primitive_plan.instances.emplace_back(
-                            candidates[member].instance);
-                    }
-                    for (auto member = first; member < last; ++member) {
-                        records_by_instance[candidates[member].instance]
-                            .emplace_back(CyclesCoincidentPrimitiveRecord{
-                                .local_primitive =
-                                    static_cast<std::uint32_t>(primitive),
-                                .instance_offset = alias_offset,
-                                .instance_count = alias_count});
-                    }
+                    primitive_plan.instances.insert(
+                        primitive_plan.instances.end(),
+                        adjacent.begin(), adjacent.end());
+                    completion_instance_offsets.emplace(
+                        adjacent, instance_offset);
                 }
-                first = last;
+                records_by_instance[candidate.instance].emplace_back(
+                    CyclesPrimitiveCompletionRecord{
+                        .local_primitive =
+                            static_cast<std::uint32_t>(primitive),
+                        .instance_offset = instance_offset,
+                        .instance_count =
+                            static_cast<std::uint32_t>(adjacent.size())});
             }
         }
     }
@@ -542,17 +596,17 @@ bool finalize_cycles_instance_intersection_plan(
         auto &records = records_by_instance[instance];
         std::sort(
             records.begin(), records.end(),
-            [](const CyclesCoincidentPrimitiveRecord &a,
-               const CyclesCoincidentPrimitiveRecord &b) noexcept {
+            [](const CyclesPrimitiveCompletionRecord &a,
+               const CyclesPrimitiveCompletionRecord &b) noexcept {
                 return a.local_primitive < b.local_primitive;
             });
         if (primitive_plan.records.size() >
             maximum_index - records.size()) {
             return false;
         }
-        plan[instance].coincident_primitive_offset =
+        plan[instance].primitive_completion_offset =
             static_cast<std::uint32_t>(primitive_plan.records.size());
-        plan[instance].coincident_primitive_count =
+        plan[instance].primitive_completion_count =
             static_cast<std::uint32_t>(records.size());
         primitive_plan.records.insert(
             primitive_plan.records.end(),

@@ -21,7 +21,7 @@ using namespace luisa::compute;
 using namespace psycles::luisa_backend::detail;
 using psycles::luisa_backend::surface_ray::invalid_primitive;
 
-inline constexpr std::size_t record_count = 25u;
+inline constexpr std::size_t record_count = 26u;
 
 [[nodiscard]] bool near(float actual, float expected,
                         float tolerance = 2.0e-6f) noexcept {
@@ -187,14 +187,14 @@ int main(int argc, char **argv) {
                   .cycles_transform_applied = 1u},
       InstanceGpu{.geometry_index = 7u,
                   .cycles_object_index = 29u,
-                  .coincident_primitive_offset = 0u,
-                  .coincident_primitive_count = 1u,
+                  .primitive_completion_offset = 0u,
+                  .primitive_completion_count = 2u,
                   .cycles_transform_applied = 1u,
                   .cycles_world_to_object = partial_a_world_to_object},
       InstanceGpu{.geometry_index = 8u,
                   .cycles_object_index = 32u,
-                  .coincident_primitive_offset = 1u,
-                  .coincident_primitive_count = 1u,
+                  .primitive_completion_offset = 2u,
+                  .primitive_completion_count = 2u,
                   .cycles_transform_applied = 1u,
                   .cycles_world_to_object = partial_b_world_to_object}};
   constexpr std::array cycles_object_instance_map{
@@ -210,14 +210,20 @@ int main(int argc, char **argv) {
       luisa::uint2{2372u, 5u},
       luisa::uint2{5011u, 6u},
       luisa::uint2{5066u, 7u}};
-  constexpr std::array coincident_primitives{
-      CoincidentPrimitiveGpu{.local_primitive = 1u,
+  constexpr std::array primitive_completions{
+      PrimitiveCompletionGpu{.local_primitive = 1u,
                              .instance_offset = 0u,
                              .instance_count = 2u},
-      CoincidentPrimitiveGpu{.local_primitive = 1u,
+      PrimitiveCompletionGpu{.local_primitive = 4u,
+                             .instance_offset = 0u,
+                             .instance_count = 2u},
+      PrimitiveCompletionGpu{.local_primitive = 1u,
+                             .instance_offset = 0u,
+                             .instance_count = 2u},
+      PrimitiveCompletionGpu{.local_primitive = 4u,
                              .instance_offset = 0u,
                              .instance_count = 2u}};
-  constexpr std::array coincident_primitive_instances{10u, 11u};
+  constexpr std::array primitive_completion_instances{10u, 11u};
   constexpr std::array geometry_materials{
       MaterialBindingGpu{.surface_tag = 41u,
                          .cycles_shader_index = 5u,
@@ -293,9 +299,16 @@ int main(int argc, char **argv) {
       luisa::float3{0.3124595582485199f,
                     -0.03609641641378403f, 0.0f},
       luisa::float3{0.36543145775794983f,
-                    -0.03609641641378403f, 0.0f}};
+                    -0.03609641641378403f, 0.0f},
+      // Barbershop object 29 primitive 457046 / object 32 primitive
+      // 504350: corresponding world vertices differ by one ULP in y.
+      luisa::float3{0x1.758f2cp-2f, 0x1.1e1dc4p-1f, 0.0f},
+      luisa::float3{0x1.3f50e6p-2f, 0x1.1e1dc4p-1f, 0.0f},
+      luisa::float3{0x1.3fa1ep-2f, 0x1.105864p-2f, 0.0f}};
   constexpr std::array partial_support_triangles{
-      Triangle{0u, 1u, 2u}, Triangle{3u, 4u, 5u}};
+      Triangle{0u, 1u, 2u}, Triangle{3u, 4u, 5u},
+      Triangle{0u, 0u, 0u}, Triangle{0u, 0u, 0u},
+      Triangle{6u, 7u, 8u}};
   std::array<luisa::float3, partial_support_vertices.size()>
       partial_a_world_vertices{};
   std::array<luisa::float3, partial_support_vertices.size()>
@@ -370,12 +383,12 @@ int main(int argc, char **argv) {
 
   scene->geometry_buffer = device.create_buffer<GeometryGpu>(geometries.size());
   scene->instance_buffer = device.create_buffer<InstanceGpu>(instances.size());
-  scene->coincident_primitive_buffer =
-      device.create_buffer<CoincidentPrimitiveGpu>(
-          coincident_primitives.size());
-  scene->coincident_primitive_instance_buffer =
+  scene->primitive_completion_buffer =
+      device.create_buffer<PrimitiveCompletionGpu>(
+          primitive_completions.size());
+  scene->primitive_completion_instance_buffer =
       device.create_buffer<luisa::uint>(
-          coincident_primitive_instances.size());
+          primitive_completion_instances.size());
   scene->cycles_object_instance_map_buffer =
       device.create_buffer<luisa::uint2>(cycles_object_instance_map.size());
   scene->cycles_object_instance_map_count =
@@ -537,11 +550,18 @@ int main(int argc, char **argv) {
         source_primitive,
         select(950264u, 950290u, test >= 22u),
         barbershop_endpoint_test);
-    const auto barbershop_sparse_shadow_test = test == 24u;
+    const auto barbershop_exact_sparse_shadow_test = test == 24u;
+    const auto barbershop_overlap_completion_shadow_test = test == 25u;
+    const auto barbershop_sparse_shadow_test =
+        barbershop_exact_sparse_shadow_test |
+        barbershop_overlap_completion_shadow_test;
     source_object = select(
         source_object, 32u, barbershop_sparse_shadow_test);
     source_primitive = select(
-        source_primitive, 504347u, barbershop_sparse_shadow_test);
+        source_primitive,
+        select(504347u, 504350u,
+               barbershop_overlap_completion_shadow_test),
+        barbershop_sparse_shadow_test);
     light_object = select(
         light_object, 165u, barbershop_sparse_shadow_test);
     const auto ray_x = select(0.0f, 5.0f, test >= 10u);
@@ -575,9 +595,13 @@ int main(int argc, char **argv) {
         barbershop_endpoint_test);
     const auto ray_origin = select(
         base_ray_origin,
-        make_float3(2.8889687061309814f,
-                    0.9575355648994446f,
-                    -0.0029841959476470947f),
+        select(make_float3(2.8889687061309814f,
+                           0.9575355648994446f,
+                           -0.0029841959476470947f),
+               make_float3(2.5468125343322754f,
+                           0.9504910111427307f,
+                           -0.0029841959476470947f),
+               barbershop_overlap_completion_shadow_test),
         barbershop_sparse_shadow_test);
     const auto base_ray_direction = select(select(
         select(make_float3(0.0f, 0.0f, 1.0f),
@@ -599,9 +623,13 @@ int main(int argc, char **argv) {
         barbershop_endpoint_test);
     const auto ray_direction = select(
         base_ray_direction,
-        make_float3(-0.37712639570236206f,
-                    0.0533241368830204f,
-                    0.9246254563331604f),
+        select(make_float3(-0.37712639570236206f,
+                           0.0533241368830204f,
+                           0.9246254563331604f),
+               make_float3(0.09388570487499237f,
+                           0.0796050876379013f,
+                           0.9923954010009766f),
+               barbershop_overlap_completion_shadow_test),
         barbershop_sparse_shadow_test);
     const auto base_ray_maximum = select(select(
         select(ray_maximum, 125.67607116699219f, bottle_test),
@@ -615,7 +643,10 @@ int main(int argc, char **argv) {
         ray_origin,
         ray_direction,
         0.0f,
-        select(base_ray_maximum, 2.347609281539917f,
+        select(base_ray_maximum,
+               select(2.347609281539917f,
+                      2.1322386264801025f,
+                      barbershop_overlap_completion_shadow_test),
                barbershop_sparse_shadow_test));
     Var<luisa::compute::CommittedHit> hit;
     $if(barbershop_continuation_test) {
@@ -682,7 +713,7 @@ int main(int argc, char **argv) {
 
     $if(((test >= 10u) & (test <= 19u)) |
         ((test >= 21u) & (test <= 22u)) |
-        (test == 24u)) {
+        (test == 24u) | (test == 25u)) {
       $if(!hit->miss()) {
         const auto instance = scene->instance_buffer->read(hit->inst);
         const auto geometry =
@@ -731,10 +762,10 @@ int main(int argc, char **argv) {
   std::array<luisa::float4, record_count> actual{};
   stream << scene->geometry_buffer.copy_from(luisa::span{geometries})
          << scene->instance_buffer.copy_from(luisa::span{instances})
-         << scene->coincident_primitive_buffer.copy_from(
-                luisa::span{coincident_primitives})
-         << scene->coincident_primitive_instance_buffer.copy_from(
-                luisa::span{coincident_primitive_instances})
+         << scene->primitive_completion_buffer.copy_from(
+                luisa::span{primitive_completions})
+         << scene->primitive_completion_instance_buffer.copy_from(
+                luisa::span{primitive_completion_instances})
          << scene->cycles_object_instance_map_buffer.copy_from(
                 luisa::span{cycles_object_instance_map})
          << scene->geometry_material_buffer.copy_from(
@@ -807,7 +838,9 @@ int main(int argc, char **argv) {
                                               4294967295.0f,
                                               4294967295.0f, 0.0f},
                                 luisa::float4{0.0f, 29.0f,
-                                              457043.0f, 10.0f}};
+                                              457043.0f, 10.0f},
+                                luisa::float4{0.0f, 29.0f,
+                                              457046.0f, 10.0f}};
   for (auto index = std::size_t{0u}; index < expected.size(); ++index) {
     if (!equal_record(actual[index], expected[index])) {
       std::cerr << "scene traversal failed on " << backend << " at record "

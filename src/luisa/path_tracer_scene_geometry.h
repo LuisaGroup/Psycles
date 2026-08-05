@@ -56,20 +56,20 @@ class CyclesPrimitiveIntervalResolver {
 struct CyclesInstanceIntersectionPlan {
     std::uint32_t coincident_next{};
     std::uint32_t coincident_count{1u};
-    std::uint32_t coincident_primitive_offset{};
-    std::uint32_t coincident_primitive_count{};
+    std::uint32_t primitive_completion_offset{};
+    std::uint32_t primitive_completion_count{};
     bool transform_applied{};
     Mat4f world_to_object;
 };
 
-struct CyclesCoincidentPrimitiveRecord {
+struct CyclesPrimitiveCompletionRecord {
     std::uint32_t local_primitive{};
     std::uint32_t instance_offset{};
     std::uint32_t instance_count{};
 };
 
-struct CyclesPrimitiveIntersectionPlan {
-    std::vector<CyclesCoincidentPrimitiveRecord> records;
+struct CyclesPrimitiveCompletionPlan {
+    std::vector<CyclesPrimitiveCompletionRecord> records;
     std::vector<std::uint32_t> instances;
 };
 
@@ -136,12 +136,13 @@ build_cycles_instance_intersection_plan(
 
 // Completes the plan only after every geometry mutation is finished. Geometry
 // classes identify bitwise-equal local position and triangle-index arrays.
-// Whole-instance classes require every transformed vertex to be bitwise equal;
-// sparse primitive classes require the three ordered transformed vertices to
-// be bitwise equal. Both are exact finite relations. Keeping this phase after
-// geometry mutation prevents displacement from invalidating an alias relation
-// derived from the source mesh while admitting distinct transforms with the
-// same finite float image.
+// Whole-instance classes require every transformed vertex to be bitwise equal.
+// Sparse source-completion records conservatively join corresponding local
+// primitives when their finite closed world-space AABBs overlap. The latter is
+// a symmetric broad-phase relation, not an equivalence class: an actual hit is
+// still decided by the closed ray interval and Cycles triangle predicate.
+// Keeping this phase after geometry mutation prevents displacement from
+// invalidating a relation derived from the source mesh.
 [[nodiscard]] bool finalize_cycles_instance_intersection_plan(
     const contract::SceneSnapshot &scene,
     const std::map<contract::GeometryId, std::uint32_t>
@@ -149,7 +150,7 @@ build_cycles_instance_intersection_plan(
     const std::map<contract::GeometryId, CyclesGeometrySupportView>
         &final_supports,
     std::span<CyclesInstanceIntersectionPlan> plan,
-    CyclesPrimitiveIntersectionPlan &primitive_plan);
+    CyclesPrimitiveCompletionPlan &primitive_plan);
 
 // Host forms of Cycles' affine geometry operations. Static-transform vertices
 // and object-space rays are uploaded as floats so every device backend sees

@@ -345,7 +345,7 @@ void test_cycles_intersection_representation_plan() {
         {GeometryId{4u}, 2u},
         {GeometryId{5u}, 0u}};
     auto finalized_plan = plan;
-    psycles::luisa_backend::detail::CyclesPrimitiveIntersectionPlan
+    psycles::luisa_backend::detail::CyclesPrimitiveCompletionPlan
         primitive_plan;
     require(
         finalize_cycles_instance_intersection_plan(

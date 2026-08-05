@@ -119,7 +119,7 @@ bool finalize_cycles_final_instance_supports(
     const std::map<contract::GeometryId, std::uint32_t> &geometry_indices,
     const std::vector<GeometryUpload> &uploads,
     std::span<CyclesInstanceIntersectionPlan> instance_plan,
-    CyclesPrimitiveIntersectionPlan &primitive_plan) {
+    CyclesPrimitiveCompletionPlan &primitive_plan) {
   if (!support_classes.ok()) {
     return false;
   }

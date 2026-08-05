@@ -163,7 +163,7 @@ void test_exact_world_support_equivalence() {
                 triangles.data(), triangles.size()}));
   }
   auto plan = build_cycles_instance_intersection_plan(scene, {});
-  psycles::luisa_backend::detail::CyclesPrimitiveIntersectionPlan
+  psycles::luisa_backend::detail::CyclesPrimitiveCompletionPlan
       primitive_plan;
   require(finalize_cycles_instance_intersection_plan(
               scene, support_classes.by_geometry,
@@ -182,7 +182,7 @@ void test_exact_world_support_equivalence() {
           "one-ULP world support change was grouped");
 }
 
-void test_sparse_primitive_world_support_equivalence() {
+void test_sparse_primitive_world_support_completion() {
   using psycles::contract::InstanceDesc;
   using psycles::contract::InstanceId;
   SceneSnapshot scene;
@@ -210,10 +210,18 @@ void test_sparse_primitive_world_support_equivalence() {
         luisa::make_float3(0.3124595582485199f,
                            -0.03609641641378403f, 0.0f),
         luisa::make_float3(0.36543145775794983f,
-                           -0.03609641641378403f, 0.0f)};
+                           -0.03609641641378403f, 0.0f),
+        // Barbershop object 29 primitive 457046 / object 32 primitive
+        // 504350. Their corresponding transformed vertices differ by one
+        // ULP in y, but the closed triangles overlap and Cycles CPU/HIP both
+        // accept object 29 at the source endpoint.
+        luisa::make_float3(0x1.758f2cp-2f, 0x1.1e1dc4p-1f, 0.0f),
+        luisa::make_float3(0x1.3f50e6p-2f, 0x1.1e1dc4p-1f, 0.0f),
+        luisa::make_float3(0x1.3fa1ep-2f, 0x1.105864p-2f, 0.0f)};
     upload.triangles = {
         Triangle{0u, 1u, 2u},
-        Triangle{3u, 4u, 5u}};
+        Triangle{3u, 4u, 5u},
+        Triangle{6u, 7u, 8u}};
   }
 
   psycles::Mat4f object_twenty_nine;
@@ -271,7 +279,7 @@ void test_sparse_primitive_world_support_equivalence() {
                 upload.triangles.data(), upload.triangles.size()}));
   }
   auto plan = build_cycles_instance_intersection_plan(scene, {});
-  psycles::luisa_backend::detail::CyclesPrimitiveIntersectionPlan
+  psycles::luisa_backend::detail::CyclesPrimitiveCompletionPlan
       primitive_plan;
   require(finalize_cycles_instance_intersection_plan(
               scene, support_classes.by_geometry,
@@ -283,10 +291,10 @@ void test_sparse_primitive_world_support_equivalence() {
   const auto find_record =
       [&](std::size_t instance, std::uint32_t primitive)
       -> const psycles::luisa_backend::detail::
-          CyclesCoincidentPrimitiveRecord * {
-    const auto first = plan[instance].coincident_primitive_offset;
+          CyclesPrimitiveCompletionRecord * {
+    const auto first = plan[instance].primitive_completion_offset;
     const auto last = first +
-                      plan[instance].coincident_primitive_count;
+                      plan[instance].primitive_completion_count;
     for (auto record = first; record < last; ++record) {
       if (primitive_plan.records[record].local_primitive == primitive) {
         return &primitive_plan.records[record];
@@ -306,10 +314,99 @@ void test_sparse_primitive_world_support_equivalence() {
               primitive_plan.instances[
                   object_29_exact->instance_offset + 1u] == 1u,
           "partial primitive aliases lost stable instance order");
-  require(find_record(0u, 0u) == nullptr,
-          "non-equal Barbershop primitive entered the sparse class");
+  const auto *object_29_overlap = find_record(0u, 2u);
+  const auto *object_32_overlap = find_record(1u, 2u);
+  require(object_29_overlap != nullptr && object_32_overlap != nullptr &&
+              object_29_overlap->instance_offset ==
+                  object_32_overlap->instance_offset &&
+              object_29_overlap->instance_count == 2u &&
+              object_32_overlap->instance_count == 2u,
+          "closed Barbershop primitive overlap was not completed");
+  require(primitive_plan.instances[object_29_overlap->instance_offset] == 0u &&
+              primitive_plan.instances[
+                  object_29_overlap->instance_offset + 1u] == 1u,
+          "overlapping primitive completion lost stable instance order");
   require(find_record(2u, 1u) == nullptr,
-          "one-ULP target primitive support change was grouped");
+          "disjoint one-ULP planar support was completed");
+  require(find_record(2u, 2u) == nullptr,
+          "disjoint Barbershop planar support was completed");
+}
+
+void test_primitive_completion_is_not_an_equivalence_class() {
+  using psycles::contract::InstanceDesc;
+  using psycles::contract::InstanceId;
+  SceneSnapshot scene;
+  std::vector<GeometryUpload> uploads;
+  std::map<GeometryId, std::uint32_t> geometry_indices;
+  for (auto id = 1u; id <= 3u; ++id) {
+    scene.geometries.emplace(
+        GeometryId{id},
+        TriangleMeshDesc{.name = "closed-overlap-chain-" +
+                                 std::to_string(id)});
+    geometry_indices.emplace(
+        GeometryId{id}, static_cast<std::uint32_t>(uploads.size()));
+    uploads.emplace_back(make_support());
+  }
+  for (auto id = 1u; id <= 3u; ++id) {
+    auto transform = psycles::Mat4f{};
+    transform.elements = {
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f,
+        static_cast<float>(id - 1u), 0.0f, 0.0f, 1.0f};
+    scene.instances.emplace(
+        InstanceId{id},
+        InstanceDesc{.name = "closed-overlap-chain-instance-" +
+                             std::to_string(id),
+                     .geometry = GeometryId{id},
+                     .transform = transform});
+  }
+
+  const auto support_classes =
+      classify_cycles_final_triangle_supports(
+          scene, geometry_indices, uploads);
+  require(support_classes.ok(),
+          "closed-overlap chain support classification failed");
+  std::map<
+      GeometryId,
+      psycles::luisa_backend::detail::CyclesGeometrySupportView>
+      final_supports;
+  for (const auto &[geometry_id, upload_index] : geometry_indices) {
+    const auto &upload = uploads[upload_index];
+    final_supports.emplace(
+        geometry_id,
+        make_cycles_geometry_support_view(
+            std::span<const luisa::float3>{
+                upload.positions.data(), upload.positions.size()},
+            std::span<const Triangle>{
+                upload.triangles.data(), upload.triangles.size()}));
+  }
+  auto plan = build_cycles_instance_intersection_plan(scene, {});
+  psycles::luisa_backend::detail::CyclesPrimitiveCompletionPlan
+      primitive_plan;
+  require(finalize_cycles_instance_intersection_plan(
+              scene, support_classes.by_geometry,
+              final_supports, plan, primitive_plan),
+          "closed-overlap chain finalization failed");
+  const auto completion =
+      [&](std::size_t instance) -> std::span<const std::uint32_t> {
+    require(plan[instance].primitive_completion_count == 1u,
+            "closed-overlap chain lost its primitive record");
+    const auto &record = primitive_plan.records[
+        plan[instance].primitive_completion_offset];
+    return std::span<const std::uint32_t>{
+        primitive_plan.instances.data() + record.instance_offset,
+        record.instance_count};
+  };
+  const auto a = completion(0u);
+  const auto b = completion(1u);
+  const auto c = completion(2u);
+  require(a.size() == 2u && a[0u] == 0u && a[1u] == 1u,
+          "left endpoint gained a transitive completion");
+  require(b.size() == 3u && b[0u] == 0u && b[1u] == 1u && b[2u] == 2u,
+          "middle endpoint lost a direct completion");
+  require(c.size() == 2u && c[0u] == 1u && c[1u] == 2u,
+          "right endpoint gained a transitive completion");
 }
 
 } // namespace
@@ -317,7 +414,8 @@ void test_sparse_primitive_world_support_equivalence() {
 int main() {
   test_final_support_equivalence();
   test_exact_world_support_equivalence();
-  test_sparse_primitive_world_support_equivalence();
+  test_sparse_primitive_world_support_completion();
+  test_primitive_completion_is_not_an_equivalence_class();
   std::cout << "Cycles final instance-support tests passed\n";
   return EXIT_SUCCESS;
 }
