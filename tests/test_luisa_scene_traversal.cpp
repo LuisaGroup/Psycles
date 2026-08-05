@@ -2,6 +2,7 @@
 #include "path_kernel_curve_geometry.h"
 #include "path_kernel_curve_primitive.h"
 #include "path_kernel_scene_traversal.h"
+#include "path_tracer_scene_geometry.h"
 
 #include <psycles/luisa/surface_ray.h>
 
@@ -20,7 +21,7 @@ using namespace luisa::compute;
 using namespace psycles::luisa_backend::detail;
 using psycles::luisa_backend::surface_ray::invalid_primitive;
 
-inline constexpr std::size_t record_count = 16u;
+inline constexpr std::size_t record_count = 20u;
 
 [[nodiscard]] bool near(float actual, float expected,
                         float tolerance = 2.0e-6f) noexcept {
@@ -42,8 +43,22 @@ int main(int argc, char **argv) {
   auto stream = device.create_stream();
   auto scene = std::make_shared<LuisaSceneData>();
 
+  psycles::Mat4f bottle_transform;
+  bottle_transform.elements[0u] = 0.5903866291046143f;
+  bottle_transform.elements[5u] = 0.5903866291046143f;
+  bottle_transform.elements[10u] = 0.5903866291046143f;
+  bottle_transform.elements[12u] = 0.4168449342250824f;
+  bottle_transform.elements[13u] = 8.169964790344238f;
+  bottle_transform.elements[14u] = 1.4632248878479004f;
+  psycles::Mat4f coincident_transform_source;
+  coincident_transform_source.elements[12u] = 5.0f;
+  const auto bottle_world_to_object =
+      to_luisa(cycles_inverse_transform(bottle_transform));
+  const auto coincident_world_to_object =
+      to_luisa(cycles_inverse_transform(coincident_transform_source));
+
   constexpr auto curve_bindless_base = geometry_bindless_stride;
-  constexpr std::array geometries{
+  const std::array geometries{
       GeometryGpu{.bindless_base = 0u,
                   .material_offset = 0u,
                   .material_count = 1u,
@@ -55,15 +70,44 @@ int main(int argc, char **argv) {
                   .cycles_primitive_offset = 200u,
                   .cycles_segment_offset = 300u,
                   .primitive_kind = geometry_kind_curve,
-                  .curve_subdivision_level = 2u}};
-  constexpr std::array instances{
+                  .curve_subdivision_level = 2u},
+      GeometryGpu{.bindless_base = 2u * geometry_bindless_stride,
+                  .material_offset = 0u,
+                  .material_count = 1u,
+                  .cycles_primitive_offset = 20474114u,
+                  .primitive_kind = geometry_kind_triangle},
+      GeometryGpu{.bindless_base = 3u * geometry_bindless_stride,
+                  .material_offset = 0u,
+                  .material_count = 1u,
+                  .cycles_primitive_offset = 3396299u,
+                  .primitive_kind = geometry_kind_triangle}};
+  const std::array instances{
       InstanceGpu{.geometry_index = 0u, .cycles_object_index = 11u},
       InstanceGpu{.geometry_index = 1u,
                   .override_offset = 0u,
                   .override_count = 1u,
                   .cycles_object_index = 22u},
-      InstanceGpu{.geometry_index = 0u, .cycles_object_index = 489u},
-      InstanceGpu{.geometry_index = 0u, .cycles_object_index = 1936u}};
+      InstanceGpu{.geometry_index = 0u,
+                  .cycles_object_index = 489u,
+                  .coincident_next = 3u,
+                  .coincident_count = 2u,
+                  .cycles_world_to_object = coincident_world_to_object},
+      InstanceGpu{.geometry_index = 0u,
+                  .cycles_object_index = 1936u,
+                  .coincident_next = 2u,
+                  .coincident_count = 2u,
+                  .cycles_world_to_object = coincident_world_to_object},
+      InstanceGpu{.geometry_index = 2u,
+                  .cycles_object_index = 2131u,
+                  .coincident_next = 5u,
+                  .coincident_count = 2u,
+                  .cycles_transform_applied = 1u,
+                  .cycles_world_to_object = bottle_world_to_object},
+      InstanceGpu{.geometry_index = 3u,
+                  .cycles_object_index = 2372u,
+                  .coincident_next = 4u,
+                  .coincident_count = 2u,
+                  .cycles_world_to_object = bottle_world_to_object}};
   constexpr std::array geometry_materials{
       MaterialBindingGpu{.surface_tag = 41u,
                          .cycles_shader_index = 5u,
@@ -79,6 +123,27 @@ int main(int argc, char **argv) {
                                 luisa::float3{2.0f, -2.0f, 4.0f},
                                 luisa::float3{0.0f, 2.0f, 4.0f}};
   constexpr std::array triangles{Triangle{0u, 1u, 2u}};
+  constexpr std::array bottle_vertices{
+      luisa::float3{0.04980994760990143f,
+                    -0.015110095962882042f,
+                    0.0014796979958191514f},
+      luisa::float3{0.047333888709545135f,
+                    -0.0196063332259655f,
+                    0.0005811812588945031f},
+      luisa::float3{0.04902583360671997f,
+                    -0.01487223245203495f,
+                    0.0005811817827634513f}};
+  std::array<luisa::float3, bottle_vertices.size()>
+      bottle_world_vertices{};
+  for (std::size_t i = 0u; i < bottle_vertices.size(); ++i) {
+    const auto transformed = cycles_transform_point(
+        bottle_transform,
+        {bottle_vertices[i].x,
+         bottle_vertices[i].y,
+         bottle_vertices[i].z});
+    bottle_world_vertices[i] =
+        luisa::make_float3(transformed.x, transformed.y, transformed.z);
+  }
   // The two segments are geometrically identical but have distinct Cycles
   // segment identities. Their device primitive order is deliberately opposite
   // to the Cycles order: Cycles packs the segment ordinal into prim_type, so
@@ -125,6 +190,14 @@ int main(int argc, char **argv) {
   auto vertex_buffer = device.create_buffer<luisa::float3>(vertices.size());
   auto triangle_buffer = device.create_buffer<Triangle>(triangles.size());
   auto mesh = device.create_mesh(vertex_buffer, triangle_buffer);
+  auto bottle_vertex_buffer =
+      device.create_buffer<luisa::float3>(bottle_vertices.size());
+  auto bottle_world_vertex_buffer =
+      device.create_buffer<luisa::float3>(bottle_world_vertices.size());
+  auto bottle_triangle_buffer =
+      device.create_buffer<Triangle>(triangles.size());
+  auto bottle_mesh =
+      device.create_mesh(bottle_vertex_buffer, bottle_triangle_buffer);
   auto bounds_buffer = device.create_buffer<AABB>(curve_bounds.size());
   auto segment_buffer =
       device.create_buffer<CurveSegmentGpu>(curve_segments.size());
@@ -137,7 +210,9 @@ int main(int argc, char **argv) {
   auto curve_random_buffer = device.create_buffer<float>(curve_randoms.size());
   auto curves = device.create_procedural_primitive(bounds_buffer);
 
-  scene->heap = device.create_bindless_array(2u * geometry_bindless_stride);
+  scene->heap = device.create_bindless_array(4u * geometry_bindless_stride);
+  scene->heap.emplace_on_update(0u, triangle_buffer);
+  scene->heap.emplace_on_update(9u, vertex_buffer);
   scene->heap.emplace_on_update(curve_bindless_base, segment_buffer);
   scene->heap.emplace_on_update(curve_bindless_base + 1u, key_buffer);
   scene->heap.emplace_on_update(curve_bindless_base + 3u,
@@ -148,12 +223,25 @@ int main(int argc, char **argv) {
                                 curve_length_buffer);
   scene->heap.emplace_on_update(curve_bindless_base + 6u,
                                 curve_random_buffer);
+  scene->heap.emplace_on_update(2u * geometry_bindless_stride,
+                                bottle_triangle_buffer);
+  scene->heap.emplace_on_update(2u * geometry_bindless_stride + 9u,
+                                bottle_world_vertex_buffer);
+  scene->heap.emplace_on_update(3u * geometry_bindless_stride,
+                                bottle_triangle_buffer);
+  scene->heap.emplace_on_update(3u * geometry_bindless_stride + 9u,
+                                bottle_vertex_buffer);
   scene->accel = device.create_accel();
   scene->accel.emplace_back(mesh, make_float4x4(1.0f), 0xffu, false, 0u);
   scene->accel.emplace_back(curves, make_float4x4(1.0f), 0xffu, 1u);
   const auto coincident_transform = translation(make_float3(5.0f, 0.0f, 0.0f));
   scene->accel.emplace_back(mesh, coincident_transform, 0xffu, false, 2u);
   scene->accel.emplace_back(mesh, coincident_transform, 0xffu, false, 3u);
+  const auto bottle_luisa_transform = to_luisa(bottle_transform);
+  scene->accel.emplace_back(
+      bottle_mesh, bottle_luisa_transform, 0xffu, false, 4u);
+  scene->accel.emplace_back(
+      bottle_mesh, bottle_luisa_transform, 0xffu, false, 5u);
 
   auto output = device.create_buffer<luisa::float4>(record_count);
   const auto traversal = make_scene_traversal_component();
@@ -181,14 +269,35 @@ int main(int argc, char **argv) {
         select(source_primitive, 100u, exclude_later_coincident);
     light_object = select(light_object, 22u, test == 3u);
     light_primitive = select(light_primitive, 200u, test == 3u);
+    source_object = select(source_object, 2131u, test == 17u);
+    source_primitive = select(source_primitive, 20474114u, test == 17u);
+    light_object = select(light_object, 2131u, test == 18u);
+    light_primitive = select(light_primitive, 20474114u, test == 18u);
+    source_object = select(source_object, 2372u, test == 19u);
+    source_primitive = select(source_primitive, 3396299u, test == 19u);
 
     const auto ray_x = select(0.0f, 5.0f, test >= 10u);
     const auto ray_z = select(0.0f, 4.0f,
                               (test == 12u) | (test == 13u));
     const auto ray_maximum = select(10.0f, 4.0f, test >= 14u);
-    const auto ray = make_ray(make_float3(ray_x, 0.0f, ray_z),
-                              make_float3(0.0f, 0.0f, 1.0f), 0.0f,
-                              ray_maximum);
+    const auto bottle_test = test >= 16u;
+    const auto ray_origin = select(
+        make_float3(ray_x, 0.0f, ray_z),
+        make_float3(1.8301146030426025f,
+                    9.144867897033691f,
+                    1.5106611251831055f),
+        bottle_test);
+    const auto ray_direction = select(
+        make_float3(0.0f, 0.0f, 1.0f),
+        make_float3(-0.8146389126777649f,
+                    -0.5793101787567139f,
+                    -0.02762461081147194f),
+        bottle_test);
+    const auto ray = make_ray(
+        ray_origin,
+        ray_direction,
+        0.0f,
+        select(ray_maximum, 125.67607116699219f, bottle_test));
     const auto hit = traversal->closest_shadow(
         scene, ray, 0xffu,
         {.object = source_object, .primitive = source_primitive},
@@ -251,6 +360,10 @@ int main(int argc, char **argv) {
                 luisa::span{override_materials})
          << vertex_buffer.copy_from(luisa::span{vertices})
          << triangle_buffer.copy_from(luisa::span{triangles})
+         << bottle_vertex_buffer.copy_from(luisa::span{bottle_vertices})
+         << bottle_world_vertex_buffer.copy_from(
+                luisa::span{bottle_world_vertices})
+         << bottle_triangle_buffer.copy_from(luisa::span{triangles})
          << bounds_buffer.copy_from(luisa::span{curve_bounds})
          << segment_buffer.copy_from(luisa::span{curve_segments})
          << key_buffer.copy_from(luisa::span{curve_keys})
@@ -258,7 +371,8 @@ int main(int argc, char **argv) {
          << curve_intercept_buffer.copy_from(luisa::span{curve_intercepts})
          << curve_length_buffer.copy_from(luisa::span{curve_lengths})
          << curve_random_buffer.copy_from(luisa::span{curve_randoms})
-         << scene->heap.update() << mesh.build() << curves.build()
+         << scene->heap.update() << mesh.build() << bottle_mesh.build()
+         << curves.build()
          << scene->accel.build() << shader(output).dispatch(record_count)
          << output.copy_to(luisa::span{actual}) << synchronize();
 
@@ -277,7 +391,15 @@ int main(int argc, char **argv) {
                                 luisa::float4{0.0f, 1936.0f, 100.0f, 3.0f},
                                 luisa::float4{0.0f, 489.0f, 100.0f, 2.0f},
                                 luisa::float4{4.0f, 1936.0f, 100.0f, 3.0f},
-                                luisa::float4{4.0f, 489.0f, 100.0f, 2.0f}};
+                                luisa::float4{4.0f, 489.0f, 100.0f, 2.0f},
+                                luisa::float4{1.6995198f, 2131.0f,
+                                              20474114.0f, 4.0f},
+                                luisa::float4{1.69952f, 2372.0f,
+                                              3396299.0f, 5.0f},
+                                luisa::float4{1.69952f, 2372.0f,
+                                              3396299.0f, 5.0f},
+                                luisa::float4{1.6995198f, 2131.0f,
+                                              20474114.0f, 4.0f}};
   for (auto index = std::size_t{0u}; index < expected.size(); ++index) {
     if (!equal_record(actual[index], expected[index])) {
       std::cerr << "scene traversal failed on " << backend << " at record "

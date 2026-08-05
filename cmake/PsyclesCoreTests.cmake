@@ -5,6 +5,19 @@ if(PSYCLES_BUILD_TESTS)
     add_test(NAME psycles.contracts COMMAND psycles_tests)
 
     add_executable(
+        psycles_surface_program_metadata_tests
+        tests/test_surface_program_metadata.cpp)
+    target_link_libraries(
+        psycles_surface_program_metadata_tests
+        PRIVATE Psycles::core)
+    target_compile_features(
+        psycles_surface_program_metadata_tests
+        PRIVATE cxx_std_20)
+    add_test(
+        NAME psycles.surface_program_metadata
+        COMMAND psycles_surface_program_metadata_tests)
+
+    add_executable(
         psycles_progressive_pixel_probe_tests
         tests/test_progressive_pixel_probe.cpp)
     target_link_libraries(

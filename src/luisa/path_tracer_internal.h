@@ -127,7 +127,10 @@ using luisa::compute::triangle_interpolate;
 
 constexpr auto pi = 3.14159265358979323846f;
 constexpr auto ray_maximum = 1.0e30f;
-constexpr std::uint32_t geometry_bindless_stride = 9u;
+// Slot 9 stores the Cycles intersection representation of positions. It
+// aliases slot 1 for object-space geometry and points at host-transformed
+// vertices for single-user static meshes.
+constexpr std::uint32_t geometry_bindless_stride = 10u;
 constexpr std::uint32_t geometry_normal_corner = 1u << 0u;
 constexpr std::uint32_t geometry_uv_corner = 1u << 1u;
 constexpr std::uint32_t geometry_uv_tangent_corner = 1u << 2u;
@@ -193,6 +196,8 @@ struct GeometryResource {
     Buffer<float> triangle_random_per_island;
     Buffer<luisa::uint> triangle_smooth;
     std::vector<Buffer<luisa::float4>> attributes;
+    std::optional<Buffer<luisa::float3>>
+        cycles_intersection_positions;
     Mesh mesh;
 };
 
@@ -217,6 +222,7 @@ struct GeometryUpload {
     std::uint32_t attribute_domains{};
     luisa::float4x4 generated_transform{};
     luisa::vector<luisa::float3> positions;
+    luisa::vector<luisa::float3> cycles_intersection_positions;
     luisa::vector<luisa::float3> normals;
     luisa::vector<luisa::float2> uv;
     luisa::vector<luisa::float4> uv_tangents;

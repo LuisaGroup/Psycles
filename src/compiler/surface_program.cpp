@@ -290,6 +290,44 @@ Vec3f estimate_surface_emission(
                : Vec3f{};
 }
 
+bool cycles_surface_has_bssrdf(
+    const SurfaceProgram &program,
+    const SurfaceParameterBlock &parameters) noexcept {
+    constexpr auto closure_weight_cutoff = 1.0e-5f;
+    for (const auto &closure : program.closure_instructions()) {
+        if (closure.operation == ClosureOperation::subsurface) {
+            return true;
+        }
+        if (closure.operation != ClosureOperation::principled) {
+            continue;
+        }
+        const auto *weight_value = direct_parameter_value(
+            program,
+            parameters,
+            closure.subsurface_weight,
+            closure.source_node);
+        const auto *weight = weight_value != nullptr
+                                 ? std::get_if<float>(&weight_value->value)
+                                 : nullptr;
+        const auto *scale_value = direct_parameter_value(
+            program,
+            parameters,
+            closure.subsurface_scale,
+            closure.source_node);
+        const auto *scale = scale_value != nullptr
+                                ? std::get_if<float>(&scale_value->value)
+                                : nullptr;
+        // A linked value is conservatively possible, exactly like Cycles'
+        // ShaderNode input-link test. Direct literals use the same cutoff and
+        // exact-zero scale relation as PrincipledBsdfNode.
+        if ((weight == nullptr || *weight > closure_weight_cutoff) &&
+            (scale == nullptr || *scale != 0.0f)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 SurfaceProgramCompilation compile_surface_program(
     const ShaderProgram &shader) {
     return detail::SurfaceProgramBuilder{shader}.build();

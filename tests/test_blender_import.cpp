@@ -1087,7 +1087,8 @@ void test_integrator_settings_round_trip() {
   expect(bump_material != bump_imported.scene->materials.end() &&
              bump_material->second.shader
                  .root(psycles::contract::ShaderDomain::displacement)
-                 .has_value(),
+                 .has_value() &&
+             !bump_material->second.has_true_displacement,
          "automatic bump was not retained as a displacement root");
   bool has_automatic_bump = false;
   bool has_texture_mapping_node = false;
@@ -1170,6 +1171,11 @@ void test_integrator_settings_round_trip() {
   }
   expect(named_combined_displacement_warning,
          "combined displacement approximation has no named warning");
+  expect(
+      combined_displacement_imported.scene->materials
+          .at(psycles::contract::MaterialId{2u})
+          .has_true_displacement,
+      "combined displacement lost Cycles' object-space geometry policy");
 
   auto true_displacement_scene = bump_scene;
   replace_once(true_displacement_scene, "\"displacement_method\": \"BUMP\"",
@@ -1192,6 +1198,11 @@ void test_integrator_settings_round_trip() {
   }
   expect(named_displacement_warning,
          "true displacement approximation has no named warning");
+  expect(
+      true_displacement_imported.scene->materials
+          .at(psycles::contract::MaterialId{2u})
+          .has_true_displacement,
+      "true displacement lost Cycles' object-space geometry policy");
 
   auto box_filter_scene = light_tree_scene;
   constexpr std::string_view gaussian_filter =

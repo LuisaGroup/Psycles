@@ -2,8 +2,10 @@
 #include "../src/luisa/path_tracer_scene_geometry.h"
 
 #include <cstdlib>
+#include <cmath>
 #include <iostream>
 #include <limits>
+#include <set>
 #include <string_view>
 
 namespace {
@@ -19,6 +21,12 @@ using psycles::luisa_backend::detail::
     CyclesPrimitiveIntervalResolver;
 using psycles::luisa_backend::detail::
     world_triangle_area;
+using psycles::luisa_backend::detail::
+    build_cycles_instance_intersection_plan;
+using psycles::luisa_backend::detail::
+    cycles_inverse_transform;
+using psycles::luisa_backend::detail::
+    cycles_transform_point;
 
 void require(bool condition, std::string_view message) {
     if (!condition) {
@@ -194,11 +202,155 @@ void test_geometry_identity() {
         "emissive triangle area ignored instance transform");
 }
 
+void test_cycles_intersection_representation_plan() {
+    using namespace psycles::contract;
+    using psycles::Mat4f;
+    using psycles::Vec3f;
+    SceneSnapshot scene;
+    constexpr MaterialId ordinary_material{1u};
+    constexpr MaterialId bssrdf_material{2u};
+    constexpr MaterialId displaced_material{3u};
+    scene.materials.emplace(
+        ordinary_material,
+        MaterialDesc{.name = "ordinary"});
+    scene.materials.emplace(
+        bssrdf_material,
+        MaterialDesc{.name = "bssrdf"});
+    scene.materials.emplace(
+        displaced_material,
+        MaterialDesc{
+            .name = "displaced",
+            .has_true_displacement = true});
+
+    const auto support = [](MaterialId material) {
+        return TriangleMeshDesc{
+            .name = "support",
+            .positions = {
+                {0.0f, 0.0f, 0.0f},
+                {1.0f, 0.0f, 0.0f},
+                {0.0f, 1.0f, 0.0f}},
+            .triangles = {{0u, 1u, 2u}},
+            .material_slots = {material}};
+    };
+    scene.geometries.emplace(GeometryId{1u}, support(ordinary_material));
+    auto differently_shaded = support(ordinary_material);
+    differently_shaded.name = "same support, different shading";
+    differently_shaded.normals = {
+        .domain = MeshAttributeDomain::point,
+        .values = {
+            {0.0f, 0.0f, -1.0f},
+            {0.0f, 0.0f, -1.0f},
+            {0.0f, 0.0f, -1.0f}}};
+    differently_shaded.uv = {
+        .domain = MeshAttributeDomain::corner,
+        .values = {
+            {0.25f, 0.25f},
+            {0.75f, 0.25f},
+            {0.25f, 0.75f}}};
+    scene.geometries.emplace(
+        GeometryId{2u}, std::move(differently_shaded));
+    auto changed_support = support(bssrdf_material);
+    changed_support.positions[0u].x = std::nextafter(0.0f, 1.0f);
+    scene.geometries.emplace(GeometryId{3u}, std::move(changed_support));
+    scene.geometries.emplace(
+        GeometryId{4u}, support(displaced_material));
+    auto adaptive = support(ordinary_material);
+    adaptive.uses_adaptive_subdivision = true;
+    scene.geometries.emplace(GeometryId{5u}, std::move(adaptive));
+
+    Mat4f transform;
+    transform.elements[0u] = 0.75f;
+    transform.elements[5u] = 1.25f;
+    transform.elements[10u] = 2.0f;
+    transform.elements[12u] = 3.0f;
+    transform.elements[13u] = -2.0f;
+    transform.elements[14u] = 5.0f;
+    auto changed_transform = transform;
+    changed_transform.elements[12u] =
+        std::nextafter(changed_transform.elements[12u], 4.0f);
+    auto displaced_transform = transform;
+    displaced_transform.elements[13u] += 1.0f;
+    auto adaptive_transform = transform;
+    adaptive_transform.elements[14u] += 2.0f;
+    scene.instances.emplace(
+        InstanceId{1u},
+        InstanceDesc{
+            .name = "unique depsgraph instance",
+            .geometry = GeometryId{1u},
+            .transform = transform,
+            .is_blender_instance = true});
+    scene.instances.emplace(
+        InstanceId{2u},
+        InstanceDesc{
+            .name = "shared support A",
+            .geometry = GeometryId{2u},
+            .transform = transform});
+    scene.instances.emplace(
+        InstanceId{3u},
+        InstanceDesc{
+            .name = "shared support B",
+            .geometry = GeometryId{2u},
+            .transform = changed_transform});
+    scene.instances.emplace(
+        InstanceId{4u},
+        InstanceDesc{
+            .name = "one-bit support change",
+            .geometry = GeometryId{3u},
+            .transform = transform});
+    scene.instances.emplace(
+        InstanceId{5u},
+        InstanceDesc{
+            .name = "true displacement",
+            .geometry = GeometryId{4u},
+            .transform = displaced_transform});
+    scene.instances.emplace(
+        InstanceId{6u},
+        InstanceDesc{
+            .name = "adaptive subdivision",
+            .geometry = GeometryId{5u},
+            .transform = adaptive_transform});
+
+    const auto plan = build_cycles_instance_intersection_plan(
+        scene, std::set<MaterialId>{bssrdf_material});
+    require(plan.size() == 6u, "instance intersection plan changed size");
+    require(
+        plan[0u].coincident_count == 2u &&
+            plan[0u].coincident_next == 1u &&
+            plan[1u].coincident_count == 2u &&
+            plan[1u].coincident_next == 0u,
+        "exact support ignored or included shading attributes");
+    require(
+        plan[2u].coincident_count == 1u &&
+            plan[3u].coincident_count == 1u,
+        "one-bit transform or support changes were grouped");
+    require(
+        plan[0u].transform_applied &&
+            !plan[1u].transform_applied &&
+            !plan[2u].transform_applied,
+        "Cycles geometry-user transform relation diverged");
+    require(
+        !plan[3u].transform_applied &&
+            !plan[4u].transform_applied &&
+            !plan[5u].transform_applied,
+        "BSSRDF, displacement, or subdivision transform gate diverged");
+
+    const auto point = Vec3f{0.125f, -0.5f, 2.0f};
+    const auto world = cycles_transform_point(transform, point);
+    const auto round_trip = cycles_transform_point(
+        cycles_inverse_transform(transform), world);
+    require(
+        std::abs(round_trip.x - point.x) < 1.0e-6f &&
+            std::abs(round_trip.y - point.y) < 1.0e-6f &&
+            std::abs(round_trip.z - point.z) < 1.0e-6f,
+        "Cycles affine inverse does not round-trip a point");
+}
+
 }// namespace
 
 int main() {
     test_surface_shader_composition();
     test_light_shader_composition();
     test_geometry_identity();
+    test_cycles_intersection_representation_plan();
     return EXIT_SUCCESS;
 }

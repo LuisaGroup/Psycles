@@ -1,6 +1,7 @@
 #include "path_kernel_scene_traversal.h"
 
 #include "curve_ribbon_component.h"
+#include "cycles_triangle_intersection_component.h"
 #include "path_kernel_curve_primitive.h"
 #include "path_kernel_primitive_material.h"
 
@@ -91,6 +92,8 @@ private:
   std::shared_ptr<const CurvePrimitiveComponent> _curves;
   std::shared_ptr<const CurveRibbonComponent> _ribbons;
   std::shared_ptr<const PrimitiveMaterialComponent> _materials;
+  std::shared_ptr<const CyclesTriangleIntersectionComponent>
+      _triangle_intersection;
 
   [[nodiscard]] Var<luisa::compute::CommittedHit>
   trace(const std::shared_ptr<LuisaSceneData> &scene,
@@ -123,33 +126,123 @@ private:
             bool commit_candidate) noexcept {
           const auto hit = candidate.hit();
           const auto instance = scene->instance_buffer->read(hit->inst);
-          const auto geometry =
-              scene->geometry_buffer->read(instance.geometry_index);
-          const auto object =
-              _materials->cycles_object_index(hit->inst, instance);
-          const auto primitive =
-              geometry.cycles_primitive_offset + hit->prim;
-          const auto excluded = source.matches(object, primitive) |
-                                light.matches(object, primitive);
-          const auto within_cycles_interval =
-              (hit->committed_ray_t >= ray->t_min()) &
-              (hit->committed_ray_t <= ray->t_max());
-          const auto accepted =
-              within_cycles_interval &
-              closest.accepts(hit->committed_ray_t, object, primitive,
-                              geometry.primitive_kind);
-          $if(!excluded & accepted) {
-            if (commit_candidate) {
-              candidate.commit();
-            }
-            closest.select(hit->committed_ray_t, object, primitive,
-                           geometry.primitive_kind);
-            resolved->inst = hit->inst;
-            resolved->prim = hit->prim;
-            resolved->bary = hit->bary;
-            resolved->hit_type =
-                static_cast<std::uint32_t>(luisa::compute::HitType::Surface);
-            resolved->committed_ray_t = hit->committed_ray_t;
+          const UInt coincident_count =
+              max(instance.coincident_count, 1u);
+          $if(coincident_count > 1u) {
+            CyclesClosestHitOrder group_closest;
+            Bool group_has_hit = false;
+            UInt group_instance = hit->inst;
+            UInt group_object = 0u;
+            UInt group_primitive = 0u;
+            UInt group_type = geometry_kind_triangle;
+            Float group_distance = ray->t_max();
+            Float2 group_barycentric = hit->bary;
+            UInt alias_index = hit->inst;
+            UInt remaining = coincident_count;
+            $while(remaining > 0u) {
+              const auto alias =
+                  scene->instance_buffer->read(alias_index);
+              const auto alias_geometry =
+                  scene->geometry_buffer->read(alias.geometry_index);
+              const auto triangle =
+                  scene->heap
+                      ->buffer<Triangle>(alias_geometry.bindless_base)
+                      .read(hit->prim);
+              const auto positions =
+                  scene->heap->buffer<luisa::float3>(
+                      alias_geometry.bindless_base + 9u);
+              const auto intersection = _triangle_intersection->intersect(
+                  ray,
+                  alias.cycles_world_to_object,
+                  alias.cycles_transform_applied,
+                  positions.read(triangle.i0),
+                  positions.read(triangle.i1),
+                  positions.read(triangle.i2));
+              const auto object =
+                  _materials->cycles_object_index(alias_index, alias);
+              const auto primitive =
+                  alias_geometry.cycles_primitive_offset + hit->prim;
+              const auto excluded =
+                  source.matches(object, primitive) |
+                  light.matches(object, primitive);
+              const auto visible =
+                  (alias.visibility_mask & visibility_mask) != 0u;
+              const auto accepted =
+                  intersection.valid & visible & !excluded &
+                  group_closest.accepts(
+                      intersection.distance,
+                      object,
+                      primitive,
+                      alias_geometry.primitive_kind);
+              $if(accepted) {
+                group_closest.select(
+                    intersection.distance,
+                    object,
+                    primitive,
+                    alias_geometry.primitive_kind);
+                group_has_hit = true;
+                group_instance = alias_index;
+                group_object = object;
+                group_primitive = primitive;
+                group_type = alias_geometry.primitive_kind;
+                group_distance = intersection.distance;
+                group_barycentric = intersection.barycentric;
+              };
+              alias_index = alias.coincident_next;
+              remaining -= 1u;
+            };
+            const auto accepted =
+                group_has_hit &
+                closest.accepts(
+                    group_distance,
+                    group_object,
+                    group_primitive,
+                    group_type);
+            $if(accepted) {
+              if (commit_candidate) {
+                candidate.commit();
+              }
+              closest.select(
+                  group_distance,
+                  group_object,
+                  group_primitive,
+                  group_type);
+              resolved->inst = group_instance;
+              resolved->prim = hit->prim;
+              resolved->bary = group_barycentric;
+              resolved->hit_type = static_cast<std::uint32_t>(
+                  luisa::compute::HitType::Surface);
+              resolved->committed_ray_t = group_distance;
+            };
+          } $else {
+            const auto geometry =
+                scene->geometry_buffer->read(instance.geometry_index);
+            const auto object =
+                _materials->cycles_object_index(hit->inst, instance);
+            const auto primitive =
+                geometry.cycles_primitive_offset + hit->prim;
+            const auto excluded = source.matches(object, primitive) |
+                                  light.matches(object, primitive);
+            const auto within_cycles_interval =
+                (hit->committed_ray_t >= ray->t_min()) &
+                (hit->committed_ray_t <= ray->t_max());
+            const auto accepted =
+                within_cycles_interval &
+                closest.accepts(hit->committed_ray_t, object, primitive,
+                                geometry.primitive_kind);
+            $if(!excluded & accepted) {
+              if (commit_candidate) {
+                candidate.commit();
+              }
+              closest.select(hit->committed_ray_t, object, primitive,
+                             geometry.primitive_kind);
+              resolved->inst = hit->inst;
+              resolved->prim = hit->prim;
+              resolved->bary = hit->bary;
+              resolved->hit_type = static_cast<std::uint32_t>(
+                  luisa::compute::HitType::Surface);
+              resolved->committed_ray_t = hit->committed_ray_t;
+            };
           };
         };
 
@@ -230,7 +323,8 @@ private:
           make_ray(ray->origin(), ray->direction(),
                    distance_lower_neighbor(ray->t_min()),
                    distance_upper_neighbor(
-                       backend_hit->committed_ray_t));
+                       max(backend_hit->committed_ray_t,
+                           resolved->committed_ray_t)));
       const auto ignored =
           scene->accel
               ->traverse(tie_ray, {.visibility_mask = visibility_mask})
@@ -252,7 +346,9 @@ public:
   UnifiedSceneTraversalComponent()
       : _curves{make_curve_primitive_component()},
         _ribbons{make_curve_ribbon_component()},
-        _materials{make_primitive_material_component()} {}
+        _materials{make_primitive_material_component()},
+        _triangle_intersection{
+            make_cycles_triangle_intersection_component()} {}
 
   Var<luisa::compute::CommittedHit>
   closest(const std::shared_ptr<LuisaSceneData> &scene,

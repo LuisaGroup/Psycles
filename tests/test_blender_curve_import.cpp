@@ -136,6 +136,7 @@ void test_native_curve_bundle_round_trip() {
   }],
   "instances":[{
     "name":"Particle Hair","geometry_type":"CURVE","geometry":0,
+    "is_instance":true,
     "transform":[1,0,0,0,0,1,0,0,0,0,1,0,2,3,4,1],
     "random_id":0,"particle_index":0,
     "cycles_sync":{"object_index":11,"light_group":-1}
@@ -171,6 +172,8 @@ void test_native_curve_bundle_round_trip() {
   expect(instance.geometry == GeometryId{1u},
          "curve-local geometry index was not resolved");
   expect(instance.cycles_object_index == 11u, "hair object identity mismatch");
+  expect(instance.is_blender_instance,
+         "dependency-graph instance representation was dropped");
 }
 
 } // namespace

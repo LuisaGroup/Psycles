@@ -521,6 +521,14 @@ public:
 estimate_surface_emission(const SurfaceProgram &program,
                           const SurfaceParameterBlock &parameters);
 
+// Cycles' host-side Shader::has_surface_bssrdf flag. This is deliberately a
+// topology/parameter query rather than a sampled closure evaluation: linked
+// Principled inputs remain potentially non-zero, while direct zero literals
+// can prove that the node does not prevent static geometry transforms.
+[[nodiscard]] bool cycles_surface_has_bssrdf(
+    const SurfaceProgram &program,
+    const SurfaceParameterBlock &parameters) noexcept;
+
 enum class SurfaceProgramDiagnosticCode : std::uint8_t {
   structure_mismatch,
   missing_surface_root,

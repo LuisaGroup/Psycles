@@ -95,6 +95,10 @@ struct MaterialDesc {
     // stack.
     VolumeSampling volume_sampling{
         VolumeSampling::multiple_importance};
+    // Cycles keeps geometry with true displacement in object space even when
+    // it has a single user. The raw displacement graph is still retained in
+    // `shader`; this bit records only the authored geometry policy.
+    bool has_true_displacement{};
     // Index in Cycles' Scene::shaders vector, before per-hit shader flags
     // such as SHADER_CAST_SHADOW and SHADER_SMOOTH_NORMAL are applied.
     // This source identity is optional for programmatically built scenes;
@@ -194,6 +198,10 @@ struct TriangleMeshDesc {
     // the exact GeometryManager prefix; renderer-authored scenes may omit it
     // and let the backend assign a deterministic geometry-order prefix.
     std::optional<std::uint32_t> cycles_primitive_offset;
+    // Adaptive subdivision meshes are never eligible for Cycles' static
+    // object-transform application. This is source geometry metadata, not a
+    // tessellation or baking result.
+    bool uses_adaptive_subdivision{};
 };
 
 // Cycles keeps legacy particle hair as an independent Geometry rather than
@@ -282,6 +290,11 @@ struct InstanceDesc {
     // identity. Keep it per instance because shared geometry may be instanced
     // both as a catcher and as an ordinary object.
     bool is_shadow_catcher{};
+    // Preserve whether this entry came from a dependency-graph dupli. Cycles'
+    // static-transform decision is based on geometry users rather than this
+    // bit, but keeping the source representation prevents later adapters from
+    // having to infer it from names or persistent IDs.
+    bool is_blender_instance{};
 };
 
 enum class CameraProjection : std::uint8_t {
