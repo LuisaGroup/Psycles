@@ -1,10 +1,12 @@
 #include "path_tracer_scene_geometry.h"
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cmath>
 #include <limits>
 #include <map>
+#include <span>
 #include <unordered_map>
 
 namespace psycles::luisa_backend::detail {
@@ -67,17 +69,6 @@ namespace {
            std::bit_cast<std::uint32_t>(b);
 }
 
-[[nodiscard]] bool same_transform_bits(
-    const Mat4f &a,
-    const Mat4f &b) noexcept {
-    for (std::size_t i = 0u; i < a.elements.size(); ++i) {
-        if (!same_bits(a.elements[i], b.elements[i])) {
-            return false;
-        }
-    }
-    return true;
-}
-
 void hash_word(std::uint64_t &hash, std::uint32_t word) noexcept {
     constexpr auto prime = std::uint64_t{1099511628211ull};
     for (auto byte = 0u; byte < 4u; ++byte) {
@@ -121,6 +112,12 @@ void hash_word(std::uint64_t &hash, std::uint32_t word) noexcept {
                 std::fma(point.z, e[10u], e[14u])))};
 }
 
+[[nodiscard]] bool finite(Vec3f point) noexcept {
+    return std::isfinite(point.x) &&
+           std::isfinite(point.y) &&
+           std::isfinite(point.z);
+}
+
 // Exact world-support equality is a finite relation over the final vertex
 // array, not an approximate matrix comparison. A small deterministic witness
 // routes every equal support into the same bucket because equality of the
@@ -128,20 +125,19 @@ void hash_word(std::uint64_t &hash, std::uint32_t word) noexcept {
 // still collide, so the bucket match always compares every transformed vertex.
 [[nodiscard]] std::uint64_t instance_support_hash(
     std::uint32_t support_class,
-    const Mat4f &transform,
-    CyclesPositionArrayView positions) noexcept {
+    std::span<const Vec3f> positions) noexcept {
     auto hash = std::uint64_t{14695981039346656037ull};
     hash_word(hash, support_class);
-    if (positions.size == 0u) {
+    if (positions.empty()) {
         return hash;
     }
     const std::array witnesses{
         std::size_t{0u},
-        positions.size / 3u,
-        (positions.size * 2u) / 3u,
-        positions.size - 1u};
+        positions.size() / 3u,
+        (positions.size() * 2u) / 3u,
+        positions.size() - 1u};
     for (const auto index : witnesses) {
-        const auto point = transform_point(transform, positions[index]);
+        const auto point = positions[index];
         hash_word(hash, std::bit_cast<std::uint32_t>(point.x));
         hash_word(hash, std::bit_cast<std::uint32_t>(point.y));
         hash_word(hash, std::bit_cast<std::uint32_t>(point.z));
@@ -150,15 +146,14 @@ void hash_word(std::uint64_t &hash, std::uint32_t word) noexcept {
 }
 
 [[nodiscard]] bool same_world_support_bits(
-    const Mat4f &a,
-    const Mat4f &b,
-    CyclesPositionArrayView positions) noexcept {
-    if (same_transform_bits(a, b)) {
-        return true;
+    std::span<const Vec3f> a,
+    std::span<const Vec3f> b) noexcept {
+    if (a.size() != b.size()) {
+        return false;
     }
-    for (std::size_t index = 0u; index < positions.size; ++index) {
-        const auto pa = transform_point(a, positions[index]);
-        const auto pb = transform_point(b, positions[index]);
+    for (std::size_t index = 0u; index < a.size(); ++index) {
+        const auto pa = a[index];
+        const auto pb = b[index];
         if (!same_bits(pa.x, pb.x) ||
             !same_bits(pa.y, pb.y) ||
             !same_bits(pa.z, pb.z)) {
@@ -166,6 +161,23 @@ void hash_word(std::uint64_t &hash, std::uint32_t word) noexcept {
         }
     }
     return true;
+}
+
+[[nodiscard]] std::array<std::uint32_t, 9u>
+primitive_support_signature(
+    std::span<const Vec3f> world_positions,
+    std::array<std::uint32_t, 3u> triangle) noexcept {
+    std::array<std::uint32_t, 9u> result{};
+    for (auto corner = 0u; corner < 3u; ++corner) {
+        const auto point = world_positions[triangle[corner]];
+        result[corner * 3u + 0u] =
+            std::bit_cast<std::uint32_t>(point.x);
+        result[corner * 3u + 1u] =
+            std::bit_cast<std::uint32_t>(point.y);
+        result[corner * 3u + 2u] =
+            std::bit_cast<std::uint32_t>(point.z);
+    }
+    return result;
 }
 
 }// namespace
@@ -293,74 +305,258 @@ bool finalize_cycles_instance_intersection_plan(
     const contract::SceneSnapshot &scene,
     const std::map<contract::GeometryId, std::uint32_t>
         &final_triangle_support_classes,
-    const std::map<contract::GeometryId, CyclesPositionArrayView>
-        &final_positions,
-    std::span<CyclesInstanceIntersectionPlan> plan) {
-    if (plan.size() != scene.instances.size()) {
+    const std::map<contract::GeometryId, CyclesGeometrySupportView>
+        &final_supports,
+    std::span<CyclesInstanceIntersectionPlan> plan,
+    CyclesPrimitiveIntersectionPlan &primitive_plan) {
+    constexpr auto maximum_index =
+        std::numeric_limits<std::uint32_t>::max();
+    primitive_plan = {};
+    if (plan.size() != scene.instances.size() ||
+        plan.size() > maximum_index) {
         return false;
     }
     for (std::size_t index = 0u; index < plan.size(); ++index) {
         plan[index].coincident_next = static_cast<std::uint32_t>(index);
         plan[index].coincident_count = 1u;
+        plan[index].coincident_primitive_offset = 0u;
+        plan[index].coincident_primitive_count = 0u;
     }
-    struct Group {
-        std::uint32_t support_class{};
-        Mat4f transform;
-        std::vector<std::uint32_t> instances;
+
+    struct InstanceSupport {
+        std::uint32_t instance{};
+        CyclesGeometrySupportView support;
+        std::vector<Vec3f> world_positions;
+        bool all_finite{true};
     };
-    std::vector<Group> groups;
-    std::unordered_map<std::uint64_t, std::vector<std::size_t>> buckets;
+    std::map<std::uint32_t, std::vector<InstanceSupport>> support_groups;
     auto index = std::size_t{0u};
     for (const auto &[instance_id, instance] : scene.instances) {
         static_cast<void>(instance_id);
-        const auto support =
+        const auto support_class =
             final_triangle_support_classes.find(instance.geometry);
-        const auto positions = final_positions.find(instance.geometry);
-        if (support == final_triangle_support_classes.end()) {
+        if (support_class == final_triangle_support_classes.end()) {
             ++index;
             continue;
         }
-        if (positions == final_positions.end() ||
-            positions->second.load == nullptr ||
-            (positions->second.size != 0u &&
-             positions->second.data == nullptr)) {
+        const auto support = final_supports.find(instance.geometry);
+        if (support == final_supports.end()) {
             return false;
         }
-        const auto hash = instance_support_hash(
-            support->second, instance.transform, positions->second);
-        auto &candidates = buckets[hash];
-        std::optional<std::size_t> matching_group;
-        for (const auto candidate : candidates) {
-            const auto &group = groups[candidate];
-            if (group.support_class == support->second &&
-                same_world_support_bits(
-                    group.transform,
-                    instance.transform,
-                    positions->second)) {
-                matching_group = candidate;
-                break;
+        const auto view = support->second;
+        const auto valid_view =
+            view.load_position != nullptr &&
+            view.load_triangle != nullptr &&
+            view.position_count <= maximum_index &&
+            view.triangle_count <= maximum_index &&
+            (view.position_count == 0u ||
+             view.position_data != nullptr) &&
+            (view.triangle_count == 0u ||
+             view.triangle_data != nullptr);
+        if (!valid_view) {
+            return false;
+        }
+        InstanceSupport entry{
+            .instance = static_cast<std::uint32_t>(index),
+            .support = view,
+            .world_positions = {},
+            .all_finite = true};
+        entry.world_positions.reserve(view.position_count);
+        for (std::size_t vertex = 0u;
+             vertex < view.position_count;
+             ++vertex) {
+            const auto point = transform_point(
+                instance.transform, view.position(vertex));
+            entry.all_finite &= finite(point);
+            entry.world_positions.emplace_back(point);
+        }
+        for (std::size_t primitive = 0u;
+             primitive < view.triangle_count;
+             ++primitive) {
+            const auto triangle = view.triangle(primitive);
+            if (triangle[0u] >= view.position_count ||
+                triangle[1u] >= view.position_count ||
+                triangle[2u] >= view.position_count) {
+                return false;
             }
         }
-        if (!matching_group) {
-            matching_group = groups.size();
-            candidates.emplace_back(*matching_group);
-            groups.emplace_back(Group{
-                .support_class = support->second,
-                .transform = instance.transform,
-                .instances = {}});
-        }
-        groups[*matching_group].instances.emplace_back(
-            static_cast<std::uint32_t>(index));
+        support_groups[support_class->second].emplace_back(
+            std::move(entry));
         ++index;
     }
-    for (const auto &group : groups) {
-        const auto count = static_cast<std::uint32_t>(group.instances.size());
-        for (std::size_t i = 0u; i < group.instances.size(); ++i) {
-            const auto current = group.instances[i];
-            const auto next = group.instances[(i + 1u) % group.instances.size()];
-            plan[current].coincident_next = next;
-            plan[current].coincident_count = count;
+
+    std::vector<std::uint32_t> whole_support_representative(plan.size());
+    for (std::size_t instance = 0u; instance < plan.size(); ++instance) {
+        whole_support_representative[instance] =
+            static_cast<std::uint32_t>(instance);
+    }
+    std::vector<std::vector<CyclesCoincidentPrimitiveRecord>>
+        records_by_instance(plan.size());
+
+    for (auto &[support_class, entries] : support_groups) {
+        if (entries.empty()) {
+            continue;
         }
+        const auto position_count = entries.front().support.position_count;
+        const auto triangle_count = entries.front().support.triangle_count;
+        for (const auto &entry : entries) {
+            if (entry.support.position_count != position_count ||
+                entry.support.triangle_count != triangle_count) {
+                return false;
+            }
+        }
+
+        struct WholeGroup {
+            std::size_t representative{};
+            std::vector<std::uint32_t> instances;
+        };
+        std::vector<WholeGroup> whole_groups;
+        std::unordered_map<std::uint64_t, std::vector<std::size_t>> buckets;
+        for (std::size_t entry_index = 0u;
+             entry_index < entries.size();
+             ++entry_index) {
+            const auto &entry = entries[entry_index];
+            if (!entry.all_finite) {
+                continue;
+            }
+            const auto hash = instance_support_hash(
+                support_class, entry.world_positions);
+            auto &candidates = buckets[hash];
+            std::optional<std::size_t> matching_group;
+            for (const auto candidate : candidates) {
+                const auto &group = whole_groups[candidate];
+                if (same_world_support_bits(
+                        entries[group.representative].world_positions,
+                        entry.world_positions)) {
+                    matching_group = candidate;
+                    break;
+                }
+            }
+            if (!matching_group) {
+                matching_group = whole_groups.size();
+                candidates.emplace_back(*matching_group);
+                whole_groups.emplace_back(WholeGroup{
+                    .representative = entry_index,
+                    .instances = {}});
+            }
+            whole_groups[*matching_group].instances.emplace_back(
+                entry.instance);
+        }
+        for (const auto &group : whole_groups) {
+            const auto count =
+                static_cast<std::uint32_t>(group.instances.size());
+            const auto representative = group.instances.front();
+            for (std::size_t member = 0u;
+                 member < group.instances.size();
+                 ++member) {
+                const auto current = group.instances[member];
+                const auto next = group.instances[
+                    (member + 1u) % group.instances.size()];
+                plan[current].coincident_next = next;
+                plan[current].coincident_count = count;
+                whole_support_representative[current] = representative;
+            }
+        }
+
+        struct PrimitiveCandidate {
+            std::array<std::uint32_t, 9u> signature;
+            std::uint32_t instance{};
+        };
+        std::vector<PrimitiveCandidate> candidates;
+        candidates.reserve(entries.size());
+        for (std::size_t primitive = 0u;
+             primitive < triangle_count;
+             ++primitive) {
+            candidates.clear();
+            for (const auto &entry : entries) {
+                const auto triangle = entry.support.triangle(primitive);
+                const auto p0 = entry.world_positions[triangle[0u]];
+                const auto p1 = entry.world_positions[triangle[1u]];
+                const auto p2 = entry.world_positions[triangle[2u]];
+                if (!finite(p0) || !finite(p1) || !finite(p2)) {
+                    continue;
+                }
+                candidates.emplace_back(PrimitiveCandidate{
+                    .signature = primitive_support_signature(
+                        entry.world_positions, triangle),
+                    .instance = entry.instance});
+            }
+            std::sort(
+                candidates.begin(), candidates.end(),
+                [](const PrimitiveCandidate &a,
+                   const PrimitiveCandidate &b) noexcept {
+                    if (a.signature != b.signature) {
+                        return a.signature < b.signature;
+                    }
+                    return a.instance < b.instance;
+                });
+            for (std::size_t first = 0u;
+                 first < candidates.size();) {
+                auto last = first + 1u;
+                while (last < candidates.size() &&
+                       candidates[last].signature ==
+                           candidates[first].signature) {
+                    ++last;
+                }
+                auto spans_whole_groups = false;
+                for (auto member = first + 1u;
+                     member < last;
+                     ++member) {
+                    spans_whole_groups |=
+                        whole_support_representative[
+                            candidates[member].instance] !=
+                        whole_support_representative[
+                            candidates[first].instance];
+                }
+                if (last - first > 1u && spans_whole_groups) {
+                    if (primitive_plan.instances.size() > maximum_index -
+                            (last - first)) {
+                        return false;
+                    }
+                    const auto alias_offset =
+                        static_cast<std::uint32_t>(
+                            primitive_plan.instances.size());
+                    const auto alias_count =
+                        static_cast<std::uint32_t>(last - first);
+                    for (auto member = first; member < last; ++member) {
+                        primitive_plan.instances.emplace_back(
+                            candidates[member].instance);
+                    }
+                    for (auto member = first; member < last; ++member) {
+                        records_by_instance[candidates[member].instance]
+                            .emplace_back(CyclesCoincidentPrimitiveRecord{
+                                .local_primitive =
+                                    static_cast<std::uint32_t>(primitive),
+                                .instance_offset = alias_offset,
+                                .instance_count = alias_count});
+                    }
+                }
+                first = last;
+            }
+        }
+    }
+
+    for (std::size_t instance = 0u;
+         instance < records_by_instance.size();
+         ++instance) {
+        auto &records = records_by_instance[instance];
+        std::sort(
+            records.begin(), records.end(),
+            [](const CyclesCoincidentPrimitiveRecord &a,
+               const CyclesCoincidentPrimitiveRecord &b) noexcept {
+                return a.local_primitive < b.local_primitive;
+            });
+        if (primitive_plan.records.size() >
+            maximum_index - records.size()) {
+            return false;
+        }
+        plan[instance].coincident_primitive_offset =
+            static_cast<std::uint32_t>(primitive_plan.records.size());
+        plan[instance].coincident_primitive_count =
+            static_cast<std::uint32_t>(records.size());
+        primitive_plan.records.insert(
+            primitive_plan.records.end(),
+            records.begin(), records.end());
     }
     return true;
 }

@@ -84,6 +84,12 @@ struct CoincidentTriangleHit {
   Float2 barycentric;
 };
 
+struct CoincidentPrimitiveRange {
+  Bool valid;
+  UInt instance_offset;
+  UInt instance_count;
+};
+
 [[nodiscard]] Float distance_upper_neighbor(Expr<float> distance) noexcept {
   // Surface distances are non-negative. Incrementing the IEEE-754 encoding is
   // therefore nextafter(distance, +infinity); use the smallest normal at zero
@@ -157,6 +163,41 @@ private:
             .primitive = std::move(primitive_index)};
   }
 
+  [[nodiscard]] CoincidentPrimitiveRange
+  coincident_primitive_range(
+      const std::shared_ptr<LuisaSceneData> &scene,
+      Expr<std::uint32_t> instance_index,
+      Expr<std::uint32_t> local_primitive) const noexcept {
+    const auto instance = scene->instance_buffer->read(instance_index);
+    Bool valid = false;
+    UInt instance_offset = 0u;
+    UInt instance_count = 0u;
+    UInt first = instance.coincident_primitive_offset;
+    const UInt end = first + instance.coincident_primitive_count;
+    UInt last = end;
+    $while(first < last) {
+      const auto middle = first + (last - first) / 2u;
+      const auto record = scene->coincident_primitive_buffer->read(middle);
+      $if(record.local_primitive < local_primitive) {
+        first = middle + 1u;
+      }
+      $else {
+        last = middle;
+      };
+    };
+    $if(first < end) {
+      const auto record = scene->coincident_primitive_buffer->read(first);
+      $if(record.local_primitive == local_primitive) {
+        valid = record.instance_count > 1u;
+        instance_offset = record.instance_offset;
+        instance_count = record.instance_count;
+      };
+    };
+    return {.valid = std::move(valid),
+            .instance_offset = std::move(instance_offset),
+            .instance_count = std::move(instance_count)};
+  }
+
   [[nodiscard]] CoincidentTriangleHit
   resolve_coincident_triangle(
       const std::shared_ptr<LuisaSceneData> &scene,
@@ -175,9 +216,19 @@ private:
     Float group_distance = ray->t_max();
     Float2 group_barycentric = make_float2(0.0f);
     const auto seed = scene->instance_buffer->read(seed_instance);
+    const auto sparse = coincident_primitive_range(
+        scene, seed_instance, local_primitive);
     UInt alias_index = seed_instance;
-    UInt remaining = max(seed.coincident_count, 1u);
+    UInt sparse_index = sparse.instance_offset;
+    UInt remaining = select(
+        max(seed.coincident_count, 1u),
+        sparse.instance_count,
+        sparse.valid);
     $while(remaining > 0u) {
+      $if(sparse.valid) {
+        alias_index =
+            scene->coincident_primitive_instance_buffer->read(sparse_index);
+      };
       const auto alias = scene->instance_buffer->read(alias_index);
       const auto geometry =
           scene->geometry_buffer->read(alias.geometry_index);
@@ -216,7 +267,12 @@ private:
         group_distance = intersection.distance;
         group_barycentric = intersection.barycentric;
       };
-      alias_index = alias.coincident_next;
+      $if(sparse.valid) {
+        sparse_index += 1u;
+      }
+      $else {
+        alias_index = alias.coincident_next;
+      };
       remaining -= 1u;
     };
     return {.valid = std::move(group_has_hit),
@@ -259,76 +315,29 @@ private:
         [&](luisa::compute::SurfaceCandidate &candidate,
             bool commit_candidate) noexcept {
           const auto hit = candidate.hit();
-          const auto instance = scene->instance_buffer->read(hit->inst);
-          const UInt coincident_count =
-              max(instance.coincident_count, 1u);
-          $if(coincident_count > 1u) {
-            const auto group = resolve_coincident_triangle(
-                scene, ray, visibility_mask, source, light,
-                hit->inst, hit->prim);
-            const auto accepted =
-                group.valid &
-                closest.accepts(group.distance, group.object,
-                                group.cycles_primitive, group.type_order);
-            $if(accepted) {
-              if (commit_candidate) {
-                candidate.commit();
-              }
-              closest.select(group.distance, group.object,
-                             group.cycles_primitive, group.type_order);
-              resolved->inst = group.instance;
-              resolved->prim = group.primitive;
-              resolved->bary = group.barycentric;
-              resolved->hit_type = static_cast<std::uint32_t>(
-                  luisa::compute::HitType::Surface);
-              resolved->committed_ray_t = group.distance;
-            };
-          } $else {
-            const auto geometry =
-                scene->geometry_buffer->read(instance.geometry_index);
-            const auto triangle =
-                scene->heap
-                    ->buffer<Triangle>(geometry.bindless_base)
-                    .read(hit->prim);
-            const auto positions =
-                scene->heap->buffer<luisa::float3>(
-                    geometry.bindless_base + 9u);
-            // Hardware triangle queries are a broad-phase candidate source.
-            // Resolve every candidate with Cycles' Pluecker predicate so a
-            // backend-specific near-origin hit cannot become a shadow or
-            // closest-surface event that Cycles itself would reject.
-            const auto intersection = _triangle_intersection->intersect(
-                ray,
-                instance.cycles_world_to_object,
-                instance.cycles_transform_applied,
-                positions.read(triangle.i0),
-                positions.read(triangle.i1),
-                positions.read(triangle.i2));
-            const auto object =
-                _materials->cycles_object_index(hit->inst, instance);
-            const auto primitive =
-                geometry.cycles_primitive_offset + hit->prim;
-            const auto excluded = source.matches(object, primitive) |
-                                  light.matches(object, primitive);
-            const auto visible =
-                (instance.visibility_mask & visibility_mask) != 0u;
-            const auto accepted =
-                intersection.valid & visible &
-                closest.accepts(intersection.distance, object, primitive,
-                                geometry.primitive_kind);
-            $if(!excluded & accepted) {
-              if (commit_candidate) {
-                candidate.commit();
-              }
-              closest.select(intersection.distance, object, primitive,
-                             geometry.primitive_kind);
-              resolved->inst = hit->inst;
-              resolved->prim = hit->prim;
-              resolved->bary = intersection.barycentric;
-              resolved->hit_type = static_cast<std::uint32_t>(
-                  luisa::compute::HitType::Surface);
-              resolved->committed_ray_t = intersection.distance;
-            };
+          // Hardware triangle queries are broad-phase candidate sources. The
+          // exact resolver handles a singleton, a whole-instance class, or a
+          // sparse primitive class through the same Cycles predicate and
+          // stable identity order.
+          const auto group = resolve_coincident_triangle(
+              scene, ray, visibility_mask, source, light,
+              hit->inst, hit->prim);
+          const auto accepted =
+              group.valid &
+              closest.accepts(group.distance, group.object,
+                              group.cycles_primitive, group.type_order);
+          $if(accepted) {
+            if (commit_candidate) {
+              candidate.commit();
+            }
+            closest.select(group.distance, group.object,
+                           group.cycles_primitive, group.type_order);
+            resolved->inst = group.instance;
+            resolved->prim = group.primitive;
+            resolved->bary = group.barycentric;
+            resolved->hit_type = static_cast<std::uint32_t>(
+                luisa::compute::HitType::Surface);
+            resolved->committed_ray_t = group.distance;
           };
         };
 
@@ -402,7 +411,11 @@ private:
     $if(source_acceleration.valid) {
       const auto source_instance =
           scene->instance_buffer->read(source_acceleration.instance);
-      $if(max(source_instance.coincident_count, 1u) > 1u) {
+      const auto sparse = coincident_primitive_range(
+          scene, source_acceleration.instance,
+          source_acceleration.primitive);
+      $if((max(source_instance.coincident_count, 1u) > 1u) |
+          sparse.valid) {
         const auto group = resolve_coincident_triangle(
             scene, ray, visibility_mask, source, light,
             source_acceleration.instance,

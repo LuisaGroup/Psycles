@@ -146,6 +146,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     auto cycles_instance_intersection_plan =
         build_cycles_instance_intersection_plan(
             snapshot, surface_bssrdf_materials);
+    CyclesPrimitiveIntersectionPlan cycles_primitive_intersection_plan;
     std::map<contract::GeometryId, Mat4f>
         cycles_static_transform_by_geometry;
     auto source_instance_index = std::size_t{0u};
@@ -1385,28 +1386,17 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         diagnose(result.diagnostics, final_support_classes.diagnostic);
         return result;
     }
-    std::map<contract::GeometryId, CyclesPositionArrayView>
-        final_position_views;
-    for (const auto &[geometry_id, upload_index] : geometry_indices) {
-        if (upload_index >= uploads.size()) {
-            continue;
-        }
-        const auto &positions = uploads[upload_index].positions;
-        final_position_views.emplace(
-            geometry_id,
-            make_cycles_position_array_view(
-                std::span<const luisa::float3>{
-                    positions.data(), positions.size()}));
-    }
-    if (!finalize_cycles_instance_intersection_plan(
+    if (!finalize_cycles_final_instance_supports(
             snapshot,
-            final_support_classes.by_geometry,
-            final_position_views,
-            cycles_instance_intersection_plan)) {
+            final_support_classes,
+            geometry_indices,
+            uploads,
+            cycles_instance_intersection_plan,
+            cycles_primitive_intersection_plan)) {
         diagnose(
             result.diagnostics,
             "Cycles instance intersection plan has inconsistent final "
-            "position support");
+            "triangle support");
         return result;
     }
 
@@ -1437,6 +1427,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     }
 
     luisa::vector<InstanceGpu> instances;
+    auto coincident_primitive_upload =
+        make_coincident_primitive_upload(
+            cycles_primitive_intersection_plan);
     luisa::vector<MaterialBindingGpu> override_materials;
     luisa::vector<EmissiveTriangleGpu> emissive_triangles;
     std::vector<float> emissive_triangle_areas;
@@ -1514,6 +1507,10 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 intersection_plan.coincident_next,
             .coincident_count =
                 intersection_plan.coincident_count,
+            .coincident_primitive_offset =
+                intersection_plan.coincident_primitive_offset,
+            .coincident_primitive_count =
+                intersection_plan.coincident_primitive_count,
             .cycles_transform_applied =
                 intersection_plan.transform_applied ? 1u : 0u,
             .cycles_world_to_object =
@@ -1956,6 +1953,10 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
          .attribute_bindings = attribute_bindings,
          .attribute_ranges = attribute_ranges,
          .instances = instances,
+         .coincident_primitives =
+             coincident_primitive_upload.records,
+         .coincident_primitive_instances =
+             coincident_primitive_upload.instances,
          .geometry_materials = geometry_materials,
          .override_materials = override_materials,
          .lights = lights,

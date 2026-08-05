@@ -2,6 +2,7 @@
 
 #include <psycles/contract/scene.h>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -55,35 +56,76 @@ class CyclesPrimitiveIntervalResolver {
 struct CyclesInstanceIntersectionPlan {
     std::uint32_t coincident_next{};
     std::uint32_t coincident_count{1u};
+    std::uint32_t coincident_primitive_offset{};
+    std::uint32_t coincident_primitive_count{};
     bool transform_applied{};
     Mat4f world_to_object;
 };
 
-// A type-erased, non-owning view of the final float position array. Keeping
-// this interface in terms of Psycles' host vector type lets the exact support
-// planner remain independent of any particular compute runtime container.
-struct CyclesPositionArrayView {
-    const void *data{};
-    std::size_t size{};
-    Vec3f (*load)(const void *, std::size_t) noexcept{};
+struct CyclesCoincidentPrimitiveRecord {
+    std::uint32_t local_primitive{};
+    std::uint32_t instance_offset{};
+    std::uint32_t instance_count{};
+};
 
-    [[nodiscard]] Vec3f operator[](
+struct CyclesPrimitiveIntersectionPlan {
+    std::vector<CyclesCoincidentPrimitiveRecord> records;
+    std::vector<std::uint32_t> instances;
+};
+
+// Type-erased, non-owning access to the final float triangle support. This
+// keeps exact-support planning independent of Luisa's runtime containers while
+// retaining the ordered triangle vertices that define Cycles primitive
+// identity.
+struct CyclesGeometrySupportView {
+    const void *position_data{};
+    std::size_t position_count{};
+    Vec3f (*load_position)(const void *, std::size_t) noexcept{};
+    const void *triangle_data{};
+    std::size_t triangle_count{};
+    std::array<std::uint32_t, 3u> (*load_triangle)(
+        const void *, std::size_t) noexcept{};
+
+    [[nodiscard]] Vec3f position(
         std::size_t index) const noexcept {
-        return load(data, index);
+        return load_position(position_data, index);
+    }
+
+    [[nodiscard]] std::array<std::uint32_t, 3u> triangle(
+        std::size_t index) const noexcept {
+        return load_triangle(triangle_data, index);
     }
 };
 
-template<typename Position>
-[[nodiscard]] CyclesPositionArrayView
-make_cycles_position_array_view(
-    std::span<const Position> positions) noexcept {
+template<typename Position, typename Triangle>
+[[nodiscard]] CyclesGeometrySupportView
+make_cycles_geometry_support_view(
+    std::span<const Position> positions,
+    std::span<const Triangle> triangles) noexcept {
     return {
-        .data = positions.data(),
-        .size = positions.size(),
-        .load = [](const void *data, std::size_t index) noexcept {
+        .position_data = positions.data(),
+        .position_count = positions.size(),
+        .load_position = [](const void *data, std::size_t index) noexcept {
             const auto &point =
                 static_cast<const Position *>(data)[index];
             return Vec3f{point.x, point.y, point.z};
+        },
+        .triangle_data = triangles.data(),
+        .triangle_count = triangles.size(),
+        .load_triangle = [](const void *data, std::size_t index) noexcept {
+            const auto &triangle =
+                static_cast<const Triangle *>(data)[index];
+            if constexpr (requires {
+                              triangle.i0;
+                              triangle.i1;
+                              triangle.i2;
+                          }) {
+                return std::array<std::uint32_t, 3u>{
+                    triangle.i0, triangle.i1, triangle.i2};
+            } else {
+                return std::array<std::uint32_t, 3u>{
+                    triangle[0u], triangle[1u], triangle[2u]};
+            }
         }};
 }
 
@@ -93,18 +135,21 @@ build_cycles_instance_intersection_plan(
     const std::set<contract::MaterialId> &surface_bssrdf_materials);
 
 // Completes the plan only after every geometry mutation is finished. Geometry
-// classes identify bitwise-equal local position and triangle-index arrays;
-// instance classes additionally require bitwise-equal vertices after the
-// authored affine transform. Keeping this phase separate prevents true
-// displacement from invalidating an alias relation derived from the source
-// mesh while admitting distinct transforms with the same finite float image.
+// classes identify bitwise-equal local position and triangle-index arrays.
+// Whole-instance classes require every transformed vertex to be bitwise equal;
+// sparse primitive classes require the three ordered transformed vertices to
+// be bitwise equal. Both are exact finite relations. Keeping this phase after
+// geometry mutation prevents displacement from invalidating an alias relation
+// derived from the source mesh while admitting distinct transforms with the
+// same finite float image.
 [[nodiscard]] bool finalize_cycles_instance_intersection_plan(
     const contract::SceneSnapshot &scene,
     const std::map<contract::GeometryId, std::uint32_t>
         &final_triangle_support_classes,
-    const std::map<contract::GeometryId, CyclesPositionArrayView>
-        &final_positions,
-    std::span<CyclesInstanceIntersectionPlan> plan);
+    const std::map<contract::GeometryId, CyclesGeometrySupportView>
+        &final_supports,
+    std::span<CyclesInstanceIntersectionPlan> plan,
+    CyclesPrimitiveIntersectionPlan &primitive_plan);
 
 // Host forms of Cycles' affine geometry operations. Static-transform vertices
 // and object-space rays are uploaded as floats so every device backend sees

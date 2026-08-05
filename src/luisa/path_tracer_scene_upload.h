@@ -6,11 +6,24 @@
 
 namespace psycles::luisa_backend::detail {
 
+struct CyclesPrimitiveIntersectionPlan;
+
+struct CoincidentPrimitiveUpload {
+    luisa::vector<CoincidentPrimitiveGpu> records;
+    luisa::vector<luisa::uint> instances;
+};
+
+[[nodiscard]] CoincidentPrimitiveUpload
+make_coincident_primitive_upload(
+    const CyclesPrimitiveIntersectionPlan &plan);
+
 struct SceneTableUploadInput {
     luisa::vector<GeometryGpu> &geometries;
     luisa::vector<AttributeBindingGpu> &attribute_bindings;
     luisa::vector<AttributeRangeGpu> &attribute_ranges;
     luisa::vector<InstanceGpu> &instances;
+    luisa::vector<CoincidentPrimitiveGpu> &coincident_primitives;
+    luisa::vector<luisa::uint> &coincident_primitive_instances;
     luisa::vector<MaterialBindingGpu> &geometry_materials;
     luisa::vector<MaterialBindingGpu> &override_materials;
     luisa::vector<LightGpu> &lights;
