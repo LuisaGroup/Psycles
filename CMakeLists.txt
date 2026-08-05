@@ -1692,6 +1692,7 @@ if(PSYCLES_ENABLE_LUISA)
             add_executable(
                 psycles_cycles_shader_identity_tests
                 tests/test_cycles_shader_identity.cpp
+                src/luisa/path_tracer_displacement_plan.cpp
                 src/luisa/path_tracer_scene_geometry.cpp)
             target_link_libraries(
                 psycles_cycles_shader_identity_tests
