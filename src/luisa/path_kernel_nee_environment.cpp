@@ -150,54 +150,80 @@ class EnvironmentLightingComponent final : public DirectLightingComponent {
                     bounce,
                     {.distance = ray_maximum,
                      .bsdf_pdf = evaluation.pdf,
-                     .mis_weight = mis_weight});
-                const auto shadow =
-                    make_surface_shadow_origin(
-                        light.direction);
-                Var<luisa::compute::Ray> environment_shadow_ray =
-                    make_ray(shadow.position,
-                             light.direction,
-                             0.0f,
-                             ray_maximum);
-                Float3 shadow_transmittance =
-                    trace_shadow(environment_shadow_ray,
-                                 select(surface_ray::invalid_primitive,
-                                        surface.cycles_object_index,
-                                        shadow.skip_self),
-                                 select(surface_ray::invalid_primitive,
-                                        surface.cycles_primitive_index,
-                                        shadow.skip_self),
-                                 surface_ray::invalid_primitive,
-                                 surface_ray::invalid_primitive,
-                                 kernel_parameters.transparent_max_bounces,
-                                 pack_shader_evaluation_state(
-                                     cycles_path_state::shadow_shader_state(
-                                         path_depth,
-                                         diffuse_depth,
-                                         glossy_depth,
-                                         transparent_depth,
-                                         transmission_depth)));
-                $if(any(shadow_transmittance > 0.0f)) {
-                    Float3 unshadowed_contribution =
-                        evaluation.f *
-                        radiance *
-                        (mis_weight /
-                         light.pdf);
-                    Float roulette_weight = sample_light_roulette(
-                        unshadowed_contribution, light_terminate_sample);
-                    Float3 contribution = clamp_contribution(
-                        throughput * unshadowed_contribution *
-                            shadow_transmittance * roulette_weight,
-                        path_depth);
-                    sample.accumulate_radiance(
-                        contribution);
-                    accumulate_light_pass(split_nee_light(contribution,
-                                                          evaluation.f,
-                                                          evaluation.diffuse_f,
-                                                          evaluation.glossy_f,
-                                                          path_diffuse_weight,
-                                                          path_glossy_weight,
-                                                          path_depth));
+                     .mis_weight = mis_weight,
+                     .bsdf = evaluation.f,
+                     .diffuse = evaluation.diffuse_f,
+                     .glossy = evaluation.glossy_f});
+                const auto constant_emission =
+                    config.scene->environment_emission_is_constant;
+                Float3 weighted_light = make_float3(1.0f);
+                Float3 light_shader_factor = radiance;
+                if (constant_emission) {
+                    weighted_light = radiance;
+                    light_shader_factor = make_float3(1.0f);
+                }
+                const auto weighted_bsdf =
+                    evaluation.f * weighted_light *
+                    (mis_weight / light.pdf);
+                _trace->record_weighted_bsdf(
+                    bounce, weighted_bsdf);
+                $if(any(weighted_bsdf != 0.0f)) {
+                    const auto unshadowed =
+                        weighted_bsdf * light_shader_factor;
+                    const auto roulette_weight = sample_light_roulette(
+                        unshadowed, light_terminate_sample);
+                    const auto surviving_unshadowed =
+                        unshadowed * roulette_weight;
+                    _trace->record_transport(
+                        bounce,
+                        {.light_shader = light_shader_factor,
+                         .unshadowed =
+                             throughput * surviving_unshadowed});
+                    $if(any(surviving_unshadowed != 0.0f)) {
+                        const auto shadow = make_surface_shadow_origin(
+                            light.direction);
+                        Var<luisa::compute::Ray> environment_shadow_ray =
+                            make_ray(shadow.position,
+                                     light.direction,
+                                     0.0f,
+                                     ray_maximum);
+                        const auto shadow_transmittance = trace_shadow(
+                            environment_shadow_ray,
+                            select(surface_ray::invalid_primitive,
+                                   surface.cycles_object_index,
+                                   shadow.skip_self),
+                            select(surface_ray::invalid_primitive,
+                                   surface.cycles_primitive_index,
+                                   shadow.skip_self),
+                            surface_ray::invalid_primitive,
+                            surface_ray::invalid_primitive,
+                            kernel_parameters.transparent_max_bounces,
+                            pack_shader_evaluation_state(
+                                cycles_path_state::shadow_shader_state(
+                                    path_depth,
+                                    diffuse_depth,
+                                    glossy_depth,
+                                    transparent_depth,
+                                    transmission_depth)));
+                        $if(any(shadow_transmittance > 0.0f)) {
+                            const auto unclamped_contribution =
+                                throughput * surviving_unshadowed *
+                                shadow_transmittance;
+                            _trace->record_contribution(
+                                bounce, unclamped_contribution);
+                            const auto contribution = clamp_contribution(
+                                unclamped_contribution, path_depth);
+                            sample.accumulate_radiance(contribution);
+                            accumulate_light_pass(split_nee_light(
+                                contribution,
+                                evaluation.f,
+                                evaluation.diffuse_f,
+                                evaluation.glossy_f,
+                                path_diffuse_weight,
+                                path_glossy_weight,
+                                path_depth));
+                        };
+                    };
                 };
             }
             $else {

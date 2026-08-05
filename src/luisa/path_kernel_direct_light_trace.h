@@ -26,6 +26,14 @@ struct DirectLightEvaluationRecord {
     Float distance;
     Float bsdf_pdf;
     Float mis_weight;
+    Float3 bsdf;
+    Float3 diffuse;
+    Float3 glossy;
+};
+
+struct DirectLightTransportRecord {
+    Float3 light_shader;
+    Float3 unshadowed;
 };
 
 // Host-stage trace policy. The enabled implementation records Luisa DSL AST
@@ -49,6 +57,16 @@ class DirectLightTraceRecorder {
         PathBounceContext &bounce,
         const DirectLightEvaluationRecord &record)
         const noexcept = 0;
+    virtual void record_weighted_bsdf(
+        PathBounceContext &bounce,
+        Float3 weighted_bsdf) const noexcept = 0;
+    virtual void record_transport(
+        PathBounceContext &bounce,
+        const DirectLightTransportRecord &record)
+        const noexcept = 0;
+    virtual void record_contribution(
+        PathBounceContext &bounce,
+        Float3 contribution) const noexcept = 0;
 };
 
 [[nodiscard]] std::shared_ptr<

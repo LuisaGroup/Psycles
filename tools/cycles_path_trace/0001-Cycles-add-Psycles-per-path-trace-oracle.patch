@@ -1,15 +1,17 @@
-From 7fa06e0a26f9b20b91005705a2ef8cef3df52562 Mon Sep 17 00:00:00 2001
+From 2a8ab92adce988d80101226d1a7f3325fd5e518d Mon Sep 17 00:00:00 2001
 From: Mike Smith <mango@live.cn>
-Date: Thu, 30 Jul 2026 14:08:56 +0800
+Date: Wed, 5 Aug 2026 21:55:43 +0800
 Subject: [PATCH] Cycles: add Psycles per-path trace oracle
 
 ---
- intern/cycles/kernel/data_template.h           |   3 +
- .../kernel/integrator/init_from_camera.h      |  38 +++-
- .../cycles/kernel/integrator/psycles_trace.h  | 169 ++++++++++++
- .../cycles/kernel/integrator/shade_surface.h  | 242 +++++++++++++++++-
- intern/cycles/scene/integrator.cpp             |   1 +
- 5 files changed, 444 insertions(+), 9 deletions(-)
+ intern/cycles/kernel/data_template.h          |   3 +
+ .../kernel/integrator/init_from_camera.h      |  38 ++-
+ .../cycles/kernel/integrator/psycles_trace.h  | 232 ++++++++++++++
+ intern/cycles/kernel/integrator/shade_light.h |  31 +-
+ .../cycles/kernel/integrator/shade_shadow.h   |   7 +
+ .../cycles/kernel/integrator/shade_surface.h  | 291 +++++++++++++++++-
+ intern/cycles/scene/integrator.cpp            |   1 +
+ 7 files changed, 591 insertions(+), 12 deletions(-)
  create mode 100644 intern/cycles/kernel/integrator/psycles_trace.h
 
 diff --git a/intern/cycles/kernel/data_template.h b/intern/cycles/kernel/data_template.h
@@ -106,10 +108,10 @@ index 948a83a7..fd7d0eac 100644
  
 diff --git a/intern/cycles/kernel/integrator/psycles_trace.h b/intern/cycles/kernel/integrator/psycles_trace.h
 new file mode 100644
-index 00000000..9b946fb1
+index 00000000..23b96e02
 --- /dev/null
 +++ b/intern/cycles/kernel/integrator/psycles_trace.h
-@@ -0,0 +1,168 @@
+@@ -0,0 +1,232 @@
 +/* SPDX-FileCopyrightText: 2026 Psycles Authors
 + *
 + * SPDX-License-Identifier: Apache-2.0 */
@@ -192,6 +194,13 @@ index 00000000..9b946fb1
 +  PSYCLES_TRACE_EVENT_SURFACE_FLAGS = 38,
 +  PSYCLES_TRACE_EVENT_POST_VISIBILITY = 39,
 +  PSYCLES_TRACE_EVENT_LIGHT_SHADER = 40,
++  PSYCLES_TRACE_EVENT_NEE_BSDF = 41,
++  PSYCLES_TRACE_EVENT_NEE_DIFFUSE = 42,
++  PSYCLES_TRACE_EVENT_NEE_GLOSSY = 43,
++  PSYCLES_TRACE_EVENT_NEE_WEIGHTED_BSDF = 44,
++  PSYCLES_TRACE_EVENT_NEE_LIGHT_SHADER = 45,
++  PSYCLES_TRACE_EVENT_NEE_UNSHADOWED = 46,
++  PSYCLES_TRACE_EVENT_NEE_CONTRIBUTION = 47,
 +  PSYCLES_TRACE_EVENT_CLOSURE_BASE = 48,
 +};
 +
@@ -273,14 +282,177 @@ index 00000000..9b946fb1
 +                      value);
 +}
 +
++ccl_device_forceinline int psycles_trace_shadow_event_index(
++    ConstIntegratorShadowState state)
++{
++  const int rng_offset = INTEGRATOR_STATE(state, shadow_path, rng_offset);
++  return rng_offset / PRNG_BOUNCE_NUM - 1;
++}
++
++ccl_device_forceinline bool psycles_trace_shadow_active(KernelGlobals kg,
++                                                        ConstIntegratorShadowState state,
++                                                        const int slot)
++{
++  return kernel_data.film.pass_aov_color != PASS_UNUSED &&
++         kernel_data.film.pass_stride >=
++             kernel_data.film.pass_aov_color + PSYCLES_TRACE_AOV_COUNT * 4 &&
++         INTEGRATOR_STATE(state, shadow_path, sample) ==
++             kernel_data.integrator.psycles_trace_sample &&
++         slot >= 0 && slot < PSYCLES_TRACE_AOV_COUNT;
++}
++
++ccl_device_forceinline void psycles_trace_write_shadow(
++    KernelGlobals kg,
++    ConstIntegratorShadowState state,
++    ccl_global float *ccl_restrict render_buffer,
++    const int slot,
++    const float3 value)
++{
++  if (render_buffer == nullptr || !psycles_trace_shadow_active(kg, state, slot)) {
++    return;
++  }
++  ccl_global float *buffer = film_pass_pixel_render_buffer_shadow(kg, state, render_buffer);
++  buffer += kernel_data.film.pass_aov_color + slot * 4;
++  buffer[0] = value.x;
++  buffer[1] = value.y;
++  buffer[2] = value.z;
++  buffer[3] = 1.0f;
++}
++
++ccl_device_forceinline void psycles_trace_write_shadow_event(
++    KernelGlobals kg,
++    ConstIntegratorShadowState state,
++    ccl_global float *ccl_restrict render_buffer,
++    const int relative_slot,
++    const float3 value)
++{
++  const int event = psycles_trace_shadow_event_index(state);
++  if (event < 0 || event >= PSYCLES_TRACE_MAX_EVENTS) {
++    return;
++  }
++  psycles_trace_write_shadow(kg,
++                             state,
++                             render_buffer,
++                             PSYCLES_TRACE_GLOBAL_SLOTS +
++                                 event * PSYCLES_TRACE_EVENT_SLOTS + relative_slot,
++                             value);
++}
++
 +ccl_device_forceinline float3 psycles_trace_uint32(const uint32_t value)
 +{
 +  return make_float3(float(value & 0xffffu), float(value >> 16), 0.0f);
 +}
 +
 +CCL_NAMESPACE_END
+diff --git a/intern/cycles/kernel/integrator/shade_light.h b/intern/cycles/kernel/integrator/shade_light.h
+index ecbbe97c..2df068a8 100644
+--- a/intern/cycles/kernel/integrator/shade_light.h
++++ b/intern/cycles/kernel/integrator/shade_light.h
+@@ -7,6 +7,7 @@
+ #include "kernel/film/light_passes.h"
+ 
+ #include "kernel/integrator/path_state.h"
++#include "kernel/integrator/psycles_trace.h"
+ #include "kernel/integrator/state_flow.h"
+ #include "kernel/light/light.h"
+ #include "kernel/light/sample.h"
+@@ -112,7 +113,10 @@ ccl_device void integrator_shade_light_forward(KernelGlobals kg,
+    * scene geometry. */
+ }
+ 
+-ccl_device ShaderEvalResult integrate_light_nee(KernelGlobals kg, IntegratorShadowState state)
++ccl_device ShaderEvalResult integrate_light_nee(
++    KernelGlobals kg,
++    IntegratorShadowState state,
++    ccl_global float *ccl_restrict render_buffer)
+ {
+   /* Read intersection and ray. */
+   Ray ray ccl_optional_struct_init;
+@@ -201,6 +205,11 @@ ccl_device ShaderEvalResult integrate_light_nee(KernelGlobals kg, IntegratorShad
+   /* Evaluate emission closures. */
+   eval = (is_background) ? surface_shader_background(emission_sd) :
+                            surface_shader_emission(emission_sd);
++  psycles_trace_write_shadow_event(kg,
++                                   state,
++                                   render_buffer,
++                                   PSYCLES_TRACE_EVENT_NEE_LIGHT_SHADER,
++                                   spectrum_to_rgb(eval));
+ 
+   /* Probabilistic light termination.
+    * Light threshold is only used without light tree. */
+@@ -210,15 +219,31 @@ ccl_device ShaderEvalResult integrate_light_nee(KernelGlobals kg, IntegratorShad
+     const float rand_terminate = path_state_rng_light_termination(kg, &rng_state);
+     const float bsdf_eval_average = INTEGRATOR_STATE(state, shadow_path, bsdf_eval_average);
+     if (light_sample_terminate(kg, eval, bsdf_eval_average, rand_terminate)) {
++      psycles_trace_write_shadow_event(kg,
++                                       state,
++                                       render_buffer,
++                                       PSYCLES_TRACE_EVENT_NEE_UNSHADOWED,
++                                       zero_float3());
+       return SHADER_EVAL_EMPTY;
+     }
+   }
+   else if (is_zero(eval)) {
++    psycles_trace_write_shadow_event(kg,
++                                     state,
++                                     render_buffer,
++                                     PSYCLES_TRACE_EVENT_NEE_UNSHADOWED,
++                                     zero_float3());
+     return SHADER_EVAL_EMPTY;
+   }
+ 
+   /* Update throughput. */
+   INTEGRATOR_STATE(state, shadow_path, throughput) *= eval;
++  psycles_trace_write_shadow_event(
++      kg,
++      state,
++      render_buffer,
++      PSYCLES_TRACE_EVENT_NEE_UNSHADOWED,
++      spectrum_to_rgb(INTEGRATOR_STATE(state, shadow_path, throughput)));
+ 
+   return SHADER_EVAL_OK;
+ }
+@@ -227,11 +252,11 @@ ccl_device ShaderEvalResult integrate_light_nee(KernelGlobals kg, IntegratorShad
+  * shadow ray intersection. Only when the light has non-constant emission. */
+ ccl_device void integrator_shade_light_nee(KernelGlobals kg,
+                                            IntegratorShadowState state,
+-                                           ccl_global float *ccl_restrict /*render_buffer*/)
++                                           ccl_global float *ccl_restrict render_buffer)
+ {
+   PROFILING_INIT(kg, PROFILING_SHADE_LIGHT_SETUP);
+ 
+-  const ShaderEvalResult result = integrate_light_nee(kg, state);
++  const ShaderEvalResult result = integrate_light_nee(kg, state, render_buffer);
+ 
+   if (result == SHADER_EVAL_CACHE_MISS) {
+     integrator_shadow_path_cache_miss(state, DEVICE_KERNEL_INTEGRATOR_SHADE_LIGHT_NEE);
+diff --git a/intern/cycles/kernel/integrator/shade_shadow.h b/intern/cycles/kernel/integrator/shade_shadow.h
+index e2825b2b..bf84bc72 100644
+--- a/intern/cycles/kernel/integrator/shade_shadow.h
++++ b/intern/cycles/kernel/integrator/shade_shadow.h
+@@ -5,6 +5,7 @@
+ #pragma once
+ 
+ #include "kernel/integrator/guiding.h"
++#include "kernel/integrator/psycles_trace.h"
+ #include "kernel/integrator/shade_volume.h"
+ #include "kernel/integrator/surface_shader.h"
+ #include "kernel/integrator/volume_stack.h"
+@@ -290,6 +291,12 @@ ccl_device void integrator_shade_shadow(KernelGlobals kg,
+     return;
+   }
+ 
++  psycles_trace_write_shadow_event(
++      kg,
++      state,
++      render_buffer,
++      PSYCLES_TRACE_EVENT_NEE_CONTRIBUTION,
++      spectrum_to_rgb(INTEGRATOR_STATE(state, shadow_path, throughput)));
+   guiding_record_direct_light(kg, state);
+   film_write_direct_light(kg, state, render_buffer);
+   integrator_shadow_path_terminate(state, DEVICE_KERNEL_INTEGRATOR_SHADE_SHADOW);
 diff --git a/intern/cycles/kernel/integrator/shade_surface.h b/intern/cycles/kernel/integrator/shade_surface.h
-index 33b875a0..75f1078c 100644
+index 33b875a0..c0800927 100644
 --- a/intern/cycles/kernel/integrator/shade_surface.h
 +++ b/intern/cycles/kernel/integrator/shade_surface.h
 @@ -5,6 +5,7 @@
@@ -352,7 +524,7 @@ index 33b875a0..75f1078c 100644
  
    const bool is_transmission = dot(ls.D, sd->N) < 0.0f;
  
-@@ -394,6 +427,12 @@ ccl_device
+@@ -394,6 +427,27 @@ ccl_device
    float avg_roughness_squared = 0.0f;
    const float bsdf_pdf = surface_shader_bsdf_eval(
        kg, state, sd, ls.D, &bsdf_eval, ls.shader, avg_roughness_squared);
@@ -362,10 +534,79 @@ index 33b875a0..75f1078c 100644
 +                            render_buffer,
 +                            PSYCLES_TRACE_EVENT_LIGHT_EVAL,
 +                            make_float3(ls.t, bsdf_pdf, light_mis_weight));
++  psycles_trace_write_event(kg,
++                            state,
++                            render_buffer,
++                            PSYCLES_TRACE_EVENT_NEE_BSDF,
++                            spectrum_to_rgb(bsdf_eval.sum));
++  psycles_trace_write_event(kg,
++                            state,
++                            render_buffer,
++                            PSYCLES_TRACE_EVENT_NEE_DIFFUSE,
++                            spectrum_to_rgb(bsdf_eval.diffuse));
++  psycles_trace_write_event(kg,
++                            state,
++                            render_buffer,
++                            PSYCLES_TRACE_EVENT_NEE_GLOSSY,
++                            spectrum_to_rgb(bsdf_eval.glossy));
  
    Ray ray ccl_optional_struct_init;
  
-@@ -491,8 +530,10 @@ ccl_device_forceinline int integrate_surface_bsdf_bssrdf_bounce(
+@@ -413,19 +467,53 @@ ccl_device
+   {
+     const float mis_weight = light_sample_mis_weight_nee(kg, ls.pdf, bsdf_pdf);
+     bsdf_eval_mul(&bsdf_eval, light_shader_eval * ls.eval_fac / ls.pdf * mis_weight);
++    psycles_trace_write_event(kg,
++                              state,
++                              render_buffer,
++                              PSYCLES_TRACE_EVENT_NEE_WEIGHTED_BSDF,
++                              spectrum_to_rgb(bsdf_eval.sum));
+ 
+     /* Path termination for constant light shader. */
+     if (is_constant_light_shader && !(kernel_data.kernel_features & KERNEL_FEATURE_LIGHT_TREE)) {
++      psycles_trace_write_event(kg,
++                                state,
++                                render_buffer,
++                                PSYCLES_TRACE_EVENT_NEE_LIGHT_SHADER,
++                                one_float3());
+       const float terminate = path_state_rng_light_termination(kg, rng_state);
+       if (light_sample_terminate(kg, &bsdf_eval, terminate)) {
++        psycles_trace_write_event(kg,
++                                  state,
++                                  render_buffer,
++                                  PSYCLES_TRACE_EVENT_NEE_UNSHADOWED,
++                                  zero_float3());
+         return SHADER_EVAL_EMPTY;
+       }
++      psycles_trace_write_event(
++          kg,
++          state,
++          render_buffer,
++          PSYCLES_TRACE_EVENT_NEE_UNSHADOWED,
++          spectrum_to_rgb(INTEGRATOR_STATE(state, path, throughput) * bsdf_eval.sum));
+     }
+     /* For non-constant light shader, probabilistic termination happens in
+      * SHADE_LIGHT_NEE when the full contribution is known. */
+     else if (bsdf_eval_is_zero(&bsdf_eval)) {
+       return SHADER_EVAL_EMPTY;
+     }
++    else if (is_constant_light_shader) {
++      psycles_trace_write_event(kg,
++                                state,
++                                render_buffer,
++                                PSYCLES_TRACE_EVENT_NEE_LIGHT_SHADER,
++                                one_float3());
++      psycles_trace_write_event(
++          kg,
++          state,
++          render_buffer,
++          PSYCLES_TRACE_EVENT_NEE_UNSHADOWED,
++          spectrum_to_rgb(INTEGRATOR_STATE(state, path, throughput) * bsdf_eval.sum));
++    }
+ 
+     /* Create shadow ray. */
+     light_sample_to_surface_shadow_ray(kg, sd, &ls, &ray);
+@@ -491,8 +579,10 @@ ccl_device_forceinline int integrate_surface_bsdf_bssrdf_bounce(
      KernelGlobals kg,
      IntegratorState state,
      ccl_private ShaderData *sd,
@@ -377,7 +618,7 @@ index 33b875a0..75f1078c 100644
    /* Sample BSDF or BSSRDF. */
    if (!(sd->runtime_flag & (SR_BSDF | SR_BSSRDF))) {
      return LABEL_NONE;
-@@ -500,6 +541,23 @@ ccl_device_forceinline int integrate_surface_bsdf_bssrdf_bounce(
+@@ -500,6 +590,23 @@ ccl_device_forceinline int integrate_surface_bsdf_bssrdf_bounce(
  
    float3 rand_bsdf = path_state_rng_3D(kg, rng_state, PRNG_SURFACE_BSDF);
    const ccl_private ShaderClosure *sc = surface_shader_bsdf_bssrdf_pick(sd, &rand_bsdf);
@@ -401,7 +642,7 @@ index 33b875a0..75f1078c 100644
  
  #ifdef __SUBSURFACE__
    /* BSSRDF closure, we schedule subsurface intersection kernel. */
-@@ -570,6 +628,24 @@ ccl_device_forceinline int integrate_surface_bsdf_bssrdf_bounce(
+@@ -570,6 +677,24 @@ ccl_device_forceinline int integrate_surface_bsdf_bssrdf_bounce(
      unguided_bsdf_pdf = bsdf_pdf;
    }
  
@@ -426,7 +667,7 @@ index 33b875a0..75f1078c 100644
    if (label & LABEL_TRANSPARENT) {
      /* Only need to modify start distance for transparent. */
      INTEGRATOR_STATE_WRITE(state, ray, tmin) = intersection_t_offset(sd->ray_length);
-@@ -619,6 +695,57 @@ ccl_device_forceinline int integrate_surface_bsdf_bssrdf_bounce(
+@@ -619,6 +744,57 @@ ccl_device_forceinline int integrate_surface_bsdf_bssrdf_bounce(
    }
  
    path_state_next(kg, state, label, sd->runtime_flag);
@@ -484,7 +725,7 @@ index 33b875a0..75f1078c 100644
  
    guiding_record_surface_bounce(kg,
                                  state,
-@@ -841,6 +968,104 @@ ccl_device int integrate_surface(KernelGlobals kg,
+@@ -841,6 +1017,104 @@ ccl_device int integrate_surface(KernelGlobals kg,
      /* Load random number state. */
      RNGState rng_state;
      path_state_rng_load(state, &rng_state);
@@ -589,7 +830,7 @@ index 33b875a0..75f1078c 100644
  
  #if defined(__PATH_GUIDING__) && PATH_GUIDING_LEVEL >= 4
      if (kernel_data.kernel_features & KERNEL_FEATURE_PATH_GUIDING) {
-@@ -851,7 +1076,7 @@ ccl_device int integrate_surface(KernelGlobals kg,
+@@ -851,7 +1125,7 @@ ccl_device int integrate_surface(KernelGlobals kg,
      /* Direct light. */
      PROFILING_EVENT(PROFILING_SHADE_SURFACE_DIRECT_LIGHT);
      const ShaderEvalResult result = integrate_surface_direct_light<node_feature_mask>(
@@ -598,7 +839,7 @@ index 33b875a0..75f1078c 100644
      if (result == SHADER_EVAL_CACHE_MISS) {
        return LABEL_CACHE_MISS;
      }
-@@ -865,7 +1090,8 @@ ccl_device int integrate_surface(KernelGlobals kg,
+@@ -865,7 +1139,8 @@ ccl_device int integrate_surface(KernelGlobals kg,
  #endif
  
      PROFILING_EVENT(PROFILING_SHADE_SURFACE_INDIRECT_LIGHT);
@@ -622,3 +863,4 @@ index 77ca236c..91f2a131 100644
    kintegrator->sobol_index_mask = reverse_integer_bits(next_power_of_two(clamped_aa_samples - 1) -
 -- 
 2.55.0
+

@@ -150,81 +150,94 @@ class EmissiveMeshLightingComponent final
                         bounce,
                         {.distance = light.light.distance,
                          .bsdf_pdf = evaluation.pdf,
-                         .mis_weight = mis_weight});
-                    const auto shadow =
-                        surface.make_shadow_origin(
-                            light.light.direction);
-                    const auto shadow_offset =
-                        light.light.position -
-                        shadow.position;
-                    const auto shadow_distance =
-                        sqrt(max(
-                            length_squared(
-                                shadow_offset),
-                            1.0e-20f));
-                    const auto shadow_direction =
-                        shadow_offset /
-                        shadow_distance;
-                    Var<luisa::compute::Ray> shadow_ray =
-                        make_ray(
-                            shadow.position,
-                            shadow_direction,
-                            0.0f,
-                            shadow_distance);
-                    const auto transmittance =
-                        config.trace_shadow(
-                            shadow_ray,
-                            select(
-                                surface_ray::
-                                    invalid_primitive,
-                                surface.cycles_object_index,
-                                shadow.skip_self),
-                            select(
-                                surface_ray::
-                                    invalid_primitive,
-                                surface.cycles_primitive_index,
-                                shadow.skip_self),
-                            emitter.cycles_object_index,
-                            emitter.cycles_primitive_index,
-                            invocation.parameters
-                                .transparent_max_bounces,
-                            pack_shader_evaluation_state(
-                                cycles_path_state::
-                                    shadow_shader_state(
+                         .mis_weight = mis_weight,
+                         .bsdf = evaluation.f,
+                         .diffuse = evaluation.diffuse_f,
+                         .glossy = evaluation.glossy_f});
+                    const auto weighted_light = select(
+                        make_float3(1.0f),
+                        radiance,
+                        constant_emission);
+                    const auto light_shader_factor = select(
+                        radiance,
+                        make_float3(1.0f),
+                        constant_emission);
+                    const auto weighted_bsdf =
+                        evaluation.f * weighted_light *
+                        (mis_weight / light.pdf);
+                    _trace->record_weighted_bsdf(
+                        bounce, weighted_bsdf);
+                    $if(any(weighted_bsdf != 0.0f)) {
+                        const auto unshadowed =
+                            weighted_bsdf * light_shader_factor;
+                        const auto roulette_weight =
+                            invocation.sample_light_roulette(
+                                unshadowed,
+                                bounce.light_terminate_sample);
+                        const auto surviving_unshadowed =
+                            unshadowed * roulette_weight;
+                        _trace->record_transport(
+                            bounce,
+                            {.light_shader = light_shader_factor,
+                             .unshadowed = sample.throughput *
+                                           surviving_unshadowed});
+                        $if(any(surviving_unshadowed != 0.0f)) {
+                            const auto shadow =
+                                surface.make_shadow_origin(
+                                    light.light.direction);
+                            const auto shadow_offset =
+                                light.light.position - shadow.position;
+                            const auto shadow_distance = sqrt(max(
+                                length_squared(shadow_offset),
+                                1.0e-20f));
+                            const auto shadow_direction =
+                                shadow_offset / shadow_distance;
+                            Var<luisa::compute::Ray> shadow_ray = make_ray(
+                                shadow.position,
+                                shadow_direction,
+                                0.0f,
+                                shadow_distance);
+                            const auto transmittance = config.trace_shadow(
+                                shadow_ray,
+                                select(surface_ray::invalid_primitive,
+                                       surface.cycles_object_index,
+                                       shadow.skip_self),
+                                select(surface_ray::invalid_primitive,
+                                       surface.cycles_primitive_index,
+                                       shadow.skip_self),
+                                emitter.cycles_object_index,
+                                emitter.cycles_primitive_index,
+                                invocation.parameters
+                                    .transparent_max_bounces,
+                                pack_shader_evaluation_state(
+                                    cycles_path_state::shadow_shader_state(
                                         sample.path_depth,
                                         sample.diffuse_depth,
                                         sample.glossy_depth,
                                         sample.transparent_depth,
                                         sample.transmission_depth)));
-                    $if(any(transmittance > 0.0f)) {
-                        const auto unshadowed =
-                            evaluation.f *
-                            radiance *
-                            (mis_weight /
-                             light.pdf);
-                        const auto roulette_weight =
-                            invocation.sample_light_roulette(
-                                unshadowed,
-                                bounce.light_terminate_sample);
-                        const auto contribution =
-                            invocation.clamp_contribution(
-                                sample.throughput *
-                                    unshadowed *
-                                    transmittance *
-                                    roulette_weight,
-                                sample.path_depth);
-                        sample.accumulate_radiance(
-                            contribution);
-                        sample.accumulate_light_pass(
-                            config.light_transport
-                                .split_nee_light(
-                                    contribution,
-                                    evaluation.f,
-                                    evaluation.diffuse_f,
-                                    evaluation.glossy_f,
-                                    sample.path_diffuse_weight,
-                                    sample.path_glossy_weight,
-                                    sample.path_depth));
+                            $if(any(transmittance > 0.0f)) {
+                                const auto unclamped_contribution =
+                                    sample.throughput *
+                                    surviving_unshadowed * transmittance;
+                                _trace->record_contribution(
+                                    bounce, unclamped_contribution);
+                                const auto contribution =
+                                    invocation.clamp_contribution(
+                                        unclamped_contribution,
+                                        sample.path_depth);
+                                sample.accumulate_radiance(contribution);
+                                sample.accumulate_light_pass(
+                                    config.light_transport.split_nee_light(
+                                        contribution,
+                                        evaluation.f,
+                                        evaluation.diffuse_f,
+                                        evaluation.glossy_f,
+                                        sample.path_diffuse_weight,
+                                        sample.path_glossy_weight,
+                                        sample.path_depth));
+                            };
+                        };
                     };
                 };
             }
