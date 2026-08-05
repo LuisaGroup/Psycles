@@ -394,6 +394,15 @@ private:
     SurfaceCapabilities _capabilities;
     std::vector<std::unique_ptr<ValueNode>> _value_nodes;
     std::vector<bool> _displacement_dependency_mask;
+    std::vector<bool> _surface_normal_dependency_mask;
+
+    // Evaluate one compiler domain without applying the automatic
+    // SetNormal stage. Cycles compiles bump and surface as consecutive SVM
+    // regions; this primitive keeps authored Bump nodes pure.
+    [[nodiscard]] TracedValues trace_value_stage(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        const std::vector<bool> *active_mask) const noexcept;
 
     [[nodiscard]] SurfaceEvaluation evaluate_traced(
         const ShaderServices &services,

@@ -1020,6 +1020,10 @@ private:
             bump,
             "NormalLinked",
             SocketValue::boolean(true)));
+        static_cast<void>(_graph.set_property(
+            bump,
+            "UseObjectSpace",
+            SocketValue::boolean(_true_displacement)));
 
         const auto bump_vector = conversion(
             TypedOutput{

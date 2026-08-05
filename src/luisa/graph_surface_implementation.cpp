@@ -90,6 +90,10 @@ GraphSurfaceImplementation::GraphSurfaceImplementation(
             _displacement_dependency_mask = value_dependency_mask(
                 _program->displacement_root());
         }
+        if (_program->surface_normal_root().valid()) {
+            _surface_normal_dependency_mask = value_dependency_mask(
+                _program->surface_normal_root());
+        }
     }
 }
 
@@ -1159,7 +1163,13 @@ GraphSurfaceImplementation::evaluate_volume(
     if (!_program) {
         return point.shading_normal;
     }
-    return trace_values(services, point).shading_normal;
+    if (!_program->surface_normal_root().valid()) {
+        return point.shading_normal;
+    }
+    const auto values = trace_value_stage(
+        services, point, &_surface_normal_dependency_mask);
+    return values.values[
+        _program->surface_normal_root().value].vector();
 }
 
 [[nodiscard]] Float3 GraphSurfaceImplementation::displacement(
