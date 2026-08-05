@@ -1339,6 +1339,15 @@ if(PSYCLES_ENABLE_LUISA)
 
                 psycles_add_luisa_backend_test(
                     TARGET
+                        psycles_luisa_cycles_film_light_tests
+                    SOURCE
+                        tests/test_luisa_cycles_film_light.cpp
+                    TEST_STEM
+                        luisa_cycles_film_light
+                    LIBRARIES Psycles::luisa)
+
+                psycles_add_luisa_backend_test(
+                    TARGET
                         psycles_luisa_bssrdf_tests
                     SOURCE
                         tests/test_luisa_bssrdf.cpp
