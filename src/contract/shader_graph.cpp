@@ -66,6 +66,10 @@ template<typename Schema>
             return type == SocketType::closure;
         case ShaderDomain::volume:
             return type == SocketType::volume_closure;
+        case ShaderDomain::surface_normal:
+            return type == SocketType::normal ||
+                   type == SocketType::vector ||
+                   type == SocketType::float3;
         case ShaderDomain::displacement:
             return type == SocketType::vector || type == SocketType::float3;
         case ShaderDomain::count:

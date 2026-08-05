@@ -77,6 +77,27 @@ enum class VolumeSampling : std::uint8_t {
         (1u << 0u) | (1u << 1u)
 };
 
+// Blender/Cycles material displacement policy. This is deliberately an enum
+// rather than a pair of booleans: the three authored states have distinct
+// shader-evaluation and geometry-rebuild semantics.
+enum class DisplacementMethod : std::uint8_t {
+    bump,
+    displacement,
+    both
+};
+
+[[nodiscard]] constexpr bool uses_true_displacement(
+    DisplacementMethod method) noexcept {
+    return method == DisplacementMethod::displacement ||
+           method == DisplacementMethod::both;
+}
+
+[[nodiscard]] constexpr bool uses_displacement_bump(
+    DisplacementMethod method) noexcept {
+    return method == DisplacementMethod::bump ||
+           method == DisplacementMethod::both;
+}
+
 struct MaterialDesc {
     std::string name;
     ShaderGraph shader;
@@ -96,9 +117,10 @@ struct MaterialDesc {
     VolumeSampling volume_sampling{
         VolumeSampling::multiple_importance};
     // Cycles keeps geometry with true displacement in object space even when
-    // it has a single user. The raw displacement graph is still retained in
-    // `shader`; this bit records only the authored geometry policy.
-    bool has_true_displacement{};
+    // it has a single user. The raw graph is retained above; this enum owns
+    // the exact authored BUMP/DISPLACEMENT/BOTH policy.
+    DisplacementMethod displacement_method{
+        DisplacementMethod::bump};
     // Index in Cycles' Scene::shaders vector, before per-hit shader flags
     // such as SHADER_CAST_SHADOW and SHADER_SMOOTH_NORMAL are applied.
     // This source identity is optional for programmatically built scenes;

@@ -1086,10 +1086,14 @@ void test_integrator_settings_round_trip() {
       bump_imported.scene->materials.find(psycles::contract::MaterialId{2u});
   expect(bump_material != bump_imported.scene->materials.end() &&
              bump_material->second.shader
-                 .root(psycles::contract::ShaderDomain::displacement)
+                 .root(psycles::contract::ShaderDomain::surface_normal)
                  .has_value() &&
-             !bump_material->second.has_true_displacement,
-         "automatic bump was not retained as a displacement root");
+             !bump_material->second.shader
+                  .root(psycles::contract::ShaderDomain::displacement)
+                  .has_value() &&
+             bump_material->second.displacement_method ==
+                 psycles::contract::DisplacementMethod::bump,
+         "automatic bump was not retained as a surface-normal root");
   bool has_automatic_bump = false;
   bool has_texture_mapping_node = false;
   for (const auto &node : bump_material->second.shader.nodes()) {
@@ -1160,22 +1164,20 @@ void test_integrator_settings_round_trip() {
   const auto combined_displacement_imported =
       load_blender_scene_bundle(temporary.path());
   expect(combined_displacement_imported.ok(),
-         "combined displacement was not accepted as a bump approximation");
-  bool named_combined_displacement_warning = false;
-  for (const auto &diagnostic : combined_displacement_imported.diagnostics) {
-    named_combined_displacement_warning |=
-        diagnostic.severity ==
-            psycles::adapter::BlenderSceneDiagnosticSeverity::warning &&
-        diagnostic.message.find("using a bump approximation") !=
-            std::string::npos;
-  }
-  expect(named_combined_displacement_warning,
-         "combined displacement approximation has no named warning");
+         "combined displacement did not import");
+  const auto &combined_material =
+      combined_displacement_imported.scene->materials.at(
+          psycles::contract::MaterialId{2u});
   expect(
-      combined_displacement_imported.scene->materials
-          .at(psycles::contract::MaterialId{2u})
-          .has_true_displacement,
-      "combined displacement lost Cycles' object-space geometry policy");
+      combined_material.displacement_method ==
+              psycles::contract::DisplacementMethod::both &&
+          combined_material.shader
+              .root(psycles::contract::ShaderDomain::surface_normal)
+              .has_value() &&
+          combined_material.shader
+              .root(psycles::contract::ShaderDomain::displacement)
+              .has_value(),
+      "combined displacement did not retain both semantic roots");
 
   auto true_displacement_scene = bump_scene;
   replace_once(true_displacement_scene, "\"displacement_method\": \"BUMP\"",
@@ -1187,22 +1189,20 @@ void test_integrator_settings_round_trip() {
   const auto true_displacement_imported =
       load_blender_scene_bundle(temporary.path());
   expect(true_displacement_imported.ok(),
-         "true geometry displacement was not accepted as a bump approximation");
-  bool named_displacement_warning = false;
-  for (const auto &diagnostic : true_displacement_imported.diagnostics) {
-    named_displacement_warning |=
-        diagnostic.severity ==
-            psycles::adapter::BlenderSceneDiagnosticSeverity::warning &&
-        diagnostic.message.find("using a bump approximation") !=
-            std::string::npos;
-  }
-  expect(named_displacement_warning,
-         "true displacement approximation has no named warning");
+         "true geometry displacement did not import");
+  const auto &true_material =
+      true_displacement_imported.scene->materials.at(
+          psycles::contract::MaterialId{2u});
   expect(
-      true_displacement_imported.scene->materials
-          .at(psycles::contract::MaterialId{2u})
-          .has_true_displacement,
-      "true displacement lost Cycles' object-space geometry policy");
+      true_material.displacement_method ==
+              psycles::contract::DisplacementMethod::displacement &&
+          true_material.shader
+              .root(psycles::contract::ShaderDomain::displacement)
+              .has_value() &&
+          !true_material.shader
+               .root(psycles::contract::ShaderDomain::surface_normal)
+               .has_value(),
+      "true displacement was conflated with automatic bump");
 
   auto box_filter_scene = light_tree_scene;
   constexpr std::string_view gaussian_filter =

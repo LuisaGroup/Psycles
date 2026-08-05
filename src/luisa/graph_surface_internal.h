@@ -393,6 +393,7 @@ private:
     std::shared_ptr<const compiler::SurfaceProgram> _program;
     SurfaceCapabilities _capabilities;
     std::vector<std::unique_ptr<ValueNode>> _value_nodes;
+    std::vector<bool> _displacement_dependency_mask;
 
     [[nodiscard]] SurfaceEvaluation evaluate_traced(
         const ShaderServices &services,
@@ -492,6 +493,9 @@ public:
         const SurfacePoint &point,
         const VolumeQuery &query,
         VolumePhaseCollector *collector) const noexcept;
+    [[nodiscard]] Float3 displacement(
+        const ShaderServices &services,
+        const SurfacePoint &point) const noexcept;
     [[nodiscard]] Float3 shading_normal(const ShaderServices &services,
         const SurfacePoint &point) const noexcept;
     [[nodiscard]] SurfaceAov aov(const ShaderServices &services,

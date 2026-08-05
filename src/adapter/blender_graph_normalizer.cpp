@@ -68,6 +68,7 @@ private:
     std::optional<contract::NodeId> _default_generated_coordinates;
     std::optional<contract::NodeId> _geometry;
     bool _automatic_bump_from_displacement{};
+    bool _true_displacement{};
 
 private:
     [[nodiscard]] ShaderGraph &graph() noexcept override {
@@ -953,18 +954,27 @@ private:
             node, socket, fallback_type));
     }
 
-    void lower_automatic_bump() {
+    void lower_displacement_roots() {
         using contract::SocketType;
         auto *root = member(_tree, "displacement_root");
         const auto node = text(member(root, "node"));
         const auto socket = text(member(root, "socket"));
-        if (!_automatic_bump_from_displacement ||
-            node.empty() || socket.empty()) {
+        if (node.empty() || socket.empty() ||
+            (!_automatic_bump_from_displacement &&
+             !_true_displacement)) {
             return;
         }
 
         const auto displacement = lower_output(
             node, socket, SocketType::vector);
+        if (_true_displacement) {
+            _graph.set_root(
+                ShaderDomain::displacement,
+                displacement.ref);
+        }
+        if (!_automatic_bump_from_displacement) {
+            return;
+        }
         const auto normal = geometry_output(
             "Normal", SocketType::normal);
         const auto normal_vector = conversion(
@@ -1017,7 +1027,7 @@ private:
                 .type = SocketType::normal},
             SocketType::vector);
         _graph.set_root(
-            ShaderDomain::displacement, bump_vector.ref);
+            ShaderDomain::surface_normal, bump_vector.ref);
     }
 
     [[nodiscard]] TypedOutput lower_output(
@@ -1214,7 +1224,8 @@ public:
             std::less<>> &image_alpha_types,
         const NodeGroupMap &node_groups,
         std::vector<BlenderSceneDiagnostic> &diagnostics,
-        bool automatic_bump_from_displacement)
+        bool automatic_bump_from_displacement,
+        bool true_displacement)
         : _tree{tree},
           _material_name{std::move(material_name)},
           _image_ids{image_ids},
@@ -1225,15 +1236,17 @@ public:
           _lowering_components{
               make_blender_node_lowering_components()},
           _automatic_bump_from_displacement{
-              automatic_bump_from_displacement} {
+              automatic_bump_from_displacement},
+          _true_displacement{true_displacement} {
         load_tree_context(_tree);
     }
 
     [[nodiscard]] ShaderGraph build() {
-        // Cycles installs this SetNormal-like side effect before lowering the
-        // surface graph. Keeping the bump as the displacement root preserves
-        // it in Psycles' evaluation order without changing closure sockets.
-        lower_automatic_bump();
+        // Cycles installs automatic bump as a SetNormal-like side effect
+        // before closure setup, while true displacement is evaluated in a
+        // separate mesh-update kernel. They intentionally remain distinct
+        // roots so BOTH composes the two semantics without conflating them.
+        lower_displacement_roots();
 
         auto *raw_volume_root =
             member(_tree, "volume_root");
@@ -1333,21 +1346,13 @@ public:
     const auto automatic_bump =
         has_displacement &&
         (displacement_method == "BUMP" ||
-         displacement_method == "BOTH" ||
-         displacement_method == "DISPLACEMENT");
-    if (has_displacement && displacement_method != "BUMP" &&
-        automatic_bump) {
-        diagnostics.emplace_back(BlenderSceneDiagnostic{
-            .severity =
-                BlenderSceneDiagnosticSeverity::warning,
-            .message =
-                "shader '" + material_name +
-                "' requests Blender displacement method '" +
-                displacement_method +
-                "'; using a bump approximation because true geometry "
-                "displacement is not yet implemented"});
-    }
-    if (has_displacement && !automatic_bump) {
+         displacement_method == "BOTH");
+    const auto true_displacement =
+        has_displacement &&
+        (displacement_method == "DISPLACEMENT" ||
+         displacement_method == "BOTH");
+    if (has_displacement &&
+        !automatic_bump && !true_displacement) {
         diagnostics.emplace_back(BlenderSceneDiagnostic{
             .severity =
                 BlenderSceneDiagnosticSeverity::error,
@@ -1355,8 +1360,7 @@ public:
                 "shader '" + material_name +
                 "' requests Blender displacement method '" +
                 displacement_method +
-                "'; true geometry displacement is not yet "
-                "implemented"});
+                "', which is not a Cycles displacement policy"});
     }
     return BlenderGraphNormalizer{
         tree,
@@ -1366,7 +1370,8 @@ public:
         image_alpha_types,
         node_groups,
         diagnostics,
-        automatic_bump}
+        automatic_bump,
+        true_displacement}
         .build();
 }
 

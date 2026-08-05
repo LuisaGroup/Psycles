@@ -139,7 +139,8 @@ void hash_word(std::uint64_t &hash, std::uint32_t word) noexcept {
     }
     const auto iter = scene.materials.find(material);
     return iter != scene.materials.end() &&
-           iter->second.has_true_displacement;
+           contract::uses_true_displacement(
+               iter->second.displacement_method);
 }
 
 [[nodiscard]] Vec3f transform_point(

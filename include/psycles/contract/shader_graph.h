@@ -150,6 +150,11 @@ struct ShaderNode {
 enum class ShaderDomain : std::uint8_t {
     surface,
     volume,
+    // Cycles evaluates an unconnected automatic-bump normal as a shader
+    // side effect before closure setup. Keep that observable value separate
+    // from the geometric displacement vector: DISPLACEMENT uses only the
+    // latter, while BOTH deliberately retains both roots.
+    surface_normal,
     displacement,
     count
 };
@@ -224,4 +229,3 @@ struct GraphValidation {
     const NodeRegistry &registry);
 
 }// namespace psycles::contract
-

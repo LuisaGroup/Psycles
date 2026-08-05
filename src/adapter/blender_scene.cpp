@@ -25,6 +25,7 @@ using contract::CameraProjection;
 using contract::CameraSensorFit;
 using contract::CurveGeometryDesc;
 using contract::CurveShape;
+using contract::DisplacementMethod;
 using contract::EnvironmentDesc;
 using contract::EnvironmentSunDesc;
 using contract::EmissionSampling;
@@ -188,6 +189,22 @@ template<typename T>
     }
     throw std::runtime_error(
         "unsupported Cycles volume sampling method: " +
+        std::string{name});
+}
+
+[[nodiscard]] DisplacementMethod displacement_method(
+    std::string_view name) {
+    if (name == "BUMP") {
+        return DisplacementMethod::bump;
+    }
+    if (name == "DISPLACEMENT") {
+        return DisplacementMethod::displacement;
+    }
+    if (name == "BOTH") {
+        return DisplacementMethod::both;
+    }
+    throw std::runtime_error(
+        "unsupported Cycles displacement method: " +
         std::string{name});
 }
 
@@ -385,15 +402,10 @@ BlenderSceneImport load_blender_scene_bundle(
             const auto name = text(member(material, "name"));
             auto *cycles_sync =
                 member(material, "cycles_sync");
-            auto *material_tree = member(material, "node_tree");
-            const auto has_displacement =
-                material_tree != nullptr &&
-                !yyjson_is_null(material_tree) &&
-                member(material_tree, "displacement_root") != nullptr &&
-                !yyjson_is_null(
-                    member(material_tree, "displacement_root"));
-            const auto displacement_method = text(
-                member(material, "displacement_method"), "BUMP");
+            const auto authored_displacement_method =
+                displacement_method(text(
+                    member(material, "displacement_method"),
+                    "BUMP"));
             material_ids.emplace(name, id);
             scene.materials.emplace(
                 id,
@@ -423,9 +435,8 @@ BlenderSceneImport load_blender_scene_bundle(
                                 material,
                                 "volume_sampling"),
                             "MULTIPLE_IMPORTANCE")),
-                    .has_true_displacement =
-                        has_displacement &&
-                        displacement_method != "BUMP",
+                    .displacement_method =
+                        authored_displacement_method,
                     .cycles_shader_index =
                         optional_unsigned_number(member(
                             cycles_sync,

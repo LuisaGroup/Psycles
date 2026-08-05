@@ -639,6 +639,29 @@ SurfaceProgramBuilder::SurfaceProgramBuilder(
   }
 
   ValueExpressionId lowered_displacement_root;
+  ValueExpressionId lowered_surface_normal_root;
+  const auto &surface_normal_root =
+      _shader.graph().root(contract::ShaderDomain::surface_normal);
+  if (surface_normal_root) {
+    auto iter = _outputs.find(
+        {.node = surface_normal_root->node,
+         .socket = surface_normal_root->socket});
+    if (iter == _outputs.end()) {
+      diagnose(SurfaceProgramDiagnosticCode::missing_output,
+               "surface normal root was not lowered",
+               surface_normal_root->node,
+               surface_normal_root->socket);
+    } else if (const auto *value =
+                   std::get_if<ValueExpressionId>(&iter->second)) {
+      lowered_surface_normal_root = *value;
+    } else {
+      diagnose(SurfaceProgramDiagnosticCode::type_mismatch,
+               "surface normal root did not lower to a value",
+               surface_normal_root->node,
+               surface_normal_root->socket);
+    }
+  }
+
   const auto &displacement_root =
       _shader.graph().root(contract::ShaderDomain::displacement);
   if (displacement_root) {
@@ -669,12 +692,15 @@ SurfaceProgramBuilder::SurfaceProgramBuilder(
                             .root = lowered_root,
                             .volumes = std::move(_volume_instructions),
                             .volume_root = lowered_volume_root,
+                            .surface_normal_root =
+                                lowered_surface_normal_root,
                             .displacement_root = lowered_displacement_root});
   return {.program = std::make_shared<const SurfaceProgram>(
               _shader.analysis().structure_signature,
               std::move(storage.parameters), std::move(storage.values),
               std::move(storage.closures), storage.root,
               std::move(storage.volumes), storage.volume_root,
+              storage.surface_normal_root,
               storage.displacement_root),
           .diagnostics = {}};
 }

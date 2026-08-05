@@ -136,6 +136,12 @@ VolumeCoefficients GraphSurface::evaluate_volume(
         collector);
 }
 
+Float3 GraphSurface::displacement(
+    const ShaderServices &services,
+    const SurfacePoint &point) const noexcept {
+    return _implementation->displacement(services, point);
+}
+
 Float3 GraphSurface::shading_normal(
     const ShaderServices &services,
     const SurfacePoint &point) const noexcept {
