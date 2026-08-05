@@ -113,4 +113,32 @@ CyclesFinalTriangleSupportClasses classify_cycles_final_triangle_supports(
   return result;
 }
 
+bool finalize_cycles_final_instance_supports(
+    const contract::SceneSnapshot &scene,
+    const CyclesFinalTriangleSupportClasses &support_classes,
+    const std::map<contract::GeometryId, std::uint32_t> &geometry_indices,
+    const std::vector<GeometryUpload> &uploads,
+    std::span<CyclesInstanceIntersectionPlan> instance_plan,
+    CyclesPrimitiveIntersectionPlan &primitive_plan) {
+  if (!support_classes.ok()) {
+    return false;
+  }
+  std::map<contract::GeometryId, CyclesGeometrySupportView> supports;
+  for (const auto &[geometry_id, upload_index] : geometry_indices) {
+    if (upload_index >= uploads.size()) {
+      // Curves live in a separate upload domain but share the scene's stable
+      // geometry index map. They have no triangle support to adapt here.
+      continue;
+    }
+    const auto &upload = uploads[upload_index];
+    supports.emplace(
+        geometry_id,
+        make_cycles_geometry_support_view(
+            std::span{upload.positions}, std::span{upload.triangles}));
+  }
+  return finalize_cycles_instance_intersection_plan(
+      scene, support_classes.by_geometry, supports,
+      instance_plan, primitive_plan);
+}
+
 } // namespace psycles::luisa_backend::detail
