@@ -7,6 +7,7 @@
 #include "path_tracer_image_decode.h"
 #include "path_tracer_instance_support.h"
 #include "path_tracer_scene_geometry.h"
+#include "path_tracer_scene_upload.h"
 #include "path_tracer_shader_services.h"
 #include "path_tracer_surfaces.h"
 #include "path_tracer_tangent_space.h"
@@ -1933,109 +1934,22 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     data->environment_in_light_distribution =
         include_environment &&
         data->light_distribution_count > 0u;
-    if (light_distribution_entries.empty()) {
-        light_distribution_entries.emplace_back(
-            LightDistributionGpu{});
+    const auto table_upload = SceneTableUploadComponent{}.upload(
+        data,
+        stream,
+        {.geometries = geometry_gpu,
+         .attribute_bindings = attribute_bindings,
+         .attribute_ranges = attribute_ranges,
+         .instances = instances,
+         .geometry_materials = geometry_materials,
+         .override_materials = override_materials,
+         .lights = lights,
+         .emissive_triangles = emissive_triangles,
+         .light_distribution = light_distribution_entries});
+    if (!table_upload.ok()) {
+        diagnose(result.diagnostics, table_upload.diagnostic);
+        return result;
     }
-    if (lights.empty()) {
-        lights.emplace_back(LightGpu{});
-    }
-    if (emissive_triangles.empty()) {
-        emissive_triangles.emplace_back(
-            EmissiveTriangleGpu{});
-    }
-    if (geometry_materials.empty()) {
-        geometry_materials.emplace_back(
-            MaterialBindingGpu{
-                .cycles_shader_index =
-                    cycles_shader_identity::
-                        invalid_index});
-    }
-    if (override_materials.empty()) {
-        override_materials.emplace_back(
-            MaterialBindingGpu{
-                .cycles_shader_index =
-                    cycles_shader_identity::
-                        invalid_index});
-    }
-    // Empty-world renders are valid Cycles scenes. Luisa buffers cannot be
-    // zero-sized, so keep inert storage records while leaving the acceleration
-    // structure itself empty; the render kernel only reads these buffers after
-    // a committed hit.
-    if (geometry_gpu.empty()) {
-        geometry_gpu.emplace_back(GeometryGpu{});
-    }
-    if (attribute_bindings.empty()) {
-        attribute_bindings.emplace_back(
-            AttributeBindingGpu{});
-    }
-    if (attribute_ranges.empty()) {
-        attribute_ranges.emplace_back(
-            AttributeRangeGpu{});
-    }
-    if (instances.empty()) {
-        instances.emplace_back(InstanceGpu{});
-    }
-
-    data->geometry_buffer =
-        data->device.create_buffer<GeometryGpu>(
-            geometry_gpu.size());
-    if (!data->attribute_binding_buffer) {
-        data->attribute_binding_buffer =
-            data->device.create_buffer<AttributeBindingGpu>(
-                attribute_bindings.size());
-        data->heap.emplace_on_update(
-            data->attribute_binding_slot,
-            data->attribute_binding_buffer);
-    }
-    if (!data->attribute_range_buffer) {
-        data->attribute_range_buffer =
-            data->device.create_buffer<AttributeRangeGpu>(
-                attribute_ranges.size());
-        data->heap.emplace_on_update(
-            data->attribute_range_slot,
-            data->attribute_range_buffer);
-    }
-    data->instance_buffer =
-        data->device.create_buffer<InstanceGpu>(
-            instances.size());
-    data->geometry_material_buffer =
-        data->device.create_buffer<MaterialBindingGpu>(
-            geometry_materials.size());
-    data->override_material_buffer =
-        data->device.create_buffer<MaterialBindingGpu>(
-            override_materials.size());
-    data->light_buffer =
-        data->device.create_buffer<LightGpu>(
-            lights.size());
-    data->emissive_triangle_buffer =
-        data->device.create_buffer<EmissiveTriangleGpu>(
-            emissive_triangles.size());
-    data->light_distribution_buffer =
-        data->device.create_buffer<LightDistributionGpu>(
-            light_distribution_entries.size());
-    stream << data->geometry_buffer.copy_from(
-                  luisa::span{geometry_gpu})
-           << data->attribute_binding_buffer.copy_from(
-                  luisa::span{attribute_bindings})
-           << data->attribute_range_buffer.copy_from(
-                  luisa::span{attribute_ranges})
-           << data->instance_buffer.copy_from(
-                  luisa::span{instances})
-           << data->geometry_material_buffer.copy_from(
-                  luisa::span{geometry_materials})
-           << data->override_material_buffer.copy_from(
-                  luisa::span{override_materials})
-           << data->light_buffer.copy_from(
-                  luisa::span{lights})
-           << data->emissive_triangle_buffer.copy_from(
-                  luisa::span{emissive_triangles})
-           << data->light_distribution_buffer.copy_from(
-                  luisa::span{light_distribution_entries})
-           << data->texture_heap.update()
-           << data->heap.update()
-           << data->accel.build()
-           << synchronize();
 
     const auto majorants =
         VolumeMajorantSceneComponent{}.build(

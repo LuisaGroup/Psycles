@@ -309,6 +309,12 @@ struct LuisaSceneData {
     BindlessArray heap;
     Buffer<GeometryGpu> geometry_buffer;
     Buffer<InstanceGpu> instance_buffer;
+    // Sorted (Cycles object index, Luisa TLAS instance index) pairs. Cycles
+    // excludes only the exact source primitive, so traversal must be able to
+    // recover the source's exact-support class even when a backend does not
+    // report an endpoint candidate at t == 0.
+    Buffer<luisa::uint2> cycles_object_instance_map_buffer;
+    std::uint32_t cycles_object_instance_map_count{};
     Buffer<MaterialBindingGpu> geometry_material_buffer;
     Buffer<MaterialBindingGpu> override_material_buffer;
     Buffer<AttributeBindingGpu> attribute_binding_buffer;
