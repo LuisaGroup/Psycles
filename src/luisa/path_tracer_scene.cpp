@@ -127,6 +127,31 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         }
         return result;
     }
+    std::set<contract::MaterialId> surface_bssrdf_materials;
+    for (const auto &[material_id, material] :
+         data->materials.materials()) {
+        if (compiler::cycles_surface_has_bssrdf(
+                *material.surface_program(),
+                material.parameters())) {
+            surface_bssrdf_materials.emplace(material_id);
+        }
+    }
+    const auto cycles_instance_intersection_plan =
+        build_cycles_instance_intersection_plan(
+            snapshot, surface_bssrdf_materials);
+    std::map<contract::GeometryId, Mat4f>
+        cycles_static_transform_by_geometry;
+    auto source_instance_index = std::size_t{0u};
+    for (const auto &[instance_id, instance] : snapshot.instances) {
+        static_cast<void>(instance_id);
+        const auto &plan = cycles_instance_intersection_plan[
+            source_instance_index++];
+        if (plan.transform_applied &&
+            snapshot.geometries.contains(instance.geometry)) {
+            cycles_static_transform_by_geometry.emplace(
+                instance.geometry, instance.transform);
+        }
+    }
     const VolumeProgramCapabilityComponent
         volume_capabilities;
     data->volume_metadata
@@ -856,6 +881,18 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             upload.positions.emplace_back(
                 to_luisa(position));
         }
+        if (const auto transform_iter =
+                cycles_static_transform_by_geometry.find(geometry_id);
+            transform_iter !=
+            cycles_static_transform_by_geometry.end()) {
+            upload.cycles_intersection_positions.reserve(
+                geometry.positions.size());
+            for (const auto position : geometry.positions) {
+                upload.cycles_intersection_positions.emplace_back(
+                    to_luisa(cycles_transform_point(
+                        transform_iter->second, position)));
+            }
+        }
         const auto require_vertex_or_corner =
             [&](std::string_view name,
                 contract::MeshAttributeDomain domain) {
@@ -1175,6 +1212,18 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         data->heap.emplace_on_update(
             bindless_base + 8u,
             resource.triangle_smooth);
+        if (!upload.cycles_intersection_positions.empty()) {
+            resource.cycles_intersection_positions.emplace(
+                data->device.create_buffer<luisa::float3>(
+                    upload.cycles_intersection_positions.size()));
+            data->heap.emplace_on_update(
+                bindless_base + 9u,
+                *resource.cycles_intersection_positions);
+        } else {
+            data->heap.emplace_on_update(
+                bindless_base + 9u,
+                resource.positions);
+        }
         const auto attribute_offset =
             static_cast<std::uint32_t>(
                 attribute_bindings.size());
@@ -1228,6 +1277,10 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                       luisa::span{
                           upload.triangle_smooth})
                << resource.mesh.build();
+        if (resource.cycles_intersection_positions) {
+            stream << resource.cycles_intersection_positions->copy_from(
+                luisa::span{upload.cycles_intersection_positions});
+        }
         geometry_indices.emplace(geometry_id, index);
         geometry_gpu.emplace_back(GeometryGpu{
             .bindless_base = bindless_base,
@@ -1293,9 +1346,13 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     luisa::vector<EmissiveTriangleGpu> emissive_triangles;
     std::vector<float> emissive_triangle_areas;
     data->accel = data->device.create_accel();
+    source_instance_index = 0u;
     for (const auto &[instance_id, instance] :
          snapshot.instances) {
         static_cast<void>(instance_id);
+        const auto &intersection_plan =
+            cycles_instance_intersection_plan[
+                source_instance_index++];
         const auto geometry_iter =
             geometry_indices.find(instance.geometry);
         if (geometry_iter == geometry_indices.end()) {
@@ -1357,7 +1414,15 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             .cycles_light_group =
                 instance.cycles_light_group,
             .is_shadow_catcher =
-                instance.is_shadow_catcher ? 1u : 0u});
+                instance.is_shadow_catcher ? 1u : 0u,
+            .coincident_next =
+                intersection_plan.coincident_next,
+            .coincident_count =
+                intersection_plan.coincident_count,
+            .cycles_transform_applied =
+                intersection_plan.transform_applied ? 1u : 0u,
+            .cycles_world_to_object =
+                to_luisa(intersection_plan.world_to_object)});
         if (const auto curve_resource =
                 curve_upload.resource_indices.find(instance.geometry);
             curve_resource !=

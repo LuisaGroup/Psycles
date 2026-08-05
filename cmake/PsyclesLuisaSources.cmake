@@ -30,6 +30,7 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/graph_surface_value_voronoi.cpp
     src/luisa/graph_surface_value_procedural.cpp
     src/luisa/cycles_magic.cpp
+    src/luisa/cycles_triangle_intersection_component.cpp
     src/luisa/cycles_wave.cpp
     src/luisa/cycles_voronoi.cpp
     src/luisa/curve_ribbon_component.cpp

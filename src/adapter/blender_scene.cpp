@@ -385,6 +385,15 @@ BlenderSceneImport load_blender_scene_bundle(
             const auto name = text(member(material, "name"));
             auto *cycles_sync =
                 member(material, "cycles_sync");
+            auto *material_tree = member(material, "node_tree");
+            const auto has_displacement =
+                material_tree != nullptr &&
+                !yyjson_is_null(material_tree) &&
+                member(material_tree, "displacement_root") != nullptr &&
+                !yyjson_is_null(
+                    member(material_tree, "displacement_root"));
+            const auto displacement_method = text(
+                member(material, "displacement_method"), "BUMP");
             material_ids.emplace(name, id);
             scene.materials.emplace(
                 id,
@@ -414,6 +423,9 @@ BlenderSceneImport load_blender_scene_bundle(
                                 material,
                                 "volume_sampling"),
                             "MULTIPLE_IMPORTANCE")),
+                    .has_true_displacement =
+                        has_displacement &&
+                        displacement_method != "BUMP",
                     .cycles_shader_index =
                         optional_unsigned_number(member(
                             cycles_sync,
@@ -1101,6 +1113,9 @@ BlenderSceneImport load_blender_scene_bundle(
                 optional_unsigned_number(member(
                     member(geometry, "cycles_sync"),
                     "primitive_offset"));
+            mesh.uses_adaptive_subdivision = boolean(
+                member(geometry, "uses_adaptive_subdivision"),
+                false);
 
             auto *slots = member(geometry, "material_slots");
             yyjson_arr_iter slot_iterator =
@@ -1316,6 +1331,10 @@ BlenderSceneImport load_blender_scene_bundle(
                             member(
                                 instance,
                                 "is_shadow_catcher"),
+                            false),
+                    .is_blender_instance =
+                        boolean(
+                            member(instance, "is_instance"),
                             false)});
         }
 

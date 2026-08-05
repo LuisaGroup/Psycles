@@ -63,6 +63,13 @@ struct InstanceGpu {
     luisa::uint cycles_object_index{};
     std::int32_t cycles_light_group{};
     luisa::uint is_shadow_catcher{};
+    // Circular exact-support equivalence class. Singleton hand-authored test
+    // fixtures may leave count at zero; traversal normalizes that to one.
+    luisa::uint coincident_next{};
+    luisa::uint coincident_count{1u};
+    luisa::uint cycles_transform_applied{};
+    luisa::uint intersection_padding{};
+    luisa::float4x4 cycles_world_to_object{};
 };
 
 inline constexpr std::uint32_t material_flag_has_volume =
@@ -377,7 +384,12 @@ LUISA_STRUCT(
     shadow_terminator_geometry_offset,
     cycles_object_index,
     cycles_light_group,
-    is_shadow_catcher) {};
+    is_shadow_catcher,
+    coincident_next,
+    coincident_count,
+    cycles_transform_applied,
+    intersection_padding,
+    cycles_world_to_object) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::MaterialBindingGpu,
     surface_tag,

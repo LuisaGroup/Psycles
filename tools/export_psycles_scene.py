@@ -331,6 +331,20 @@ def _geometry_cache_key(obj: Any, scene: Any) -> tuple[Any, ...]:
     return ("object", obj.as_pointer())
 
 
+def _cycles_uses_adaptive_subdivision(obj: Any) -> bool:
+    """Match Cycles' render-time object_subdivision_type gate."""
+
+    modifiers = list(obj.modifiers)
+    if not modifiers:
+        return False
+    modifier = modifiers[-1]
+    return bool(
+        modifier.type == "SUBSURF"
+        and modifier.show_render
+        and getattr(modifier, "use_adaptive_subdivision", False)
+    )
+
+
 def _geometry(
     obj: Any,
     depsgraph: Any,
@@ -623,6 +637,9 @@ def _geometry(
             }
         return {
             "name": obj.name,
+            "uses_adaptive_subdivision": (
+                _cycles_uses_adaptive_subdivision(obj)
+            ),
             "point_count": len(mesh.vertices),
             "corner_count": len(mesh.loop_triangles) * 3,
             "triangle_count": len(mesh.loop_triangles),
