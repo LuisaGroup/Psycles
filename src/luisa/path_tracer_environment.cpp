@@ -86,6 +86,28 @@ EnvironmentCallables make_environment_callables(
                                 -world_direction,
                             .shading_normal =
                                 -world_direction,
+                            .object_shading_normal =
+                                -world_direction,
+                            .object_tangent = make_float3(
+                                1.0f, 0.0f, 0.0f),
+                            .tangent_sign = 1.0f,
+                            .undisplaced_position =
+                                world_direction,
+                            .undisplaced_object_position =
+                                make_float3(0.0f),
+                            .undisplaced_shading_normal =
+                                -world_direction,
+                            .undisplaced_object_shading_normal =
+                                -world_direction,
+                            .undisplaced_object_tangent = make_float3(
+                                1.0f, 0.0f, 0.0f),
+                            .undisplaced_tangent_sign = 1.0f,
+                            .normal_to_world_x = make_float3(
+                                1.0f, 0.0f, 0.0f),
+                            .normal_to_world_y = make_float3(
+                                0.0f, 1.0f, 0.0f),
+                            .normal_to_world_z = make_float3(
+                                0.0f, 0.0f, 1.0f),
                             .dpdu = make_float3(
                                 1.0f, 0.0f, 0.0f),
                             .dpdv = make_float3(
@@ -95,6 +117,14 @@ EnvironmentCallables make_environment_callables(
                             .object_dPdx =
                                 make_float3(0.0f),
                             .object_dPdy =
+                                make_float3(0.0f),
+                            .undisplaced_dPdx =
+                                make_float3(0.0f),
+                            .undisplaced_dPdy =
+                                make_float3(0.0f),
+                            .undisplaced_object_dPdx =
+                                make_float3(0.0f),
+                            .undisplaced_object_dPdy =
                                 make_float3(0.0f),
                             .generated_dx =
                                 make_float3(0.0f),

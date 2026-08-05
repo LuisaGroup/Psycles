@@ -395,6 +395,7 @@ private:
     std::vector<std::unique_ptr<ValueNode>> _value_nodes;
     std::vector<bool> _displacement_dependency_mask;
     std::vector<bool> _surface_normal_dependency_mask;
+    bool _automatic_bump_uses_undisplaced_geometry{false};
 
     // Evaluate one compiler domain without applying the automatic
     // SetNormal stage. Cycles compiles bump and surface as consecutive SVM
@@ -403,6 +404,13 @@ private:
         const ShaderServices &services,
         const SurfacePoint &point,
         const std::vector<bool> *active_mask) const noexcept;
+
+    // Cycles' BOTH program wraps only its automatic bump region in
+    // NODE_ENTER/LEAVE_BUMP_EVAL. The surface region must keep the truly
+    // displaced position while inheriting the normal produced by this
+    // temporary undisplaced state.
+    [[nodiscard]] SurfacePoint automatic_bump_point(
+        const SurfacePoint &point) const noexcept;
 
     [[nodiscard]] SurfaceEvaluation evaluate_traced(
         const ShaderServices &services,

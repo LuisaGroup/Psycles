@@ -58,6 +58,18 @@ unpack_shader_evaluation_state(
         point.object_shading_normal;
     result.object_tangent = point.object_tangent;
     result.tangent_sign = point.tangent_sign;
+    result.undisplaced_position =
+        point.undisplaced_position;
+    result.undisplaced_object_position =
+        point.undisplaced_object_position;
+    result.undisplaced_shading_normal =
+        point.undisplaced_shading_normal;
+    result.undisplaced_object_shading_normal =
+        point.undisplaced_object_shading_normal;
+    result.undisplaced_object_tangent =
+        point.undisplaced_object_tangent;
+    result.undisplaced_tangent_sign =
+        point.undisplaced_tangent_sign;
     result.normal_to_world_x = point.normal_to_world_x;
     result.normal_to_world_y = point.normal_to_world_y;
     result.normal_to_world_z = point.normal_to_world_z;
@@ -67,6 +79,12 @@ unpack_shader_evaluation_state(
     result.dPdy = point.dPdy;
     result.object_dPdx = point.object_dPdx;
     result.object_dPdy = point.object_dPdy;
+    result.undisplaced_dPdx = point.undisplaced_dPdx;
+    result.undisplaced_dPdy = point.undisplaced_dPdy;
+    result.undisplaced_object_dPdx =
+        point.undisplaced_object_dPdx;
+    result.undisplaced_object_dPdy =
+        point.undisplaced_object_dPdy;
     result.generated_dx = point.generated_dx;
     result.generated_dy = point.generated_dy;
     result.incoming = point.incoming;
@@ -118,6 +136,18 @@ unpack_shader_evaluation_state(
             point.object_shading_normal,
         .object_tangent = point.object_tangent,
         .tangent_sign = point.tangent_sign,
+        .undisplaced_position =
+            point.undisplaced_position,
+        .undisplaced_object_position =
+            point.undisplaced_object_position,
+        .undisplaced_shading_normal =
+            point.undisplaced_shading_normal,
+        .undisplaced_object_shading_normal =
+            point.undisplaced_object_shading_normal,
+        .undisplaced_object_tangent =
+            point.undisplaced_object_tangent,
+        .undisplaced_tangent_sign =
+            point.undisplaced_tangent_sign,
         .normal_to_world_x = point.normal_to_world_x,
         .normal_to_world_y = point.normal_to_world_y,
         .normal_to_world_z = point.normal_to_world_z,
@@ -127,6 +157,12 @@ unpack_shader_evaluation_state(
         .dPdy = point.dPdy,
         .object_dPdx = point.object_dPdx,
         .object_dPdy = point.object_dPdy,
+        .undisplaced_dPdx = point.undisplaced_dPdx,
+        .undisplaced_dPdy = point.undisplaced_dPdy,
+        .undisplaced_object_dPdx =
+            point.undisplaced_object_dPdx,
+        .undisplaced_object_dPdy =
+            point.undisplaced_object_dPdy,
         .generated_dx = point.generated_dx,
         .generated_dy = point.generated_dy,
         .incoming = point.incoming,

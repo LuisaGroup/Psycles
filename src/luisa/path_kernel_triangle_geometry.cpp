@@ -75,6 +75,15 @@ public:
         const auto tangents =
             scene->heap->buffer<luisa::float4>(
                 geometry.bindless_base + 7u);
+        const auto undisplaced_positions =
+            scene->heap->buffer<luisa::float3>(
+                geometry.bindless_base + 10u);
+        const auto undisplaced_normals =
+            scene->heap->buffer<luisa::float3>(
+                geometry.bindless_base + 11u);
+        const auto undisplaced_tangents =
+            scene->heap->buffer<luisa::float4>(
+                geometry.bindless_base + 12u);
         return {
             .primitive = std::move(primitive),
             .p0 = positions.read(triangle.i0),
@@ -89,6 +98,24 @@ public:
             .tangent0 = tangents.read(tangent_i0),
             .tangent1 = tangents.read(tangent_i1),
             .tangent2 = tangents.read(tangent_i2),
+            .undisplaced_p0 =
+                undisplaced_positions.read(triangle.i0),
+            .undisplaced_p1 =
+                undisplaced_positions.read(triangle.i1),
+            .undisplaced_p2 =
+                undisplaced_positions.read(triangle.i2),
+            .undisplaced_n0 =
+                undisplaced_normals.read(normal_i0),
+            .undisplaced_n1 =
+                undisplaced_normals.read(normal_i1),
+            .undisplaced_n2 =
+                undisplaced_normals.read(normal_i2),
+            .undisplaced_tangent0 =
+                undisplaced_tangents.read(tangent_i0),
+            .undisplaced_tangent1 =
+                undisplaced_tangents.read(tangent_i1),
+            .undisplaced_tangent2 =
+                undisplaced_tangents.read(tangent_i2),
             .generated0 = generated.read(generated_i0),
             .generated1 = generated.read(generated_i1),
             .generated2 = generated.read(generated_i2),

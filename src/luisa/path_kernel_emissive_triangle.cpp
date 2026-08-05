@@ -216,6 +216,39 @@ class PathEmissiveTriangleComponent final
                 attributes.tangent0,
                 attributes.tangent1,
                 attributes.tangent2);
+        const auto undisplaced_local_geometric_normal =
+            normalize_or(
+                cross(
+                    attributes.undisplaced_p1 -
+                        attributes.undisplaced_p0,
+                    attributes.undisplaced_p2 -
+                        attributes.undisplaced_p0),
+                make_float3(0.0f, 0.0f, 1.0f));
+        const auto undisplaced_local_shading_normal =
+            select(
+                undisplaced_local_geometric_normal,
+                triangle_interpolate(
+                    light.barycentric,
+                    attributes.undisplaced_n0,
+                    attributes.undisplaced_n1,
+                    attributes.undisplaced_n2),
+                primitive.smooth);
+        const auto undisplaced_local_position =
+            triangle_interpolate(
+                light.barycentric,
+                attributes.undisplaced_p0,
+                attributes.undisplaced_p1,
+                attributes.undisplaced_p2);
+        const auto undisplaced_position =
+            (object_to_world *
+             make_float4(undisplaced_local_position, 1.0f))
+                .xyz();
+        const auto undisplaced_local_tangent =
+            triangle_interpolate(
+                light.barycentric,
+                attributes.undisplaced_tangent0,
+                attributes.undisplaced_tangent1,
+                attributes.undisplaced_tangent2);
         auto geometric_normal =
             geometry.geometric_normal;
         auto shading_normal =
@@ -249,6 +282,19 @@ class PathEmissiveTriangleComponent final
                     shading_normal,
                     geometric_normal) <
                     0.0f);
+        auto undisplaced_shading_normal =
+            normalize_or(
+                (normal_to_world *
+                 make_float4(
+                     undisplaced_local_shading_normal,
+                     0.0f))
+                    .xyz(),
+                geometric_normal);
+        undisplaced_shading_normal =
+            select(
+                undisplaced_shading_normal,
+                -undisplaced_shading_normal,
+                back_facing);
         const auto tangent =
             normalize_or(
                 (object_to_world *
@@ -299,6 +345,18 @@ class PathEmissiveTriangleComponent final
                 local_tangent.xyz(),
             .tangent_sign =
                 local_tangent.w,
+            .undisplaced_position =
+                undisplaced_position,
+            .undisplaced_object_position =
+                undisplaced_local_position,
+            .undisplaced_shading_normal =
+                undisplaced_shading_normal,
+            .undisplaced_object_shading_normal =
+                undisplaced_local_shading_normal,
+            .undisplaced_object_tangent =
+                undisplaced_local_tangent.xyz(),
+            .undisplaced_tangent_sign =
+                undisplaced_local_tangent.w,
             .normal_to_world_x =
                 (normal_to_world *
                  make_float4(
@@ -335,6 +393,14 @@ class PathEmissiveTriangleComponent final
             .object_dPdx =
                 make_float3(0.0f),
             .object_dPdy =
+                make_float3(0.0f),
+            .undisplaced_dPdx =
+                make_float3(0.0f),
+            .undisplaced_dPdy =
+                make_float3(0.0f),
+            .undisplaced_object_dPdx =
+                make_float3(0.0f),
+            .undisplaced_object_dPdy =
                 make_float3(0.0f),
             .generated_dx =
                 make_float3(0.0f),

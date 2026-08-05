@@ -157,17 +157,30 @@ public:
                                                   coordinate);
                         sampled = sample_uv(uv);
                     } else if (projection == 1u) {
-                        // Cycles' object-normal weighted box projection.
-                        // Cycles flips sd->N when shader setup marks a
-                        // triangle back-facing, then transforms that normal
-                        // back to object space for box projection. Keep the
-                        // raw pre-flip object normal for tangent-space Normal
-                        // Map evaluation, but apply the same post-setup sign
-                        // here before choosing and orienting cube faces.
-                        auto signed_normal = select(
-                            point.object_shading_normal,
-                            -point.object_shading_normal,
-                            point.back_facing);
+                        // Cycles transforms the current sd->N back to object
+                        // space. This is observably different from reading
+                        // the mesh normal after the automatic bump region has
+                        // executed its SetNormal stage.
+                        const auto column_x = point.normal_to_world_x;
+                        const auto column_y = point.normal_to_world_y;
+                        const auto column_z = point.normal_to_world_z;
+                        const auto determinant = dot(
+                            column_x,
+                            cross(column_y, column_z));
+                        const auto safe_determinant = select(
+                            1.0f,
+                            determinant,
+                            abs(determinant) > 1.0e-20f);
+                        auto signed_normal = safe_normalize(
+                            make_float3(
+                                dot(point.shading_normal,
+                                    cross(column_y, column_z)),
+                                dot(point.shading_normal,
+                                    cross(column_z, column_x)),
+                                dot(point.shading_normal,
+                                    cross(column_x, column_y))) /
+                                safe_determinant,
+                            point.object_shading_normal);
                         auto normal = abs(signed_normal);
                         auto normal_sum =
                             normal.x + normal.y + normal.z;

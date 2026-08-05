@@ -97,6 +97,24 @@ TracedValues GraphSurfaceImplementation::trace_value_stage(
     return result;
 }
 
+SurfacePoint GraphSurfaceImplementation::automatic_bump_point(
+    const SurfacePoint &point) const noexcept {
+    if (!_automatic_bump_uses_undisplaced_geometry) {
+        return point;
+    }
+    auto result = point;
+    result.position = point.undisplaced_position;
+    result.object_position = point.undisplaced_object_position;
+    result.shading_normal = point.undisplaced_shading_normal;
+    result.object_shading_normal =
+        point.undisplaced_object_shading_normal;
+    result.dPdx = point.undisplaced_dPdx;
+    result.dPdy = point.undisplaced_dPdy;
+    result.object_dPdx = point.undisplaced_object_dPdx;
+    result.object_dPdy = point.undisplaced_object_dPdy;
+    return result;
+}
+
 TracedValues GraphSurfaceImplementation::trace_values(
     const ShaderServices &services,
     const SurfacePoint &point,
@@ -114,7 +132,9 @@ TracedValues GraphSurfaceImplementation::trace_values(
     // later context nodes observe the new normal, while ordinary Bump nodes
     // remain pure values.
     const auto bump_values = trace_value_stage(
-        services, point, &_surface_normal_dependency_mask);
+        services,
+        automatic_bump_point(point),
+        &_surface_normal_dependency_mask);
     auto surface_point = point;
     surface_point.shading_normal =
         bump_values.values[

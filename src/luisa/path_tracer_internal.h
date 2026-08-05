@@ -130,7 +130,10 @@ constexpr auto ray_maximum = 1.0e30f;
 // Slot 9 stores the Cycles intersection representation of positions. It
 // aliases slot 1 for object-space geometry and points at host-transformed
 // vertices for single-user static meshes.
-constexpr std::uint32_t geometry_bindless_stride = 10u;
+// Slots 10-12 retain the position, normal, and tangent state from before
+// true displacement. Non-displaced geometry aliases these slots to the
+// ordinary buffers, so shader code has one invariant representation.
+constexpr std::uint32_t geometry_bindless_stride = 13u;
 constexpr std::uint32_t geometry_normal_corner = 1u << 0u;
 constexpr std::uint32_t geometry_uv_corner = 1u << 1u;
 constexpr std::uint32_t geometry_uv_tangent_corner = 1u << 2u;
@@ -198,6 +201,12 @@ struct GeometryResource {
     std::vector<Buffer<luisa::float4>> attributes;
     std::optional<Buffer<luisa::float3>>
         cycles_intersection_positions;
+    std::optional<Buffer<luisa::float3>>
+        undisplaced_positions;
+    std::optional<Buffer<luisa::float3>>
+        undisplaced_normals;
+    std::optional<Buffer<luisa::float4>>
+        undisplaced_uv_tangents;
     Mesh mesh;
 };
 
@@ -226,6 +235,9 @@ struct GeometryUpload {
     luisa::vector<luisa::float3> normals;
     luisa::vector<luisa::float2> uv;
     luisa::vector<luisa::float4> uv_tangents;
+    luisa::vector<luisa::float3> undisplaced_positions;
+    luisa::vector<luisa::float3> undisplaced_normals;
+    luisa::vector<luisa::float4> undisplaced_uv_tangents;
     luisa::vector<luisa::float3> generated;
     luisa::vector<Triangle> triangles;
     luisa::vector<luisa::uint> triangle_material_slots;
