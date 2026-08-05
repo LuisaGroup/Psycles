@@ -134,6 +134,10 @@ SurfaceProgramStorage compact_surface_program(
     enqueue(storage.root, reachable_closures, closure_worklist);
     enqueue(storage.volume_root, reachable_volumes, volume_worklist);
     enqueue(
+        storage.surface_normal_root,
+        reachable_values,
+        value_worklist);
+    enqueue(
         storage.displacement_root,
         reachable_values,
         value_worklist);
@@ -253,6 +257,8 @@ SurfaceProgramStorage compact_surface_program(
     storage.root = remap(storage.root, closure_mapping);
     storage.volume_root = remap(
         storage.volume_root, volume_mapping);
+    storage.surface_normal_root = remap(
+        storage.surface_normal_root, value_mapping);
     storage.displacement_root = remap(
         storage.displacement_root, value_mapping);
     return storage;

@@ -86,6 +86,10 @@ GraphSurfaceImplementation::GraphSurfaceImplementation(
             _program->emission_evaluation() !=
             compiler::EmissionEvaluationMode::deferred;
         _capabilities.may_have_volume = _program->volume_root().valid();
+        if (_program->displacement_root().valid()) {
+            _displacement_dependency_mask = value_dependency_mask(
+                _program->displacement_root());
+        }
     }
 }
 
@@ -1156,6 +1160,18 @@ GraphSurfaceImplementation::evaluate_volume(
         return point.shading_normal;
     }
     return trace_values(services, point).shading_normal;
+}
+
+[[nodiscard]] Float3 GraphSurfaceImplementation::displacement(
+    const ShaderServices &services,
+    const SurfacePoint &point) const noexcept {
+    if (!_program || !_program->displacement_root().valid()) {
+        return make_float3(0.0f);
+    }
+    const auto values = trace_values(
+        services, point, &_displacement_dependency_mask);
+    return values.values[
+        _program->displacement_root().value].vector();
 }
 
 [[nodiscard]] SurfaceAov GraphSurfaceImplementation::aov(

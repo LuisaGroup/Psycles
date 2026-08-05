@@ -107,6 +107,10 @@ public:
         const VolumeQuery &query,
         VolumePhaseCollector *collector) const noexcept override;
 
+    [[nodiscard]] Float3 displacement(
+        const ShaderServices &services,
+        const SurfacePoint &point) const noexcept override;
+
     [[nodiscard]] Float3 shading_normal(
         const ShaderServices &services,
         const SurfacePoint &point) const noexcept override;

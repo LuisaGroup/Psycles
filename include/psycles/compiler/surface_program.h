@@ -453,6 +453,7 @@ private:
   std::vector<VolumeInstruction> _volume_instructions;
   ClosureExpressionId _root;
   VolumeExpressionId _volume_root;
+  ValueExpressionId _surface_normal_root;
   ValueExpressionId _displacement_root;
   EmissionEvaluationMode _emission_evaluation{EmissionEvaluationMode::none};
 
@@ -464,6 +465,7 @@ public:
                  ClosureExpressionId root,
                  std::vector<VolumeInstruction> volume_instructions = {},
                  VolumeExpressionId volume_root = {},
+                 ValueExpressionId surface_normal_root = {},
                  ValueExpressionId displacement_root = {}) noexcept;
 
   [[nodiscard]] std::uint64_t structure_signature() const noexcept {
@@ -487,6 +489,9 @@ public:
   [[nodiscard]] ClosureExpressionId root() const noexcept { return _root; }
   [[nodiscard]] VolumeExpressionId volume_root() const noexcept {
     return _volume_root;
+  }
+  [[nodiscard]] ValueExpressionId surface_normal_root() const noexcept {
+    return _surface_normal_root;
   }
   [[nodiscard]] ValueExpressionId displacement_root() const noexcept {
     return _displacement_root;

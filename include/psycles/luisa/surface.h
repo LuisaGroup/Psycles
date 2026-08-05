@@ -684,6 +684,15 @@ public:
         return VolumeCoefficients::zero();
     }
 
+    // Raw world-space displacement produced by the material displacement
+    // root. This is evaluated during mesh compilation, before BLAS build;
+    // it is never a bump approximation and does not mutate shading state.
+    [[nodiscard]] virtual Float3 displacement(
+        const ShaderServices &,
+        const SurfacePoint &) const noexcept {
+        return make_float3(0.0f);
+    }
+
     // Final Cycles sd->N after shader bump evaluation. This is distinct from
     // closure-specific Normal inputs and is consumed by shadow-terminator
     // geometry offset.
@@ -1012,6 +1021,17 @@ public:
         Float3 result = point.shading_normal;
         _surfaces.dispatch(tag, [&](const Surface *surface) noexcept {
             result = surface->shading_normal(services, point);
+        });
+        return result;
+    }
+
+    [[nodiscard]] Float3 displacement(
+        Expr<std::uint32_t> tag,
+        const ShaderServices &services,
+        const SurfacePoint &point) const noexcept {
+        Float3 result = make_float3(0.0f);
+        _surfaces.dispatch(tag, [&](const Surface *surface) noexcept {
+            result = surface->displacement(services, point);
         });
         return result;
     }

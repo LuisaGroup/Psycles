@@ -113,6 +113,7 @@ SurfaceProgram::SurfaceProgram(
     ClosureExpressionId root,
     std::vector<VolumeInstruction> volume_instructions,
     VolumeExpressionId volume_root,
+    ValueExpressionId surface_normal_root,
     ValueExpressionId displacement_root) noexcept
     : _structure_signature{structure_signature},
       _parameters{std::move(parameters)},
@@ -121,6 +122,7 @@ SurfaceProgram::SurfaceProgram(
       _volume_instructions{std::move(volume_instructions)},
       _root{root},
       _volume_root{volume_root},
+      _surface_normal_root{surface_normal_root},
       _displacement_root{displacement_root},
       _emission_evaluation{analyze_emission_evaluation(
           _value_instructions,

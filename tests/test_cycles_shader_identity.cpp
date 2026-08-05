@@ -220,7 +220,8 @@ void test_cycles_intersection_representation_plan() {
         displaced_material,
         MaterialDesc{
             .name = "displaced",
-            .has_true_displacement = true});
+            .displacement_method =
+                DisplacementMethod::displacement});
 
     const auto support = [](MaterialId material) {
         return TriangleMeshDesc{
