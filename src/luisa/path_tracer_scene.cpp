@@ -1385,13 +1385,28 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         diagnose(result.diagnostics, final_support_classes.diagnostic);
         return result;
     }
+    std::map<contract::GeometryId, CyclesPositionArrayView>
+        final_position_views;
+    for (const auto &[geometry_id, upload_index] : geometry_indices) {
+        if (upload_index >= uploads.size()) {
+            continue;
+        }
+        const auto &positions = uploads[upload_index].positions;
+        final_position_views.emplace(
+            geometry_id,
+            make_cycles_position_array_view(
+                std::span<const luisa::float3>{
+                    positions.data(), positions.size()}));
+    }
     if (!finalize_cycles_instance_intersection_plan(
             snapshot,
             final_support_classes.by_geometry,
+            final_position_views,
             cycles_instance_intersection_plan)) {
         diagnose(
             result.diagnostics,
-            "Cycles instance intersection plan has inconsistent size");
+            "Cycles instance intersection plan has inconsistent final "
+            "position support");
         return result;
     }
 

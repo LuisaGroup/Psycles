@@ -59,20 +59,51 @@ struct CyclesInstanceIntersectionPlan {
     Mat4f world_to_object;
 };
 
+// A type-erased, non-owning view of the final float position array. Keeping
+// this interface in terms of Psycles' host vector type lets the exact support
+// planner remain independent of any particular compute runtime container.
+struct CyclesPositionArrayView {
+    const void *data{};
+    std::size_t size{};
+    Vec3f (*load)(const void *, std::size_t) noexcept{};
+
+    [[nodiscard]] Vec3f operator[](
+        std::size_t index) const noexcept {
+        return load(data, index);
+    }
+};
+
+template<typename Position>
+[[nodiscard]] CyclesPositionArrayView
+make_cycles_position_array_view(
+    std::span<const Position> positions) noexcept {
+    return {
+        .data = positions.data(),
+        .size = positions.size(),
+        .load = [](const void *data, std::size_t index) noexcept {
+            const auto &point =
+                static_cast<const Position *>(data)[index];
+            return Vec3f{point.x, point.y, point.z};
+        }};
+}
+
 [[nodiscard]] std::vector<CyclesInstanceIntersectionPlan>
 build_cycles_instance_intersection_plan(
     const contract::SceneSnapshot &scene,
     const std::set<contract::MaterialId> &surface_bssrdf_materials);
 
-// Completes the plan only after every geometry mutation is finished. The
-// class identifier must denote bitwise equality of the final position and
-// triangle-index arrays used to build the acceleration structure. Keeping
-// this phase separate prevents true displacement from invalidating an alias
-// relation derived from the source mesh.
+// Completes the plan only after every geometry mutation is finished. Geometry
+// classes identify bitwise-equal local position and triangle-index arrays;
+// instance classes additionally require bitwise-equal vertices after the
+// authored affine transform. Keeping this phase separate prevents true
+// displacement from invalidating an alias relation derived from the source
+// mesh while admitting distinct transforms with the same finite float image.
 [[nodiscard]] bool finalize_cycles_instance_intersection_plan(
     const contract::SceneSnapshot &scene,
     const std::map<contract::GeometryId, std::uint32_t>
         &final_triangle_support_classes,
+    const std::map<contract::GeometryId, CyclesPositionArrayView>
+        &final_positions,
     std::span<CyclesInstanceIntersectionPlan> plan);
 
 // Host forms of Cycles' affine geometry operations. Static-transform vertices
