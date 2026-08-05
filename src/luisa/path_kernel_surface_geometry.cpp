@@ -1,6 +1,8 @@
 #include "path_kernel_builder.h"
 #include "path_kernel_surface_primitive.h"
 
+#include <psycles/luisa/cycles_transform.h>
+
 #include <utility>
 
 namespace psycles::luisa_backend::detail {
@@ -140,7 +142,7 @@ Float3 SurfaceGeometryContext::make_ray_origin(Float3 direction) const noexcept 
   Float3 origin = hit_position;
   $if(!is_curve) {
     const Float3 object_direction =
-        (world_to_object * make_float4(direction, 0.0f)).xyz();
+        cycles_transform::direction(world_to_object, direction);
     const Float3 cycles_origin = select(
         object_hit_position, hit_position, cycles_transform_applied);
     const Float3 cycles_direction = select(

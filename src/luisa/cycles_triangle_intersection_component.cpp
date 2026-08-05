@@ -1,5 +1,7 @@
 #include "cycles_triangle_intersection_component.h"
 
+#include <psycles/luisa/cycles_transform.h>
+
 #include <limits>
 
 namespace psycles::luisa_backend::detail {
@@ -26,35 +28,6 @@ namespace {
         luisa::compute::fma(a.y, b.y, a.z * b.z));
 }
 
-[[nodiscard]] Float3 affine_transform(
-    Expr<luisa::float4x4> transform,
-    Expr<luisa::float3> value,
-    bool include_translation) noexcept {
-    const auto c0 = transform[0u];
-    const auto c1 = transform[1u];
-    const auto c2 = transform[2u];
-    const auto c3 = transform[3u];
-    const auto tx = include_translation ? c3.x : 0.0f;
-    const auto ty = include_translation ? c3.y : 0.0f;
-    const auto tz = include_translation ? c3.z : 0.0f;
-    return make_float3(
-        luisa::compute::fma(
-            value.x, c0.x,
-            luisa::compute::fma(
-                value.y, c1.x,
-                luisa::compute::fma(value.z, c2.x, tx))),
-        luisa::compute::fma(
-            value.x, c0.y,
-            luisa::compute::fma(
-                value.y, c1.y,
-                luisa::compute::fma(value.z, c2.y, ty))),
-        luisa::compute::fma(
-            value.x, c0.z,
-            luisa::compute::fma(
-                value.y, c1.z,
-                luisa::compute::fma(value.z, c2.z, tz))));
-}
-
 [[nodiscard]] Float clamp_bvh_direction(Expr<float> value) noexcept {
     constexpr auto minimum_magnitude = 8.271806e-25f;
     return select(
@@ -74,10 +47,10 @@ class PlueckerTriangleIntersectionComponent final
         Expr<luisa::float3> p0,
         Expr<luisa::float3> p1,
         Expr<luisa::float3> p2) const noexcept override {
-        const auto object_origin = affine_transform(
-            world_to_object, world_ray->origin(), true);
-        const auto object_direction = affine_transform(
-            world_to_object, world_ray->direction(), false);
+        const auto object_origin = cycles_transform::point(
+            world_to_object, world_ray->origin());
+        const auto object_direction = cycles_transform::direction(
+            world_to_object, world_ray->direction());
         const Bool positions_are_world = transform_applied != 0u;
         const Float3 origin = select(
             object_origin, world_ray->origin(), positions_are_world);
