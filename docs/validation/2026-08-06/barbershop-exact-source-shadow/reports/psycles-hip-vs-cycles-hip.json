@@ -1,0 +1,825 @@
+{
+  "actual_label": "Psycles HIP fixed",
+  "cycles_channels": [
+    "RenderLayer.Ambient Occlusion.R",
+    "RenderLayer.Ambient Occlusion.G",
+    "RenderLayer.Ambient Occlusion.B",
+    "RenderLayer.Combined.R",
+    "RenderLayer.Combined.G",
+    "RenderLayer.Combined.B",
+    "RenderLayer.Combined.A",
+    "RenderLayer.Debug Sample Count.X",
+    "RenderLayer.Depth.Z",
+    "RenderLayer.Diffuse Color.R",
+    "RenderLayer.Diffuse Color.G",
+    "RenderLayer.Diffuse Color.B",
+    "RenderLayer.Diffuse Direct.R",
+    "RenderLayer.Diffuse Direct.G",
+    "RenderLayer.Diffuse Direct.B",
+    "RenderLayer.Diffuse Indirect.R",
+    "RenderLayer.Diffuse Indirect.G",
+    "RenderLayer.Diffuse Indirect.B",
+    "RenderLayer.Emission.R",
+    "RenderLayer.Emission.G",
+    "RenderLayer.Emission.B",
+    "RenderLayer.Environment.R",
+    "RenderLayer.Environment.G",
+    "RenderLayer.Environment.B",
+    "RenderLayer.Glossy Color.R",
+    "RenderLayer.Glossy Color.G",
+    "RenderLayer.Glossy Color.B",
+    "RenderLayer.Glossy Direct.R",
+    "RenderLayer.Glossy Direct.G",
+    "RenderLayer.Glossy Direct.B",
+    "RenderLayer.Glossy Indirect.R",
+    "RenderLayer.Glossy Indirect.G",
+    "RenderLayer.Glossy Indirect.B",
+    "RenderLayer.Normal.X",
+    "RenderLayer.Normal.Y",
+    "RenderLayer.Normal.Z",
+    "RenderLayer.Transmission Color.R",
+    "RenderLayer.Transmission Color.G",
+    "RenderLayer.Transmission Color.B",
+    "RenderLayer.Transmission Direct.R",
+    "RenderLayer.Transmission Direct.G",
+    "RenderLayer.Transmission Direct.B",
+    "RenderLayer.Transmission Indirect.R",
+    "RenderLayer.Transmission Indirect.G",
+    "RenderLayer.Transmission Indirect.B",
+    "RenderLayer.Volume Direct.R",
+    "RenderLayer.Volume Direct.G",
+    "RenderLayer.Volume Direct.B",
+    "RenderLayer.Volume Indirect.R",
+    "RenderLayer.Volume Indirect.G",
+    "RenderLayer.Volume Indirect.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        1.2648097276687622,
+        1.268728256225586,
+        1.2878011465072632
+      ],
+      "cycles": "/var/tmp/barbershop-three-material-original-20260805/isolated-cycles-hip-current-128.exr",
+      "cycles_channel_mean": [
+        0.00811490323394537,
+        0.004966100677847862,
+        0.0037102673668414354
+      ],
+      "cycles_luminance_mean": 0.005544845946133137,
+      "cycles_rms": 0.026640277355909348,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.2684329310703049,
+      "maximum_absolute_error": 0.6450636982917786,
+      "mean_absolute_error": 0.002356266137212515,
+      "orientation_rmse": {
+        "flip_x": 0.03951520845293999,
+        "flip_xy": 0.04445222020149231,
+        "flip_y": 0.04445222020149231,
+        "identity": 0.016947174444794655
+      },
+      "p95_pixel_rmse": 0.008955924771726131,
+      "p99_pixel_rmse": 0.06494922935962677,
+      "psycles": "/var/tmp/barbershop-three-material-original-20260805/isolated-shadow-source-final-128-psycles-hip.exr",
+      "psycles_channel_mean": [
+        0.010263809002935886,
+        0.006300632376223803,
+        0.004778086673468351
+      ],
+      "psycles_luminance_mean": 0.007033265195786953,
+      "psycles_rms": 0.035585048438836434,
+      "relative_rmse": 0.6361485737698385,
+      "rmse": 0.016947174444794655,
+      "shape": [
+        480,
+        1152,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 8.533540104354278,
+        "display_scale": 4.165601271571675,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/barbershop-three-material-original-20260805/shadow-source-final-triptychs-hip/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 552960
+    },
+    "DiffCol": {
+      "channel_mean_ratio": [
+        0.9976485967636108,
+        0.9970272183418274,
+        0.9972097873687744
+      ],
+      "cycles": "/var/tmp/barbershop-three-material-original-20260805/isolated-cycles-hip-current-128.exr",
+      "cycles_channel_mean": [
+        0.011770342476665974,
+        0.008743073791265488,
+        0.007388325408101082
+      ],
+      "cycles_luminance_mean": 0.009288854897022247,
+      "cycles_rms": 0.031362637877464294,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9972096983386125,
+      "maximum_absolute_error": 0.07435865700244904,
+      "mean_absolute_error": 0.0005385625991038978,
+      "orientation_rmse": {
+        "flip_x": 0.0356006920337677,
+        "flip_xy": 0.04431191831827164,
+        "flip_y": 0.04431191831827164,
+        "identity": 0.002770728198811412
+      },
+      "p95_pixel_rmse": 0.0029758326709270477,
+      "p99_pixel_rmse": 0.014943541958928108,
+      "psycles": "/var/tmp/barbershop-three-material-original-20260805/isolated-shadow-source-final-128-psycles-hip.exr",
+      "psycles_channel_mean": [
+        0.011742665432393551,
+        0.008717082440853119,
+        0.007367710582911968
+      ],
+      "psycles_luminance_mean": 0.009262936189770699,
+      "psycles_rms": 0.03130385110098092,
+      "relative_rmse": 0.08834487104167746,
+      "rmse": 0.002770728198811412,
+      "shape": [
+        480,
+        1152,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 45.49353388317826,
+        "display_scale": 5.916721086322855,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/barbershop-three-material-original-20260805/shadow-source-final-triptychs-hip/diffcol.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 552960
+    },
+    "DiffDir": {
+      "channel_mean_ratio": [
+        1.2548675537109375,
+        1.2678241729736328,
+        1.2969772815704346
+      ],
+      "cycles": "/var/tmp/barbershop-three-material-original-20260805/isolated-cycles-hip-current-128.exr",
+      "cycles_channel_mean": [
+        0.06865938007831573,
+        0.05327804014086723,
+        0.04407738149166107
+      ],
+      "cycles_luminance_mean": 0.05588390678167343,
+      "cycles_rms": 0.2733781635761261,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.2660960553746887,
+      "maximum_absolute_error": 37.516841888427734,
+      "mean_absolute_error": 0.024058857932686806,
+      "orientation_rmse": {
+        "flip_x": 0.4120008647441864,
+        "flip_xy": 0.45187056064605713,
+        "flip_y": 0.45187056064605713,
+        "identity": 0.1961679309606552
+      },
+      "p95_pixel_rmse": 0.07667110860347748,
+      "p99_pixel_rmse": 0.6629540324211121,
+      "psycles": "/var/tmp/barbershop-three-material-original-20260805/isolated-shadow-source-final-128-psycles-hip.exr",
+      "psycles_channel_mean": [
+        0.08615842461585999,
+        0.06754718720912933,
+        0.05716736242175102
+      ],
+      "psycles_luminance_mean": 0.07075439393520355,
+      "psycles_rms": 0.3597935229822162,
+      "relative_rmse": 0.7175698614495573,
+      "rmse": 0.1961679309606552,
+      "shape": [
+        480,
+        1152,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 0.7762545747858931,
+        "display_scale": 0.4289301544245712,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/barbershop-three-material-original-20260805/shadow-source-final-triptychs-hip/diffdir.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 552960
+    },
+    "DiffInd": {
+      "channel_mean_ratio": [
+        1.1248672008514404,
+        1.2025729417800903,
+        1.2990243434906006
+      ],
+      "cycles": "/var/tmp/barbershop-three-material-original-20260805/isolated-cycles-hip-current-128.exr",
+      "cycles_channel_mean": [
+        0.00040653374162502587,
+        0.00020921105169691145,
+        0.0001395080762449652
+      ],
+      "cycles_luminance_mean": 0.00024612972629256546,
+      "cycles_rms": 0.00514299375936389,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.1792292093854606,
+      "maximum_absolute_error": 3.634192943572998,
+      "mean_absolute_error": 0.00035611577914096415,
+      "orientation_rmse": {
+        "flip_x": 0.006408637389540672,
+        "flip_xy": 0.006504429038614035,
+        "flip_y": 0.006504429038614035,
+        "identity": 0.006110827438533306
+      },
+      "p95_pixel_rmse": 0.0012464160099625587,
+      "p99_pixel_rmse": 0.009895669296383858,
+      "psycles": "/var/tmp/barbershop-three-material-original-20260805/isolated-shadow-source-final-128-psycles-hip.exr",
+      "psycles_channel_mean": [
+        0.00045729646808467805,
+        0.0002515915548428893,
+        0.0001812243863241747
+      ],
+      "psycles_luminance_mean": 0.0002902433625422418,
+      "psycles_rms": 0.0039821113884991885,
+      "relative_rmse": 1.1881848830571249,
+      "rmse": 0.006110827438533306,
+      "shape": [
+        480,
+        1152,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 60.062222269734406,
+        "display_scale": 70.27223196197784,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/barbershop-three-material-original-20260805/shadow-source-final-triptychs-hip/diffind.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 552960
+    },
+    "Emit": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/barbershop-three-material-original-20260805/isolated-cycles-hip-current-128.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/barbershop-three-material-original-20260805/isolated-shadow-source-final-128-psycles-hip.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        1152,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/barbershop-three-material-original-20260805/shadow-source-final-triptychs-hip/emit.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 552960
+    },
+    "Env": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/barbershop-three-material-original-20260805/isolated-cycles-hip-current-128.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/barbershop-three-material-original-20260805/isolated-shadow-source-final-128-psycles-hip.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        1152,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/barbershop-three-material-original-20260805/shadow-source-final-triptychs-hip/env.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 552960
+    },
+    "GlossCol": {
+      "channel_mean_ratio": [
+        1.001944661140442,
+        1.0019447803497314,
+        1.001944661140442
+      ],
+      "cycles": "/var/tmp/barbershop-three-material-original-20260805/isolated-cycles-hip-current-128.exr",
+      "cycles_channel_mean": [
+        0.0025515533052384853,
+        0.002551552839577198,
+        0.0025515533052384853
+      ],
+      "cycles_luminance_mean": 0.0025515640154480934,
+      "cycles_rms": 0.010099071078002453,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0019450885692376,
+      "maximum_absolute_error": 0.015499711036682129,
+      "mean_absolute_error": 8.889321907190606e-05,
+      "orientation_rmse": {
+        "flip_x": 0.012474887073040009,
+        "flip_xy": 0.014299342408776283,
+        "flip_y": 0.014299342408776283,
+        "identity": 0.0005164879839867353
+      },
+      "p95_pixel_rmse": 0.0002694835129659623,
+      "p99_pixel_rmse": 0.0026757377199828625,
+      "psycles": "/var/tmp/barbershop-three-material-original-20260805/isolated-shadow-source-final-128-psycles-hip.exr",
+      "psycles_channel_mean": [
+        0.002556515159085393,
+        0.002556515159085393,
+        0.002556515159085393
+      ],
+      "psycles_luminance_mean": 0.0025565270334482193,
+      "psycles_rms": 0.010123238089609521,
+      "relative_rmse": 0.0511421278251756,
+      "rmse": 0.0005164879839867353,
+      "shape": [
+        480,
+        1152,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 239.04816895314843,
+        "display_scale": 15.498150417280504,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/barbershop-three-material-original-20260805/shadow-source-final-triptychs-hip/glosscol.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 552960
+    },
+    "GlossDir": {
+      "channel_mean_ratio": [
+        1.217671513557434,
+        1.186745047569275,
+        1.1768128871917725
+      ],
+      "cycles": "/var/tmp/barbershop-three-material-original-20260805/isolated-cycles-hip-current-128.exr",
+      "cycles_channel_mean": [
+        0.016764283180236816,
+        0.018844066187739372,
+        0.021312274038791656
+      ],
+      "cycles_luminance_mean": 0.01858014054596424,
+      "cycles_rms": 0.16167710721492767,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.1918597208238844,
+      "maximum_absolute_error": 50.14200973510742,
+      "mean_absolute_error": 0.011899651028215885,
+      "orientation_rmse": {
+        "flip_x": 0.2346879094839096,
+        "flip_xy": 0.2666109800338745,
+        "flip_y": 0.2666109800338745,
+        "identity": 0.18026956915855408
+      },
+      "p95_pixel_rmse": 0.010583991184830666,
+      "p99_pixel_rmse": 0.3172312378883362,
+      "psycles": "/var/tmp/barbershop-three-material-original-20260805/isolated-shadow-source-final-128-psycles-hip.exr",
+      "psycles_channel_mean": [
+        0.020413389429450035,
+        0.022363102063536644,
+        0.02508055791258812
+      ],
+      "psycles_luminance_mean": 0.022144921123981476,
+      "psycles_rms": 0.21199510492552964,
+      "relative_rmse": 1.114997492619102,
+      "rmse": 0.18026956915855408,
+      "shape": [
+        480,
+        1152,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.5243122723865625,
+        "display_scale": 0.7712762607928658,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/barbershop-three-material-original-20260805/shadow-source-final-triptychs-hip/glossdir.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 552960
+    },
+    "GlossInd": {
+      "channel_mean_ratio": [
+        0.9789378643035889,
+        0.9391496777534485,
+        0.9653621912002563
+      ],
+      "cycles": "/var/tmp/barbershop-three-material-original-20260805/isolated-cycles-hip-current-128.exr",
+      "cycles_channel_mean": [
+        0.0004673521325457841,
+        0.00027216889429837465,
+        0.0001943054230650887
+      ],
+      "cycles_luminance_mean": 0.0003080415481235832,
+      "cycles_rms": 0.004546894691884518,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9531842996186685,
+      "maximum_absolute_error": 5.163739204406738,
+      "mean_absolute_error": 0.00044866043026559055,
+      "orientation_rmse": {
+        "flip_x": 0.007943287491798401,
+        "flip_xy": 0.008007762022316456,
+        "flip_y": 0.008007762022316456,
+        "identity": 0.0075228651985526085
+      },
+      "p95_pixel_rmse": 0.0002491431951057166,
+      "p99_pixel_rmse": 0.011876104399561882,
+      "psycles": "/var/tmp/barbershop-three-material-original-20260805/isolated-shadow-source-final-128-psycles-hip.exr",
+      "psycles_channel_mean": [
+        0.00045750869321636856,
+        0.0002556073304731399,
+        0.0001875751040643081
+      ],
+      "psycles_luminance_mean": 0.000293620367301628,
+      "psycles_rms": 0.006591661383419622,
+      "relative_rmse": 1.65450614283628,
+      "rmse": 0.0075228651985526085,
+      "shape": [
+        480,
+        1152,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 44.76632629407458,
+        "display_scale": 60.4168767542597,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/barbershop-three-material-original-20260805/shadow-source-final-triptychs-hip/glossind.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 552960
+    },
+    "Normal": {
+      "channel_mean_ratio": [
+        1.00009024143219,
+        1.000178575515747,
+        0.9998396039009094
+      ],
+      "cycles": "/var/tmp/barbershop-three-material-original-20260805/isolated-cycles-hip-current-128.exr",
+      "cycles_channel_mean": [
+        0.19395476579666138,
+        0.11921485513448715,
+        0.11900537461042404
+      ],
+      "cycles_luminance_mean": 0.13510212302207947,
+      "cycles_rms": 0.5229907035827637,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0001307002112159,
+      "maximum_absolute_error": 0.28944846987724304,
+      "mean_absolute_error": 0.00036567222559824586,
+      "orientation_rmse": {
+        "flip_x": 0.8754451274871826,
+        "flip_xy": 0.8969243764877319,
+        "flip_y": 0.3456738293170929,
+        "identity": 0.002638485049828887
+      },
+      "p95_pixel_rmse": 0.002848950680345297,
+      "p99_pixel_rmse": 0.01098580937832594,
+      "psycles": "/var/tmp/barbershop-three-material-original-20260805/isolated-shadow-source-final-128-psycles-hip.exr",
+      "psycles_channel_mean": [
+        0.19397227466106415,
+        0.11923614889383316,
+        0.11898628622293472
+      ],
+      "psycles_luminance_mean": 0.13511978089809418,
+      "psycles_rms": 0.5229774560081166,
+      "relative_rmse": 0.005044994168641747,
+      "rmse": 0.002638485049828887,
+      "shape": [
+        480,
+        1152,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 60.46144700399244,
+        "display_scale": 1.0,
+        "mapping": "normal_xyz_to_rgb",
+        "path": "/var/tmp/barbershop-three-material-original-20260805/shadow-source-final-triptychs-hip/normal.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 552960
+    },
+    "TransCol": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/barbershop-three-material-original-20260805/isolated-cycles-hip-current-128.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/barbershop-three-material-original-20260805/isolated-shadow-source-final-128-psycles-hip.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        1152,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/barbershop-three-material-original-20260805/shadow-source-final-triptychs-hip/transcol.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 552960
+    },
+    "TransDir": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/barbershop-three-material-original-20260805/isolated-cycles-hip-current-128.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/barbershop-three-material-original-20260805/isolated-shadow-source-final-128-psycles-hip.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        1152,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/barbershop-three-material-original-20260805/shadow-source-final-triptychs-hip/transdir.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 552960
+    },
+    "TransInd": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/barbershop-three-material-original-20260805/isolated-cycles-hip-current-128.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/barbershop-three-material-original-20260805/isolated-shadow-source-final-128-psycles-hip.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        1152,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/barbershop-three-material-original-20260805/shadow-source-final-triptychs-hip/transind.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 552960
+    },
+    "Volume Direct": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/barbershop-three-material-original-20260805/isolated-cycles-hip-current-128.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/barbershop-three-material-original-20260805/isolated-shadow-source-final-128-psycles-hip.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        1152,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/barbershop-three-material-original-20260805/shadow-source-final-triptychs-hip/volume-direct.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 552960
+    },
+    "Volume Indirect": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/barbershop-three-material-original-20260805/isolated-cycles-hip-current-128.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/barbershop-three-material-original-20260805/isolated-shadow-source-final-128-psycles-hip.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        1152,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/barbershop-three-material-original-20260805/shadow-source-final-triptychs-hip/volume-indirect.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 552960
+    }
+  },
+  "reference_label": "Cycles HIP",
+  "schema": "psycles.cycles-differential.v1"
+}
