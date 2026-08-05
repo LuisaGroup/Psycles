@@ -1391,6 +1391,15 @@ if(PSYCLES_ENABLE_LUISA)
 
                 psycles_add_luisa_backend_test(
                     TARGET
+                        psycles_luisa_standalone_caustics_tests
+                    SOURCE
+                        tests/test_luisa_standalone_caustics.cpp
+                    TEST_STEM
+                        luisa_standalone_caustics
+                    LIBRARIES Psycles::luisa)
+
+                psycles_add_luisa_backend_test(
+                    TARGET
                         psycles_luisa_principled_coat_tests
                     SOURCE
                         tests/test_luisa_principled_coat.cpp
