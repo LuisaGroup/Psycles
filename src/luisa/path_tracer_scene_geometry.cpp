@@ -1,5 +1,6 @@
 #include "path_tracer_scene_geometry.h"
 
+#include <array>
 #include <bit>
 #include <cmath>
 #include <limits>
@@ -85,17 +86,6 @@ void hash_word(std::uint64_t &hash, std::uint32_t word) noexcept {
     }
 }
 
-[[nodiscard]] std::uint64_t instance_support_hash(
-    std::uint32_t support_class,
-    const Mat4f &transform) noexcept {
-    auto hash = std::uint64_t{14695981039346656037ull};
-    hash_word(hash, support_class);
-    for (const auto value : transform.elements) {
-        hash_word(hash, std::bit_cast<std::uint32_t>(value));
-    }
-    return hash;
-}
-
 [[nodiscard]] bool material_blocks_static_transform(
     const contract::SceneSnapshot &scene,
     contract::MaterialId material,
@@ -129,6 +119,53 @@ void hash_word(std::uint64_t &hash, std::uint32_t word) noexcept {
             std::fma(
                 point.y, e[6u],
                 std::fma(point.z, e[10u], e[14u])))};
+}
+
+// Exact world-support equality is a finite relation over the final vertex
+// array, not an approximate matrix comparison. A small deterministic witness
+// routes every equal support into the same bucket because equality of the
+// complete array implies equality of each witness. Non-equal supports may
+// still collide, so the bucket match always compares every transformed vertex.
+[[nodiscard]] std::uint64_t instance_support_hash(
+    std::uint32_t support_class,
+    const Mat4f &transform,
+    CyclesPositionArrayView positions) noexcept {
+    auto hash = std::uint64_t{14695981039346656037ull};
+    hash_word(hash, support_class);
+    if (positions.size == 0u) {
+        return hash;
+    }
+    const std::array witnesses{
+        std::size_t{0u},
+        positions.size / 3u,
+        (positions.size * 2u) / 3u,
+        positions.size - 1u};
+    for (const auto index : witnesses) {
+        const auto point = transform_point(transform, positions[index]);
+        hash_word(hash, std::bit_cast<std::uint32_t>(point.x));
+        hash_word(hash, std::bit_cast<std::uint32_t>(point.y));
+        hash_word(hash, std::bit_cast<std::uint32_t>(point.z));
+    }
+    return hash;
+}
+
+[[nodiscard]] bool same_world_support_bits(
+    const Mat4f &a,
+    const Mat4f &b,
+    CyclesPositionArrayView positions) noexcept {
+    if (same_transform_bits(a, b)) {
+        return true;
+    }
+    for (std::size_t index = 0u; index < positions.size; ++index) {
+        const auto pa = transform_point(a, positions[index]);
+        const auto pb = transform_point(b, positions[index]);
+        if (!same_bits(pa.x, pb.x) ||
+            !same_bits(pa.y, pb.y) ||
+            !same_bits(pa.z, pb.z)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 }// namespace
@@ -256,6 +293,8 @@ bool finalize_cycles_instance_intersection_plan(
     const contract::SceneSnapshot &scene,
     const std::map<contract::GeometryId, std::uint32_t>
         &final_triangle_support_classes,
+    const std::map<contract::GeometryId, CyclesPositionArrayView>
+        &final_positions,
     std::span<CyclesInstanceIntersectionPlan> plan) {
     if (plan.size() != scene.instances.size()) {
         return false;
@@ -276,18 +315,28 @@ bool finalize_cycles_instance_intersection_plan(
         static_cast<void>(instance_id);
         const auto support =
             final_triangle_support_classes.find(instance.geometry);
+        const auto positions = final_positions.find(instance.geometry);
         if (support == final_triangle_support_classes.end()) {
             ++index;
             continue;
         }
+        if (positions == final_positions.end() ||
+            positions->second.load == nullptr ||
+            (positions->second.size != 0u &&
+             positions->second.data == nullptr)) {
+            return false;
+        }
         const auto hash = instance_support_hash(
-            support->second, instance.transform);
+            support->second, instance.transform, positions->second);
         auto &candidates = buckets[hash];
         std::optional<std::size_t> matching_group;
         for (const auto candidate : candidates) {
             const auto &group = groups[candidate];
             if (group.support_class == support->second &&
-                same_transform_bits(group.transform, instance.transform)) {
+                same_world_support_bits(
+                    group.transform,
+                    instance.transform,
+                    positions->second)) {
                 matching_group = candidate;
                 break;
             }

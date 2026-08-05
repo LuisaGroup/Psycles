@@ -30,6 +30,8 @@ using psycles::luisa_backend::detail::
 using psycles::luisa_backend::detail::
     finalize_cycles_instance_intersection_plan;
 using psycles::luisa_backend::detail::
+    make_cycles_position_array_view;
+using psycles::luisa_backend::detail::
     cycles_inverse_transform;
 using psycles::luisa_backend::detail::
     cycles_transform_point;
@@ -321,16 +323,30 @@ void test_cycles_intersection_representation_plan() {
 
     const auto plan = build_cycles_instance_intersection_plan(
         scene, std::set<MaterialId>{bssrdf_material});
+    std::map<
+        GeometryId,
+        psycles::luisa_backend::detail::CyclesPositionArrayView>
+        final_positions;
+    for (const auto &[geometry_id, geometry] : scene.geometries) {
+        final_positions.emplace(
+            geometry_id,
+            make_cycles_position_array_view(
+                std::span<const Vec3f>{
+                    geometry.positions.data(),
+                    geometry.positions.size()}));
+    }
+    const std::map<GeometryId, std::uint32_t> support_classes{
+        {GeometryId{1u}, 0u},
+        {GeometryId{2u}, 0u},
+        {GeometryId{3u}, 1u},
+        {GeometryId{4u}, 2u},
+        {GeometryId{5u}, 0u}};
     auto finalized_plan = plan;
     require(
         finalize_cycles_instance_intersection_plan(
             scene,
-            std::map<GeometryId, std::uint32_t>{
-                {GeometryId{1u}, 0u},
-                {GeometryId{2u}, 0u},
-                {GeometryId{3u}, 1u},
-                {GeometryId{4u}, 2u},
-                {GeometryId{5u}, 0u}},
+            support_classes,
+            final_positions,
             finalized_plan),
         "final instance intersection plan rejected matching inputs");
     require(
@@ -346,6 +362,16 @@ void test_cycles_intersection_representation_plan() {
         finalized_plan[2u].coincident_count == 1u &&
             finalized_plan[3u].coincident_count == 1u,
         "one-bit transform or support changes were grouped");
+    auto incomplete_positions = final_positions;
+    incomplete_positions.erase(GeometryId{2u});
+    auto incomplete_plan = plan;
+    require(
+        !finalize_cycles_instance_intersection_plan(
+            scene,
+            support_classes,
+            incomplete_positions,
+            incomplete_plan),
+        "final instance intersection plan accepted missing positions");
     require(
         plan[0u].transform_applied &&
             !plan[1u].transform_applied &&
