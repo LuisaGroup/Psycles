@@ -11,6 +11,8 @@
 #include <luisa/dsl/rtx/ray.h>
 #include <luisa/dsl/sugar.h>
 
+#include <psycles/luisa/cycles_transform.h>
+
 namespace psycles::luisa_backend::surface_ray {
 
 inline constexpr auto invalid_primitive =
@@ -130,10 +132,7 @@ smooth_surface_offset(
     const auto object_normal =
         n0 * u + n1 * v + n2 * w;
     const auto transformed_normal =
-        (object_to_world *
-         luisa::compute::make_float4(
-             object_normal, 0.0f))
-            .xyz();
+        cycles_transform::direction(object_to_world, object_normal);
     const auto world_normal = luisa::compute::select(
         transformed_normal, object_normal, transform_applied);
 
@@ -310,15 +309,9 @@ shadow_terminator_origin(
         n1,
         n2);
     const auto transformed_origin =
-        (world_to_object *
-         luisa::compute::make_float4(
-             origin.position, 1.0f))
-            .xyz();
+        cycles_transform::point(world_to_object, origin.position);
     const auto transformed_direction =
-        (world_to_object *
-         luisa::compute::make_float4(
-             light_direction, 0.0f))
-            .xyz();
+        cycles_transform::direction(world_to_object, light_direction);
     const auto object_origin = luisa::compute::select(
         transformed_origin, origin.position, transform_applied);
     const auto object_direction = luisa::compute::select(

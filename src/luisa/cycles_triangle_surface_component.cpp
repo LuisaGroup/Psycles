@@ -1,5 +1,7 @@
 #include "cycles_triangle_surface_component.h"
 
+#include <psycles/luisa/cycles_transform.h>
+
 namespace psycles::luisa_backend::detail {
 namespace {
 
@@ -15,11 +17,11 @@ public:
     const auto p2 = select(input.p2, input.final_p2, input.transform_applied);
 
     const auto transformed_p0 =
-        (input.object_to_world * make_float4(input.p0, 1.0f)).xyz();
+        cycles_transform::point(input.object_to_world, input.p0);
     const auto transformed_p1 =
-        (input.object_to_world * make_float4(input.p1, 1.0f)).xyz();
+        cycles_transform::point(input.object_to_world, input.p1);
     const auto transformed_p2 =
-        (input.object_to_world * make_float4(input.p2, 1.0f)).xyz();
+        cycles_transform::point(input.object_to_world, input.p2);
     const auto world_p0 = select(transformed_p0, p0, input.transform_applied);
     const auto world_p1 = select(transformed_p1, p1, input.transform_applied);
     const auto world_p2 = select(transformed_p2, p2, input.transform_applied);
@@ -28,8 +30,8 @@ public:
         safe_normalize(cross(input.p1 - input.p0, input.p2 - input.p0),
                        make_float3(0.0f, 0.0f, 1.0f));
     const auto transformed_geometric_normal = safe_normalize(
-        (input.normal_to_world * make_float4(object_geometric_normal, 0.0f))
-            .xyz(),
+        cycles_transform::direction(input.normal_to_world,
+                                    object_geometric_normal),
         -input.ray_direction);
     auto support_geometric_normal =
         safe_normalize(cross(p1 - p0, p2 - p0), transformed_geometric_normal);
@@ -41,13 +43,13 @@ public:
                input.transform_applied);
 
     const auto world_n0 = safe_normalize(
-        (input.normal_to_world * make_float4(input.n0, 0.0f)).xyz(),
+        cycles_transform::direction(input.normal_to_world, input.n0),
         geometric_normal);
     const auto world_n1 = safe_normalize(
-        (input.normal_to_world * make_float4(input.n1, 0.0f)).xyz(),
+        cycles_transform::direction(input.normal_to_world, input.n1),
         geometric_normal);
     const auto world_n2 = safe_normalize(
-        (input.normal_to_world * make_float4(input.n2, 0.0f)).xyz(),
+        cycles_transform::direction(input.normal_to_world, input.n2),
         geometric_normal);
     const auto n0 = select(input.n0, world_n0, input.transform_applied);
     const auto n1 = select(input.n1, world_n1, input.transform_applied);
@@ -58,8 +60,8 @@ public:
         triangle_interpolate(input.barycentric, input.n0, input.n1, input.n2),
         input.smooth);
     const auto transformed_shading_normal = safe_normalize(
-        (input.normal_to_world * make_float4(object_shading_normal, 0.0f))
-            .xyz(),
+        cycles_transform::direction(input.normal_to_world,
+                                    object_shading_normal),
         geometric_normal);
     const auto support_shading_normal = safe_normalize(
         select(geometric_normal,
@@ -80,7 +82,7 @@ public:
                                  input.barycentric.x * (input.p1 - input.p0) +
                                  input.barycentric.y * (input.p2 - input.p0);
     const auto transformed_position =
-        (input.object_to_world * make_float4(object_position, 1.0f)).xyz();
+        cycles_transform::point(input.object_to_world, object_position);
     const auto support_position =
         p0 + input.barycentric.x * (p1 - p0) + input.barycentric.y * (p2 - p0);
     const auto position =

@@ -26,8 +26,8 @@ int main(int argc, char **argv) {
   Context context{argv[0]};
   auto device = context.create_device(backend);
   auto stream = device.create_stream();
-  auto output_bits = device.create_buffer<luisa::uint4>(2u);
-  auto output_values = device.create_buffer<luisa::float4>(2u);
+  auto output_bits = device.create_buffer<luisa::uint4>(3u);
+  auto output_values = device.create_buffer<luisa::float4>(3u);
 
   const auto component = make_cycles_triangle_surface_component();
   Kernel1D evaluate = [component](BufferUInt4 bits,
@@ -98,11 +98,57 @@ int main(int argc, char **argv) {
                               as<uint>(ordinary.p0.x)));
     values.write(1u, make_float4(ordinary.geometric_normal,
                                  select(0.0f, 1.0f, ordinary.back_facing)));
+
+    // Barbershop cupboard object 115, primitive 1147418 at sample 6 of film
+    // pixel (634, 209). Cycles CPU and HIP both contract the ordinary object
+    // transform into a fused multiply-add and reconstruct x as 0x3f24212b.
+    // A generic matrix lowering rounds the product before the translation,
+    // producing 0x3f24212c and moving the shadow origin through its exactly
+    // coincident sibling.
+    const auto cupboard_transform = make_float4x4(
+        make_float4(0.16329917311668396f, 0.0f, 0.0f, 0.0f),
+        make_float4(0.0f, 0.16329915821552277f, 0.0f, 0.0f),
+        make_float4(0.0f, 0.0f, 0.08164958655834198f, 0.0f),
+        make_float4(0.4866490066051483f, 4.260610580444336f,
+                    0.8810397982597351f, 1.0f));
+    const auto cupboard_p0 = make_float3(0.9460067749023438f, 0.0f, 0.0f);
+    const auto cupboard_p1 =
+        make_float3(0.9460067749023438f, 0.0f, 0.9330167770385742f);
+    const auto cupboard_p2 = make_float3(
+        0.9460067749023438f, -1.111984372138977f, 0.9330167770385742f);
+    const auto cupboard_ng =
+        normalize(cross(cupboard_p1 - cupboard_p0,
+                        cupboard_p2 - cupboard_p0));
+    const auto cupboard = component->resolve(
+        {.object_to_world = cupboard_transform,
+         .normal_to_world = transpose(inverse(cupboard_transform)),
+         .transform_applied = false,
+         .barycentric =
+             make_float2(0.03073400817811489f, 0.3425517976284027f),
+         .ray_direction = make_float3(-0.3722669184207916f,
+                                      -0.9224809408187866f,
+                                      -0.1022074967622757f),
+         .smooth = false,
+         .p0 = cupboard_p0,
+         .p1 = cupboard_p1,
+         .p2 = cupboard_p2,
+         .final_p0 = cupboard_p0,
+         .final_p1 = cupboard_p1,
+         .final_p2 = cupboard_p2,
+         .n0 = cupboard_ng,
+         .n1 = cupboard_ng,
+         .n2 = cupboard_ng},
+        safe_normalize);
+    bits.write(2u, make_uint4(as<uint>(cupboard.position.x),
+                              as<uint>(cupboard.world_p0.x),
+                              as<uint>(cupboard.world_p1.x),
+                              as<uint>(cupboard.world_p2.x)));
+    values.write(2u, make_float4(cupboard.position, cupboard.object_position.x));
   };
   auto shader = device.compile(evaluate);
 
-  std::array<luisa::uint4, 2u> actual_bits{};
-  std::array<luisa::float4, 2u> actual_values{};
+  std::array<luisa::uint4, 3u> actual_bits{};
+  std::array<luisa::float4, 3u> actual_values{};
   stream << shader(output_bits, output_values).dispatch(1u)
          << output_bits.copy_to(luisa::span{actual_bits})
          << output_values.copy_to(luisa::span{actual_values}) << synchronize();
@@ -127,6 +173,20 @@ int main(int argc, char **argv) {
       actual_bits[1u].w == applied_p0_x) {
     std::cerr << "ordinary object-space path collapsed into final support on "
               << backend << "\n";
+    return EXIT_FAILURE;
+  }
+  constexpr auto cupboard_world_x = std::uint32_t{0x3f24212bu};
+  if (actual_bits[2u].x != cupboard_world_x ||
+      actual_bits[2u].y != cupboard_world_x ||
+      actual_bits[2u].z != cupboard_world_x ||
+      actual_bits[2u].w != cupboard_world_x) {
+    std::cerr << "ordinary Cycles FMA surface reconstruction failed on "
+              << backend << ": position/world support x bits {" << std::hex
+              << actual_bits[2u].x << ", " << actual_bits[2u].y << ", "
+              << actual_bits[2u].z << ", " << actual_bits[2u].w << std::dec
+              << "}, values {" << actual_values[2u].x << ", "
+              << actual_values[2u].y << ", " << actual_values[2u].z << ", "
+              << actual_values[2u].w << "}\n";
     return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;
