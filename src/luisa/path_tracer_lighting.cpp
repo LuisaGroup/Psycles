@@ -1,5 +1,7 @@
 #include "path_tracer_lighting.h"
 
+#include <psycles/luisa/cycles_film_light.h>
+
 namespace psycles::luisa_backend::detail {
 
 LightTransportCallables make_light_transport_callables(
@@ -72,21 +74,11 @@ LightTransportCallables make_light_transport_callables(
            UInt depth,
            Float direct_limit,
            Float indirect_limit) noexcept {
-            Float limit = select(
-                direct_limit,
-                indirect_limit,
-                depth > 0u);
-            Float magnitude =
-                abs(contribution.x) +
-                abs(contribution.y) +
-                abs(contribution.z);
-            Bool should_clamp =
-                (limit > 0.0f) & (magnitude > limit);
-            return select(
+            return cycles_film_light::clamp(
                 contribution,
-                contribution *
-                    (limit / max(magnitude, 1.0e-20f)),
-                should_clamp);
+                depth,
+                direct_limit,
+                indirect_limit);
         };
     LightSampleRouletteCallable light_sample_roulette_weight =
         [](Float3 unshadowed_contribution,
