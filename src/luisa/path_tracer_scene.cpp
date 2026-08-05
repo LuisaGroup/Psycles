@@ -8,6 +8,7 @@
 #include "path_tracer_scene_geometry.h"
 #include "path_tracer_shader_services.h"
 #include "path_tracer_surfaces.h"
+#include "path_tracer_tangent_space.h"
 #include "path_tracer_volume_capabilities.h"
 #include "path_tracer_volume_majorant_scene.h"
 #include "cycles_shader_identity.h"
@@ -473,7 +474,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         attribute_count +=
             geometry.color_attributes.size() +
             geometry.uv_layers.size() +
-            geometry.uv_tangent_layers.size() +
+            geometry.uv_tangent_layers.size() * 2u +
             (geometry.pointiness_source ? 1u : 0u);
     }
     if (!result.diagnostics.empty()) {
@@ -923,6 +924,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             geometry.uv.values.empty()
                 ? contract::MeshAttributeDomain::point
                 : geometry.uv.domain;
+        upload.default_uv_available =
+            geometry.default_uv_available.value_or(
+                !geometry.uv.values.empty());
         const auto uv_tangent_domain =
             geometry.uv_tangents.values.empty()
                 ? contract::MeshAttributeDomain::point
@@ -1019,7 +1023,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         upload.attributes.reserve(
             geometry.color_attributes.size() +
             geometry.uv_layers.size() +
-            geometry.uv_tangent_layers.size() +
+            geometry.uv_tangent_layers.size() * 2u +
             (pointiness_values.empty() ? 0u : 1u));
         if (!pointiness_values.empty()) {
             auto &attribute = upload.attributes.emplace_back();
@@ -1049,8 +1053,12 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                         value.w));
             }
         }
+        std::map<std::string, std::size_t, std::less<>>
+            uv_attribute_indices;
         for (const auto &[name, source] :
              geometry.uv_layers) {
+            uv_attribute_indices.emplace(
+                name, upload.attributes.size());
             auto &attribute =
                 upload.attributes.emplace_back();
             attribute.id =
@@ -1066,6 +1074,15 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         }
         for (const auto &[name, source] :
              geometry.uv_tangent_layers) {
+            const auto uv = uv_attribute_indices.find(name);
+            if (uv == uv_attribute_indices.end()) {
+                diagnose(
+                    result.diagnostics,
+                    "Geometry '" + geometry.name +
+                        "' has a named tangent layer without its UV layer.");
+                break;
+            }
+            const auto tangent_index = upload.attributes.size();
             auto &attribute =
                 upload.attributes.emplace_back();
             attribute.id =
@@ -1081,6 +1098,20 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                         value.z,
                         value.w));
             }
+            const auto tangent_domain = attribute.domain;
+            const auto undisplaced_index =
+                upload.attributes.size();
+            auto &undisplaced =
+                upload.attributes.emplace_back();
+            undisplaced.id =
+                contract::uv_undisplaced_tangent_attribute_id(name);
+            undisplaced.domain = tangent_domain;
+            upload.uv_tangent_layers.emplace_back(
+                UvTangentLayerUpload{
+                    .uv_attribute_index = uv->second,
+                    .tangent_attribute_index = tangent_index,
+                    .undisplaced_tangent_attribute_index =
+                        undisplaced_index});
         }
         upload.triangles.reserve(geometry.triangles.size());
         upload.triangle_material_slots.reserve(
@@ -1126,6 +1157,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         if (!result.diagnostics.empty()) {
             continue;
         }
+        recompute_cycles_tangent_space(upload);
+        initialize_cycles_undisplaced_tangent_space(upload);
         const auto index =
             static_cast<std::uint32_t>(
                 data->geometries.size());

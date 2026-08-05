@@ -201,6 +201,7 @@ struct SurfacePointCall {
     float object_random{};
     luisa::uint particle_index{};
     float random_per_island{};
+    luisa::uint triangle_smooth{};
     luisa::uint is_curve{};
     float curve_intercept{};
     float curve_length{};
@@ -514,6 +515,7 @@ LUISA_STRUCT(
     object_random,
     particle_index,
     random_per_island,
+    triangle_smooth,
     is_curve,
     curve_intercept,
     curve_length,

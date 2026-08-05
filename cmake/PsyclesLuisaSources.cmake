@@ -121,6 +121,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_tracer_displacement_plan.cpp
     src/luisa/path_tracer_displacement_scene.cpp
     src/luisa/path_tracer_scene_geometry.cpp
+    src/luisa/path_tracer_tangent_space.cpp
     src/luisa/path_tracer_session.cpp
     src/luisa/path_tracer_surface_closure_evaluation.cpp
     src/luisa/path_tracer_surface_closure_sampling.cpp

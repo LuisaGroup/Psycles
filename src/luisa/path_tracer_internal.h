@@ -227,8 +227,15 @@ struct AttributeUpload {
     luisa::vector<luisa::float4> values;
 };
 
+struct UvTangentLayerUpload {
+    std::size_t uv_attribute_index{};
+    std::size_t tangent_attribute_index{};
+    std::size_t undisplaced_tangent_attribute_index{};
+};
+
 struct GeometryUpload {
     std::uint32_t attribute_domains{};
+    bool default_uv_available{};
     luisa::float4x4 generated_transform{};
     luisa::vector<luisa::float3> positions;
     luisa::vector<luisa::float3> cycles_intersection_positions;
@@ -244,6 +251,7 @@ struct GeometryUpload {
     luisa::vector<float> triangle_random_per_island;
     luisa::vector<luisa::uint> triangle_smooth;
     std::vector<AttributeUpload> attributes;
+    std::vector<UvTangentLayerUpload> uv_tangent_layers;
 };
 
 struct NishitaEnvironmentRuntime {

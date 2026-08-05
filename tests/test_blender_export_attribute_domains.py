@@ -240,6 +240,10 @@ def _main() -> None:
             raise AssertionError(
                 "primary attribute domains do not match Cycles layout"
             )
+        if geometry.get("default_uv_available") is not True:
+            raise AssertionError(
+                "real render UV layer was marked as placeholder storage"
+            )
         actual_generated_transform = tuple(
             float(value)
             for value in geometry["generated_transform"]
@@ -400,6 +404,32 @@ def _main() -> None:
             raise AssertionError(
                 "Cycles Attribute outputs fell back during typed lowering:\n"
                 f"{inspected.stderr}"
+            )
+
+    while mesh.uv_layers:
+        mesh.uv_layers.remove(mesh.uv_layers[0])
+    mesh.update()
+    with tempfile.TemporaryDirectory(
+        prefix="psycles-blender-no-default-uv-"
+    ) as temporary:
+        output = pathlib.Path(temporary)
+        old_argv = sys.argv
+        try:
+            sys.argv = [str(exporter), "--", str(output)]
+            runpy.run_path(str(exporter), run_name="__main__")
+        finally:
+            sys.argv = old_argv
+        no_uv_scene = json.loads(
+            (output / "scene.json").read_text(encoding="utf-8")
+        )
+        no_uv_geometry = no_uv_scene["geometries"][0]
+        if no_uv_geometry.get("default_uv_available") is not False:
+            raise AssertionError(
+                "absent default UV was confused with its zero placeholder"
+            )
+        if int(no_uv_geometry["uv"]["bytes"]) != 6 * 2 * 4:
+            raise AssertionError(
+                "absent UV did not retain the total coordinate buffer ABI"
             )
 
     print("Psycles Blender attribute-domain regression passed")

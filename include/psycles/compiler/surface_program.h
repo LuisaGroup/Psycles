@@ -261,6 +261,60 @@ enum class NormalMapSpace : std::uint8_t {
   blender_world
 };
 
+enum class NormalMapBase : std::uint8_t {
+  original,
+  displaced
+};
+
+enum class NormalMapConvention : std::uint8_t {
+  open_gl,
+  direct_x
+};
+
+// Normal Map is a static shader-stage configuration. Keep its packed IR
+// contract in one place so graph lowering and Luisa AST construction cannot
+// silently assign different meanings to the same bits.
+inline constexpr std::uint64_t normal_map_space_mask = 0xffu;
+inline constexpr std::uint64_t normal_map_named_tangent = 1u << 8u;
+inline constexpr std::uint64_t normal_map_displaced_base = 1u << 9u;
+inline constexpr std::uint64_t normal_map_direct_x = 1u << 10u;
+
+[[nodiscard]] constexpr std::uint64_t encode_normal_map_configuration(
+    NormalMapSpace space,
+    bool named_tangent,
+    NormalMapBase base,
+    NormalMapConvention convention) noexcept {
+  return static_cast<std::uint64_t>(space) |
+         (named_tangent ? normal_map_named_tangent : 0u) |
+         (base == NormalMapBase::displaced ? normal_map_displaced_base : 0u) |
+         (convention == NormalMapConvention::direct_x ? normal_map_direct_x
+                                                       : 0u);
+}
+
+[[nodiscard]] constexpr NormalMapSpace decode_normal_map_space(
+    std::uint64_t configuration) noexcept {
+  return static_cast<NormalMapSpace>(configuration & normal_map_space_mask);
+}
+
+[[nodiscard]] constexpr bool normal_map_has_named_tangent(
+    std::uint64_t configuration) noexcept {
+  return (configuration & normal_map_named_tangent) != 0u;
+}
+
+[[nodiscard]] constexpr NormalMapBase decode_normal_map_base(
+    std::uint64_t configuration) noexcept {
+  return (configuration & normal_map_displaced_base) != 0u
+             ? NormalMapBase::displaced
+             : NormalMapBase::original;
+}
+
+[[nodiscard]] constexpr NormalMapConvention decode_normal_map_convention(
+    std::uint64_t configuration) noexcept {
+  return (configuration & normal_map_direct_x) != 0u
+             ? NormalMapConvention::direct_x
+             : NormalMapConvention::open_gl;
+}
+
 enum class NoiseType : std::uint8_t {
   multifractal,
   fbm,

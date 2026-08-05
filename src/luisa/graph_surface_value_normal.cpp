@@ -19,16 +19,30 @@ public:
 
         auto mapped =
             vector(instruction.a, result) * 2.0f - 1.0f;
-        auto strength =
-            scalar(instruction.b, result);
-        const auto space =
-            static_cast<compiler::NormalMapSpace>(
-                instruction.static_u0 & 0xffu);
-        auto object_tangent =
-            point.object_tangent;
-        auto tangent_sign =
-            point.tangent_sign;
-        if ((instruction.static_u0 & 0x100u) != 0u) {
+        auto strength = scalar(instruction.b, result);
+        const auto space = compiler::decode_normal_map_space(
+            instruction.static_u0);
+        const auto named = compiler::normal_map_has_named_tangent(
+            instruction.static_u0);
+        const auto displaced_base =
+            compiler::decode_normal_map_base(instruction.static_u0) ==
+            compiler::NormalMapBase::displaced;
+        const auto invert_green =
+            compiler::decode_normal_map_convention(
+                instruction.static_u0) ==
+            compiler::NormalMapConvention::direct_x;
+        if (invert_green) {
+            mapped.y = -mapped.y;
+        }
+
+        auto object_tangent = displaced_base
+                                  ? point.object_tangent
+                                  : point.undisplaced_object_tangent;
+        auto tangent_sign = displaced_base
+                                ? point.tangent_sign
+                                : point.undisplaced_tangent_sign;
+        Bool tangent_attribute_found = true;
+        if (named) {
             auto named_tangent =
                 services.attribute(
                     instruction.static_u1,
@@ -37,6 +51,7 @@ public:
                 named_tangent.value.xyz();
             tangent_sign =
                 named_tangent.value.w;
+            tangent_attribute_found = named_tangent.found;
         }
         const auto transform_object_normal =
             [&](Float3 object_normal) noexcept {
@@ -52,46 +67,69 @@ public:
         Float3 world;
         if (space ==
             compiler::NormalMapSpace::tangent) {
-            // Current Cycles evaluates its special triangle normal-map
-            // base with safe_normalize(interpolate(n0, n1, n2)).
-            // Normalizing before constructing the MikkTSpace frame is
-            // observable whenever smooth vertex normals do not interpolate
-            // to unit length.
+            // Cycles' DISPLACED path uses
+            // triangle_smooth_normal_unnormalized_object_space(). Despite
+            // the historical function name, the current implementation
+            // normalizes the interpolated current normal before constructing
+            // the tangent frame. ORIGINAL deliberately keeps the raw saved
+            // attribute for smooth triangles because its strength is blended
+            // in world space afterwards.
+            auto object_base = safe_normalize(
+                point.object_shading_normal,
+                make_float3(0.0f));
+            Bool linear_interpolate_strength = false;
+            if (!displaced_base) {
+                // ATTR_STD_NORMAL_UNDISPLACED is used only for smooth
+                // triangles. Cycles deliberately retains current Ng for a
+                // flat triangle even when the tangent frame is ORIGINAL.
+                object_base = select(
+                    object_base,
+                    point.undisplaced_object_shading_normal,
+                    point.triangle_smooth);
+                linear_interpolate_strength =
+                    point.triangle_smooth;
+            }
             const auto object_base_length_squared =
-                length_squared(
-                    point.object_shading_normal);
+                length_squared(object_base);
             const auto object_base_available =
                 object_base_length_squared >
                 1.0e-20f;
-            const auto object_base_normal =
-                safe_normalize(
-                    point.object_shading_normal,
-                    make_float3(0.0f));
-
-            mapped.x *= strength;
-            mapped.y *= strength;
-            mapped.z =
-                1.0f +
-                (mapped.z - 1.0f) *
-                    clamp(strength, 0.0f, 1.0f);
+            $if(!linear_interpolate_strength) {
+                mapped.x *= strength;
+                mapped.y *= strength;
+                mapped.z =
+                    1.0f +
+                    (mapped.z - 1.0f) *
+                        clamp(strength, 0.0f, 1.0f);
+            };
             const auto object_bitangent =
                 tangent_sign *
-                cross(
-                    object_base_normal,
-                    object_tangent);
+                cross(object_base, object_tangent);
             const auto object_normal =
                 safe_normalize(
                     object_tangent * mapped.x +
                         object_bitangent * mapped.y +
-                        object_base_normal *
-                            mapped.z,
-                    object_base_normal);
+                        object_base * mapped.z,
+                    make_float3(0.0f));
             world =
                 transform_object_normal(
                     object_normal);
             world = select(
                 world, -world, point.back_facing);
+            const auto linearly_blended =
+                safe_normalize(
+                    point.shading_normal +
+                        (world - point.shading_normal) *
+                            max(strength, 0.0f),
+                    point.shading_normal);
+            world = select(
+                world,
+                linearly_blended,
+                linear_interpolate_strength);
             const auto tangent_available =
+                (point.geometry_index != ~0u) &
+                !point.is_curve &
+                tangent_attribute_found &
                 object_base_available &
                 (length_squared(
                      object_tangent) >

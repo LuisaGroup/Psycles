@@ -101,6 +101,8 @@ unpack_shader_evaluation_state(
     result.object_random = point.object_random;
     result.particle_index = point.particle_index;
     result.random_per_island = point.random_per_island;
+    result.triangle_smooth = select(
+        0u, 1u, point.triangle_smooth);
     result.is_curve = select(0u, 1u, point.is_curve);
     result.curve_intercept = point.curve_intercept;
     result.curve_length = point.curve_length;
@@ -179,6 +181,7 @@ unpack_shader_evaluation_state(
         .object_random = point.object_random,
         .particle_index = point.particle_index,
         .random_per_island = point.random_per_island,
+        .triangle_smooth = point.triangle_smooth != 0u,
         .is_curve = point.is_curve != 0u,
         .curve_intercept = point.curve_intercept,
         .curve_length = point.curve_length,

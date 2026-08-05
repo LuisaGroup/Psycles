@@ -953,6 +953,19 @@ BlenderSceneImport load_blender_scene_bundle(
                     normal_values[i * 3u + 2u]});
             }
             mesh.uv.domain = uv_domain;
+            if (member(geometry, "default_uv_available") != nullptr) {
+                mesh.default_uv_available = boolean(
+                    member(geometry, "default_uv_available"),
+                    false);
+            } else if (auto *layers = member(geometry, "uv_layers");
+                       layers != nullptr && yyjson_is_arr(layers)) {
+                // Compatibility with bundles exported before the explicit
+                // availability bit: Blender writes one entry per real UV
+                // layer, while the standard UV byte range may be all-zero
+                // placeholder storage.
+                mesh.default_uv_available =
+                    yyjson_arr_size(layers) != 0u;
+            }
             mesh.uv.values.reserve(uv_count);
             for (std::size_t i = 0u; i < uv_count; ++i) {
                 mesh.uv.values.emplace_back(Vec2f{

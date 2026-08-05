@@ -1160,6 +1160,121 @@ void test_integrator_settings_round_trip() {
   expect(has_texture_mapping,
          "legacy TextureNode mapping type or axis map was not lowered");
 
+  auto normal_map_scene = bump_scene;
+  replace_once(
+      normal_map_scene,
+      "            \"from_node\": \"Texture Coordinate\",\n"
+      "            \"from_socket\": \"Reflection\",\n"
+      "            \"to_node\": \"Diffuse\",\n"
+      "            \"to_socket\": \"Normal\"",
+      "            \"from_node\": \"Normal Map\",\n"
+      "            \"from_socket\": \"Normal\",\n"
+      "            \"to_node\": \"Diffuse\",\n"
+      "            \"to_socket\": \"Normal\"");
+  replace_once(
+      normal_map_scene,
+      R"JSON(          {
+            "name": "Diffuse",)JSON",
+      R"JSON(          {
+            "name": "Normal Map",
+            "label": "",
+            "type": "NORMAL_MAP",
+            "bl_idname": "ShaderNodeNormalMap",
+            "inputs": [
+              {
+                "identifier": "Strength",
+                "name": "Strength",
+                "type": "NodeSocketFloat",
+                "linked": false,
+                "default": 0.75
+              },
+              {
+                "identifier": "Color",
+                "name": "Color",
+                "type": "NodeSocketColor",
+                "linked": false,
+                "default": [0.8, 0.3, 0.9, 1.0]
+              }
+            ],
+            "outputs": [
+              {
+                "identifier": "Normal",
+                "name": "Normal",
+                "type": "NodeSocketVector",
+                "linked": true,
+                "default": [0.0, 0.0, 0.0]
+              }
+            ],
+            "properties": {
+              "space": "TANGENT",
+              "uv_map": "MappedUV",
+              "convention": "DIRECTX",
+              "base": "ORIGINAL"
+            },
+            "special": {},
+            "image": null,
+            "node_tree": null
+          },
+          {
+            "name": "Diffuse",)JSON");
+  const auto lower_imported_normal_map =
+      [&](const std::string &scene_text) {
+        {
+          std::ofstream scene{temporary.path() / "scene.json"};
+          scene << scene_text;
+        }
+        const auto loaded = load_blender_scene_bundle(temporary.path());
+        expect(loaded.ok(), "Normal Map semantic scene did not import");
+        const auto material = loaded.scene->materials.find(
+            psycles::contract::MaterialId{2u});
+        expect(material != loaded.scene->materials.end(),
+               "Normal Map semantic material is missing");
+        const auto shader = bump_compiler.compile(material->second.shader);
+        expect(shader.ok(), "Normal Map semantic graph did not validate");
+        const auto surface =
+            psycles::compiler::compile_surface_program(*shader.program);
+        expect(surface.ok(), "Normal Map semantic graph did not lower");
+        for (const auto &instruction :
+             surface.program->value_instructions()) {
+          if (instruction.operation ==
+              psycles::compiler::ValueOperation::normal_map) {
+            return instruction;
+          }
+        }
+        throw std::runtime_error{
+            "Normal Map semantic graph emitted no instruction"};
+      };
+  const auto original_normal_map =
+      lower_imported_normal_map(normal_map_scene);
+  expect(
+      original_normal_map.static_u0 ==
+              psycles::compiler::encode_normal_map_configuration(
+                  psycles::compiler::NormalMapSpace::tangent,
+                  true,
+                  psycles::compiler::NormalMapBase::original,
+                  psycles::compiler::NormalMapConvention::direct_x) &&
+          original_normal_map.static_u1 ==
+              psycles::contract::uv_undisplaced_tangent_attribute_id(
+                  "MappedUV"),
+      "Blender ORIGINAL/DirectX Normal Map lost its Cycles attributes");
+
+  auto displaced_normal_map_scene = normal_map_scene;
+  replace_once(displaced_normal_map_scene,
+               "\"base\": \"ORIGINAL\"",
+               "\"base\": \"DISPLACED\"");
+  const auto displaced_normal_map =
+      lower_imported_normal_map(displaced_normal_map_scene);
+  expect(
+      displaced_normal_map.static_u0 ==
+              psycles::compiler::encode_normal_map_configuration(
+                  psycles::compiler::NormalMapSpace::tangent,
+                  true,
+                  psycles::compiler::NormalMapBase::displaced,
+                  psycles::compiler::NormalMapConvention::direct_x) &&
+          displaced_normal_map.static_u1 ==
+              psycles::contract::uv_tangent_attribute_id("MappedUV"),
+      "Blender DISPLACED Normal Map did not select the current Mikk frame");
+
   auto combined_displacement_scene = bump_scene;
   replace_once(combined_displacement_scene, "\"displacement_method\": \"BUMP\"",
                "\"displacement_method\": \"BOTH\"");

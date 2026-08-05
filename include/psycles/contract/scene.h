@@ -45,6 +45,13 @@ inline constexpr auto cycles_pointiness_attribute_id =
     return attribute_id(qualified);
 }
 
+[[nodiscard]] inline std::uint64_t
+uv_undisplaced_tangent_attribute_id(std::string_view name) {
+    std::string qualified{"geom:undisplaced_tangent:"};
+    qualified.append(name);
+    return attribute_id(qualified);
+}
+
 struct MaterialTag;
 struct ImageTag;
 struct GeometryTag;
@@ -177,11 +184,17 @@ struct TriangleMeshDesc {
     std::vector<Vec3f> positions;
     MeshAttribute<Vec3f> normals;
     MeshAttribute<Vec2f> uv;
-    // Blender's evaluated MikkTSpace tangent attribute. xyz is the
-    // unnormalized tangent and w is Cycles' tangent sign. A zero entry means
-    // the mesh has no usable UV tangent attribute; tangent-space Normal Map
-    // then falls back to the unperturbed shading normal exactly as Cycles
-    // does.
+    // `uv` remains a total shader-coordinate field and may therefore contain
+    // zero placeholders. This optional distinguishes those placeholders from
+    // a real standard UV layer. Programmatic scenes that omit it preserve the
+    // historical inference from whether `uv` contains values.
+    std::optional<bool> default_uv_available;
+    // Serialized Blender MikkTSpace tangent input. The Luisa scene stage
+    // regenerates corner frames with the aligned Cycles Mikk implementation
+    // so true displacement can maintain separate current and ORIGINAL
+    // attributes. When no real default UV exists, Cycles' spherical-position
+    // fallback is used instead of mistaking the total zero UV buffer for a
+    // genuine map. xyz is the tangent and w is the orientation sign.
     MeshAttribute<Vec4f> uv_tangents;
     // Every evaluated Blender UV layer is retained by name. The active layer
     // is also present in `uv`/`uv_tangents` for the unnamed Cycles contract.

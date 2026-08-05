@@ -1,6 +1,7 @@
 #include "path_tracer_displacement_scene.h"
 
 #include "path_tracer_shader_services.h"
+#include "path_tracer_tangent_space.h"
 
 #include <algorithm>
 #include <array>
@@ -419,6 +420,10 @@ MeshDisplacementSceneComponent::build(
                     const auto tangents =
                         scene->heap->buffer<luisa::float4>(
                             bindless_base + 7u);
+                    const auto triangle_smooth =
+                        scene->heap->buffer<luisa::uint>(
+                            bindless_base + 8u)
+                            .read(primitive) != 0u;
                     const auto corner = primitive * 3u;
                     const auto attribute_index =
                         [&](UInt point,
@@ -477,8 +482,11 @@ MeshDisplacementSceneComponent::build(
                             make_float3(0.0f, 0.0f, 1.0f));
                     const auto object_shading_normal =
                         safe_normalize_device(
-                            triangle_interpolate(
-                                barycentric, n0, n1, n2),
+                            select(
+                                object_geometric_normal,
+                                triangle_interpolate(
+                                    barycentric, n0, n1, n2),
+                                triangle_smooth),
                             object_geometric_normal);
                     const auto packed_object_tangent =
                         triangle_interpolate(
@@ -596,6 +604,7 @@ MeshDisplacementSceneComponent::build(
                         .particle_index = particle_index,
                         .random_per_island =
                             island_random_values.read(primitive),
+                        .triangle_smooth = triangle_smooth,
                         .is_curve = false,
                         .curve_intercept = 0.0f,
                         .curve_length = 0.0f,
@@ -654,6 +663,10 @@ MeshDisplacementSceneComponent::build(
         }
         recompute_cycles_displaced_normals(
             upload, plan, pre_displacement_vertex_normals);
+        // Cycles regenerates current MikkTSpace after positions and any
+        // affected normals change. ORIGINAL-base bindings remain on the
+        // immutable pre-displacement frames captured above.
+        recompute_cycles_tangent_space(upload);
         result.displaced_geometry_indices.emplace_back(geometry_index);
     }
     const std::set<std::uint32_t> displaced{
@@ -669,7 +682,23 @@ MeshDisplacementSceneComponent::build(
                 << resource.positions.copy_from(
                        luisa::span{upload.positions})
                 << resource.normals.copy_from(
-                       luisa::span{upload.normals});
+                       luisa::span{upload.normals})
+                << resource.uv_tangents.copy_from(
+                       luisa::span{upload.uv_tangents});
+            for (const auto &layer : upload.uv_tangent_layers) {
+                if (layer.tangent_attribute_index >=
+                        upload.attributes.size() ||
+                    layer.tangent_attribute_index >=
+                        resource.attributes.size()) {
+                    continue;
+                }
+                stream << resource.attributes[
+                              layer.tangent_attribute_index]
+                              .copy_from(luisa::span{
+                                  upload.attributes[
+                                      layer.tangent_attribute_index]
+                                      .values});
+            }
         }
         stream << resource.mesh.build();
     }

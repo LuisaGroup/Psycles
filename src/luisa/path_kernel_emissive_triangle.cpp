@@ -443,6 +443,7 @@ class PathEmissiveTriangleComponent final
             .random_per_island =
                 attributes
                     .random_per_island,
+            .triangle_smooth = primitive.smooth,
             .is_curve = false,
             .curve_intercept = 0.0f,
             .curve_length = 0.0f,

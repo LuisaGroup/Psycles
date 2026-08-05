@@ -398,6 +398,7 @@ public:
         .object_random = instance.object_random,
         .particle_index = instance.particle_index,
         .random_per_island = random_per_island,
+        .triangle_smooth = triangle_smooth,
         .is_curve = is_curve,
         .curve_intercept = curve_intercept,
         .curve_length = curve_length,
