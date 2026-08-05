@@ -420,10 +420,6 @@ MeshDisplacementSceneComponent::build(
                     const auto tangents =
                         scene->heap->buffer<luisa::float4>(
                             bindless_base + 7u);
-                    const auto triangle_smooth =
-                        scene->heap->buffer<luisa::uint>(
-                            bindless_base + 8u)
-                            .read(primitive) != 0u;
                     const auto corner = primitive * 3u;
                     const auto attribute_index =
                         [&](UInt point,
@@ -482,11 +478,8 @@ MeshDisplacementSceneComponent::build(
                             make_float3(0.0f, 0.0f, 1.0f));
                     const auto object_shading_normal =
                         safe_normalize_device(
-                            select(
-                                object_geometric_normal,
-                                triangle_interpolate(
-                                    barycentric, n0, n1, n2),
-                                triangle_smooth),
+                            triangle_interpolate(
+                                barycentric, n0, n1, n2),
                             object_geometric_normal);
                     const auto packed_object_tangent =
                         triangle_interpolate(
@@ -604,7 +597,11 @@ MeshDisplacementSceneComponent::build(
                         .particle_index = particle_index,
                         .random_per_island =
                             island_random_values.read(primitive),
-                        .triangle_smooth = triangle_smooth,
+                        // Cycles' shader_setup_from_displace() sets
+                        // SHADER_SMOOTH_NORMAL unconditionally. Displacement
+                        // is a vertex-evaluation stage, so authored flatness
+                        // applies only after the displaced mesh is rebuilt.
+                        .triangle_smooth = true,
                         .is_curve = false,
                         .curve_intercept = 0.0f,
                         .curve_length = 0.0f,

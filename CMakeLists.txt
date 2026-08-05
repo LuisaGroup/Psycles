@@ -1664,6 +1664,15 @@ if(PSYCLES_ENABLE_LUISA)
 
             psycles_add_luisa_backend_test(
                 TARGET
+                    psycles_luisa_displacement_scene_tests
+                SOURCE
+                    tests/test_luisa_displacement_scene.cpp
+                TEST_STEM
+                    luisa_displacement_scene
+                LIBRARIES Psycles::luisa_runtime)
+
+            psycles_add_luisa_backend_test(
+                TARGET
                     psycles_luisa_curve_path_tests
                 SOURCE
                     tests/test_luisa_curve_path.cpp
@@ -1715,6 +1724,19 @@ if(PSYCLES_ENABLE_LUISA)
             add_test(
                 NAME psycles.cycles_shader_identity
                 COMMAND psycles_cycles_shader_identity_tests)
+
+            add_executable(
+                psycles_cycles_instance_support_tests
+                tests/test_cycles_instance_support.cpp)
+            target_link_libraries(
+                psycles_cycles_instance_support_tests
+                PRIVATE Psycles::luisa_runtime)
+            target_compile_features(
+                psycles_cycles_instance_support_tests
+                PRIVATE cxx_std_20)
+            add_test(
+                NAME psycles.cycles_instance_support
+                COMMAND psycles_cycles_instance_support_tests)
 
             add_executable(
                 psycles_cycles_tangent_space_tests

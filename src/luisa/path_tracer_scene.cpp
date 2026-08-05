@@ -5,6 +5,7 @@
 #include "path_tracer_environment.h"
 #include "path_tracer_generated_coordinates.h"
 #include "path_tracer_image_decode.h"
+#include "path_tracer_instance_support.h"
 #include "path_tracer_scene_geometry.h"
 #include "path_tracer_shader_services.h"
 #include "path_tracer_surfaces.h"
@@ -141,7 +142,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             surface_bssrdf_materials.emplace(material_id);
         }
     }
-    const auto cycles_instance_intersection_plan =
+    auto cycles_instance_intersection_plan =
         build_cycles_instance_intersection_plan(
             snapshot, surface_bssrdf_materials);
     std::map<contract::GeometryId, Mat4f>
@@ -1374,6 +1375,22 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         attribute_ranges);
     if (!displacement.ok()) {
         diagnose(result.diagnostics, displacement.diagnostic);
+        return result;
+    }
+    const auto final_support_classes =
+        classify_cycles_final_triangle_supports(
+            snapshot, geometry_indices, uploads);
+    if (!final_support_classes.ok()) {
+        diagnose(result.diagnostics, final_support_classes.diagnostic);
+        return result;
+    }
+    if (!finalize_cycles_instance_intersection_plan(
+            snapshot,
+            final_support_classes.by_geometry,
+            cycles_instance_intersection_plan)) {
+        diagnose(
+            result.diagnostics,
+            "Cycles instance intersection plan has inconsistent size");
         return result;
     }
 
