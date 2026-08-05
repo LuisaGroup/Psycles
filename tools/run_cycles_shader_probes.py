@@ -50,6 +50,7 @@ _ALL_PROBES = (
     "geometry_displacement_methods",
     "geometry_position_color_conversion",
     "geometry_pointiness",
+    "glossy_bsdf_matrix",
     "gradient_matrix",
     "gradient_spherical",
     "hosek_wilkie_diffuse_transport",
@@ -253,6 +254,12 @@ _PROBE_RATIO_GATES = {
         "TransCol": (0.9999, 1.0001),
         "TransDir": (0.9999, 1.0001),
     },
+    "glossy_bsdf_matrix": {
+        "Combined": (0.9999, 1.0001),
+        "GlossCol": (0.99999, 1.00001),
+        "GlossDir": (0.9999, 1.0001),
+        "Normal": (0.99999, 1.00001),
+    },
     "indirect_principled": {
         "DiffInd": (0.98, 1.02),
         "GlossInd": (0.98, 1.02),
@@ -418,6 +425,12 @@ _PROBE_RELATIVE_RMSE_GATES = {
         "GlossDir": 0.0001,
         "TransCol": 0.0001,
         "TransDir": 0.0002,
+    },
+    "glossy_bsdf_matrix": {
+        "Combined": 0.0002,
+        "GlossCol": 0.00001,
+        "GlossDir": 0.0002,
+        "Normal": 0.00001,
     },
     "nishita_diffuse_transport": {
         "Combined": 0.0005,

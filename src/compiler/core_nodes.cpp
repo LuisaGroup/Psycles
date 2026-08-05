@@ -975,7 +975,8 @@ NodeRegistry make_core_node_registry() {
                             input("Normal", SocketType::normal,
                                   SocketValue::normal({0.0f, 0.0f, 0.0f}))},
                  .outputs = {output("Closure", SocketType::closure)},
-                 .properties = {},
+                 .properties = {property("Distribution", SocketType::string,
+                                         SocketValue::string("GGX"))},
                  .required_features = feature_bit(ShaderFeature::surface)}));
 
   static_cast<void>(registry.register_schema(
