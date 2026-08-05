@@ -374,6 +374,79 @@ def _diffuse_bsdf_matrix(scene: Any) -> None:
     surface.visible_shadow = False
 
 
+def _glossy_bsdf_matrix(scene: Any) -> None:
+    """Cover standalone Glossy allocation and constant-Fresnel transport."""
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 0.01
+    _bsdf_matrix_sun(scene, transmission=False)
+    bpy.data.objects["BSDF Matrix Sun"].rotation_euler[1] = 0.92
+    cases = (
+        ((0.68, 0.24, 0.09), 0.40, 1.00, None),
+        ((0.68, 0.24, 0.09), 0.40, 0.37, None),
+        ((1.40, 0.20, 2.20), 0.40, 0.63, None),
+        ((-0.50, 0.60, 1.20), 0.40, 0.63, None),
+        ((-0.50, -0.20, -1.00), 0.40, 0.63, None),
+        ((1.0e-6, 1.0e-6, 1.0e-6), 0.40, 1.00, None),
+        ((3.0e-5, 0.0, 0.0), 0.40, 1.00, None),
+        ((0.70, 0.30, 0.10), 0.05, 0.81, None),
+        ((0.70, 0.30, 0.10), 0.20, 0.81, None),
+        ((0.70, 0.30, 0.10), 0.70, 0.81, None),
+        ((0.70, 0.30, 0.10), 1.00, 0.81, None),
+        ((0.70, 0.30, 0.10), 2.00, 0.81, None),
+        ((0.70, 0.30, 0.10), -1.00, 0.81, None),
+        ((0.70, 0.30, 0.10), 0.40, 0.81, (0.60, 0.0, 0.80)),
+        ((0.70, 0.30, 0.10), 0.40, 0.81, (0.30, 0.0, 0.40)),
+        ((0.70, 0.30, 0.10), 0.40, 0.81, (0.0, 0.0, 0.0)),
+    )
+    materials = []
+    for index, (color, roughness, mix_factor, normal) in enumerate(cases):
+        material, tree, output = _material(
+            f"Glossy BSDF Matrix {index:02d}"
+        )
+        glossy = tree.nodes.new("ShaderNodeBsdfAnisotropic")
+        glossy.name = f"Glossy BSDF {index:02d}"
+        # The middle roughness sweep also locks the standalone MULTI_GGX
+        # constant-Fresnel energy-preservation path.
+        glossy.distribution = (
+            "MULTI_GGX" if index in {9, 10, 11} else "GGX"
+        )
+        tree.links.new(
+            _linked_vector(tree, f"Glossy Color {index:02d}", color),
+            _input(glossy, "Color"),
+        )
+        roughness_node = tree.nodes.new("ShaderNodeValue")
+        roughness_node.name = f"Glossy Roughness {index:02d}"
+        _output(roughness_node, "Value").default_value = roughness
+        tree.links.new(
+            _output(roughness_node, "Value"),
+            _input(glossy, "Roughness"),
+        )
+        if normal is not None:
+            tree.links.new(
+                _linked_vector(
+                    tree, f"Glossy Normal {index:02d}", normal
+                ),
+                _input(glossy, "Normal"),
+            )
+        factor = tree.nodes.new("ShaderNodeValue")
+        factor.name = f"Glossy Mix Factor {index:02d}"
+        _output(factor, "Value").default_value = mix_factor
+        mix = tree.nodes.new("ShaderNodeMixShader")
+        mix.name = f"Glossy Mix {index:02d}"
+        tree.links.new(_output(factor, "Value"), _input(mix, "Fac"))
+        tree.links.new(_output(glossy, "BSDF"), mix.inputs[2])
+        tree.links.new(_output(mix, "Shader"), _input(output, "Surface"))
+        materials.append(material)
+    surface = _material_matrix(
+        scene,
+        materials,
+        columns=4,
+        rows=4,
+        name="Glossy BSDF Matrix",
+    )
+    surface.visible_shadow = False
+
+
 def _indirect_diffuse(scene: Any) -> None:
     """Exercise a second diffuse surface before reaching the world."""
     _world(scene, (0.64, 0.78, 1.0, 1.0), 0.7)

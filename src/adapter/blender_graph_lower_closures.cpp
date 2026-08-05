@@ -236,6 +236,11 @@ public:
             const auto id = context.graph().add_node(
                 compiler::node_type::glossy_bsdf,
                 node_name);
+            static_cast<void>(context.graph().set_property(
+                id,
+                "Distribution",
+                SocketValue::string(context.node_property_text(
+                    node, "distribution", "GGX"))));
             static_cast<void>(context.bind(
                 id, "Color", node, "Color", SocketType::color));
             static_cast<void>(context.bind(

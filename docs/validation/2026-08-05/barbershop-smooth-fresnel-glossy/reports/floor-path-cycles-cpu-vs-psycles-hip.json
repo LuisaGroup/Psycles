@@ -1,0 +1,603 @@
+{
+  "absolute_tolerance": 1e-06,
+  "actual": "/var/tmp/barbershop-three-material-original-20260805/floor-pixel-psycles-hip-glossy-fix.raw.json",
+  "checked": {
+    "exact": 45,
+    "float32": 91,
+    "random_exact": 16,
+    "topology": 3
+  },
+  "failure_count": 83,
+  "failures": [
+    {
+      "absolute_error": 1.1071562767028809e-05,
+      "actual": 0.09000040590763092,
+      "bound": 1.1800229549407959e-06,
+      "field": "events[0].isect_coord.u",
+      "policy": "topology",
+      "reference": 0.09001147747039795
+    },
+    {
+      "absolute_error": 0.04540517274290323,
+      "actual": 0.0036290092393755913,
+      "bound": 1.0980683639645575e-06,
+      "field": "events[0].surface_n.x",
+      "policy": "float32",
+      "reference": 0.049034181982278824
+    },
+    {
+      "absolute_error": 0.04733725241954545,
+      "actual": -3.952429494802345e-09,
+      "bound": 1.0946745127439498e-06,
+      "field": "events[0].surface_n.y",
+      "policy": "float32",
+      "reference": -0.047337256371974945
+    },
+    {
+      "absolute_error": 0.002318739891052246,
+      "actual": 0.9999934434890747,
+      "bound": 2.9999868869781496e-06,
+      "field": "events[0].surface_n.z",
+      "policy": "float32",
+      "reference": 0.9976747035980225
+    },
+    {
+      "absolute_error": 0.00022568553686141968,
+      "actual": 0.11357281357049942,
+      "bound": 1.227145627140999e-06,
+      "field": "events[0].light_eval.bsdf_pdf",
+      "policy": "float32",
+      "reference": 0.113347128033638
+    },
+    {
+      "absolute_error": 7.191300392150879e-05,
+      "actual": 0.046654149889945984,
+      "bound": 1.093452125787735e-06,
+      "field": "events[0].closure_pick.sample_weight",
+      "policy": "float32",
+      "reference": 0.04672606289386749
+    },
+    {
+      "actual": 0.9139930009841919,
+      "field": "events[0].closure_random.selection_rescaled",
+      "policy": "random_exact",
+      "reference": 0.914082944393158
+    },
+    {
+      "absolute_error": 7.191300392150879e-05,
+      "actual": 0.046654149889945984,
+      "bound": 1.093452125787735e-06,
+      "field": "events[0].closure_weight.r",
+      "policy": "float32",
+      "reference": 0.04672606289386749
+    },
+    {
+      "absolute_error": 7.191300392150879e-05,
+      "actual": 0.046654149889945984,
+      "bound": 1.093452125787735e-06,
+      "field": "events[0].closure_weight.g",
+      "policy": "float32",
+      "reference": 0.04672606289386749
+    },
+    {
+      "absolute_error": 7.191300392150879e-05,
+      "actual": 0.046654149889945984,
+      "bound": 1.093452125787735e-06,
+      "field": "events[0].closure_weight.b",
+      "policy": "float32",
+      "reference": 0.04672606289386749
+    },
+    {
+      "absolute_error": 0.001593906432390213,
+      "actual": 0.05062808841466904,
+      "bound": 1.101256176829338e-06,
+      "field": "events[0].closure_n.x",
+      "policy": "float32",
+      "reference": 0.049034181982278824
+    },
+    {
+      "absolute_error": 5.451962351799011e-05,
+      "actual": -0.047282736748456955,
+      "bound": 1.0946745127439498e-06,
+      "field": "events[0].closure_n.y",
+      "policy": "float32",
+      "reference": -0.047337256371974945
+    },
+    {
+      "absolute_error": 7.700920104980469e-05,
+      "actual": 0.9975976943969727,
+      "bound": 2.995349407196045e-06,
+      "field": "events[0].closure_n.z",
+      "policy": "float32",
+      "reference": 0.9976747035980225
+    },
+    {
+      "absolute_error": 0.002315521240234375,
+      "actual": 1.34663724899292,
+      "bound": 3.6979055404663085e-06,
+      "field": "events[0].bsdf_meta.pdf",
+      "policy": "float32",
+      "reference": 1.3489527702331543
+    },
+    {
+      "absolute_error": 0.002315521240234375,
+      "actual": 1.34663724899292,
+      "bound": 3.6979055404663085e-06,
+      "field": "events[0].bsdf_meta.unguided_pdf",
+      "policy": "float32",
+      "reference": 1.3489527702331543
+    },
+    {
+      "absolute_error": 0.000812530517578125,
+      "actual": -0.2745153605937958,
+      "bound": 1.5506557822227478e-06,
+      "field": "events[0].bsdf_wo.x",
+      "policy": "float32",
+      "reference": -0.2753278911113739
+    },
+    {
+      "absolute_error": 5.0187110900878906e-05,
+      "actual": -0.9219619035720825,
+      "bound": 2.8439238071441646e-06,
+      "field": "events[0].bsdf_wo.y",
+      "policy": "float32",
+      "reference": -0.9219117164611816
+    },
+    {
+      "absolute_error": 0.0006494522094726562,
+      "actual": 0.2731807827949524,
+      "bound": 1.5463615655899046e-06,
+      "field": "events[0].bsdf_wo.z",
+      "policy": "float32",
+      "reference": 0.27253133058547974
+    },
+    {
+      "absolute_error": 0.00035560131072998047,
+      "actual": 0.1655167043209076,
+      "bound": 1.331744611263275e-06,
+      "field": "events[0].bsdf_eval.r",
+      "policy": "float32",
+      "reference": 0.16587230563163757
+    },
+    {
+      "absolute_error": 0.0003573894500732422,
+      "actual": 0.16310295462608337,
+      "bound": 1.326920688152313e-06,
+      "field": "events[0].bsdf_eval.g",
+      "policy": "float32",
+      "reference": 0.16346034407615662
+    },
+    {
+      "absolute_error": 0.00035813450813293457,
+      "actual": 0.1620723158121109,
+      "bound": 1.3248609006404876e-06,
+      "field": "events[0].bsdf_eval.b",
+      "policy": "float32",
+      "reference": 0.16243045032024384
+    },
+    {
+      "absolute_error": 5.2638351917266846e-05,
+      "actual": 0.12291112542152405,
+      "bound": 1.2459275275468826e-06,
+      "field": "events[0].post_throughput.r",
+      "policy": "float32",
+      "reference": 0.12296376377344131
+    },
+    {
+      "absolute_error": 5.7034194469451904e-05,
+      "actual": 0.1211187019944191,
+      "bound": 1.242351472377777e-06,
+      "field": "events[0].post_throughput.g",
+      "policy": "float32",
+      "reference": 0.12117573618888855
+    },
+    {
+      "absolute_error": 5.8904290199279785e-05,
+      "actual": 0.12035335600376129,
+      "bound": 1.240824520587921e-06,
+      "field": "events[0].post_throughput.b",
+      "policy": "float32",
+      "reference": 0.12041226029396057
+    },
+    {
+      "absolute_error": 0.000812530517578125,
+      "actual": -0.2745153605937958,
+      "bound": 1.5506557822227478e-06,
+      "field": "events[0].post_ray_d.x",
+      "policy": "float32",
+      "reference": -0.2753278911113739
+    },
+    {
+      "absolute_error": 5.0187110900878906e-05,
+      "actual": -0.9219619035720825,
+      "bound": 2.8439238071441646e-06,
+      "field": "events[0].post_ray_d.y",
+      "policy": "float32",
+      "reference": -0.9219117164611816
+    },
+    {
+      "absolute_error": 0.0006494522094726562,
+      "actual": 0.2731807827949524,
+      "bound": 1.5463615655899046e-06,
+      "field": "events[0].post_ray_d.z",
+      "policy": "float32",
+      "reference": 0.27253133058547974
+    },
+    {
+      "absolute_error": 0.002315521240234375,
+      "actual": 1.34663724899292,
+      "bound": 3.6979055404663085e-06,
+      "field": "events[0].post_mis.mis_ray_pdf",
+      "policy": "float32",
+      "reference": 1.3489527702331543
+    },
+    {
+      "absolute_error": 0.002315521240234375,
+      "actual": 1.34663724899292,
+      "bound": 3.6979055404663085e-06,
+      "field": "events[0].post_mis.min_ray_pdf",
+      "policy": "float32",
+      "reference": 1.3489527702331543
+    },
+    {
+      "absolute_error": 8.17328691482544e-06,
+      "actual": 0.08230853825807571,
+      "bound": 1.1646170765161513e-06,
+      "field": "events[0].closure.0.meta.sample_weight",
+      "policy": "float32",
+      "reference": 0.08230036497116089
+    },
+    {
+      "absolute_error": 1.0713934898376465e-05,
+      "actual": 0.10720769315958023,
+      "bound": 1.2144153863191604e-06,
+      "field": "events[0].closure.0.weight.r",
+      "policy": "float32",
+      "reference": 0.10719697922468185
+    },
+    {
+      "absolute_error": 7.517635822296143e-06,
+      "actual": 0.07643036544322968,
+      "bound": 1.1528607308864592e-06,
+      "field": "events[0].closure.0.weight.g",
+      "policy": "float32",
+      "reference": 0.07642284780740738
+    },
+    {
+      "absolute_error": 6.288290023803711e-06,
+      "actual": 0.06328755617141724,
+      "bound": 1.1265751123428343e-06,
+      "field": "events[0].closure.0.weight.b",
+      "policy": "float32",
+      "reference": 0.06328126788139343
+    },
+    {
+      "absolute_error": 0.001593906432390213,
+      "actual": 0.05062808841466904,
+      "bound": 1.101256176829338e-06,
+      "field": "events[0].closure.0.normal.x",
+      "policy": "float32",
+      "reference": 0.049034181982278824
+    },
+    {
+      "absolute_error": 5.451962351799011e-05,
+      "actual": -0.047282736748456955,
+      "bound": 1.0946745127439498e-06,
+      "field": "events[0].closure.0.normal.y",
+      "policy": "float32",
+      "reference": -0.047337256371974945
+    },
+    {
+      "absolute_error": 7.700920104980469e-05,
+      "actual": 0.9975976943969727,
+      "bound": 2.995349407196045e-06,
+      "field": "events[0].closure.0.normal.z",
+      "policy": "float32",
+      "reference": 0.9976747035980225
+    },
+    {
+      "absolute_error": 7.191300392150879e-05,
+      "actual": 0.046654149889945984,
+      "bound": 1.093452125787735e-06,
+      "field": "events[0].closure.1.meta.sample_weight",
+      "policy": "float32",
+      "reference": 0.04672606289386749
+    },
+    {
+      "absolute_error": 7.191300392150879e-05,
+      "actual": 0.046654149889945984,
+      "bound": 1.093452125787735e-06,
+      "field": "events[0].closure.1.weight.r",
+      "policy": "float32",
+      "reference": 0.04672606289386749
+    },
+    {
+      "absolute_error": 7.191300392150879e-05,
+      "actual": 0.046654149889945984,
+      "bound": 1.093452125787735e-06,
+      "field": "events[0].closure.1.weight.g",
+      "policy": "float32",
+      "reference": 0.04672606289386749
+    },
+    {
+      "absolute_error": 7.191300392150879e-05,
+      "actual": 0.046654149889945984,
+      "bound": 1.093452125787735e-06,
+      "field": "events[0].closure.1.weight.b",
+      "policy": "float32",
+      "reference": 0.04672606289386749
+    },
+    {
+      "absolute_error": 0.001593906432390213,
+      "actual": 0.05062808841466904,
+      "bound": 1.101256176829338e-06,
+      "field": "events[0].closure.1.normal.x",
+      "policy": "float32",
+      "reference": 0.049034181982278824
+    },
+    {
+      "absolute_error": 5.451962351799011e-05,
+      "actual": -0.047282736748456955,
+      "bound": 1.0946745127439498e-06,
+      "field": "events[0].closure.1.normal.y",
+      "policy": "float32",
+      "reference": -0.047337256371974945
+    },
+    {
+      "absolute_error": 7.700920104980469e-05,
+      "actual": 0.9975976943969727,
+      "bound": 2.995349407196045e-06,
+      "field": "events[0].closure.1.normal.z",
+      "policy": "float32",
+      "reference": 0.9976747035980225
+    },
+    {
+      "actual": true,
+      "field": "events[1].state_depth.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].state_lobes.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].state_visibility.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].state_flags.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].throughput.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].ray_p.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].ray_d.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].ray_range.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].isect_coord.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].isect_id.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].surface_meta.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].surface_p.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].surface_ng.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].surface_n.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].random_scalars.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].random_light.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].random_bsdf.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].light_meta.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].closure_pick.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].closure_random.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].closure_weight.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].closure_n.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].bsdf_meta.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].bsdf_wo.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].bsdf_eval.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].bsdf_roughness_eta.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].post_depth.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].post_throughput.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].post_ray_p.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].post_ray_d.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].post_flags.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].post_mis.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].surface_flags.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].post_visibility.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].closure.0.meta.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].closure.0.weight.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].closure.0.normal.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].closure.1.meta.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].closure.1.weight.written",
+      "policy": "exact",
+      "reference": false
+    },
+    {
+      "actual": true,
+      "field": "events[1].closure.1.normal.written",
+      "policy": "exact",
+      "reference": false
+    }
+  ],
+  "max_absolute_error": 0.04733725241954545,
+  "max_error_field": "events[0].surface_n.y",
+  "max_relative_error": 1.0,
+  "passed": false,
+  "reference": "/var/tmp/barbershop-three-material-original-20260805/floor-pixel-cycles-trace-latest.exr",
+  "relative_tolerance": 2e-06,
+  "schema": "psycles.cycles-path-trace-comparison.v1",
+  "topology_equivalent": []
+}

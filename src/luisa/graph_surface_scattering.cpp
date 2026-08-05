@@ -550,9 +550,15 @@ template<typename Closure>
         dielectric,
         metallic,
         has_lobe(closure, SurfaceClosureLobe::metallic));
-    return select(generic,
+    const auto shaded = select(generic,
         principled,
         has_kind(closure, SurfaceClosureKind::principled));
+    // Cycles' standalone Glossy closure uses MicrofacetFresnel::NONE:
+    // Color is already baked into ShaderClosure::weight, so the remaining
+    // directional factor is constant one (plus optional MULTI_GGX scale).
+    return select(shaded,
+        closure.evaluation_scale,
+        has_kind(closure, SurfaceClosureKind::glossy));
 }
 
 [[nodiscard]] Float3 microfacet_intensity(

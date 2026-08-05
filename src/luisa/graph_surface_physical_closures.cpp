@@ -349,23 +349,32 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                 return;
             }
             case compiler::ClosureOperation::glossy: {
-                closure.allocation_weight = sample_weight(
-                    max(closure.weight, make_float3(0.0f)));
+                const auto allocated_weight =
+                    max(closure.weight, make_float3(0.0f));
+                closure.allocation_weight = sample_weight(allocated_weight);
                 const auto allocated =
                     closure.allocation_weight >=
                     cycles_closure::closure_weight_cutoff;
-                closure.weight = select(make_float3(0.0f),
-                    max(closure.weight, make_float3(0.0f)),
-                    allocated);
                 closure.normal = maybe_ensure_valid_specular_reflection(
                     point, incoming, graph_closure.normal);
-                closure.albedo = closure.weight *
-                                 max(closure.color, make_float3(0.04f));
+                // Standalone Glossy stores authored Color in the Cycles
+                // closure weight. Its GGX Fresnel is constant one; MULTI_GGX
+                // only adds the tabulated energy-preservation correction.
+                const auto incoming_cosine = clamp(
+                    dot(closure.normal, incoming), 0.0f, 1.0f);
+                const auto energy = ggx_energy(services,
+                    closure,
+                    incoming_cosine,
+                    max(closure.color, make_float3(0.0f)));
+                closure.weight = select(make_float3(0.0f),
+                    allocated_weight * energy.darkening,
+                    allocated);
+                closure.albedo = closure.weight;
                 closure.sample_weight = select(0.0f,
                     closure.allocation_weight *
-                        sample_weight(
-                            max(closure.color, make_float3(0.04f))),
+                        sample_weight(energy.darkening),
                     allocated);
+                closure.evaluation_scale = energy.energy_scale;
                 break;
             }
             case compiler::ClosureOperation::glass: {

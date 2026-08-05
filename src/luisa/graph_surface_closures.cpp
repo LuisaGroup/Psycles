@@ -205,10 +205,10 @@ void GraphSurfaceImplementation::for_each_closure(
                     .operation = closure.operation,
                     .weight =
                         closure.operation ==
-                                compiler::ClosureOperation::diffuse
-                            ? bsdf_allocated_weight(
-                                  color * mix_weight)
-                            : make_float3(mix_weight),
+                                compiler::ClosureOperation::principled
+                            ? make_float3(mix_weight)
+                            : bsdf_allocated_weight(
+                                  color * mix_weight),
                     .color = color,
                     .normal = safe_normalize(
                         vector(closure.normal, values),
