@@ -39,6 +39,6 @@ classify_cycles_final_triangle_supports(
     const std::map<contract::GeometryId, std::uint32_t> &geometry_indices,
     const std::vector<GeometryUpload> &uploads,
     std::span<CyclesInstanceIntersectionPlan> instance_plan,
-    CyclesPrimitiveIntersectionPlan &primitive_plan);
+    CyclesPrimitiveCompletionPlan &primitive_plan);
 
 } // namespace psycles::luisa_backend::detail

@@ -73,22 +73,22 @@ void provide_inert_storage(SceneTableUploadInput input) {
     if (input.instances.empty()) {
         input.instances.emplace_back(InstanceGpu{});
     }
-    if (input.coincident_primitives.empty()) {
-        input.coincident_primitives.emplace_back(CoincidentPrimitiveGpu{});
+    if (input.primitive_completions.empty()) {
+        input.primitive_completions.emplace_back(PrimitiveCompletionGpu{});
     }
-    if (input.coincident_primitive_instances.empty()) {
-        input.coincident_primitive_instances.emplace_back(0u);
+    if (input.primitive_completion_instances.empty()) {
+        input.primitive_completion_instances.emplace_back(0u);
     }
 }
 
 }// namespace
 
-CoincidentPrimitiveUpload make_coincident_primitive_upload(
-    const CyclesPrimitiveIntersectionPlan &plan) {
-    CoincidentPrimitiveUpload result;
+PrimitiveCompletionUpload make_primitive_completion_upload(
+    const CyclesPrimitiveCompletionPlan &plan) {
+    PrimitiveCompletionUpload result;
     result.records.reserve(plan.records.size());
     for (const auto &record : plan.records) {
-        result.records.emplace_back(CoincidentPrimitiveGpu{
+        result.records.emplace_back(PrimitiveCompletionGpu{
             .local_primitive = record.local_primitive,
             .instance_offset = record.instance_offset,
             .instance_count = record.instance_count});
@@ -135,12 +135,12 @@ SceneTableUploadResult SceneTableUploadComponent::upload(
     }
     scene->instance_buffer =
         scene->device.create_buffer<InstanceGpu>(input.instances.size());
-    scene->coincident_primitive_buffer =
-        scene->device.create_buffer<CoincidentPrimitiveGpu>(
-            input.coincident_primitives.size());
-    scene->coincident_primitive_instance_buffer =
+    scene->primitive_completion_buffer =
+        scene->device.create_buffer<PrimitiveCompletionGpu>(
+            input.primitive_completions.size());
+    scene->primitive_completion_instance_buffer =
         scene->device.create_buffer<luisa::uint>(
-            input.coincident_primitive_instances.size());
+            input.primitive_completion_instances.size());
     scene->cycles_object_instance_map_buffer =
         scene->device.create_buffer<luisa::uint2>(object_instance_map.size());
     scene->geometry_material_buffer =
@@ -166,10 +166,10 @@ SceneTableUploadResult SceneTableUploadComponent::upload(
                   luisa::span{input.attribute_ranges})
            << scene->instance_buffer.copy_from(
                   luisa::span{input.instances})
-           << scene->coincident_primitive_buffer.copy_from(
-                  luisa::span{input.coincident_primitives})
-           << scene->coincident_primitive_instance_buffer.copy_from(
-                  luisa::span{input.coincident_primitive_instances})
+           << scene->primitive_completion_buffer.copy_from(
+                  luisa::span{input.primitive_completions})
+           << scene->primitive_completion_instance_buffer.copy_from(
+                  luisa::span{input.primitive_completion_instances})
            << scene->cycles_object_instance_map_buffer.copy_from(
                   luisa::span{object_instance_map})
            << scene->geometry_material_buffer.copy_from(

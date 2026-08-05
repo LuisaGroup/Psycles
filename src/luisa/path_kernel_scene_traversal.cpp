@@ -73,7 +73,7 @@ struct SourceAccelerationIdentity {
   UInt primitive;
 };
 
-struct CoincidentTriangleHit {
+struct CompletedTriangleHit {
   Bool valid;
   UInt instance;
   UInt primitive;
@@ -84,7 +84,7 @@ struct CoincidentTriangleHit {
   Float2 barycentric;
 };
 
-struct CoincidentPrimitiveRange {
+struct PrimitiveCompletionRange {
   Bool valid;
   UInt instance_offset;
   UInt instance_count;
@@ -163,8 +163,8 @@ private:
             .primitive = std::move(primitive_index)};
   }
 
-  [[nodiscard]] CoincidentPrimitiveRange
-  coincident_primitive_range(
+  [[nodiscard]] PrimitiveCompletionRange
+  primitive_completion_range(
       const std::shared_ptr<LuisaSceneData> &scene,
       Expr<std::uint32_t> instance_index,
       Expr<std::uint32_t> local_primitive) const noexcept {
@@ -172,12 +172,12 @@ private:
     Bool valid = false;
     UInt instance_offset = 0u;
     UInt instance_count = 0u;
-    UInt first = instance.coincident_primitive_offset;
-    const UInt end = first + instance.coincident_primitive_count;
+    UInt first = instance.primitive_completion_offset;
+    const UInt end = first + instance.primitive_completion_count;
     UInt last = end;
     $while(first < last) {
       const auto middle = first + (last - first) / 2u;
-      const auto record = scene->coincident_primitive_buffer->read(middle);
+      const auto record = scene->primitive_completion_buffer->read(middle);
       $if(record.local_primitive < local_primitive) {
         first = middle + 1u;
       }
@@ -186,7 +186,7 @@ private:
       };
     };
     $if(first < end) {
-      const auto record = scene->coincident_primitive_buffer->read(first);
+      const auto record = scene->primitive_completion_buffer->read(first);
       $if(record.local_primitive == local_primitive) {
         valid = record.instance_count > 1u;
         instance_offset = record.instance_offset;
@@ -198,8 +198,8 @@ private:
             .instance_count = std::move(instance_count)};
   }
 
-  [[nodiscard]] CoincidentTriangleHit
-  resolve_coincident_triangle(
+  [[nodiscard]] CompletedTriangleHit
+  resolve_completed_triangle(
       const std::shared_ptr<LuisaSceneData> &scene,
       const Var<luisa::compute::Ray> &ray,
       Expr<std::uint32_t> visibility_mask,
@@ -216,18 +216,19 @@ private:
     Float group_distance = ray->t_max();
     Float2 group_barycentric = make_float2(0.0f);
     const auto seed = scene->instance_buffer->read(seed_instance);
-    const auto sparse = coincident_primitive_range(
+    const auto completion = primitive_completion_range(
         scene, seed_instance, local_primitive);
     UInt alias_index = seed_instance;
-    UInt sparse_index = sparse.instance_offset;
+    UInt completion_index = completion.instance_offset;
     UInt remaining = select(
         max(seed.coincident_count, 1u),
-        sparse.instance_count,
-        sparse.valid);
+        completion.instance_count,
+        completion.valid);
     $while(remaining > 0u) {
-      $if(sparse.valid) {
+      $if(completion.valid) {
         alias_index =
-            scene->coincident_primitive_instance_buffer->read(sparse_index);
+            scene->primitive_completion_instance_buffer->read(
+                completion_index);
       };
       const auto alias = scene->instance_buffer->read(alias_index);
       const auto geometry =
@@ -267,8 +268,8 @@ private:
         group_distance = intersection.distance;
         group_barycentric = intersection.barycentric;
       };
-      $if(sparse.valid) {
-        sparse_index += 1u;
+      $if(completion.valid) {
+        completion_index += 1u;
       }
       $else {
         alias_index = alias.coincident_next;
@@ -316,10 +317,10 @@ private:
             bool commit_candidate) noexcept {
           const auto hit = candidate.hit();
           // Hardware triangle queries are broad-phase candidate sources. The
-          // exact resolver handles a singleton, a whole-instance class, or a
-          // sparse primitive class through the same Cycles predicate and
+          // Resolver handles a singleton, a whole-instance class, or a sparse
+          // primitive completion list through the same Cycles predicate and
           // stable identity order.
-          const auto group = resolve_coincident_triangle(
+          const auto group = resolve_completed_triangle(
               scene, ray, visibility_mask, source, light,
               hit->inst, hit->prim);
           const auto accepted =
@@ -399,24 +400,25 @@ private:
     // parts of the Cycles ray contract. If Cycles' exact source-triangle test
     // certifies the origin, it deliberately leaves the ray at the surface and
     // rejects only the source identity. Distinct instances with bit-identical
-    // support therefore remain eligible at the closed t == 0 endpoint for
+    // support, or corresponding primitives with overlapping closed world
+    // bounds, therefore remain eligible at the closed t == 0 endpoint for
     // continuation as well as shadow rays. Hardware traversal is not required
     // to report that endpoint consistently, so complete its broad-phase
-    // candidates from the source support class. This is not a topological
-    // forced hit: resolve_coincident_triangle still applies the actual ray,
-    // visibility, exclusions, and Cycles Pluecker predicate. A geometrically
-    // offset origin therefore rejects the whole class normally.
+    // candidates from the source's finite completion relation. This is not a
+    // topological forced hit: resolve_completed_triangle still applies the
+    // actual ray, visibility, exclusions, and Cycles Pluecker predicate. A
+    // geometrically offset origin therefore rejects candidates normally.
     const auto source_acceleration =
         source_acceleration_identity(scene, source);
     $if(source_acceleration.valid) {
       const auto source_instance =
           scene->instance_buffer->read(source_acceleration.instance);
-      const auto sparse = coincident_primitive_range(
+      const auto completion = primitive_completion_range(
           scene, source_acceleration.instance,
           source_acceleration.primitive);
       $if((max(source_instance.coincident_count, 1u) > 1u) |
-          sparse.valid) {
-        const auto group = resolve_coincident_triangle(
+          completion.valid) {
+        const auto group = resolve_completed_triangle(
             scene, ray, visibility_mask, source, light,
             source_acceleration.instance,
             source_acceleration.primitive);
