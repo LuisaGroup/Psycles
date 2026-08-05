@@ -216,6 +216,10 @@ if(PSYCLES_BUILD_TESTS)
             SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_attribute_domains.py"
             ARGUMENTS "${blender_exporter}" "${blender_inspector}")
         psycles_add_blender_test(
+            NAME psycles.blender_export_smooth_normals
+            SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_smooth_normals.py"
+            NO_EXIT_CODE ARGUMENTS "${blender_exporter}")
+        psycles_add_blender_test(
             NAME psycles.blender_export_pointiness_source
             SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_pointiness_source.py"
             ARGUMENTS "${blender_exporter}" "${blender_inspector}")
