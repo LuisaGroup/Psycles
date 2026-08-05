@@ -93,6 +93,15 @@ class CyclesPathTraceComparisonTests(unittest.TestCase):
         self.assertFalse(report["passed"])
         self.assertGreaterEqual(report["failure_count"], 4)
 
+    def test_backend_shadow_hit_diagnostics_are_not_equality_gates(self) -> None:
+        reference = _trace()
+        actual = copy.deepcopy(reference)
+        reference["events"][0]["slots"]["shadow_hit_id"]["written"] = False
+        actual["events"][0]["slots"]["shadow_hit_id"]["object"] = 17.0
+        actual["events"][0]["slots"]["shadow_hit_id"]["primitive"] = 23.0
+        report = comparison.compare_traces(reference, actual)
+        self.assertTrue(report["passed"])
+
 
 if __name__ == "__main__":
     unittest.main()

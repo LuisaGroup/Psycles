@@ -32,19 +32,21 @@ class CyclesPathTraceSchemaTests(unittest.TestCase):
 
     def test_trace_slots_are_fixed_and_contiguous(self) -> None:
         schema: Any = trace_schema
-        self.assertEqual(schema.SCHEMA_VERSION, 1)
+        self.assertEqual(schema.SCHEMA_VERSION, 2)
         self.assertEqual(schema.GLOBAL_SLOT_COUNT, 8)
         self.assertEqual(schema.EVENT_SLOT_COUNT, 72)
+        self.assertEqual(schema.SHADOW_EVENT_SLOT_COUNT, 8)
+        self.assertEqual(schema.SHADOW_EVENT_BASE, 296)
         self.assertEqual(schema.MAX_EVENTS, 4)
         self.assertEqual(schema.MAX_CLOSURES, 8)
-        self.assertEqual(schema.AOV_COUNT, 296)
+        self.assertEqual(schema.AOV_COUNT, 328)
         self.assertEqual(len(schema.SLOTS), schema.AOV_COUNT)
         self.assertEqual(
             [slot.index for slot in schema.SLOTS],
             list(range(schema.AOV_COUNT)),
         )
         self.assertEqual(schema.SLOTS[0].aov, "PsyTrace000")
-        self.assertEqual(schema.SLOTS[-1].aov, "PsyTrace295")
+        self.assertEqual(schema.SLOTS[-1].aov, "PsyTrace327")
 
     def test_each_event_has_identical_layout(self) -> None:
         schema: Any = trace_schema
@@ -54,7 +56,7 @@ class CyclesPathTraceSchemaTests(unittest.TestCase):
             ]
             self.assertEqual(
                 len(event_slots),
-                schema.EVENT_SLOT_COUNT,
+                schema.EVENT_SLOT_COUNT + schema.SHADOW_EVENT_SLOT_COUNT,
             )
             self.assertEqual(
                 sum(slot.scope == "closure" for slot in event_slots),
@@ -125,6 +127,36 @@ class CyclesPathTraceSchemaTests(unittest.TestCase):
             self.assertEqual(
                 trace_schema.comparison_policies(event_slots[name]),
                 (trace_schema.COMPARE_FLOAT32,) * 3,
+            )
+
+    def test_shadow_trace_is_an_append_only_event_tail(self) -> None:
+        schema: Any = trace_schema
+        shadow_names = (
+            "shadow_ray_p",
+            "shadow_ray_d",
+            "shadow_ray_range",
+            "shadow_source",
+            "shadow_light",
+            "shadow_hit_id",
+            "shadow_hit_coord",
+            "shadow_transmittance",
+        )
+        for event in range(schema.MAX_EVENTS):
+            event_slots = {
+                slot.name: slot
+                for slot in schema.SLOTS
+                if slot.scope == "event" and slot.event == event
+            }
+            self.assertEqual(
+                [event_slots[name].index for name in shadow_names],
+                list(
+                    range(
+                        schema.SHADOW_EVENT_BASE
+                        + event * schema.SHADOW_EVENT_SLOT_COUNT,
+                        schema.SHADOW_EVENT_BASE
+                        + (event + 1) * schema.SHADOW_EVENT_SLOT_COUNT,
+                    )
+                ),
             )
 
     def test_schema_document_is_json_shaped(self) -> None:

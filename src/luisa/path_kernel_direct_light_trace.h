@@ -36,6 +36,26 @@ struct DirectLightTransportRecord {
     Float3 unshadowed;
 };
 
+struct DirectLightShadowRecord {
+    Float3 origin;
+    Float3 direction;
+    Float minimum;
+    Float maximum;
+    Bool cast_shadow;
+    UInt source_object;
+    UInt source_primitive;
+    Bool skip_self;
+    UInt light_object;
+    UInt light_primitive;
+    Bool first_hit;
+    UInt first_object;
+    UInt first_primitive;
+    UInt first_kind;
+    Float first_distance;
+    Float2 first_barycentric;
+    Float3 transmittance;
+};
+
 // Host-stage trace policy. The enabled implementation records Luisa DSL AST
 // at Cycles' semantic boundaries; the null implementation emits no shader
 // statements, branches, or runtime storage accesses.
@@ -63,6 +83,10 @@ class DirectLightTraceRecorder {
     virtual void record_transport(
         PathBounceContext &bounce,
         const DirectLightTransportRecord &record)
+        const noexcept = 0;
+    virtual void record_shadow(
+        PathBounceContext &bounce,
+        const DirectLightShadowRecord &record)
         const noexcept = 0;
     virtual void record_contribution(
         PathBounceContext &bounce,

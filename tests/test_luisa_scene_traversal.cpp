@@ -21,7 +21,7 @@ using namespace luisa::compute;
 using namespace psycles::luisa_backend::detail;
 using psycles::luisa_backend::surface_ray::invalid_primitive;
 
-inline constexpr std::size_t record_count = 20u;
+inline constexpr std::size_t record_count = 21u;
 
 [[nodiscard]] bool near(float actual, float expected,
                         float tolerance = 2.0e-6f) noexcept {
@@ -56,6 +56,24 @@ int main(int argc, char **argv) {
       to_luisa(cycles_inverse_transform(bottle_transform));
   const auto coincident_world_to_object =
       to_luisa(cycles_inverse_transform(coincident_transform_source));
+  psycles::Mat4f overlap_a_transform;
+  overlap_a_transform.elements = {
+      -4.013790899648484e-8f, -0.9182483553886414f, 0.0f, 0.0f,
+      1.0184273719787598f, -4.4516873742850294e-8f, 0.0f, 0.0f,
+      0.0f, 0.0f, 0.9999998807907104f, 0.0f,
+      1.6824010610580444f, 4.567445755004883f,
+      -0.0029841959476470947f, 1.0f};
+  psycles::Mat4f overlap_b_transform;
+  overlap_b_transform.elements = {
+      6.932582152785471e-8f, -0.9182483553886414f, 0.0f, 0.0f,
+      1.0184273719787598f, 7.688912972980688e-8f, 0.0f, 0.0f,
+      0.0f, 0.0f, 0.9999998807907104f, 0.0f,
+      1.6824010610580444f, 4.567445755004883f,
+      -0.0029841959476470947f, 1.0f};
+  const auto overlap_a_world_to_object =
+      to_luisa(cycles_inverse_transform(overlap_a_transform));
+  const auto overlap_b_world_to_object =
+      to_luisa(cycles_inverse_transform(overlap_b_transform));
 
   constexpr auto curve_bindless_base = geometry_bindless_stride;
   const std::array geometries{
@@ -80,6 +98,11 @@ int main(int argc, char **argv) {
                   .material_offset = 0u,
                   .material_count = 1u,
                   .cycles_primitive_offset = 3396299u,
+                  .primitive_kind = geometry_kind_triangle},
+      GeometryGpu{.bindless_base = 4u * geometry_bindless_stride,
+                  .material_offset = 0u,
+                  .material_count = 1u,
+                  .cycles_primitive_offset = 700000u,
                   .primitive_kind = geometry_kind_triangle}};
   const std::array instances{
       InstanceGpu{.geometry_index = 0u, .cycles_object_index = 11u},
@@ -107,7 +130,13 @@ int main(int argc, char **argv) {
                   .cycles_object_index = 2372u,
                   .coincident_next = 4u,
                   .coincident_count = 2u,
-                  .cycles_world_to_object = bottle_world_to_object}};
+                  .cycles_world_to_object = bottle_world_to_object},
+      InstanceGpu{.geometry_index = 4u,
+                  .cycles_object_index = 5011u,
+                  .cycles_world_to_object = overlap_a_world_to_object},
+      InstanceGpu{.geometry_index = 4u,
+                  .cycles_object_index = 5066u,
+                  .cycles_world_to_object = overlap_b_world_to_object}};
   constexpr std::array geometry_materials{
       MaterialBindingGpu{.surface_tag = 41u,
                          .cycles_shader_index = 5u,
@@ -123,6 +152,16 @@ int main(int argc, char **argv) {
                                 luisa::float3{2.0f, -2.0f, 4.0f},
                                 luisa::float3{0.0f, 2.0f, 4.0f}};
   constexpr std::array triangles{Triangle{0u, 1u, 2u}};
+  constexpr std::array overlap_vertices{
+      luisa::float3{-0.12768065929412842f,
+                    -0.016480661928653717f,
+                    -0.002021433785557747f},
+      luisa::float3{-0.1807040125131607f,
+                    0.0647093877196312f,
+                    -0.002321503823623061f},
+      luisa::float3{-0.18065254390239716f,
+                    -0.016480661928653717f,
+                    -0.002021433785557747f}};
   constexpr std::array bottle_vertices{
       luisa::float3{0.04980994760990143f,
                     -0.015110095962882042f,
@@ -198,6 +237,12 @@ int main(int argc, char **argv) {
       device.create_buffer<Triangle>(triangles.size());
   auto bottle_mesh =
       device.create_mesh(bottle_vertex_buffer, bottle_triangle_buffer);
+  auto overlap_vertex_buffer =
+      device.create_buffer<luisa::float3>(overlap_vertices.size());
+  auto overlap_triangle_buffer =
+      device.create_buffer<Triangle>(triangles.size());
+  auto overlap_mesh =
+      device.create_mesh(overlap_vertex_buffer, overlap_triangle_buffer);
   auto bounds_buffer = device.create_buffer<AABB>(curve_bounds.size());
   auto segment_buffer =
       device.create_buffer<CurveSegmentGpu>(curve_segments.size());
@@ -210,7 +255,7 @@ int main(int argc, char **argv) {
   auto curve_random_buffer = device.create_buffer<float>(curve_randoms.size());
   auto curves = device.create_procedural_primitive(bounds_buffer);
 
-  scene->heap = device.create_bindless_array(4u * geometry_bindless_stride);
+  scene->heap = device.create_bindless_array(5u * geometry_bindless_stride);
   scene->heap.emplace_on_update(0u, triangle_buffer);
   scene->heap.emplace_on_update(9u, vertex_buffer);
   scene->heap.emplace_on_update(curve_bindless_base, segment_buffer);
@@ -231,6 +276,10 @@ int main(int argc, char **argv) {
                                 bottle_triangle_buffer);
   scene->heap.emplace_on_update(3u * geometry_bindless_stride + 9u,
                                 bottle_vertex_buffer);
+  scene->heap.emplace_on_update(4u * geometry_bindless_stride,
+                                overlap_triangle_buffer);
+  scene->heap.emplace_on_update(4u * geometry_bindless_stride + 9u,
+                                overlap_vertex_buffer);
   scene->accel = device.create_accel();
   scene->accel.emplace_back(mesh, make_float4x4(1.0f), 0xffu, false, 0u);
   scene->accel.emplace_back(curves, make_float4x4(1.0f), 0xffu, 1u);
@@ -242,6 +291,10 @@ int main(int argc, char **argv) {
       bottle_mesh, bottle_luisa_transform, 0xffu, false, 4u);
   scene->accel.emplace_back(
       bottle_mesh, bottle_luisa_transform, 0xffu, false, 5u);
+  scene->accel.emplace_back(
+      overlap_mesh, to_luisa(overlap_a_transform), 0xffu, false, 6u);
+  scene->accel.emplace_back(
+      overlap_mesh, to_luisa(overlap_b_transform), 0xffu, false, 7u);
 
   auto output = device.create_buffer<luisa::float4>(record_count);
   const auto traversal = make_scene_traversal_component();
@@ -275,29 +328,39 @@ int main(int argc, char **argv) {
     light_primitive = select(light_primitive, 20474114u, test == 18u);
     source_object = select(source_object, 2372u, test == 19u);
     source_primitive = select(source_primitive, 3396299u, test == 19u);
-
     const auto ray_x = select(0.0f, 5.0f, test >= 10u);
     const auto ray_z = select(0.0f, 4.0f,
                               (test == 12u) | (test == 13u));
     const auto ray_maximum = select(10.0f, 4.0f, test >= 14u);
-    const auto bottle_test = test >= 16u;
+    const auto bottle_test = (test >= 16u) & (test <= 19u);
+    const auto overlap_test = test == 20u;
     const auto ray_origin = select(
-        make_float3(ray_x, 0.0f, ray_z),
-        make_float3(1.8301146030426025f,
-                    9.144867897033691f,
-                    1.5106611251831055f),
-        bottle_test);
+        select(make_float3(ray_x, 0.0f, ray_z),
+               make_float3(1.8301146030426025f,
+                           9.144867897033691f,
+                           1.5106611251831055f),
+               bottle_test),
+        make_float3(2.7035441398620605f,
+                    8.901592254638672f,
+                    1.234214186668396f),
+        overlap_test);
     const auto ray_direction = select(
-        make_float3(0.0f, 0.0f, 1.0f),
-        make_float3(-0.8146389126777649f,
-                    -0.5793101787567139f,
-                    -0.02762461081147194f),
-        bottle_test);
+        select(make_float3(0.0f, 0.0f, 1.0f),
+               make_float3(-0.8146389126777649f,
+                           -0.5793101787567139f,
+                           -0.02762461081147194f),
+               bottle_test),
+        make_float3(-0.23053720593452454f,
+                    -0.9327327013015747f,
+                    -0.27724069356918335f),
+        overlap_test);
     const auto ray = make_ray(
         ray_origin,
         ray_direction,
         0.0f,
-        select(ray_maximum, 125.67607116699219f, bottle_test));
+        select(select(ray_maximum, 125.67607116699219f, bottle_test),
+               101.64700317382812f,
+               overlap_test));
     const auto hit = traversal->closest_shadow(
         scene, ray, 0xffu,
         {.object = source_object, .primitive = source_primitive},
@@ -307,7 +370,53 @@ int main(int argc, char **argv) {
                               cast<float>(hit->prim),
                               select(0.0f, 1.0f, hit->is_procedural())));
 
-    $if(test >= 10u) {
+    $if(overlap_test) {
+      // This is the exact Barbershop floor configuration which exposed the
+      // HIPRT divergence. A primary hardware hit is only a broad-phase
+      // candidate: the Cycles predicate supplies both its distance and its
+      // barycentrics. Reconstruct the surface from that result, then cast the
+      // sampled-light shadow ray. Using the backend barycentrics here places
+      // the origin on the wrong side of the near-overlapping sibling and
+      // produces a false self-shadow.
+      const auto instance = scene->instance_buffer->read(hit->inst);
+      const auto geometry =
+          scene->geometry_buffer->read(instance.geometry_index);
+      const auto triangle =
+          scene->heap->buffer<Triangle>(geometry.bindless_base).read(hit->prim);
+      const auto positions = scene->heap->buffer<luisa::float3>(
+          geometry.bindless_base + 9u);
+      const auto p0 = positions.read(triangle.i0);
+      const auto p1 = positions.read(triangle.i1);
+      const auto p2 = positions.read(triangle.i2);
+      const auto object_position =
+          p0 + hit->bary.x * (p1 - p0) + hit->bary.y * (p2 - p0);
+      const auto world_position =
+          (scene->accel->instance_transform(hit->inst) *
+           make_float4(object_position, 1.0f))
+              .xyz();
+      const auto shadow_ray = make_ray(
+          world_position,
+          make_float3(0.5150954127311707f,
+                      0.6604911684989929f,
+                      0.5462856888771057f),
+          0.0f,
+          3.6035547256469727f);
+      const auto cycles_object = instance.cycles_object_index;
+      const auto cycles_primitive =
+          geometry.cycles_primitive_offset + hit->prim;
+      const auto shadow_hit = traversal->closest_shadow(
+          scene, shadow_ray, 0xffu,
+          {.object = cycles_object, .primitive = cycles_primitive},
+          ScenePrimitiveIdentity::invalid());
+      records.write(
+          test,
+          make_float4(cast<float>(cycles_object),
+                      cast<float>(cycles_primitive),
+                      select(0.0f, 1.0f, shadow_hit->miss()),
+                      hit->committed_ray_t));
+    };
+
+    $if((test >= 10u) & (test <= 19u)) {
       const auto instance = scene->instance_buffer->read(hit->inst);
       const auto geometry =
           scene->geometry_buffer->read(instance.geometry_index);
@@ -364,6 +473,8 @@ int main(int argc, char **argv) {
          << bottle_world_vertex_buffer.copy_from(
                 luisa::span{bottle_world_vertices})
          << bottle_triangle_buffer.copy_from(luisa::span{triangles})
+         << overlap_vertex_buffer.copy_from(luisa::span{overlap_vertices})
+         << overlap_triangle_buffer.copy_from(luisa::span{triangles})
          << bounds_buffer.copy_from(luisa::span{curve_bounds})
          << segment_buffer.copy_from(luisa::span{curve_segments})
          << key_buffer.copy_from(luisa::span{curve_keys})
@@ -372,6 +483,7 @@ int main(int argc, char **argv) {
          << curve_length_buffer.copy_from(luisa::span{curve_lengths})
          << curve_random_buffer.copy_from(luisa::span{curve_randoms})
          << scene->heap.update() << mesh.build() << bottle_mesh.build()
+         << overlap_mesh.build()
          << curves.build()
          << scene->accel.build() << shader(output).dispatch(record_count)
          << output.copy_to(luisa::span{actual}) << synchronize();
@@ -399,7 +511,9 @@ int main(int argc, char **argv) {
                                 luisa::float4{1.69952f, 2372.0f,
                                               3396299.0f, 5.0f},
                                 luisa::float4{1.6995198f, 2131.0f,
-                                              20474114.0f, 4.0f}};
+                                              20474114.0f, 4.0f},
+                                luisa::float4{5066.0f, 700000.0f, 1.0f,
+                                              4.4699316f}};
   for (auto index = std::size_t{0u}; index < expected.size(); ++index) {
     if (!equal_record(actual[index], expected[index])) {
       std::cerr << "scene traversal failed on " << backend << " at record "

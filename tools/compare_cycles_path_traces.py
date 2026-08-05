@@ -170,6 +170,9 @@ def compare_traces(
     for slot in SLOTS:
         reference_record = _record(reference, slot)
         actual_record = _record(actual, slot)
+        policies = comparison_policies(slot)
+        if all(policy == COMPARE_RESERVED for policy in policies):
+            continue
         field_prefix = (
             f"global.{slot.name}"
             if slot.scope == "global"
@@ -193,7 +196,7 @@ def compare_traces(
 
         for component, policy in zip(
             slot.components,
-            comparison_policies(slot),
+            policies,
         ):
             if policy == COMPARE_RESERVED:
                 continue

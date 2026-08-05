@@ -1,6 +1,6 @@
 # Diagnostic Cycles patch
 
-`0001-Cycles-add-Psycles-per-path-trace-oracle.patch` applies the version-1
+`0001-Cycles-add-Psycles-per-path-trace-oracle.patch` applies the version-2
 trace instrumentation to official Blender commit
 `29ccd5e2e824128c86fc6174c9c502c02212434a`.
 
