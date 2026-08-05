@@ -351,10 +351,19 @@ void GraphSurfaceImplementation::for_each_physical_closure(
             case compiler::ClosureOperation::glossy: {
                 const auto allocated_weight =
                     max(closure.weight, make_float3(0.0f));
-                closure.allocation_weight = sample_weight(allocated_weight);
+                const auto allocation_weight =
+                    sample_weight(allocated_weight);
                 const auto allocated =
-                    closure.allocation_weight >=
-                    cycles_closure::closure_weight_cutoff;
+                    reflective_caustics &
+                    (allocation_weight >=
+                        cycles_closure::closure_weight_cutoff);
+                // Cycles' standalone reflective closures apply the current
+                // path's caustics predicate before bsdf_alloc(). Preserve
+                // that allocation topology: a disabled closure must not
+                // enter the closure count, mixture PDF, runtime flags, or
+                // any collector merely as a zero-contribution record.
+                closure.allocation_weight = select(
+                    0.0f, allocation_weight, allocated);
                 closure.normal = maybe_ensure_valid_specular_reflection(
                     point, incoming, graph_closure.normal);
                 // Standalone Glossy stores authored Color in the Cycles
@@ -371,7 +380,7 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                     allocated);
                 closure.albedo = closure.weight;
                 closure.sample_weight = select(0.0f,
-                    closure.allocation_weight *
+                    allocation_weight *
                         sample_weight(energy.darkening),
                     allocated);
                 closure.evaluation_scale = energy.energy_scale;

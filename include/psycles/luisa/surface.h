@@ -149,10 +149,11 @@ struct SurfaceQuery {
     // Cycles Filter Glossy widens microfacet alpha after closure setup. Zero
     // leaves the material closure unchanged.
     Float glossy_filter_roughness;
-    // Cycles allocates reflective Principled layers only when reflective
-    // caustics are enabled for the current path. This is an allocation
-    // predicate, not merely a lobe-selection mask: Coat/specular layering of
-    // lower closures also depends on it.
+    // Cycles allocates reflective closures only when reflective caustics are
+    // enabled for the current path. This is an allocation predicate, not
+    // merely a lobe-selection mask: standalone Glossy must disappear from
+    // the closure mixture, while Coat/specular layering of lower Principled
+    // closures also depends on it.
     Bool reflective_caustics{true};
     // Transmission closures have an independent Cycles caustics gate. Glass
     // remains one allocated closure when either reflective or refractive
