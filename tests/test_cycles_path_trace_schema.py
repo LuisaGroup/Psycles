@@ -101,6 +101,32 @@ class CyclesPathTraceSchemaTests(unittest.TestCase):
             ("u", "v", "selection_rescaled"),
         )
 
+    def test_nee_phase_slots_are_typed_float32_gates(self) -> None:
+        schema: Any = trace_schema
+        event_slots = {
+            slot.name: slot
+            for slot in schema.SLOTS
+            if slot.scope == "event" and slot.event == 0
+        }
+        names = (
+            "nee_bsdf",
+            "nee_diffuse",
+            "nee_glossy",
+            "nee_weighted_bsdf",
+            "nee_light_shader",
+            "nee_unshadowed",
+            "nee_contribution",
+        )
+        self.assertEqual(
+            [event_slots[name].index for name in names],
+            list(range(49, 56)),
+        )
+        for name in names:
+            self.assertEqual(
+                trace_schema.comparison_policies(event_slots[name]),
+                (trace_schema.COMPARE_FLOAT32,) * 3,
+            )
+
     def test_schema_document_is_json_shaped(self) -> None:
         schema: Any = trace_schema
         document = schema.schema_document()

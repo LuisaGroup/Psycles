@@ -263,11 +263,11 @@ class AnalyticLightingComponent final : public DirectLightingComponent {
                 const auto constant_emission =
                     (light.flags &
                      light_flag_constant_emission) != 0u;
+                Float3 light_shader_factor = make_float3(1.0f);
                 $if(constant_emission) {
-                    light_radiance *=
-                        sample
-                            .analytic_light_constant_shader(
-                                light);
+                    light_radiance *= sample
+                                          .analytic_light_constant_shader(
+                                              light);
                 };
                 const auto evaluation = evaluate_light_surface(
                     surface_tag,
@@ -278,7 +278,7 @@ class AnalyticLightingComponent final : public DirectLightingComponent {
                 const auto bsdf_nonzero =
                     any(evaluation.f != 0.0f);
                 $if((!constant_emission) & bsdf_nonzero) {
-                    light_radiance *= analytic_light_shader(
+                    light_shader_factor = analytic_light_shader(
                         light,
                         light_index,
                         light_position,
@@ -293,61 +293,88 @@ class AnalyticLightingComponent final : public DirectLightingComponent {
                     bounce,
                     {.distance = light_distance,
                      .bsdf_pdf = evaluation.pdf,
-                     .mis_weight = cycles_mis_weight});
-                const auto shadow = make_surface_shadow_origin(wi);
-                const auto finite_offset = light_position - shadow.position;
-                const auto finite_distance =
-                    sqrt(max(length_squared(finite_offset), 1.0e-20f));
-                const auto finite_direction = finite_offset / finite_distance;
-                const auto distant = light.type == static_cast<std::uint32_t>(
-                                                       LightType::distant);
-                const auto shadow_direction =
-                    select(finite_direction, wi, distant);
-                const auto shadow_maximum =
-                    select(finite_distance, ray_maximum, distant);
-                Var<luisa::compute::Ray> shadow_ray = make_ray(
-                    shadow.position, shadow_direction, 0.0f, shadow_maximum);
-                Float3 shadow_transmittance =
-                    trace_shadow(shadow_ray,
-                                 select(surface_ray::invalid_primitive,
-                                        surface.cycles_object_index,
-                                        shadow.skip_self),
-                                 select(surface_ray::invalid_primitive,
-                                        surface.cycles_primitive_index,
-                                        shadow.skip_self),
-                                 surface_ray::invalid_primitive,
-                                 surface_ray::invalid_primitive,
-                                 kernel_parameters.transparent_max_bounces,
-                                 pack_shader_evaluation_state(
-                                     cycles_path_state::shadow_shader_state(
-                                         path_depth,
-                                         diffuse_depth,
-                                         glossy_depth,
-                                         transparent_depth,
-                                         transmission_depth)));
-                $if(any(shadow_transmittance > 0.0f)) {
-                    const auto forward_intersectable =
-                        (light.flags & light_flag_forward_intersectable) != 0u;
-                    Float mis_weight =
-                        select(1.0f, cycles_mis_weight, forward_intersectable);
-                    Float3 unshadowed_contribution =
-                        evaluation.f * light_radiance *
-                        (mis_weight / max(light_pdf, 1.0e-20f));
-                    Float roulette_weight = sample_light_roulette(
-                        unshadowed_contribution, light_terminate_sample);
-                    Float3 contribution = clamp_contribution(
-                        throughput * unshadowed_contribution *
-                            shadow_transmittance * roulette_weight,
-                        path_depth);
-                    sample.accumulate_radiance(
-                        contribution);
-                    accumulate_light_pass(split_nee_light(contribution,
-                                                          evaluation.f,
-                                                          evaluation.diffuse_f,
-                                                          evaluation.glossy_f,
-                                                          path_diffuse_weight,
-                                                          path_glossy_weight,
-                                                          path_depth));
+                     .mis_weight = cycles_mis_weight,
+                     .bsdf = evaluation.f,
+                     .diffuse = evaluation.diffuse_f,
+                     .glossy = evaluation.glossy_f});
+                const auto forward_intersectable =
+                    (light.flags & light_flag_forward_intersectable) != 0u;
+                const auto mis_weight =
+                    select(1.0f, cycles_mis_weight, forward_intersectable);
+                const auto weighted_bsdf =
+                    evaluation.f * light_radiance *
+                    (mis_weight / max(light_pdf, 1.0e-20f));
+                _trace->record_weighted_bsdf(
+                    bounce, weighted_bsdf);
+                $if(any(weighted_bsdf != 0.0f)) {
+                    const auto unshadowed =
+                        weighted_bsdf * light_shader_factor;
+                    const auto roulette_weight = sample_light_roulette(
+                        unshadowed, light_terminate_sample);
+                    const auto surviving_unshadowed =
+                        unshadowed * roulette_weight;
+                    _trace->record_transport(
+                        bounce,
+                        {.light_shader = light_shader_factor,
+                         .unshadowed =
+                             throughput * surviving_unshadowed});
+                    $if(any(surviving_unshadowed != 0.0f)) {
+                        const auto shadow = make_surface_shadow_origin(wi);
+                        const auto finite_offset =
+                            light_position - shadow.position;
+                        const auto finite_distance = sqrt(max(
+                            length_squared(finite_offset), 1.0e-20f));
+                        const auto finite_direction =
+                            finite_offset / finite_distance;
+                        const auto distant =
+                            light.type == static_cast<std::uint32_t>(
+                                              LightType::distant);
+                        const auto shadow_direction =
+                            select(finite_direction, wi, distant);
+                        const auto shadow_maximum =
+                            select(finite_distance, ray_maximum, distant);
+                        Var<luisa::compute::Ray> shadow_ray = make_ray(
+                            shadow.position,
+                            shadow_direction,
+                            0.0f,
+                            shadow_maximum);
+                        const auto shadow_transmittance = trace_shadow(
+                            shadow_ray,
+                            select(surface_ray::invalid_primitive,
+                                   surface.cycles_object_index,
+                                   shadow.skip_self),
+                            select(surface_ray::invalid_primitive,
+                                   surface.cycles_primitive_index,
+                                   shadow.skip_self),
+                            surface_ray::invalid_primitive,
+                            surface_ray::invalid_primitive,
+                            kernel_parameters.transparent_max_bounces,
+                            pack_shader_evaluation_state(
+                                cycles_path_state::shadow_shader_state(
+                                    path_depth,
+                                    diffuse_depth,
+                                    glossy_depth,
+                                    transparent_depth,
+                                    transmission_depth)));
+                        $if(any(shadow_transmittance > 0.0f)) {
+                            const auto unclamped_contribution =
+                                throughput * surviving_unshadowed *
+                                shadow_transmittance;
+                            _trace->record_contribution(
+                                bounce, unclamped_contribution);
+                            const auto contribution = clamp_contribution(
+                                unclamped_contribution, path_depth);
+                            sample.accumulate_radiance(contribution);
+                            accumulate_light_pass(split_nee_light(
+                                contribution,
+                                evaluation.f,
+                                evaluation.diffuse_f,
+                                evaluation.glossy_f,
+                                path_diffuse_weight,
+                                path_glossy_weight,
+                                path_depth));
+                        };
+                    };
                 };
             }
             $else {

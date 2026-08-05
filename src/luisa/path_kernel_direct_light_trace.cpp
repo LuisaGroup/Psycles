@@ -19,6 +19,19 @@ class NullDirectLightTraceRecorder final
         PathBounceContext &,
         const DirectLightEvaluationRecord &)
         const noexcept override {}
+
+    void record_weighted_bsdf(
+        PathBounceContext &,
+        Float3) const noexcept override {}
+
+    void record_transport(
+        PathBounceContext &,
+        const DirectLightTransportRecord &)
+        const noexcept override {}
+
+    void record_contribution(
+        PathBounceContext &,
+        Float3) const noexcept override {}
 };
 
 class CyclesDirectLightTraceRecorder final
@@ -90,6 +103,50 @@ class CyclesDirectLightTraceRecorder final
                 record.distance,
                 record.bsdf_pdf,
                 record.mis_weight));
+        bounce.sample.trace_write_event(
+            bounce.path_step,
+            path_trace_schema::EventSlot::nee_bsdf,
+            record.bsdf);
+        bounce.sample.trace_write_event(
+            bounce.path_step,
+            path_trace_schema::EventSlot::nee_diffuse,
+            record.diffuse);
+        bounce.sample.trace_write_event(
+            bounce.path_step,
+            path_trace_schema::EventSlot::nee_glossy,
+            record.glossy);
+    }
+
+    void record_weighted_bsdf(
+        PathBounceContext &bounce,
+        Float3 weighted_bsdf) const noexcept override {
+        bounce.sample.trace_write_event(
+            bounce.path_step,
+            path_trace_schema::EventSlot::nee_weighted_bsdf,
+            weighted_bsdf);
+    }
+
+    void record_transport(
+        PathBounceContext &bounce,
+        const DirectLightTransportRecord &record)
+        const noexcept override {
+        bounce.sample.trace_write_event(
+            bounce.path_step,
+            path_trace_schema::EventSlot::nee_light_shader,
+            record.light_shader);
+        bounce.sample.trace_write_event(
+            bounce.path_step,
+            path_trace_schema::EventSlot::nee_unshadowed,
+            record.unshadowed);
+    }
+
+    void record_contribution(
+        PathBounceContext &bounce,
+        Float3 contribution) const noexcept override {
+        bounce.sample.trace_write_event(
+            bounce.path_step,
+            path_trace_schema::EventSlot::nee_contribution,
+            contribution);
     }
 };
 

@@ -124,13 +124,13 @@ _EVENT_LAYOUT = (
         "light_shader",
         ("shader_low16", "shader_high16", "reserved"),
     ),
-    ("reserved_41", ("x", "y", "z")),
-    ("reserved_42", ("x", "y", "z")),
-    ("reserved_43", ("x", "y", "z")),
-    ("reserved_44", ("x", "y", "z")),
-    ("reserved_45", ("x", "y", "z")),
-    ("reserved_46", ("x", "y", "z")),
-    ("reserved_47", ("x", "y", "z")),
+    ("nee_bsdf", ("r", "g", "b")),
+    ("nee_diffuse", ("r", "g", "b")),
+    ("nee_glossy", ("r", "g", "b")),
+    ("nee_weighted_bsdf", ("r", "g", "b")),
+    ("nee_light_shader", ("r", "g", "b")),
+    ("nee_unshadowed", ("r", "g", "b")),
+    ("nee_contribution", ("r", "g", "b")),
 )
 
 
@@ -241,13 +241,13 @@ _EVENT_COMPARISON = {
         COMPARE_EXACT,
         COMPARE_RESERVED,
     ),
-    "reserved_41": (COMPARE_RESERVED,) * 3,
-    "reserved_42": (COMPARE_RESERVED,) * 3,
-    "reserved_43": (COMPARE_RESERVED,) * 3,
-    "reserved_44": (COMPARE_RESERVED,) * 3,
-    "reserved_45": (COMPARE_RESERVED,) * 3,
-    "reserved_46": (COMPARE_RESERVED,) * 3,
-    "reserved_47": (COMPARE_RESERVED,) * 3,
+    "nee_bsdf": (COMPARE_FLOAT32,) * 3,
+    "nee_diffuse": (COMPARE_FLOAT32,) * 3,
+    "nee_glossy": (COMPARE_FLOAT32,) * 3,
+    "nee_weighted_bsdf": (COMPARE_FLOAT32,) * 3,
+    "nee_light_shader": (COMPARE_FLOAT32,) * 3,
+    "nee_unshadowed": (COMPARE_FLOAT32,) * 3,
+    "nee_contribution": (COMPARE_FLOAT32,) * 3,
 }
 
 
