@@ -27,7 +27,6 @@ import sys
 import traceback
 from typing import Any
 
-import bmesh
 import bpy
 import numpy as np
 
@@ -361,7 +360,6 @@ def _geometry(
         return None
     if mesh is None:
         return None
-    owned_mesh = None
     try:
         needs_pointiness = any(
             _material_uses_pointiness(slot.material)
@@ -380,36 +378,10 @@ def _geometry(
                 for edge in mesh.edges
                 for vertex in edge.vertices
             )
-        # Mesh.calc_tangents rejects n-gons, while Cycles and Psycles both
-        # consume triangles. Triangulate only n-gons on Blender's temporary
-        # evaluated mesh so tangent generation and exported Accel topology
-        # share the same corner-domain UV/color data. Existing triangles and
-        # quads are left untouched.
-        if any(len(polygon.vertices) > 4 for polygon in mesh.polygons):
-            # Never edit the depsgraph-owned temporary mesh in place: doing
-            # so can leave its CustomData layer pointers stale. An owned ID
-            # copy keeps UV/color corner layers valid through BMesh writeback.
-            owned_mesh = mesh.copy()
-            mesh = owned_mesh
-            edit_mesh = bmesh.new()
-            try:
-                edit_mesh.from_mesh(mesh)
-                ngon_faces = [
-                    face
-                    for face in edit_mesh.faces
-                    if len(face.verts) > 4
-                ]
-                if ngon_faces:
-                    bmesh.ops.triangulate(
-                        edit_mesh,
-                        faces=ngon_faces,
-                        quad_method="FIXED",
-                        ngon_method="BEAUTY",
-                    )
-                    edit_mesh.to_mesh(mesh)
-                    mesh.update()
-            finally:
-                edit_mesh.free()
+        # Cycles copies Blender's evaluated Mesh::corner_tris verbatim. The
+        # Python loop-triangle cache is the same ordered topology; mutating
+        # n-gons through BMesh here would change both triangle identity and
+        # the tessellation consumed by true displacement.
         mesh.calc_loop_triangles()
         if not mesh.loop_triangles:
             return None
@@ -427,16 +399,6 @@ def _geometry(
             str, list[tuple[float, float, float, float]]
         ] = {}
         for uv_layer_name in uv_layer_names:
-            has_tangents = False
-            try:
-                mesh.calc_tangents(uvmap=uv_layer_name)
-                has_tangents = True
-            except RuntimeError:
-                # Match Cycles' missing tangent-attribute behavior. A zero
-                # tangent is consumed as "use sd->N" by Normal Map.
-                pass
-            # calc_tangents may reallocate loop CustomData. Reacquire the
-            # layer by name after every call before copying its values.
             uv_layer = mesh.uv_layers.get(uv_layer_name)
             if uv_layer is None:
                 continue
@@ -445,16 +407,12 @@ def _geometry(
                 for item in uv_layer.data
             ]
             tangent_by_layer[uv_layer_name] = [
-                (
-                    float(loop.tangent[0]),
-                    float(loop.tangent[1]),
-                    float(loop.tangent[2]),
-                    float(loop.bitangent_sign),
-                )
-                if has_tangents
-                else (0.0, 0.0, 0.0, 0.0)
-                for loop in mesh.loops
+                (0.0, 0.0, 0.0, 0.0) for _loop in mesh.loops
             ]
+        # Tangents are derived data, not source topology. The Luisa scene
+        # stage regenerates every standard and named frame with the same
+        # MikkTSpace implementation as Cycles after loading these raw UVs,
+        # and repeats that operation after true displacement.
         positions = array.array("f")
         normals = array.array("f")
         uvs = array.array("f")
@@ -718,8 +676,6 @@ def _geometry(
             ],
         }
     finally:
-        if owned_mesh is not None:
-            bpy.data.meshes.remove(owned_mesh)
         evaluated.to_mesh_clear()
 
 
