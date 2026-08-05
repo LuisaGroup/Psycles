@@ -71,10 +71,13 @@ shadow ray with an exact source identity it:
    for hardware candidates; and
 5. uses the hardware ray query as the broad phase for the rest of the scene.
 
-This is source-class completion, not a distance tolerance. It is restricted to
-shadow traversal. Continuation rays already use Cycles' geometric origin
-offset and retain the ordinary hardware-candidate path; a topological source
-seed must not replace that geometric contract.
+This is source-class completion, not a distance tolerance. A subsequent
+CPU/HIP-consensus trace demonstrated that the same closed-endpoint rule also
+applies to continuation rays whenever Cycles' source-triangle test preserves
+the original surface position. The current implementation therefore completes
+both traversal kinds, while still applying the actual ray and exact triangle
+predicate so a geometrically offset origin cannot be forced to hit. See the
+[continuation source-support validation](../barbershop-continuation-source-support/README.md).
 
 Scene-table normalization, object-map validation, uploads, heap updates, and
 acceleration builds now live in the real `SceneTableUploadComponent` `.h/.cpp`
