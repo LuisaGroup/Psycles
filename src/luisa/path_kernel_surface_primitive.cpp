@@ -1,5 +1,6 @@
 #include "path_kernel_surface_primitive.h"
 
+#include "cycles_triangle_surface_component.h"
 #include "path_kernel_curve_geometry.h"
 #include "path_kernel_triangle_geometry.h"
 
@@ -14,11 +15,14 @@ class CyclesSurfacePrimitiveGeometryComponent final
 private:
   std::shared_ptr<const TriangleGeometryComponent> _triangles;
   std::shared_ptr<const CurveGeometryComponent> _curves;
+  std::shared_ptr<const CyclesTriangleSurfaceComponent>
+      _triangle_surface;
 
 public:
   CyclesSurfacePrimitiveGeometryComponent()
       : _triangles{make_triangle_geometry_component()},
-        _curves{make_curve_geometry_component()} {}
+        _curves{make_curve_geometry_component()},
+        _triangle_surface{make_cycles_triangle_surface_component()} {}
 
   SurfacePrimitiveGeometryContext
   emit(const std::shared_ptr<LuisaSceneData> &scene,
@@ -38,9 +42,15 @@ public:
     Float3 p0 = make_float3(0.0f);
     Float3 p1 = make_float3(0.0f);
     Float3 p2 = make_float3(0.0f);
+    Float3 cycles_p0 = make_float3(0.0f);
+    Float3 cycles_p1 = make_float3(0.0f);
+    Float3 cycles_p2 = make_float3(0.0f);
     Float3 n0 = make_float3(0.0f);
     Float3 n1 = make_float3(0.0f);
     Float3 n2 = make_float3(0.0f);
+    Float3 cycles_n0 = make_float3(0.0f);
+    Float3 cycles_n1 = make_float3(0.0f);
+    Float3 cycles_n2 = make_float3(0.0f);
     Float3 undisplaced_p0 = make_float3(0.0f);
     Float3 undisplaced_p1 = make_float3(0.0f);
     Float3 undisplaced_p2 = make_float3(0.0f);
@@ -78,6 +88,7 @@ public:
     Float2 barycentric_dy = make_float2(0.0f);
     Float random_per_island = 0.0f;
     Bool back_facing = false;
+    Bool cycles_transform_applied = false;
     Bool triangle_smooth = false;
     Float curve_intercept = 0.0f;
     Float curve_length = 0.0f;
@@ -138,6 +149,8 @@ public:
       p0 = triangle.p0;
       p1 = triangle.p1;
       p2 = triangle.p2;
+      cycles_transform_applied =
+          instance.cycles_transform_applied != 0u;
       n0 = triangle.n0;
       n1 = triangle.n1;
       n2 = triangle.n2;
@@ -150,34 +163,42 @@ public:
       undisplaced_tangent0 = triangle.undisplaced_tangent0;
       undisplaced_tangent1 = triangle.undisplaced_tangent1;
       undisplaced_tangent2 = triangle.undisplaced_tangent2;
-      wp0 = (object_to_world * make_float4(p0, 1.0f)).xyz();
-      wp1 = (object_to_world * make_float4(p1, 1.0f)).xyz();
-      wp2 = (object_to_world * make_float4(p2, 1.0f)).xyz();
-      const auto object_geometric_normal = safe_normalize(
-          cross(p1 - p0, p2 - p0), make_float3(0.0f, 0.0f, 1.0f));
-      geometric_normal = safe_normalize(
-          (normal_to_world * make_float4(object_geometric_normal, 0.0f)).xyz(),
-          -ray->direction());
-      object_shading_normal =
-          select(object_geometric_normal,
-                 triangle_interpolate(hit->bary, n0, n1, n2),
-                 primitive.smooth);
+      const auto surface = _triangle_surface->resolve(
+          {.object_to_world = object_to_world,
+           .normal_to_world = normal_to_world,
+           .transform_applied = cycles_transform_applied,
+           .barycentric = hit->bary,
+           .ray_direction = ray->direction(),
+           .smooth = primitive.smooth,
+           .p0 = p0,
+           .p1 = p1,
+           .p2 = p2,
+           .final_p0 = triangle.cycles_intersection_p0,
+           .final_p1 = triangle.cycles_intersection_p1,
+           .final_p2 = triangle.cycles_intersection_p2,
+           .n0 = n0,
+           .n1 = n1,
+           .n2 = n2},
+          safe_normalize);
+      cycles_p0 = surface.p0;
+      cycles_p1 = surface.p1;
+      cycles_p2 = surface.p2;
+      cycles_n0 = surface.n0;
+      cycles_n1 = surface.n1;
+      cycles_n2 = surface.n2;
+      wp0 = surface.world_p0;
+      wp1 = surface.world_p1;
+      wp2 = surface.world_p2;
+      object_position = surface.object_position;
+      hit_position = surface.position;
+      object_shading_normal = surface.object_shading_normal;
+      shading_normal = surface.shading_normal;
+      geometric_normal = surface.geometric_normal;
+      back_facing = surface.back_facing;
       const auto packed_object_tangent = triangle_interpolate(
           hit->bary, triangle.tangent0, triangle.tangent1, triangle.tangent2);
       object_tangent = packed_object_tangent.xyz();
       tangent_sign = packed_object_tangent.w;
-      shading_normal = safe_normalize(
-          (normal_to_world * make_float4(object_shading_normal, 0.0f)).xyz(),
-          geometric_normal);
-      back_facing = dot(geometric_normal, -ray->direction()) < 0.0f;
-      geometric_normal = select(geometric_normal, -geometric_normal, back_facing);
-      shading_normal = select(shading_normal, -shading_normal, back_facing);
-      shading_normal = select(shading_normal, -shading_normal,
-                              dot(shading_normal, geometric_normal) < 0.0f);
-      object_position = p0 + hit->bary.x * (p1 - p0) +
-                        hit->bary.y * (p2 - p0);
-      hit_position =
-          (object_to_world * make_float4(object_position, 1.0f)).xyz();
       tangent = safe_normalize(
           (object_to_world * make_float4(object_tangent, 0.0f)).xyz(),
           safe_normalize((wp1 - wp0) -
@@ -340,8 +361,12 @@ public:
           packed_undisplaced_tangent.w;
     };
 
-    const auto object_hit_position =
+    const auto transformed_object_hit_position =
         (world_to_object * make_float4(hit_position, 1.0f)).xyz();
+    const auto object_hit_position = select(
+        transformed_object_hit_position,
+        hit_position,
+        cycles_transform_applied);
     SurfacePoint point{
         .position = hit_position,
         .object_position = object_position,
@@ -419,12 +444,12 @@ public:
             0u,
         .back_facing = back_facing};
     return {.instance = std::move(instance),
-            .p0 = std::move(p0),
-            .p1 = std::move(p1),
-            .p2 = std::move(p2),
-            .n0 = std::move(n0),
-            .n1 = std::move(n1),
-            .n2 = std::move(n2),
+            .p0 = std::move(cycles_p0),
+            .p1 = std::move(cycles_p1),
+            .p2 = std::move(cycles_p2),
+            .n0 = std::move(cycles_n0),
+            .n1 = std::move(cycles_n1),
+            .n2 = std::move(cycles_n2),
             .object_to_world = object_to_world,
             .world_to_object = world_to_object,
             .wp0 = std::move(wp0),
@@ -434,6 +459,8 @@ public:
             .object_hit_position = std::move(object_hit_position),
             .differential_radius = differential_radius,
             .is_curve = is_curve,
+            .cycles_transform_applied =
+                std::move(cycles_transform_applied),
             .triangle_smooth = std::move(triangle_smooth),
             .surface_tag = std::move(surface_tag),
             .cycles_surface_shader = std::move(cycles_surface_shader),

@@ -63,6 +63,9 @@ public:
         const auto positions =
             scene->heap->buffer<luisa::float3>(
                 geometry.bindless_base + 1u);
+        const auto cycles_intersection_positions =
+            scene->heap->buffer<luisa::float3>(
+                geometry.bindless_base + 9u);
         const auto normals =
             scene->heap->buffer<luisa::float3>(
                 geometry.bindless_base + 2u);
@@ -89,6 +92,12 @@ public:
             .p0 = positions.read(triangle.i0),
             .p1 = positions.read(triangle.i1),
             .p2 = positions.read(triangle.i2),
+            .cycles_intersection_p0 =
+                cycles_intersection_positions.read(triangle.i0),
+            .cycles_intersection_p1 =
+                cycles_intersection_positions.read(triangle.i1),
+            .cycles_intersection_p2 =
+                cycles_intersection_positions.read(triangle.i2),
             .n0 = normals.read(normal_i0),
             .n1 = normals.read(normal_i1),
             .n2 = normals.read(normal_i2),

@@ -42,3 +42,16 @@ target_include_directories(
     psycles_luisa_scene_traversal_tests
     PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
+
+psycles_add_luisa_backend_test(
+    TARGET
+        psycles_luisa_transform_applied_surface_tests
+    SOURCE
+        tests/test_luisa_transform_applied_surface.cpp
+    TEST_STEM
+        luisa_transform_applied_surface
+    LIBRARIES Psycles::luisa)
+target_include_directories(
+    psycles_luisa_transform_applied_surface_tests
+    PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")

@@ -117,6 +117,8 @@ public:
             .object_hit_position = std::move(primitive.object_hit_position),
             .differential_radius = primitive.differential_radius,
             .is_curve = primitive.is_curve,
+            .cycles_transform_applied =
+                primitive.cycles_transform_applied,
             .triangle_smooth = std::move(primitive.triangle_smooth),
             .shadow_shading_normal = std::move(shadow_shading_normal),
             .surface_tag = std::move(primitive.surface_tag),
@@ -139,8 +141,12 @@ Float3 SurfaceGeometryContext::make_ray_origin(Float3 direction) const noexcept 
   $if(!is_curve) {
     const Float3 object_direction =
         (world_to_object * make_float4(direction, 0.0f)).xyz();
+    const Float3 cycles_origin = select(
+        object_hit_position, hit_position, cycles_transform_applied);
+    const Float3 cycles_direction = select(
+        object_direction, direction, cycles_transform_applied);
     origin = surface_ray::origin_with_explicit_self_exclusion(
-        hit_position, geometric_normal, object_hit_position, object_direction,
+        hit_position, geometric_normal, cycles_origin, cycles_direction,
         p0, p1, p2);
   };
   return origin;
@@ -154,8 +160,8 @@ SurfaceGeometryContext::make_shadow_origin(Float3 direction) const noexcept {
     const auto triangle = surface_ray::surface_shadow_origin(
         hit_position, shadow_shading_normal, geometric_normal, direction,
         instance.shadow_terminator_geometry_offset, triangle_smooth,
-        object_to_world, world_to_object, bounce.hit->bary, p0, p1, p2, n0, n1,
-        n2);
+        object_to_world, world_to_object, cycles_transform_applied,
+        bounce.hit->bary, p0, p1, p2, n0, n1, n2);
     position = triangle.position;
     skip_self = triangle.skip_self;
   };

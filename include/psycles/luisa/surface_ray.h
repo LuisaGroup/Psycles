@@ -103,14 +103,16 @@ origin_with_explicit_self_exclusion(
         exact_origin);
 }
 
-// Cycles' parabolic smooth-surface construction from
-// kernel/light/sample.h. Vertex positions and normals are in object space;
-// the unnormalized interpolated normal is transformed as a direction so its
-// scale carries the object-to-world distance conversion exactly as Cycles
-// does.
+// Cycles' parabolic smooth-surface construction from kernel/light/sample.h.
+// Positions and normals use the same representation as traversal: object
+// space for regular instances, or final world space after Cycles has applied
+// the object transform to a single-user mesh. In the former case the
+// unnormalized interpolated normal is transformed as a direction so its scale
+// carries the object-to-world distance conversion exactly as Cycles does.
 [[nodiscard]] inline luisa::compute::Float3
 smooth_surface_offset(
     luisa::compute::Float4x4 object_to_world,
+    luisa::compute::Bool transform_applied,
     luisa::compute::Float2 barycentric,
     luisa::compute::Float3 p0,
     luisa::compute::Float3 p1,
@@ -127,11 +129,13 @@ smooth_surface_offset(
         p0 * u + p1 * v + p2 * w;
     const auto object_normal =
         n0 * u + n1 * v + n2 * w;
-    const auto world_normal =
+    const auto transformed_normal =
         (object_to_world *
          luisa::compute::make_float4(
              object_normal, 0.0f))
             .xyz();
+    const auto world_normal = luisa::compute::select(
+        transformed_normal, object_normal, transform_applied);
 
     const auto a = dot(n2 - n0, p0 - p2);
     const auto b = dot(n2 - n1, p1 - p2);
@@ -205,6 +209,7 @@ shadow_terminator_origin(
     luisa::compute::Float geometry_offset,
     luisa::compute::Bool smooth_triangle,
     luisa::compute::Float4x4 object_to_world,
+    luisa::compute::Bool transform_applied,
     luisa::compute::Float2 barycentric,
     luisa::compute::Float3 p0,
     luisa::compute::Float3 p1,
@@ -244,6 +249,7 @@ shadow_terminator_origin(
         (amount > 0.0f);
     const auto offset = smooth_surface_offset(
         object_to_world,
+        transform_applied,
         barycentric,
         p0,
         p1,
@@ -279,6 +285,7 @@ shadow_terminator_origin(
     luisa::compute::Bool smooth_triangle,
     luisa::compute::Float4x4 object_to_world,
     luisa::compute::Float4x4 world_to_object,
+    luisa::compute::Bool transform_applied,
     luisa::compute::Float2 barycentric,
     luisa::compute::Float3 p0,
     luisa::compute::Float3 p1,
@@ -294,6 +301,7 @@ shadow_terminator_origin(
         geometry_offset,
         smooth_triangle,
         object_to_world,
+        transform_applied,
         barycentric,
         p0,
         p1,
@@ -301,16 +309,20 @@ shadow_terminator_origin(
         n0,
         n1,
         n2);
-    const auto object_origin =
+    const auto transformed_origin =
         (world_to_object *
          luisa::compute::make_float4(
              origin.position, 1.0f))
             .xyz();
-    const auto object_direction =
+    const auto transformed_direction =
         (world_to_object *
          luisa::compute::make_float4(
              light_direction, 0.0f))
             .xyz();
+    const auto object_origin = luisa::compute::select(
+        transformed_origin, origin.position, transform_applied);
+    const auto object_direction = luisa::compute::select(
+        transformed_direction, light_direction, transform_applied);
     const auto offset_origin =
         origin_with_explicit_self_exclusion(
             origin.position,
