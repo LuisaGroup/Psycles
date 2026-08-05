@@ -106,11 +106,6 @@ struct CoincidentTriangleHit {
 class UnifiedSceneTraversalComponent final : public SceneTraversalComponent {
 
 private:
-  enum class QueryKind {
-    continuation,
-    shadow,
-  };
-
   std::shared_ptr<const CurvePrimitiveComponent> _curves;
   std::shared_ptr<const CurveRibbonComponent> _ribbons;
   std::shared_ptr<const PrimitiveMaterialComponent> _materials;
@@ -239,8 +234,7 @@ private:
         const Var<luisa::compute::Ray> &ray,
         Expr<std::uint32_t> visibility_mask,
         const ScenePrimitiveIdentity &source,
-        const ScenePrimitiveIdentity &light,
-        QueryKind query_kind) const noexcept {
+        const ScenePrimitiveIdentity &light) const noexcept {
     CyclesClosestHitOrder closest;
     Var<luisa::compute::CommittedHit> resolved;
     resolved->inst = surface_ray::invalid_primitive;
@@ -392,42 +386,43 @@ private:
           };
         };
 
-    if (query_kind == QueryKind::shadow) {
-      // Cycles shadow traversal skips only the exact source (object,
-      // primitive). A distinct object in the same exact-support class
-      // therefore remains a valid blocker at the closed t == 0 endpoint.
-      // Hardware ray queries are only a broad phase and are not required to
-      // report that boundary candidate uniformly, so seed shadow reduction
-      // from the source class itself. Continuation rays retain the backend
-      // candidate path: their origin has already undergone Cycles' geometric
-      // ray offset and must not be replaced by a topological endpoint seed.
-      const auto source_acceleration =
-          source_acceleration_identity(scene, source);
-      $if(source_acceleration.valid) {
-        const auto source_instance =
-            scene->instance_buffer->read(source_acceleration.instance);
-        $if(max(source_instance.coincident_count, 1u) > 1u) {
-          const auto group = resolve_coincident_triangle(
-              scene, ray, visibility_mask, source, light,
-              source_acceleration.instance,
-              source_acceleration.primitive);
-          const auto accepted =
-              group.valid &
-              closest.accepts(group.distance, group.object,
-                              group.cycles_primitive, group.type_order);
-          $if(accepted) {
-            closest.select(group.distance, group.object,
-                           group.cycles_primitive, group.type_order);
-            resolved->inst = group.instance;
-            resolved->prim = group.primitive;
-            resolved->bary = group.barycentric;
-            resolved->hit_type = static_cast<std::uint32_t>(
-                luisa::compute::HitType::Surface);
-            resolved->committed_ray_t = group.distance;
-          };
+    // Explicit self exclusion and geometric origin offset are independent
+    // parts of the Cycles ray contract. If Cycles' exact source-triangle test
+    // certifies the origin, it deliberately leaves the ray at the surface and
+    // rejects only the source identity. Distinct instances with bit-identical
+    // support therefore remain eligible at the closed t == 0 endpoint for
+    // continuation as well as shadow rays. Hardware traversal is not required
+    // to report that endpoint consistently, so complete its broad-phase
+    // candidates from the source support class. This is not a topological
+    // forced hit: resolve_coincident_triangle still applies the actual ray,
+    // visibility, exclusions, and Cycles Pluecker predicate. A geometrically
+    // offset origin therefore rejects the whole class normally.
+    const auto source_acceleration =
+        source_acceleration_identity(scene, source);
+    $if(source_acceleration.valid) {
+      const auto source_instance =
+          scene->instance_buffer->read(source_acceleration.instance);
+      $if(max(source_instance.coincident_count, 1u) > 1u) {
+        const auto group = resolve_coincident_triangle(
+            scene, ray, visibility_mask, source, light,
+            source_acceleration.instance,
+            source_acceleration.primitive);
+        const auto accepted =
+            group.valid &
+            closest.accepts(group.distance, group.object,
+                            group.cycles_primitive, group.type_order);
+        $if(accepted) {
+          closest.select(group.distance, group.object,
+                         group.cycles_primitive, group.type_order);
+          resolved->inst = group.instance;
+          resolved->prim = group.primitive;
+          resolved->bary = group.barycentric;
+          resolved->hit_type = static_cast<std::uint32_t>(
+              luisa::compute::HitType::Surface);
+          resolved->committed_ray_t = group.distance;
         };
       };
-    }
+    };
 
     const auto backend_hit =
         scene->accel->traverse(query_ray,
@@ -485,8 +480,7 @@ public:
           Expr<std::uint32_t> visibility_mask,
           const ScenePrimitiveIdentity &source) const noexcept override {
     return trace(scene, ray, visibility_mask, source,
-                 ScenePrimitiveIdentity::invalid(),
-                 QueryKind::continuation);
+                 ScenePrimitiveIdentity::invalid());
   }
 
   Var<luisa::compute::CommittedHit>
@@ -495,8 +489,7 @@ public:
                  Expr<std::uint32_t> visibility_mask,
                  const ScenePrimitiveIdentity &source,
                  const ScenePrimitiveIdentity &light) const noexcept override {
-    return trace(scene, ray, visibility_mask, source, light,
-                 QueryKind::shadow);
+    return trace(scene, ray, visibility_mask, source, light);
   }
 };
 

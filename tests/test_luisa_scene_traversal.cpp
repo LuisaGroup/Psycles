@@ -21,7 +21,7 @@ using namespace luisa::compute;
 using namespace psycles::luisa_backend::detail;
 using psycles::luisa_backend::surface_ray::invalid_primitive;
 
-inline constexpr std::size_t record_count = 22u;
+inline constexpr std::size_t record_count = 24u;
 
 [[nodiscard]] bool near(float actual, float expected,
                         float tolerance = 2.0e-6f) noexcept {
@@ -193,9 +193,11 @@ int main(int argc, char **argv) {
       luisa::float3{-0.18065254390239716f,
                     -0.016480661928653717f,
                     -0.002021433785557747f}};
-  // Official Barbershop floor object 71, primitive 950264. Object 6 carries
-  // the bit-identical support as primitive 94356. Cycles CPU and HIP both
-  // skip only object 71 and accept object 6 at the closed t == 0 endpoint.
+  // Official Barbershop floor exact-support pairs. Object 71 primitives
+  // 950264 and 950290 share their final triangles with object 6 primitives
+  // 94356 and 94382. Cycles CPU and HIP exclude only object 71 and accept the
+  // object 6 sibling at the closed t == 0 endpoint for both shadow and
+  // continuation traversal.
   constexpr std::array barbershop_floor_vertices{
       luisa::float3{2.943859100341797f,
                     2.5070724487304688f,
@@ -205,7 +207,27 @@ int main(int argc, char **argv) {
                     -0.0029841959476470947f},
       luisa::float3{2.9934756755828857f,
                     2.4047765731811523f,
+                    -0.0029841959476470947f},
+      luisa::float3{3.338683843612671f,
+                    2.5072803497314453f,
+                    -0.0029841959476470947f},
+      luisa::float3{3.289121150970459f,
+                    2.5072803497314453f,
+                    -0.0029841959476470947f},
+      luisa::float3{3.28941011428833f,
+                    2.2144217491149902f,
                     -0.0029841959476470947f}};
+  constexpr auto barbershop_floor_triangles = []() noexcept {
+    std::array<Triangle, 27u> result{};
+    result[0u] = Triangle{0u, 1u, 2u};
+    // Preserve the actual local primitive ordinal without introducing
+    // unrelated fixture geometry that could become a traversal candidate.
+    for (std::size_t i = 1u; i < 26u; ++i) {
+      result[i] = Triangle{0u, 0u, 0u};
+    }
+    result[26u] = Triangle{3u, 4u, 5u};
+    return result;
+  }();
   constexpr std::array bottle_vertices{
       luisa::float3{0.04980994760990143f,
                     -0.015110095962882042f,
@@ -294,7 +316,7 @@ int main(int argc, char **argv) {
   auto barbershop_floor_vertex_buffer =
       device.create_buffer<luisa::float3>(barbershop_floor_vertices.size());
   auto barbershop_floor_triangle_buffer =
-      device.create_buffer<Triangle>(triangles.size());
+      device.create_buffer<Triangle>(barbershop_floor_triangles.size());
   auto barbershop_floor_mesh = device.create_mesh(
       barbershop_floor_vertex_buffer,
       barbershop_floor_triangle_buffer);
@@ -395,15 +417,21 @@ int main(int argc, char **argv) {
     light_primitive = select(light_primitive, 20474114u, test == 18u);
     source_object = select(source_object, 2372u, test == 19u);
     source_primitive = select(source_primitive, 3396299u, test == 19u);
-    source_object = select(source_object, 71u, test == 21u);
-    source_primitive = select(source_primitive, 950264u, test == 21u);
+    const auto barbershop_endpoint_test =
+        (test == 21u) | (test == 22u) | (test == 23u);
+    source_object = select(source_object, 71u, barbershop_endpoint_test);
+    source_primitive = select(
+        source_primitive,
+        select(950264u, 950290u, test >= 22u),
+        barbershop_endpoint_test);
     const auto ray_x = select(0.0f, 5.0f, test >= 10u);
     const auto ray_z = select(0.0f, 4.0f,
                               (test == 12u) | (test == 13u));
     const auto ray_maximum = select(10.0f, 4.0f, test >= 14u);
     const auto bottle_test = (test >= 16u) & (test <= 19u);
     const auto overlap_test = test == 20u;
-    const auto barbershop_endpoint_test = test == 21u;
+    const auto barbershop_continuation_test = test >= 22u;
+    const auto barbershop_offset_rejection_test = test == 23u;
     const auto ray_origin = select(select(
         select(make_float3(ray_x, 0.0f, ray_z),
                make_float3(1.8301146030426025f,
@@ -414,9 +442,15 @@ int main(int argc, char **argv) {
                     8.901592254638672f,
                     1.234214186668396f),
         overlap_test),
-        make_float3(2.974536657333374f,
-                    2.4320390224456787f,
-                    -0.0029841959476470947f),
+        select(make_float3(2.974536657333374f,
+                           2.4320390224456787f,
+                           -0.0029841959476470947f),
+               make_float3(3.2897191047668457f,
+                           2.2167599201202393f,
+                           select(-0.0029841959476470947f,
+                                  -0.0029689371585845947f,
+                                  barbershop_offset_rejection_test)),
+               barbershop_continuation_test),
         barbershop_endpoint_test);
     const auto ray_direction = select(select(
         select(make_float3(0.0f, 0.0f, 1.0f),
@@ -428,9 +462,13 @@ int main(int argc, char **argv) {
                     -0.9327327013015747f,
                     -0.27724069356918335f),
         overlap_test),
-        make_float3(-0.1057601049542427f,
-                    -0.393018901348114f,
-                    0.9134281277656555f),
+        select(make_float3(-0.1057601049542427f,
+                           -0.393018901348114f,
+                           0.9134281277656555f),
+               make_float3(-0.33513185381889343f,
+                           0.7402154207229614f,
+                           0.5828961133956909f),
+               barbershop_continuation_test),
         barbershop_endpoint_test);
     const auto ray = make_ray(
         ray_origin,
@@ -440,12 +478,22 @@ int main(int argc, char **argv) {
                    select(ray_maximum, 125.67607116699219f, bottle_test),
                    101.64700317382812f,
                    overlap_test),
-               2.4996728897094727f,
+               select(2.4996728897094727f,
+                      3.4028234663852886e+38f,
+                      barbershop_continuation_test),
                barbershop_endpoint_test));
-    const auto hit = traversal->closest_shadow(
-        scene, ray, 0xffu,
-        {.object = source_object, .primitive = source_primitive},
-        {.object = light_object, .primitive = light_primitive});
+    Var<luisa::compute::CommittedHit> hit;
+    $if(barbershop_continuation_test) {
+      hit = traversal->closest(
+          scene, ray, 0xffu,
+          {.object = source_object, .primitive = source_primitive});
+    }
+    $else {
+      hit = traversal->closest_shadow(
+          scene, ray, 0xffu,
+          {.object = source_object, .primitive = source_primitive},
+          {.object = light_object, .primitive = light_primitive});
+    };
     records.write(test,
                   make_float4(hit->committed_ray_t, cast<float>(hit->inst),
                               cast<float>(hit->prim),
@@ -498,7 +546,7 @@ int main(int argc, char **argv) {
     };
 
     $if(((test >= 10u) & (test <= 19u)) |
-        barbershop_endpoint_test) {
+        ((test >= 21u) & (test <= 22u))) {
       const auto instance = scene->instance_buffer->read(hit->inst);
       const auto geometry =
           scene->geometry_buffer->read(instance.geometry_index);
@@ -562,7 +610,7 @@ int main(int argc, char **argv) {
          << barbershop_floor_vertex_buffer.copy_from(
                 luisa::span{barbershop_floor_vertices})
          << barbershop_floor_triangle_buffer.copy_from(
-                luisa::span{triangles})
+                luisa::span{barbershop_floor_triangles})
          << bounds_buffer.copy_from(luisa::span{curve_bounds})
          << segment_buffer.copy_from(luisa::span{curve_segments})
          << key_buffer.copy_from(luisa::span{curve_keys})
@@ -602,7 +650,11 @@ int main(int argc, char **argv) {
                                               20474114.0f, 4.0f},
                                 luisa::float4{5066.0f, 700000.0f, 1.0f,
                                               4.4699316f},
-                                luisa::float4{0.0f, 6.0f, 94356.0f, 8.0f}};
+                                luisa::float4{0.0f, 6.0f, 94356.0f, 8.0f},
+                                luisa::float4{0.0f, 6.0f, 94382.0f, 8.0f},
+                                luisa::float4{3.4028234663852886e+38f,
+                                              4294967295.0f,
+                                              4294967295.0f, 0.0f}};
   for (auto index = std::size_t{0u}; index < expected.size(); ++index) {
     if (!equal_record(actual[index], expected[index])) {
       std::cerr << "scene traversal failed on " << backend << " at record "
