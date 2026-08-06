@@ -328,12 +328,14 @@ struct LuisaSceneData {
     Buffer<InstanceGpu> instance_buffer;
     Buffer<PrimitiveCompletionGpu> primitive_completion_buffer;
     Buffer<luisa::uint> primitive_completion_instance_buffer;
-    // Sorted (Cycles object index, Luisa TLAS instance index) pairs. Cycles
-    // excludes only the exact source primitive, so traversal must be able to
-    // recover the source's exact-support class even when a backend does not
-    // report an endpoint candidate at t == 0.
-    Buffer<luisa::uint2> cycles_object_instance_map_buffer;
-    std::uint32_t cycles_object_instance_map_count{};
+    // Only instances whose exact Cycles support needs endpoint completion
+    // participate. Dense object identities use one direct device read; very
+    // sparse identities use a sorted table whose size is the number of
+    // special instances rather than the whole scene.
+    Buffer<luisa::uint> cycles_completion_source_dense_buffer;
+    std::uint32_t cycles_completion_source_dense_count{};
+    Buffer<luisa::uint2> cycles_completion_source_sparse_buffer;
+    std::uint32_t cycles_completion_source_sparse_count{};
     Buffer<MaterialBindingGpu> geometry_material_buffer;
     Buffer<MaterialBindingGpu> override_material_buffer;
     Buffer<AttributeBindingGpu> attribute_binding_buffer;
