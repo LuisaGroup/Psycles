@@ -132,6 +132,8 @@ class PathVolumeSegmentStageImpl final
             sample.previous_delta;
         auto &previous_mis_origin_normal =
             sample.previous_mis_origin_normal;
+        auto &previous_light_tree_dt =
+            sample.previous_light_tree_dt;
         auto &minimum_bsdf_pdf =
             sample.minimum_bsdf_pdf;
         auto &path_diffuse_weight =
@@ -625,6 +627,7 @@ class PathVolumeSegmentStageImpl final
             previous_mis_origin_normal =
                 collision_position -
                 segment_position;
+            previous_light_tree_dt = segment_length;
             minimum_bsdf_pdf =
                 min(
                     minimum_bsdf_pdf,

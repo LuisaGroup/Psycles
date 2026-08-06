@@ -203,8 +203,14 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
     // capability gate: no distribution means NEE was never attempted,
     // whereas a selected emitter whose position sample fails is an attempted
     // proposal and has a distinct diagnostic trace state.
+    const auto use_light_tree =
+        integrator.use_light_tree &&
+        scene->light_tree_node_count > 0u &&
+        scene->light_tree_emitter_count > 0u;
     const auto direct_light_available =
-        scene->light_distribution_count > 0u;
+        use_light_tree
+            ? scene->light_tree_emitter_count > 0u
+            : scene->light_distribution_count > 0u;
     const auto next_event_estimation =
         _options.next_event_estimation &&
         integrator.direct_light_sampling !=
@@ -371,6 +377,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
             direct_light_sampling);
     auto light_distribution_sample_callable =
         make_light_distribution_sample_callable(scene);
+    auto light_tree_callables =
+        make_light_tree_callables(scene);
 
     auto surface_callables =
         make_surface_callables(scene);
@@ -401,6 +409,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         .camera_aperture_rotation =
             camera_aperture_rotation,
         .next_event_estimation = next_event_estimation,
+        .use_light_tree = use_light_tree,
         .reflective_caustics = reflective_caustics,
         .refractive_caustics = refractive_caustics,
         .path_trace_enabled = path_trace_enabled,
@@ -412,6 +421,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         .light_transport = std::move(light_transport),
         .light_distribution_sample =
             std::move(light_distribution_sample_callable),
+        .light_tree = std::move(light_tree_callables),
         .surfaces = std::move(surface_callables),
         .environment = std::move(environment_callables),
         .trace_shadow = std::move(trace_shadow_callable)};

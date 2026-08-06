@@ -1453,14 +1453,10 @@ void test_integrator_settings_round_trip() {
     std::ofstream scene{temporary.path() / "scene.json"};
     scene << light_tree_scene;
   }
-  const auto rejected = load_blender_scene_bundle(temporary.path());
-  expect(!rejected.ok(), "unsupported Cycles light tree was silently accepted");
-  bool named_diagnostic = false;
-  for (const auto &diagnostic : rejected.diagnostics) {
-    named_diagnostic |=
-        diagnostic.message.find("light-tree") != std::string::npos;
-  }
-  expect(named_diagnostic, "light-tree rejection has no named diagnostic");
+  const auto light_tree_imported = load_blender_scene_bundle(temporary.path());
+  expect(light_tree_imported.ok(), "supported Cycles light tree was rejected");
+  expect(light_tree_imported.integrator.use_light_tree,
+         "Cycles light-tree setting was not preserved");
 }
 
 } // namespace

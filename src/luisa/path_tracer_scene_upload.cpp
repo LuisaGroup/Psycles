@@ -22,6 +22,23 @@ void provide_inert_storage(SceneTableUploadInput input) {
     if (input.light_distribution.empty()) {
         input.light_distribution.emplace_back(LightDistributionGpu{});
     }
+    if (input.light_tree_nodes.empty()) {
+        input.light_tree_nodes.emplace_back(LightTreeNodeGpu{});
+    }
+    if (input.light_tree_emitters.empty()) {
+        input.light_tree_emitters.emplace_back(LightTreeEmitterGpu{});
+    }
+    if (input.light_tree_emitter_mappings.empty()) {
+        input.light_tree_emitter_mappings.emplace_back(
+            ~luisa::uint{0u}, ~luisa::uint{0u});
+    }
+    if (input.light_tree_triangle_lookup.empty()) {
+        input.light_tree_triangle_lookup.emplace_back(
+            ~luisa::uint{0u},
+            ~luisa::uint{0u},
+            ~luisa::uint{0u},
+            0u);
+    }
     if (input.lights.empty()) {
         input.lights.emplace_back(LightGpu{});
     }
@@ -191,6 +208,18 @@ SceneTableUploadComponent::upload(const std::shared_ptr<LuisaSceneData> &scene,
     scene->light_distribution_buffer =
         scene->device.create_buffer<LightDistributionGpu>(
             input.light_distribution.size());
+    scene->light_tree_node_buffer =
+        scene->device.create_buffer<LightTreeNodeGpu>(
+            input.light_tree_nodes.size());
+    scene->light_tree_emitter_buffer =
+        scene->device.create_buffer<LightTreeEmitterGpu>(
+            input.light_tree_emitters.size());
+    scene->light_tree_emitter_mapping_buffer =
+        scene->device.create_buffer<luisa::uint2>(
+            input.light_tree_emitter_mappings.size());
+    scene->light_tree_triangle_lookup_buffer =
+        scene->device.create_buffer<luisa::uint4>(
+            input.light_tree_triangle_lookup.size());
 
     if (scene->cycles_completion_source_dense_count != 0u) {
         stream << scene->cycles_completion_source_dense_buffer.copy_from(
@@ -219,6 +248,14 @@ SceneTableUploadComponent::upload(const std::shared_ptr<LuisaSceneData> &scene,
                   luisa::span{input.emissive_triangles})
            << scene->light_distribution_buffer.copy_from(
                   luisa::span{input.light_distribution})
+           << scene->light_tree_node_buffer.copy_from(
+                  luisa::span{input.light_tree_nodes})
+           << scene->light_tree_emitter_buffer.copy_from(
+                  luisa::span{input.light_tree_emitters})
+           << scene->light_tree_emitter_mapping_buffer.copy_from(
+                  luisa::span{input.light_tree_emitter_mappings})
+           << scene->light_tree_triangle_lookup_buffer.copy_from(
+                  luisa::span{input.light_tree_triangle_lookup})
            << scene->texture_heap.update() << scene->heap.update()
            << scene->accel.build() << synchronize();
     return {};

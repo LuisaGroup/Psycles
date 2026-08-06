@@ -46,6 +46,10 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         auto &path_depth = sample.path_depth;
         auto &previous_delta = sample.previous_delta;
         auto &previous_bsdf_pdf = sample.previous_bsdf_pdf;
+        auto &previous_mis_origin_normal =
+            sample.previous_mis_origin_normal;
+        auto &previous_light_tree_dt =
+            sample.previous_light_tree_dt;
         auto &terminate_on_next_surface = sample.terminate_on_next_surface;
         auto &ray_events = sample.ray_events;
         auto &transparent_depth = sample.transparent_depth;
@@ -128,10 +132,26 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                         point.geometric_normal,
                         -point.geometric_normal,
                         point.back_facing);
+                Float selection_pdf =
+                    0.5f * length(cross(wp1 - wp0, wp2 - wp0)) *
+                    scene->triangle_area_pdf;
+                if (config.use_light_tree) {
+                    const auto emitter_id =
+                        config.light_tree.triangle_emitter(
+                            cycles_object_index,
+                            cycles_primitive_index);
+                    selection_pdf = config.light_tree.forward_pdf(
+                        emitter_id,
+                        ray->origin(),
+                        previous_mis_origin_normal,
+                        previous_light_tree_dt,
+                        cycles_path_visibility,
+                        path_flags);
+                }
                 const auto light_pdf =
                     _emissive_triangle
                         ->from_intersection(
-                            scene->triangle_area_pdf,
+                            selection_pdf,
                             surface.emission_sampling,
                             ray->origin(),
                             hit_position,

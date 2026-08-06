@@ -66,7 +66,8 @@ class EmissiveTriangleComponent {
         const std::shared_ptr<LuisaSceneData> &scene,
         UInt emitter_index,
         Float3 reference,
-        Float2 random) const noexcept = 0;
+        Float2 random,
+        Float selection_pdf) const noexcept = 0;
 
     [[nodiscard]] virtual Float3
     evaluate_constant_emission(
@@ -81,13 +82,13 @@ class EmissiveTriangleComponent {
             &proposal) const noexcept = 0;
 
     // Forward-hit MIS starts from an already committed primitive. Its exact
-    // effective material supplies emission_sampling directly, while
-    // triangle_area_pdf is the global legacy-distribution density. Excluding
-    // scene and emitter identities from this interface makes an accidental
-    // O(E) reverse lookup structurally impossible.
+    // effective material supplies emission_sampling directly. The caller
+    // supplies the selection probability from either the legacy distribution
+    // or the exact light-tree reverse lookup; geometry owns only the
+    // conditional solid-angle density.
     [[nodiscard]] virtual EmissiveTrianglePdf
     from_intersection(
-        Float triangle_area_pdf,
+        Float selection_pdf,
         UInt emission_sampling,
         Float3 reference,
         Float3 light_position,

@@ -54,7 +54,8 @@ using EmissiveProposalFunction =
         const std::shared_ptr<LuisaSceneData> &,
         UInt,
         Float3,
-        Float2) const noexcept;
+        Float2,
+        Float) const noexcept;
 using EmissiveEvaluationFunction =
     Float3 (EmissiveTriangleComponent::*)(
         PathSampleContext &,
@@ -1035,6 +1036,40 @@ int main(int argc, char **argv) {
             *trace_sink,
             backend,
             "full-spread rectangle",
+            {.type = 3.0f,
+             .emitter = 0.0f,
+             .primitive = 0.0f,
+             .object = 1.0f,
+             .light_group = -1.0f,
+             .shader_low = 5.0f,
+             .shader_high = 20736.0f,
+             .environment = false})) {
+        return EXIT_FAILURE;
+    }
+
+    // The same one-emitter fixture must be bit-equivalent through the real
+    // scene-built Light Tree. This covers session admission, host upload,
+    // surface selection, and the NEE selection PDF in the fused kernel.
+    auto light_tree_settings = settings;
+    light_tree_settings.integrator.use_light_tree = true;
+    psycles::io::MemoryOutputSink light_tree_rectangle_sink;
+    trace_sink->reset();
+    if (!render_fixture(
+            renderer,
+            make_scene(),
+            light_tree_settings,
+            "light-tree full-spread rectangle",
+            light_tree_rectangle_sink) ||
+        !validate_fixture(
+            light_tree_rectangle_sink,
+            backend,
+            "light-tree full-spread rectangle",
+            rectangle_means,
+            rectangle_pixels) ||
+        !validate_direct_light_trace(
+            *trace_sink,
+            backend,
+            "light-tree full-spread rectangle",
             {.type = 3.0f,
              .emitter = 0.0f,
              .primitive = 0.0f,

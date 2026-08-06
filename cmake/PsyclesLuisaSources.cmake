@@ -119,6 +119,9 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_tracer_image_decode.cpp
     src/luisa/path_tracer_instance_support.cpp
     src/luisa/path_tracer_light_distribution.cpp
+    src/luisa/path_tracer_light_sampling_scene.cpp
+    src/luisa/path_tracer_light_tree.cpp
+    src/luisa/path_tracer_light_tree_scene.cpp
     src/luisa/path_tracer_lighting.cpp
     src/luisa/path_tracer_scene.cpp
     src/luisa/path_tracer_scene_upload.cpp

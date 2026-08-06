@@ -86,7 +86,10 @@ class MeshVolumeLightProvider final
                         position,
                         _event.bounce
                             .light_sample
-                            .xy());
+                            .xy(),
+                        _event.bounce
+                            .selected_light
+                            .selection_pdf);
             const auto visible =
                 (light.geometry
                      .emitter

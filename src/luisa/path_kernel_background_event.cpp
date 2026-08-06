@@ -30,6 +30,10 @@ class BackgroundEventStageImpl final
             sample.previous_delta;
         auto &previous_bsdf_pdf =
             sample.previous_bsdf_pdf;
+        auto &previous_mis_origin_normal =
+            sample.previous_mis_origin_normal;
+        auto &previous_light_tree_dt =
+            sample.previous_light_tree_dt;
         auto &throughput = sample.throughput;
         auto &path_depth = sample.path_depth;
         auto &path_flags = sample.path_flags;
@@ -51,10 +55,24 @@ class BackgroundEventStageImpl final
         Bool competing =
             (path_depth > 0u) &
             (!previous_delta);
-        const auto environment_selection_pdf =
+        Float environment_selection_pdf =
             scene->environment_in_light_distribution
                 ? scene->light_selection_pdf
                 : 0.0f;
+        if (config.use_light_tree) {
+            const auto environment_emitter_id =
+                scene->emissive_triangle_count + scene->light_count;
+            environment_selection_pdf = select(
+                0.0f,
+                config.light_tree.forward_pdf(
+                    environment_emitter_id,
+                    ray->origin(),
+                    previous_mis_origin_normal,
+                    previous_light_tree_dt,
+                    sample.cycles_path_visibility,
+                    path_flags),
+                scene->environment_in_light_distribution);
+        }
         Float environment_pdf =
             _environment_light
                 ->from_direction(

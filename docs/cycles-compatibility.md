@@ -829,6 +829,18 @@ recorded in
 When the light tree is disabled, the Luisa NEE path applies Cycles'
 `film_exposure / light_sampling_threshold` roulette to the unshadowed light
 sample and compensates surviving samples by the reciprocal probability.
+When it is enabled, emissive triangles, analytic lights, and the environment
+share one stable emitter identity across surface/volume selection and
+forward-hit MIS. Separate host-specialized Luisa callables implement Cycles'
+maximum/minimum-importance mixture, leaf reservoir, random remapping, and
+reverse leaf-to-root PDF. Tree construction uses final displaced support and
+effective material overrides; emission metadata controls proposal importance
+only, while the original closure graph remains the device radiance evaluator.
+The current hierarchy is flattened and reciprocal but does not yet reproduce
+Cycles' mesh/instance subtrees, light-link roots, or every specialized
+per-light importance parameter. The formal boundary and fallback/HIP/Vulkan
+regressions are recorded in
+[`validation/2026-08-07/light-tree`](validation/2026-08-07/light-tree/README.md).
 The versioned `integrator_clamp_direct` probe uses a white emission of 10 and
 Blender direct clamp 2; both Cycles and Luisa/fallback produce linear RGB
 `(2, 2, 2)`, with zero RMSE and maximum absolute error in all recorded passes.
@@ -952,10 +964,11 @@ nondeterminism, and remaining event-3 residual are recorded in
 
 Adaptive sampling and denoising are exported and diagnosed but are not part of
 the path-integrator estimator. Psycles renders fixed-count, un-denoised linear
-passes; authoritative Cycles differential renders disable both. A connected
-Displacement root and an enabled Cycles light tree remain hard scene
-capability errors rather than silently ignored settings. A connected Volume
-root is preserved through Blender import and material compilation. Its raw
+passes; authoritative Cycles differential renders disable both. The Blender
+light-tree setting is preserved and admitted by the Luisa session; unsupported
+tree refinements remain explicit below rather than silently changing the
+authored closure graph. A connected Volume root is preserved through Blender
+import and material compilation. Its raw
 dependency tree is accepted only when the homogeneous segment integrator can
 represent it; a spatial dependency remains an explicit scene capability
 error.
@@ -964,7 +977,8 @@ The following integrator work remains explicit and is not considered Cycles
 compatible yet:
 
 - Cycles' emitter importance distribution and environment importance map;
-- light-tree construction and traversal;
+- Cycles-exact mesh/instance light-tree topology, specialized emitter
+  importance, and receiver light-link roots;
 - heterogeneous residual-ratio shadow transport and scene-gate removal;
 - remaining distant-light forward/background behavior;
 - MNEE, path guiding, shadow catcher, light linking, and light groups;

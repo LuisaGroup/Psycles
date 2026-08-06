@@ -776,7 +776,13 @@ triptychs are in the
 - Blender 5.2 `MULTIPLE_SCATTERING` sky is distinct from the implemented
   single-scattering equations and is not yet supported by the simple-world
   importance sampler.
-- The flat distribution is implemented, but Cycles light trees are not.
+- The flat distribution and a reciprocal Luisa light-tree estimator are
+  implemented. The current tree is flattened and does not yet reproduce
+  Cycles' mesh/instance subtrees, per-light specialized proposal parameters,
+  receiver light-link roots, or finite-sample selection probabilities. The
+  implementation, three-backend regressions, HIP backend repair, and exact
+  remaining boundary are recorded in the
+  [Light Tree checkpoint](docs/validation/2026-08-07/light-tree/README.md).
 - Environment map importance CDFs and the imported
   `world_sample_map_resolution` are not yet connected to sampling.
 - Automatic emissive sampling classification still needs a formal

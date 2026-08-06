@@ -569,6 +569,7 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
     Bool primary_recorded = false;
     Float previous_bsdf_pdf = 0.0f;
     Float3 previous_mis_origin_normal = make_float3(0.0f);
+    Float previous_light_tree_dt = 0.0f;
     Float minimum_bsdf_pdf = std::numeric_limits<float>::max();
     Bool previous_delta = true;
     Float continuation_probability = 1.0f;
@@ -648,6 +649,7 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
             std::move(primary_recorded),
             std::move(previous_bsdf_pdf),
             std::move(previous_mis_origin_normal),
+            std::move(previous_light_tree_dt),
             std::move(minimum_bsdf_pdf),
             std::move(previous_delta),
             std::move(continuation_probability),
