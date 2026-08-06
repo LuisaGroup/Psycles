@@ -397,6 +397,9 @@ struct LightDesc {
     std::optional<std::uint32_t> cycles_shader_index;
     std::optional<std::uint32_t> cycles_object_index;
     std::int32_t cycles_light_group{-1};
+    // CyclesLightSettings::max_bounces. This limits NEE selection of lamp
+    // emitters; it does not hide a lamp reached by forward path tracing.
+    std::uint32_t max_bounces{1024u};
 };
 
 struct EnvironmentSunDesc {
@@ -480,6 +483,9 @@ struct SceneSnapshot {
     std::uint32_t world_visibility_mask{all_ray_visibility};
     bool world_cast_shadow{true};
     std::int32_t cycles_background_light_group{-1};
+    // CyclesWorldSettings::max_bounces follows the same inclusive NEE limit
+    // as analytic lamps.
+    std::uint32_t world_max_bounces{1024u};
 };
 
 struct UpsertMaterial {

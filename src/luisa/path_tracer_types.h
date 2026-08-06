@@ -164,6 +164,7 @@ struct LightGpu {
     luisa::uint cycles_shader_flags{};
     luisa::uint cycles_type{};
     luisa::uint visibility_mask{};
+    luisa::uint max_bounces{1024u};
 };
 
 struct EmissiveTriangleGpu {
@@ -511,7 +512,8 @@ LUISA_STRUCT(
     cycles_shader_id,
     cycles_shader_flags,
     cycles_type,
-    visibility_mask) {};
+    visibility_mask,
+    max_bounces) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::EmissiveTriangleGpu,
     instance_index,

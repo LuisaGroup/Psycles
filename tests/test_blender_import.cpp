@@ -399,6 +399,7 @@ void test_integrator_settings_round_trip() {
       "size": 1.3,
       "size_y": 0.25,
       "use_multiple_importance_sampling": false,
+      "max_bounces": 13,
       "cast_shadow": false,
       "visibility": {
         "camera": false,
@@ -422,6 +423,7 @@ void test_integrator_settings_round_trip() {
     "color": [0.05, 0.05, 0.05],
     "sampling_method": "MANUAL",
     "sample_map_resolution": 2048,
+    "max_bounces": 23,
     "use_shadows": false,
     "visibility": {
       "camera": true,
@@ -672,6 +674,8 @@ void test_integrator_settings_round_trip() {
          "world sampling method did not round-trip");
   expect(imported.scene->world_sample_map_resolution == 2048u,
          "world sample-map resolution did not round-trip");
+  expect(imported.scene->world_max_bounces == 23u,
+         "world max-bounces policy did not round-trip");
   expect(!imported.scene->world_cast_shadow &&
              imported.scene->cycles_background_light_group == 4,
          "world shadow/light-group policy did not round-trip");
@@ -769,6 +773,7 @@ void test_integrator_settings_round_trip() {
              imported_light->second.cycles_object_index ==
                  std::optional<std::uint32_t>{9u} &&
              imported_light->second.cycles_light_group == 2 &&
+             imported_light->second.max_bounces == 13u &&
              imported_light->second.visibility_mask ==
                  (psycles::contract::visibility_bit(
                       psycles::contract::RayVisibility::diffuse) |

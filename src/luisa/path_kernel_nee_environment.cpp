@@ -3,6 +3,7 @@
 #include "path_kernel_direct_light_trace.h"
 #include "path_kernel_environment_light.h"
 
+#include <psycles/luisa/cycles_light.h>
 #include <psycles/luisa/cycles_ray_differential.h>
 #include <psycles/luisa/surface_ray.h>
 
@@ -85,7 +86,11 @@ class EnvironmentLightingComponent final : public DirectLightingComponent {
                         light_sample.xy(),
                         selected_light
                             .selection_pdf);
-            $if(light.valid) {
+            const auto reached_max_bounces =
+                cycles_light::select_reached_max_bounces(
+                    path_depth,
+                    config.scene->world_max_bounces);
+            $if(!reached_max_bounces & light.valid) {
                 _trace->record_sample(
                     bounce,
                     {.type = 2u,

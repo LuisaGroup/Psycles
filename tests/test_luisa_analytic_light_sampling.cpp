@@ -1,5 +1,6 @@
 #include <psycles/luisa/analytic_light_intersection.h>
 #include <psycles/luisa/analytic_light_sampling.h>
+#include <psycles/luisa/cycles_light.h>
 
 #include <algorithm>
 #include <array>
@@ -18,6 +19,8 @@ namespace analytic_light =
     psycles::luisa_backend::analytic_light_sampling;
 namespace analytic_intersection =
     psycles::luisa_backend::analytic_light_intersection;
+namespace cycles_light =
+    psycles::luisa_backend::cycles_light;
 
 struct PointCase {
     float distance_squared;
@@ -71,6 +74,8 @@ int main(int argc, char **argv) {
         device.create_buffer<luisa::float4>(2u);
     auto intersection_output =
         device.create_buffer<luisa::float4>(4u);
+    auto bounce_limit_output =
+        device.create_buffer<luisa::float4>(1u);
     constexpr std::size_t finite_case_count = 3u;
     auto finite_direction_output =
         device.create_buffer<luisa::float4>(
@@ -113,7 +118,8 @@ int main(int argc, char **argv) {
                             BufferFloat4 results,
                             BufferFloat4 rectangle_result,
                             BufferFloat4 distant_result,
-                            BufferFloat4 intersection_result) noexcept {
+                            BufferFloat4 intersection_result,
+                            BufferFloat4 bounce_limit_result) noexcept {
         const auto index = dispatch_x();
         const auto value = cases.read(index);
         const auto flags_value = case_flags.read(index);
@@ -146,6 +152,26 @@ int main(int argc, char **argv) {
                     1.0f,
                     has_competing_technique)));
         $if (index == 0u) {
+            bounce_limit_result.write(
+                0u,
+                make_float4(
+                    select(
+                        0.0f,
+                        1.0f,
+                        cycles_light::select_reached_max_bounces(0u, 0u)),
+                    select(
+                        0.0f,
+                        1.0f,
+                        cycles_light::select_reached_max_bounces(1u, 1u)),
+                    select(
+                        0.0f,
+                        1.0f,
+                        cycles_light::select_reached_max_bounces(2u, 1u)),
+                    select(
+                        0.0f,
+                        1.0f,
+                        cycles_light::select_reached_max_bounces(
+                            1024u, 1024u))));
             const auto rectangle =
                 analytic_light::
                     sample_rectangle_solid_angle(
@@ -494,6 +520,7 @@ int main(int argc, char **argv) {
     std::array<luisa::float4, 2u> rectangle_result{};
     std::array<luisa::float4, 2u> distant_result{};
     std::array<luisa::float4, 4u> intersection_result{};
+    std::array<luisa::float4, 1u> bounce_limit_result{};
     std::array<luisa::float4, finite_case_count>
         finite_direction_result{};
     std::array<luisa::float4, finite_case_count>
@@ -514,7 +541,8 @@ int main(int argc, char **argv) {
                   output,
                   rectangle_output,
                   distant_output,
-                  intersection_output)
+                  intersection_output,
+                  bounce_limit_output)
                   .dispatch(
                       static_cast<std::uint32_t>(
                           point_cases.size()))
@@ -525,6 +553,8 @@ int main(int argc, char **argv) {
                   luisa::span{distant_result})
            << intersection_output.copy_to(
                   luisa::span{intersection_result})
+           << bounce_limit_output.copy_to(
+                  luisa::span{bounce_limit_result})
            << finite_shader(
                   finite_direction_output,
                   finite_position_output,
@@ -553,6 +583,19 @@ int main(int argc, char **argv) {
                   luisa::span{
                       forward_normal_result})
            << synchronize();
+
+    const auto bounce_limit = bounce_limit_result[0u];
+    if (bounce_limit.x != 0.0f ||
+        bounce_limit.y != 0.0f ||
+        bounce_limit.z != 1.0f ||
+        bounce_limit.w != 0.0f) {
+        std::cerr
+            << "Cycles inclusive light max-bounces boundary failed on "
+            << backend << ": got {" << bounce_limit.x << ", "
+            << bounce_limit.y << ", " << bounce_limit.z << ", "
+            << bounce_limit.w << "}\n";
+        return EXIT_FAILURE;
+    }
 
     for (std::size_t index = 0u;
          index < point_cases.size();

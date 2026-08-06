@@ -6,6 +6,7 @@
 #include "path_kernel_direct_light_trace.h"
 
 #include <psycles/luisa/cycles_closure.h>
+#include <psycles/luisa/cycles_light.h>
 #include <psycles/luisa/cycles_ray_differential.h>
 #include <psycles/luisa/surface_ray.h>
 
@@ -99,6 +100,9 @@ class AnalyticLightingComponent final : public DirectLightingComponent {
                 sampling::LightDistributionEmitterKind::analytic_light)) {
             UInt light_index = selected_light.index;
             Var<LightGpu> light = scene->light_buffer->read(light_index);
+            const auto reached_max_bounces =
+                cycles_light::select_reached_max_bounces(
+                    path_depth, light.max_bounces);
             Float3 wi = make_float3(0.0f);
             Float3 light_radiance = make_float3(0.0f);
             Float3 light_position = light.position;
@@ -227,7 +231,7 @@ class AnalyticLightingComponent final : public DirectLightingComponent {
             };
 
             light_pdf *= selected_light.selection_pdf;
-            $if(light_valid & (light_pdf > 0.0f)) {
+            $if(!reached_max_bounces & light_valid & (light_pdf > 0.0f)) {
                 _trace->record_sample(
                     bounce,
                     {.type = light.cycles_type,
