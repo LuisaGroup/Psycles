@@ -186,10 +186,11 @@ the regression audit.
   The corrected HIP image is structurally close, but the 128-spp transport
   residual is not yet a final quality-parity result. A higher-spp convergence
   run and corrected fallback/Vulkan reruns remain required.
-- **Lone Monk:** historical five-way renders exist, but they predate the
-  current closure, light-selection, fallback, and Vulkan checkpoints. Fine
-  grass remained visibly different. It must be rerun from current main before
-  promotion.
+- **Lone Monk:** the current-head 960x720, 128-spp five-way rerun now completes.
+  Its grass and other fine structure are visually aligned, with Psycles HIP
+  Combined relative RMSE 0.02619 against Cycles HIP. The full result and its
+  serious performance regressions are recorded in the
+  [current Lone Monk checkpoint](../lone-monk-current-head/README.md).
 - **Classroom and Barbershop:** historical full-scene results also predate this
   checkpoint. Their current-main five-way matrices, inspected triptychs, and
   performance numbers remain pending.
@@ -197,6 +198,6 @@ the regression audit.
   current-main five-way quality result is promoted yet.
 
 The immediate renderer work is to use the per-path oracle to align the first
-remaining transport scheduling divergence, then run Monster at higher spp and
-refresh Lone Monk, Classroom, Barbershop, and Splash at 480p or larger across
-Cycles CPU/HIP and Psycles fallback/HIP/Vulkan.
+remaining transport scheduling divergence, run Monster and Lone Monk at
+higher spp, and refresh Classroom, Barbershop, and Splash at 480p or larger
+across Cycles CPU/HIP and Psycles fallback/HIP/Vulkan.

@@ -9,6 +9,27 @@ multilayer OpenEXR output.
 ## Latest checkpoint
 
 The newest
+[2026-08-07 current-head Lone Monk checkpoint](docs/validation/2026-08-07/lone-monk-current-head/README.md)
+re-renders the unmodified official scene at 960x720, 128 fixed spp on Cycles
+CPU/HIP and Psycles fallback/HIP/Vulkan. All five entries complete from one
+fresh raw-graph export. Psycles HIP Combined relative RMSE is `0.026193`
+against Cycles HIP, the mean luminance ratio is `1.001109`, and original-size
+inspection finds the previously disputed grass coverage and fine silhouettes
+structurally aligned. This is not a final indirect-transport parity claim.
+Render-only fallback, HIP, and Vulkan are respectively `9.86x` slower than
+Cycles CPU, `4.09x` slower than Cycles HIP, and `103.54x` slower than Cycles
+HIP. The checkpoint records the full five-way reports, triptychs, a grass
+crop, and the 19.56-minute Vulkan cold-JIT diagnosis.
+
+The accompanying
+[Monster Under the Bed checkpoint](docs/validation/2026-08-07/monster-current-head/README.md)
+records five-way 960x960x128 completion, the formal fallback committed-hit
+kind and Vulkan dispatch-bound fixes, and the independent Principled Coat
+Normal correction. Monster is structurally improved but remains at `0.156101`
+Combined relative RMSE after the semantic fix, so it is still an active
+higher-spp transport-alignment target.
+
+The earlier
 [2026-08-02 Apple Classroom and Lone Monk checkpoint](docs/validation/2026-08-02/apple-classroom-lone-monk/README.md)
 brings up strict Luisa fallback and Metal builds on an M1 Max, records 69/69
 passing tests, and renders both official scenes from their raw Blender graphs.
@@ -21,7 +42,7 @@ includes exact asset hashes, commands, full pass reports, timings, and
 inspected triptychs. It is a development checkpoint; Classroom's Wave Texture
 and Glass closures remain explicitly tracked.
 
-The newer
+The historical
 [2026-08-01 Lone Monk Principled physical-closure validation](docs/validation/2026-08-01/lone-monk-principled-physical-closures/README.md)
 records the full Cycles CPU/HIP and Psycles fallback/HIP/Vulkan matrix after
 expanding Principled into Cycles physical closures. At 640x480 and 64 fixed

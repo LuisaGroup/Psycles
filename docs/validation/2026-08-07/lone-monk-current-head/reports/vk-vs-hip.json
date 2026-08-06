@@ -1,0 +1,98 @@
+{
+  "actual_label": "Psycles VK",
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.DiffCol.R",
+    "ViewLayer.DiffCol.G",
+    "ViewLayer.DiffCol.B",
+    "ViewLayer.DiffDir.R",
+    "ViewLayer.DiffDir.G",
+    "ViewLayer.DiffDir.B",
+    "ViewLayer.DiffInd.R",
+    "ViewLayer.DiffInd.G",
+    "ViewLayer.DiffInd.B",
+    "ViewLayer.Emit.R",
+    "ViewLayer.Emit.G",
+    "ViewLayer.Emit.B",
+    "ViewLayer.Env.R",
+    "ViewLayer.Env.G",
+    "ViewLayer.Env.B",
+    "ViewLayer.GlossCol.R",
+    "ViewLayer.GlossCol.G",
+    "ViewLayer.GlossCol.B",
+    "ViewLayer.GlossDir.R",
+    "ViewLayer.GlossDir.G",
+    "ViewLayer.GlossDir.B",
+    "ViewLayer.GlossInd.R",
+    "ViewLayer.GlossInd.G",
+    "ViewLayer.GlossInd.B",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.TransCol.R",
+    "ViewLayer.TransCol.G",
+    "ViewLayer.TransCol.B",
+    "ViewLayer.TransDir.R",
+    "ViewLayer.TransDir.G",
+    "ViewLayer.TransDir.B",
+    "ViewLayer.TransInd.R",
+    "ViewLayer.TransInd.G",
+    "ViewLayer.TransInd.B",
+    "ViewLayer.VolumeDir.R",
+    "ViewLayer.VolumeDir.G",
+    "ViewLayer.VolumeDir.B",
+    "ViewLayer.VolumeInd.R",
+    "ViewLayer.VolumeInd.G",
+    "ViewLayer.VolumeInd.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        0.9998663663864136,
+        0.9998369216918945,
+        0.9999484419822693
+      ],
+      "cycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/lone-monk-head-8c6fa43/psycles/hip.exr",
+      "cycles_channel_mean": [
+        0.6275686025619507,
+        0.4637555181980133,
+        0.38829392194747925
+      ],
+      "cycles_luminance_mean": 0.4936968684196472,
+      "cycles_rms": 1.5816713571548462,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9998634529454141,
+      "maximum_absolute_error": 1.3605139255523682,
+      "mean_absolute_error": 0.003158979583531618,
+      "orientation_rmse": {
+        "flip_x": 1.0411101579666138,
+        "flip_xy": 1.885140061378479,
+        "flip_y": 1.8564165830612183,
+        "identity": 0.014070014469325542
+      },
+      "p95_pixel_rmse": 0.017088431864976883,
+      "p99_pixel_rmse": 0.05330986902117729,
+      "psycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/lone-monk-head-8c6fa43/psycles/vk.exr",
+      "psycles_channel_mean": [
+        0.6274847388267517,
+        0.46367987990379333,
+        0.3882738947868347
+      ],
+      "psycles_luminance_mean": 0.49362945556640625,
+      "psycles_rms": 1.5815553302523235,
+      "relative_rmse": 0.008895662430553886,
+      "rmse": 0.014070014469325542,
+      "shape": [
+        720,
+        960,
+        3
+      ],
+      "valid_pixels": 691200
+    }
+  },
+  "reference_label": "Psycles HIP",
+  "schema": "psycles.cycles-differential.v1"
+}

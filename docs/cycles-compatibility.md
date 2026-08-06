@@ -5,6 +5,23 @@ only after the same Blender scene and render settings have been evaluated by
 official Cycles and Psycles-Luisa and their linear passes have passed a
 feature-specific differential threshold.
 
+## Current complex-scene checkpoints
+
+The official Monster Under the Bed and Lone Monk scenes now both complete on
+the canonical five-way matrix: Cycles CPU/HIP and Psycles fallback/HIP/Vulkan.
+The [Monster checkpoint](validation/2026-08-07/monster-current-head/README.md)
+records the independent Principled Coat Normal correction and a remaining
+0.1561 Combined relative RMSE at 960x960x128. The
+[current Lone Monk checkpoint](validation/2026-08-07/lone-monk-current-head/README.md)
+records 0.0248--0.0262 Combined relative RMSE across the three Psycles
+backends at 960x720x128, with visually aligned fine grass and data passes.
+
+Neither result is a blanket feature-parity claim. Monster still needs
+higher-spp transport alignment, while Lone Monk's indirect convergence and
+severe current performance gaps remain open. Classroom, Barbershop, and
+Blender 4.1 Splash retain historical evidence but still require fresh
+current-head five-way promotion runs.
+
 ## Shader graph path
 
 Psycles does not consume SVM bytecode and does not bake Blender materials.
