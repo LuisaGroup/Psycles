@@ -84,3 +84,40 @@ psycles.luisa_camera_sampling_vk        Passed
 
 The production renderer and regression executable were built with
 `cmake --build ... --parallel 32`.
+
+## Full-image validation
+
+The fix was also validated at `1152x480`, `128 spp` on the isolated original
+Barbershop material scene. The Psycles HIP render took `2.443 s` after the
+shader cache had been populated. Against the current Cycles CPU reference:
+
+| pass | RMSE after | RMSE before | luminance ratio after |
+|---|---:|---:|---:|
+| Combined | `0.00696520` | `0.00697111` | `1.00147` |
+| Diffuse Direct | `0.132413` | `0.132676` | `0.99701` |
+| Diffuse Indirect | `0.00488818` | `0.006151` | `1.07196` |
+| Glossy Indirect | `0.00690894` | `0.008782` | `1.14581` |
+| Normal | `0.00159261` | `0.00159992` | n/a |
+
+The Combined comparison below is ordered Cycles CPU, Psycles HIP, amplified
+absolute difference:
+
+![Combined triptych](triptychs/cycles-cpu-combined.png)
+
+The Normal comparison uses the same ordering:
+
+![Normal triptych](triptychs/cycles-cpu-normal.png)
+
+The before/after Normal triptych is ordered Psycles before, Psycles after,
+amplified absolute difference. It confirms that the change is localized to
+surfaces whose shader derivatives depend on the camera differential, notably
+the automatic-bump floor and cupboard materials:
+
+![Before and after Normal](triptychs/psycles-before-after-normal.png)
+
+Visual inspection agrees with the targeted path oracle: the wood-floor bump
+orientation and strength move toward Cycles. The full-image comparison still
+shows structured Normal residuals on the cupboard and the left brick wall, as
+well as a broad noisy direct-light residual. Those are explicitly retained as
+separate open alignment issues; the near-clip fix does not claim to explain
+them.
