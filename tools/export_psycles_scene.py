@@ -1212,6 +1212,46 @@ def _geometry_instance(
     }
 
 
+def _camera_focus_distance(camera: Any, depsgraph: Any) -> float:
+    """Return the effective Cycles focal distance for the render camera.
+
+    Blender stores an authored scalar distance and an optional focus object.
+    Cycles ignores the scalar when the object is present and projects the
+    camera-to-target displacement onto the camera's local Z axis.  A bone
+    subtarget replaces the focus object's origin when it resolves.
+    """
+    dof = camera.data.dof
+    focus_object = dof.focus_object
+    if focus_object is None:
+        return max(float(dof.focus_distance), 1.0e-5)
+
+    focus_object = focus_object.evaluated_get(depsgraph)
+    focus_transform = focus_object.matrix_world
+    focus_subtarget = str(getattr(dof, "focus_subtarget", ""))
+    pose = getattr(focus_object, "pose", None)
+    if pose is not None and focus_subtarget:
+        pose_bone = pose.bones.get(focus_subtarget)
+        if pose_bone is not None:
+            focus_transform = focus_transform @ pose_bone.matrix
+
+    camera_transform = camera.matrix_world
+    view_direction = camera_transform.col[2].xyz.normalized()
+    camera_to_focus = (
+        camera_transform.translation - focus_transform.translation
+    )
+    return max(abs(float(view_direction.dot(camera_to_focus))), 1.0e-5)
+
+
+def _camera_transform_without_scale(camera: Any) -> Any:
+    """Match Cycles' per-axis normalization of the camera transform."""
+    transform = camera.matrix_world.copy()
+    for column_index in range(3):
+        column = transform.col[column_index].xyz.normalized()
+        for row_index in range(3):
+            transform[row_index][column_index] = column[row_index]
+    return transform
+
+
 def _export_scene(
     output: pathlib.Path,
     depsgraph: Any,
@@ -1496,13 +1536,19 @@ def _export_scene(
             }
         )
 
-    camera = source_camera
+    camera = (
+        source_camera.evaluated_get(depsgraph)
+        if source_camera is not None
+        else None
+    )
     camera_data = None
     if camera is not None:
         camera_data = {
             "name": camera.name,
             "type": camera.data.type,
-            "transform": _column_major(camera.matrix_world),
+            "transform": _column_major(
+                _camera_transform_without_scale(camera)
+            ),
             "angle": float(camera.data.angle),
             "angle_x": float(camera.data.angle_x),
             "angle_y": float(camera.data.angle_y),
@@ -1515,7 +1561,9 @@ def _export_scene(
             "clip_end": float(camera.data.clip_end),
             "dof": {
                 "enabled": bool(camera.data.dof.use_dof),
-                "focus_distance": float(camera.data.dof.focus_distance),
+                "focus_distance": _camera_focus_distance(
+                    camera, depsgraph
+                ),
                 "fstop": float(camera.data.dof.aperture_fstop),
                 "blades": int(camera.data.dof.aperture_blades),
                 "rotation": float(camera.data.dof.aperture_rotation),
