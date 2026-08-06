@@ -1,5 +1,33 @@
 # Psycles handoff — 2026-07-29
 
+## Current continuation — 2026-08-07
+
+The current renderer implementation boundary is Psycles `main@8c6fa43` with
+LuisaCompute `next@3e63df0c6` and Blender/Cycles 5.3 Alpha
+`82186b01ad2e`. The older published-boundary section below remains a
+historical record; do not reset to its July revisions.
+
+Two official complex-scene current-head checkpoints now exist:
+
+- [Monster Under the Bed](docs/validation/2026-08-07/monster-current-head/README.md)
+  completes the canonical five-way matrix at 960x960x128 after formal Luisa
+  fallback hit-kind and Vulkan dispatch-bound repairs plus an independent
+  Principled Coat Normal correction. Its remaining Combined relative RMSE is
+  `0.156101`, so higher-spp transport alignment is still open.
+- [Lone Monk](docs/validation/2026-08-07/lone-monk-current-head/README.md)
+  completes the five-way matrix at 960x720x128. The old grass mismatch is no
+  longer structurally visible; Psycles HIP Combined relative RMSE is
+  `0.026193` with a `1.001109` mean-luminance ratio. Performance is now the
+  urgent failure: HIP is `4.09x` slower than Cycles HIP, fallback is `9.86x`
+  slower than Cycles CPU, and Vulkan is `103.54x` slower than Cycles HIP with
+  a 19.56-minute cache-cold JIT.
+
+The next correctness gate is a higher-spp Lone Monk/Monster convergence run
+against Cycles, followed by fresh current-head Classroom, Barbershop, and
+Blender 4.1 Splash matrices. The next performance gate must separate exact
+traversal cost from the monolithic path shader and reduce generated-kernel
+size without pre-baking or weakening raw closure semantics.
+
 ## Published boundary
 
 Continue on `main`; do not restart from a historical refactor branch.
