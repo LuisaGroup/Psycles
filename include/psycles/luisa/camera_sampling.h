@@ -70,6 +70,22 @@ output_filter_y(luisa::compute::Float cycles_filter_y) noexcept {
         (far_clip - near_clip) / safe_cosine);
 }
 
+// Advancing a ray origin by distance s changes the positional differential
+// by s times the directional differential. Cycles applies this invariant when
+// it moves camera rays onto the near clipping plane:
+//
+//   dP_clipped = dP_camera + s_near * dD_camera.
+//
+// Keep the compact scalar form here so ray construction cannot advance P
+// without advancing its differential by the same parameter distance.
+[[nodiscard]] inline luisa::compute::Float
+advance_compact_differential_position(
+    luisa::compute::Float differential_position,
+    luisa::compute::Float differential_direction,
+    luisa::compute::Float distance) noexcept {
+    return differential_position + distance * differential_direction;
+}
+
 // Shirley-Chiu concentric square-to-disk map. Uniform polar sampling has the
 // same density, but it destroys the two-dimensional stratification of the
 // Sobol lens sample. Camera coverage must preserve this exact mapping so

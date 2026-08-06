@@ -228,6 +228,11 @@ CameraRaySample construct_camera_ray(
             parameters.camera_far,
             camera_clip_cosine);
     ray_origin += ray_direction * camera_clip.x;
+    differential_position =
+        camera_sampling::advance_compact_differential_position(
+            differential_position,
+            differential_direction,
+            camera_clip.x);
     Var<luisa::compute::Ray> ray = make_ray(
         ray_origin,
         ray_direction,
