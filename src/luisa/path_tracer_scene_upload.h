@@ -2,6 +2,7 @@
 
 #include "path_tracer_internal.h"
 
+#include <span>
 #include <string>
 
 namespace psycles::luisa_backend::detail {
@@ -16,6 +17,22 @@ struct PrimitiveCompletionUpload {
 [[nodiscard]] PrimitiveCompletionUpload
 make_primitive_completion_upload(
     const CyclesPrimitiveCompletionPlan &plan);
+
+struct CyclesCompletionSourceLookup {
+    luisa::vector<luisa::uint> dense_instances;
+    luisa::vector<luisa::uint2> sparse_instances;
+    std::string diagnostic;
+
+    [[nodiscard]] bool ok() const noexcept {
+        return diagnostic.empty();
+    }
+};
+
+// Builds the reverse relation needed only for Cycles' closed-endpoint support
+// completion. The common dense encoding is O(1); pathological object-number
+// sparsity falls back to O(log S), where S excludes all ordinary instances.
+[[nodiscard]] CyclesCompletionSourceLookup
+make_cycles_completion_source_lookup(std::span<const InstanceGpu> instances);
 
 struct SceneTableUploadInput {
     luisa::vector<GeometryGpu> &geometries;
@@ -40,8 +57,8 @@ struct SceneTableUploadResult {
 };
 
 // Final host/JIT scene stage. It normalizes logically empty tables to inert
-// storage, establishes the unique Cycles-object lookup used by exact-source
-// traversal, and uploads every table before the acceleration structure build.
+// storage, establishes the exact-source completion lookup, and uploads every
+// table before the acceleration structure build.
 class SceneTableUploadComponent {
 
   public:

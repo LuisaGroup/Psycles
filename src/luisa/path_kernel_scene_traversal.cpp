@@ -122,17 +122,27 @@ private:
   source_acceleration_identity(
       const std::shared_ptr<LuisaSceneData> &scene,
       const ScenePrimitiveIdentity &source) const noexcept {
-    Bool valid = false;
+    Bool found = false;
     UInt instance_index = 0u;
     UInt primitive_index = 0u;
-    if (scene->cycles_object_instance_map_count != 0u) {
+    if (scene->cycles_completion_source_dense_count != 0u) {
+      $if((source.object != surface_ray::invalid_primitive) &
+          (source.object < scene->cycles_completion_source_dense_count)) {
+        const auto candidate =
+            scene->cycles_completion_source_dense_buffer->read(source.object);
+        $if(candidate != surface_ray::invalid_primitive) {
+          found = true;
+          instance_index = candidate;
+        };
+      };
+    } else if (scene->cycles_completion_source_sparse_count != 0u) {
       $if(source.object != surface_ray::invalid_primitive) {
         UInt first = 0u;
-        UInt last = scene->cycles_object_instance_map_count;
+        UInt last = scene->cycles_completion_source_sparse_count;
         $while(first < last) {
           const auto middle = first + (last - first) / 2u;
           const auto entry =
-              scene->cycles_object_instance_map_buffer->read(middle);
+              scene->cycles_completion_source_sparse_buffer->read(middle);
           $if(entry.x < source.object) {
             first = middle + 1u;
           }
@@ -140,24 +150,25 @@ private:
             last = middle;
           };
         };
-        $if(first < scene->cycles_object_instance_map_count) {
+        $if(first < scene->cycles_completion_source_sparse_count) {
           const auto entry =
-              scene->cycles_object_instance_map_buffer->read(first);
+              scene->cycles_completion_source_sparse_buffer->read(first);
           $if(entry.x == source.object) {
-            const auto instance =
-                scene->instance_buffer->read(entry.y);
-            const auto geometry =
-                scene->geometry_buffer->read(instance.geometry_index);
-            valid =
-                (geometry.primitive_kind == geometry_kind_triangle) &
-                (source.primitive >= geometry.cycles_primitive_offset);
+            found = true;
             instance_index = entry.y;
-            primitive_index =
-                source.primitive - geometry.cycles_primitive_offset;
           };
         };
       };
     }
+    Bool valid = false;
+    $if(found) {
+      const auto instance = scene->instance_buffer->read(instance_index);
+      const auto geometry =
+          scene->geometry_buffer->read(instance.geometry_index);
+      valid = (geometry.primitive_kind == geometry_kind_triangle) &
+              (source.primitive >= geometry.cycles_primitive_offset);
+      primitive_index = source.primitive - geometry.cycles_primitive_offset;
+    };
     return {.valid = std::move(valid),
             .instance = std::move(instance_index),
             .primitive = std::move(primitive_index)};

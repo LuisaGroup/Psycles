@@ -3,6 +3,7 @@
 #include "path_kernel_curve_primitive.h"
 #include "path_kernel_scene_traversal.h"
 #include "path_tracer_scene_geometry.h"
+#include "path_tracer_scene_upload.h"
 
 #include <psycles/luisa/surface_ray.h>
 
@@ -34,9 +35,49 @@ inline constexpr std::size_t record_count = 26u;
          near(actual.z, expected.z) && near(actual.w, expected.w);
 }
 
+[[nodiscard]] bool test_completion_source_lookup_encodings() {
+  constexpr std::array ordinary{InstanceGpu{.cycles_object_index = 7u},
+                                InstanceGpu{.cycles_object_index = 19u}};
+  const auto empty = make_cycles_completion_source_lookup(ordinary);
+  if (!empty.ok() || !empty.dense_instances.empty() ||
+      !empty.sparse_instances.empty()) {
+    return false;
+  }
+
+  constexpr std::array dense_instances{
+      InstanceGpu{.cycles_object_index = 7u, .coincident_count = 2u},
+      InstanceGpu{.cycles_object_index = 19u}};
+  const auto dense = make_cycles_completion_source_lookup(dense_instances);
+  if (!dense.ok() || dense.dense_instances.size() != 8u ||
+      !dense.sparse_instances.empty() || dense.dense_instances[7u] != 0u) {
+    return false;
+  }
+
+  constexpr std::array sparse_instances{
+      InstanceGpu{.cycles_object_index = 0x40000000u,
+                  .primitive_completion_count = 1u},
+      InstanceGpu{.cycles_object_index = 3u}};
+  const auto sparse = make_cycles_completion_source_lookup(sparse_instances);
+  if (!sparse.ok() || !sparse.dense_instances.empty() ||
+      sparse.sparse_instances.size() != 1u ||
+      sparse.sparse_instances[0u].x != 0x40000000u ||
+      sparse.sparse_instances[0u].y != 0u) {
+    return false;
+  }
+
+  constexpr std::array duplicate_instances{
+      InstanceGpu{.cycles_object_index = 5u},
+      InstanceGpu{.cycles_object_index = 5u}};
+  return !make_cycles_completion_source_lookup(duplicate_instances).ok();
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
+  if (!test_completion_source_lookup_encodings()) {
+    std::cerr << "FAILED: completion-source lookup encodings\n";
+    return EXIT_FAILURE;
+  }
   const auto backend = std::string_view{argc > 1 ? argv[1] : "fallback"};
   Context context{argv[0]};
   auto device = context.create_device(backend);
@@ -197,19 +238,6 @@ int main(int argc, char **argv) {
                   .primitive_completion_count = 2u,
                   .cycles_transform_applied = 1u,
                   .cycles_world_to_object = partial_b_world_to_object}};
-  constexpr std::array cycles_object_instance_map{
-      luisa::uint2{6u, 8u},
-      luisa::uint2{11u, 0u},
-      luisa::uint2{22u, 1u},
-      luisa::uint2{29u, 10u},
-      luisa::uint2{32u, 11u},
-      luisa::uint2{71u, 9u},
-      luisa::uint2{489u, 2u},
-      luisa::uint2{1936u, 3u},
-      luisa::uint2{2131u, 4u},
-      luisa::uint2{2372u, 5u},
-      luisa::uint2{5011u, 6u},
-      luisa::uint2{5066u, 7u}};
   constexpr std::array primitive_completions{
       PrimitiveCompletionGpu{.local_primitive = 1u,
                              .instance_offset = 0u,
@@ -224,6 +252,16 @@ int main(int argc, char **argv) {
                              .instance_offset = 0u,
                              .instance_count = 2u}};
   constexpr std::array primitive_completion_instances{10u, 11u};
+  const auto completion_source_lookup =
+      make_cycles_completion_source_lookup(instances);
+  if (!completion_source_lookup.ok() ||
+      completion_source_lookup.dense_instances.size() != 2373u ||
+      !completion_source_lookup.sparse_instances.empty() ||
+      completion_source_lookup.dense_instances[29u] != 10u ||
+      completion_source_lookup.dense_instances[22u] != invalid_primitive) {
+    std::cerr << "FAILED: dense completion-source lookup plan\n";
+    return EXIT_FAILURE;
+  }
   constexpr std::array geometry_materials{
       MaterialBindingGpu{.surface_tag = 41u,
                          .cycles_shader_index = 5u,
@@ -387,12 +425,12 @@ int main(int argc, char **argv) {
       device.create_buffer<PrimitiveCompletionGpu>(
           primitive_completions.size());
   scene->primitive_completion_instance_buffer =
+      device.create_buffer<luisa::uint>(primitive_completion_instances.size());
+  scene->cycles_completion_source_dense_count = static_cast<std::uint32_t>(
+      completion_source_lookup.dense_instances.size());
+  scene->cycles_completion_source_dense_buffer =
       device.create_buffer<luisa::uint>(
-          primitive_completion_instances.size());
-  scene->cycles_object_instance_map_buffer =
-      device.create_buffer<luisa::uint2>(cycles_object_instance_map.size());
-  scene->cycles_object_instance_map_count =
-      static_cast<std::uint32_t>(cycles_object_instance_map.size());
+          completion_source_lookup.dense_instances.size());
   scene->geometry_material_buffer =
       device.create_buffer<MaterialBindingGpu>(geometry_materials.size());
   scene->override_material_buffer =
@@ -766,8 +804,8 @@ int main(int argc, char **argv) {
                 luisa::span{primitive_completions})
          << scene->primitive_completion_instance_buffer.copy_from(
                 luisa::span{primitive_completion_instances})
-         << scene->cycles_object_instance_map_buffer.copy_from(
-                luisa::span{cycles_object_instance_map})
+         << scene->cycles_completion_source_dense_buffer.copy_from(
+                luisa::span{completion_source_lookup.dense_instances})
          << scene->geometry_material_buffer.copy_from(
                 luisa::span{geometry_materials})
          << scene->override_material_buffer.copy_from(

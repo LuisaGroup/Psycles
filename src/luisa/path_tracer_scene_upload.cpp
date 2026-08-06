@@ -10,35 +10,12 @@
 namespace psycles::luisa_backend::detail {
 namespace {
 
-[[nodiscard]] std::vector<luisa::uint2>
-build_cycles_object_instance_map(
-    const luisa::vector<InstanceGpu> &instances) {
-    std::vector<luisa::uint2> result;
-    result.reserve(instances.size());
-    for (std::size_t index = 0u; index < instances.size(); ++index) {
-        const auto explicit_index = instances[index].cycles_object_index;
-        const auto object_index =
-            explicit_index != cycles_shader_identity::invalid_index
-                ? explicit_index
-                : static_cast<std::uint32_t>(index);
-        result.emplace_back(
-            object_index, static_cast<std::uint32_t>(index));
-    }
-    std::sort(result.begin(), result.end(),
-              [](luisa::uint2 a, luisa::uint2 b) noexcept {
-                  return a.x < b.x;
-              });
-    return result;
-}
-
-[[nodiscard]] bool object_indices_are_unique(
-    const std::vector<luisa::uint2> &mapping) noexcept {
-    for (std::size_t index = 1u; index < mapping.size(); ++index) {
-        if (mapping[index - 1u].x == mapping[index].x) {
-            return false;
-        }
-    }
-    return true;
+[[nodiscard]] std::uint32_t
+cycles_object_index(const InstanceGpu &instance,
+                    std::size_t fallback_index) noexcept {
+    return instance.cycles_object_index != cycles_shader_identity::invalid_index
+               ? instance.cycles_object_index
+               : static_cast<std::uint32_t>(fallback_index);
 }
 
 void provide_inert_storage(SceneTableUploadInput input) {
@@ -83,15 +60,67 @@ void provide_inert_storage(SceneTableUploadInput input) {
 
 }// namespace
 
-PrimitiveCompletionUpload make_primitive_completion_upload(
-    const CyclesPrimitiveCompletionPlan &plan) {
+CyclesCompletionSourceLookup
+make_cycles_completion_source_lookup(std::span<const InstanceGpu> instances) {
+    CyclesCompletionSourceLookup result;
+    std::vector<std::uint32_t> object_indices;
+    object_indices.reserve(instances.size());
+    result.sparse_instances.reserve(instances.size());
+    for (std::size_t index = 0u; index < instances.size(); ++index) {
+        const auto object_index = cycles_object_index(instances[index], index);
+        object_indices.emplace_back(object_index);
+        if (std::max(instances[index].coincident_count, 1u) > 1u ||
+            instances[index].primitive_completion_count != 0u) {
+            result.sparse_instances.emplace_back(
+                object_index, static_cast<std::uint32_t>(index));
+        }
+    }
+    std::sort(object_indices.begin(), object_indices.end());
+    if (std::adjacent_find(object_indices.begin(), object_indices.end()) !=
+        object_indices.end()) {
+        result.diagnostic =
+            "Cycles object identities must be unique across scene "
+            "instances";
+        result.sparse_instances.clear();
+        return result;
+    }
+    std::sort(
+        result.sparse_instances.begin(), result.sparse_instances.end(),
+        [](luisa::uint2 a, luisa::uint2 b) noexcept { return a.x < b.x; });
+    if (result.sparse_instances.empty()) {
+        return result;
+    }
+
+    constexpr std::uint64_t minimum_dense_entries = 4096u;
+    constexpr std::uint64_t maximum_dense_entries = 1u << 20u;
+    const auto proportional_entries = std::min<std::uint64_t>(
+        maximum_dense_entries,
+        static_cast<std::uint64_t>(instances.size()) * 4u);
+    const auto dense_limit =
+        std::max(minimum_dense_entries, proportional_entries);
+    const auto required_entries =
+        static_cast<std::uint64_t>(result.sparse_instances.back().x) + 1u;
+    if (required_entries <= dense_limit) {
+        result.dense_instances.assign(
+            static_cast<std::size_t>(required_entries),
+            cycles_shader_identity::invalid_index);
+        for (const auto entry : result.sparse_instances) {
+            result.dense_instances[entry.x] = entry.y;
+        }
+        result.sparse_instances.clear();
+    }
+    return result;
+}
+
+PrimitiveCompletionUpload
+make_primitive_completion_upload(const CyclesPrimitiveCompletionPlan &plan) {
     PrimitiveCompletionUpload result;
     result.records.reserve(plan.records.size());
     for (const auto &record : plan.records) {
-        result.records.emplace_back(PrimitiveCompletionGpu{
-            .local_primitive = record.local_primitive,
-            .instance_offset = record.instance_offset,
-            .instance_count = record.instance_count});
+        result.records.emplace_back(
+            PrimitiveCompletionGpu{.local_primitive = record.local_primitive,
+                                   .instance_offset = record.instance_offset,
+                                   .instance_count = record.instance_count});
     }
     result.instances.reserve(plan.instances.size());
     for (const auto instance : plan.instances) {
@@ -100,38 +129,35 @@ PrimitiveCompletionUpload make_primitive_completion_upload(
     return result;
 }
 
-SceneTableUploadResult SceneTableUploadComponent::upload(
-    const std::shared_ptr<LuisaSceneData> &scene,
-    Stream &stream,
-    SceneTableUploadInput input) const {
+SceneTableUploadResult
+SceneTableUploadComponent::upload(const std::shared_ptr<LuisaSceneData> &scene,
+                                  Stream &stream,
+                                  SceneTableUploadInput input) const {
     provide_inert_storage(input);
-    const auto object_instance_map =
-        build_cycles_object_instance_map(input.instances);
-    if (!object_indices_are_unique(object_instance_map)) {
-        return {.diagnostic =
-                    "Cycles object identities must be unique across scene "
-                    "instances"};
+    const auto completion_source_lookup =
+        make_cycles_completion_source_lookup(input.instances);
+    if (!completion_source_lookup.ok()) {
+        return {.diagnostic = completion_source_lookup.diagnostic};
     }
-    scene->cycles_object_instance_map_count =
-        static_cast<std::uint32_t>(object_instance_map.size());
-
+    scene->cycles_completion_source_dense_count = static_cast<std::uint32_t>(
+        completion_source_lookup.dense_instances.size());
+    scene->cycles_completion_source_sparse_count = static_cast<std::uint32_t>(
+        completion_source_lookup.sparse_instances.size());
     scene->geometry_buffer =
         scene->device.create_buffer<GeometryGpu>(input.geometries.size());
     if (!scene->attribute_binding_buffer) {
         scene->attribute_binding_buffer =
             scene->device.create_buffer<AttributeBindingGpu>(
                 input.attribute_bindings.size());
-        scene->heap.emplace_on_update(
-            scene->attribute_binding_slot,
-            scene->attribute_binding_buffer);
+        scene->heap.emplace_on_update(scene->attribute_binding_slot,
+                                      scene->attribute_binding_buffer);
     }
     if (!scene->attribute_range_buffer) {
         scene->attribute_range_buffer =
             scene->device.create_buffer<AttributeRangeGpu>(
                 input.attribute_ranges.size());
-        scene->heap.emplace_on_update(
-            scene->attribute_range_slot,
-            scene->attribute_range_buffer);
+        scene->heap.emplace_on_update(scene->attribute_range_slot,
+                                      scene->attribute_range_buffer);
     }
     scene->instance_buffer =
         scene->device.create_buffer<InstanceGpu>(input.instances.size());
@@ -141,8 +167,16 @@ SceneTableUploadResult SceneTableUploadComponent::upload(
     scene->primitive_completion_instance_buffer =
         scene->device.create_buffer<luisa::uint>(
             input.primitive_completion_instances.size());
-    scene->cycles_object_instance_map_buffer =
-        scene->device.create_buffer<luisa::uint2>(object_instance_map.size());
+    if (scene->cycles_completion_source_dense_count != 0u) {
+        scene->cycles_completion_source_dense_buffer =
+            scene->device.create_buffer<luisa::uint>(
+                scene->cycles_completion_source_dense_count);
+    }
+    if (scene->cycles_completion_source_sparse_count != 0u) {
+        scene->cycles_completion_source_sparse_buffer =
+            scene->device.create_buffer<luisa::uint2>(
+                scene->cycles_completion_source_sparse_count);
+    }
     scene->geometry_material_buffer =
         scene->device.create_buffer<MaterialBindingGpu>(
             input.geometry_materials.size());
@@ -158,20 +192,24 @@ SceneTableUploadResult SceneTableUploadComponent::upload(
         scene->device.create_buffer<LightDistributionGpu>(
             input.light_distribution.size());
 
-    stream << scene->geometry_buffer.copy_from(
-                  luisa::span{input.geometries})
+    if (scene->cycles_completion_source_dense_count != 0u) {
+        stream << scene->cycles_completion_source_dense_buffer.copy_from(
+            luisa::span{completion_source_lookup.dense_instances});
+    }
+    if (scene->cycles_completion_source_sparse_count != 0u) {
+        stream << scene->cycles_completion_source_sparse_buffer.copy_from(
+            luisa::span{completion_source_lookup.sparse_instances});
+    }
+    stream << scene->geometry_buffer.copy_from(luisa::span{input.geometries})
            << scene->attribute_binding_buffer.copy_from(
                   luisa::span{input.attribute_bindings})
            << scene->attribute_range_buffer.copy_from(
                   luisa::span{input.attribute_ranges})
-           << scene->instance_buffer.copy_from(
-                  luisa::span{input.instances})
+           << scene->instance_buffer.copy_from(luisa::span{input.instances})
            << scene->primitive_completion_buffer.copy_from(
                   luisa::span{input.primitive_completions})
            << scene->primitive_completion_instance_buffer.copy_from(
                   luisa::span{input.primitive_completion_instances})
-           << scene->cycles_object_instance_map_buffer.copy_from(
-                  luisa::span{object_instance_map})
            << scene->geometry_material_buffer.copy_from(
                   luisa::span{input.geometry_materials})
            << scene->override_material_buffer.copy_from(
@@ -181,10 +219,8 @@ SceneTableUploadResult SceneTableUploadComponent::upload(
                   luisa::span{input.emissive_triangles})
            << scene->light_distribution_buffer.copy_from(
                   luisa::span{input.light_distribution})
-           << scene->texture_heap.update()
-           << scene->heap.update()
-           << scene->accel.build()
-           << synchronize();
+           << scene->texture_heap.update() << scene->heap.update()
+           << scene->accel.build() << synchronize();
     return {};
 }
 
