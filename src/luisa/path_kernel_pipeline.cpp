@@ -90,12 +90,14 @@ void PathKernelPipeline::emit(PathSampleContext &sample) const noexcept {
         Bool search_events = !bounce.subsurface_exit;
         Bool path_terminated = false;
         Bool volume_scattered = false;
+        Bool surface_may_emit = false;
         $while(search_events &
                !path_terminated) {
             auto event =
                 _impl->closest_event->emit(
                     bounce,
                     previous_analytic_light);
+            surface_may_emit = event.surface_may_emit;
             if (_impl->volume_segment) {
                 const auto volume =
                     _impl->volume_segment->emit(
@@ -137,7 +139,8 @@ void PathKernelPipeline::emit(PathSampleContext &sample) const noexcept {
             $continue;
         };
 
-        auto surface = _impl->surface_geometry->emit(bounce);
+        auto surface = _impl->surface_geometry->emit(
+            bounce, surface_may_emit);
         auto shading = _impl->surface_shading->emit(surface);
         DirectLightingContext lighting{
             .bounce = bounce, .surface = surface, .shading = shading};

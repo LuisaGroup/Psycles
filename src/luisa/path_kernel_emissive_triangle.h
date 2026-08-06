@@ -42,6 +42,15 @@ struct EmissiveTrianglePdf {
     Bool valid;
 };
 
+// Result of the ordered intersection-emitter lookup. The scene compiler
+// guarantees that the device table is strictly ordered by
+// (instance_index, primitive_index), so this lookup has logarithmic rather
+// than linear cost without changing emitter identity or sampling semantics.
+struct EmissiveTriangleLookup {
+    UInt emission_sampling;
+    Bool found;
+};
+
 // Shared host-stage component for mesh-emitter geometry, Cycles triangle
 // measures and side selection. Raw emission-closure evaluation is a separate
 // operation, matching Cycles' proposal -> geometric rejection -> shader
@@ -79,6 +88,12 @@ class EmissiveTriangleComponent {
         PathSampleContext &sample,
         const EmissiveTriangleLightProposal
             &proposal) const noexcept = 0;
+
+    [[nodiscard]] virtual EmissiveTriangleLookup
+    find_intersection_emitter(
+        const std::shared_ptr<LuisaSceneData> &scene,
+        UInt instance_index,
+        UInt primitive_index) const noexcept = 0;
 
     [[nodiscard]] virtual EmissiveTrianglePdf
     from_intersection(

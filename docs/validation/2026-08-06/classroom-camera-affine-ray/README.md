@@ -59,10 +59,12 @@ Machine-readable reports contain all 15 requested passes:
 ## Runtime observation
 
 With a warm shader cache, the corrected 256-spp Psycles HIP render took
-76.281 s. Cycles HIP took 4.431 s and Cycles CPU took 13.487 s on the same
-machine. The steady-state gaps are therefore 17.2x and 5.66x respectively.
-The previous 59 s Psycles timing was artificially low because the divergent
-paths terminated early, so it is not a valid performance baseline.
+57.832 s. Cycles HIP took 4.431 s and Cycles CPU took 13.487 s on the same
+machine. The steady-state gaps were therefore 13.05x and 4.29x respectively.
+The previously reported 76.281 s came from a trace-instrumented kernel and was
+not a valid uninstrumented runtime measurement. Follow-up profiling and the
+subsequent exact optimization are documented in the
+[Classroom HIP performance validation](../classroom-hip-performance/README.md).
 
 Cold Psycles shader compilation is separate from that runtime gap: LLVM
 code generation took about 23.7 s, bitcode linking about 44.0 s, and total JIT

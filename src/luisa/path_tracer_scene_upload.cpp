@@ -41,6 +41,29 @@ build_cycles_object_instance_map(
     return true;
 }
 
+[[nodiscard]] bool emissive_triangle_key_less(
+    const EmissiveTriangleGpu &lhs,
+    const EmissiveTriangleGpu &rhs) noexcept {
+    return lhs.instance_index < rhs.instance_index ||
+           (lhs.instance_index == rhs.instance_index &&
+            lhs.primitive_index < rhs.primitive_index);
+}
+
+[[nodiscard]] bool
+emissive_triangle_keys_strictly_increasing_impl(
+    const luisa::vector<EmissiveTriangleGpu> &triangles)
+    noexcept {
+    for (auto index = std::size_t{1u};
+         index < triangles.size(); ++index) {
+        if (!emissive_triangle_key_less(
+                triangles[index - 1u],
+                triangles[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
 void provide_inert_storage(SceneTableUploadInput input) {
     if (input.light_distribution.empty()) {
         input.light_distribution.emplace_back(LightDistributionGpu{});
@@ -83,6 +106,13 @@ void provide_inert_storage(SceneTableUploadInput input) {
 
 }// namespace
 
+bool emissive_triangle_keys_strictly_increasing(
+    const luisa::vector<EmissiveTriangleGpu> &triangles)
+    noexcept {
+    return emissive_triangle_keys_strictly_increasing_impl(
+        triangles);
+}
+
 PrimitiveCompletionUpload make_primitive_completion_upload(
     const CyclesPrimitiveCompletionPlan &plan) {
     PrimitiveCompletionUpload result;
@@ -104,6 +134,14 @@ SceneTableUploadResult SceneTableUploadComponent::upload(
     const std::shared_ptr<LuisaSceneData> &scene,
     Stream &stream,
     SceneTableUploadInput input) const {
+    // Forward-hit MIS performs a device lower_bound over this table. Validate
+    // the unique lexicographic key invariant before inert storage is added.
+    if (!emissive_triangle_keys_strictly_increasing(
+            input.emissive_triangles)) {
+        return {.diagnostic =
+                    "Emissive triangle lookup keys must be unique and "
+                    "strictly ordered by instance and primitive index"};
+    }
     provide_inert_storage(input);
     const auto object_instance_map =
         build_cycles_object_instance_map(input.instances);

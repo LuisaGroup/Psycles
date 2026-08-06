@@ -330,6 +330,7 @@ struct VolumeSegmentEvent {
 
 struct SurfaceGeometryContext {
     PathBounceContext &bounce;
+    Bool surface_may_emit;
     Var<InstanceGpu> instance;
     Float3 p0;
     Float3 p1;
@@ -421,7 +422,8 @@ class SurfaceGeometryStage {
   public:
     virtual ~SurfaceGeometryStage() noexcept = default;
     [[nodiscard]] virtual SurfaceGeometryContext
-    emit(PathBounceContext &bounce) const noexcept = 0;
+    emit(PathBounceContext &bounce,
+         Bool surface_may_emit) const noexcept = 0;
 };
 
 class SurfaceShadingStage {
