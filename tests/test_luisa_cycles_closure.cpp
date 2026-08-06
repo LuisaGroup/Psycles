@@ -735,7 +735,10 @@ int main(int argc, char **argv) {
         output.write(8u, make_float4(sample.sample.evaluation.f, 0.0f));
         output.write(9u,
             make_float4(
-                sample.sample.roughness, sample.sample.eta, 0.0f));
+                sample.sample.roughness,
+                sample.sample.eta,
+                sample.sample.evaluation
+                    .average_roughness_squared));
         OracleShaderServices below_cutoff_services{
             color_parameter, {0.5e-5f, 0.5e-5f, 0.5e-5f}};
         OracleShaderServices boundary_services{
@@ -1429,7 +1432,7 @@ int main(int argc, char **argv) {
         luisa::float4{0.244151756f, 0.244151756f, 6.0f, 1.0f},
         luisa::float4{0.601930976f, -0.222150967f, 0.767025411f, 0.0f},
         luisa::float4{0.151374087f, 0.100102216f, 0.056154907f, 0.0f},
-        luisa::float4{1.0f, 1.0f, 1.0f, 0.0f},
+        luisa::float4{1.0f, 1.0f, 1.0f, 1.0f},
         luisa::float4{24.0f, 24.0f, 0.0f, 1.0f}};
     for (std::size_t index = 0u; index < expected.size(); ++index) {
         if (!approximately_equal(actual[index], expected[index])) {

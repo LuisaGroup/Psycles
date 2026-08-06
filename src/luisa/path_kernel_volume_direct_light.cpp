@@ -1022,6 +1022,11 @@ class PathVolumeDirectLightingComponent final
                 const auto surface_shadow =
                     _config.trace_shadow(
                         surface_shadow_ray,
+                        // Current Cycles shader_setup_from_volume leaves
+                        // both compact differentials at zero (with a source
+                        // TODO for future ray-differential support).
+                        0.0f,
+                        0.0f,
                         surface_ray::
                             invalid_primitive,
                         surface_ray::

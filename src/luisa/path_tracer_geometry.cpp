@@ -15,6 +15,8 @@ using EvaluateShadowSurfaceCallable =
     Callable<ShadowSurfaceEvaluationCall(
         luisa::compute::Ray,
         luisa::compute::CommittedHit,
+        float,
+        float,
         ShaderEvaluationStateCall)>;
 
 [[nodiscard]] EvaluateShadowSurfaceCallable
@@ -26,6 +28,8 @@ make_evaluate_shadow_surface_callable(
         [scene, safe_normalize, geometry](
             Var<luisa::compute::Ray> candidate_ray,
             Var<luisa::compute::CommittedHit> hit,
+            Float ray_dP,
+            Float ray_dD,
             Var<ShaderEvaluationStateCall> shader_state_call) noexcept {
             const auto shader_state =
                 unpack_shader_evaluation_state(shader_state_call);
@@ -40,7 +44,12 @@ make_evaluate_shadow_surface_callable(
                 scene->nishita_texture_bindings,
                 scene->shader_color_space};
             auto primitive = geometry->emit(
-                scene, hit, candidate_ray, 0.0f, 0.0f, safe_normalize);
+                scene,
+                hit,
+                candidate_ray,
+                ray_dP,
+                ray_dD,
+                safe_normalize);
             auto point = std::move(primitive.point);
             point.ray_visibility = shadow_visibility;
             cycles_path_state::apply_shader_state(point, shader_state);
@@ -72,6 +81,8 @@ TraceShadowCallable make_trace_shadow_callable(
     TraceShadowCallable trace_shadow =
         [scene, evaluate_shadow_surface, traversal](
             Var<luisa::compute::Ray> shadow_ray,
+            Float ray_dP,
+            Float ray_dD,
             UInt source_object,
             UInt source_primitive,
             UInt light_object,
@@ -119,6 +130,8 @@ TraceShadowCallable make_trace_shadow_callable(
                         const auto surface = evaluate_shadow_surface(
                             shadow_ray,
                             committed,
+                            ray_dP,
+                            ray_dD,
                             pack_shader_evaluation_state(shader_state));
                         $if(!first_hit) {
                             first_hit = true;

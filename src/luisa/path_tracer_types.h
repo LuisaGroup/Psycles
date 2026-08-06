@@ -255,6 +255,7 @@ struct SurfaceEvaluationCall {
     luisa::float3 diffuse_f{};
     luisa::float3 glossy_f{};
     float diffuse_pdf{};
+    float average_roughness_squared{};
     luisa::uint events{};
 };
 
@@ -264,6 +265,7 @@ struct SurfaceSampleCall {
     luisa::float3 diffuse_f{};
     luisa::float3 glossy_f{};
     float diffuse_pdf{};
+    float average_roughness_squared{};
     luisa::uint events{};
     luisa::float3 wi{};
     float eta{};
@@ -296,6 +298,7 @@ struct SurfaceSampleTraceCall {
     luisa::float3 diffuse_f{};
     luisa::float3 glossy_f{};
     float diffuse_pdf{};
+    float average_roughness_squared{};
     luisa::uint events{};
     luisa::float3 wi{};
     float eta{};
@@ -591,6 +594,7 @@ LUISA_STRUCT(
     diffuse_f,
     glossy_f,
     diffuse_pdf,
+    average_roughness_squared,
     events) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::SurfaceSampleCall,
@@ -599,6 +603,7 @@ LUISA_STRUCT(
     diffuse_f,
     glossy_f,
     diffuse_pdf,
+    average_roughness_squared,
     events,
     wi,
     eta,
@@ -629,6 +634,7 @@ LUISA_STRUCT(
     diffuse_f,
     glossy_f,
     diffuse_pdf,
+    average_roughness_squared,
     events,
     wi,
     eta,

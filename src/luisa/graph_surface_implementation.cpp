@@ -127,6 +127,7 @@ GraphSurfaceImplementation::evaluate_traced(
     auto result = SurfaceEvaluation::zero();
     Float total_sample_weight = 0.0f;
     Float weighted_pdf = 0.0f;
+    Float weighted_roughness_squared = 0.0f;
     UInt closure_index = 0u;
     auto outgoing = safe_normalize(
         Float3{outgoing_expression}, point.shading_normal);
@@ -406,6 +407,11 @@ GraphSurfaceImplementation::evaluate_traced(
                         refraction_allowed);
             total_sample_weight += weight;
             weighted_pdf += weight * enabled_pdf;
+            weighted_roughness_squared +=
+                weight * enabled_pdf *
+                cycles_bsdf_specular_roughness_squared(
+                    physical,
+                    query.glossy_filter_roughness);
             has_diffuse =
                 has_diffuse |
                 ((diffuse_contributes & (!is_translucent)) &
@@ -434,6 +440,11 @@ GraphSurfaceImplementation::evaluate_traced(
         has_pdf);
     result.diffuse_pdf =
         select(0.0f, result.pdf, has_diffuse | has_translucent);
+    result.average_roughness_squared = select(
+        0.0f,
+        weighted_roughness_squared /
+            max(weighted_pdf, 1.0e-20f),
+        weighted_pdf > 0.0f);
     auto has_diffuse_pdf = weighted_pdf > 0.0f;
     UInt events = static_cast<std::uint32_t>(event_none);
     events = select(events,
@@ -954,6 +965,10 @@ GraphSurfaceImplementation::sample_with_trace(
         directional_sample_valid);
     diffuse_evaluation.diffuse_pdf = select(
         0.0f, diffuse_evaluation.diffuse_pdf, directional_sample_valid);
+    diffuse_evaluation.average_roughness_squared = select(
+        0.0f,
+        diffuse_evaluation.average_roughness_squared,
+        directional_sample_valid);
     diffuse_evaluation.events = select(
         0u, diffuse_evaluation.events, directional_sample_valid);
     result.valid = sample_valid;
@@ -997,6 +1012,12 @@ GraphSurfaceImplementation::sample_with_trace(
             delta_pdf_numerator / max(total_weight, 1.0e-20f),
         1.0f,
         selected_bssrdf & sample_valid);
+    result.evaluation.average_roughness_squared = select(
+        0.0f,
+        diffuse_evaluation.average_roughness_squared *
+            diffuse_evaluation.pdf /
+            max(result.evaluation.pdf, 1.0e-20f),
+        result.evaluation.pdf > 0.0f);
     result.evaluation.diffuse_f = diffuse_evaluation.diffuse_f;
     result.evaluation.glossy_f =
         diffuse_evaluation.glossy_f + glossy_delta +

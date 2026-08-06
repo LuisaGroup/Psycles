@@ -116,7 +116,7 @@ int main(int argc, char **argv) {
       surfaces.create<GraphSurface>(beckmann_program.program);
   const auto ggx_tag = surfaces.create<GraphSurface>(ggx_program.program);
 
-  constexpr std::uint32_t record_count = 10u;
+  constexpr std::uint32_t record_count = 11u;
   Kernel1D evaluate = [&](BufferFloat4 beckmann_parameter_buffer,
                           BufferFloat4 ggx_parameter_buffer,
                           BufferFloat4 output) noexcept {
@@ -196,6 +196,15 @@ int main(int argc, char **argv) {
                                  select(0.0f, 1.0f, ggx_sample.sample.valid)));
     output.write(9u, make_float4(ggx_sample.sample.evaluation.f,
                                  ggx_sample.sample.evaluation.pdf));
+    output.write(
+        10u,
+        make_float4(
+            beckmann_sample.sample.evaluation
+                .average_roughness_squared,
+            classroom_evaluation.average_roughness_squared,
+            oblique_evaluation.average_roughness_squared,
+            ggx_sample.sample.evaluation
+                .average_roughness_squared));
   };
 
   Context context{argv[0]};
@@ -251,8 +260,18 @@ int main(int argc, char **argv) {
   const auto distribution_is_effective =
       approximately_equal(actual[8u].w, 1.0f) &&
       (length(actual[8u].xyz() - actual[2u].xyz()) > 0.25f);
+  constexpr auto classroom_alpha =
+      classroom_roughness * classroom_roughness;
+  constexpr auto classroom_average_roughness_squared =
+      classroom_alpha * classroom_alpha;
+  const auto differential_roughness_matches =
+      approximately_equal(
+          actual[10u],
+          luisa::float4{
+              classroom_average_roughness_squared});
   if (!trace_matches || !sample_matches || !evaluation_matches ||
-      !collection_matches || !distribution_is_effective) {
+      !collection_matches || !distribution_is_effective ||
+      !differential_roughness_matches) {
     std::cerr << "standalone Beckmann Glossy regression failed on " << backend
               << '\n';
     for (auto index = 0u; index < actual.size(); ++index) {

@@ -548,6 +548,51 @@ template<typename Closure>
            cycles_closure::microfacet_singular_alpha_product;
 }
 
+[[nodiscard]] Float cycles_bsdf_specular_roughness_squared(
+    const SurfaceClosureRecord &closure,
+    Float glossy_filter_roughness) noexcept {
+    const auto is_diffuse =
+        closure.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::diffuse);
+    const auto is_translucent =
+        closure.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::translucent);
+    const auto is_principled =
+        closure.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::principled);
+    const auto is_sheen =
+        is_principled &
+        (closure.lobe == static_cast<std::uint32_t>(
+                             SurfaceClosureLobe::sheen));
+    const auto is_glossy =
+        closure.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::glossy);
+    const auto is_glass =
+        closure.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::glass);
+    const auto is_refraction =
+        closure.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::refraction);
+    const auto is_microfacet =
+        (is_principled & !is_sheen) |
+        is_glossy | is_glass | is_refraction;
+    const auto alpha = microfacet_alpha(
+        closure, glossy_filter_roughness);
+    const auto microfacet_roughness_squared = select(
+        alpha * alpha,
+        0.0f,
+        microfacet_is_singular(
+            closure, glossy_filter_roughness));
+    const auto regular_non_microfacet =
+        is_diffuse | is_translucent | is_sheen;
+    return select(
+        select(0.0f,
+            microfacet_roughness_squared,
+            is_microfacet),
+        1.0f,
+        regular_non_microfacet);
+}
+
 [[nodiscard]] Float3 specular_f0(
     const SurfaceClosureRecord &closure) noexcept {
     auto dielectric =

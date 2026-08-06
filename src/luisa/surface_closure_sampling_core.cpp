@@ -501,6 +501,10 @@ SurfaceSampleTrace SurfaceClosureSelectedSample::finish(
         regular_valid);
     regular.diffuse_pdf = select(
         0.0f, mixture_evaluation.diffuse_pdf, regular_valid);
+    regular.average_roughness_squared = select(
+        0.0f,
+        mixture_evaluation.average_roughness_squared,
+        regular_valid);
     regular.events = select(
         0u, mixture_evaluation.events, regular_valid);
 
@@ -552,6 +556,11 @@ SurfaceSampleTrace SurfaceClosureSelectedSample::finish(
                           max(measure.total_weight(), 1.0e-20f),
         1.0f,
         selected_bssrdf & sample_valid);
+    result.evaluation.average_roughness_squared = select(
+        0.0f,
+        regular.average_roughness_squared * regular.pdf /
+            max(result.evaluation.pdf, 1.0e-20f),
+        result.evaluation.pdf > 0.0f);
     result.evaluation.diffuse_f = regular.diffuse_f;
     result.evaluation.glossy_f =
         regular.glossy_f + glossy_delta +
@@ -731,6 +740,8 @@ void SurfaceClosureSamplingVisitor::visit(
         result.sample.evaluation.glossy_f;
     _result.sample.evaluation.diffuse_pdf =
         result.sample.evaluation.diffuse_pdf;
+    _result.sample.evaluation.average_roughness_squared =
+        result.sample.evaluation.average_roughness_squared;
     _result.sample.evaluation.events =
         result.sample.evaluation.events;
     _result.sample.wi = result.sample.wi;

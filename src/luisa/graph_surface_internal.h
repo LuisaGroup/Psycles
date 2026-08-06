@@ -286,6 +286,11 @@ template <typename Id, typename Values>
 [[nodiscard]] Bool microfacet_is_singular(
     const SurfaceClosureRecord &closure,
     Float glossy_filter_roughness) noexcept;
+// Exact bsdf_get_specular_roughness_squared family classification used by
+// Cycles' PDF-weighted ray-differential widening measure.
+[[nodiscard]] Float cycles_bsdf_specular_roughness_squared(
+    const SurfaceClosureRecord &closure,
+    Float glossy_filter_roughness) noexcept;
 [[nodiscard]] Float3 specular_f0(
     const SurfaceClosureRecord &closure) noexcept;
 [[nodiscard]] Float3 microfacet_reflection_fresnel(

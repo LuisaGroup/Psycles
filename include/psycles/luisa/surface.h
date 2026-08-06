@@ -420,6 +420,11 @@ struct SurfaceEvaluation {
     Float3 diffuse_f;
     Float3 glossy_f;
     Float diffuse_pdf;
+    // Cycles' PDF-weighted average of bsdf_get_specular_roughness_squared
+    // over every closure that participates in the directional mixture. This
+    // is a transport quantity: surface and NEE rays use it to widen their
+    // compact angular differential after a non-transparent scatter.
+    Float average_roughness_squared;
     UInt events;
 
     [[nodiscard]] static SurfaceEvaluation zero() noexcept {
@@ -429,6 +434,7 @@ struct SurfaceEvaluation {
             .diffuse_f = make_float3(0.0f),
             .glossy_f = make_float3(0.0f),
             .diffuse_pdf = 0.0f,
+            .average_roughness_squared = 0.0f,
             .events = static_cast<std::uint32_t>(event_none)};
     }
 };
