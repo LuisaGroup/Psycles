@@ -7,7 +7,6 @@
 
 #include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/cycles_ray_differential.h>
-#include <psycles/luisa/spherical_geometry.h>
 #include <psycles/luisa/surface_ray.h>
 
 #include <utility>
@@ -140,40 +139,21 @@ class AnalyticLightingComponent final : public DirectLightingComponent {
             }
             $elif(light.type ==
                   static_cast<std::uint32_t>(LightType::distant)) {
-                Float half_angle = 0.5f * max(light.angle, 0.0f);
-                Bool finite_sun = half_angle > 0.0f;
-                Float cap_height =
-                    spherical_geometry::unit_cap_height(half_angle);
-                Float cosine_max = 1.0f - cap_height;
-                Float3 sun_axis = light.axis_z;
-                Float3 basis_reference = select(make_float3(0.0f, 0.0f, 1.0f),
-                                                make_float3(0.0f, 1.0f, 0.0f),
-                                                abs(sun_axis.z) > 0.999f);
-                Float3 sun_tangent =
-                    safe_normalize(cross(basis_reference, sun_axis),
-                                   make_float3(1.0f, 0.0f, 0.0f));
-                Float3 sun_bitangent = cross(sun_axis, sun_tangent);
-                Float cosine_theta = 1.0f - light_sample.x * cap_height;
-                Float sine_theta =
-                    sqrt(max(1.0f - cosine_theta * cosine_theta, 0.0f));
-                Float phi = 2.0f * pi * light_sample.y;
-                Float3 cone_direction =
-                    sun_tangent * (cos(phi) * sine_theta) +
-                    sun_bitangent * (sin(phi) * sine_theta) +
-                    sun_axis * cosine_theta;
-                wi = select(sun_axis, cone_direction, finite_sun);
-                Float solid_angle = spherical_geometry::two_pi * cap_height;
-                light_pdf =
-                    select(1.0f, 1.0f / max(solid_angle, 1.0e-20f), finite_sun);
                 Bool normalize_power =
                     (light.flags & light_flag_normalize) != 0u;
-                Float disk_area = pi * sin(half_angle) * sin(half_angle);
-                Float eval_factor = select(1.0f,
-                                           1.0f / max(disk_area, 1.0e-20f),
-                                           normalize_power & finite_sun);
-                light_eval_factor = eval_factor;
-                light_radiance = light.color * (light.power * eval_factor);
-                light_position = wi;
+                const auto distant_sample =
+                    analytic_light_sampling::sample_distant_light(
+                        light.axis_z,
+                        light.angle,
+                        light_sample.xy(),
+                        normalize_power);
+                wi = distant_sample.direction;
+                light_pdf = distant_sample.conditional_pdf;
+                light_eval_factor = distant_sample.evaluation_factor;
+                light_radiance =
+                    light.color *
+                    (light.power * distant_sample.evaluation_factor);
+                light_position = -wi;
                 light_normal = -wi;
                 light_valid = true;
             }

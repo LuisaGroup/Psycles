@@ -5,8 +5,8 @@
 #include "path_kernel_volume_mesh_light.h"
 #include "path_kernel_volume_shadow.h"
 
+#include <psycles/luisa/analytic_light_sampling.h>
 #include <psycles/luisa/cycles_path_state.h>
-#include <psycles/luisa/spherical_geometry.h>
 #include <psycles/luisa/surface_ray.h>
 #include <psycles/luisa/volume_analytic_light_sampling.h>
 #include <psycles/luisa/volume_light_interval.h>
@@ -132,91 +132,26 @@ class AnalyticVolumeLightProvider final
         UInt light_index,
         Float3 random,
         Bool active) const noexcept {
-        const auto half_angle =
-            0.5f * max(light.angle, 0.0f);
-        const auto finite_sun =
-            half_angle > 0.0f;
-        const auto cap_height =
-            spherical_geometry::
-                unit_cap_height(
-                    half_angle);
-        const auto sun_axis =
-            light.axis_z;
-        const auto basis_reference =
-            select(
-                make_float3(
-                    0.0f, 0.0f, 1.0f),
-                make_float3(
-                    0.0f, 1.0f, 0.0f),
-                abs(sun_axis.z) >
-                    0.999f);
-        const auto sun_tangent =
-            _config.light_transport
-                .safe_normalize(
-                    cross(
-                        basis_reference,
-                        sun_axis),
-                    make_float3(
-                        1.0f, 0.0f, 0.0f));
-        const auto sun_bitangent =
-            cross(
-                sun_axis,
-                sun_tangent);
-        const auto cosine_theta =
-            1.0f -
-            random.x * cap_height;
-        const auto sine_theta =
-            sqrt(max(
-                1.0f -
-                    cosine_theta *
-                        cosine_theta,
-                0.0f));
-        const auto phi =
-            2.0f * pi * random.y;
-        const auto cone_direction =
-            sun_tangent *
-                (cos(phi) * sine_theta) +
-            sun_bitangent *
-                (sin(phi) * sine_theta) +
-            sun_axis * cosine_theta;
-        const auto direction =
-            select(
-                sun_axis,
-                cone_direction,
-                finite_sun);
-        const auto solid_angle =
-            spherical_geometry::two_pi *
-            cap_height;
-        const auto conditional_pdf =
-            select(
-                1.0f,
-                1.0f /
-                    max(
-                        solid_angle,
-                        1.0e-20f),
-                finite_sun);
         const auto normalize_power =
             (light.flags &
              light_flag_normalize) != 0u;
-        const auto disk_area =
-            pi *
-            sin(half_angle) *
-            sin(half_angle);
-        const auto evaluation_factor =
-            select(
-                1.0f,
-                1.0f /
-                    max(
-                        disk_area,
-                        1.0e-20f),
-                normalize_power &
-                    finite_sun);
+        const auto distant_sample =
+            analytic_light_sampling::
+                sample_distant_light(
+                    light.axis_z,
+                    light.angle,
+                    random.xy(),
+                    normalize_power);
+        const auto direction =
+            distant_sample.direction;
         auto radiance =
             light.color *
             (light.power *
-             evaluation_factor);
+             distant_sample
+                 .evaluation_factor);
         const auto pdf =
-            conditional_pdf *
+            distant_sample
+                .conditional_pdf *
             _event.bounce.selected_light
                 .selection_pdf;
         const auto valid =
@@ -224,7 +159,7 @@ class AnalyticVolumeLightProvider final
         _remember_emission_sample(
             light,
             light_index,
-            direction,
+            -direction,
             -direction,
             make_float2(0.5f),
             -direction,

@@ -68,6 +68,45 @@ struct FiniteLightSample {
     luisa::compute::Float evaluation_factor;
 };
 
+struct DistantLightSample {
+    luisa::compute::Float3 direction;
+    luisa::compute::Float conditional_pdf;
+    luisa::compute::Float evaluation_factor;
+};
+
+// Cycles stores a sun's outward light normal in KernelLight::co and samples
+// the cone around that normal before negating the result to obtain LightSample
+// ::D. LightGpu::axis_z already denotes D at the cone center, so sampling a
+// cone directly around axis_z would mirror the deterministic azimuth even
+// though it preserves the same density. Keep the complete mapping here so
+// surface and volume NEE cannot silently choose different Sobol-to-direction
+// conventions.
+[[nodiscard]] inline DistantLightSample sample_distant_light(
+    luisa::compute::Float3 axis_z,
+    luisa::compute::Float angle,
+    luisa::compute::Float2 random,
+    luisa::compute::Bool normalize_power) noexcept {
+    using namespace luisa::compute;
+
+    const auto half_angle = 0.5f * max(angle, 0.0f);
+    const auto sine_quarter = sin(0.5f * half_angle);
+    const auto one_minus_cosine =
+        2.0f * sine_quarter * sine_quarter;
+    const auto normal_sample =
+        cycles_sample_mapping::sample_uniform_cone(
+            -axis_z, one_minus_cosine, random);
+    const auto finite = half_angle > 0.0f;
+    const auto sine_half = sin(half_angle);
+    const auto disk_area = pi * sine_half * sine_half;
+    return {
+        .direction = -normal_sample.direction,
+        .conditional_pdf = normal_sample.pdf,
+        .evaluation_factor = select(
+            1.0f,
+            1.0f / max(disk_area, 1.0e-20f),
+            normalize_power & finite)};
+}
+
 [[nodiscard]] inline luisa::compute::Float
 safe_divide(
     luisa::compute::Float numerator,
