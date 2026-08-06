@@ -213,14 +213,11 @@ CameraRaySample construct_camera_ray(
             focus_position_dy - local_origin);
     }
 
-    Float3 ray_origin =
-        (parameters.camera_transform *
-         make_float4(local_origin, 1.0f))
-            .xyz();
+    const auto world_ray = camera_sampling::camera_to_world_ray(
+        parameters.camera_transform, local_origin, local_direction);
+    Float3 ray_origin = world_ray.origin;
     const Float3 ray_direction = safe_normalize(
-        (parameters.camera_transform *
-         make_float4(local_direction, 0.0f))
-            .xyz(),
+        world_ray.direction,
         make_float3(0.0f, 0.0f, -1.0f));
     const auto camera_clip =
         camera_sampling::camera_clip_range(

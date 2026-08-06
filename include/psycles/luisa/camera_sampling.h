@@ -7,6 +7,7 @@
 #include <cstdint>
 
 #include <psycles/luisa/cycles_sample_mapping.h>
+#include <psycles/luisa/cycles_transform.h>
 
 #include <luisa/dsl/sugar.h>
 
@@ -18,6 +19,25 @@ struct OrthographicViewplaneSpan {
     float horizontal{};
     float vertical{};
 };
+
+struct CameraToWorldRay {
+    luisa::compute::Float3 origin;
+    luisa::compute::Float3 direction;
+};
+
+// Camera rays participate in the same geometric-predicate contract as
+// surface rays. A backend-native matrix lowering may round a product before
+// translation and move a ray across a thin or coincident primitive. Preserve
+// Cycles' explicit affine FMA tree here; normalization remains a separate
+// stage because depth-of-field updates the camera-space direction first.
+[[nodiscard]] inline CameraToWorldRay camera_to_world_ray(
+    luisa::compute::Float4x4 transform,
+    luisa::compute::Float3 origin,
+    luisa::compute::Float3 direction) noexcept {
+    return {
+        .origin = cycles_transform::point(transform, origin),
+        .direction = cycles_transform::direction(transform, direction)};
+}
 
 // Cycles defines orthographic_scale along the fitted sensor dimension. The
 // other dimension follows from the render aspect ratio. Expressing that rule
