@@ -77,7 +77,15 @@ int main(int argc, char **argv) {
                         cycles_path_state::
                             contract_visibility(
                                 diffuse.visibility)),
-                    0.0f,
+                    cast<float>(
+                        cycles_path_state::
+                            contract_visibility(
+                                cycles_path_state::
+                                    visibility_transmit |
+                                cycles_path_state::
+                                    visibility_diffuse |
+                                cycles_path_state::
+                                    visibility_glossy)),
                     0.0f,
                     0.0f));
 
@@ -338,7 +346,10 @@ int main(int argc, char **argv) {
             1.0f,
             32.0f},
         luisa::float4{1.0f, 0.0f, 0.0f, 0.0f},
-        luisa::float4{2.0f, 0.0f, 0.0f, 0.0f},
+        // Cycles classifies diffuse/glossy transmission for shader/pass
+        // state, but path_state_ray_visibility() exposes only TRANSMIT to
+        // object traversal.
+        luisa::float4{2.0f, 8.0f, 0.0f, 0.0f},
         luisa::float4{1668.0f, 1.0f, 0.0f, 1.0f},
         luisa::float4{32.0f, 1.0f, 0.0f, 0.0f},
         luisa::float4{

@@ -449,32 +449,41 @@ continuation_probability(
 contract_visibility(
     luisa::compute::UInt cycles_visibility) noexcept {
     using namespace luisa::compute;
+    // Cycles uses diffuse/glossy object visibility for reflection only.
+    // A transmissive lobe may carry its diffuse/glossy classification for
+    // Light Path and pass accounting, but path_state_ray_visibility() removes
+    // both bits before traversal whenever TRANSMIT is present.
+    const auto traversal_visibility = select(
+        cycles_visibility,
+        cycles_visibility &
+            ~(visibility_diffuse | visibility_glossy),
+        (cycles_visibility & visibility_transmit) != 0u);
     UInt result = 0u;
     result |= select(
         0u,
         contract::visibility_bit(
             contract::RayVisibility::camera),
-        (cycles_visibility & visibility_camera) != 0u);
+        (traversal_visibility & visibility_camera) != 0u);
     result |= select(
         0u,
         contract::visibility_bit(
             contract::RayVisibility::transmission),
-        (cycles_visibility & visibility_transmit) != 0u);
+        (traversal_visibility & visibility_transmit) != 0u);
     result |= select(
         0u,
         contract::visibility_bit(
             contract::RayVisibility::diffuse),
-        (cycles_visibility & visibility_diffuse) != 0u);
+        (traversal_visibility & visibility_diffuse) != 0u);
     result |= select(
         0u,
         contract::visibility_bit(
             contract::RayVisibility::glossy),
-        (cycles_visibility & visibility_glossy) != 0u);
+        (traversal_visibility & visibility_glossy) != 0u);
     result |= select(
         0u,
         contract::visibility_bit(
             contract::RayVisibility::volume_scatter),
-        (cycles_visibility &
+        (traversal_visibility &
          visibility_volume_scatter) != 0u);
     return result;
 }
