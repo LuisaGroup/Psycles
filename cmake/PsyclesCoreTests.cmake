@@ -121,6 +121,19 @@ if(PSYCLES_BUILD_TESTS)
         NAME psycles.light_distribution
         COMMAND psycles_light_distribution_tests)
 
+    add_executable(
+        psycles_light_tree_tests
+        tests/test_light_tree.cpp)
+    target_link_libraries(
+        psycles_light_tree_tests
+        PRIVATE Psycles::core)
+    target_compile_features(
+        psycles_light_tree_tests
+        PRIVATE cxx_std_20)
+    add_test(
+        NAME psycles.light_tree
+        COMMAND psycles_light_tree_tests)
+
     if(PSYCLES_ENABLE_OPENIMAGEIO)
         add_executable(
             psycles_openexr_tests
