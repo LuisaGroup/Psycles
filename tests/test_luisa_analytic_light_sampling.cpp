@@ -67,6 +67,8 @@ int main(int argc, char **argv) {
             point_cases.size());
     auto rectangle_output =
         device.create_buffer<luisa::float4>(2u);
+    auto distant_output =
+        device.create_buffer<luisa::float4>(2u);
     auto intersection_output =
         device.create_buffer<luisa::float4>(4u);
     constexpr std::size_t finite_case_count = 3u;
@@ -110,6 +112,7 @@ int main(int argc, char **argv) {
                             BufferUInt2 case_flags,
                             BufferFloat4 results,
                             BufferFloat4 rectangle_result,
+                            BufferFloat4 distant_result,
                             BufferFloat4 intersection_result) noexcept {
         const auto index = dispatch_x();
         const auto value = cases.read(index);
@@ -191,6 +194,41 @@ int main(int argc, char **argv) {
                 make_float4(
                     rectangle.position,
                     rectangle.pdf));
+        };
+        $if (index == 0u) {
+            // Classroom's finite sun at event 1 of the Cycles path oracle.
+            // This locks both the concentric square-to-disk map and Cycles'
+            // sample-about-co-then-negate orientation convention.
+            const auto distant =
+                analytic_light::sample_distant_light(
+                    make_float3(
+                        0.8739545345306396f,
+                        -0.08249649405479431f,
+                        0.4789549708366394f),
+                    0.029997749254107475f,
+                    make_float2(
+                        0.8049662709236145f,
+                        0.9216269850730896f),
+                    true);
+            distant_result.write(
+                0u,
+                make_float4(
+                    distant.direction,
+                    distant.conditional_pdf));
+            const auto delta =
+                analytic_light::sample_distant_light(
+                    make_float3(
+                        0.8739545345306396f,
+                        -0.08249649405479431f,
+                        0.4789549708366394f),
+                    0.0f,
+                    make_float2(0.3f, 0.7f),
+                    true);
+            distant_result.write(
+                1u,
+                make_float4(
+                    distant.evaluation_factor,
+                    delta.direction));
         };
         $if (index == 0u) {
             const auto intersection =
@@ -454,6 +492,7 @@ int main(int argc, char **argv) {
             .enable_fast_math = false});
     std::array<luisa::float4, point_cases.size()> results{};
     std::array<luisa::float4, 2u> rectangle_result{};
+    std::array<luisa::float4, 2u> distant_result{};
     std::array<luisa::float4, 4u> intersection_result{};
     std::array<luisa::float4, finite_case_count>
         finite_direction_result{};
@@ -474,6 +513,7 @@ int main(int argc, char **argv) {
                   flags,
                   output,
                   rectangle_output,
+                  distant_output,
                   intersection_output)
                   .dispatch(
                       static_cast<std::uint32_t>(
@@ -481,6 +521,8 @@ int main(int argc, char **argv) {
            << output.copy_to(luisa::span{results})
            << rectangle_output.copy_to(
                   luisa::span{rectangle_result})
+           << distant_output.copy_to(
+                  luisa::span{distant_result})
            << intersection_output.copy_to(
                   luisa::span{intersection_result})
            << finite_shader(
@@ -589,6 +631,39 @@ int main(int argc, char **argv) {
             << "Cycles delta-point oracle regression failed on "
             << backend << '\n';
         return EXIT_FAILURE;
+    }
+    constexpr auto distant_direction_oracle = luisa::float4{
+        0.8781283497810364f,
+        -0.09021132439374924f,
+        0.4698430895805359f,
+        1414.9494934082031f};
+    constexpr auto distant_measure_oracle = luisa::float4{
+        1415.0289306640625f,
+        0.8739545345306396f,
+        -0.08249649405479431f,
+        0.4789549708366394f};
+    for (std::size_t component = 0u; component < 4u; ++component) {
+        if (!approximately_equal(
+                distant_result[0u][component],
+                distant_direction_oracle[component]) ||
+            !approximately_equal(
+                distant_result[1u][component],
+                distant_measure_oracle[component])) {
+            std::cerr
+                << std::setprecision(10)
+                << "Cycles distant-light sampling oracle failed on "
+                << backend << ": direction/pdf={"
+                << distant_result[0u].x << ", "
+                << distant_result[0u].y << ", "
+                << distant_result[0u].z << ", "
+                << distant_result[0u].w
+                << "}, eval/delta-direction={"
+                << distant_result[1u].x << ", "
+                << distant_result[1u].y << ", "
+                << distant_result[1u].z << ", "
+                << distant_result[1u].w << "}\n";
+            return EXIT_FAILURE;
+        }
     }
     const auto rectangle = rectangle_result[0u];
     if (!approximately_equal(
