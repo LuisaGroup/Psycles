@@ -3,6 +3,8 @@
 #include <psycles/luisa/cycles_noise.h>
 #include <luisa/dsl/sugar.h>
 
+using namespace luisa::compute;
+
 namespace psycles::luisa_backend::detail {
 namespace {
 

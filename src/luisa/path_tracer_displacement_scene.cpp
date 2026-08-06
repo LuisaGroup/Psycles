@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <iostream>
 #include <map>
 #include <set>
 #include <utility>
@@ -198,9 +199,9 @@ first_objects_by_geometry(
     Float3 value) noexcept {
     using namespace luisa::compute;
     return make_float3(
-        select(0.0f, value.x, !isnan(value.x) & !isinf(value.x)),
-        select(0.0f, value.y, !isnan(value.y) & !isinf(value.y)),
-        select(0.0f, value.z, !isnan(value.z) & !isinf(value.z)));
+        select(0.0f, value.x, !luisa::compute::dsl::isnan(value.x) & !luisa::compute::dsl::isinf(value.x)),
+        select(0.0f, value.y, !luisa::compute::dsl::isnan(value.y) & !luisa::compute::dsl::isinf(value.y)),
+        select(0.0f, value.z, !luisa::compute::dsl::isnan(value.z) & !luisa::compute::dsl::isinf(value.z)));
 }
 
 }// namespace
@@ -657,6 +658,10 @@ MeshDisplacementSceneComponent::build(
                 upload.positions[vertex] = host_add(
                     upload.positions[vertex], output[index]);
             }
+            std::cerr << "[psycles-debug] geometry=" << geometry.name
+                      << " evaluations=" << evaluations.size()
+                      << " first_out=(" << output[0].x << ", "
+                      << output[0].y << ", " << output[0].z << ")\n";
         }
         recompute_cycles_displaced_normals(
             upload, plan, pre_displacement_vertex_normals);
