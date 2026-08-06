@@ -1,28 +1,21 @@
 #include "path_tracer_internal.h"
+#include "path_tracer_backend_policy.h"
 
 namespace psycles::luisa_backend {
 
 using namespace detail;
-namespace {
-
-// Apple Metal can abort a long fused path-tracing command at the OS watchdog
-// boundary. Keep each command comfortably below that boundary; the session
-// preserves exact sample indices while splitting the image into row bands.
-constexpr auto metal_max_pixel_samples_per_dispatch =
-    std::uint32_t{131072u};
-
-}// namespace
 
 LuisaPathTracerBackend::LuisaPathTracerBackend(
     luisa::compute::Device device,
     LuisaPathTracerOptions options) noexcept
     : _device{std::move(device)},
       _options{options} {
-    if (_device && _device.backend_name() == "metal") {
+    if (_device) {
         _options.max_pixel_samples_per_dispatch =
             std::min(
                 _options.max_pixel_samples_per_dispatch,
-                metal_max_pixel_samples_per_dispatch);
+                backend_max_pixel_samples_per_dispatch(
+                    _device.backend_name()));
     }
 }
 

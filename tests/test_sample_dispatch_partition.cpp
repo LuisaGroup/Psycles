@@ -1,4 +1,5 @@
 #include "../src/luisa/sample_dispatch_partition.h"
+#include "../src/luisa/path_tracer_backend_policy.h"
 
 #include <array>
 #include <cstdint>
@@ -19,6 +20,10 @@ using psycles::luisa_backend::detail::
     PixelRowDispatchBatch;
 using psycles::luisa_backend::detail::
     PixelRowDispatchPartition;
+using psycles::luisa_backend::detail::
+    backend_max_pixel_samples_per_dispatch;
+using psycles::luisa_backend::detail::
+    watchdog_max_pixel_samples_per_dispatch;
 
 void require(bool condition, std::string_view message) {
     if (!condition) {
@@ -140,6 +145,18 @@ void require_exact_partition(
 }// namespace
 
 int main() {
+    require(
+        backend_max_pixel_samples_per_dispatch("metal") ==
+                watchdog_max_pixel_samples_per_dispatch &&
+            backend_max_pixel_samples_per_dispatch("vk") ==
+                watchdog_max_pixel_samples_per_dispatch,
+        "a watchdog-managed backend lost its dispatch bound");
+    require(
+        backend_max_pixel_samples_per_dispatch("fallback") ==
+                std::numeric_limits<std::uint32_t>::max() &&
+            backend_max_pixel_samples_per_dispatch("hip") ==
+                std::numeric_limits<std::uint32_t>::max(),
+        "a backend without the watchdog policy was unexpectedly bounded");
     require(
         !PixelRowDispatchPartition::make(0u, 1u, 1u, 1u),
         "zero-width pixel partition was accepted");
