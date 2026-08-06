@@ -17,6 +17,13 @@ struct PrimitiveCompletionUpload {
 make_primitive_completion_upload(
     const CyclesPrimitiveCompletionPlan &plan);
 
+// Forward-hit MIS uses lower_bound over this table, so strict ordering is a
+// host/device contract rather than an implementation detail of scene upload.
+[[nodiscard]] bool
+emissive_triangle_keys_strictly_increasing(
+    const luisa::vector<EmissiveTriangleGpu> &triangles)
+    noexcept;
+
 struct SceneTableUploadInput {
     luisa::vector<GeometryGpu> &geometries;
     luisa::vector<AttributeBindingGpu> &attribute_bindings;

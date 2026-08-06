@@ -18,7 +18,8 @@ public:
       : _geometry{make_surface_primitive_geometry_component()} {}
 
   SurfaceGeometryContext
-  emit(PathBounceContext &bounce) const noexcept override {
+  emit(PathBounceContext &bounce,
+       Bool surface_may_emit) const noexcept override {
     auto &sample = bounce.sample;
     auto &invocation = sample.invocation;
     const auto &config = invocation.config;
@@ -102,6 +103,7 @@ public:
         filter_glossy_enabled & (blur_pdf < 1.0f));
 
     return {.bounce = bounce,
+            .surface_may_emit = std::move(surface_may_emit),
             .instance = std::move(primitive.instance),
             .p0 = std::move(primitive.p0),
             .p1 = std::move(primitive.p1),

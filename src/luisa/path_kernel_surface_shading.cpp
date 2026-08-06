@@ -113,7 +113,12 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
             emitted, make_float3(0.0f), bounce.subsurface_exit);
         Float emission_weight = 1.0f;
         if (next_event_estimation && scene->emissive_triangle_count > 0u) {
-            $if(!surface.is_curve) {
+            // The material capability is conservative: false proves that the
+            // emitted value is zero, while true still resolves the exact mesh
+            // emitter and its authored sampling side through the ordered
+            // table. Non-emissive surfaces therefore avoid even logarithmic
+            // lookup work without changing forward-hit MIS semantics.
+            $if((!surface.is_curve) & surface.surface_may_emit) {
                 Bool competing = (path_depth > 0u) & (!previous_delta);
                 const auto oriented_geometric_normal =
                     select(
