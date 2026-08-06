@@ -74,9 +74,19 @@ class PathBounceSetupStageImpl final
                         cycles_rng_offset,
                         tabulated_sobol::
                             light_dimension));
-        Var<LightDistributionGpu> selected_light =
-            config.light_distribution_sample(
+        Var<LightDistributionGpu> selected_light;
+        if (config.use_light_tree) {
+            selected_light.cumulative = 0.0f;
+            selected_light.selection_pdf = 0.0f;
+            selected_light.kind = static_cast<std::uint32_t>(
+                sampling::LightDistributionEmitterKind::sentinel);
+            selected_light.index = 0u;
+            selected_light.emitter_id =
+                ~std::uint32_t{0u};
+        } else {
+            selected_light = config.light_distribution_sample(
                 light_sample.z);
+        }
         const auto light_terminate_sample =
             cycles_sampler::sample_1d(
                 sobol_table,

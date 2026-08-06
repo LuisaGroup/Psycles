@@ -59,7 +59,9 @@ class EmissiveMeshLightingComponent final
                             .hit_position,
                         bounce
                             .light_sample
-                            .xy());
+                            .xy(),
+                        selected_light
+                            .selection_pdf);
             $if(light.valid) {
                 const auto &emitter =
                     light.geometry.emitter;

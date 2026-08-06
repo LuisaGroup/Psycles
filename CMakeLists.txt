@@ -1543,6 +1543,12 @@ if(PSYCLES_ENABLE_LUISA)
                         luisa_magic_texture
                     LIBRARIES Psycles::luisa)
 
+                psycles_add_luisa_backend_test(
+                    TARGET psycles_luisa_light_tree_tests
+                    SOURCE tests/test_luisa_light_tree.cpp
+                    TEST_STEM luisa_light_tree
+                    LIBRARIES Psycles::luisa_runtime)
+
                 include(cmake/PsyclesCurveTests.cmake)
 
                 add_executable(

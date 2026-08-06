@@ -528,7 +528,8 @@ class PathEmissiveTriangleComponent final
         const std::shared_ptr<LuisaSceneData> &scene,
         UInt emitter_index,
         Float3 reference,
-        Float2 random) const noexcept override {
+        Float2 random,
+        Float selection_pdf) const noexcept override {
         auto geometry =
             _geometry(
                 scene,
@@ -551,8 +552,7 @@ class PathEmissiveTriangleComponent final
                 light.direction);
         const auto pdf =
             light.conditional_pdf *
-            geometry.area *
-            scene->triangle_area_pdf;
+            selection_pdf;
         const auto valid =
             light.valid &
             side_valid &
@@ -589,7 +589,7 @@ class PathEmissiveTriangleComponent final
 
     EmissiveTrianglePdf
     from_intersection(
-        Float triangle_area_pdf,
+        Float selection_pdf,
         UInt emission_sampling,
         Float3 reference,
         Float3 light_position,
@@ -629,8 +629,7 @@ class PathEmissiveTriangleComponent final
                 p2 - p0));
         const auto value =
             pdf.value *
-            area *
-            triangle_area_pdf;
+            selection_pdf;
         const auto valid =
             (emission_sampling !=
              static_cast<std::uint32_t>(

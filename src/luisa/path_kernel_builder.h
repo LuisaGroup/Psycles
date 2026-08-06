@@ -5,6 +5,7 @@
 #include "path_tracer_environment.h"
 #include "path_tracer_geometry.h"
 #include "path_tracer_light_distribution.h"
+#include "path_tracer_light_tree.h"
 #include "path_tracer_lighting.h"
 #include "path_tracer_surfaces.h"
 
@@ -42,6 +43,7 @@ struct PathKernelConfig {
     std::uint32_t camera_aperture_blades{};
     float camera_aperture_rotation{};
     bool next_event_estimation{};
+    bool use_light_tree{};
     bool reflective_caustics{};
     bool refractive_caustics{};
     bool path_trace_enabled{};
@@ -51,6 +53,7 @@ struct PathKernelConfig {
         volume_state;
     LightTransportCallables light_transport;
     LightDistributionSampleCallable light_distribution_sample;
+    LightTreeCallables light_tree;
     SurfaceCallables surfaces;
     EnvironmentCallables environment;
     TraceShadowCallable trace_shadow;
@@ -219,6 +222,9 @@ struct PathSampleContext {
     Bool primary_recorded;
     Float previous_bsdf_pdf;
     Float3 previous_mis_origin_normal;
+    // Cycles ray.previous_dt: full volume segment length associated with
+    // mis_origin_n. It is not generally the distance to the sampled collision.
+    Float previous_light_tree_dt;
     Float minimum_bsdf_pdf;
     Bool previous_delta;
     Float continuation_probability;

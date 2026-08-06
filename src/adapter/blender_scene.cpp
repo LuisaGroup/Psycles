@@ -662,11 +662,6 @@ BlenderSceneImport load_blender_scene_bundle(
                 "outputs un-denoised linear passes. Official differential "
                 "goldens must disable denoising.");
         }
-        if (result.integrator.use_light_tree) {
-            error(
-                "Cycles light-tree sampling is enabled, but the Luisa "
-                "integrator does not yet implement light-tree traversal.");
-        }
         result.transparent_background =
             boolean(member(render, "transparent"));
         const auto requested_filter_width = std::max(

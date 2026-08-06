@@ -26,6 +26,10 @@ class ForwardLightStageImpl final
             sample.previous_delta;
         auto &previous_bsdf_pdf =
             sample.previous_bsdf_pdf;
+        auto &previous_mis_origin_normal =
+            sample.previous_mis_origin_normal;
+        auto &previous_light_tree_dt =
+            sample.previous_light_tree_dt;
         auto &throughput = sample.throughput;
         auto &path_depth = sample.path_depth;
         auto &path_flags = sample.path_flags;
@@ -40,9 +44,20 @@ class ForwardLightStageImpl final
         Var<LightGpu> light =
             scene->light_buffer->read(
                 event.light_index);
+        Float selection_pdf = scene->light_selection_pdf;
+        if (config.use_light_tree) {
+            const auto emitter_id =
+                scene->emissive_triangle_count + event.light_index;
+            selection_pdf = config.light_tree.forward_pdf(
+                emitter_id,
+                ray->origin(),
+                previous_mis_origin_normal,
+                previous_light_tree_dt,
+                sample.cycles_path_visibility,
+                path_flags);
+        }
         const auto light_pdf =
-            event.light_pdf *
-            scene->light_selection_pdf;
+            event.light_pdf * selection_pdf;
         const auto competing =
             (path_depth > 0u) &
             (!previous_delta);

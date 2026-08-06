@@ -730,8 +730,19 @@ class PathVolumeDirectLightingComponent final
         Float3 segment_direction,
         Float segment_length)
         const noexcept override {
-        const auto &selected =
+        auto &selected =
             event.bounce.selected_light;
+        if (_config.use_light_tree) {
+            // Cycles selects a volume light against the complete free-flight
+            // segment. The same Sobol light dimension is reused; only the
+            // spatial proposal changes from the surface specialization.
+            selected = _config.light_tree.volume_sample(
+                event.bounce.light_sample.z,
+                segment_position,
+                segment_direction,
+                segment_length,
+                true);
+        }
         const auto selected_analytic =
             selected.kind ==
             analytic_emitter_kind;

@@ -56,9 +56,6 @@ LuisaPathTracerBackend::create_session(
             return nullptr;
         }
     }
-    if (settings.integrator.use_light_tree) {
-        return nullptr;
-    }
     if (
         !_options.next_event_estimation &&
         settings.integrator.direct_light_sampling !=

@@ -196,6 +196,34 @@ struct LightDistributionGpu {
     luisa::uint padding_2{};
 };
 
+// Light-tree measures are kept in 16-byte lanes. Besides making the ABI
+// explicit across fallback/HIP/Vulkan, this avoids the backend-dependent
+// padding of interleaved float3/scalar fields.
+struct LightTreeNodeGpu {
+    luisa::float4 bounds_min_energy{};
+    luisa::float4 bounds_max_theta_o{};
+    luisa::float4 cone_axis_theta_e{};
+    // parent, left child, right child, LightTreeNodeKind
+    luisa::uint4 topology{};
+    // first emitter, emitter count, measure flags, reserved
+    luisa::uint4 emitters{};
+};
+
+struct LightTreeEmitterGpu {
+    luisa::float4 bounds_min_energy{};
+    luisa::float4 bounds_max_theta_o{};
+    luisa::float4 cone_axis_theta_e{};
+    // stable emitter id, measure flags, reserved, reserved
+    luisa::uint4 identity{};
+};
+
+inline constexpr std::uint32_t light_tree_measure_has_bounds = 1u << 0u;
+inline constexpr std::uint32_t light_tree_measure_has_orientation = 1u << 1u;
+inline constexpr std::uint32_t light_tree_measure_is_distant = 1u << 2u;
+
+static_assert(sizeof(LightTreeNodeGpu) == 80u);
+static_assert(sizeof(LightTreeEmitterGpu) == 64u);
+
 struct ShaderEvaluationStateCall {
     luisa::uint ray_visibility{};
     luisa::uint ray_events{};
@@ -539,6 +567,19 @@ LUISA_STRUCT(
     padding_0,
     padding_1,
     padding_2) {};
+LUISA_STRUCT(
+    psycles::luisa_backend::detail::LightTreeNodeGpu,
+    bounds_min_energy,
+    bounds_max_theta_o,
+    cone_axis_theta_e,
+    topology,
+    emitters) {};
+LUISA_STRUCT(
+    psycles::luisa_backend::detail::LightTreeEmitterGpu,
+    bounds_min_energy,
+    bounds_max_theta_o,
+    cone_axis_theta_e,
+    identity) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::ShaderEvaluationStateCall,
     ray_visibility,

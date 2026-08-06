@@ -292,10 +292,12 @@ these focused probes.
    `MULTIPLE_SCATTERING` rather than silently treating it as the implemented
    single-scattering model. Add a current-Cycles fixture when implementing the
    missing equations and importance sampling.
-4. Continue the evidence-ranked gaps: environment-map importance CDFs,
-   automatic emissive sampling classification, visible-light forward MIS,
-   light trees, then additional complex Blender demo scenes. Preserve raw
-   closure graphs and commit/push every passing boundary.
+4. Continue the evidence-ranked gaps: bring the reciprocal flattened Light
+   Tree checkpoint to Cycles-exact mesh/instance topology and specialized
+   emitter importance, then environment-map importance CDFs, automatic
+   emissive sampling classification, visible-light forward MIS, and
+   additional complex Blender demo scenes. Preserve raw closure graphs and
+   commit/push every passing boundary.
 
 ## Known limitations
 
@@ -312,7 +314,10 @@ these focused probes.
   distinct `MULTIPLE_SCATTERING` model.
 - Environment-map importance CDFs and
   `world_sample_map_resolution` are not connected.
-- Cycles light-tree selection is not implemented.
+- Light-tree selection and reverse MIS are implemented on fallback/HIP/Vulkan,
+  but mesh/instance subtrees, specialized emitter importance, light linking,
+  and finite-sample proposal identity with Cycles remain open. See
+  `docs/validation/2026-08-07/light-tree/README.md`.
 - Automatic emissive sampling classification still needs a formal
   Cycles-aligned static analysis; a host pre-evaluation shortcut is forbidden.
 - Imported light MIS metadata is preserved, but all corresponding forward-MIS

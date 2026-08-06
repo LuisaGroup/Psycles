@@ -6,6 +6,7 @@
 #include "path_tracer_generated_coordinates.h"
 #include "path_tracer_image_decode.h"
 #include "path_tracer_instance_support.h"
+#include "path_tracer_light_sampling_scene.h"
 #include "path_tracer_scene_geometry.h"
 #include "path_tracer_scene_upload.h"
 #include "path_tracer_shader_services.h"
@@ -19,7 +20,6 @@
 #include <psycles/contract/cycles_pointiness.h>
 #include <psycles/luisa/cycles_bsdf_tables.h>
 #include <psycles/luisa/cycles_nishita.h>
-#include <psycles/sampling/light_distribution.h>
 
 #include "cycles_shader_tables_4_5_10.inl"
 namespace psycles::luisa_backend {
@@ -1899,48 +1899,30 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         snapshot.world_sampling !=
             contract::WorldSampling::none &&
         world_is_spatially_varying;
-    const auto light_distribution =
-        sampling::build_cycles_light_distribution(
-            emissive_triangle_areas,
-            data->light_count,
-            include_environment);
-    luisa::vector<LightDistributionGpu>
-        light_distribution_entries;
-    light_distribution_entries.reserve(
-        light_distribution.entries.size());
-    for (std::size_t emitter_id = 0u;
-         emitter_id <
-         light_distribution.entries.size();
-         ++emitter_id) {
-        const auto &entry =
-            light_distribution.entries[emitter_id];
-        light_distribution_entries.emplace_back(
-            LightDistributionGpu{
-                .cumulative = entry.cumulative,
-                .selection_pdf = entry.selection_pdf,
-                .kind = static_cast<std::uint32_t>(
-                    entry.kind),
-                .index = entry.index,
-                .emitter_id =
-                    emitter_id <
-                            static_cast<std::size_t>(
-                                light_distribution
-                                    .emitter_count)
-                        ? static_cast<std::uint32_t>(
-                              emitter_id)
-                        : ~std::uint32_t{0u}});
+    auto light_sampling = build_light_sampling_scene_upload(
+        snapshot,
+        *data,
+        uploads,
+        lights,
+        emissive_triangles,
+        emissive_triangle_areas,
+        include_environment);
+    if (!light_sampling.ok()) {
+        diagnose(result.diagnostics, light_sampling.diagnostic);
+        return result;
     }
-    data->light_distribution_count =
-        light_distribution.usable()
-            ? light_distribution.emitter_count
-            : 0u;
-    data->triangle_area_pdf =
-        light_distribution.triangle_area_pdf;
-    data->light_selection_pdf =
-        light_distribution.light_selection_pdf;
+    data->light_distribution_count = light_sampling.distribution_count;
+    data->triangle_area_pdf = light_sampling.triangle_area_pdf;
+    data->light_selection_pdf = light_sampling.light_selection_pdf;
     data->environment_in_light_distribution =
-        include_environment &&
-        data->light_distribution_count > 0u;
+        light_sampling.environment_in_distribution;
+    data->light_tree_node_count =
+        static_cast<std::uint32_t>(light_sampling.tree_nodes.size());
+    data->light_tree_emitter_count =
+        static_cast<std::uint32_t>(light_sampling.tree_emitters.size());
+    data->light_tree_root = light_sampling.tree_root;
+    data->light_tree_triangle_lookup_count = static_cast<std::uint32_t>(
+        light_sampling.tree_triangle_lookup.size());
     const auto table_upload = SceneTableUploadComponent{}.upload(
         data,
         stream,
@@ -1956,7 +1938,13 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
          .override_materials = override_materials,
          .lights = lights,
          .emissive_triangles = emissive_triangles,
-         .light_distribution = light_distribution_entries});
+         .light_distribution = light_sampling.distribution,
+         .light_tree_nodes = light_sampling.tree_nodes,
+         .light_tree_emitters = light_sampling.tree_emitters,
+         .light_tree_emitter_mappings =
+             light_sampling.tree_emitter_mappings,
+         .light_tree_triangle_lookup =
+             light_sampling.tree_triangle_lookup});
     if (!table_upload.ok()) {
         diagnose(result.diagnostics, table_upload.diagnostic);
         return result;
