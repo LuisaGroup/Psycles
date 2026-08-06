@@ -393,8 +393,12 @@ template<typename Closure>
     type = select(type,
         UInt{cycles_closure::type_translucent},
         is_translucent);
-    type = select(type,
+    const auto reflection = select(
         UInt{cycles_closure::type_microfacet_ggx},
+        UInt{cycles_closure::type_microfacet_beckmann},
+        is_glossy & closure.beckmann);
+    type = select(type,
+        reflection,
         is_glossy | (is_principled & !is_sheen));
     const auto single_glass = select(
         UInt{cycles_closure::type_microfacet_ggx_glass},
@@ -482,15 +486,45 @@ template<typename Closure>
     return select(oren_nayar, lambert, use_lambert);
 }
 
-[[nodiscard]] Float ggx_distribution(
-    Float n_dot_h, Float alpha) noexcept {
-    auto alpha2 = alpha * alpha;
+[[nodiscard]] Float microfacet_distribution(
+    const SurfaceClosureRecord &closure,
+    Float n_dot_h,
+    Float alpha) noexcept {
+    const auto alpha2 = alpha * alpha;
     // Keep the Cycles form: at normal incidence `1 + (alpha2 - 1)`
     // catastrophically cancels when alpha2 is below float epsilon, while
     // `(1 - cos2) + alpha2 * cos2` preserves the finite GGX peak.
-    auto cosine2 = min(n_dot_h * n_dot_h, 1.0f);
-    auto denominator = (1.0f - cosine2) + alpha2 * cosine2;
-    return alpha2 / max(pi * denominator * denominator, 1.0e-20f);
+    const auto cosine2 = min(n_dot_h * n_dot_h, 1.0f);
+    const auto one_minus_cosine2 = 1.0f - cosine2;
+    const auto ggx_denominator =
+        one_minus_cosine2 + alpha2 * cosine2;
+    const auto ggx = alpha2 /
+                     max(pi * ggx_denominator * ggx_denominator,
+                         1.0e-20f);
+    const auto beckmann_exponent =
+        one_minus_cosine2 / (cosine2 * alpha2);
+    const auto beckmann_denominator =
+        exp(beckmann_exponent) * pi * alpha2 * cosine2 * cosine2;
+    const auto beckmann = 1.0f / beckmann_denominator;
+    return select(ggx, beckmann, closure.beckmann);
+}
+
+[[nodiscard]] Float microfacet_lambda(
+    const SurfaceClosureRecord &closure,
+    Float n_dot_v,
+    Float alpha) noexcept {
+    const auto cosine2 = n_dot_v * n_dot_v;
+    const auto squared_alpha_tangent =
+        alpha * alpha * max(1.0f / cosine2 - 1.0f, 0.0f);
+    const auto ggx =
+        0.5f * (sqrt(1.0f + squared_alpha_tangent) - 1.0f);
+    const auto a = rsqrt(squared_alpha_tangent);
+    const auto approximation =
+        ((0.396f * a - 1.259f) * a + 1.0f) /
+        ((2.181f * a + 3.535f) * a);
+    const auto beckmann = select(
+        approximation, 0.0f, squared_alpha_tangent < 0.39f);
+    return select(ggx, beckmann, closure.beckmann);
 }
 
 [[nodiscard]] Float microfacet_alpha(
@@ -512,13 +546,6 @@ template<typename Closure>
         closure, glossy_filter_roughness);
     return alpha * alpha <=
            cycles_closure::microfacet_singular_alpha_product;
-}
-
-[[nodiscard]] Float smith_g1(Float n_dot_v, Float alpha) noexcept {
-    auto cosine = max(n_dot_v, 1.0e-6f);
-    auto tangent2 = max(1.0f / (cosine * cosine) - 1.0f, 0.0f);
-    auto lambda = 0.5f * (sqrt(1.0f + alpha * alpha * tangent2) - 1.0f);
-    return 1.0f / (1.0f + lambda);
 }
 
 [[nodiscard]] Float3 specular_f0(
@@ -579,9 +606,10 @@ template<typename Closure>
         closure, glossy_filter_roughness);
     auto alpha = max(
         microfacet_alpha(closure, glossy_filter_roughness), 1.0e-10f);
-    auto distribution = ggx_distribution(n_dot_h, alpha);
-    auto lambda_v = 1.0f / smith_g1(n_dot_v, alpha) - 1.0f;
-    auto lambda_l = 1.0f / smith_g1(n_dot_l, alpha) - 1.0f;
+    auto distribution = microfacet_distribution(
+        closure, n_dot_h, alpha);
+    auto lambda_v = microfacet_lambda(closure, n_dot_v, alpha);
+    auto lambda_l = microfacet_lambda(closure, n_dot_l, alpha);
     auto geometry = 1.0f / (1.0f + lambda_v + lambda_l);
     const auto fresnel = microfacet_reflection_fresnel(
         closure, v_dot_h);
@@ -609,8 +637,9 @@ template<typename Closure>
         microfacet_alpha(closure, glossy_filter_roughness), 1.0e-10f);
     auto n_dot_v = max(dot(glossy_normal, incoming), 0.0f);
     auto n_dot_l = max(dot(glossy_normal, outgoing), 0.0f);
-    auto pdf = ggx_distribution(n_dot_h, alpha) *
-               smith_g1(n_dot_v, alpha) / max(4.0f * n_dot_v, 1.0e-20f);
+    auto pdf = microfacet_distribution(closure, n_dot_h, alpha) /
+               max(4.0f * n_dot_v, 1.0e-20f) /
+               (1.0f + microfacet_lambda(closure, n_dot_v, alpha));
     return select(0.0f,
         pdf,
         (n_dot_v > 0.0f) & (n_dot_l > 0.0f) & (n_dot_h > 0.0f) &
@@ -627,12 +656,17 @@ template<typename Closure>
     Float glossy_filter_roughness) noexcept {
     const auto alpha = microfacet_alpha(
         closure, glossy_filter_roughness);
+    const auto sampling_alpha = max(alpha, 1.0e-10f);
+    const auto ggx_half =
+        cycles_sample_mapping::sample_ggx_visible_normal(
+            glossy_normal, incoming, sampling_alpha, random);
+    const auto beckmann_half =
+        cycles_sample_mapping::sample_beckmann_visible_normal(
+            glossy_normal, incoming, sampling_alpha, random);
+    const auto half_vector = select(
+        ggx_half, beckmann_half, closure.beckmann);
     const auto regular =
-        cycles_sample_mapping::sample_ggx_visible_normal_reflection(
-        glossy_normal,
-        incoming,
-        max(alpha, 1.0e-10f),
-        random);
+        2.0f * dot(incoming, half_vector) * half_vector - incoming;
     const auto singular_direction =
         2.0f * dot(glossy_normal, incoming) * glossy_normal - incoming;
     const auto singular = alpha * alpha <=

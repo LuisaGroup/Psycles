@@ -76,47 +76,6 @@ reflection_probability(const GlassFresnel &fresnel) noexcept {
     return reflection / max(reflection + transmission, 1.0e-20f);
 }
 
-[[nodiscard]] Float
-glass_microfacet_alpha(const SurfaceClosureRecord &closure,
-                       Float glossy_filter_roughness) noexcept {
-    auto alpha = clamp(closure.roughness, 0.0f, 1.0f);
-    alpha *= alpha;
-    return max(alpha, glossy_filter_roughness);
-}
-
-[[nodiscard]] Float glass_microfacet_distribution(
-    const SurfaceClosureRecord &closure,
-    Float normal_half_cosine,
-    Float alpha) noexcept {
-    const auto ggx = ggx_distribution(normal_half_cosine, alpha);
-    const auto cosine_squared =
-        min(normal_half_cosine * normal_half_cosine, 1.0f);
-    const auto alpha_squared = alpha * alpha;
-    const auto exponent =
-        (1.0f - cosine_squared) / (cosine_squared * alpha_squared);
-    const auto denominator =
-        exp(exponent) * pi * alpha_squared * cosine_squared * cosine_squared;
-    const auto beckmann = 1.0f / denominator;
-    return select(ggx, beckmann, closure.beckmann);
-}
-
-[[nodiscard]] Float glass_microfacet_lambda(
-    const SurfaceClosureRecord &closure,
-    Float normal_direction_cosine,
-    Float alpha) noexcept {
-    const auto cosine_squared = normal_direction_cosine * normal_direction_cosine;
-    const auto squared_alpha_tangent =
-        alpha * alpha * max(1.0f / cosine_squared - 1.0f, 0.0f);
-    const auto ggx =
-        0.5f * (sqrt(1.0f + squared_alpha_tangent) - 1.0f);
-    const auto a = rsqrt(squared_alpha_tangent);
-    const auto approximation =
-        ((0.396f * a - 1.259f) * a + 1.0f) / ((2.181f * a + 3.535f) * a);
-    const auto beckmann =
-        select(approximation, 0.0f, squared_alpha_tangent < 0.39f);
-    return select(ggx, beckmann, closure.beckmann);
-}
-
 [[nodiscard]] GlassGeometry glass_geometry(
     const SurfaceClosureRecord &closure,
     Float3 incoming,
@@ -297,14 +256,14 @@ Float3 MicrofacetGlassComponent::intensity(
     const auto geometry =
         glass_geometry(closure, incoming, outgoing, glossy_normal);
     const auto setup_alpha =
-        glass_microfacet_alpha(closure, glossy_filter_roughness);
+        microfacet_alpha(closure, glossy_filter_roughness);
     const auto alpha = max(setup_alpha, 1.0e-7f);
-    const auto distribution = glass_microfacet_distribution(
+    const auto distribution = microfacet_distribution(
         closure, geometry.cosine_normal_half, alpha);
     const auto lambda_incoming =
-        glass_microfacet_lambda(closure, geometry.cosine_incoming, alpha);
+        microfacet_lambda(closure, geometry.cosine_incoming, alpha);
     const auto lambda_outgoing =
-        glass_microfacet_lambda(closure, geometry.cosine_outgoing, alpha);
+        microfacet_lambda(closure, geometry.cosine_outgoing, alpha);
     const auto fresnel = glass_fresnel(closure, geometry.cosine_half_incoming);
     const auto lobe =
         select(fresnel.reflection, fresnel.transmission, geometry.transmission);
@@ -339,9 +298,9 @@ Float MicrofacetGlassComponent::pdf(
     const auto geometry =
         glass_geometry(closure, incoming, outgoing, glossy_normal);
     const auto setup_alpha =
-        glass_microfacet_alpha(closure, glossy_filter_roughness);
+        microfacet_alpha(closure, glossy_filter_roughness);
     const auto alpha = max(setup_alpha, 1.0e-7f);
-    const auto distribution = glass_microfacet_distribution(
+    const auto distribution = microfacet_distribution(
         closure, geometry.cosine_normal_half, alpha);
     const auto fresnel = masked_fresnel(closure, geometry.cosine_half_incoming,
                                         reflection_allowed, transmission_allowed);
@@ -352,7 +311,7 @@ Float MicrofacetGlassComponent::pdf(
     // evaluation PDFs share D / (N.I) / (1 + Lambda(I)); only D and Lambda
     // differ by distribution.
     const auto lambda_incoming =
-        glass_microfacet_lambda(closure, geometry.cosine_incoming, alpha);
+        microfacet_lambda(closure, geometry.cosine_incoming, alpha);
     const auto transmission_jacobian =
         closure.ior * closure.ior * geometry.inverse_half_length *
         geometry.inverse_half_length *
@@ -377,7 +336,7 @@ GlassSample MicrofacetGlassComponent::sample(
     Float2 random_direction, Float random_lobe, Bool reflection_allowed,
     Bool transmission_allowed, Float glossy_filter_roughness) const noexcept {
     static_cast<void>(_services);
-    auto alpha = glass_microfacet_alpha(closure, glossy_filter_roughness);
+    auto alpha = microfacet_alpha(closure, glossy_filter_roughness);
     auto singular =
         alpha * alpha <= cycles_closure::microfacet_singular_alpha_product;
     const auto sampling_alpha = max(alpha, 1.0e-7f);

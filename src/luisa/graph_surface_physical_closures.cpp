@@ -133,7 +133,8 @@ SurfaceClosureRecord canonical_surface_closure(
         closure.operation == compiler::ClosureOperation::refraction) {
         result.preserve_ggx_energy = closure.preserve_ggx_energy;
     }
-    if (closure.operation == compiler::ClosureOperation::glass ||
+    if (closure.operation == compiler::ClosureOperation::glossy ||
+        closure.operation == compiler::ClosureOperation::glass ||
         closure.operation == compiler::ClosureOperation::refraction) {
         result.beckmann = closure.beckmann;
     }

@@ -405,11 +405,15 @@ def _glossy_bsdf_matrix(scene: Any) -> None:
         )
         glossy = tree.nodes.new("ShaderNodeBsdfAnisotropic")
         glossy.name = f"Glossy BSDF {index:02d}"
-        # The middle roughness sweep also locks the standalone MULTI_GGX
+        # The roughness sweep locks all standalone microfacet families:
+        # Beckmann visible-normal sampling, ordinary GGX, and MULTI_GGX's
         # constant-Fresnel energy-preservation path.
-        glossy.distribution = (
-            "MULTI_GGX" if index in {9, 10, 11} else "GGX"
-        )
+        if index == 8:
+            glossy.distribution = "BECKMANN"
+        elif index in {9, 10, 11}:
+            glossy.distribution = "MULTI_GGX"
+        else:
+            glossy.distribution = "GGX"
         tree.links.new(
             _linked_vector(tree, f"Glossy Color {index:02d}", color),
             _input(glossy, "Color"),
