@@ -1,0 +1,822 @@
+{
+  "actual_label": "Psycles hip",
+  "cycles_channels": [
+    "View Layer.Combined.R",
+    "View Layer.Combined.G",
+    "View Layer.Combined.B",
+    "View Layer.Combined.A",
+    "View Layer.Debug Sample Count.X",
+    "View Layer.Depth.Z",
+    "View Layer.Diffuse Color.R",
+    "View Layer.Diffuse Color.G",
+    "View Layer.Diffuse Color.B",
+    "View Layer.Diffuse Direct.R",
+    "View Layer.Diffuse Direct.G",
+    "View Layer.Diffuse Direct.B",
+    "View Layer.Diffuse Indirect.R",
+    "View Layer.Diffuse Indirect.G",
+    "View Layer.Diffuse Indirect.B",
+    "View Layer.Emission.R",
+    "View Layer.Emission.G",
+    "View Layer.Emission.B",
+    "View Layer.Environment.R",
+    "View Layer.Environment.G",
+    "View Layer.Environment.B",
+    "View Layer.Glossy Color.R",
+    "View Layer.Glossy Color.G",
+    "View Layer.Glossy Color.B",
+    "View Layer.Glossy Direct.R",
+    "View Layer.Glossy Direct.G",
+    "View Layer.Glossy Direct.B",
+    "View Layer.Glossy Indirect.R",
+    "View Layer.Glossy Indirect.G",
+    "View Layer.Glossy Indirect.B",
+    "View Layer.Normal.X",
+    "View Layer.Normal.Y",
+    "View Layer.Normal.Z",
+    "View Layer.Transmission Color.R",
+    "View Layer.Transmission Color.G",
+    "View Layer.Transmission Color.B",
+    "View Layer.Transmission Direct.R",
+    "View Layer.Transmission Direct.G",
+    "View Layer.Transmission Direct.B",
+    "View Layer.Transmission Indirect.R",
+    "View Layer.Transmission Indirect.G",
+    "View Layer.Transmission Indirect.B",
+    "View Layer.Volume Direct.R",
+    "View Layer.Volume Direct.G",
+    "View Layer.Volume Direct.B",
+    "View Layer.Volume Indirect.R",
+    "View Layer.Volume Indirect.G",
+    "View Layer.Volume Indirect.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        1.0082212686538696,
+        1.0029953718185425,
+        1.0103462934494019
+      ],
+      "cycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.1507686823606491,
+        0.07012977451086044,
+        0.050759367644786835
+      ],
+      "cycles_luminance_mean": 0.08587527275085449,
+      "cycles_rms": 0.14296847581863403,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0052613295316044,
+      "maximum_absolute_error": 0.9054379463195801,
+      "mean_absolute_error": 0.009485469199717045,
+      "orientation_rmse": {
+        "flip_x": 0.1143714040517807,
+        "flip_xy": 0.1471409946680069,
+        "flip_y": 0.1464674323797226,
+        "identity": 0.023977378383278847
+      },
+      "p95_pixel_rmse": 0.05151278153061867,
+      "p99_pixel_rmse": 0.1040157601237297,
+      "psycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/psycles/hip.exr",
+      "psycles_channel_mean": [
+        0.15200819075107574,
+        0.07033983618021011,
+        0.051284536719322205
+      ],
+      "psycles_luminance_mean": 0.08632709085941315,
+      "psycles_rms": 0.14477399468352026,
+      "relative_rmse": 0.1677109463886004,
+      "rmse": 0.023977378383278847,
+      "shape": [
+        960,
+        960,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 6.128877314438982,
+        "display_scale": 1.1980186805135817,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/comparisons/psycles-hip-vs-cycles-hip/triptychs/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 921600
+    },
+    "DiffCol": {
+      "channel_mean_ratio": [
+        0.9997507333755493,
+        0.9997166395187378,
+        0.9992144703865051
+      ],
+      "cycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.3315143883228302,
+        0.26071280241012573,
+        0.30886393785476685
+      ],
+      "cycles_luminance_mean": 0.27903804183006287,
+      "cycles_rms": 0.35147756338119507,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9996916574379285,
+      "maximum_absolute_error": 0.061606407165527344,
+      "mean_absolute_error": 0.000503675255458802,
+      "orientation_rmse": {
+        "flip_x": 0.1663324236869812,
+        "flip_xy": 0.2514628469944,
+        "flip_y": 0.2560669779777527,
+        "identity": 0.002218174049630761
+      },
+      "p95_pixel_rmse": 0.0027477156836539507,
+      "p99_pixel_rmse": 0.011494722217321396,
+      "psycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/psycles/hip.exr",
+      "psycles_channel_mean": [
+        0.3314317464828491,
+        0.26063892245292664,
+        0.3086213171482086
+      ],
+      "psycles_luminance_mean": 0.2789520025253296,
+      "psycles_rms": 0.35125820978419264,
+      "relative_rmse": 0.0063109975734782255,
+      "rmse": 0.002218174049630761,
+      "shape": [
+        960,
+        960,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 60.549571019744306,
+        "display_scale": 1.1502626533699978,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/comparisons/psycles-hip-vs-cycles-hip/triptychs/diffcol.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 921600
+    },
+    "DiffDir": {
+      "channel_mean_ratio": [
+        1.0091302394866943,
+        1.0054689645767212,
+        1.0042383670806885
+      ],
+      "cycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.3138681948184967,
+        0.19789519906044006,
+        0.12458421289920807
+      ],
+      "cycles_luminance_mean": 0.2172618806362152,
+      "cycles_rms": 0.3144199848175049,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0065048499341367,
+      "maximum_absolute_error": 2.6376953125,
+      "mean_absolute_error": 0.01987963169813156,
+      "orientation_rmse": {
+        "flip_x": 0.2465645968914032,
+        "flip_xy": 0.31649863719940186,
+        "flip_y": 0.30956780910491943,
+        "identity": 0.05281102657318115
+      },
+      "p95_pixel_rmse": 0.10612139850854874,
+      "p99_pixel_rmse": 0.2318880409002304,
+      "psycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/psycles/hip.exr",
+      "psycles_channel_mean": [
+        0.3167338967323303,
+        0.19897747039794922,
+        0.12511225044727325
+      ],
+      "psycles_luminance_mean": 0.2186751365661621,
+      "psycles_rms": 0.319812116321142,
+      "relative_rmse": 0.16796332651639062,
+      "rmse": 0.05281102657318115,
+      "shape": [
+        960,
+        960,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 2.7370417624021375,
+        "display_scale": 0.5871651967213153,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/comparisons/psycles-hip-vs-cycles-hip/triptychs/diffdir.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 921600
+    },
+    "DiffInd": {
+      "channel_mean_ratio": [
+        1.0123136043548584,
+        1.0062386989593506,
+        1.0069260597229004
+      ],
+      "cycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.09584136307239532,
+        0.03469215705990791,
+        0.030172767117619514
+      ],
+      "cycles_luminance_mean": 0.0473652146756649,
+      "cycles_rms": 0.0886511355638504,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0088846571509715,
+      "maximum_absolute_error": 2.370255708694458,
+      "mean_absolute_error": 0.013418830931186676,
+      "orientation_rmse": {
+        "flip_x": 0.06805608421564102,
+        "flip_xy": 0.09212049096822739,
+        "flip_y": 0.09070224314928055,
+        "identity": 0.03450841084122658
+      },
+      "p95_pixel_rmse": 0.06782418489456177,
+      "p99_pixel_rmse": 0.15042570233345032,
+      "psycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/psycles/hip.exr",
+      "psycles_channel_mean": [
+        0.09702151268720627,
+        0.03490859270095825,
+        0.03038174659013748
+      ],
+      "psycles_luminance_mean": 0.04778603836894035,
+      "psycles_rms": 0.0906531066306837,
+      "relative_rmse": 0.38926078748728626,
+      "rmse": 0.03450841084122658,
+      "shape": [
+        960,
+        960,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 4.152583798028062,
+        "display_scale": 1.8702438817753246,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/comparisons/psycles-hip-vs-cycles-hip/triptychs/diffind.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 921600
+    },
+    "Emit": {
+      "channel_mean_ratio": [
+        0.9999675750732422,
+        0.9999675750732422,
+        0.9999675750732422
+      ],
+      "cycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.00044083292596042156,
+        0.00044083292596042156,
+        0.00044083292596042156
+      ],
+      "cycles_luminance_mean": 0.00044082579552195966,
+      "cycles_rms": 0.003160172840580344,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999680457584739,
+      "maximum_absolute_error": 0.0003674495965242386,
+      "mean_absolute_error": 7.757878961456299e-08,
+      "orientation_rmse": {
+        "flip_x": 0.004280949477106333,
+        "flip_xy": 0.004468944389373064,
+        "flip_y": 0.004468943923711777,
+        "identity": 3.734952997547225e-06
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 3.725290298461914e-09,
+      "psycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/psycles/hip.exr",
+      "psycles_channel_mean": [
+        0.0004408186359796673,
+        0.0004408186359796673,
+        0.0004408186359796673
+      ],
+      "psycles_luminance_mean": 0.0004408117092680186,
+      "psycles_rms": 0.00315986870907599,
+      "relative_rmse": 0.0011818825064205433,
+      "rmse": 3.734952997547225e-06,
+      "shape": [
+        960,
+        960,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 48318382.08,
+        "display_scale": 38.2722343859976,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/comparisons/psycles-hip-vs-cycles-hip/triptychs/emit.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 921600
+    },
+    "Env": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/psycles/hip.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        960,
+        960,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/comparisons/psycles-hip-vs-cycles-hip/triptychs/env.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 921600
+    },
+    "GlossCol": {
+      "channel_mean_ratio": [
+        1.0077786445617676,
+        1.007750153541565,
+        1.0077290534973145
+      ],
+      "cycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.04767845198512077,
+        0.047962162643671036,
+        0.04818744584918022
+      ],
+      "cycles_luminance_mean": 0.04792900010943413,
+      "cycles_rms": 0.07124354690313339,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0077323343678297,
+      "maximum_absolute_error": 0.07700765132904053,
+      "mean_absolute_error": 0.0009639434283599257,
+      "orientation_rmse": {
+        "flip_x": 0.05187016725540161,
+        "flip_xy": 0.0808209553360939,
+        "flip_y": 0.08148632198572159,
+        "identity": 0.004220082890242338
+      },
+      "p95_pixel_rmse": 0.005136264953762293,
+      "p99_pixel_rmse": 0.021967872977256775,
+      "psycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/psycles/hip.exr",
+      "psycles_channel_mean": [
+        0.04804932326078415,
+        0.048333875834941864,
+        0.04855988919734955
+      ],
+      "psycles_luminance_mean": 0.048299603164196014,
+      "psycles_rms": 0.07177169284504284,
+      "relative_rmse": 0.059234598411842025,
+      "rmse": 0.004220082890242338,
+      "shape": [
+        960,
+        960,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 29.5146312016626,
+        "display_scale": 3.311552617508129,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/comparisons/psycles-hip-vs-cycles-hip/triptychs/glosscol.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 921600
+    },
+    "GlossDir": {
+      "channel_mean_ratio": [
+        0.9892925024032593,
+        0.9873697757720947,
+        0.9840490221977234
+      ],
+      "cycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.2588505744934082,
+        0.18889828026294708,
+        0.1257624328136444
+      ],
+      "cycles_luminance_mean": 0.19929015636444092,
+      "cycles_rms": 0.354481965303421,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9877547977678708,
+      "maximum_absolute_error": 10.739593505859375,
+      "mean_absolute_error": 0.03801203519105911,
+      "orientation_rmse": {
+        "flip_x": 0.38816195726394653,
+        "flip_xy": 0.40540552139282227,
+        "flip_y": 0.40021055936813354,
+        "identity": 0.1928960531949997
+      },
+      "p95_pixel_rmse": 0.10841526091098785,
+      "p99_pixel_rmse": 0.803007960319519,
+      "psycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/psycles/hip.exr",
+      "psycles_channel_mean": [
+        0.25607892870903015,
+        0.18651245534420013,
+        0.12375640124082565
+      ],
+      "psycles_luminance_mean": 0.19684980809688568,
+      "psycles_rms": 0.3502907214000918,
+      "relative_rmse": 0.5441632355820673,
+      "rmse": 0.1928960531949997,
+      "shape": [
+        960,
+        960,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 0.7032917765577457,
+        "display_scale": 0.45508869794884355,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/comparisons/psycles-hip-vs-cycles-hip/triptychs/glossdir.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 921600
+    },
+    "GlossInd": {
+      "channel_mean_ratio": [
+        1.008700966835022,
+        1.004126787185669,
+        1.0101567506790161
+      ],
+      "cycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.08541527390480042,
+        0.03780633956193924,
+        0.03262966498732567
+      ],
+      "cycles_luminance_mean": 0.047556906938552856,
+      "cycles_rms": 0.1024797186255455,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.006177052097923,
+      "maximum_absolute_error": 9.483919143676758,
+      "mean_absolute_error": 0.019068628549575806,
+      "orientation_rmse": {
+        "flip_x": 0.11566749215126038,
+        "flip_xy": 0.12478690594434738,
+        "flip_y": 0.12429966032505035,
+        "identity": 0.08456281572580338
+      },
+      "p95_pixel_rmse": 0.09216131269931793,
+      "p99_pixel_rmse": 0.31217125058174133,
+      "psycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/psycles/hip.exr",
+      "psycles_channel_mean": [
+        0.08615846931934357,
+        0.03796235844492912,
+        0.032961077988147736
+      ],
+      "psycles_luminance_mean": 0.04785066843032837,
+      "psycles_rms": 0.1050710509092258,
+      "relative_rmse": 0.8251663534985945,
+      "rmse": 0.08456281572580338,
+      "shape": [
+        960,
+        960,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 2.0804577711488714,
+        "display_scale": 1.8081582160281349,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/comparisons/psycles-hip-vs-cycles-hip/triptychs/glossind.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 921600
+    },
+    "Normal": {
+      "channel_mean_ratio": [
+        1.0117875337600708,
+        0.9973803758621216,
+        0.9956740736961365
+      ],
+      "cycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/cycles/hip.exr",
+      "cycles_channel_mean": [
+        -0.009877911768853664,
+        -0.7537246346473694,
+        0.21837183833122253
+      ],
+      "cycles_luminance_mean": -0.5240034461021423,
+      "cycles_rms": 0.5727446675300598,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": -0.9974824028112278,
+      "maximum_absolute_error": 0.07265838980674744,
+      "mean_absolute_error": 0.006198418792337179,
+      "orientation_rmse": {
+        "flip_x": 0.33067458868026733,
+        "flip_xy": 0.5489627122879028,
+        "flip_y": 0.5459423661231995,
+        "identity": 0.015961818397045135
+      },
+      "p95_pixel_rmse": 0.038614798337221146,
+      "p99_pixel_rmse": 0.039896972477436066,
+      "psycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/psycles/hip.exr",
+      "psycles_channel_mean": [
+        -0.009994348511099815,
+        -0.7517501711845398,
+        0.21742717921733856
+      ],
+      "psycles_luminance_mean": -0.5226842164993286,
+      "psycles_rms": 0.5724853250130263,
+      "relative_rmse": 0.027868995211915087,
+      "rmse": 0.015961818397045135,
+      "shape": [
+        960,
+        960,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 14.110762117643073,
+        "display_scale": 1.0,
+        "mapping": "normal_xyz_to_rgb",
+        "path": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/comparisons/psycles-hip-vs-cycles-hip/triptychs/normal.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 921600
+    },
+    "TransCol": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/psycles/hip.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        960,
+        960,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/comparisons/psycles-hip-vs-cycles-hip/triptychs/transcol.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 921600
+    },
+    "TransDir": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/psycles/hip.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        960,
+        960,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/comparisons/psycles-hip-vs-cycles-hip/triptychs/transdir.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 921600
+    },
+    "TransInd": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/psycles/hip.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        960,
+        960,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/comparisons/psycles-hip-vs-cycles-hip/triptychs/transind.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 921600
+    },
+    "Volume Direct": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/psycles/hip.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        960,
+        960,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/comparisons/psycles-hip-vs-cycles-hip/triptychs/volume-direct.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 921600
+    },
+    "Volume Indirect": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/psycles/hip.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        960,
+        960,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/comparisons/psycles-hip-vs-cycles-hip/triptychs/volume-indirect.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 921600
+    }
+  },
+  "reference_label": "Cycles HIP",
+  "schema": "psycles.cycles-differential.v1"
+}

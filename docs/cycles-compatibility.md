@@ -348,6 +348,15 @@ multi-closure delta MIS. Latest Cycles CPU differentials pass on fallback,
 HIP, and Vulkan; the formal relations, direct Cycles CPU/HIP fast-math
 diagnostic, reports, and inspected triptychs are in
 [`validation/2026-08-03/principled-coat`](validation/2026-08-03/principled-coat/README.md).
+The current-head Monster validation added the missing cross-socket topology:
+when main Normal is linked but Coat Normal is not, Cycles independently
+connects Coat Normal to Geometry Normal rather than inheriting the authored
+main normal. The three-backend regression pins that relation, and the full
+960x960 HIP differential reduces Normal relative RMSE from `2.787%` to
+`0.0747%` and Glossy Direct from `54.4%` to `12.1%`. Five-way completion,
+path-trace evidence, performance, and visually inspected before/after
+triptychs are in
+[`validation/2026-08-07/monster-current-head`](validation/2026-08-07/monster-current-head/README.md).
 Physical thick Principled transmission now uses one coupled generalized-
 Schlick Glass closure with Cycles' exact caustics gates, spectral tints,
 front/backface eta relation, GGX energy handling, and visible-normal measure.

@@ -1,0 +1,279 @@
+{
+  "commands": {
+    "cycles_cpu": {
+      "command": [
+        "/home/mike/Projects/blender-install-psycles-trace/blender",
+        "/home/mike/Projects/Psycles/assets/official-blender-scenes/monster-under-the-bed/monster_under_the_bed_sss_demo_by_metin_seven.blend",
+        "--background",
+        "--python-exit-code",
+        "1",
+        "--python",
+        "/home/mike/Projects/Psycles/tools/render_cycles_golden.py",
+        "--",
+        "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/cycles/cpu.exr",
+        "960",
+        "960",
+        "128",
+        "--cycles-device",
+        "CPU",
+        "--device-name",
+        ""
+      ],
+      "log": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/logs/cycles-cpu.log",
+      "returncode": 0,
+      "wall_seconds": 23.455313040991314
+    },
+    "cycles_hip": {
+      "command": [
+        "/home/mike/Projects/blender-install-psycles-trace/blender",
+        "/home/mike/Projects/Psycles/assets/official-blender-scenes/monster-under-the-bed/monster_under_the_bed_sss_demo_by_metin_seven.blend",
+        "--background",
+        "--python-exit-code",
+        "1",
+        "--python",
+        "/home/mike/Projects/Psycles/tools/render_cycles_golden.py",
+        "--",
+        "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/cycles/hip.exr",
+        "960",
+        "960",
+        "128",
+        "--cycles-device",
+        "HIP",
+        "--device-name",
+        "Radeon RX 9070 XT"
+      ],
+      "log": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/logs/cycles-hip.log",
+      "returncode": 0,
+      "wall_seconds": 7.730125556932762
+    },
+    "export": {
+      "command": [
+        "/home/mike/Projects/blender-install-psycles-trace/blender",
+        "/home/mike/Projects/Psycles/assets/official-blender-scenes/monster-under-the-bed/monster_under_the_bed_sss_demo_by_metin_seven.blend",
+        "--background",
+        "--python-exit-code",
+        "1",
+        "--python",
+        "/home/mike/Projects/Psycles/tools/export_psycles_scene.py",
+        "--",
+        "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/export"
+      ],
+      "log": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/logs/export.log",
+      "returncode": 0,
+      "wall_seconds": 11.984640987007879
+    },
+    "psycles_fallback": {
+      "command": [
+        "/home/mike/Projects/Psycles/build/bin/psycles_render_blender_scene",
+        "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/export",
+        "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/psycles/fallback.ppm",
+        "fallback",
+        "960",
+        "960",
+        "128",
+        "4"
+      ],
+      "log": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/logs/psycles-fallback.log",
+      "returncode": 0,
+      "wall_seconds": 61.46597350202501
+    },
+    "psycles_hip": {
+      "command": [
+        "/home/mike/Projects/Psycles/build/bin/psycles_render_blender_scene",
+        "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/export",
+        "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/psycles/hip.ppm",
+        "hip",
+        "960",
+        "960",
+        "128",
+        "4"
+      ],
+      "log": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/logs/psycles-hip.log",
+      "returncode": 0,
+      "wall_seconds": 65.06035307596903
+    },
+    "psycles_vk": {
+      "command": [
+        "/home/mike/Projects/Psycles/build/bin/psycles_render_blender_scene",
+        "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/export",
+        "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/psycles/vk.ppm",
+        "vk",
+        "960",
+        "960",
+        "128",
+        "4"
+      ],
+      "log": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/logs/psycles-vk.log",
+      "returncode": 0,
+      "wall_seconds": 179.07804216397926
+    }
+  },
+  "comparisons": {
+    "cycles-cpu-vs-cycles-hip": {
+      "actual": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/cycles/cpu.exr",
+      "process_wall_seconds": 6.59293531998992,
+      "reference": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/cycles/hip.exr",
+      "report": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/comparisons/cycles-cpu-vs-cycles-hip/report.json"
+    },
+    "psycles-fallback-vs-cycles-cpu": {
+      "actual": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/psycles/fallback.exr",
+      "process_wall_seconds": 6.61214815301355,
+      "reference": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/cycles/cpu.exr",
+      "report": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/comparisons/psycles-fallback-vs-cycles-cpu/report.json"
+    },
+    "psycles-fallback-vs-cycles-hip": {
+      "actual": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/psycles/fallback.exr",
+      "process_wall_seconds": 6.982619205955416,
+      "reference": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/cycles/hip.exr",
+      "report": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/comparisons/psycles-fallback-vs-cycles-hip/report.json"
+    },
+    "psycles-hip-vs-cycles-cpu": {
+      "actual": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/psycles/hip.exr",
+      "process_wall_seconds": 6.6054503850173205,
+      "reference": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/cycles/cpu.exr",
+      "report": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/comparisons/psycles-hip-vs-cycles-cpu/report.json"
+    },
+    "psycles-hip-vs-cycles-hip": {
+      "actual": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/psycles/hip.exr",
+      "process_wall_seconds": 6.637510197004303,
+      "reference": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/cycles/hip.exr",
+      "report": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/comparisons/psycles-hip-vs-cycles-hip/report.json"
+    },
+    "psycles-vk-vs-cycles-cpu": {
+      "actual": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/psycles/vk.exr",
+      "process_wall_seconds": 6.653239961946383,
+      "reference": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/cycles/cpu.exr",
+      "report": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/comparisons/psycles-vk-vs-cycles-cpu/report.json"
+    },
+    "psycles-vk-vs-cycles-hip": {
+      "actual": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/psycles/vk.exr",
+      "process_wall_seconds": 6.641698596067727,
+      "reference": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/cycles/hip.exr",
+      "report": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/comparisons/psycles-vk-vs-cycles-hip/report.json"
+    }
+  },
+  "compiler_tmp": "/var/tmp/psycles-compiler-tmp",
+  "matrix": {
+    "cycles": [
+      "cpu",
+      "hip"
+    ],
+    "psycles": [
+      "fallback",
+      "hip",
+      "vk"
+    ]
+  },
+  "relative_performance": {
+    "cycles_cpu": {
+      "slowdown_vs_cycles_hip": 2.905723578568974,
+      "speedup_over_cycles_hip": 0.34414835856220194
+    },
+    "fallback": {
+      "slowdown_vs_cycles_cpu": 2.824086712734066,
+      "slowdown_vs_cycles_hip": 8.206015349114722,
+      "speedup_over_cycles_cpu": 0.35409677595624395,
+      "speedup_over_cycles_hip": 0.12186182421750913
+    },
+    "hip": {
+      "slowdown_vs_cycles_cpu": 1.5527224708945644,
+      "slowdown_vs_cycles_hip": 4.511782294652214,
+      "speedup_over_cycles_cpu": 0.6440300947173603,
+      "speedup_over_cycles_hip": 0.221641899961639
+    },
+    "vk": {
+      "slowdown_vs_cycles_cpu": 8.13873280787643,
+      "slowdown_vs_cycles_hip": 23.64890781951942,
+      "speedup_over_cycles_cpu": 0.12286925048482104,
+      "speedup_over_cycles_hip": 0.0422852508721192
+    }
+  },
+  "renderers": {
+    "cycles": {
+      "cpu": {
+        "device": [
+          {
+            "id": "CPU",
+            "name": "AMD Ryzen 9 9950X3D 16-Core Processor",
+            "type": "CPU"
+          }
+        ],
+        "metadata": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/cycles/cpu.json",
+        "metadata_sha256": "9d40d7351b347f21019f374812833529a265c29bb6f1d002e7a47b60c6dd63ce",
+        "output": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/cycles/cpu.exr",
+        "process_wall_seconds": 23.455313040991314,
+        "render_seconds": 20.962599955964833,
+        "sha256": "5b14a0f0011822a038a1ec65557d9d891b25d5ef2067bb29f083fd0083be93b2"
+      },
+      "hip": {
+        "device": [
+          {
+            "id": "HIP_AMD Radeon RX 9070 XT_0000:03:00",
+            "name": "AMD Radeon RX 9070 XT",
+            "type": "HIP"
+          }
+        ],
+        "metadata": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/cycles/hip.json",
+        "metadata_sha256": "b7ad988043e7fc98e016d97155e67fe440a5d1234b6cdefdf34d3c1f30b51f62",
+        "output": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/cycles/hip.exr",
+        "process_wall_seconds": 7.730125556932762,
+        "render_seconds": 7.214244366041385,
+        "sha256": "52b2c23b0ada0119ea7cb6614a2dedfc70694763be6cfefecefe27964b80aa8e"
+      }
+    },
+    "psycles": {
+      "fallback": {
+        "output": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/psycles/fallback.exr",
+        "process_wall_seconds": 61.46597350202501,
+        "render_seconds": 59.2002,
+        "scene_compile_seconds": 1.33657,
+        "sha256": "20bae2cddc2be4b5a19ff055e550b2c1701dc69161d819363a16fd7af38174e1",
+        "shader_jit_seconds": 0.403184
+      },
+      "hip": {
+        "output": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/psycles/hip.exr",
+        "process_wall_seconds": 65.06035307596903,
+        "render_seconds": 32.5491,
+        "scene_compile_seconds": 1.69333,
+        "sha256": "fe0849d201e92d9bff9cc43fa693270c10b136612e04beae4f47b55f0d5679b8",
+        "shader_jit_seconds": 30.2173
+      },
+      "vk": {
+        "output": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/psycles/vk.exr",
+        "process_wall_seconds": 179.07804216397926,
+        "render_seconds": 170.609,
+        "scene_compile_seconds": 1.87256,
+        "sha256": "d2edbc016726ded632e531640db758206dbd7c2d36dbf0d1d672c789ecf46e27",
+        "shader_jit_seconds": 4.05693
+      }
+    }
+  },
+  "resume": {
+    "existing_manifest": true,
+    "requested": true,
+    "reused_stages": [
+      "cycles_cpu",
+      "cycles_hip",
+      "export",
+      "psycles_fallback",
+      "psycles_hip"
+    ]
+  },
+  "scene": {
+    "blend": "/home/mike/Projects/Psycles/assets/official-blender-scenes/monster-under-the-bed/monster_under_the_bed_sss_demo_by_metin_seven.blend",
+    "bundle": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/export",
+    "geometry_bin_sha256": "dcf25e4e63bb8e11ace4e639fbca0cf6eec6f862a8095b4e771a4b5e51274b15",
+    "scene_json_sha256": "d530583a73f8e0a310aa19d84e83e157ca95c93c5f56d1be789e291f6202ac12",
+    "sha256": "9463082f8d365ad8ae19c1ba86429deb3b532c5a2d0db0b9492c3c759f64d28d"
+  },
+  "schema": "psycles.scene-benchmark.v1",
+  "settings": {
+    "cycles_gpu_device": "HIP",
+    "cycles_gpu_device_name": "Radeon RX 9070 XT",
+    "height": 960,
+    "max_samples_per_dispatch": 4,
+    "samples": 128,
+    "width": 960
+  },
+  "status": "complete"
+}

@@ -79,12 +79,14 @@ PrincipledLayerComponent::evaluate_sheen(
     Float3 lower_weight) const noexcept {
     const auto incoming = _point.incoming;
     const auto coat_weight = max(closure.coat_weight, 0.0f);
+    // ShaderGraph::default_inputs() connects every unlinked LINK_NORMAL
+    // socket independently to Geometry.Normal. In particular, an authored
+    // Principled Normal link must not become the implicit Coat Normal. A
+    // linked zero Coat Normal still falls back to ShaderData::N.
     const auto coat_normal_input = closure.coat_normal_linked
                                        ? closure.coat_normal
-                                       : closure.normal;
-    const auto coat_normal_fallback = closure.coat_normal_linked
-                                          ? _point.shading_normal
-                                          : closure.normal;
+                                       : _point.shading_normal;
+    const auto coat_normal_fallback = _point.shading_normal;
     const auto coat_normal = cycles_safe_normalize_fallback(
         coat_normal_input, coat_normal_fallback);
 
@@ -180,10 +182,8 @@ PrincipledLayerComponent::evaluate_coat(
     const auto coat_ior = max(closure.coat_ior, 1.0f);
     const auto coat_normal_input = closure.coat_normal_linked
                                        ? closure.coat_normal
-                                       : closure.normal;
-    const auto coat_normal_fallback = closure.coat_normal_linked
-                                          ? _point.shading_normal
-                                          : closure.normal;
+                                       : _point.shading_normal;
+    const auto coat_normal_fallback = _point.shading_normal;
     const auto coat_normal = cycles_safe_normalize_fallback(
         coat_normal_input, coat_normal_fallback);
     const auto valid_coat_normal =

@@ -51,11 +51,12 @@ constexpr std::array coat_cases{
     CoatCase{0.7f, 0.2f, 1.5f, {0.2f, 0.55f, 0.9f}, 1.0f},
     CoatCase{0.0f, 0.2f, 1.5f, {1.0f, 1.0f, 1.0f}, 1.5f}};
 
-[[nodiscard]] ShaderGraph make_principled_coat_graph() {
+[[nodiscard]] ShaderGraph make_principled_coat_graph(
+    bool link_main_normal = false) {
     ShaderGraph graph;
     const auto principled = graph.add_node(
         node_type::principled_bsdf, "Principled Coat regression");
-    const auto configured =
+    auto configured =
         graph.set_input(principled,
             "BaseColor",
             SocketValue::color({0.38f, 0.16f, 0.07f})) &&
@@ -97,6 +98,20 @@ constexpr std::array coat_cases{
         graph.set_property(principled,
             "Distribution",
             SocketValue::string("GGX"));
+    if (link_main_normal) {
+        const auto normal = graph.add_node(
+            node_type::vector_to_normal,
+            "Linked main normal, unlinked Coat Normal");
+        configured =
+            configured &&
+            graph.set_input(normal,
+                "Vector",
+                SocketValue::vector({0.6f, 0.0f, 0.8f})) &&
+            graph.connect(
+                {.node = normal, .socket = "Normal"},
+                principled,
+                "Normal");
+    }
     if (!configured) {
         throw std::runtime_error{
             "failed to configure Principled Coat regression graph"};
@@ -245,28 +260,44 @@ int main(int argc, char **argv) {
     ShaderCompiler compiler{make_core_node_registry()};
 
     auto coat_shader = compiler.compile(make_principled_coat_graph());
+    auto coat_normal_shader =
+        compiler.compile(make_principled_coat_graph(true));
     auto glass_shader = compiler.compile(make_glass_diffuse_graph());
     auto transparent_shader =
         compiler.compile(make_transparent_translucent_graph());
-    if (!coat_shader.ok() || !glass_shader.ok() ||
+    if (!coat_shader.ok() || !coat_normal_shader.ok() ||
+        !glass_shader.ok() ||
         !transparent_shader.ok()) {
         std::cerr << "failed to compile Coat/MIS regression graphs\n";
         return EXIT_FAILURE;
     }
     auto coat_program =
         compile_surface_program(*coat_shader.program);
+    auto coat_normal_program =
+        compile_surface_program(*coat_normal_shader.program);
     auto glass_program =
         compile_surface_program(*glass_shader.program);
     auto transparent_program =
         compile_surface_program(*transparent_shader.program);
-    if (!coat_program.ok() || !glass_program.ok() ||
+    if (!coat_program.ok() || !coat_normal_program.ok() ||
+        !glass_program.ok() ||
         !transparent_program.ok()) {
         std::cerr << "failed to lower Coat/MIS surface programs\n";
+        return EXIT_FAILURE;
+    }
+    const auto &coat_normal_closures =
+        coat_normal_program.program->closure_instructions();
+    if (coat_normal_closures.size() != 1u ||
+        coat_normal_closures.front().coat_normal_linked) {
+        std::cerr
+            << "independent unlinked Coat Normal topology was not retained\n";
         return EXIT_FAILURE;
     }
 
     const auto coat_parameters =
         coat_parameter_data(*coat_program.program);
+    const auto coat_normal_parameters =
+        parameter_data(*coat_normal_program.program);
     const auto glass_parameters =
         parameter_data(*glass_program.program);
     const auto transparent_parameters =
@@ -277,6 +308,8 @@ int main(int argc, char **argv) {
     SurfaceDispatch surfaces;
     const auto coat_tag =
         surfaces.create<GraphSurface>(coat_program.program);
+    const auto coat_normal_tag =
+        surfaces.create<GraphSurface>(coat_normal_program.program);
     const auto glass_tag =
         surfaces.create<GraphSurface>(glass_program.program);
     const auto transparent_tag =
@@ -435,11 +468,26 @@ int main(int argc, char **argv) {
                 transparent_sample);
         };
 
+    Kernel1D evaluate_coat_normal_topology =
+        [&](BufferFloat4 parameters, BufferFloat4 output) noexcept {
+            ParameterShaderServices services{parameters};
+            const auto point = make_surface_point();
+            const auto coat = surfaces.closure_trace(
+                UInt{coat_normal_tag}, services, point, 0u, true);
+            const auto base = surfaces.closure_trace(
+                UInt{coat_normal_tag}, services, point, 1u, true);
+            output.write(0u, make_float4(coat.normal, 0.0f));
+            output.write(1u, make_float4(base.normal, 0.0f));
+        };
+
     Context context{argv[0]};
     auto device = context.create_device(backend);
     auto stream = device.create_stream();
     auto coat_parameter_buffer =
         device.create_buffer<luisa::float4>(coat_parameters.size());
+    auto coat_normal_parameter_buffer =
+        device.create_buffer<luisa::float4>(
+            coat_normal_parameters.size());
     auto glass_parameter_buffer =
         device.create_buffer<luisa::float4>(glass_parameters.size());
     auto transparent_parameter_buffer =
@@ -449,18 +497,25 @@ int main(int argc, char **argv) {
         coat_record_count * coat_case_count);
     auto aggregate_output = device.create_buffer<luisa::float4>(
         aggregate_record_count * 2u);
+    auto coat_normal_output =
+        device.create_buffer<luisa::float4>(2u);
     auto coat_kernel = device.compile(evaluate_coat);
     auto aggregate_kernel = device.compile(evaluate_aggregate);
+    auto coat_normal_kernel =
+        device.compile(evaluate_coat_normal_topology);
     std::array<luisa::float4,
         coat_record_count * coat_case_count>
         coat_actual{};
     std::array<luisa::float4,
         aggregate_record_count * 2u>
         aggregate_actual{};
+    std::array<luisa::float4, 2u> coat_normal_actual{};
     stream << coat_parameter_buffer.copy_from(
                   luisa::span{coat_parameters})
            << glass_parameter_buffer.copy_from(
                   luisa::span{glass_parameters})
+           << coat_normal_parameter_buffer.copy_from(
+                  luisa::span{coat_normal_parameters})
            << transparent_parameter_buffer.copy_from(
                   luisa::span{transparent_parameters})
            << coat_kernel(coat_parameter_buffer, coat_output)
@@ -471,6 +526,11 @@ int main(int argc, char **argv) {
                   aggregate_output)
                   .dispatch(1u)
            << aggregate_output.copy_to(luisa::span{aggregate_actual})
+           << coat_normal_kernel(coat_normal_parameter_buffer,
+                  coat_normal_output)
+                  .dispatch(1u)
+           << coat_normal_output.copy_to(
+                  luisa::span{coat_normal_actual})
            << synchronize();
 
     if (std::getenv("PSYCLES_DUMP_COAT_REGRESSION") != nullptr) {
@@ -505,6 +565,16 @@ int main(int argc, char **argv) {
                approximately_equal(value.y, static_cast<float>(type)) &&
                approximately_equal(value.w, valid ? 1.0f : 0.0f);
     };
+
+    if (!rgb_equal(coat_normal_actual[0u],
+            luisa::float4{0.0f, 0.0f, 1.0f, 0.0f}) ||
+        !rgb_equal(coat_normal_actual[1u],
+            luisa::float4{0.6f, 0.0f, 0.8f, 0.0f})) {
+        std::cerr
+            << "Cycles independent unlinked Coat Normal regression failed on "
+            << backend << '\n';
+        return EXIT_FAILURE;
+    }
 
     if (!closure_meta_matches(0u,
             0u,
