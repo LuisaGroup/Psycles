@@ -9,6 +9,7 @@ import sys
 import tempfile
 
 import bpy
+from mathutils import Vector
 
 
 def _export(
@@ -69,6 +70,63 @@ def _main() -> None:
                 "Blackman-Harris export changed its configured width: "
                 f"{blackman_harris}"
             )
+
+        camera = scene.camera
+        if camera is None:
+            raise AssertionError("render-settings fixture has no camera")
+        dof = camera.data.dof
+        original_use_dof = dof.use_dof
+        original_focus_object = dof.focus_object
+        original_focus_subtarget = dof.focus_subtarget
+        original_focus_distance = dof.focus_distance
+        original_camera_scale = camera.scale.copy()
+        focus = bpy.data.objects.new("Psycles DOF Focus", None)
+        scene.collection.objects.link(focus)
+        try:
+            camera.scale = (0.5, 0.75, 1.25)
+            camera_position = camera.matrix_world.translation
+            camera_z = camera.matrix_world.col[2].xyz.normalized()
+            camera_x = camera.matrix_world.col[0].xyz.normalized()
+            focus.location = Vector(camera_position) - 7.0 * camera_z + (
+                3.0 * camera_x
+            )
+            dof.use_dof = True
+            dof.focus_object = focus
+            dof.focus_subtarget = ""
+            dof.focus_distance = 0.125
+            focus_object_camera = _export(
+                exporter, root / "focus-object-camera"
+            )["camera"]
+            exported_distance = float(
+                focus_object_camera["dof"]["focus_distance"]
+            )
+            if abs(exported_distance - 7.0) > 1.0e-5:
+                raise AssertionError(
+                    "focus object did not override the authored DOF "
+                    "distance with Cycles' camera-Z projection: "
+                    f"{focus_object_camera}"
+                )
+            exported_transform = focus_object_camera["transform"]
+            basis_lengths = tuple(
+                sum(
+                    float(exported_transform[column * 4 + row]) ** 2
+                    for row in range(3)
+                )
+                ** 0.5
+                for column in range(3)
+            )
+            if any(abs(length - 1.0) > 1.0e-6 for length in basis_lengths):
+                raise AssertionError(
+                    "camera object scale leaked into the Cycles camera "
+                    f"transform: lengths={basis_lengths}"
+                )
+        finally:
+            dof.use_dof = original_use_dof
+            dof.focus_object = original_focus_object
+            dof.focus_subtarget = original_focus_subtarget
+            dof.focus_distance = original_focus_distance
+            camera.scale = original_camera_scale
+            bpy.data.objects.remove(focus, do_unlink=True)
 
         # Cycles does not pass the authored seed straight to the sampler when
         # Animated Seed is enabled. These constants are pinned from official
