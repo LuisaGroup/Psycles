@@ -15,9 +15,9 @@ namespace psycles::luisa_backend::cycles_film_light {
 [[nodiscard]] inline luisa::compute::Float3 ensure_finite(
     luisa::compute::Float3 value) noexcept {
     using namespace luisa::compute;
-    const auto finite_x = !isnan(value.x) & !isinf(value.x);
-    const auto finite_y = !isnan(value.y) & !isinf(value.y);
-    const auto finite_z = !isnan(value.z) & !isinf(value.z);
+    const auto finite_x = !luisa::compute::dsl::isnan(value.x) & !luisa::compute::dsl::isinf(value.x);
+    const auto finite_y = !luisa::compute::dsl::isnan(value.y) & !luisa::compute::dsl::isinf(value.y);
+    const auto finite_z = !luisa::compute::dsl::isnan(value.z) & !luisa::compute::dsl::isinf(value.z);
     return make_float3(
         select(0.0f, value.x, finite_x),
         select(0.0f, value.y, finite_y),
