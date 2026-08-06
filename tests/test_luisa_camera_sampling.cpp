@@ -146,11 +146,20 @@ int main(int argc, char **argv) {
                     near_clip,
                     far_clip,
                     cosine);
+            const auto differential_position =
+                0.03f + cast<float>(index) * 0.1f;
+            const auto differential_direction =
+                0.2f + cast<float>(index) * 0.1f;
+            const auto clipped_differential_position =
+                camera_sampling::advance_compact_differential_position(
+                    differential_position,
+                    differential_direction,
+                    range.x);
             results.write(
                 index,
                 make_float4(
                     range.x,
-                    0.0f,
+                    clipped_differential_position,
                     range.y,
                     range.x + range.y));
         };
@@ -247,9 +256,9 @@ int main(int argc, char **argv) {
         }
     }
     constexpr std::array expected_clipping{
-        luisa::float4{0.1f, 0.0f, 999.9f, 1000.0f},
-        luisa::float4{0.125f, 0.0f, 1249.875f, 1250.0f},
-        luisa::float4{0.25f, 0.0f, 4.0f, 4.25f}};
+        luisa::float4{0.1f, 0.05f, 999.9f, 1000.0f},
+        luisa::float4{0.125f, 0.1675f, 1249.875f, 1250.0f},
+        luisa::float4{0.25f, 0.33f, 4.0f, 4.25f}};
     for (auto i = std::size_t{0u};
          i < expected_clipping.size();
          ++i) {
@@ -257,6 +266,9 @@ int main(int argc, char **argv) {
             !approximately_equal(
                 clipping[i].x,
                 expected_clipping[i].x) ||
+            !approximately_equal(
+                clipping[i].y,
+                expected_clipping[i].y) ||
             !approximately_equal(
                 clipping[i].z,
                 expected_clipping[i].z,
