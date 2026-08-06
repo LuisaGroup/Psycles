@@ -7,6 +7,9 @@ namespace psycles::luisa_backend::detail {
 using TraceShadowCallable =
     Callable<ShadowTraceResultCall(
         luisa::compute::Ray,
+        // Compact positional and angular ray differentials.
+        float,
+        float,
         // Exact Cycles source (object, primitive) identity.
         luisa::uint,
         luisa::uint,

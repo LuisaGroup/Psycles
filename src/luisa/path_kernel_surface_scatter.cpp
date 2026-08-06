@@ -2,6 +2,7 @@
 
 #include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/cycles_path_state.h>
+#include <psycles/luisa/cycles_ray_differential.h>
 #include <psycles/luisa/surface_ray.h>
 
 #include <utility>
@@ -49,6 +50,7 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
         auto &ray_source_object = sample.ray_source_object;
         auto &ray_source_primitive = sample.ray_source_primitive;
         auto &ray_dP = sample.ray_dP;
+        auto &ray_dD = sample.ray_dD;
         auto &continuation_probability = sample.continuation_probability;
         auto &differential_radius = surface.differential_radius;
         const auto &kernel_parameters = invocation.parameters;
@@ -272,7 +274,16 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
                 ray_maximum, ray->t_max(), transparent);
             ray_source_object = surface.cycles_object_index;
             ray_source_primitive = surface.cycles_primitive_index;
-            ray_dP = differential_radius;
+            const auto differential_update =
+                cycles_ray_differential::after_surface_bounce(
+                    ray_dP,
+                    ray_dD,
+                    differential_radius,
+                    surface_sample.evaluation
+                        .average_roughness_squared,
+                    transparent);
+            ray_dP = differential_update.position;
+            ray_dD = differential_update.direction;
             ray = make_ray(
                 next_origin,
                 next_direction,

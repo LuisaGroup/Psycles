@@ -306,6 +306,10 @@ surface_closure_evaluation_contribution(
             is_transparent & transparent_enabled) +
         weight;
     result.weighted_pdf = weight * enabled_pdf;
+    result.weighted_roughness_squared =
+        result.weighted_pdf *
+        detail::cycles_bsdf_specular_roughness_squared(
+            closure, query.glossy_filter_roughness);
     result.events = events;
     return result;
 }
@@ -323,6 +327,8 @@ void SurfaceClosureEvaluationAccumulator::add(
     _result.glossy_f += contribution.glossy_f;
     _total_sample_weight += contribution.total_sample_weight;
     _weighted_pdf += contribution.weighted_pdf;
+    _weighted_roughness_squared +=
+        contribution.weighted_roughness_squared;
     _events |= contribution.events;
 }
 
@@ -344,6 +350,11 @@ SurfaceEvaluation SurfaceClosureEvaluationAccumulator::finish(
         pdf,
         (_events & static_cast<std::uint32_t>(
                        event_diffuse)) != 0u);
+    result.average_roughness_squared = select(
+        0.0f,
+        _weighted_roughness_squared /
+            max(_weighted_pdf, 1.0e-20f),
+        _weighted_pdf > 0.0f);
     result.events = select(
         static_cast<std::uint32_t>(event_none),
         _events,
@@ -384,6 +395,8 @@ void SurfaceClosureEvaluationVisitor::visit(
     _result.diffuse_f = result.diffuse_f;
     _result.glossy_f = result.glossy_f;
     _result.diffuse_pdf = result.diffuse_pdf;
+    _result.average_roughness_squared =
+        result.average_roughness_squared;
     _result.events = result.events;
 }
 

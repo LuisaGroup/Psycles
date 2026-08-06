@@ -1351,6 +1351,15 @@ if(PSYCLES_ENABLE_LUISA)
 
                 psycles_add_luisa_backend_test(
                     TARGET
+                        psycles_luisa_ray_differential_tests
+                    SOURCE
+                        tests/test_luisa_ray_differential.cpp
+                    TEST_STEM
+                        luisa_ray_differential
+                    LIBRARIES Psycles::luisa)
+
+                psycles_add_luisa_backend_test(
+                    TARGET
                         psycles_luisa_normal_map_tests
                     SOURCE
                         tests/test_luisa_normal_map.cpp

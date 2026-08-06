@@ -20,6 +20,7 @@ struct SurfaceClosureEvaluationContributionCall {
     luisa::float3 glossy_f{};
     float total_sample_weight{};
     float weighted_pdf{};
+    float weighted_roughness_squared{};
     luisa::uint events{};
 };
 
@@ -32,6 +33,7 @@ LUISA_STRUCT(
     glossy_f,
     total_sample_weight,
     weighted_pdf,
+    weighted_roughness_squared,
     events) {};
 
 namespace psycles::luisa_backend {
@@ -89,6 +91,7 @@ class SurfaceClosureEvaluationAccumulator {
     SurfaceEvaluation _result;
     Float _total_sample_weight{0.0f};
     Float _weighted_pdf{0.0f};
+    Float _weighted_roughness_squared{0.0f};
     UInt _events{0u};
 
   public:

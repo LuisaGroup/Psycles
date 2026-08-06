@@ -211,6 +211,8 @@ pack_surface_evaluation(
     result.diffuse_f = evaluation.diffuse_f;
     result.glossy_f = evaluation.glossy_f;
     result.diffuse_pdf = evaluation.diffuse_pdf;
+    result.average_roughness_squared =
+        evaluation.average_roughness_squared;
     result.events = evaluation.events;
     return result;
 }
@@ -223,6 +225,8 @@ pack_surface_evaluation(
         .diffuse_f = evaluation.diffuse_f,
         .glossy_f = evaluation.glossy_f,
         .diffuse_pdf = evaluation.diffuse_pdf,
+        .average_roughness_squared =
+            evaluation.average_roughness_squared,
         .events = evaluation.events};
 }
 
@@ -234,6 +238,8 @@ pack_surface_evaluation(
     result.diffuse_f = sample.evaluation.diffuse_f;
     result.glossy_f = sample.evaluation.glossy_f;
     result.diffuse_pdf = sample.evaluation.diffuse_pdf;
+    result.average_roughness_squared =
+        sample.evaluation.average_roughness_squared;
     result.events = sample.evaluation.events;
     result.wi = sample.wi;
     result.eta = sample.eta;
@@ -259,6 +265,8 @@ pack_surface_evaluation(
             .diffuse_f = sample.diffuse_f,
             .glossy_f = sample.glossy_f,
             .diffuse_pdf = sample.diffuse_pdf,
+            .average_roughness_squared =
+                sample.average_roughness_squared,
             .events = sample.events},
         .wi = sample.wi,
         .eta = sample.eta,
@@ -315,6 +323,8 @@ pack_surface_sample_trace(
         trace.sample.evaluation.glossy_f;
     result.diffuse_pdf =
         trace.sample.evaluation.diffuse_pdf;
+    result.average_roughness_squared =
+        trace.sample.evaluation.average_roughness_squared;
     result.events = trace.sample.evaluation.events;
     result.wi = trace.sample.wi;
     result.eta = trace.sample.eta;
@@ -354,6 +364,8 @@ unpack_surface_sample_trace(
                 .diffuse_f = trace.diffuse_f,
                 .glossy_f = trace.glossy_f,
                 .diffuse_pdf = trace.diffuse_pdf,
+                .average_roughness_squared =
+                    trace.average_roughness_squared,
                 .events = trace.events},
             .wi = trace.wi,
             .eta = trace.eta,

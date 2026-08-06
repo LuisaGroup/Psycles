@@ -3,6 +3,7 @@
 #include "path_kernel_direct_light_trace.h"
 #include "path_kernel_environment_light.h"
 
+#include <psycles/luisa/cycles_ray_differential.h>
 #include <psycles/luisa/surface_ray.h>
 
 #include <utility>
@@ -203,8 +204,15 @@ class EnvironmentLightingComponent final : public DirectLightingComponent {
                         const auto cast_shadow =
                             (config.scene->cycles_background_shader_flags &
                              cycles_shader_identity::cast_shadow) != 0u;
+                        const auto shadow_differential =
+                            cycles_ray_differential::for_surface_shadow(
+                                sample.ray_dD,
+                                surface.differential_radius,
+                                evaluation.average_roughness_squared);
                         const auto shadow_result = trace_shadow(
                             environment_shadow_ray,
+                            shadow_differential.position,
+                            shadow_differential.direction,
                             source_object,
                             source_primitive,
                             light_object,
