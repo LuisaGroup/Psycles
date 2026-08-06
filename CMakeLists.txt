@@ -60,6 +60,7 @@ add_library(psycles_core
     src/io/progressive_pixel_probe.cpp
     src/sampling/background_distribution.cpp
     src/sampling/light_distribution.cpp
+    src/sampling/light_tree.cpp
     src/sampling/pixel_filter.cpp
     src/sampling/tabulated_sobol.cpp
     third_party/sky_hosek/sky_hosek.cpp)
