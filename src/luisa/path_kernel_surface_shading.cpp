@@ -113,12 +113,15 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
             emitted, make_float3(0.0f), bounce.subsurface_exit);
         Float emission_weight = 1.0f;
         if (next_event_estimation && scene->emissive_triangle_count > 0u) {
-            // The material capability is conservative: false proves that the
-            // emitted value is zero, while true still resolves the exact mesh
-            // emitter and its authored sampling side through the ordered
-            // table. Non-emissive surfaces therefore avoid even logarithmic
-            // lookup work without changing forward-hit MIS semantics.
-            $if((!surface.is_curve) & surface.surface_may_emit) {
+            // The committed primitive already carries the effective authored
+            // sampling policy. NONE covers non-emissive materials, curves,
+            // and instances which are not part of the sampled-light
+            // population, so forward-hit MIS is O(1) exactly as in Cycles'
+            // legacy light distribution.
+            $if((!surface.is_curve) &
+                (surface.emission_sampling !=
+                 static_cast<std::uint32_t>(
+                     contract::EmissionSampling::none))) {
                 Bool competing = (path_depth > 0u) & (!previous_delta);
                 const auto oriented_geometric_normal =
                     select(
@@ -128,9 +131,8 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                 const auto light_pdf =
                     _emissive_triangle
                         ->from_intersection(
-                            scene,
-                            hit->inst,
-                            hit->prim,
+                            scene->triangle_area_pdf,
+                            surface.emission_sampling,
                             ray->origin(),
                             hit_position,
                             wp0,

@@ -13,7 +13,7 @@ namespace {
 using namespace luisa::compute;
 using namespace psycles::luisa_backend::detail;
 
-inline constexpr std::size_t record_count = 14u;
+inline constexpr std::size_t record_count = 16u;
 
 [[nodiscard]] bool equal(
     luisa::float4 actual,
@@ -46,6 +46,9 @@ int main(int argc, char **argv) {
             .geometry_index = 0u,
             .override_offset = 0u,
             .override_count = 0u,
+            // Camera-only visibility proves that an emissive closure remains
+            // visible while being excluded from the sampled-light population.
+            .visibility_mask = camera_visibility,
             .cycles_object_index =
                 cycles_shader_identity::
                     invalid_index},
@@ -60,13 +63,23 @@ int main(int argc, char **argv) {
             .parameter_block = 100u,
             .cycles_shader_index = 1u,
             .material_identity = 1001u,
-            .flags = 0u},
+            .flags =
+                material_emission_sampling_bits(
+                    static_cast<std::uint32_t>(
+                        psycles::contract::
+                            EmissionSampling::automatic))},
         MaterialBindingGpu{
             .surface_tag = 20u,
             .parameter_block = 200u,
             .cycles_shader_index = 2u,
             .material_identity = 1002u,
-            .flags = material_flag_has_volume}};
+            .flags =
+                material_flag_has_volume |
+                material_flag_may_emit |
+                material_emission_sampling_bits(
+                    static_cast<std::uint32_t>(
+                        psycles::contract::
+                            EmissionSampling::front))}};
     constexpr std::array override_materials{
         MaterialBindingGpu{
             .surface_tag = 30u,
@@ -75,13 +88,24 @@ int main(int argc, char **argv) {
                 cycles_shader_identity::
                     invalid_index,
             .material_identity = 3003u,
-            .flags = material_flag_has_volume},
+            .flags =
+                material_flag_has_volume |
+                material_flag_may_emit |
+                material_emission_sampling_bits(
+                    static_cast<std::uint32_t>(
+                        psycles::contract::
+                            EmissionSampling::back))},
         MaterialBindingGpu{
             .surface_tag = 40u,
             .parameter_block = 400u,
             .cycles_shader_index = 4u,
             .material_identity = 4004u,
-            .flags = 0u}};
+            .flags =
+                material_flag_may_emit |
+                material_emission_sampling_bits(
+                    static_cast<std::uint32_t>(
+                        psycles::contract::
+                            EmissionSampling::front_back))}};
     constexpr std::array triangles{
         Triangle{0u, 1u, 2u},
         Triangle{3u, 4u, 5u}};
@@ -377,6 +401,28 @@ int main(int argc, char **argv) {
                     number(
                         override_1
                             .cycles_primitive_index)));
+            records.write(
+                14u,
+                make_float4(
+                    flag(base_0.may_emit),
+                    number(
+                        base_0
+                            .triangle_emission_sampling),
+                    flag(base_1.may_emit),
+                    number(
+                        base_1
+                            .triangle_emission_sampling)));
+            records.write(
+                15u,
+                make_float4(
+                    flag(override_0.may_emit),
+                    number(
+                        override_0
+                            .triangle_emission_sampling),
+                    flag(override_1.may_emit),
+                    number(
+                        override_1
+                            .triangle_emission_sampling)));
         };
     auto shader = device.compile(evaluate);
 
@@ -407,10 +453,28 @@ int main(int argc, char **argv) {
         << synchronize();
 
     constexpr std::array expected{
-        luisa::float4{10.0f, 100.0f, 1.0f, 0.0f},
+        luisa::float4{
+            10.0f,
+            100.0f,
+            1.0f,
+            static_cast<float>(
+                material_emission_sampling_bits(
+                    static_cast<std::uint32_t>(
+                        psycles::contract::
+                            EmissionSampling::automatic)))},
         luisa::float4{1.0f, 1.0f, 0.0f, 0.0f},
         luisa::float4{0.0f, 1.0f, 2.0f, 0.0f},
-        luisa::float4{20.0f, 200.0f, 2.0f, 1.0f},
+        luisa::float4{
+            20.0f,
+            200.0f,
+            2.0f,
+            static_cast<float>(
+                material_flag_has_volume |
+                material_flag_may_emit |
+                material_emission_sampling_bits(
+                    static_cast<std::uint32_t>(
+                        psycles::contract::
+                            EmissionSampling::front)))},
         luisa::float4{1.0f, 1.0f, 0.0f, 1.0f},
         luisa::float4{0.0f, 2.0f, 20.0f, 200.0f},
         luisa::float4{0.0f, 1.0f, 1002.0f, 1.0f},
@@ -420,7 +484,26 @@ int main(int argc, char **argv) {
         luisa::float4{1.0f, 1.0f, 0.0f, 1200.0f},
         luisa::float4{40.0f, 400.0f, 4.0f, 0.0f},
         luisa::float4{1.0f, 1.0f, 77.0f, 1.0f},
-        luisa::float4{0.0f, 1.0f, 0.0f, 1201.0f}};
+        luisa::float4{
+            0.0f,
+            1.0f,
+            static_cast<float>(
+                material_flag_may_emit |
+                material_emission_sampling_bits(
+                    static_cast<std::uint32_t>(
+                        psycles::contract::
+                            EmissionSampling::front_back))),
+            1201.0f},
+        luisa::float4{0.0f, 0.0f, 1.0f, 0.0f},
+        luisa::float4{
+            1.0f,
+            static_cast<float>(
+                psycles::contract::
+                    EmissionSampling::back),
+            1.0f,
+            static_cast<float>(
+                psycles::contract::
+                    EmissionSampling::front_back)}};
     for (auto index = std::size_t{0u};
          index < expected.size();
          ++index) {

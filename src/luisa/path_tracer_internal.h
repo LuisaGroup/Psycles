@@ -153,6 +153,18 @@ constexpr auto shadow_visibility =
     contract::visibility_bit(RayVisibility::shadow);
 constexpr auto volume_scatter_visibility =
     contract::visibility_bit(RayVisibility::volume_scatter);
+// Cycles considers a mesh usable as a sampled light only when at least one
+// non-camera transport class can reach it. Keep this mask shared by scene
+// construction and JIT-stage primitive resolution so forward-hit MIS and the
+// emitter distribution cannot disagree about membership.
+constexpr auto mesh_light_sampling_visibility =
+    diffuse_visibility | glossy_visibility | transmission_visibility |
+    volume_scatter_visibility;
+static_assert(
+    static_cast<std::uint32_t>(
+        contract::EmissionSampling::front_back) <=
+    (material_emission_sampling_mask >>
+     material_emission_sampling_shift));
 constexpr std::uint32_t light_flag_normalize = 1u << 0u;
 constexpr std::uint32_t light_flag_ellipse = 1u << 1u;
 constexpr std::uint32_t light_flag_sphere = 1u << 2u;
@@ -174,6 +186,11 @@ struct MaterialBinding {
     std::uint32_t material_identity{
         ~std::uint32_t{0u}};
     std::uint32_t flags{};
+    // Authored Cycles sampling policy. This is intentionally independent of
+    // material_flag_may_emit: an emissive closure remains visible when light
+    // sampling is disabled, but it must not compete in forward-hit MIS.
+    contract::EmissionSampling emission_sampling{
+        contract::EmissionSampling::automatic};
     contract::VolumeSampling volume_sampling{
         contract::VolumeSampling::
             multiple_importance};

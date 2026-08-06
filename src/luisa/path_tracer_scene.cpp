@@ -237,6 +237,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                             .use_bump_map_correction
                          ? material_flag_use_bump_map_correction
                          : 0u),
+                .emission_sampling =
+                    snapshot.materials.at(id)
+                        .emission_sampling,
                 .volume_sampling =
                     snapshot.materials.at(id)
                         .volume_sampling});
@@ -1401,27 +1404,18 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     }
 
     std::map<contract::MaterialId, bool> material_may_emit;
-    std::map<
-        contract::MaterialId,
-        contract::EmissionSampling>
-        material_emission_sampling;
     for (const auto &[material_id, material] :
          data->materials.materials()) {
-        const auto source_material =
-            snapshot.materials.find(material_id);
-        const auto sampling =
-            source_material != snapshot.materials.end()
-                ? source_material->second.emission_sampling
-                : contract::EmissionSampling::automatic;
-        material_emission_sampling.emplace(
-            material_id, sampling);
+        static_cast<void>(material);
         const auto binding =
-            data->material_bindings.find(material_id);
+            data->material_bindings.find(
+                material_id);
         material_may_emit.emplace(
             material_id,
-            sampling !=
+            binding !=
+                    data->material_bindings.end() &&
+                binding->second.emission_sampling !=
                     contract::EmissionSampling::none &&
-                binding != data->material_bindings.end() &&
                 (binding->second.flags &
                  material_flag_may_emit) != 0u);
     }
@@ -1535,10 +1529,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             instance.visibility_mask ==
                 ~std::uint32_t{0u} ||
             (instance.visibility_mask &
-             (diffuse_visibility |
-              glossy_visibility |
-              transmission_visibility |
-              volume_scatter_visibility)) != 0u;
+             mesh_light_sampling_visibility) != 0u;
         if (light_visible) {
             for (std::size_t primitive_index = 0u;
                  primitive_index < geometry.triangles.size();
@@ -1616,8 +1607,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                             tag_iter->second.parameter_block,
                         .emission_sampling =
                             static_cast<std::uint32_t>(
-                                material_emission_sampling
-                                    .at(*material_id)),
+                                tag_iter->second
+                                    .emission_sampling),
                         .emission_is_constant =
                             (tag_iter->second.flags &
                              material_flag_constant_emission) != 0u

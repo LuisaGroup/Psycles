@@ -587,64 +587,10 @@ class PathEmissiveTriangleComponent final
                 proposal.geometry.emitter.parameter_block);
     }
 
-    EmissiveTriangleLookup
-    find_intersection_emitter(
-        const std::shared_ptr<LuisaSceneData> &scene,
-        UInt instance_index,
-        UInt primitive_index) const noexcept override {
-        UInt first = 0u;
-        UInt last = scene->emissive_triangle_count;
-        $while (first < last) {
-            const auto middle =
-                first + (last - first) / 2u;
-            const auto emitter =
-                scene->emissive_triangle_buffer
-                    ->read(middle);
-            const auto precedes_query =
-                (emitter.instance_index <
-                 instance_index) |
-                ((emitter.instance_index ==
-                  instance_index) &
-                 (emitter.primitive_index <
-                  primitive_index));
-            $if (precedes_query) {
-                first = middle + 1u;
-            }
-            $else {
-                last = middle;
-            };
-        };
-
-        Bool found = false;
-        UInt emission_sampling =
-            static_cast<std::uint32_t>(
-                contract::EmissionSampling::none);
-        $if (first <
-             scene->emissive_triangle_count) {
-            const auto emitter =
-                scene->emissive_triangle_buffer
-                    ->read(first);
-            found =
-                (emitter.instance_index ==
-                 instance_index) &
-                (emitter.primitive_index ==
-                 primitive_index);
-            emission_sampling = select(
-                emission_sampling,
-                emitter.emission_sampling,
-                found);
-        };
-        return {
-            .emission_sampling =
-                std::move(emission_sampling),
-            .found = std::move(found)};
-    }
-
     EmissiveTrianglePdf
     from_intersection(
-        const std::shared_ptr<LuisaSceneData> &scene,
-        UInt instance_index,
-        UInt primitive_index,
+        Float triangle_area_pdf,
+        UInt emission_sampling,
         Float3 reference,
         Float3 light_position,
         Float3 p0,
@@ -652,11 +598,6 @@ class PathEmissiveTriangleComponent final
         Float3 p2,
         Float3 oriented_geometric_normal)
         const noexcept override {
-        const auto lookup =
-            find_intersection_emitter(
-                scene,
-                instance_index,
-                primitive_index);
         const auto pdf =
             _sampling.from_intersection(
                 {.reference = reference,
@@ -667,8 +608,7 @@ class PathEmissiveTriangleComponent final
                      make_float2(0.0f)},
                 light_position);
         const auto offset =
-            light_position -
-            reference;
+            light_position - reference;
         const auto direction =
             normalize_or(
                 offset,
@@ -677,33 +617,31 @@ class PathEmissiveTriangleComponent final
         const auto side_valid =
             sampled_side(
                 samples_front(
-                    lookup.emission_sampling),
+                    emission_sampling),
                 samples_back(
-                    lookup.emission_sampling),
+                    emission_sampling),
                 oriented_geometric_normal,
                 direction);
         const auto area =
             0.5f *
-            length(
-                cross(
-                    p1 - p0,
-                    p2 - p0));
+            length(cross(
+                p1 - p0,
+                p2 - p0));
         const auto value =
             pdf.value *
             area *
-            scene->triangle_area_pdf;
+            triangle_area_pdf;
         const auto valid =
-            lookup.found &
+            (emission_sampling !=
+             static_cast<std::uint32_t>(
+                 contract::EmissionSampling::none)) &
             side_valid &
             pdf.valid &
             (area > 0.0f) &
             (value > 0.0f);
         return {
             .value =
-                select(
-                    0.0f,
-                    value,
-                    valid),
+                select(0.0f, value, valid),
             .valid = valid};
     }
 };
