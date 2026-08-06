@@ -1160,45 +1160,45 @@ if(PSYCLES_ENABLE_LUISA)
                 endif()
 
                 add_executable(
-                    psycles_luisa_emissive_triangle_lookup_tests
-                    tests/test_luisa_emissive_triangle_lookup.cpp)
+                    psycles_luisa_emissive_triangle_forward_pdf_tests
+                    tests/test_luisa_emissive_triangle_forward_pdf.cpp)
                 target_link_libraries(
-                    psycles_luisa_emissive_triangle_lookup_tests
+                    psycles_luisa_emissive_triangle_forward_pdf_tests
                     PRIVATE Psycles::luisa_runtime)
                 target_compile_features(
-                    psycles_luisa_emissive_triangle_lookup_tests
+                    psycles_luisa_emissive_triangle_forward_pdf_tests
                     PRIVATE cxx_std_20)
                 add_dependencies(
-                    psycles_luisa_emissive_triangle_lookup_tests
+                    psycles_luisa_emissive_triangle_forward_pdf_tests
                     luisa-compute-backend-fallback)
                 set_target_properties(
-                    psycles_luisa_emissive_triangle_lookup_tests
+                    psycles_luisa_emissive_triangle_forward_pdf_tests
                     PROPERTIES
                         RUNTIME_OUTPUT_DIRECTORY
                             "${CMAKE_BINARY_DIR}/bin")
                 add_test(
-                    NAME psycles.luisa_emissive_triangle_lookup_fallback
+                    NAME psycles.luisa_emissive_triangle_forward_pdf_fallback
                     COMMAND
-                        psycles_luisa_emissive_triangle_lookup_tests
+                        psycles_luisa_emissive_triangle_forward_pdf_tests
                         fallback)
                 if(TARGET luisa-compute-backend-hip)
                     add_dependencies(
-                        psycles_luisa_emissive_triangle_lookup_tests
+                        psycles_luisa_emissive_triangle_forward_pdf_tests
                         luisa-compute-backend-hip)
                     add_test(
-                        NAME psycles.luisa_emissive_triangle_lookup_hip
+                        NAME psycles.luisa_emissive_triangle_forward_pdf_hip
                         COMMAND
-                            psycles_luisa_emissive_triangle_lookup_tests
+                            psycles_luisa_emissive_triangle_forward_pdf_tests
                             hip)
                 endif()
                 if(TARGET luisa-compute-backend-vk)
                     add_dependencies(
-                        psycles_luisa_emissive_triangle_lookup_tests
+                        psycles_luisa_emissive_triangle_forward_pdf_tests
                         luisa-compute-backend-vk)
                     add_test(
-                        NAME psycles.luisa_emissive_triangle_lookup_vk
+                        NAME psycles.luisa_emissive_triangle_forward_pdf_vk
                         COMMAND
-                            psycles_luisa_emissive_triangle_lookup_tests
+                            psycles_luisa_emissive_triangle_forward_pdf_tests
                             vk)
                 endif()
 

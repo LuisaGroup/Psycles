@@ -46,10 +46,28 @@ public:
         select(0u, cycles_shader_identity::smooth_normal, smooth);
     UInt object_index = cycles_object_index(resolved_instance_id, instance);
     Bool has_volume = (binding.flags & material_flag_has_volume) != 0u;
+    const Bool may_emit = (binding.flags & material_flag_may_emit) != 0u;
+    const UInt emission_sampling =
+        (binding.flags &
+         material_emission_sampling_mask) >>
+        material_emission_sampling_shift;
+    const Bool light_visible =
+        (instance.visibility_mask & mesh_light_sampling_visibility) != 0u;
+    const Bool is_triangle = geometry.primitive_kind == geometry_kind_triangle;
+    const Bool participates_in_triangle_sampling =
+        may_emit & light_visible & is_triangle &
+        (emission_sampling !=
+         static_cast<std::uint32_t>(contract::EmissionSampling::none));
+    UInt triangle_emission_sampling =
+        select(static_cast<std::uint32_t>(contract::EmissionSampling::none),
+               emission_sampling, participates_in_triangle_sampling);
     return {.binding = std::move(binding),
             .cycles_surface_shader = std::move(cycles_surface_shader),
             .cycles_object_index = std::move(object_index),
-            .has_volume = std::move(has_volume)};
+            .has_volume = std::move(has_volume),
+            .may_emit = std::move(may_emit),
+            .triangle_emission_sampling =
+                std::move(triangle_emission_sampling)};
   }
 };
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 #include <luisa/core/basic_types.h>
@@ -91,6 +92,38 @@ inline constexpr std::uint32_t material_flag_constant_emission =
     1u << 2u;
 inline constexpr std::uint32_t material_flag_use_bump_map_correction =
     1u << 3u;
+// EmissionSampling has five states and therefore occupies three bits. Packing
+// it into the existing flag word keeps MaterialBindingGpu at its original
+// 24-byte stride instead of adding another 32-bit lane to every lookup.
+inline constexpr std::uint32_t material_emission_sampling_shift = 4u;
+inline constexpr std::uint32_t material_emission_sampling_mask =
+    0x7u << material_emission_sampling_shift;
+
+[[nodiscard]] constexpr std::uint32_t
+material_emission_sampling_bits(
+    std::uint32_t sampling) noexcept {
+    return (sampling <<
+            material_emission_sampling_shift) &
+           material_emission_sampling_mask;
+}
+
+[[nodiscard]] constexpr std::uint32_t
+material_emission_sampling_value(
+    std::uint32_t flags) noexcept {
+    return (flags &
+            material_emission_sampling_mask) >>
+           material_emission_sampling_shift;
+}
+
+static_assert(
+    material_emission_sampling_value(
+        material_emission_sampling_bits(4u)) == 4u);
+static_assert(
+    (material_emission_sampling_mask &
+     (material_flag_has_volume |
+      material_flag_may_emit |
+      material_flag_constant_emission |
+      material_flag_use_bump_map_correction)) == 0u);
 
 struct MaterialBindingGpu {
     luisa::uint surface_tag{};
@@ -100,6 +133,11 @@ struct MaterialBindingGpu {
     luisa::uint flags{};
     luisa::uint volume_sampling{};
 };
+
+static_assert(sizeof(MaterialBindingGpu) == 24u);
+static_assert(alignof(MaterialBindingGpu) == alignof(luisa::uint));
+static_assert(offsetof(MaterialBindingGpu, flags) == 16u);
+static_assert(offsetof(MaterialBindingGpu, volume_sampling) == 20u);
 
 struct LightGpu {
     luisa::uint type{};

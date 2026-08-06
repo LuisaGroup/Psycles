@@ -320,7 +320,11 @@ struct ClosestPathEvent {
     Float2 light_uv;
     Float light_pdf;
     Float light_evaluation_factor;
+    // Potential endpoint emission and sampled-light participation are not the
+    // same predicate: EmissionSampling::NONE remains visibly emissive but has
+    // no competing light-sampling PDF.
     Bool surface_may_emit;
+    UInt surface_emission_sampling;
 };
 
 struct VolumeSegmentEvent {
@@ -330,7 +334,7 @@ struct VolumeSegmentEvent {
 
 struct SurfaceGeometryContext {
     PathBounceContext &bounce;
-    Bool surface_may_emit;
+    UInt emission_sampling;
     Var<InstanceGpu> instance;
     Float3 p0;
     Float3 p1;
@@ -423,7 +427,7 @@ class SurfaceGeometryStage {
     virtual ~SurfaceGeometryStage() noexcept = default;
     [[nodiscard]] virtual SurfaceGeometryContext
     emit(PathBounceContext &bounce,
-         Bool surface_may_emit) const noexcept = 0;
+         UInt emission_sampling) const noexcept = 0;
 };
 
 class SurfaceShadingStage {

@@ -63,7 +63,10 @@ public:
             .cycles_surface_shader = std::move(material.cycles_surface_shader),
             .cycles_object_index = std::move(material.cycles_object_index),
             .cycles_primitive_index = std::move(cycles_primitive_index),
-            .has_volume = std::move(material.has_volume)};
+            .has_volume = std::move(material.has_volume),
+            .may_emit = std::move(material.may_emit),
+            .triangle_emission_sampling =
+                std::move(material.triangle_emission_sampling)};
   }
 };
 

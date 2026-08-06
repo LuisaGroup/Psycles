@@ -218,6 +218,9 @@ class ClosestEventStageImpl final
             !light_hit &
             bounce.hit->miss();
         Bool surface_may_emit = false;
+        UInt surface_emission_sampling =
+            static_cast<std::uint32_t>(
+                contract::EmissionSampling::none);
         $if(surface) {
             $if(bounce.hit->is_procedural()) {
                 const auto primitive =
@@ -226,18 +229,22 @@ class ClosestEventStageImpl final
                         bounce.hit->inst,
                         bounce.hit->prim);
                 surface_may_emit =
-                    (primitive.material_binding.flags &
-                     material_flag_may_emit) != 0u;
+                    primitive.may_emit;
+                surface_emission_sampling =
+                    primitive
+                        .triangle_emission_sampling;
             }
             $else {
                 const auto primitive =
                     _triangles->emit(
-                    scene,
-                    bounce.hit->inst,
-                    bounce.hit->prim);
+                        scene,
+                        bounce.hit->inst,
+                        bounce.hit->prim);
                 surface_may_emit =
-                    (primitive.material_binding.flags &
-                     material_flag_may_emit) != 0u;
+                    primitive.may_emit;
+                surface_emission_sampling =
+                    primitive
+                        .triangle_emission_sampling;
             };
         };
         return {
@@ -253,7 +260,9 @@ class ClosestEventStageImpl final
             std::move(light_hit_pdf),
             std::move(
                 light_hit_evaluation_factor),
-            std::move(surface_may_emit)};
+            std::move(surface_may_emit),
+            std::move(
+                surface_emission_sampling)};
     }
 };
 

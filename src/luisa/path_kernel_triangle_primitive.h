@@ -25,6 +25,8 @@ struct TrianglePrimitiveContext {
     UInt cycles_object_index;
     UInt cycles_primitive_index;
     Bool has_volume;
+    Bool may_emit;
+    UInt triangle_emission_sampling;
 
     [[nodiscard]] VolumeStackEntry
     volume_stack_entry() const noexcept;
