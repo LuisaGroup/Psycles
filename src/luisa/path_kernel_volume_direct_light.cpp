@@ -5,6 +5,8 @@
 #include "path_kernel_volume_mesh_light.h"
 #include "path_kernel_volume_shadow.h"
 
+#include <psycles/luisa/cycles_light.h>
+
 #include <psycles/luisa/analytic_light_sampling.h>
 #include <psycles/luisa/cycles_path_state.h>
 #include <psycles/luisa/surface_ray.h>
@@ -782,6 +784,9 @@ class PathVolumeDirectLightingComponent final
                 0u;
             const auto eligible =
                 visible_to_volume &
+                !cycles_light::select_reached_max_bounces(
+                    event.bounce.sample.path_depth,
+                    light.max_bounces) &
                 (segment_length > 0.0f);
             $if(eligible & distant) {
                 _propose_distant(

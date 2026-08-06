@@ -7,6 +7,11 @@ median of **17.935 s**, down from the corrected uninstrumented baseline of
 **57.832 s**. This is a 3.23x speedup and a 69.0% runtime reduction with no
 change to any of the 15 linear output passes.
 
+A later exact-source lookup follow-up retained the same image and reduced a
+single 256-spp run to **17.140 s**. Its repeatable 32-spp median is **2.199 s**;
+the design and rejection controls are recorded below rather than folded into
+the original three-run result.
+
 The root cause was algorithmic. Forward-hit MIS mapped every triangle surface
 intersection back to the emissive-triangle table with a linear scan over all
 emitters. That made ordinary non-emissive surface shading O(E), where E is the
@@ -29,6 +34,98 @@ sampled-light population. The five-state sampling policy is explicitly packed
 into bits 4-6 of the existing device material flag word. Compile-time size,
 alignment, offset, enum-capacity, and mask-disjointness checks keep
 `MaterialBindingGpu` at its original 24-byte stride.
+
+## Path-parity follow-up: RR and light bounce limits
+
+This follow-up was checked directly against official Cycles commit
+`29ccd5e2e824128c86fc6174c9c502c02212434a`. The per-sample oracle is the same
+source with diagnostic-only trace commit
+`82186b01ad2e79435e67a02de93b178bfbe0f6c4`; it does not replace Cycles with a
+CPU reference implementation.
+
+For the currently implemented non-path-guided transport, Psycles' Russian
+roulette contract matches `path_state_continuation_probability()` and its call
+sites. Cycles path guiding remains an unsupported feature; its additional
+`unguided_throughput` factor is therefore not claimed as implemented.
+
+- opaque paths remain unconditional while `bounce <= min_bounce`, transparent
+  paths while `transparent_bounce <= transparent_min_bounce`;
+- the continuation probability is
+  `min(sqrt(max(abs(throughput.rgb))), 1)`, sampled from Cycles' per-bounce
+  terminate Sobol dimension with termination on `sample >= probability`;
+- surviving surface throughput is divided exactly once; when a ray enters a
+  volume the same decision is deferred so surface/volume emission and MIS are
+  retained, and division occurs only at the event that actually scatters;
+- a max-bounce-2/min-bounce-2 A/B disabled roulette without removing the
+  Classroom bias, excluding RR as its cause.
+
+The separate heterogeneous-volume low-throughput roulette also follows Cycles:
+the inclusive 0.05 threshold, reservoir-random reuse and saturation, coupled
+equiangular branch, distance-direct dependency, and both throughput
+renormalizations are represented by one typed Luisa component.
+
+The remaining coherent error had two independent light-selection causes. Sun
+directions first used a uniform-cone map instead of Cycles' concentric-disk
+cone map; the shared surface/volume sampler now follows Cycles. After that fix,
+the clock face was still systematically bright. A progressive pixel trace at
+film coordinate `(346, 328)` isolated samples 14, 63, 94, 125, 131, and 249.
+For sample 94, Cycles and Psycles matched both glass intersections, random
+dimensions, closures, and throughput through bounce 2, but Psycles selected
+instanced lamp `Point.001` while Cycles rejected it. The lamp's authored
+`max_bounces` is 1.
+
+Cycles' formal predicate is strictly `bounce > light.max_bounces`, applied
+after analytic lamp or world selection for surface and volume NEE. It does not
+hide a lamp reached by forward tracing. Psycles now exports, imports, uploads,
+and applies that same inclusive contract for every lamp and the world. The
+predicate is shared by all four surface/volume lamp/world paths, so the fix is
+not scene-specific. Replaying sample 94 now produces exact zero in both
+renderers.
+
+The full comparison below is the deliberately controlled 640x480, 256-spp,
+overall max-bounce-2, diffuse-bounce-2, glossy-bounce-0 Classroom configuration.
+It uses seed 1, Tabulated Sobol, no adaptive sampling, and no denoising. It
+should not be read as the default full-depth Classroom benchmark.
+
+| Pass vs latest Cycles CPU | RMSE before | RMSE after | luminance ratio before | luminance ratio after |
+| --- | ---: | ---: | ---: | ---: |
+| Combined | 0.005657 | 0.003866 | 1.009280 | 0.999324 |
+| Diffuse Indirect | 0.028269 | 0.026413 | 1.046637 | 0.999427 |
+| Glossy Indirect | 0.012915 | 0.011199 | 1.047470 | 0.996707 |
+| Transmission Indirect | 0.002683 | 0.000063 | 1.145316 | 0.999186 |
+
+Latest Cycles CPU and HIP themselves differ by Combined RMSE 0.001378,
+Diffuse Indirect RMSE 0.028977, and Glossy Indirect RMSE 0.014193 at this sample
+count. Their Combined luminance ratio is 0.999982. Psycles against latest
+Cycles HIP has Combined RMSE 0.003913 and luminance ratio 0.999342. This makes
+the remaining high-frequency per-pixel indirect error consistent with
+backend/sample variance; the former 4.7-14.5% pass-mean bias was structural and
+is gone.
+
+Visual inspection confirms that the stable bright clock-face residual in the
+before image disappears after the fix. Geometry, silhouettes, UV regions,
+textures, materials, and illumination structure align; the amplified after
+panel contains granular noise and sparse highlights rather than a coherent
+scene region.
+
+![Before authored light max-bounces support](triptychs/light-max-bounces/before-combined.png)
+
+![After authored light max-bounces support](triptychs/light-max-bounces/after-combined.png)
+
+Machine-readable comparisons are available for
+[before versus Cycles CPU](reports/max2-diffuse-only-before-light-max-bounces-vs-cycles-cpu.json),
+[after versus Cycles CPU](reports/max2-diffuse-only-light-max-bounces-vs-cycles-cpu.json),
+[after versus Cycles HIP](reports/max2-diffuse-only-light-max-bounces-vs-cycles-hip.json),
+and [Cycles CPU versus HIP](reports/max2-diffuse-only-cycles-cpu-vs-hip.json).
+The Psycles HIP render took 15.953 s, versus 13.092 s for latest Cycles CPU and
+4.496 s for latest Cycles HIP. Cold Psycles shader JIT took 69.024 s and is
+reported separately from render time.
+
+Regression coverage locks the exporter and importer fields, the strict
+inclusive boundary `(0,0)`, `(1,1)`, `(2,1)`, `(1024,1024)`, and evaluates the
+shared Luisa predicate on fallback, HIP, and Vulkan. Existing surface and
+volume backend suites exercise the call sites, and the full traced sample and
+image comparisons validate the integrated scene path.
 
 ## Runtime comparison
 
@@ -55,6 +152,87 @@ HIPRT and register-pressure investigation.
 At 32 spp, the direct before/final comparison is 7.266 s versus 2.295 s, or
 3.17x. The same scaling at 256 spp rules out fixed dispatch or scene-upload
 overhead as the explanation.
+
+## Exact-source completion lookup follow-up
+
+Exact Cycles self exclusion uses `(object, primitive)`, but completing closed
+`t == 0` support on backends which omit an endpoint candidate needs the source
+TLAS instance. The former implementation recovered that instance by binary
+searching all scene instances on every eligible ray. Carrying the TLAS
+`(instance, local primitive)` pair forward appeared to make this O(1), but it
+added two 32-bit values to the megakernel path state and every shadow callable.
+On HIP that widened ABI increased the warm 32-spp render from 2.295 to 4.416 s,
+private storage from 5376 to 5904 bytes per thread, the raw AMDGPU object from
+3,261,588 to 3,831,432 bytes, and the linked code object to 5,435,992 bytes.
+That implementation was rejected and is not present in the source.
+
+The accepted representation keeps the existing two-word Cycles source
+identity. During scene compilation it indexes only instances for which
+`coincident_count > 1` or `primitive_completion_count > 0`:
+
+- bounded, sufficiently compact object identities use a direct-address table,
+  giving one O(1) device lookup with at most 4 MiB of table storage;
+- pathological sparse identities use sorted special-instance entries and
+  O(log S) lookup, where `S` is the number of completion sources rather than
+  all `N` scene instances;
+- scenes with no completion source emit neither lookup nor buffer access into
+  the JIT AST.
+
+Classroom has 838 instances but only two completion-source instances, and its
+object numbering selects the direct encoding. All object identities are still
+validated for uniqueness. Regression coverage independently exercises an
+empty lookup, dense direct encoding, extreme sparse encoding, duplicate object
+rejection, and the real endpoint/tie traversal fixture on fallback, HIP, and
+Vulkan.
+
+The 640x480 measurements are:
+
+| Accepted lookup result | Value |
+| --- | ---: |
+| 32 spp render, cold process | 2.2167 s |
+| 32 spp render, warm process 1 | 2.1961 s |
+| 32 spp render, warm process 2 | 2.1990 s |
+| 32 spp median | 2.1990 s |
+| 256 spp render, warm process | 17.1403 s |
+| Cold JIT | 70.1781 s |
+| HIP LLVM code generation | 21.9542 s |
+| Raw AMDGPU object | 3,260,732 bytes |
+| Linked code object | 4,711,056 bytes |
+| Shader-cache entry | 4,712,838 bytes |
+
+The 32-spp median is 4.2% below the previous 2.295-s result. The one 256-spp
+run is 4.4% below the earlier 17.935-s three-run median, but is deliberately
+reported as a single run rather than promoted to a new stable median.
+
+All 15 new 32-spp linear PFM passes are byte-for-byte identical to the previous
+direct-PDF render, and `oiiotool --diff` passes for the multilayer EXR. The new
+256-spp comparison against Cycles HIP reproduces the previous Combined relative
+RMSE `0.037245` and mean-luminance ratio `1.012414`. Visual inspection found no
+new coherent geometry, UV, texture, material, silhouette, or lighting
+difference; the amplified panel remains stochastic/highlight variance.
+
+![Cycles HIP, completion-lookup Psycles HIP, and amplified absolute difference](triptychs/completion-source-lookup/combined.png)
+
+The corresponding machine-readable result is
+[completion-source lookup versus Cycles HIP](reports/completion-source-lookup-vs-cycles-hip.json).
+
+## HIPRT direct-traversal rejection controls
+
+Three deliberately non-equivalent HIPRT closest-hit variants bounded the
+remaining ray-query cost. They were diagnostic branches only and were removed:
+
+| 640x480, 32 spp diagnostic | Render | Result versus exact callback traversal |
+| --- | ---: | --- |
+| Raw direct closest hit | 1.4876 s | relative RMSE 0.5886; luminance ratio 0.513; structural geometry failure |
+| Direct seed followed by exact resolver | 2.5850 s | relative RMSE 0.5005; structural geometry failure |
+| Direct seed with exact lower-endpoint expansion | 2.6729 s | still structurally wrong and slower than callback traversal |
+
+The speed of raw direct traversal is real, but its candidate semantics cannot
+replace Cycles' closed interval, Pluecker predicate, exact exclusion,
+completion relation, procedural handling, and deterministic equal-distance
+ordering. The next safe optimization must therefore be scene-specialized
+acceleration partitioning or a JIT-selected exact traversal strategy, not a
+global switch from callback ray query to direct closest hit.
 
 ## How the bottleneck was isolated
 
@@ -131,11 +309,12 @@ scaling, flipped sides, and degenerate triangles. Primitive-material regression
 coverage exercises base and override materials, endpoint emission versus light
 sampling, camera-only visibility, the packed policy bits, and decoded values.
 Both tests pass on fallback, HIP, and Vulkan. Existing forward area-light tests
-also pass on all three backends, and the full suite passes **207/207**.
+also pass on all three backends, and the full suite passes **209/209**.
 
-The remaining measured steady-state gap is 4.05x versus Cycles HIP and 1.33x
-versus Cycles CPU. Since shadow traversal, analytic forward lights, dispatch
-batching, and the emitter table no longer explain it, the next profiling pass
-should measure material/closure evaluation, per-bounce traversal, and the
-effect of the still-extreme spill footprint on the new baseline rather than
-carrying forward percentages from the removed O(E) bottleneck.
+The original three-run steady-state gap is 4.05x versus Cycles HIP and 1.33x
+versus Cycles CPU; the later single 17.140-s checkpoint is respectively 3.87x
+and 1.27x. Since shadow traversal, analytic forward lights, dispatch batching,
+and the emitter table no longer explain it, the next profiling pass should
+measure material/closure evaluation, per-bounce traversal, and the effect of
+the still-extreme spill footprint on the new baseline rather than carrying
+forward percentages from the removed O(E) bottleneck.

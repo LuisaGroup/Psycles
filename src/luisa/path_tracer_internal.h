@@ -295,6 +295,7 @@ struct LuisaSceneData {
     std::int32_t cycles_background_light_group{-1};
     std::uint32_t world_visibility_mask{
         contract::all_ray_visibility};
+    std::uint32_t world_max_bounces{1024u};
     // Shader literals retain their compiler IR type. Both buffers use the
     // same material-block/ParameterId address so dispatch remains compact,
     // while no float4 type erasure crosses the device ABI.

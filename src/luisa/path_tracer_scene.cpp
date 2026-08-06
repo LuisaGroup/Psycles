@@ -114,6 +114,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         snapshot.cycles_background_light_group;
     data->world_visibility_mask =
         snapshot.world_visibility_mask;
+    data->world_max_bounces =
+        snapshot.world_max_bounces;
     data->cycles_background_shader_flags =
         cycles_shader_identity::background_light_flags(
             snapshot.world_cast_shadow,
@@ -1857,7 +1859,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 cycles_shader_identity::light_type(
                     light.type),
             .visibility_mask =
-                light.visibility_mask});
+                light.visibility_mask,
+            .max_bounces =
+                light.max_bounces});
     }
     data->background = to_luisa(background);
     data->light_count =

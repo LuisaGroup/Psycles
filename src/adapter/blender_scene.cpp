@@ -1488,7 +1488,12 @@ BlenderSceneImport load_blender_scene_bundle(
                                 member(
                                     cycles_sync,
                                     "light_group"),
-                                -1))});
+                                -1)),
+                    .max_bounces =
+                        static_cast<std::uint32_t>(
+                            unsigned_number(
+                                member(light, "max_bounces"),
+                                1024u))});
         }
 
         auto *world = member(root, "world");
@@ -1502,6 +1507,11 @@ BlenderSceneImport load_blender_scene_bundle(
                         member(
                             world,
                             "sample_map_resolution"),
+                        1024u));
+            scene.world_max_bounces =
+                static_cast<std::uint32_t>(
+                    unsigned_number(
+                        member(world, "max_bounces"),
                         1024u));
             scene.world_cast_shadow =
                 boolean(

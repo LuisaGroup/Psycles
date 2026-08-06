@@ -194,14 +194,19 @@ multipart behavior.
 
 ## Current oracle build
 
-The initial diagnostic build is based on official Blender main commit
-`ff404d072bb4bae52c578d2be3aeeea2a057ab63` (2026-07-30). Its dedicated
+The current diagnostic branch is
+`82186b01ad2e79435e67a02de93b178bfbe0f6c4`, refreshed onto official Blender
+main commit `29ccd5e2e824128c86fc6174c9c502c02212434a` on 2026-08-06. Its dedicated
 worktree is `/home/mike/Projects/blender-cycles-trace`; the unmodified reference
-checkout remains `/home/mike/Projects/blender-cycles`. The instrumentation is
-committed locally as `7fa06e0a26f9b20b91005705a2ef8cef3df52562` and exported
-as
+checkout remains `/home/mike/Projects/blender-cycles`. The installed oracle is
+`/home/mike/Projects/blender-install-psycles-trace/blender` and reports Blender
+5.3 Alpha with build hash `82186b01`.
+
+The original version-1 instrumentation was committed as
+`7fa06e0a26f9b20b91005705a2ef8cef3df52562` against official commit
+`ff404d072bb4bae52c578d2be3aeeea2a057ab63` and is retained as the historical
+standalone patch
 [`tools/cycles_path_trace/0001-Cycles-add-Psycles-per-path-trace-oracle.patch`](../tools/cycles_path_trace/0001-Cycles-add-Psycles-per-path-trace-oracle.patch).
-`git apply --check` passes against the exact official base.
 
 Both the CPU kernels and the `gfx1201` HIP fatbin compile the same schema.
 Build and install use all 32 hardware threads:

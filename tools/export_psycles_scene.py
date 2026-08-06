@@ -1114,6 +1114,7 @@ def _light(
         "use_multiple_importance_sampling": bool(
             getattr(cycles, "use_multiple_importance_sampling", True)
         ),
+        "max_bounces": int(getattr(cycles, "max_bounces", 1024)),
         "cast_shadow": bool(getattr(light, "use_shadow", True)),
         "visibility": (
             visibility
@@ -1635,6 +1636,9 @@ def _export_scene(
                         "sample_map_resolution",
                         1024,
                     )
+                ),
+                "max_bounces": int(
+                    getattr(scene.world.cycles, "max_bounces", 1024)
                 ),
                 "use_shadows": bool(
                     getattr(scene.world.cycles, "use_shadows", True)

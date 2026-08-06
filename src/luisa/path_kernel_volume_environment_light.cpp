@@ -2,6 +2,8 @@
 
 #include "path_kernel_environment_light.h"
 
+#include <psycles/luisa/cycles_light.h>
+
 #include <psycles/luisa/surface_ray.h>
 #include <psycles/sampling/light_distribution.h>
 
@@ -195,6 +197,9 @@ class PathVolumeEnvironmentLightComponent final
             0u;
         $if(selected_environment &
             visible_to_volume &
+            !cycles_light::select_reached_max_bounces(
+                event.bounce.sample.path_depth,
+                _config.scene->world_max_bounces) &
             (segment_length > 0.0f)) {
             result.emitter_kind =
                 environment_emitter_kind;

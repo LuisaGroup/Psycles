@@ -61,6 +61,7 @@ def _main() -> None:
     scene.world.cycles_visibility.shadow = False
     scene.world.cycles_visibility.scatter = False
     scene.world.cycles.use_shadows = False
+    scene.world.cycles.max_bounces = 17
 
     material = bpy.data.materials.new("Middle Material")
     material.use_nodes = True
@@ -104,9 +105,10 @@ def _main() -> None:
     finally:
         evaluated_curve.to_mesh_clear()
 
-    def add_light(name: str, group: str) -> None:
+    def add_light(name: str, group: str, max_bounces: int) -> None:
         data = bpy.data.lights.new(f"{name} Data", type="POINT")
         data.shadow_soft_size = 0.0
+        data.cycles.max_bounces = max_bounces
         obj = bpy.data.objects.new(name, data)
         obj.visible_camera = False
         obj.is_shadow_catcher = True
@@ -116,8 +118,8 @@ def _main() -> None:
     # Deliberately insert the reverse of lexical order. Cycles consumes the
     # dependency-graph object iterator; sorting these names changes which
     # emitter a fixed random number selects.
-    add_light("Zulu Light", "Group B")
-    add_light("Alpha Light", "Group A")
+    add_light("Zulu Light", "Group B", 3)
+    add_light("Alpha Light", "Group A", 7)
 
     with tempfile.TemporaryDirectory(
         prefix="psycles-blender-cycles-identity-"
@@ -185,11 +187,20 @@ def _main() -> None:
             "shader_index": 6,
         },
     }
+    expected_max_bounces = {
+        "Zulu Light": 3,
+        "Alpha Light": 7,
+    }
     for light in lights:
         if light["cycles_sync"] != expected[light["name"]]:
             raise AssertionError(
                 f"{light['name']} identity changed: "
                 f"{light['cycles_sync']}"
+            )
+        if light["max_bounces"] != expected_max_bounces[light["name"]]:
+            raise AssertionError(
+                f"{light['name']} max-bounces policy changed: "
+                f"{light['max_bounces']}"
             )
         if (
             light["visibility"]["camera"]
@@ -209,6 +220,8 @@ def _main() -> None:
             raise AssertionError("world Cycles identity changed")
         if payload["world"]["use_shadows"]:
             raise AssertionError("world shadow policy changed")
+        if payload["world"]["max_bounces"] != 17:
+            raise AssertionError("world max-bounces policy changed")
         visibility = payload["world"]["visibility"]
         if (
             visibility["camera"]
