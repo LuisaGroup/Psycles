@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <iostream>
 #include <string_view>
@@ -86,6 +87,8 @@ int main(int argc, char **argv) {
         device.create_buffer<float>(filter_samples.size());
     auto clip_result_buffer =
         device.create_buffer<luisa::float4>(3u);
+    auto camera_transform_result_buffer =
+        device.create_buffer<luisa::uint4>(1u);
 
     Kernel1D evaluate = [](BufferFloat2 randoms,
                            BufferFloat2 disk,
@@ -164,11 +167,39 @@ int main(int argc, char **argv) {
                     range.x + range.y));
         };
     auto clipping_shader = device.compile(evaluate_clipping);
+    Kernel1D evaluate_camera_transform =
+        [](BufferUInt4 results) noexcept {
+            // This affine input is a real Cycles scene boundary case. Fusing
+            // the local x product with translation yields 0x3f24212b;
+            // backend-native matrix multiplication may round it to
+            // 0x3f24212c and move a camera ray across coincident support.
+            const auto transform = make_float4x4(
+                make_float4(0.16329917311668396f, 0.0f, 0.0f, 0.0f),
+                make_float4(0.0f, 0.16329915821552277f, 0.0f, 0.0f),
+                make_float4(0.0f, 0.0f, 0.08164958655834198f, 0.0f),
+                make_float4(0.4866490066051483f, 4.260610580444336f,
+                            0.8810397982597351f, 1.0f));
+            const auto camera_ray = camera_sampling::camera_to_world_ray(
+                transform,
+                make_float3(0.9460067749023438f, 0.0f, 0.0f),
+                make_float3(-0.3722669184207916f,
+                            -0.9224809408187866f,
+                            -0.1022074967622757f));
+            results.write(
+                0u,
+                make_uint4(as<uint>(camera_ray.origin.x),
+                           as<uint>(camera_ray.origin.y),
+                           as<uint>(camera_ray.origin.z),
+                           as<uint>(camera_ray.direction.x)));
+        };
+    auto camera_transform_shader =
+        device.compile(evaluate_camera_transform);
     std::array<luisa::float2, random_samples.size()> disk{};
     std::array<luisa::float2, random_samples.size()> polygon{};
     std::array<luisa::float4, raster_samples.size()> raster{};
     std::array<float, filter_samples.size()> filtered{};
     std::array<luisa::float4, 3u> clipping{};
+    std::array<luisa::uint4, 1u> camera_transform_bits{};
     stream << random_buffer.copy_from(luisa::span{random_samples})
            << raster_sample_buffer.copy_from(luisa::span{raster_samples})
            << filter_table_buffer.copy_from(luisa::span{filter_table})
@@ -182,11 +213,15 @@ int main(int argc, char **argv) {
                             filter_result_buffer)
                   .dispatch(static_cast<std::uint32_t>(filter_samples.size()))
            << clipping_shader(clip_result_buffer).dispatch(3u)
+           << camera_transform_shader(camera_transform_result_buffer)
+                  .dispatch(1u)
            << disk_buffer.copy_to(luisa::span{disk})
            << polygon_buffer.copy_to(luisa::span{polygon})
            << raster_result_buffer.copy_to(luisa::span{raster})
            << filter_result_buffer.copy_to(luisa::span{filtered})
            << clip_result_buffer.copy_to(luisa::span{clipping})
+           << camera_transform_result_buffer.copy_to(
+                  luisa::span{camera_transform_bits})
            << synchronize();
 
     for (std::size_t i = 0u; i < random_samples.size(); ++i) {
@@ -282,6 +317,14 @@ int main(int argc, char **argv) {
                 << backend << " for case " << i << '\n';
             return EXIT_FAILURE;
         }
+    }
+    constexpr auto cycles_camera_origin_x = std::uint32_t{0x3f24212bu};
+    if (camera_transform_bits[0u].x != cycles_camera_origin_x) {
+        std::cerr << "Cycles camera affine transform contraction failed on "
+                  << backend << ": origin.x bits 0x" << std::hex
+                  << camera_transform_bits[0u].x << ", expected 0x"
+                  << cycles_camera_origin_x << std::dec << '\n';
+        return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;
 }
