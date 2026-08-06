@@ -50,7 +50,7 @@ struct LuisaPathTracerOptions {
     std::uint32_t max_samples_per_dispatch{4u};
     // Upper bound on pixel/sample work submitted in one kernel dispatch.
     // Backends without a practical watchdog use the unbounded default;
-    // the Metal backend applies a conservative device-safe cap.
+    // Metal and Vulkan apply a conservative device-safe cap.
     std::uint32_t max_pixel_samples_per_dispatch{
         std::numeric_limits<std::uint32_t>::max()};
     // Diagnostic-only, observational trace. The kernel writes this fixed
