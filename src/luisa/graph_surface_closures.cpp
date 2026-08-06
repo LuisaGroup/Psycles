@@ -247,7 +247,11 @@ void GraphSurfaceImplementation::for_each_closure(
                         closure.coat_normal_linked,
                     .emission = emission,
                     .preserve_ggx_energy =
-                        closure.preserve_ggx_energy});
+                        closure.preserve_ggx_energy,
+                    .beckmann =
+                        closure.operation ==
+                                compiler::ClosureOperation::glossy &&
+                        closure.beckmann});
                 return;
             }
             case compiler::ClosureOperation::subsurface: {

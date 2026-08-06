@@ -1342,6 +1342,15 @@ if(PSYCLES_ENABLE_LUISA)
 
                 psycles_add_luisa_backend_test(
                     TARGET
+                        psycles_luisa_beckmann_glossy_tests
+                    SOURCE
+                        tests/test_luisa_beckmann_glossy.cpp
+                    TEST_STEM
+                        luisa_beckmann_glossy
+                    LIBRARIES Psycles::luisa)
+
+                psycles_add_luisa_backend_test(
+                    TARGET
                         psycles_luisa_normal_map_tests
                     SOURCE
                         tests/test_luisa_normal_map.cpp

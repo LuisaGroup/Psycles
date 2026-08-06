@@ -132,6 +132,16 @@ CyclesNodeMappingRegistry make_core_cycles_node_mappings() {
         .outputs = {{"BSDF", "Closure"}},
         .properties = {}});
     add({
+        .cycles_type = "glossy_bsdf",
+        .cycles_variant = {},
+        .psycles_type = node_type::glossy_bsdf,
+        .inputs = {
+            {"Color", "Color"},
+            {"Roughness", "Roughness"},
+            {"Normal", "Normal"}},
+        .outputs = {{"BSDF", "Closure"}},
+        .properties = {{"distribution", "Distribution"}}});
+    add({
         .cycles_type = "principled_bsdf",
         .cycles_variant = {},
         .psycles_type = node_type::principled_bsdf,

@@ -270,14 +270,22 @@ template <typename Id, typename Values>
 [[nodiscard]] Float3 diffuse_intensity(const SurfaceClosureRecord &closure,
     Float3 incoming,
     Float3 outgoing) noexcept;
-[[nodiscard]] Float ggx_distribution(
-    Float n_dot_h, Float alpha) noexcept;
+// Distribution-family operations shared by reflection, glass, and
+// refraction. The physical closure selects the concrete Cycles model while
+// every consumer retains the same D/Lambda measure contract.
+[[nodiscard]] Float microfacet_distribution(
+    const SurfaceClosureRecord &closure,
+    Float n_dot_h,
+    Float alpha) noexcept;
+[[nodiscard]] Float microfacet_lambda(
+    const SurfaceClosureRecord &closure,
+    Float n_dot_v,
+    Float alpha) noexcept;
 [[nodiscard]] Float microfacet_alpha(const SurfaceClosureRecord &closure,
     Float glossy_filter_roughness) noexcept;
 [[nodiscard]] Bool microfacet_is_singular(
     const SurfaceClosureRecord &closure,
     Float glossy_filter_roughness) noexcept;
-[[nodiscard]] Float smith_g1(Float n_dot_v, Float alpha) noexcept;
 [[nodiscard]] Float3 specular_f0(
     const SurfaceClosureRecord &closure) noexcept;
 [[nodiscard]] Float3 microfacet_reflection_fresnel(
