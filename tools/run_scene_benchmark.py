@@ -713,6 +713,11 @@ def _main() -> int:
         compiler_tmp.mkdir(parents=True, exist_ok=True)
         environment["TMPDIR"] = str(compiler_tmp)
         manifest["compiler_tmp"] = str(compiler_tmp)
+    if "vk" in arguments.psycles_backends:
+        environment.setdefault(
+            "LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV",
+            "1",
+        )
 
     try:
         cycles_outputs: dict[str, pathlib.Path] = {}
