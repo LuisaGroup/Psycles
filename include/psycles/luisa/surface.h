@@ -780,6 +780,45 @@ public:
         return result;
     }
 
+    [[nodiscard]] SurfaceClosureCollection collect_subsurface_closures(
+        Expr<std::uint32_t> tag,
+        const luisa::vector<luisa::uint> &subsurface_tags,
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        Expr<bool> reflective_caustics,
+        Expr<bool> refractive_caustics,
+        SurfaceClosureCollector &collector) const noexcept {
+        auto result = SurfaceClosureCollection{
+            .shading_normal = point.shading_normal};
+        // The group is the scene-level Cycles has_surface_bssrdf result
+        // mapped onto deduplicated program tags. A BSSRDF exit can only carry
+        // one of these tags. Restrict this operation's JIT switch to that
+        // semantic set so unrelated material graphs do not inflate the
+        // exit-only callable. All programs remain registered for every other
+        // surface operation.
+        auto empty_collection = [&]() noexcept {
+            collector.begin(point.shading_normal);
+            collector.finish();
+        };
+        if (subsurface_tags.empty()) {
+            empty_collection();
+        } else {
+            _surfaces.dispatch_group_with_default(
+                tag,
+                subsurface_tags,
+                [&](const Surface *surface) noexcept {
+                    result = surface->collect_closures(
+                        services,
+                        point,
+                        reflective_caustics,
+                        refractive_caustics,
+                        collector);
+                },
+                empty_collection);
+        }
+        return result;
+    }
+
     template<typename Implementation, typename... Args>
         requires std::derived_from<Implementation, Surface>
     [[nodiscard]] std::uint32_t create(Args &&...args) noexcept {
