@@ -137,12 +137,22 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         return result;
     }
     std::set<contract::MaterialId> surface_bssrdf_materials;
+    std::set<contract::MaterialId> surface_bssrdf_bump_materials;
     for (const auto &[material_id, material] :
          data->materials.materials()) {
-        if (compiler::cycles_surface_has_bssrdf(
-                *material.surface_program(),
-                material.parameters())) {
+        const auto &source_material =
+            snapshot.materials.at(material_id);
+        const auto has_bssrdf = compiler::cycles_surface_has_bssrdf(
+            *material.surface_program(),
+            material.parameters());
+        if (has_bssrdf) {
             surface_bssrdf_materials.emplace(material_id);
+        }
+        if (compiler::cycles_surface_has_bssrdf_bump(
+                *material.surface_program(),
+                material.parameters(),
+                source_material.displacement_method)) {
+            surface_bssrdf_bump_materials.emplace(material_id);
         }
     }
     auto cycles_instance_intersection_plan =
@@ -175,7 +185,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         volume_surface_flags;
     std::map<std::uint64_t, std::uint32_t>
         surface_tags_by_signature;
-    std::set<std::uint32_t> surface_bssrdf_tags;
+    std::set<std::uint32_t> surface_bssrdf_bump_tags;
     std::set<contract::MaterialId>
         pointiness_materials;
     for (const auto &[id, material] :
@@ -191,8 +201,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 data->surfaces.create<GraphSurface>(
                     material.surface_program());
         }
-        if (surface_bssrdf_materials.contains(id)) {
-            surface_bssrdf_tags.emplace(surface_iter->second);
+        if (surface_bssrdf_bump_materials.contains(id)) {
+            surface_bssrdf_bump_tags.emplace(surface_iter->second);
         }
         const auto capabilities =
             data->surfaces.capabilities(
@@ -363,10 +373,10 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     if (!result.diagnostics.empty()) {
         return result;
     }
-    data->surface_bssrdf_tags.reserve(
-        surface_bssrdf_tags.size());
-    for (const auto tag : surface_bssrdf_tags) {
-        data->surface_bssrdf_tags.emplace_back(tag);
+    data->surface_bssrdf_bump_tags.reserve(
+        surface_bssrdf_bump_tags.size());
+    for (const auto tag : surface_bssrdf_bump_tags) {
+        data->surface_bssrdf_bump_tags.emplace_back(tag);
     }
     if (snapshot.world_shader) {
         auto iter =

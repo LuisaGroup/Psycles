@@ -284,11 +284,11 @@ struct LuisaSceneData {
     std::uint64_t revision{};
     MaterialLibrary materials;
     SurfaceDispatch surfaces;
-    // Scene-level Cycles has_surface_bssrdf materials mapped onto the
-    // structure-deduplicated SurfaceDispatch tags. This is immutable JIT
-    // scheduling metadata; material closures and parameters remain device
-    // expressions.
-    luisa::vector<luisa::uint> surface_bssrdf_tags;
+    // Scene-level Cycles has_bssrdf_bump materials mapped onto the
+    // structure-deduplicated SurfaceDispatch tags. Shared tags form the
+    // conservative image of this exact material predicate; closures and
+    // parameters remain device expressions.
+    luisa::vector<luisa::uint> surface_bssrdf_bump_tags;
     std::map<contract::MaterialId, MaterialBinding>
         material_bindings;
     std::optional<MaterialBinding> world_surface;

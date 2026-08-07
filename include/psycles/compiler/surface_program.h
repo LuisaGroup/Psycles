@@ -11,6 +11,10 @@
 #include <psycles/compiler/shader_program.h>
 #include <psycles/contract/surface.h>
 
+namespace psycles::contract {
+enum class DisplacementMethod : std::uint8_t;
+}
+
 namespace psycles::compiler {
 
 template <typename Tag> struct ProgramId {
@@ -412,6 +416,10 @@ struct ClosureInstruction {
   contract::NodeId source_node;
   ValueExpressionId color;
   ValueExpressionId normal;
+  // Cycles' BsdfBaseNode::has_bump() is a graph-topology predicate: a
+  // linked Normal uses bump unless its immediate source is a Geometry node.
+  // Unlike socket literals, this fact is stable under parameter rebinding.
+  bool normal_uses_bump{};
   ValueExpressionId roughness;
   ValueExpressionId diffuse_roughness;
   ValueExpressionId subsurface_weight;
@@ -426,6 +434,9 @@ struct ClosureInstruction {
   ValueExpressionId specular_ior_level;
   ValueExpressionId specular_tint;
   ValueExpressionId alpha;
+  // Keep Thin Wall in the parameter stream. Cycles treats only an unlinked
+  // direct true value as statically thin; linked values remain conservative.
+  ValueExpressionId thin_wall;
   ValueExpressionId sheen_weight;
   ValueExpressionId sheen_roughness;
   ValueExpressionId sheen_tint;
@@ -587,6 +598,15 @@ estimate_surface_emission(const SurfaceProgram &program,
 [[nodiscard]] bool cycles_surface_has_bssrdf(
     const SurfaceProgram &program,
     const SurfaceParameterBlock &parameters) noexcept;
+
+// Cycles' host-side Shader::has_bssrdf_bump flag. This is the exact union of
+// a real BSSRDF closure whose Normal topology uses bump and automatic bump
+// from a linked displacement output, normalized as the surface-normal root,
+// under BUMP/BOTH material policy.
+[[nodiscard]] bool cycles_surface_has_bssrdf_bump(
+    const SurfaceProgram &program,
+    const SurfaceParameterBlock &parameters,
+    contract::DisplacementMethod displacement_method) noexcept;
 
 enum class SurfaceProgramDiagnosticCode : std::uint8_t {
   structure_mismatch,

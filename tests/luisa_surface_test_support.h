@@ -88,14 +88,66 @@ public:
     std::vector<luisa::float4> result;
     result.reserve(program.parameters().size());
     for (const auto &parameter : program.parameters()) {
-        const auto &value = parameter.default_value.value;
-        if (const auto *scalar = std::get_if<float>(&value)) {
-            result.emplace_back(*scalar, 0.0f, 0.0f, 0.0f);
-        } else if (const auto *vector = std::get_if<Vec3f>(&value)) {
-            result.emplace_back(vector->x, vector->y, vector->z, 0.0f);
-        } else {
+        const auto &value = parameter.default_value;
+        if (parameter.type != value.type || !value.well_typed()) {
             throw std::runtime_error{
-                "surface fixture has an unsupported parameter type"};
+                "surface fixture has an ill-typed parameter"};
+        }
+        using contract::SocketType;
+        switch (parameter.type) {
+            case SocketType::boolean:
+                result.emplace_back(
+                    std::get<bool>(value.value) ? 1.0f : 0.0f,
+                    0.0f,
+                    0.0f,
+                    0.0f);
+                break;
+            case SocketType::integer:
+                result.emplace_back(
+                    static_cast<float>(
+                        std::get<std::int64_t>(value.value)),
+                    0.0f,
+                    0.0f,
+                    0.0f);
+                break;
+            case SocketType::unsigned_integer:
+                result.emplace_back(
+                    static_cast<float>(
+                        std::get<std::uint64_t>(value.value)),
+                    0.0f,
+                    0.0f,
+                    0.0f);
+                break;
+            case SocketType::floating:
+                result.emplace_back(
+                    std::get<float>(value.value),
+                    0.0f,
+                    0.0f,
+                    0.0f);
+                break;
+            case SocketType::float2: {
+                const auto vector = std::get<Vec2f>(value.value);
+                result.emplace_back(
+                    vector.x, vector.y, 0.0f, 0.0f);
+                break;
+            }
+            case SocketType::float3:
+            case SocketType::color:
+            case SocketType::spectrum:
+            case SocketType::point:
+            case SocketType::vector:
+            case SocketType::normal: {
+                const auto vector = std::get<Vec3f>(value.value);
+                result.emplace_back(
+                    vector.x, vector.y, vector.z, 0.0f);
+                break;
+            }
+            case SocketType::transform:
+            case SocketType::string:
+            case SocketType::closure:
+            case SocketType::volume_closure:
+                throw std::runtime_error{
+                    "surface fixture has an unsupported parameter type"};
         }
     }
     if (result.empty()) {

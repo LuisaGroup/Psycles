@@ -126,6 +126,8 @@ int main(int argc, char **argv) {
     SurfaceDispatch surfaces;
     const auto surface_tag =
         surfaces.create<GraphSurface>(lowered.program);
+    const luisa::vector<luisa::uint> bssrdf_bump_tags{surface_tag};
+    const luisa::vector<luisa::uint> no_bssrdf_bump_tags;
     const auto parameters = parameter_data(*lowered.program);
     Kernel1D probe = [&](BufferFloat4 parameter_buffer,
                          BufferFloat4 output) noexcept {
@@ -138,8 +140,14 @@ int main(int argc, char **argv) {
         point.use_bump_map_correction = false;
 
         SurfaceBssrdfNormalVisitor visitor{8u};
-        static_cast<void>(surfaces.collect_closures(
-            UInt{surface_tag}, services, point, true, true, visitor));
+        static_cast<void>(surfaces.collect_bssrdf_bump_closures(
+            UInt{surface_tag},
+            bssrdf_bump_tags,
+            services,
+            point,
+            true,
+            true,
+            visitor));
         const auto exit_normal = Float3{visitor.result()};
         const auto query = SurfaceQuery{
             .lobe_mask = static_cast<std::uint32_t>(
@@ -178,6 +186,19 @@ int main(int argc, char **argv) {
         fallback_visitor.add(diffuse);
         fallback_visitor.finish();
 
+        // Cycles skips the entire shader evaluation when
+        // SD_HAS_BSSRDF_BUMP is absent. The empty semantic tag image must
+        // still run the collector lifecycle and return ShaderData::N.
+        SurfaceBssrdfNormalVisitor skipped_visitor{8u};
+        static_cast<void>(surfaces.collect_bssrdf_bump_closures(
+            UInt{surface_tag},
+            no_bssrdf_bump_tags,
+            services,
+            point,
+            true,
+            true,
+            skipped_visitor));
+
         output.write(0u, make_float4(exit_normal, 0.0f));
         output.write(1u, make_float4(sample.wi, sample.evaluation.pdf));
         output.write(2u, make_float4(
@@ -191,6 +212,8 @@ int main(int argc, char **argv) {
             Float3{fallback_visitor.result()},
             select(0.0f, 1.0f, sample.valid)));
         output.write(6u, make_float4(mapped.direction, mapped.pdf));
+        output.write(7u, make_float4(
+            Float3{skipped_visitor.result()}, 1.0f));
     };
 
     Context context{argv[0]};
@@ -198,9 +221,9 @@ int main(int argc, char **argv) {
     auto stream = device.create_stream();
     auto parameter_buffer =
         device.create_buffer<luisa::float4>(parameters.size());
-    auto output = device.create_buffer<luisa::float4>(7u);
+    auto output = device.create_buffer<luisa::float4>(8u);
     auto kernel = device.compile(probe);
-    std::array<luisa::float4, 7u> actual{};
+    std::array<luisa::float4, 8u> actual{};
     stream << parameter_buffer.copy_from(luisa::span{parameters})
            << kernel(parameter_buffer, output).dispatch(1u)
            << output.copy_to(luisa::span{actual})
@@ -221,7 +244,9 @@ int main(int argc, char **argv) {
         equal(actual[4u].xyz(), expected_normal) &&
         approximately_equal(actual[4u].w, 1.0f) &&
         equal(actual[5u].xyz(), fallback_normal) &&
-        approximately_equal(actual[5u].w, 1.0f);
+        approximately_equal(actual[5u].w, 1.0f) &&
+        equal(actual[7u].xyz(), fallback_normal) &&
+        approximately_equal(actual[7u].w, 1.0f);
     if (!ok) {
         std::cerr << "Cycles BSSRDF exit-normal regression failed on "
                   << backend << '\n';

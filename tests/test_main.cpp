@@ -12,6 +12,7 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <variant>
 
 namespace {
 
@@ -1480,6 +1481,10 @@ void test_cycles_principled_emission_adapter() {
                     .source = std::nullopt,
                     .value = SocketValue::floating(0.73f)},
                 {
+                    .socket = "Thin Wall",
+                    .source = std::nullopt,
+                    .value = SocketValue::boolean(true)},
+                {
                     .socket = "Sheen Weight",
                     .source = std::nullopt,
                     .value = SocketValue::floating(0.55f)},
@@ -1556,10 +1561,26 @@ void test_cycles_principled_emission_adapter() {
         "layered Principled graph did not lower to one closure");
     const auto &closure =
         surface.program->closure_instructions().front();
+    const auto thin_wall_parameter = std::find_if(
+        surface.program->parameters().begin(),
+        surface.program->parameters().end(),
+        [](const auto &parameter) {
+            return parameter.socket == "ThinWall";
+        });
+    const auto *thin_wall_value =
+        thin_wall_parameter != surface.program->parameters().end()
+            ? parameters.find(thin_wall_parameter->id)
+            : nullptr;
+    const auto *thin_wall = thin_wall_value != nullptr
+                                ? std::get_if<bool>(
+                                      &thin_wall_value->value)
+                                : nullptr;
     expect(
         closure.operation == ClosureOperation::principled &&
             closure.preserve_ggx_energy &&
             closure.alpha.valid() &&
+            closure.thin_wall.valid() &&
+            thin_wall != nullptr && *thin_wall &&
             closure.sheen_weight.valid() &&
             closure.sheen_roughness.valid() &&
             closure.sheen_tint.valid() &&
@@ -1573,8 +1594,9 @@ void test_cycles_principled_emission_adapter() {
             estimate_surface_emission(
                 *surface.program,
                 parameters) == Vec3f{0.6f, 1.2f, 2.4f},
-        "normalized Principled layer/emission sockets, linked-normal "
-        "topology, or distribution changed during adaptation");
+        "normalized Principled layer/emission/Thin Wall sockets, "
+        "linked-normal topology, or distribution changed during "
+        "adaptation");
 }
 
 void test_cycles_adapter_rejects_svm_lowered_graph() {

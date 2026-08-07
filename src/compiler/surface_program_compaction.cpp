@@ -37,6 +37,7 @@ constexpr auto closure_value_dependencies = std::array{
     &ClosureInstruction::specular_ior_level,
     &ClosureInstruction::specular_tint,
     &ClosureInstruction::alpha,
+    &ClosureInstruction::thin_wall,
     &ClosureInstruction::sheen_weight,
     &ClosureInstruction::sheen_roughness,
     &ClosureInstruction::sheen_tint,

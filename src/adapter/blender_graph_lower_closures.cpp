@@ -114,6 +114,12 @@ public:
                 id, "Alpha", node, "Alpha", SocketType::floating));
             static_cast<void>(context.bind(
                 id,
+                "ThinWall",
+                node,
+                "Thin Wall",
+                SocketType::boolean));
+            static_cast<void>(context.bind(
+                id,
                 "SheenWeight",
                 node,
                 "Sheen Weight",

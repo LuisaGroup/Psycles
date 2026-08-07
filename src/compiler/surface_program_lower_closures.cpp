@@ -24,6 +24,21 @@ namespace {
     return BssrdfMethod::random_walk;
 }
 
+[[nodiscard]] bool normal_uses_bump(
+    const ShaderProgram &shader,
+    const contract::ShaderNode &node) noexcept {
+    const auto normal = node.inputs.find("Normal");
+    if (normal == node.inputs.end() ||
+        !normal->second.source.has_value()) {
+        return false;
+    }
+    const auto *source = shader.graph().find(
+        normal->second.source->node);
+    // A missing source is impossible after graph validation. Preserve the
+    // conservative scheduling result if a malformed program reaches here.
+    return source == nullptr || source->type != node_type::geometry;
+}
+
 }// namespace
 
 // Lowers surface and volume closure nodes. A true result means the node
@@ -59,6 +74,7 @@ namespace {
         std::optional<ValueExpressionId> specular_ior_level;
         std::optional<ValueExpressionId> specular_tint;
         std::optional<ValueExpressionId> alpha;
+        std::optional<ValueExpressionId> thin_wall;
         std::optional<ValueExpressionId> sheen_weight;
         std::optional<ValueExpressionId> sheen_roughness;
         std::optional<ValueExpressionId> sheen_tint;
@@ -96,6 +112,7 @@ namespace {
             specular_tint =
                 lower_value_input(node, "SpecularTint");
             alpha = lower_value_input(node, "Alpha");
+            thin_wall = lower_value_input(node, "ThinWall");
             sheen_weight = lower_value_input(node, "SheenWeight");
             sheen_roughness = lower_value_input(node, "SheenRoughness");
             sheen_tint = lower_value_input(node, "SheenTint");
@@ -126,7 +143,7 @@ namespace {
               subsurface_radius && subsurface_scale &&
               subsurface_ior && subsurface_anisotropy &&
               transmission_weight && ior &&
-              specular_ior_level && specular_tint && alpha &&
+              specular_ior_level && specular_tint && alpha && thin_wall &&
               sheen_weight && sheen_roughness && sheen_tint &&
               coat_weight && coat_roughness && coat_ior && coat_tint &&
               coat_normal &&
@@ -157,6 +174,7 @@ namespace {
                     .source_node = node.id,
                     .color = *color,
                     .normal = *normal,
+                    .normal_uses_bump = normal_uses_bump(_shader, node),
                     .roughness = *roughness,
                     .diffuse_roughness =
                         diffuse_roughness.value_or(
@@ -194,6 +212,8 @@ namespace {
                         specular_tint.value_or(
                             ValueExpressionId{}),
                     .alpha = alpha.value_or(ValueExpressionId{}),
+                    .thin_wall =
+                        thin_wall.value_or(ValueExpressionId{}),
                     .sheen_weight =
                         sheen_weight.value_or(ValueExpressionId{}),
                     .sheen_roughness =
