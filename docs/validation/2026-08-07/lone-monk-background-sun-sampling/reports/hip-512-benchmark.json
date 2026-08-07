@@ -1,0 +1,119 @@
+{
+  "commands": {
+    "cycles_hip": {
+      "command": [
+        "/home/mike/Projects/blender-install-psycles-trace/blender",
+        "/home/mike/Downloads/lone-monk_cycles_and_exposure-node_demo.blend",
+        "--background",
+        "--python-exit-code",
+        "1",
+        "--python",
+        "/home/mike/Projects/Psycles/tools/render_cycles_golden.py",
+        "--",
+        "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/lone-monk-background-sun-fix/hip-512/cycles/hip.exr",
+        "960",
+        "720",
+        "512",
+        "--cycles-device",
+        "HIP",
+        "--device-name",
+        "Radeon RX 9070 XT"
+      ],
+      "log": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/lone-monk-background-sun-fix/hip-512/logs/cycles-hip.log",
+      "returncode": 0,
+      "wall_seconds": 18.42066159506794
+    },
+    "export": {
+      "reused": true
+    },
+    "psycles_hip": {
+      "command": [
+        "/home/mike/Projects/Psycles/build/bin/psycles_render_blender_scene",
+        "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/lone-monk-muted-node-fix/export",
+        "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/lone-monk-background-sun-fix/hip-512/psycles/hip.ppm",
+        "hip",
+        "960",
+        "720",
+        "512",
+        "4"
+      ],
+      "log": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/lone-monk-background-sun-fix/hip-512/logs/psycles-hip.log",
+      "returncode": 0,
+      "wall_seconds": 189.24247171008028
+    }
+  },
+  "comparisons": {
+    "psycles-hip-vs-cycles-hip": {
+      "actual": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/lone-monk-background-sun-fix/hip-512/psycles/hip.exr",
+      "process_wall_seconds": 4.764692038996145,
+      "reference": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/lone-monk-background-sun-fix/hip-512/cycles/hip.exr",
+      "report": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/lone-monk-background-sun-fix/hip-512/comparisons/psycles-hip-vs-cycles-hip/report.json"
+    }
+  },
+  "compiler_tmp": "/var/tmp/psycles-compiler-tmp",
+  "matrix": {
+    "cycles": [
+      "hip"
+    ],
+    "psycles": [
+      "hip"
+    ]
+  },
+  "relative_performance": {
+    "hip": {
+      "slowdown_vs_cycles_hip": 4.665950687119413,
+      "speedup_over_cycles_hip": 0.21431859594241945
+    }
+  },
+  "renderers": {
+    "cycles": {
+      "hip": {
+        "device": [
+          {
+            "id": "HIP_AMD Radeon RX 9070 XT_0000:03:00",
+            "name": "AMD Radeon RX 9070 XT",
+            "type": "HIP"
+          }
+        ],
+        "metadata": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/lone-monk-background-sun-fix/hip-512/cycles/hip.json",
+        "metadata_sha256": "03051814f59a3ce51001d63877f297ea4b94446d80631d13fe9a79b2530d27eb",
+        "output": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/lone-monk-background-sun-fix/hip-512/cycles/hip.exr",
+        "process_wall_seconds": 18.42066159506794,
+        "render_seconds": 17.646071619936265,
+        "sha256": "a2eb74cad842e5b0a04b11159f8005c4847c0911e9db51bfcebb4ea33826e4c7"
+      }
+    },
+    "psycles": {
+      "hip": {
+        "output": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/lone-monk-background-sun-fix/hip-512/psycles/hip.exr",
+        "process_wall_seconds": 189.24247171008028,
+        "render_seconds": 82.3357,
+        "scene_compile_seconds": 4.57881,
+        "sha256": "b17403ec93cc309cc66e0577bd11fb70d5e01d43c6d0df0e037761b952d96858",
+        "shader_jit_seconds": 101.689
+      }
+    }
+  },
+  "resume": {
+    "existing_manifest": false,
+    "requested": false,
+    "reused_stages": []
+  },
+  "scene": {
+    "blend": "/home/mike/Downloads/lone-monk_cycles_and_exposure-node_demo.blend",
+    "bundle": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/lone-monk-muted-node-fix/export",
+    "geometry_bin_sha256": "28197f9a46e1120f69362fec72695ee0555e254a7cc14a8342fc73a43e4e1bd7",
+    "scene_json_sha256": "4950168bab77e263f143dac8017c2f74158524b10eb1a6fbdffea60efc35afb9",
+    "sha256": "4250d4205d8d01cefd98c15e81021d6dead540b2923797378bf7b32e96e8b8f7"
+  },
+  "schema": "psycles.scene-benchmark.v1",
+  "settings": {
+    "cycles_gpu_device": "HIP",
+    "cycles_gpu_device_name": "Radeon RX 9070 XT",
+    "height": 720,
+    "max_samples_per_dispatch": 4,
+    "samples": 512,
+    "width": 960
+  },
+  "status": "complete"
+}

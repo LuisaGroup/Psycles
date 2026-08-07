@@ -9,6 +9,19 @@ multilayer OpenEXR output.
 ## Latest checkpoint
 
 The newest
+[Lone Monk background-Sun checkpoint](docs/validation/2026-08-07/lone-monk-background-sun-sampling/README.md)
+aligns Cycles' deterministic concentric-disk cone mapping, canonical
+orthonormal frame, small-angle cone measure, and stable forward-PDF membership
+for guided Nishita sampling. At the real film `(491, 221)`, sample-zero event,
+the direction error falls from `0.776416` degrees to one float32 ULP and sky
+radiance error falls from 23.21% to 0.0283%. At 960x720x512, Combined relative
+RMSE falls from `0.015995` to `0.012203` and Diffuse Direct relative RMSE falls
+1.83x. Render-only HIP time remains `82.336 s`, or `4.666x` slower than Cycles
+HIP on the same RX 9070 XT. All 215 tests pass, including the real-oracle
+fallback/HIP/Vulkan regression; numeric reports and three original-resolution
+triptychs are retained.
+
+The preceding
 [Lone Monk muted-node checkpoint](docs/validation/2026-08-07/lone-monk-muted-node-bypass/README.md)
 proves that the stable book-page residual was lost Blender/Cycles graph
 topology, not a transform or UV defect. The source `paper - page / Mix.001`

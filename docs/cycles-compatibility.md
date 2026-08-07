@@ -795,6 +795,18 @@ model coefficients as immutable topology data, and evaluates the analytic
 directional formula in the Luisa shader. The focused fallback and Metal probe
 measures Combined energy at `1.000284x` and `1.000285x` Cycles Metal.
 
+Guided single-scattering Nishita sampling follows the full current-Cycles
+sample relation, not merely an equivalent distribution. The `1:4` map/Sun
+mixture remaps the same Tabulated Sobol dimensions; the Sun branch uses the
+shared concentric square-to-disk map, Cycles' canonical algebraic frame, its
+cone-radius remapping, and its piecewise small-angle `1-cos` measure. Forward
+PDF membership uses the stable two-vector angle with the same strict boundary.
+On Lone Monk's real sample-zero path this reduces the Sun-direction error from
+`0.776416` degrees to one float32 ULP and the sampled sky-radiance error from
+23.21% to 0.0283%. The fallback/HIP/Vulkan oracle and 960x720x512 image
+evidence are recorded in
+[`validation/2026-08-07/lone-monk-background-sun-sampling`](validation/2026-08-07/lone-monk-background-sun-sampling/README.md).
+
 `PREETHAM` and `MULTIPLE_SCATTERING` remain distinct unsupported/partial
 modes. They must not be silently reported as Hosek or single-scattering
 Nishita. The complete Apple scene evidence and reports are in

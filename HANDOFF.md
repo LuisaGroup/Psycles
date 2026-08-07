@@ -2,12 +2,22 @@
 
 ## Current continuation — 2026-08-07
 
-The current renderer implementation boundary is Psycles `main@d5c7730` with
+The current renderer implementation boundary is Psycles `main@9ac8bab` with
 LuisaCompute `next@3e63df0c6` and Blender/Cycles 5.3 Alpha
 `82186b01ad2e`. The older published-boundary section below remains a
 historical record; do not reset to its July revisions.
 
 The current official complex-scene checkpoints are:
+
+- [Lone Monk background-Sun sampling](docs/validation/2026-08-07/lone-monk-background-sun-sampling/README.md)
+  aligns the complete Sobol-to-guided-Nishita-Sun relation. The old polar-cap
+  sampler had the right density but chose a different point on the solar disc
+  than Cycles. The real path's direction error falls from `0.776416` degrees
+  to one float32 ULP, sampled sky-radiance error falls from 23.21% to 0.0283%,
+  and 960x720x512 Combined relative RMSE falls from `0.015995` to `0.012203`.
+  Diffuse Direct relative RMSE falls 1.83x with no measurable render-time
+  cost. The fallback/HIP/Vulkan regression and the full 215/215 gate pass;
+  the repair is published as `9ac8bab`.
 
 - [Lone Monk muted-node bypass](docs/validation/2026-08-07/lone-monk-muted-node-bypass/README.md)
   formally aligns Blender/Cycles muted-node graph semantics. The defect was
@@ -35,15 +45,15 @@ The current official complex-scene checkpoints are:
   than Cycles CPU, and Vulkan is `103.61x` slower than Cycles HIP with a
   19.75-minute cache-cold JIT.
 
-The 512-spp Lone Monk Combined relative RMSE is now `0.015995`. Its first
-intersection and closure residuals are small continuous numerical differences;
-the remaining coherent exact-path work is in light proposal/direct transport.
-The next correctness gate is to isolate those differences formally, continue
-Monster higher-spp transport alignment, and promote fresh current-head
-Classroom, Barbershop, and Blender 4.1 Splash matrices. The next performance
-gate must separate exact traversal cost from the monolithic path shader and
-reduce generated-kernel size without pre-baking or weakening raw closure
-semantics.
+The 512-spp Lone Monk Combined relative RMSE is now `0.012203`. The exact
+guided-Sun proposal is aligned; its first-event remaining residual follows the
+already-measured surface-normal and closure-weight differences, plus explicit
+infinity and shadow-light trace identities. The next correctness gate is to
+isolate those relations formally, continue Monster higher-spp transport
+alignment, and promote fresh current-head Classroom, Barbershop, and Blender
+4.1 Splash matrices. The next performance gate must separate exact traversal
+cost from the monolithic path shader and reduce generated-kernel size without
+pre-baking or weakening raw closure semantics.
 
 ## Published boundary
 
