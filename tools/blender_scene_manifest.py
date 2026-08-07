@@ -241,12 +241,31 @@ def _node_tree_manifest(node_tree: Any) -> dict[str, Any] | None:
         return None
     nodes = []
     for node in sorted(node_tree.nodes, key=lambda item: item.name):
+        internal_links = [
+            {
+                "from_socket": link.from_socket.identifier,
+                "to_socket": link.to_socket.identifier,
+            }
+            for link in node.internal_links
+        ]
+        internal_links.sort(
+            key=lambda item: (
+                item["to_socket"],
+                item["from_socket"],
+            )
+        )
         nodes.append(
             {
                 "name": node.name,
                 "label": node.label,
                 "bl_idname": node.bl_idname,
                 "type": node.type,
+                # Cycles replaces every muted node with the runtime-owned
+                # internal input-to-output links. Preserve that graph
+                # relation explicitly: evaluating the concrete node while
+                # merely retaining its external links is observably wrong.
+                "mute": bool(node.mute),
+                "internal_links": internal_links,
                 "properties": _node_properties(node),
                 "special": _node_special_data(node),
                 "inputs": [_socket_manifest(socket) for socket in node.inputs],
@@ -265,6 +284,15 @@ def _node_tree_manifest(node_tree: Any) -> dict[str, Any] | None:
         )
     links = []
     for link in node_tree.links:
+        # Match Cycles add_nodes_inlined(): invalid, explicitly muted, and
+        # unavailable-socket links do not participate in the shader graph.
+        if (
+            not link.is_valid
+            or link.is_muted
+            or link.from_socket.is_unavailable
+            or link.to_socket.is_unavailable
+        ):
+            continue
         links.append(
             {
                 "from_node": link.from_node.name,

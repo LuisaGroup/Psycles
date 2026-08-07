@@ -1738,6 +1738,19 @@ if(PSYCLES_ENABLE_LUISA)
                 COMMAND psycles_blender_import_tests)
 
             add_executable(
+                psycles_blender_muted_node_tests
+                tests/test_blender_muted_node.cpp)
+            target_link_libraries(
+                psycles_blender_muted_node_tests
+                PRIVATE Psycles::luisa_runtime)
+            target_compile_features(
+                psycles_blender_muted_node_tests
+                PRIVATE cxx_std_20)
+            add_test(
+                NAME psycles.blender_muted_node
+                COMMAND psycles_blender_muted_node_tests)
+
+            add_executable(
                 psycles_blender_curve_import_tests
                 tests/test_blender_curve_import.cpp)
             target_link_libraries(
