@@ -2,12 +2,16 @@
 
 #include "graph_surface_internal.h"
 #include "microfacet_glass_component.h"
+#include "thin_glass_component.h"
 
 namespace psycles::luisa_backend::detail {
 
 struct PrincipledBaseResult {
     TracedClosure metallic;
     TracedClosure transmission;
+    TracedClosure thin_glass_reflection;
+    TracedClosure thin_glass_transmission;
+    TracedClosure thin_glass_transparency;
     TracedClosure dielectric;
     Float3 base_weight;
     Float3 diffuse_weight;
@@ -22,6 +26,7 @@ private:
     const ShaderServices &_services;
     const SurfacePoint &_point;
     MicrofacetGlassComponent _glass;
+    ThinGlassComponent _thin_glass;
 
 public:
     PrincipledBaseComponent(const ShaderServices &services,

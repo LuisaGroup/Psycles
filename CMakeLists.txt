@@ -1513,6 +1513,15 @@ if(PSYCLES_ENABLE_LUISA)
 
                 psycles_add_luisa_backend_test(
                     TARGET
+                        psycles_luisa_principled_thin_wall_tests
+                    SOURCE
+                        tests/test_luisa_principled_thin_wall.cpp
+                    TEST_STEM
+                        luisa_principled_thin_wall
+                    LIBRARIES Psycles::luisa)
+
+                psycles_add_luisa_backend_test(
+                    TARGET
                         psycles_luisa_refraction_tests
                     SOURCE
                         tests/test_luisa_refraction.cpp

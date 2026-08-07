@@ -20,7 +20,10 @@ namespace {
 
 PrincipledBaseComponent::PrincipledBaseComponent(
     const ShaderServices &services, const SurfacePoint &point) noexcept
-    : _services{services}, _point{point}, _glass{services, point} {}
+    : _services{services},
+      _point{point},
+      _glass{services, point},
+      _thin_glass{services, point} {}
 
 PrincipledBaseResult
 PrincipledBaseComponent::evaluate(const TracedClosure &closure,
@@ -86,9 +89,8 @@ PrincipledBaseComponent::evaluate(const TracedClosure &closure,
                           metallic_requested);
 
     // Thick Principled transmission is one generalized-Schlick glass
-    // closure. Reflection and refraction caustic controls gate spectral
-    // tints, not separate approximation closures, so their shared VNDF and
-    // lobe-selection density remain coupled exactly as in Cycles.
+    // closure. Thin Wall instead expands to two constant-Fresnel GGX lobes;
+    // both paths remain in the recorded AST because Thin Wall may be linked.
     const auto transmission_amount =
         clamp(closure.transmission_weight, 0.0f, 1.0f);
     const auto transmission_requested =
@@ -107,10 +109,23 @@ PrincipledBaseComponent::evaluate(const TracedClosure &closure,
          .transmission_tint = select(make_float3(0.0f), sqrt(clamped_base_color),
                                      refractive_caustics),
          .enabled =
-             transmission_requested & (reflective_caustics | refractive_caustics),
+             transmission_requested & !closure.thin_wall &
+             (reflective_caustics | refractive_caustics),
          .principled_lobe = PrincipledLobe::transmission,
          .preserve_energy = closure.preserve_ggx_energy,
          .beckmann = false});
+    const auto thin_glass = _thin_glass.setup(
+        closure,
+        lower_weight * transmission_amount,
+        glossy_normal,
+        roughness,
+        original_ior,
+        specular_tint,
+        clamped_base_color,
+        transmission_requested & closure.thin_wall &
+            (reflective_caustics | refractive_caustics),
+        reflective_caustics,
+        refractive_caustics);
     lower_weight =
         select(lower_weight, lower_weight * (1.0f - transmission_amount),
                transmission_requested);
@@ -173,6 +188,9 @@ PrincipledBaseComponent::evaluate(const TracedClosure &closure,
 
     return {.metallic = metallic,
             .transmission = transmission,
+            .thin_glass_reflection = thin_glass.reflection,
+            .thin_glass_transmission = thin_glass.transmission,
+            .thin_glass_transparency = thin_glass.transparency,
             .dielectric = dielectric,
             .base_weight = lower_weight,
             .diffuse_weight = max(lower_weight * base_color, make_float3(0.0f))};

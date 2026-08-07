@@ -25,6 +25,7 @@ inline constexpr std::uint32_t type_microfacet_ggx = 12u;
 inline constexpr std::uint32_t type_microfacet_beckmann = 13u;
 inline constexpr std::uint32_t type_microfacet_beckmann_refraction = 20u;
 inline constexpr std::uint32_t type_microfacet_ggx_refraction = 21u;
+inline constexpr std::uint32_t type_thin_glass_transmission = 22u;
 inline constexpr std::uint32_t type_microfacet_beckmann_glass = 24u;
 inline constexpr std::uint32_t type_microfacet_ggx_glass = 25u;
 inline constexpr std::uint32_t type_microfacet_multi_ggx_glass = 26u;

@@ -3,6 +3,7 @@
 #include "microfacet_glass_component.h"
 #include "principled_base_component.h"
 #include "principled_layer_component.h"
+#include "thin_subsurface_component.h"
 
 #include <psycles/luisa/cycles_closure.h>
 
@@ -29,7 +30,11 @@ namespace {
 SurfaceClosureRecord canonical_surface_closure(
     const TracedClosure &closure) noexcept {
     auto result = SurfaceClosureRecord::zero();
-    switch (closure.operation) {
+    if (closure.physical_kind != SurfaceClosureKind::none) {
+        result.kind = static_cast<std::uint32_t>(
+            closure.physical_kind);
+    } else {
+        switch (closure.operation) {
         case compiler::ClosureOperation::diffuse:
             result.kind = static_cast<std::uint32_t>(
                 SurfaceClosureKind::diffuse);
@@ -67,6 +72,7 @@ SurfaceClosureRecord canonical_surface_closure(
         case compiler::ClosureOperation::add:
         case compiler::ClosureOperation::mix:
             break;
+        }
     }
     switch (closure.principled_lobe) {
         case PrincipledLobe::none:
@@ -189,28 +195,11 @@ void GraphSurfaceImplementation::for_each_physical_closure(
     const PrincipledBaseComponent principled_base{services, point};
     const MicrofacetGlassComponent microfacet_glass{services, point};
     const BssrdfClosureComponent bssrdf_closure{point};
-    Float3 transparent_weight = make_float3(0.0f);
-    Float transparent_sample_weight = 0.0f;
-    for_each_closure(
-        values, [&](const TracedClosure &closure) noexcept {
-            auto contribution = TransparentClosureState{
-                .weight = make_float3(0.0f),
-                .sample_weight = 0.0f};
-            if (closure.operation ==
-                compiler::ClosureOperation::transparent) {
-                contribution = transparent_closure_state(
-                    closure.weight);
-            } else if (closure.operation ==
-                       compiler::ClosureOperation::principled) {
-                contribution =
-                    evaluate_principled_alpha_layer(closure)
-                        .transparency;
-            }
-            transparent_weight += contribution.weight;
-            transparent_sample_weight += contribution.sample_weight;
-        });
-
-    Bool transparent_allocated = false;
+    const ThinSubsurfaceComponent thin_subsurface;
+    luisa::vector<TracedClosure> physical_closures;
+    const auto emit = [&](const TracedClosure &closure) noexcept {
+        physical_closures.emplace_back(closure);
+    };
     for_each_closure(
         values, [&](const TracedClosure &graph_closure) noexcept {
             auto closure = graph_closure;
@@ -239,19 +228,16 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                 const auto contribution_allocated =
                     contribution.sample_weight >=
                     cycles_closure::closure_weight_cutoff;
-                const auto emit_here =
-                    contribution_allocated & !transparent_allocated;
                 auto transparent = graph_closure;
                 transparent.operation =
                     compiler::ClosureOperation::transparent;
+                transparent.physical_kind = SurfaceClosureKind::none;
                 transparent.principled_lobe = PrincipledLobe::none;
-                transparent.weight = select(make_float3(0.0f),
-                    transparent_weight,
-                    emit_here);
-                transparent.allocation_weight =
-                    select(0.0f,
-                        transparent_sample_weight,
-                        emit_here);
+                transparent.weight = contribution.weight;
+                transparent.allocation_weight = select(
+                    0.0f,
+                    contribution.sample_weight,
+                    contribution_allocated);
                 transparent.sample_weight =
                     transparent.allocation_weight;
                 transparent.setup_valid = true;
@@ -261,8 +247,7 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                 transparent.roughness = 0.0f;
                 transparent.ior = 1.0f;
                 transparent.evaluation_scale = make_float3(1.0f);
-                function(transparent);
-                transparent_allocated |= contribution_allocated;
+                emit(transparent);
             }
 
             switch (graph_closure.operation) {
@@ -272,34 +257,37 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                         .lower_weight;
                 const auto sheen = principled_layers.evaluate_sheen(
                     graph_closure, closure.weight);
-                function(sheen.closure);
+                emit(sheen.closure);
                 closure.weight = sheen.lower_weight;
                 const auto coat = principled_layers.evaluate_coat(
                     graph_closure,
                     closure.weight,
                     reflective_caustics);
-                function(coat.closure);
+                emit(coat.closure);
                 closure.weight = coat.lower_weight;
                 const auto base = principled_base.evaluate(
                     closure, reflective_caustics, refractive_caustics);
-                function(base.metallic);
-                function(base.transmission);
-                function(base.dielectric);
+                emit(base.metallic);
+                emit(base.transmission);
+                emit(base.thin_glass_reflection);
+                emit(base.thin_glass_transmission);
+                emit(base.thin_glass_transparency);
+                emit(base.dielectric);
 
                 const auto subsurface_weight =
                     clamp(graph_closure.subsurface_weight, 0.0f, 1.0f);
                 auto bssrdf = closure;
                 bssrdf.operation = compiler::ClosureOperation::subsurface;
                 bssrdf.principled_lobe = PrincipledLobe::none;
-                bssrdf.weight =
+                const auto subsurface_closure_weight =
                     min(max(graph_closure.color, make_float3(0.0f)),
                         make_float3(1.0f)) *
                     subsurface_weight * base.base_weight;
+                bssrdf.weight = subsurface_closure_weight;
                 bssrdf.color = min(
                     max(graph_closure.color, make_float3(0.0f)),
                     make_float3(1.0f));
-                bssrdf.normal = maybe_ensure_valid_specular_reflection(
-                    point, incoming, graph_closure.normal);
+                bssrdf.normal = graph_closure.normal;
                 const auto surface_roughness =
                     clamp(graph_closure.roughness, 0.0f, 1.0f);
                 bssrdf.roughness = surface_roughness * surface_roughness;
@@ -316,9 +304,25 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                         : adjusted_ior(graph_closure).eta;
                 bssrdf.subsurface_anisotropy =
                     graph_closure.subsurface_anisotropy;
+                const auto thin_subsurface_setup = thin_subsurface.setup(
+                    bssrdf,
+                    subsurface_closure_weight,
+                    graph_closure.thin_wall &
+                        (subsurface_weight >
+                         cycles_closure::closure_weight_cutoff));
+                emit(thin_subsurface_setup.reflection);
+                emit(thin_subsurface_setup.smooth_transmission);
+                emit(thin_subsurface_setup.rough_transmission);
+
+                bssrdf.weight = select(
+                    subsurface_closure_weight,
+                    make_float3(0.0f),
+                    graph_closure.thin_wall);
+                bssrdf.normal = maybe_ensure_valid_specular_reflection(
+                    point, incoming, graph_closure.normal);
                 const auto bssrdf_setup = bssrdf_closure.setup(bssrdf);
-                function(bssrdf_setup.bssrdf);
-                function(bssrdf_setup.diffuse_fallback);
+                emit(bssrdf_setup.bssrdf);
+                emit(bssrdf_setup.diffuse_fallback);
 
                 auto diffuse = closure;
                 diffuse.operation = compiler::ClosureOperation::diffuse;
@@ -338,15 +342,15 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                 diffuse.albedo = diffuse.weight;
                 diffuse.roughness = graph_closure.diffuse_roughness;
                 diffuse.evaluation_scale = make_float3(1.0f);
-                function(diffuse);
+                emit(diffuse);
                 return;
             }
             case compiler::ClosureOperation::subsurface: {
                 closure.normal = maybe_ensure_valid_specular_reflection(
                     point, incoming, graph_closure.normal);
                 const auto setup = bssrdf_closure.setup(closure);
-                function(setup.bssrdf);
-                function(setup.diffuse_fallback);
+                emit(setup.bssrdf);
+                emit(setup.diffuse_fallback);
                 return;
             }
             case compiler::ClosureOperation::glossy: {
@@ -391,7 +395,7 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                 const auto color =
                     max(graph_closure.color, make_float3(0.0f));
                 const auto original_ior = max(graph_closure.ior, 1.0e-5f);
-                function(microfacet_glass.setup(
+                emit(microfacet_glass.setup(
                     {.prototype = closure,
                         .weight = closure.weight,
                         .normal = graph_closure.normal,
@@ -412,7 +416,7 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                 return;
             }
             case compiler::ClosureOperation::refraction: {
-                function(microfacet_glass.setup(
+                emit(microfacet_glass.setup(
                     {.prototype = closure,
                         .weight = closure.weight,
                         .normal = graph_closure.normal,
@@ -473,8 +477,44 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                 closure.sample_weight = 0.0f;
                 break;
             }
-            function(closure);
+            emit(closure);
         });
+
+    // bsdf_transparent_setup merges every allocated transparent contribution
+    // into the first transparent closure, including smooth thin glass on a
+    // non-camera ray. Reproduce that allocation topology after all physical
+    // components have expanded, without evaluating any material value on the
+    // host.
+    Float3 transparent_weight = make_float3(0.0f);
+    Float transparent_sample_weight = 0.0f;
+    for (const auto &closure : physical_closures) {
+        if (closure.operation ==
+            compiler::ClosureOperation::transparent) {
+            transparent_weight += closure.weight;
+            transparent_sample_weight += closure.sample_weight;
+        }
+    }
+    Bool transparent_allocated = false;
+    for (const auto &physical_closure : physical_closures) {
+        if (physical_closure.operation !=
+            compiler::ClosureOperation::transparent) {
+            function(physical_closure);
+            continue;
+        }
+        const auto contribution_allocated =
+            physical_closure.sample_weight >=
+            cycles_closure::closure_weight_cutoff;
+        const auto emit_here =
+            contribution_allocated & !transparent_allocated;
+        auto transparent = physical_closure;
+        transparent.weight = select(
+            make_float3(0.0f), transparent_weight, emit_here);
+        transparent.allocation_weight = select(
+            0.0f, transparent_sample_weight, emit_here);
+        transparent.sample_weight = transparent.allocation_weight;
+        function(transparent);
+        transparent_allocated |= contribution_allocated;
+    }
 }
 
 } // namespace psycles::luisa_backend::detail

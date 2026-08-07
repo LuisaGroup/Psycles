@@ -155,6 +155,11 @@ void GraphSurfaceImplementation::for_each_closure(
                             compiler::ClosureOperation::principled
                         ? scalar(closure.alpha, values)
                         : Float{1.0f};
+                auto thin_wall =
+                    closure.operation ==
+                            compiler::ClosureOperation::principled
+                        ? scalar(closure.thin_wall, values) != 0.0f
+                        : Bool{false};
                 auto sheen_weight =
                     closure.operation ==
                             compiler::ClosureOperation::principled
@@ -235,6 +240,7 @@ void GraphSurfaceImplementation::for_each_closure(
                         specular_ior_level,
                     .specular_tint = specular_tint,
                     .alpha = alpha,
+                    .thin_wall = thin_wall,
                     .sheen_weight = sheen_weight,
                     .sheen_roughness = sheen_roughness,
                     .sheen_tint = sheen_tint,

@@ -2,6 +2,7 @@
 
 #include "graph_surface_internal.h"
 #include "microfacet_glass_component.h"
+#include "thin_glass_component.h"
 
 #include <psycles/luisa/cycles_closure.h>
 
@@ -33,7 +34,7 @@ make_surface_closure_evaluation_policy(
             .diffuse_included = true,
             .glossy_included = true,
             .glass_included = true,
-            .refraction_included = true,
+            .transmission_included = true,
             .preserve_pdf = true};
     }
     using namespace contract::cycles_abi;
@@ -49,8 +50,9 @@ make_surface_closure_evaluation_policy(
         .glossy_included = !excludes_glossy,
         .glass_included =
             !(excludes_glossy & excludes_transmit),
-        .refraction_included =
-            !excludes_glossy & !excludes_transmit,
+        // CLOSURE_IS_BSDF_TRANSMISSION is a distinct Cycles type interval,
+        // not the intersection of glossy labels and transmitted events.
+        .transmission_included = !excludes_transmit,
         .preserve_pdf =
             (light_shader_flags & shader_use_mis) != 0u};
 }
@@ -84,6 +86,8 @@ surface_closure_evaluation_contribution(
     Bool selected_sample{selected_sample_expression};
     const detail::MicrofacetGlassComponent microfacet_glass{
         services, point};
+    const detail::ThinGlassComponent thin_glass{
+        services, point};
 
     const auto is_transparent = has_kind(
         closure, SurfaceClosureKind::transparent);
@@ -91,6 +95,8 @@ surface_closure_evaluation_contribution(
         closure, SurfaceClosureKind::diffuse);
     const auto is_translucent = has_kind(
         closure, SurfaceClosureKind::translucent);
+    const auto is_rough_translucent = has_kind(
+        closure, SurfaceClosureKind::rough_translucent);
     const auto is_principled = has_kind(
         closure, SurfaceClosureKind::principled);
     const auto is_sheen =
@@ -102,9 +108,13 @@ surface_closure_evaluation_contribution(
         closure, SurfaceClosureKind::glass);
     const auto is_refraction = has_kind(
         closure, SurfaceClosureKind::refraction);
+    const auto is_thin_glass_transmission = has_kind(
+        closure, SurfaceClosureKind::thin_glass_transmission);
     const auto is_bssrdf = has_kind(
         closure, SurfaceClosureKind::bssrdf);
     const auto is_dielectric = is_glass | is_refraction;
+    const auto is_dielectric_family =
+        is_dielectric | is_thin_glass_transmission;
     const auto generic_glossy =
         (is_principled & !is_sheen) | is_glossy;
 
@@ -125,9 +135,13 @@ surface_closure_evaluation_contribution(
         detail::maybe_ensure_valid_specular_reflection(
             point, incoming, closure.normal),
         closure.normal,
-        is_sheen);
+        is_sheen | is_rough_translucent |
+            is_thin_glass_transmission);
     const auto glass_is_transmission =
         dot(glossy_normal, outgoing) < 0.0f;
+    const auto dielectric_is_transmission =
+        is_thin_glass_transmission |
+        (is_dielectric & glass_is_transmission);
     const auto selected_unit_ior_glass_delta =
         selected_sample & is_dielectric & glass_is_transmission &
         (abs(closure.ior - 1.0f) < 1.0e-4f);
@@ -140,8 +154,14 @@ surface_closure_evaluation_contribution(
     const auto bump_direction_valid = bump_shadowing != 0.0f;
     const auto bump_pdf_valid =
         bump_direction_valid | selected_sample;
+    const auto transmission_diffuse_normal = select(
+        -glossy_normal,
+        closure.normal,
+        is_rough_translucent);
     const auto diffuse_normal = select(
-        closure.normal, -glossy_normal, is_translucent);
+        closure.normal,
+        transmission_diffuse_normal,
+        is_translucent | is_rough_translucent);
     auto diffuse_pdf = select(
         max(dot(diffuse_normal, outgoing), 0.0f) *
             detail::inverse_pi,
@@ -163,12 +183,21 @@ surface_closure_evaluation_contribution(
             query.glossy_filter_roughness),
         is_dielectric);
     glossy_pdf = select(
+        glossy_pdf,
+        thin_glass.pdf(
+            closure,
+            incoming,
+            outgoing,
+            query.glossy_filter_roughness),
+        is_thin_glass_transmission);
+    glossy_pdf = select(
         0.0f, glossy_pdf, (!is_sheen) & bump_pdf_valid);
     glossy_pdf = select(
         glossy_pdf, 0.0f, selected_unit_ior_glass_delta);
 
     auto translucent_allowed =
-        diffuse_enabled & transmission_enabled & is_translucent;
+        diffuse_enabled & transmission_enabled &
+        (is_translucent | is_rough_translucent);
     auto diffuse_allowed =
         (diffuse_enabled & (is_diffuse | is_sheen | is_bssrdf)) |
         translucent_allowed;
@@ -179,10 +208,13 @@ surface_closure_evaluation_contribution(
                        glass_is_transmission);
     auto refraction_allowed =
         is_refraction & glossy_enabled & transmission_enabled;
+    auto thin_glass_allowed =
+        is_thin_glass_transmission & glossy_enabled & transmission_enabled;
     diffuse_allowed &= closure.setup_valid;
     glossy_allowed &= closure.setup_valid;
     glass_allowed &= closure.setup_valid;
     refraction_allowed &= closure.setup_valid;
+    thin_glass_allowed &= closure.setup_valid;
     const auto diffuse_contributes =
         diffuse_allowed & policy.diffuse_included;
     const auto glossy_contributes =
@@ -190,9 +222,12 @@ surface_closure_evaluation_contribution(
     const auto glass_contributes =
         glass_allowed & policy.glass_included;
     const auto refraction_contributes =
-        refraction_allowed & policy.refraction_included;
+        refraction_allowed & policy.transmission_included;
+    const auto thin_glass_contributes =
+        thin_glass_allowed & policy.transmission_included;
     const auto dielectric_contributes =
-        glass_contributes | refraction_contributes;
+        glass_contributes | refraction_contributes |
+        thin_glass_contributes;
 
     const auto diffuse_value =
         closure.weight *
@@ -203,6 +238,16 @@ surface_closure_evaluation_contribution(
         closure.weight *
         max(dot(-glossy_normal, outgoing), 0.0f) *
         detail::inverse_pi * bump_shadowing;
+    const auto rough_translucent_incoming =
+        incoming -
+        2.0f * closure.normal * dot(incoming, closure.normal);
+    const auto rough_translucent_value =
+        closure.weight *
+        detail::diffuse_intensity(
+            closure,
+            rough_translucent_incoming,
+            outgoing) *
+        bump_shadowing;
     const auto sheen_value =
         closure.weight * diffuse_pdf * bump_shadowing;
     const auto glossy_value =
@@ -225,25 +270,39 @@ surface_closure_evaluation_contribution(
     glass_value = select(glass_value,
         make_float3(0.0f),
         selected_unit_ior_glass_delta);
+    const auto thin_glass_value =
+        closure.weight *
+        thin_glass.intensity(
+            closure,
+            incoming,
+            outgoing,
+            query.glossy_filter_roughness) *
+        bump_shadowing;
     const auto diffuse_contribution =
         select(make_float3(0.0f), diffuse_value, is_diffuse) +
         select(make_float3(0.0f),
             translucent_value,
             is_translucent) +
+        select(make_float3(0.0f),
+            rough_translucent_value,
+            is_rough_translucent) +
         select(make_float3(0.0f), sheen_value, is_sheen);
     const auto glossy_contribution = select(
         make_float3(0.0f), glossy_value, generic_glossy);
-    const auto glass_contribution = select(
-        make_float3(0.0f), glass_value, is_dielectric);
+    const auto glass_contribution =
+        select(make_float3(0.0f), glass_value, is_dielectric) +
+        select(make_float3(0.0f),
+            thin_glass_value,
+            is_thin_glass_transmission);
 
     const auto pdf = select(
         select(diffuse_pdf, glossy_pdf, glossy_allowed),
         glossy_pdf,
-        is_dielectric);
+        is_dielectric_family);
     const auto directional_pdf = select(pdf, 0.0f, is_bssrdf);
     const auto any_allowed =
         diffuse_allowed | glossy_allowed | glass_allowed |
-        refraction_allowed;
+        refraction_allowed | thin_glass_allowed;
     const auto enabled_pdf = select(
         0.0f, directional_pdf, any_allowed);
     const auto eligible_diffuse = select(
@@ -261,7 +320,7 @@ surface_closure_evaluation_contribution(
     const auto eligible_glass_reflection = select(
         make_float3(0.0f),
         glass_contribution,
-        glass_contributes & !glass_is_transmission);
+        glass_contributes & !dielectric_is_transmission);
 
     auto weight = detail::closure_sample_weight(closure);
     weight = select(0.0f, weight, any_allowed);
@@ -269,7 +328,8 @@ surface_closure_evaluation_contribution(
     events |= select(0u,
         static_cast<std::uint32_t>(
             event_diffuse | event_reflection),
-        diffuse_contributes & !is_translucent &
+        diffuse_contributes &
+            !(is_translucent | is_rough_translucent) &
             (detail::sample_weight(diffuse_contribution) > 0.0f));
     events |= select(0u,
         static_cast<std::uint32_t>(
@@ -284,12 +344,12 @@ surface_closure_evaluation_contribution(
     events |= select(0u,
         static_cast<std::uint32_t>(
             event_glossy | event_reflection),
-        glass_contributes & !glass_is_transmission &
+        glass_contributes & !dielectric_is_transmission &
             (detail::sample_weight(glass_contribution) > 0.0f));
     events |= select(0u,
         static_cast<std::uint32_t>(
             event_glossy | event_transmission),
-        dielectric_contributes & glass_is_transmission &
+        dielectric_contributes & dielectric_is_transmission &
             (detail::sample_weight(glass_contribution) > 0.0f));
 
     luisa::compute::Var<
@@ -360,6 +420,43 @@ SurfaceEvaluation SurfaceClosureEvaluationAccumulator::finish(
         _events,
         _weighted_pdf > 0.0f);
     return result;
+}
+
+DirectSurfaceClosureEvaluationOperation::
+    DirectSurfaceClosureEvaluationOperation(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        const SurfaceQuery &query,
+        const SurfaceClosureEvaluationPolicy &policy) noexcept
+    : _services{services},
+      _point{point},
+      _query{query},
+      _policy{policy} {}
+
+void DirectSurfaceClosureEvaluationOperation::set_outgoing(
+    Expr<luisa::float3> outgoing) noexcept {
+    const auto directions =
+        make_surface_closure_evaluation_directions(
+            _point, outgoing);
+    _incoming = directions.incoming;
+    _outgoing = directions.outgoing;
+}
+
+luisa::compute::Var<SurfaceClosureEvaluationContributionCall>
+DirectSurfaceClosureEvaluationOperation::evaluate(
+    Expr<luisa::float3> shading_normal,
+    const SurfaceClosureExpression &closure,
+    Expr<bool> selected_sample) const noexcept {
+    return surface_closure_evaluation_contribution(
+        _services,
+        _point,
+        shading_normal,
+        closure.reference(),
+        Expr<luisa::float3>{_incoming.expression()},
+        Expr<luisa::float3>{_outgoing.expression()},
+        _query,
+        _policy,
+        selected_sample);
 }
 
 SurfaceClosureEvaluationVisitor::SurfaceClosureEvaluationVisitor(

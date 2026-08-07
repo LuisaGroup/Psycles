@@ -465,6 +465,9 @@ int main(int argc, char **argv) {
     constexpr auto alpha = 0.35f * 0.35f;
     constexpr auto distribution = 1.0f / (pi * alpha * alpha);
     constexpr auto transmission_common = 9.0f * distribution;
+    // Cycles classifies refraction in CLOSURE_IS_BSDF_TRANSMISSION, outside
+    // CLOSURE_IS_BSDF_GLOSSY. EXCLUDE_GLOSSY therefore retains the value and
+    // PDF; EXCLUDE_TRANSMIT removes only the value from the same PDF mixture.
     if (!finite(actual[6u]) || !finite(actual[7u]) ||
         !rgb_equal(actual[6u], {0.0f, 0.0f, 0.0f}) ||
         !approximately_equal(actual[6u].w, 0.0f) ||
@@ -474,7 +477,7 @@ int main(int argc, char **argv) {
         !approximately_equal(
             actual[7u].w, transmission_common, 8.0e-5f) ||
         !approximately_equal(actual[8u], actual[7u], 8.0e-5f) ||
-        !rgb_equal(actual[9u], {0.0f, 0.0f, 0.0f}) ||
+        !approximately_equal(actual[9u], actual[7u], 8.0e-5f) ||
         !rgb_equal(actual[10u], {0.0f, 0.0f, 0.0f})) {
         std::cerr << "pure-transmission eval/light-mask regression failed on "
                   << backend << '\n';

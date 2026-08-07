@@ -46,7 +46,7 @@ struct SurfaceClosureEvaluationPolicy {
     Bool diffuse_included;
     Bool glossy_included;
     Bool glass_included;
-    Bool refraction_included;
+    Bool transmission_included;
     Bool preserve_pdf;
 };
 
@@ -127,6 +127,39 @@ class SurfaceClosureEvaluationOperation {
         Expr<luisa::float3> shading_normal,
         const SurfaceClosureExpression &closure,
         Expr<bool> selected_sample) const noexcept = 0;
+};
+
+// Direct expression implementation used when a Surface owns its shader
+// services in the current kernel. Keeping this behind the same operation
+// interface as the resource-packed path makes both routes execute the exact
+// same per-closure algebra while Luisa records the AST.
+class DirectSurfaceClosureEvaluationOperation final
+    : public SurfaceClosureEvaluationOperation {
+
+  private:
+    const ShaderServices &_services;
+    const SurfacePoint &_point;
+    const SurfaceQuery &_query;
+    const SurfaceClosureEvaluationPolicy &_policy;
+    Float3 _incoming{make_float3(0.0f)};
+    Float3 _outgoing{make_float3(0.0f)};
+
+  public:
+    DirectSurfaceClosureEvaluationOperation(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        const SurfaceQuery &query,
+        const SurfaceClosureEvaluationPolicy &policy) noexcept;
+
+    void set_outgoing(
+        Expr<luisa::float3> outgoing) noexcept override;
+
+    [[nodiscard]] luisa::compute::Var<
+        SurfaceClosureEvaluationContributionCall>
+    evaluate(
+        Expr<luisa::float3> shading_normal,
+        const SurfaceClosureExpression &closure,
+        Expr<bool> selected_sample) const noexcept override;
 };
 
 class SurfaceClosureEvaluationVisitor final
