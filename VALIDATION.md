@@ -16,9 +16,12 @@ weighted exit normal, cosine-hemisphere sample, and following
 object/primitive. At 960x960x512, Combined relative RMSE falls 1.69x from
 `0.082721` to `0.048905`, Diffuse Direct falls 1.89x, and Combined mean
 luminance becomes `1.003553x` Cycles. Four original-resolution triptychs were
-inspected and 218/218 tests pass across the complete gate. Render-only HIP
-time is currently `135.852 s`, or `5.103x` Cycles; the newly exposed 100.7 s
-cold HIP link is explicitly retained as the next code-generation issue.
+inspected and 218/218 tests pass across the complete gate. The exit-only
+dispatch now uses the exact scene-level BSSRDF surface-tag set: all 15 AOVs
+remain pixel-identical at 1 and 512 spp, while the HIP code object falls 8.20%
+and total cold JIT falls 3.33% to `129.689 s`. Render-only time is `134.636 s`,
+or `5.051x` Cycles HIP; the remaining 98.8-second HIP bitcode link is retained
+as the next code-generation issue.
 
 The newest
 [Lone Monk background-Sun checkpoint](docs/validation/2026-08-07/lone-monk-background-sun-sampling/README.md)

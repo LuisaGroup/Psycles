@@ -13,7 +13,10 @@ The [Monster BSSRDF exit-normal checkpoint](validation/2026-08-07/monster-bssrdf
 now aligns the closure-weighted normal of Cycles' synthetic exit Lambert. The
 exact path agrees through the next primitive, and 960x960x512 Combined
 relative RMSE falls 1.69x to `0.048905` with a `1.003553` mean-luminance
-ratio. The preceding
+ratio. Its exact scene-level BSSRDF tag specialization preserves all 15 AOVs
+pixel-for-pixel at 1 and 512 spp, reduces the HIP code object by 8.20%, and
+reduces cold JIT by 3.33% to `129.689 s`; the 98.8-second link remains open.
+The preceding
 [Monster current-head checkpoint](validation/2026-08-07/monster-current-head/README.md)
 retains the five-way 128-spp matrix and independent Principled Coat Normal
 evidence. The
@@ -28,8 +31,8 @@ all three Psycles Diffuse Color relative RMSEs between `0.001106` and
 `0.001160`.
 
 Neither result is a blanket feature-parity claim. Monster's remaining
-high-spp indirect residual and the new BSSRDF callable's compile/render cost
-remain open, while Lone Monk's indirect convergence and severe current
+high-spp indirect residual and dominant HIP link/render cost remain open,
+while Lone Monk's indirect convergence and severe current
 performance gaps also remain open. Classroom, Barbershop, and Blender 4.1
 Splash retain historical evidence but still require fresh current-head
 five-way promotion runs.
