@@ -148,6 +148,30 @@ private:
         return fallback;
     }
 
+    [[nodiscard]] static bool muted_output_has_bypass(
+        yyjson_val *node,
+        std::string_view output) {
+        if (node == nullptr ||
+            !boolean(member(node, "mute"))) {
+            return true;
+        }
+        auto *internal_links = member(
+            node, "internal_links");
+        if (internal_links == nullptr ||
+            !yyjson_is_arr(internal_links)) {
+            return false;
+        }
+        yyjson_arr_iter iterator =
+            yyjson_arr_iter_with(internal_links);
+        while (auto *link =
+                   yyjson_arr_iter_next(&iterator)) {
+            if (text(member(link, "to_socket")) == output) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     void load_tree_context(yyjson_val *tree) {
         _tree = tree;
         _raw_nodes.clear();
@@ -171,6 +195,20 @@ private:
                 yyjson_arr_iter_with(links);
             while (auto *link =
                        yyjson_arr_iter_next(&iterator)) {
+                const auto from_node = text(
+                    member(link, "from_node"));
+                const auto from_socket = text(
+                    member(link, "from_socket"));
+                auto source = _raw_nodes.find(from_node);
+                if (source != _raw_nodes.end() &&
+                    !muted_output_has_bypass(
+                        source->second, from_socket)) {
+                    // Cycles does not put an un-bypassed muted output in
+                    // its output map, so every external link from that
+                    // socket is disconnected and the consumer retains its
+                    // own input default.
+                    continue;
+                }
                 _links.insert_or_assign(
                     RawOutputKey{
                         .node = text(
@@ -178,10 +216,8 @@ private:
                         .socket = text(
                             member(link, "to_socket"))},
                     RawOutputKey{
-                        .node = text(
-                            member(link, "from_node")),
-                        .socket = text(
-                            member(link, "from_socket"))});
+                        .node = std::move(from_node),
+                        .socket = std::move(from_socket)});
             }
         }
     }
@@ -751,6 +787,73 @@ private:
             type);
     }
 
+    [[nodiscard]] std::optional<TypedOutput>
+    lower_muted_output(
+        yyjson_val *node,
+        const std::string &socket,
+        contract::SocketType requested) {
+        using contract::SocketType;
+        if (!boolean(member(node, "mute"))) {
+            return std::nullopt;
+        }
+
+        auto output_type = socket_type(
+            raw_output(node, socket));
+        if (output_type == SocketType::closure &&
+            requested == SocketType::volume_closure) {
+            output_type = SocketType::volume_closure;
+        }
+
+        if (muted_output_has_bypass(node, socket)) {
+            auto *internal_links = member(
+                node, "internal_links");
+            yyjson_arr_iter iterator =
+                yyjson_arr_iter_with(internal_links);
+            while (auto *link =
+                       yyjson_arr_iter_next(&iterator)) {
+                if (text(member(link, "to_socket")) != socket) {
+                    continue;
+                }
+                const auto input = text(
+                    member(link, "from_socket"));
+                if (auto source = input_source(node, input)) {
+                    // Cycles represents a muted internal link with a
+                    // same-type proxy whose type is the output socket's
+                    // type. Requesting that type here preserves all normal
+                    // implicit conversion rules at the proxy boundary.
+                    return lower_output(
+                        source->node,
+                        source->socket,
+                        output_type);
+                }
+
+                // Cycles does not copy a muted node input's UI default into
+                // its proxy. An unconnected proxy is the zero value of the
+                // output type.
+                return constant_from_socket(
+                    nullptr,
+                    text(member(node, "name")) +
+                        " / Muted " + socket,
+                    output_type);
+            }
+        }
+
+        // An output without an internal link is absent from Cycles' muted
+        // proxy map. A root has no destination default to retain, so model
+        // the disconnected value as the zero value of its declared type and
+        // keep the concrete node dead.
+        warn_once(
+            "muted-output:" +
+                text(member(node, "name")) + ":" + socket,
+            "muted node output '" + socket +
+                "' has no internal bypass; using a disconnected zero");
+        return constant_from_socket(
+            nullptr,
+            text(member(node, "name")) +
+                " / Disconnected " + socket,
+            output_type);
+    }
+
     [[nodiscard]] TypedOutput lower_natural_output(
         const std::string &node_name,
         const std::string &socket,
@@ -765,6 +868,11 @@ private:
                 nullptr, {}, SocketType::color);
         }
         const auto type = text(member(node, "type"));
+
+        if (auto muted = lower_muted_output(
+                node, socket, requested)) {
+            return *std::move(muted);
+        }
 
         if (type == "REROUTE") {
             auto source = input_source(node, "Input");

@@ -240,7 +240,12 @@ if(PSYCLES_BUILD_TESTS)
             NAME psycles.blender_export_pointiness_source
             SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_pointiness_source.py"
             ARGUMENTS "${blender_exporter}" "${blender_inspector}")
-        foreach(test IN ITEMS linked_images generated_images particle_hair cycles_identity)
+        foreach(test IN ITEMS
+                linked_images
+                generated_images
+                particle_hair
+                cycles_identity
+                muted_nodes)
             psycles_add_blender_test(
                 NAME "psycles.blender_export_${test}"
                 SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_${test}.py"
