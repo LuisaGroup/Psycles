@@ -375,8 +375,9 @@ SurfaceCallables make_surface_callables(
                 unpack_surface_point(packed_point);
             SurfaceBssrdfNormalVisitor visitor{
                 scene->volume_metadata.closure_allocation_budget};
-            static_cast<void>(scene->surfaces.collect_closures(
+            static_cast<void>(scene->surfaces.collect_subsurface_closures(
                 surface_tag,
+                scene->surface_bssrdf_tags,
                 services,
                 point,
                 reflective_caustics,

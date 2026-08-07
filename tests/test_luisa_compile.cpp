@@ -91,17 +91,34 @@ class CompileProbeSurface final : public Surface {
 private:
     bool _transparent{};
     std::size_t *_transparent_recordings{};
+    std::size_t *_subsurface_recordings{};
 
 public:
     CompileProbeSurface(
         bool transparent,
-        std::size_t *transparent_recordings) noexcept
+        std::size_t *transparent_recordings,
+        std::size_t *subsurface_recordings) noexcept
         : _transparent{transparent},
-          _transparent_recordings{transparent_recordings} {}
+          _transparent_recordings{transparent_recordings},
+          _subsurface_recordings{subsurface_recordings} {}
 
     [[nodiscard]] SurfaceCapabilities capabilities()
         const noexcept override {
         return {.may_be_transparent = _transparent};
+    }
+
+    [[nodiscard]] SurfaceClosureCollection collect_closures(
+        const ShaderServices &,
+        const SurfacePoint &point,
+        Expr<bool>,
+        Expr<bool>,
+        SurfaceClosureCollector &collector) const noexcept override {
+        if (_subsurface_recordings != nullptr) {
+            ++*_subsurface_recordings;
+        }
+        collector.begin(point.shading_normal);
+        collector.finish();
+        return {.shading_normal = point.shading_normal};
     }
 
     [[nodiscard]] SurfaceEvaluation evaluate(
@@ -132,9 +149,17 @@ public:
     [[nodiscard]] Float3 transparent_extinction(
         const ShaderServices &,
         const SurfacePoint &) const noexcept override {
-        ++*_transparent_recordings;
+        if (_transparent_recordings != nullptr) {
+            ++*_transparent_recordings;
+        }
         return make_float3(_transparent ? 0.5f : 0.0f);
     }
+};
+
+class CompileProbeCollector final : public SurfaceClosureCollector {
+
+public:
+    void add(const SurfaceClosureRecord &) noexcept override {}
 };
 
 [[nodiscard]] ShaderGraph make_graph() {
@@ -237,10 +262,20 @@ int main() {
     SurfaceDispatch transparency_surfaces;
     static_cast<void>(
         transparency_surfaces.create<CompileProbeSurface>(
-            false, &opaque_transparency_recordings));
+            false, &opaque_transparency_recordings, nullptr));
     static_cast<void>(
         transparency_surfaces.create<CompileProbeSurface>(
-            true, &transparent_transparency_recordings));
+            true, &transparent_transparency_recordings, nullptr));
+    std::size_t opaque_subsurface_recordings = 0u;
+    std::size_t subsurface_recordings = 0u;
+    SurfaceDispatch subsurface_surfaces;
+    static_cast<void>(
+        subsurface_surfaces.create<CompileProbeSurface>(
+            false, nullptr, &opaque_subsurface_recordings));
+    static_cast<void>(
+        subsurface_surfaces.create<CompileProbeSurface>(
+            false, nullptr, &subsurface_recordings));
+    const luisa::vector<luisa::uint> surface_bssrdf_tags{1u};
 
     Kernel1D kernel = [&]() noexcept {
         ConstantShaderServices services;
@@ -318,12 +353,25 @@ int main() {
                 dispatch_x() % 2u,
                 services,
                 point);
+        CompileProbeCollector subsurface_collector;
+        const auto subsurface =
+            subsurface_surfaces.collect_subsurface_closures(
+                dispatch_x() % 2u,
+                surface_bssrdf_tags,
+                services,
+                point,
+                true,
+                true,
+                subsurface_collector);
         device_assert(evaluation.pdf >= 0.0f);
         device_assert(all(transparent >= 0.0f));
+        device_assert(all(subsurface.shading_normal == point.shading_normal));
     };
     if (!kernel.function() ||
         opaque_transparency_recordings != 0u ||
-        transparent_transparency_recordings != 1u) {
+        transparent_transparency_recordings != 1u ||
+        opaque_subsurface_recordings != 0u ||
+        subsurface_recordings != 1u) {
         return 3;
     }
     if (!attribute_lookup_cfg_is_bounded()) {
