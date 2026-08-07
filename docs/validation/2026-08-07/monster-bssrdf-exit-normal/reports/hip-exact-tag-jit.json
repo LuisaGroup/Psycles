@@ -1,0 +1,41 @@
+{
+  "schema": "psycles.hip-jit-comparison.v1",
+  "scene": "Monster Under the Bed",
+  "device": "AMD Radeon RX 9070 XT",
+  "resolution": [960, 960],
+  "samples": 1,
+  "baseline": {
+    "description": "BSSRDF exit callable dispatches every surface graph",
+    "llvm_codegen_seconds": 26.453765122,
+    "amdgpu_input_bytes": 4475544,
+    "hip_bitcode_link_seconds": 100.736904761,
+    "code_object_bytes": 6978424,
+    "cache_entry_bytes": 6980211,
+    "total_shader_jit_seconds": 134.160
+  },
+  "exact_bssrdf_tags": {
+    "description": "parameter-aware Cycles has_surface_bssrdf set mapped to deduplicated surface tags",
+    "llvm_codegen_seconds": 24.652291953,
+    "amdgpu_input_bytes": 4108096,
+    "hip_bitcode_link_seconds": 98.815950252,
+    "code_object_bytes": 6406480,
+    "cache_entry_bytes": 6408267,
+    "total_shader_jit_seconds": 129.689
+  },
+  "relative_reduction_percent": {
+    "llvm_codegen": 6.809893,
+    "amdgpu_input": 8.210130,
+    "hip_bitcode_link": 1.906902,
+    "code_object": 8.195891,
+    "total_shader_jit": 3.332588
+  },
+  "semantic_check": {
+    "passes": 15,
+    "resolutions_and_samples": [
+      [960, 960, 1],
+      [960, 960, 512]
+    ],
+    "maximum_rmse": 0.0,
+    "maximum_absolute_error": 0.0
+  }
+}

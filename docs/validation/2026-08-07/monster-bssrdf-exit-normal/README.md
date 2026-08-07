@@ -2,11 +2,13 @@
 
 ## Outcome
 
-Psycles `main@fb69b15` now constructs the synthetic diffuse closure at a
-BSSRDF exit with the same closure-weighted normal as current Cycles. The old
-path reused the ordinary exit `ShaderData::N`. That was geometrically valid,
-but it was not the normal Cycles obtains by re-evaluating a bump-capable
-material and reducing its retained BSSRDF closures.
+Psycles `main@fb69b15` constructs the synthetic diffuse closure at a BSSRDF
+exit with the same closure-weighted normal as current Cycles. The old path
+reused the ordinary exit `ShaderData::N`. That was geometrically valid, but it
+was not the normal Cycles obtains by re-evaluating a bump-capable material and
+reducing its retained BSSRDF closures. Follow-up `main@dc98dd0` preserves that
+relation while specializing the exit-only shader dispatch to the exact set of
+scene surface tags that can produce a BSSRDF.
 
 The repair is a material-independent closure reduction, not a Monster-shaped
 patch. At film coordinate `(534, 374)`, sample zero of a 128-sample sequence,
@@ -120,8 +122,12 @@ color, normal, and direct-glossy controls support the diagnosis: this repair
 changes the post-BSSRDF scattering frame, not exported textures, UVs,
 geometry, or general surface shading.
 
-The full report is [hip-512-vs-cycles-hip.json](reports/hip-512-vs-cycles-hip.json)
+The current report is
+[hip-512-exact-tags-vs-cycles-hip.json](reports/hip-512-exact-tags-vs-cycles-hip.json)
 and the complete command/timing manifest is
+[hip-512-exact-tags-benchmark.json](reports/hip-512-exact-tags-benchmark.json).
+The original unfiltered-callable report and manifest remain available as
+[hip-512-vs-cycles-hip.json](reports/hip-512-vs-cycles-hip.json) and
 [hip-512-benchmark.json](reports/hip-512-benchmark.json).
 
 ## Visual inspection
@@ -156,20 +162,58 @@ normal frame.
 
 ## Performance and verification
 
-Render-only time is `26.6229 s` for Cycles HIP and `135.852 s` for Psycles
-HIP, so this checkpoint is `5.103x` slower on the same GPU. Before the repair,
-the matched times were `26.5232 s` and `129.579 s` (`4.886x` slower). The
-additional raw-graph evaluation occurs only at BSSRDF exits, but currently
-costs about 4.8% in this SSS-heavy scene.
+The follow-up run measures `26.6530 s` for Cycles HIP and `134.636 s` for
+Psycles HIP, so this checkpoint is `5.051x` slower on the same GPU. The
+unfiltered exit callable took `135.852 s`; exact tag specialization is 0.90%
+faster and reduces the remaining cost over the pre-correctness `129.579 s`
+run from about 4.8% to 3.9%. These are render-only times; cache-cold JIT and
+scene compilation are reported separately.
 
-The cold production shader also exposes a code-generation boundary that must
-be tightened: LLVM code generation takes `26.454 s`, then HIP bitcode linking
-takes `100.737 s` for a 6.98 MB code object. Total shader JIT is `134.160 s`,
-up from `30.556 s` before the new independent material-dispatch callable.
-This is recorded as an active engineering issue, not normalized away as
-render time. The next repair will specialize the exit-normal dispatch to
-statically BSSRDF-capable material programs so unrelated graphs are absent
-from that callable without baking any material values.
+The specialization is a set-image construction. For scene material `m`, let
+`H(m)` be the same parameter-aware `has_surface_bssrdf` predicate used to
+decide Cycles surface BSSRDF support, and let `tag(m)` be the material's
+structure-deduplicated `SurfaceDispatch` tag. The exit-only dispatch domain is
+
+```text
+T_bssrdf = { tag(m) | H(m) }
+```
+
+Any realized BSSRDF exit was produced by a material satisfying `H`, so its
+tag is necessarily in `T_bssrdf`; every tag outside the set is unreachable in
+this callable. The classifier removes unreachable host-generated AST cases.
+It does not bake a closure or replace any device expression: selected graphs,
+authored parameters, textures, closure allocation, and the weighted-normal
+reduction are still evaluated by Luisa on the device. If structurally shared
+materials map to the same tag, set-image deduplication retains the tag whenever
+any member satisfies `H`, which is the required conservative boundary.
+
+A first attempt using the graph-level `may_have_subsurface` capability reduced
+the Monster AMDGPU input by only 32 bytes because every Principled program was
+conservatively eligible; total JIT remained `135.578 s`. The parameter-aware
+tag domain gives the following cache-cold result:
+
+| HIP production-kernel stage | Unfiltered exit callable | Exact BSSRDF tags | Change |
+| --- | ---: | ---: | ---: |
+| LLVM codegen | 26.454 s | 24.652 s | 6.81% lower |
+| AMDGPU input | 4,475,544 B | 4,108,096 B | 8.21% lower |
+| HIP bitcode link | 100.737 s | 98.816 s | 1.91% lower |
+| Code object | 6,978,424 B | 6,406,480 B | 8.20% lower |
+| Total shader JIT | 134.160 s | 129.689 s | 3.33% lower |
+
+The link remains the dominant cold-start cost and does not scale linearly with
+the removed code. This specialization improves the boundary but does not close
+the broader monolithic-kernel compilation problem. Exact stage values and
+reductions are retained in
+[hip-exact-tag-jit.json](reports/hip-exact-tag-jit.json).
+
+At both 960x960x1 and 960x960x512, all 15 retained linear AOVs are pixel-exact
+between the old callable and exact tag dispatch: every pass has RMSE and
+maximum absolute error equal to zero. The 512-spp evidence is
+[hip-512-exact-tags-vs-unfiltered.json](reports/hip-512-exact-tags-vs-unfiltered.json);
+the independent 1-spp comparison against the preceding capability-filtered
+build is
+[hip-1-exact-tags-vs-capability.json](reports/hip-1-exact-tags-vs-capability.json).
+Different whole-file EXR hashes are container metadata, not pixel changes.
 
 Verification completed with:
 
