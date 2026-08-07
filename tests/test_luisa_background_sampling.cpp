@@ -64,6 +64,7 @@ int main(int argc, char **argv) {
         device.create_buffer<luisa::float4>(random.size());
     auto round_trip_buffer = device.create_buffer<luisa::float4>(random.size());
     auto pole_uv_buffer = device.create_buffer<luisa::float2>(2u);
+    auto cycles_sun_oracle_buffer = device.create_buffer<luisa::float4>(1u);
 
     constexpr auto sun_radius = 0.01f;
     Kernel1D evaluate = [](BufferFloat2 conditional_cdf,
@@ -71,7 +72,8 @@ int main(int argc, char **argv) {
                            BufferFloat2 randoms,
                            BufferFloat4 direction_pdf,
                            BufferFloat4 round_trip,
-                           BufferFloat2 pole_uv) noexcept {
+                           BufferFloat2 pole_uv,
+                           BufferFloat4 cycles_sun_oracle) noexcept {
         const auto index = dispatch_x();
         const auto sample = background_sampling::sample(conditional_cdf,
                                                         marginal_cdf,
@@ -110,12 +112,46 @@ int main(int argc, char **argv) {
                 1u,
                 background_sampling::direction_to_equirectangular(
                     make_float3(0.0f, 0.0f, -1.0f)));
+
+            // Lone Monk, film (491, 221), sample 0, first NEE event. These
+            // inputs and the expected direction below come from the latest
+            // Cycles HIP path oracle. Together they lock mixture remapping,
+            // concentric-disk sampling, cone-radius remapping, and Cycles'
+            // orthonormal-frame rotation as one deterministic relation.
+            constexpr auto lone_monk_radius =
+                0.008726646192371845f;
+            const auto lone_monk_axis = make_float3(
+                0.3009074926376343f,
+                -0.5211871266365051f,
+                0.7986355423927307f);
+            const auto oracle_sample =
+                background_sampling::sample(
+                    conditional_cdf,
+                    marginal_cdf,
+                    width,
+                    height,
+                    1.0f,
+                    4.0f,
+                    lone_monk_axis,
+                    lone_monk_radius,
+                    make_float2(
+                        0.6973861455917358f,
+                        0.4494679570198059f));
+            cycles_sun_oracle.write(
+                0u,
+                make_float4(
+                    oracle_sample.direction,
+                    background_sampling::sun_pdf(
+                        lone_monk_axis,
+                        lone_monk_radius,
+                        oracle_sample.direction)));
         };
     };
     auto shader = device.compile(evaluate);
     std::array<luisa::float4, random.size()> direction_pdf{};
     std::array<luisa::float4, random.size()> round_trip{};
     std::array<luisa::float2, 2u> pole_uv{};
+    std::array<luisa::float4, 1u> cycles_sun_oracle{};
     stream << conditional_buffer.copy_from(luisa::span{conditional})
            << marginal_buffer.copy_from(luisa::span{marginal})
            << random_buffer.copy_from(luisa::span{random})
@@ -124,11 +160,14 @@ int main(int argc, char **argv) {
                      random_buffer,
                      direction_pdf_buffer,
                      round_trip_buffer,
-                     pole_uv_buffer)
+                     pole_uv_buffer,
+                     cycles_sun_oracle_buffer)
                   .dispatch(static_cast<std::uint32_t>(random.size()))
            << direction_pdf_buffer.copy_to(luisa::span{direction_pdf})
            << round_trip_buffer.copy_to(luisa::span{round_trip})
            << pole_uv_buffer.copy_to(luisa::span{pole_uv})
+           << cycles_sun_oracle_buffer.copy_to(
+                  luisa::span{cycles_sun_oracle})
            << synchronize();
 
     if (!near(pole_uv[0u].x, 0.5f, 1.0e-7f) ||
@@ -139,6 +178,24 @@ int main(int argc, char **argv) {
                   << ": north {" << pole_uv[0u].x << ", "
                   << pole_uv[0u].y << "}, south {" << pole_uv[1u].x
                   << ", " << pole_uv[1u].y << "}\n";
+        return EXIT_FAILURE;
+    }
+
+    constexpr auto expected_lone_monk_direction = luisa::float3{
+        0.30576658248901367f,
+        -0.5236937999725342f,
+        0.7951425313949585f};
+    constexpr auto expected_lone_monk_sun_pdf = 4179.798828125f;
+    const auto &oracle = cycles_sun_oracle.front();
+    const auto oracle_error = std::max(
+        {std::abs(oracle.x - expected_lone_monk_direction.x),
+         std::abs(oracle.y - expected_lone_monk_direction.y),
+         std::abs(oracle.z - expected_lone_monk_direction.z)});
+    if (oracle_error > 3.0e-6f ||
+        !near(oracle.w, expected_lone_monk_sun_pdf, 0.05f)) {
+        std::cerr << "Cycles background-Sun oracle failed on " << backend
+                  << ": direction/pdf {" << oracle.x << ", " << oracle.y
+                  << ", " << oracle.z << ", " << oracle.w << "}\n";
         return EXIT_FAILURE;
     }
 

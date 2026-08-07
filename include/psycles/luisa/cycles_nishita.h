@@ -375,15 +375,6 @@ struct SunPixels {
         ozone_density);
 }
 
-[[nodiscard]] inline Float precise_angle(
-    Float3 a,
-    Float3 b) noexcept {
-    // Cycles avoids acos(dot(a, b)) here because its precision collapses
-    // around the sub-degree solar disc.
-    return 2.0f *
-           atan2(length(a - b), length(a + b));
-}
-
 template<typename Texture>
 [[nodiscard]] inline Float3 sky_radiance_xyz(
     const Texture &texture,
@@ -421,8 +412,8 @@ template<typename Texture>
     Float sun_elevation,
     Float angular_diameter,
     Float sun_intensity) noexcept {
-    const auto angle =
-        precise_angle(direction, sun_direction);
+    const auto angle = spherical_geometry::precise_angle(
+        direction, sun_direction);
     const auto radius = angular_diameter * 0.5f;
     const auto direction_elevation =
         half_pi - acos(clamp(direction.z, -1.0f, 1.0f));
