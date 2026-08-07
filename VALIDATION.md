@@ -9,17 +9,28 @@ multilayer OpenEXR output.
 ## Latest checkpoint
 
 The newest
+[Lone Monk muted-node checkpoint](docs/validation/2026-08-07/lone-monk-muted-node-bypass/README.md)
+proves that the stable book-page residual was lost Blender/Cycles graph
+topology, not a transform or UV defect. The source `paper - page / Mix.001`
+is muted and must become its runtime `A_Color -> Result_Color` internal link.
+The generic exporter/normalizer rule reduces 960x720x512 Diffuse Color RMSE
+20.52x to `0.00020008`; exact closure-weight error falls from 20--24% to about
+0.1%. Cycles CPU/HIP and Psycles fallback/HIP/Vulkan then all complete a fresh
+960x720x128 matrix, with Psycles Diffuse Color relative RMSE
+`0.001106--0.001160` and no invalid pixels. The full 32-job build and 215/215
+tests pass. Numeric reports and original-resolution before/after plus
+cross-backend triptychs are retained.
+
+The preceding
 [2026-08-07 current-head Lone Monk checkpoint](docs/validation/2026-08-07/lone-monk-current-head/README.md)
-re-renders the unmodified official scene at 960x720, 128 fixed spp on Cycles
-CPU/HIP and Psycles fallback/HIP/Vulkan. All five entries complete from one
-fresh raw-graph export. Psycles HIP Combined relative RMSE is `0.026193`
-against Cycles HIP, the mean luminance ratio is `1.001109`, and original-size
-inspection finds the previously disputed grass coverage and fine silhouettes
-structurally aligned. This is not a final indirect-transport parity claim.
-Render-only fallback, HIP, and Vulkan are respectively `9.86x` slower than
-Cycles CPU, `4.09x` slower than Cycles HIP, and `103.54x` slower than Cycles
-HIP. The checkpoint records the full five-way reports, triptychs, a grass
-crop, and the 19.56-minute Vulkan cold-JIT diagnosis.
+first established five-way 960x720x128 completion and structurally aligned
+grass coverage. The refreshed matrix now measures Psycles HIP Combined
+relative RMSE `0.026161` and a `1.001226` mean-luminance ratio. This remains
+short of a final indirect-transport parity claim. Render-only fallback, HIP,
+and Vulkan are respectively `10.06x` slower than Cycles CPU, `4.10x` slower
+than Cycles HIP, and `103.61x` slower than Cycles HIP. The new cold Vulkan JIT
+is 19.75 minutes; about 243 seconds end at optimized SPIR-V and roughly 942
+seconds remain in RADV NIR/ACO lowering.
 
 The accompanying
 [Monster Under the Bed checkpoint](docs/validation/2026-08-07/monster-current-head/README.md)
