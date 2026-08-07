@@ -17,6 +17,8 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/microfacet_glass_component.cpp
     src/luisa/principled_base_component.cpp
     src/luisa/principled_layer_component.cpp
+    src/luisa/thin_glass_component.cpp
+    src/luisa/thin_subsurface_component.cpp
     src/luisa/graph_surface_scattering.cpp
     src/luisa/graph_surface_state.cpp
     src/luisa/graph_surface_value_expression.cpp

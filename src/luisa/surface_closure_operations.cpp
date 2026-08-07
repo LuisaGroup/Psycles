@@ -54,6 +54,9 @@ aov_contribution(
     const auto is_translucent =
         closure.kind == static_cast<std::uint32_t>(
                             SurfaceClosureKind::translucent);
+    const auto is_rough_translucent =
+        closure.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::rough_translucent);
     const auto is_principled =
         closure.kind == static_cast<std::uint32_t>(
                             SurfaceClosureKind::principled);
@@ -70,10 +73,15 @@ aov_contribution(
     const auto is_refraction =
         closure.kind == static_cast<std::uint32_t>(
                             SurfaceClosureKind::refraction);
+    const auto is_thin_glass_transmission =
+        closure.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::thin_glass_transmission);
     const auto is_bssrdf =
         closure.kind == static_cast<std::uint32_t>(
                             SurfaceClosureKind::bssrdf);
     const auto is_dielectric = is_glass | is_refraction;
+    const auto is_dielectric_family =
+        is_dielectric | is_thin_glass_transmission;
     const auto generic_glossy =
         (is_principled & !is_sheen) | is_glossy;
 
@@ -91,10 +99,11 @@ aov_contribution(
     const auto glossy_normal = select(
         corrected_glossy_normal,
         closure.normal,
-        is_sheen);
+        is_sheen | is_rough_translucent |
+            is_thin_glass_transmission);
 
     const auto diffuse_family =
-        is_diffuse | is_translucent | is_bssrdf;
+        is_diffuse | is_translucent | is_rough_translucent | is_bssrdf;
     const auto diffuse_albedo = select(
         select(
             make_float3(0.0f),
@@ -118,7 +127,7 @@ aov_contribution(
     const auto glossy_weight = select(
         0.0f,
         closure_pass_weight,
-        is_dielectric | generic_glossy);
+        is_dielectric_family | generic_glossy);
 
     luisa::compute::Var<SurfaceAovContributionCall> result;
     result.albedo = diffuse_albedo;
@@ -126,7 +135,7 @@ aov_contribution(
         select(
             make_float3(0.0f),
             closure.reflection_albedo,
-            is_dielectric) +
+            is_dielectric_family) +
         select(
             make_float3(0.0f),
             closure.albedo,
@@ -134,7 +143,7 @@ aov_contribution(
     result.transmission_albedo = select(
         make_float3(0.0f),
         closure.transmission_albedo,
-        is_dielectric);
+        is_dielectric_family);
     result.transparency = select(
         make_float3(0.0f),
         closure.weight,
@@ -143,7 +152,8 @@ aov_contribution(
         diffuse_weight * select(
                              closure.normal,
                              glossy_normal,
-                             is_translucent) +
+                             is_translucent |
+                                 is_rough_translucent) +
         glossy_weight * glossy_normal;
     result.total_weight =
         diffuse_weight + glossy_weight;

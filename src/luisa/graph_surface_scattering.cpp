@@ -229,6 +229,7 @@ template<typename Closure>
     const auto diffuse_closure =
         has_kind(closure, SurfaceClosureKind::diffuse) |
         has_kind(closure, SurfaceClosureKind::translucent) |
+        has_kind(closure, SurfaceClosureKind::rough_translucent) |
         (is_principled &
             has_lobe(closure, SurfaceClosureLobe::sheen));
 
@@ -295,6 +296,8 @@ template<typename Closure>
         closure, SurfaceClosureKind::diffuse);
     const auto is_translucent = has_kind(
         closure, SurfaceClosureKind::translucent);
+    const auto is_rough_translucent = has_kind(
+        closure, SurfaceClosureKind::rough_translucent);
     const auto is_principled = has_kind(
         closure, SurfaceClosureKind::principled);
     const auto is_sheen =
@@ -306,6 +309,8 @@ template<typename Closure>
         closure, SurfaceClosureKind::glass);
     const auto is_refraction = has_kind(
         closure, SurfaceClosureKind::refraction);
+    const auto is_thin_glass_transmission = has_kind(
+        closure, SurfaceClosureKind::thin_glass_transmission);
     const auto is_transparent = has_kind(
         closure, SurfaceClosureKind::transparent);
     const auto is_bssrdf = has_kind(
@@ -319,7 +324,7 @@ template<typename Closure>
     flags = select(flags,
         bsdf | has_eval |
             cycles_closure::runtime_bsdf_has_transmission,
-        is_translucent);
+        is_translucent | is_rough_translucent);
     flags = select(flags, bsdf | has_eval, is_sheen);
 
     auto alpha = clamp(closure.roughness, 0.0f, 1.0f);
@@ -341,6 +346,10 @@ template<typename Closure>
         microfacet_flags |
             cycles_closure::runtime_bsdf_has_transmission,
         is_refraction);
+    flags = select(flags,
+        microfacet_flags |
+            cycles_closure::runtime_bsdf_has_transmission,
+        is_thin_glass_transmission);
     flags = select(flags,
         bsdf | cycles_closure::runtime_transparent,
         is_transparent);
@@ -367,6 +376,8 @@ template<typename Closure>
         closure, SurfaceClosureKind::diffuse);
     const auto is_translucent = has_kind(
         closure, SurfaceClosureKind::translucent);
+    const auto is_rough_translucent = has_kind(
+        closure, SurfaceClosureKind::rough_translucent);
     const auto is_principled = has_kind(
         closure, SurfaceClosureKind::principled);
     const auto is_sheen =
@@ -378,6 +389,8 @@ template<typename Closure>
         closure, SurfaceClosureKind::glass);
     const auto is_refraction = has_kind(
         closure, SurfaceClosureKind::refraction);
+    const auto is_thin_glass_transmission = has_kind(
+        closure, SurfaceClosureKind::thin_glass_transmission);
     const auto is_transparent = has_kind(
         closure, SurfaceClosureKind::transparent);
     const auto is_bssrdf = has_kind(
@@ -393,6 +406,9 @@ template<typename Closure>
     type = select(type,
         UInt{cycles_closure::type_translucent},
         is_translucent);
+    type = select(type,
+        UInt{cycles_closure::type_rough_translucent},
+        is_rough_translucent);
     const auto reflection = select(
         UInt{cycles_closure::type_microfacet_ggx},
         UInt{cycles_closure::type_microfacet_beckmann},
@@ -413,6 +429,9 @@ template<typename Closure>
         UInt{cycles_closure::type_microfacet_beckmann_refraction},
         closure.beckmann);
     type = select(type, refraction, is_refraction);
+    type = select(type,
+        UInt{cycles_closure::type_thin_glass_transmission},
+        is_thin_glass_transmission);
     type = select(type,
         UInt{cycles_closure::type_transparent},
         is_transparent);
@@ -557,6 +576,9 @@ template<typename Closure>
     const auto is_translucent =
         closure.kind == static_cast<std::uint32_t>(
                             SurfaceClosureKind::translucent);
+    const auto is_rough_translucent =
+        closure.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::rough_translucent);
     const auto is_principled =
         closure.kind == static_cast<std::uint32_t>(
                             SurfaceClosureKind::principled);
@@ -573,9 +595,13 @@ template<typename Closure>
     const auto is_refraction =
         closure.kind == static_cast<std::uint32_t>(
                             SurfaceClosureKind::refraction);
+    const auto is_thin_glass_transmission =
+        closure.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::thin_glass_transmission);
     const auto is_microfacet =
         (is_principled & !is_sheen) |
-        is_glossy | is_glass | is_refraction;
+        is_glossy | is_glass | is_refraction |
+        is_thin_glass_transmission;
     const auto alpha = microfacet_alpha(
         closure, glossy_filter_roughness);
     const auto microfacet_roughness_squared = select(
@@ -584,7 +610,7 @@ template<typename Closure>
         microfacet_is_singular(
             closure, glossy_filter_roughness));
     const auto regular_non_microfacet =
-        is_diffuse | is_translucent | is_sheen;
+        is_diffuse | is_translucent | is_rough_translucent | is_sheen;
     return select(
         select(0.0f,
             microfacet_roughness_squared,
@@ -630,7 +656,10 @@ template<typename Closure>
     // directional factor is constant one (plus optional MULTI_GGX scale).
     return select(shaded,
         closure.evaluation_scale,
-        has_kind(closure, SurfaceClosureKind::glossy));
+        has_kind(closure, SurfaceClosureKind::glossy) |
+            has_kind(
+                closure,
+                SurfaceClosureKind::thin_glass_transmission));
 }
 
 [[nodiscard]] Float3 microfacet_intensity(

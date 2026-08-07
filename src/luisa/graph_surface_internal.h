@@ -45,6 +45,11 @@ enum class PrincipledLobe : std::uint8_t {
 struct TracedClosure {
     compiler::ClosureOperation operation{
         compiler::ClosureOperation::diffuse};
+    // A graph operation may expand into a more specific Cycles physical
+    // closure. `none` delegates to `operation`; every other value is an
+    // immutable host-stage type tag while all authored values remain Luisa
+    // device expressions.
+    SurfaceClosureKind physical_kind{SurfaceClosureKind::none};
     PrincipledLobe principled_lobe{PrincipledLobe::none};
     Float3 weight;
     // Allocation and sampling are distinct in Cycles: Fresnel setup may
@@ -84,6 +89,7 @@ struct TracedClosure {
     Float specular_ior_level;
     Float3 specular_tint;
     Float alpha;
+    Bool thin_wall{false};
     Float sheen_weight;
     Float sheen_roughness;
     Float3 sheen_tint;

@@ -2,6 +2,7 @@
 
 #include "graph_surface_internal.h"
 #include "microfacet_glass_component.h"
+#include "thin_glass_component.h"
 
 #include <psycles/luisa/cycles_closure.h>
 
@@ -109,6 +110,8 @@ surface_closure_selection(
         closure, SurfaceClosureKind::diffuse);
     const auto is_translucent = has_kind(
         closure, SurfaceClosureKind::translucent);
+    const auto is_rough_translucent = has_kind(
+        closure, SurfaceClosureKind::rough_translucent);
     const auto is_principled = has_kind(
         closure, SurfaceClosureKind::principled);
     const auto is_sheen =
@@ -120,6 +123,8 @@ surface_closure_selection(
         closure, SurfaceClosureKind::glass);
     const auto is_refraction = has_kind(
         closure, SurfaceClosureKind::refraction);
+    const auto is_thin_glass_transmission = has_kind(
+        closure, SurfaceClosureKind::thin_glass_transmission);
     const auto is_transparent = has_kind(
         closure, SurfaceClosureKind::transparent);
     const auto is_bssrdf = has_kind(
@@ -141,7 +146,7 @@ surface_closure_selection(
         is_transparent);
     eligible = select(eligible,
         diffuse_enabled & transmission_enabled,
-        is_translucent);
+        is_translucent | is_rough_translucent);
     eligible = select(eligible,
         diffuse_enabled,
         is_diffuse | is_sheen | is_bssrdf);
@@ -154,6 +159,9 @@ surface_closure_selection(
     eligible = select(eligible,
         glossy_enabled & transmission_enabled,
         is_refraction);
+    eligible = select(eligible,
+        glossy_enabled & transmission_enabled,
+        is_thin_glass_transmission);
     eligible &= detail::closure_allocated(identity) &
                 Bool{closure.setup_valid};
 
@@ -168,7 +176,10 @@ surface_closure_selection(
             geometric_normal, incoming, normal),
         correction_enabled);
     const auto glossy_normal =
-        select(corrected_normal, normal, is_sheen);
+        select(corrected_normal,
+            normal,
+            is_sheen | is_rough_translucent |
+                is_thin_glass_transmission);
 
     luisa::compute::Var<SurfaceClosureSelectionCall> result;
     result.weight = select(
@@ -211,9 +222,13 @@ surface_closure_conditional_sample(
     Float rescaled_lobe{rescaled_lobe_expression};
     const detail::MicrofacetGlassComponent microfacet_glass{
         services, point};
+    const detail::ThinGlassComponent thin_glass{
+        services, point};
 
     const auto is_translucent = has_kind(
         closure, SurfaceClosureKind::translucent);
+    const auto is_rough_translucent = has_kind(
+        closure, SurfaceClosureKind::rough_translucent);
     const auto is_principled = has_kind(
         closure, SurfaceClosureKind::principled);
     const auto is_sheen =
@@ -227,6 +242,8 @@ surface_closure_conditional_sample(
         closure, SurfaceClosureKind::glass);
     const auto is_refraction = has_kind(
         closure, SurfaceClosureKind::refraction);
+    const auto is_thin_glass_transmission = has_kind(
+        closure, SurfaceClosureKind::thin_glass_transmission);
     const auto is_bssrdf = has_kind(
         closure, SurfaceClosureKind::bssrdf);
     const auto is_dielectric = is_glass | is_refraction;
@@ -274,6 +291,21 @@ surface_closure_conditional_sample(
         glass_transmission = glass.transmission;
         valid = glass.valid;
     }
+    $elif(is_thin_glass_transmission) {
+        const auto thin = thin_glass.sample(
+            closure,
+            incoming,
+            random_direction,
+            query.glossy_filter_roughness);
+        direction = thin.direction;
+        roughness = make_float2(thin.alpha);
+        singular_evaluation = thin.singular_evaluation;
+        singular_pdf = thin.singular_pdf;
+        eta = 1.0f;
+        singular = thin.singular;
+        glass_transmission = true;
+        valid = thin.valid;
+    }
     $elif(is_sheen) {
         direction = detail::sample_sheen(
             closure, incoming, random_direction);
@@ -297,7 +329,11 @@ surface_closure_conditional_sample(
     }
     $else {
         const auto normal = select(
-            closure.normal, -glossy_normal, is_translucent);
+            closure.normal,
+            select(-glossy_normal,
+                closure.normal,
+                is_rough_translucent),
+            is_translucent | is_rough_translucent);
         direction = detail::sample_cosine_hemisphere(
             normal, random_direction);
     };
@@ -305,13 +341,16 @@ surface_closure_conditional_sample(
     using namespace surface_closure_sample_property;
     UInt properties = 0u;
     properties |= select(0u, transparent, is_transparent);
-    properties |= select(0u, translucent, is_translucent);
+    properties |= select(
+        0u, translucent, is_translucent | is_rough_translucent);
     properties |= select(0u, glossy, sample_glossy);
-    properties |= select(0u, glass, is_dielectric);
+    properties |= select(
+        0u, glass, is_dielectric | is_thin_glass_transmission);
     properties |= select(
         0u,
         surface_closure_sample_property::transmission,
-        is_dielectric & glass_transmission);
+        (is_dielectric | is_thin_glass_transmission) &
+            glass_transmission);
     properties |= select(0u,
         surface_closure_sample_property::singular,
         singular);
@@ -651,6 +690,45 @@ SurfaceSampleTrace SurfaceClosureSelectedSample::finish(
         trace.closure_valid = _selected;
     }
     return trace;
+}
+
+DirectSurfaceClosureSamplingOperation::
+    DirectSurfaceClosureSamplingOperation(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        const SurfaceQuery &query) noexcept
+    : _services{services},
+      _point{point},
+      _query{query},
+      _incoming{make_surface_closure_sampling_incoming(point)} {}
+
+luisa::compute::Var<SurfaceClosureSelectionCall>
+DirectSurfaceClosureSamplingOperation::selection(
+    const SurfaceClosureExpression &closure) const noexcept {
+    return surface_closure_selection(
+        _point,
+        closure.reference(),
+        Expr<luisa::float3>{_incoming.expression()},
+        _query);
+}
+
+luisa::compute::Var<SurfaceClosureConditionalSampleCall>
+DirectSurfaceClosureSamplingOperation::conditional_sample(
+    Expr<luisa::float3> shading_normal,
+    const SurfaceClosureExpression &closure,
+    Expr<luisa::float3> glossy_normal,
+    Expr<luisa::float2> random_direction,
+    Expr<float> rescaled_lobe) const noexcept {
+    return surface_closure_conditional_sample(
+        _services,
+        _point,
+        shading_normal,
+        closure.reference(),
+        Expr<luisa::float3>{_incoming.expression()},
+        glossy_normal,
+        random_direction,
+        rescaled_lobe,
+        _query);
 }
 
 SurfaceClosureSamplingVisitor::SurfaceClosureSamplingVisitor(

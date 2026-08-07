@@ -285,6 +285,40 @@ class SurfaceClosureSamplingOperation {
         Expr<float> rescaled_lobe) const noexcept = 0;
 };
 
+// Direct expression implementation paired with
+// DirectSurfaceClosureEvaluationOperation. Runtime material values remain
+// typed Luisa expressions; C++ virtual dispatch only chooses how the common
+// selection and conditional-sampling AST is emitted.
+class DirectSurfaceClosureSamplingOperation final
+    : public SurfaceClosureSamplingOperation {
+
+  private:
+    const ShaderServices &_services;
+    const SurfacePoint &_point;
+    const SurfaceQuery &_query;
+    Float3 _incoming{make_float3(0.0f)};
+
+  public:
+    DirectSurfaceClosureSamplingOperation(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        const SurfaceQuery &query) noexcept;
+
+    [[nodiscard]] luisa::compute::Var<
+        SurfaceClosureSelectionCall>
+    selection(
+        const SurfaceClosureExpression &closure) const noexcept override;
+
+    [[nodiscard]] luisa::compute::Var<
+        SurfaceClosureConditionalSampleCall>
+    conditional_sample(
+        Expr<luisa::float3> shading_normal,
+        const SurfaceClosureExpression &closure,
+        Expr<luisa::float3> glossy_normal,
+        Expr<luisa::float2> random_direction,
+        Expr<float> rescaled_lobe) const noexcept override;
+};
+
 // Three-pass branch-local implementation of the formal product measure:
 // construct p(i), invert it and execute one p(w_i | i), then evaluate the
 // complete retained mixture at the chosen direction.

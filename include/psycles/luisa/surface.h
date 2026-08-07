@@ -246,7 +246,12 @@ enum class SurfaceClosureKind : std::uint32_t {
     glass,
     transparent,
     refraction,
-    bssrdf
+    bssrdf,
+    // Cycles gives these physical closures distinct identities because
+    // their directional transforms differ from ordinary Translucent and
+    // Refraction even though they occupy the same transport lobes.
+    rough_translucent,
+    thin_glass_transmission
 };
 
 enum class SurfaceClosureLobe : std::uint32_t {

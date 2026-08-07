@@ -20,7 +20,7 @@ struct SurfaceClosureEvaluationQueryCall {
     luisa::uint diffuse_included{};
     luisa::uint glossy_included{};
     luisa::uint glass_included{};
-    luisa::uint refraction_included{};
+    luisa::uint transmission_included{};
 };
 
 }// namespace psycles::luisa_backend::detail
@@ -38,7 +38,7 @@ LUISA_STRUCT(
     diffuse_included,
     glossy_included,
     glass_included,
-    refraction_included) {};
+    transmission_included) {};
 
 namespace psycles::luisa_backend::detail {
 
