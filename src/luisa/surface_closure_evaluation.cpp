@@ -145,12 +145,27 @@ surface_closure_evaluation_contribution(
     const auto selected_unit_ior_glass_delta =
         selected_sample & is_dielectric & glass_is_transmission &
         (abs(closure.ior - 1.0f) < 1.0e-4f);
-    const auto bump_shadowing = detail::bump_shadowing_term(
+    const auto evaluated_bump_shadowing = detail::bump_shadowing_term(
         point,
         shading_normal,
         closure,
         outgoing,
         !selected_sample);
+    // Cycles composes the selected closure from bsdf_sample() and evaluates
+    // only the other closures through bsdf_eval(). Its common post-sample
+    // correction is guarded by !(label & LABEL_TRANSMIT), whereas every
+    // ordinary evaluation receives bump shadowing. Preserve that event-level
+    // rule here rather than encoding individual transmissive closure types in
+    // their samplers. Glass is classified from the sampled outgoing side;
+    // Translucent and Thin Glass are intrinsically transmissive.
+    const auto selected_transmission =
+        selected_sample &
+        (is_translucent | is_rough_translucent |
+            dielectric_is_transmission);
+    const auto bump_shadowing = select(
+        evaluated_bump_shadowing,
+        1.0f,
+        selected_transmission);
     const auto bump_direction_valid = bump_shadowing != 0.0f;
     const auto bump_pdf_valid =
         bump_direction_valid | selected_sample;

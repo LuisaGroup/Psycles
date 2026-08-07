@@ -160,6 +160,9 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "principled_emission_layers": closures._principled_emission_layers,
     "principled_sheen_surface": closures._principled_sheen_surface,
     "principled_surface": closures._principled_surface,
+    "principled_thin_wall_surface": (
+        closures._principled_thin_wall_surface
+    ),
     "principled_transmission_surface": closures._principled_transmission_surface,
     "refraction_bsdf_matrix": refraction_closures._refraction_bsdf_matrix,
     "random_walk_transport": (

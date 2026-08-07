@@ -52,6 +52,7 @@ enum class ValueOperation : std::uint8_t {
   parameter,
   passthrough,
   scalar_to_color,
+  scalar_to_boolean,
   color_to_scalar,
   vector_to_scalar,
   add,

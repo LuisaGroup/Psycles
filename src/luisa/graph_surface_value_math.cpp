@@ -11,6 +11,7 @@ namespace {
         case compiler::ValueOperation::parameter:
         case compiler::ValueOperation::passthrough:
         case compiler::ValueOperation::scalar_to_color:
+        case compiler::ValueOperation::scalar_to_boolean:
         case compiler::ValueOperation::color_to_scalar:
         case compiler::ValueOperation::vector_to_scalar:
         case compiler::ValueOperation::add:
@@ -72,6 +73,19 @@ public:
                 case compiler::ValueOperation::scalar_to_color: {
                     auto x = scalar(instruction.a, result);
                     value = make_float4(x, x, x, 1.0f);
+                    break;
+                }
+                case compiler::ValueOperation::scalar_to_boolean: {
+                    // Cycles maps Blender Boolean sockets to INT and uses
+                    // NODE_CONVERT_FI for a linked float. Preserve its
+                    // truncation boundary exactly; values in (-1, 1) become
+                    // false even though Blender's generic field conversion
+                    // uses a different predicate.
+                    auto x = scalar(instruction.a, result);
+                    value = make_float4(select(
+                        0.0f,
+                        1.0f,
+                        cast<int>(x) != 0));
                     break;
                 }
                 case compiler::ValueOperation::color_to_scalar: {

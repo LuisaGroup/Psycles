@@ -30,17 +30,57 @@ using psycles::test_support::make_surface_point;
 using psycles::test_support::parameter_data;
 using psycles::test_support::ParameterShaderServices;
 
-constexpr std::uint32_t case_count = 6u;
-constexpr std::uint32_t record_count = 47u;
+constexpr std::uint32_t case_count = 7u;
+constexpr std::uint32_t record_count = 51u;
 constexpr luisa::float3 base_color{0.25f, 0.64f, 1.0f};
 constexpr luisa::float3 specular_tint{0.5f, 1.0f, 0.25f};
 
 [[nodiscard]] ShaderGraph make_thin_wall_graph() {
     ShaderGraph graph;
+    const auto thin_wall_value = graph.add_node(
+        node_type::constant_float,
+        "Linked Cycles FLOAT to Boolean");
+    const auto thin_wall_conversion = graph.add_node(
+        node_type::scalar_to_boolean,
+        "Cycles FLOAT to INT Boolean conversion");
+    const auto normal_color = graph.add_node(
+        node_type::constant_color,
+        "Linked closure normal");
+    const auto normal_vector = graph.add_node(
+        node_type::color_to_vector,
+        "Closure normal color to vector");
+    const auto normal = graph.add_node(
+        node_type::vector_to_normal,
+        "Closure normal vector to normal");
     const auto principled = graph.add_node(
         node_type::principled_bsdf,
         "Raw dynamic Thin Wall regression");
     const auto configured =
+        graph.set_input(thin_wall_value,
+            "Value",
+            SocketValue::floating(0.0f)) &&
+        graph.connect(
+            OutputRef{.node = thin_wall_value, .socket = "Value"},
+            thin_wall_conversion,
+            "Value") &&
+        graph.connect(
+            OutputRef{
+                .node = thin_wall_conversion,
+                .socket = "Boolean"},
+            principled,
+            "ThinWall") &&
+        graph.connect(
+            OutputRef{.node = normal_color, .socket = "Color"},
+            normal_vector,
+            "Color") &&
+        graph.connect(
+            OutputRef{.node = normal_vector, .socket = "Vector"},
+            normal,
+            "Vector") &&
+        graph.connect(
+            OutputRef{.node = normal, .socket = "Normal"},
+            principled,
+            "Normal") &&
         graph.set_input(principled,
             "BaseColor",
             SocketValue::color(
@@ -85,9 +125,6 @@ constexpr luisa::float3 specular_tint{0.5f, 1.0f, 0.25f};
             "Alpha",
             SocketValue::floating(1.0f)) &&
         graph.set_input(principled,
-            "ThinWall",
-            SocketValue::boolean(false)) &&
-        graph.set_input(principled,
             "SheenWeight",
             SocketValue::floating(0.0f)) &&
         graph.set_input(principled,
@@ -130,18 +167,19 @@ void set_parameter(
     const auto defaults = parameter_data(program);
     std::vector<luisa::float4> result;
     result.reserve(defaults.size() * case_count);
-    const auto append = [&](bool thin_wall,
+    const auto append = [&](float thin_wall,
                             float transmission,
                             float roughness,
                             float subsurface,
                             float diffuse_roughness,
                             float ior,
-                            float alpha) {
+                            float alpha,
+                            luisa::float3 normal) {
         auto values = defaults;
         set_parameter(values,
             program,
-            "ThinWall",
-            {thin_wall ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f});
+            "Value",
+            {thin_wall, 0.0f, 0.0f, 0.0f});
         set_parameter(values,
             program,
             "TransmissionWeight",
@@ -166,15 +204,31 @@ void set_parameter(
             program,
             "Alpha",
             {alpha, 0.0f, 0.0f, 0.0f});
+        set_parameter(values,
+            program,
+            "Color",
+            {normal.x, normal.y, normal.z, 0.0f});
         result.insert(result.end(), values.begin(), values.end());
     };
 
-    append(false, 1.0f, 0.0f, 0.0f, 0.0f, 1.5f, 1.0f);
-    append(true, 1.0f, 0.0f, 0.0f, 0.0f, 1.5f, 0.8f);
-    append(true, 1.0f, 0.35f, 0.0f, 0.0f, 1.5f, 1.0f);
-    append(true, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f);
-    append(true, 0.0f, 0.0f, 1.0f, 0.4f, 1.0f, 1.0f);
-    append(false, 0.0f, 0.0f, 1.0f, 0.4f, 1.0f, 1.0f);
+    // Cycles converts FLOAT to INT by truncation before treating the target
+    // Boolean socket as true/false. The non-integral values pin both sides of
+    // that boundary and prevent replacement with Blender's generic > 0 cast.
+    constexpr luisa::float3 geometric_normal{0.0f, 0.0f, 1.0f};
+    append(0.75f, 1.0f, 0.0f, 0.0f, 0.0f, 1.5f, 1.0f,
+        geometric_normal);
+    append(1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.5f, 0.8f,
+        geometric_normal);
+    append(1.25f, 1.0f, 0.35f, 0.0f, 0.0f, 1.5f, 1.0f,
+        geometric_normal);
+    append(-1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f,
+        geometric_normal);
+    append(1.0f, 0.0f, 0.0f, 1.0f, 0.4f, 1.0f, 1.0f,
+        geometric_normal);
+    append(-0.75f, 0.0f, 0.0f, 1.0f, 0.4f, 1.0f, 1.0f,
+        geometric_normal);
+    append(1.0f, 0.0f, 0.0f, 1.0f, 0.4f, 1.0f, 1.0f,
+        {0.6f, 0.0f, 0.8f});
     return result;
 }
 
@@ -227,11 +281,18 @@ int main(int argc, char **argv) {
     }
     const auto &program = *lowered.program;
     const auto &closure = program.closure_instructions().front();
-    bool raw_thin_wall = false;
+    bool raw_thin_wall_source = false;
     for (const auto &parameter : program.parameters()) {
-        raw_thin_wall |= parameter.socket == "ThinWall";
+        raw_thin_wall_source |= parameter.socket == "Value";
     }
-    if (!raw_thin_wall || !closure.thin_wall.valid()) {
+    bool exact_float_to_boolean = false;
+    for (const auto &instruction : program.value_instructions()) {
+        exact_float_to_boolean |=
+            instruction.operation ==
+            ValueOperation::scalar_to_boolean;
+    }
+    if (!raw_thin_wall_source || !exact_float_to_boolean ||
+        !closure.thin_wall.valid()) {
         std::cerr << "raw Thin Wall expression was lost before Luisa setup\n";
         return EXIT_FAILURE;
     }
@@ -449,6 +510,53 @@ int main(int argc, char **argv) {
         output.write(46u,
             make_float4(subsurface_aov.normal,
                 subsurface_aov.transmission_albedo.x));
+
+        // Cycles applies bump shadowing to an ordinary Rough Translucent
+        // evaluation, but not to the selected bsdf_sample() contribution
+        // because its event label contains LABEL_TRANSMIT. A tilted closure
+        // normal makes the two contracts observably different.
+        const auto tilted_subsurface = make_point(6u);
+        auto uncorrected_tilted_subsurface = tilted_subsurface;
+        uncorrected_tilted_subsurface.use_bump_map_correction = false;
+        const auto tilted_sample = surfaces.sample_trace(
+            UInt{surface_tag},
+            services,
+            tilted_subsurface,
+            0.9f,
+            make_float2(0.23f, 0.79f),
+            query);
+        const auto uncorrected_tilted_sample = surfaces.sample_trace(
+            UInt{surface_tag},
+            services,
+            uncorrected_tilted_subsurface,
+            0.9f,
+            make_float2(0.23f, 0.79f),
+            query);
+        const auto tilted_evaluation = surfaces.evaluate(
+            UInt{surface_tag},
+            services,
+            tilted_subsurface,
+            tilted_sample.sample.wi,
+            query);
+        const auto uncorrected_tilted_evaluation = surfaces.evaluate(
+            UInt{surface_tag},
+            services,
+            uncorrected_tilted_subsurface,
+            tilted_sample.sample.wi,
+            query);
+        output.write(47u,
+            make_float4(tilted_sample.sample.evaluation.f,
+                tilted_sample.sample.evaluation.pdf));
+        output.write(48u,
+            make_float4(
+                uncorrected_tilted_sample.sample.evaluation.f,
+                uncorrected_tilted_sample.sample.evaluation.pdf));
+        output.write(49u,
+            make_float4(
+                tilted_evaluation.f, tilted_evaluation.pdf));
+        output.write(50u,
+            make_float4(uncorrected_tilted_evaluation.f,
+                uncorrected_tilted_evaluation.pdf));
     };
 
     Context context{argv[0]};
@@ -637,6 +745,24 @@ int main(int argc, char **argv) {
         !approximately_equal(
             actual[46u], {0.0f, 0.0f, -1.0f, 0.0f})) {
         std::cerr << "thick/thin subsurface dispatch and AOV regression failed on "
+                  << backend << '\n';
+        return EXIT_FAILURE;
+    }
+
+    const auto corrected_sample = actual[47u];
+    const auto uncorrected_sample = actual[48u];
+    const auto corrected_evaluation = actual[49u];
+    const auto uncorrected_evaluation = actual[50u];
+    if (!approximately_equal(
+            corrected_sample, uncorrected_sample, 8.0e-5f) ||
+        !approximately_equal(
+            corrected_sample, uncorrected_evaluation, 8.0e-5f) ||
+        !(corrected_evaluation.x <
+            uncorrected_evaluation.x - 1.0e-5f) ||
+        !approximately_equal(corrected_evaluation.w,
+            uncorrected_evaluation.w,
+            8.0e-5f)) {
+        std::cerr << "Cycles transmissive sample bump-shadowing regression failed on "
                   << backend << '\n';
         return EXIT_FAILURE;
     }
