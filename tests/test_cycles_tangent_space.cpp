@@ -23,12 +23,12 @@ void require(bool condition, std::string_view message) {
     }
 }
 
-[[nodiscard]] bool near(float lhs, float rhs) noexcept {
+[[nodiscard]] bool near_equal(float lhs, float rhs) noexcept {
     return std::abs(lhs - rhs) <= 2.0e-5f;
 }
 
 void require_unit_sign(float value, std::string_view message) {
-    require(std::isfinite(value) && near(std::abs(value), 1.0f), message);
+    require(std::isfinite(value) && near_equal(std::abs(value), 1.0f), message);
 }
 
 [[nodiscard]] GeometryUpload make_triangle() {
@@ -92,14 +92,14 @@ void test_current_and_original_frames_are_distinct() {
         const auto standard = upload.uv_tangents[corner];
         const auto named = upload.attributes[1u].values[corner];
         const auto original = upload.attributes[2u].values[corner];
-        require(near(standard.x, 1.0f) && near(standard.y, 0.0f) &&
-                    near(standard.z, 0.0f),
+        require(near_equal(standard.x, 1.0f) && near_equal(standard.y, 0.0f) &&
+                    near_equal(standard.z, 0.0f),
                 "planar standard tangent differs from Cycles MikkTSpace");
-        require(near(named.x, standard.x) && near(named.y, standard.y) &&
-                    near(named.z, standard.z) && near(named.w, standard.w),
+        require(near_equal(named.x, standard.x) && near_equal(named.y, standard.y) &&
+                    near_equal(named.z, standard.z) && near_equal(named.w, standard.w),
                 "named UV tangent did not use the standard Mikk algorithm");
-        require(near(original.x, named.x) && near(original.y, named.y) &&
-                    near(original.z, named.z) && near(original.w, named.w),
+        require(near_equal(original.x, named.x) && near_equal(original.y, named.y) &&
+                    near_equal(original.z, named.z) && near_equal(original.w, named.w),
                 "ORIGINAL tangent was not initialized from the initial frame");
         require_unit_sign(standard.w, "standard tangent sign is invalid");
     }
@@ -117,13 +117,13 @@ void test_current_and_original_frames_are_distinct() {
         const auto named_original = upload.attributes[2u].values[corner];
         require(current.z > 0.6f && current.x > 0.6f,
                 "post-displacement standard tangent was not regenerated");
-        require(near(standard_original.x, 1.0f) &&
-                    near(standard_original.z, 0.0f),
+        require(near_equal(standard_original.x, 1.0f) &&
+                    near_equal(standard_original.z, 0.0f),
                 "standard ORIGINAL tangent mutated with displaced geometry");
         require(named_current.z > 0.6f && named_current.x > 0.6f,
                 "named DISPLACED tangent was not regenerated");
-        require(near(named_original.x, 1.0f) &&
-                    near(named_original.z, 0.0f),
+        require(near_equal(named_original.x, 1.0f) &&
+                    near_equal(named_original.z, 0.0f),
                 "named ORIGINAL tangent mutated with displaced geometry");
         require_unit_sign(current.w, "displaced tangent sign is invalid");
         require_unit_sign(named_current.w,

@@ -174,8 +174,10 @@ VolumeMajorantTraversal::
     auto local_direction =
         ray_direction * root.scale;
     const auto finite_scale =
-        !any(isinf(root.scale)) &
-        !any(isnan(root.scale));
+        !any(luisa::compute::dsl::isinf(
+            root.scale)) &
+        !any(luisa::compute::dsl::isnan(
+            root.scale));
     const auto positive =
         local_direction >
         make_float3(0.0f);
