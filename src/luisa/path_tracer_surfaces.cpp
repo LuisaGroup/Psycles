@@ -350,6 +350,40 @@ SurfaceCallables make_surface_callables(
                 visitor));
             return pack_surface_aov(visitor.result());
         };
+    SurfaceBssrdfNormalCallable bssrdf_normal =
+        [scene](
+            BufferFloat scalar_parameters,
+            BufferFloat3 vector_parameters,
+            BufferFloat cycles_bsdf_tables,
+            BindlessVar textures,
+            BindlessVar geometry_heap,
+            UInt surface_tag,
+            Var<SurfacePointCall> packed_point,
+            Bool reflective_caustics,
+            Bool refractive_caustics) noexcept {
+            BufferShaderServices services{
+                scalar_parameters,
+                vector_parameters,
+                cycles_bsdf_tables,
+                textures,
+                geometry_heap,
+                scene->attribute_binding_slot,
+                scene->attribute_range_slot,
+                scene->nishita_texture_bindings,
+                scene->shader_color_space};
+            const auto point =
+                unpack_surface_point(packed_point);
+            SurfaceBssrdfNormalVisitor visitor{
+                scene->volume_metadata.closure_allocation_budget};
+            static_cast<void>(scene->surfaces.collect_closures(
+                surface_tag,
+                services,
+                point,
+                reflective_caustics,
+                refractive_caustics,
+                visitor));
+            return Float3{visitor.result()};
+        };
     SurfaceShadingNormalCallable shading_normal =
         [scene](
             BufferFloat scalar_parameters,
@@ -383,6 +417,7 @@ SurfaceCallables make_surface_callables(
         std::move(closure_trace),
         std::move(sample_trace),
         std::move(aov),
+        std::move(bssrdf_normal),
         std::move(shading_normal)};
 }
 

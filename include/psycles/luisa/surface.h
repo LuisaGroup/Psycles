@@ -165,6 +165,12 @@ struct SurfaceQuery {
     // state, not a material rewrite: the original graph remains untouched
     // and is still evaluated at ordinary surface entries.
     Bool subsurface_exit{false};
+    // Cycles re-evaluates a bump-capable material at a BSSRDF exit, averages
+    // only the retained BSSRDF closure normals by fabs(average(weight)), and
+    // uses that normal for the synthetic unit Lambert. It remains distinct
+    // from SurfacePoint::shading_normal, which still owns ShaderData and ray
+    // offset semantics at the exit intersection.
+    Float3 subsurface_normal{make_float3(0.0f, 0.0f, 1.0f)};
 };
 
 // Cycles sampled-light visibility is deliberately separate from the path

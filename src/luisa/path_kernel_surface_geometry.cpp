@@ -87,13 +87,22 @@ public:
         path_lobe_mask,
         static_cast<std::uint32_t>(contract::event_transparent),
         terminate_after_transparent);
+    Float3 subsurface_normal = point.shading_normal;
+    $if(bounce.subsurface_exit) {
+      subsurface_normal = invocation.surface_bssrdf_normal(
+          primitive.surface_tag,
+          point,
+          path_reflective_caustics,
+          path_refractive_caustics);
+    };
     SurfaceQuery path_surface_query{
         .lobe_mask = path_lobe_mask,
         .transport_mode = surface_query.transport_mode,
         .glossy_filter_roughness = 0.0f,
         .reflective_caustics = path_reflective_caustics,
         .refractive_caustics = path_refractive_caustics,
-        .subsurface_exit = bounce.subsurface_exit};
+        .subsurface_exit = bounce.subsurface_exit,
+        .subsurface_normal = subsurface_normal};
     const auto blur_pdf = kernel_parameters.filter_glossy * minimum_bsdf_pdf;
     const auto filter_glossy_enabled =
         kernel_parameters.filter_glossy < std::numeric_limits<float>::max();

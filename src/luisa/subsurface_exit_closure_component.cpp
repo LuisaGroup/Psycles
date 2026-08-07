@@ -13,7 +13,6 @@ namespace {
 }
 
 [[nodiscard]] SurfaceEvaluation unit_lambert_evaluation(
-    const SurfacePoint &point,
     Expr<luisa::float3> outgoing_expression,
     Bool include_value,
     Bool preserve_pdf,
@@ -22,7 +21,7 @@ namespace {
     const auto outgoing = outgoing_value *
                           rsqrt(max(dot(outgoing_value, outgoing_value),
                                     1.0e-20f));
-    const auto pdf = max(dot(point.shading_normal, outgoing), 0.0f) *
+    const auto pdf = max(dot(query.subsurface_normal, outgoing), 0.0f) *
                      cycles_sample_mapping::inverse_pi;
     const auto eligible = diffuse_enabled(query) & (pdf > 0.0f);
     const auto contributes = eligible & include_value;
@@ -56,13 +55,14 @@ SurfaceEvaluation SubsurfaceExitClosureComponent::evaluate_light(
     const SurfaceQuery &query,
     Expr<std::uint32_t> light_shader_flags_expression) const noexcept {
     using namespace contract::cycles_abi;
+    static_cast<void>(point);
     UInt light_shader_flags{light_shader_flags_expression};
     const auto include_value =
         (light_shader_flags & shader_exclude_diffuse) == 0u;
     const auto preserve_pdf =
         (light_shader_flags & shader_use_mis) != 0u;
     return unit_lambert_evaluation(
-        point, outgoing, include_value, preserve_pdf, query);
+        outgoing, include_value, preserve_pdf, query);
 }
 
 SurfaceSample SubsurfaceExitClosureComponent::sample(
@@ -72,7 +72,7 @@ SurfaceSample SubsurfaceExitClosureComponent::sample(
     auto result = SurfaceSample::zero();
     const auto enabled = diffuse_enabled(query);
     const auto sampled = cycles_sample_mapping::sample_cosine_hemisphere(
-        point.shading_normal, random);
+        query.subsurface_normal, random);
     result.wi = sampled.direction;
     result.evaluation.f = select(
         make_float3(0.0f), make_float3(sampled.pdf), enabled);
@@ -92,6 +92,7 @@ SurfaceSample SubsurfaceExitClosureComponent::sample(
 
 SurfaceClosureTrace SubsurfaceExitClosureComponent::trace(
     const SurfacePoint &point,
+    const SurfaceQuery &query,
     Expr<std::uint32_t> requested_index_expression) const noexcept {
     UInt requested_index{requested_index_expression};
     const auto valid = requested_index == 0u;
@@ -105,7 +106,7 @@ SurfaceClosureTrace SubsurfaceExitClosureComponent::trace(
     result.sample_weight = select(0.0f, 1.0f, valid);
     result.weight = select(
         make_float3(0.0f), make_float3(1.0f), valid);
-    result.normal = point.shading_normal;
+    result.normal = query.subsurface_normal;
     result.valid = valid;
     return result;
 }
@@ -121,7 +122,7 @@ SurfaceSampleTrace SubsurfaceExitClosureComponent::sample_trace(
     result.closure_sample_weight = 1.0f;
     result.selection_rescaled = 0.0f;
     result.closure_weight = make_float3(1.0f);
-    result.closure_normal = point.shading_normal;
+    result.closure_normal = query.subsurface_normal;
     result.closure_valid = result.sample.valid;
     return result;
 }

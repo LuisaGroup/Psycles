@@ -276,7 +276,7 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                 surface.path_surface_query.refractive_caustics);
             $if(bounce.subsurface_exit) {
                 closure_summary = SubsurfaceExitClosureComponent{}.trace(
-                    point, 0u);
+                    point, surface.path_surface_query, 0u);
             };
             trace_write_event(path_step,
                               path_trace_schema::EventSlot::state_depth,
@@ -362,7 +362,9 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                         surface.path_surface_query.refractive_caustics);
                 $if(bounce.subsurface_exit) {
                     closure = SubsurfaceExitClosureComponent{}.trace(
-                        point, closure_index);
+                        point,
+                        surface.path_surface_query,
+                        closure_index);
                 };
                 $if(closure.valid) {
                     trace_write_closure(path_step,
