@@ -312,6 +312,23 @@ template<typename T>
     return result;
 }
 
+void enforce_vulkan_native_xir_spirv(std::string_view backend_name) {
+    if (backend_name != "vk" && backend_name != "vulkan") {
+        return;
+    }
+    if (std::getenv("LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV") != nullptr) {
+        return;
+    }
+#ifdef _WIN32
+    _putenv_s("LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV", "1");
+#else
+    setenv(
+        "LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV",
+        "1",
+        1);
+#endif
+}
+
 }// namespace
 
 int main(int argc, char **argv) {
@@ -344,6 +361,7 @@ int main(int argc, char **argv) {
         samples = *parsed;
     }
 
+    enforce_vulkan_native_xir_spirv(backend_name);
     luisa::compute::Context context{argv[0]};
     auto device = context.create_device(backend_name);
     psycles::luisa_backend::LuisaPathTracerBackend renderer{

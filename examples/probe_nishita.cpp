@@ -24,12 +24,30 @@ constexpr float air_density = 1.0f;
 constexpr float dust_density = 1.0f;
 constexpr float ozone_density = 1.0f;
 
+void enforce_vulkan_native_xir_spirv(std::string_view backend) {
+    if (backend != "vk" && backend != "vulkan") {
+        return;
+    }
+    if (std::getenv("LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV") != nullptr) {
+        return;
+    }
+#ifdef _WIN32
+    _putenv_s("LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV", "1");
+#else
+    setenv(
+        "LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV",
+        "1",
+        1);
+#endif
+}
+
 }// namespace
 
 int main(int argc, char **argv) {
     const auto backend =
         std::string_view{argc > 1 ? argv[1] : "fallback"};
     Context context{argv[0]};
+    enforce_vulkan_native_xir_spirv(backend);
     auto device = context.create_device(backend);
     auto stream = device.create_stream();
 

@@ -13,6 +13,7 @@ import json
 import pathlib
 import subprocess
 import sys
+import os
 
 
 _ALL_PROBES = (
@@ -305,6 +306,19 @@ _PROBE_RATIO_GATES = {
         "TransDir": (0.99999, 1.00001),
         "Normal": (0.99999, 1.00001),
     },
+    "principled_thin_wall_surface": {
+        # This matrix preserves Cycles' event-level bump-shadowing rule for
+        # selected thin-transmission samples. Diffuse Direct is deliberately
+        # excluded: one zero-reference, zero-DiffCol pixel makes that divided
+        # AOV unstable without changing Combined or any closure-color pass.
+        "Combined": (0.9999, 1.0001),
+        "DiffCol": (0.99999, 1.00001),
+        "GlossCol": (0.99999, 1.00001),
+        "TransCol": (0.99999, 1.00001),
+        "GlossDir": (0.99998, 1.00002),
+        "TransDir": (0.99998, 1.00002),
+        "Normal": (0.9999, 1.0001),
+    },
     "refraction_bsdf_matrix": {
         "Combined": (0.99998, 1.00002),
         "GlossCol": (0.0, 0.0),
@@ -469,6 +483,15 @@ _PROBE_RELATIVE_RMSE_GATES = {
         "TransDir": 0.000002,
         "Normal": 0.0000001,
     },
+    "principled_thin_wall_surface": {
+        "Combined": 0.0001,
+        "DiffCol": 0.00002,
+        "GlossCol": 0.00002,
+        "TransCol": 0.00002,
+        "GlossDir": 0.00003,
+        "TransDir": 0.00005,
+        "Normal": 0.00002,
+    },
     "refraction_bsdf_matrix": {
         "Combined": 0.00001,
         "GlossCol": 0.0,
@@ -522,9 +545,9 @@ def _arguments() -> argparse.Namespace:
     return result
 
 
-def _run(command: list[str]) -> None:
+def _run(command: list[str], environment: dict[str, str] | None = None) -> None:
     print("+", " ".join(command), flush=True)
-    subprocess.run(command, check=True)
+    subprocess.run(command, check=True, env=environment)
 
 
 def _cycles_golden_command(
@@ -653,6 +676,11 @@ def _main() -> int:
         psycles_exr = stem.with_suffix(".exr")
         report = probe_root / f"{probe}-diff.json"
         try:
+            _run_environment = os.environ.copy()
+            if arguments.backend == "vk":
+                _run_environment.setdefault(
+                    "LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV", "1"
+                )
             _run(
                 [
                     blender,
@@ -701,7 +729,12 @@ def _main() -> int:
                     str(arguments.width),
                     str(arguments.height),
                     str(arguments.samples),
-                ]
+                ],
+                environment=(
+                    _run_environment
+                    if arguments.backend == "vk"
+                    else None
+                ),
             )
             _run(
                 _comparison_command(
