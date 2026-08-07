@@ -780,9 +780,9 @@ public:
         return result;
     }
 
-    [[nodiscard]] SurfaceClosureCollection collect_subsurface_closures(
+    [[nodiscard]] SurfaceClosureCollection collect_bssrdf_bump_closures(
         Expr<std::uint32_t> tag,
-        const luisa::vector<luisa::uint> &subsurface_tags,
+        const luisa::vector<luisa::uint> &bssrdf_bump_tags,
         const ShaderServices &services,
         const SurfacePoint &point,
         Expr<bool> reflective_caustics,
@@ -790,22 +790,21 @@ public:
         SurfaceClosureCollector &collector) const noexcept {
         auto result = SurfaceClosureCollection{
             .shading_normal = point.shading_normal};
-        // The group is the scene-level Cycles has_surface_bssrdf result
-        // mapped onto deduplicated program tags. A BSSRDF exit can only carry
-        // one of these tags. Restrict this operation's JIT switch to that
-        // semantic set so unrelated material graphs do not inflate the
-        // exit-only callable. All programs remain registered for every other
-        // surface operation.
+        // The group is the scene-level Cycles has_bssrdf_bump result mapped
+        // onto deduplicated program tags. Cycles skips shader evaluation at a
+        // BSSRDF exit unless this exact flag is present. Restrict this JIT
+        // switch to that semantic set; every program remains registered for
+        // all other surface operations.
         auto empty_collection = [&]() noexcept {
             collector.begin(point.shading_normal);
             collector.finish();
         };
-        if (subsurface_tags.empty()) {
+        if (bssrdf_bump_tags.empty()) {
             empty_collection();
         } else {
             _surfaces.dispatch_group_with_default(
                 tag,
-                subsurface_tags,
+                bssrdf_bump_tags,
                 [&](const Surface *surface) noexcept {
                     result = surface->collect_closures(
                         services,

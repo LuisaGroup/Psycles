@@ -275,7 +275,7 @@ int main() {
     static_cast<void>(
         subsurface_surfaces.create<CompileProbeSurface>(
             false, nullptr, &subsurface_recordings));
-    const luisa::vector<luisa::uint> surface_bssrdf_tags{1u};
+    const luisa::vector<luisa::uint> surface_bssrdf_bump_tags{1u};
 
     Kernel1D kernel = [&]() noexcept {
         ConstantShaderServices services;
@@ -355,9 +355,9 @@ int main() {
                 point);
         CompileProbeCollector subsurface_collector;
         const auto subsurface =
-            subsurface_surfaces.collect_subsurface_closures(
+            subsurface_surfaces.collect_bssrdf_bump_closures(
                 dispatch_x() % 2u,
-                surface_bssrdf_tags,
+                surface_bssrdf_bump_tags,
                 services,
                 point,
                 true,

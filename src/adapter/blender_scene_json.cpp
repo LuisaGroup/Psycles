@@ -382,6 +382,10 @@ find_simple_world_nishita(yyjson_val *world) {
         SocketValue::floating(1.0f)));
     static_cast<void>(graph.set_input(
         closure,
+        "ThinWall",
+        SocketValue::boolean(false)));
+    static_cast<void>(graph.set_input(
+        closure,
         "SheenWeight",
         SocketValue::floating(0.0f)));
     static_cast<void>(graph.set_input(

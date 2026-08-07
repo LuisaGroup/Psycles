@@ -160,6 +160,7 @@ CyclesNodeMappingRegistry make_core_cycles_node_mappings() {
             {"Specular IOR Level", "SpecularIORLevel"},
             {"Specular Tint", "SpecularTint"},
             {"Alpha", "Alpha"},
+            {"Thin Wall", "ThinWall"},
             {"Sheen Weight", "SheenWeight"},
             {"Sheen Roughness", "SheenRoughness"},
             {"Sheen Tint", "SheenTint"},

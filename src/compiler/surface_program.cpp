@@ -1,5 +1,7 @@
 #include "surface_program_builder.h"
 
+#include <psycles/contract/scene.h>
+
 #include <utility>
 #include <vector>
 
@@ -183,6 +185,49 @@ namespace {
     return parameters.find(instruction.parameter);
 }
 
+[[nodiscard]] bool principled_has_surface_bssrdf(
+    const SurfaceProgram &program,
+    const SurfaceParameterBlock &parameters,
+    const ClosureInstruction &closure) noexcept {
+    constexpr auto closure_weight_cutoff = 1.0e-5f;
+    const auto *thin_wall_value = direct_parameter_value(
+        program,
+        parameters,
+        closure.thin_wall,
+        closure.source_node);
+    const auto *thin_wall = thin_wall_value != nullptr
+                                ? std::get_if<bool>(
+                                      &thin_wall_value->value)
+                                : nullptr;
+    // Cycles' PrincipledBsdfNode::is_thin_wall() is true only for an
+    // unlinked direct true input. A linked Thin Wall remains conservative.
+    if (thin_wall != nullptr && *thin_wall) {
+        return false;
+    }
+
+    const auto *weight_value = direct_parameter_value(
+        program,
+        parameters,
+        closure.subsurface_weight,
+        closure.source_node);
+    const auto *weight = weight_value != nullptr
+                             ? std::get_if<float>(&weight_value->value)
+                             : nullptr;
+    const auto *scale_value = direct_parameter_value(
+        program,
+        parameters,
+        closure.subsurface_scale,
+        closure.source_node);
+    const auto *scale = scale_value != nullptr
+                            ? std::get_if<float>(&scale_value->value)
+                            : nullptr;
+    // A linked value is conservatively possible, exactly like Cycles'
+    // ShaderNode input-link test. Direct literals use the same cutoff and
+    // exact-zero scale relation as PrincipledBsdfNode.
+    return (weight == nullptr || *weight > closure_weight_cutoff) &&
+           (scale == nullptr || *scale != 0.0f);
+}
+
 [[nodiscard]] Vec3f add(Vec3f a, Vec3f b) noexcept {
     return {a.x + b.x, a.y + b.y, a.z + b.z};
 }
@@ -295,39 +340,42 @@ Vec3f estimate_surface_emission(
 bool cycles_surface_has_bssrdf(
     const SurfaceProgram &program,
     const SurfaceParameterBlock &parameters) noexcept {
-    constexpr auto closure_weight_cutoff = 1.0e-5f;
     for (const auto &closure : program.closure_instructions()) {
         if (closure.operation == ClosureOperation::subsurface) {
             return true;
         }
-        if (closure.operation != ClosureOperation::principled) {
-            continue;
-        }
-        const auto *weight_value = direct_parameter_value(
-            program,
-            parameters,
-            closure.subsurface_weight,
-            closure.source_node);
-        const auto *weight = weight_value != nullptr
-                                 ? std::get_if<float>(&weight_value->value)
-                                 : nullptr;
-        const auto *scale_value = direct_parameter_value(
-            program,
-            parameters,
-            closure.subsurface_scale,
-            closure.source_node);
-        const auto *scale = scale_value != nullptr
-                                ? std::get_if<float>(&scale_value->value)
-                                : nullptr;
-        // A linked value is conservatively possible, exactly like Cycles'
-        // ShaderNode input-link test. Direct literals use the same cutoff and
-        // exact-zero scale relation as PrincipledBsdfNode.
-        if ((weight == nullptr || *weight > closure_weight_cutoff) &&
-            (scale == nullptr || *scale != 0.0f)) {
+        if (closure.operation == ClosureOperation::principled &&
+            principled_has_surface_bssrdf(
+                program, parameters, closure)) {
             return true;
         }
     }
     return false;
+}
+
+bool cycles_surface_has_bssrdf_bump(
+    const SurfaceProgram &program,
+    const SurfaceParameterBlock &parameters,
+    contract::DisplacementMethod displacement_method) noexcept {
+    auto has_bssrdf = false;
+    auto bssrdf_normal_uses_bump = false;
+    for (const auto &closure : program.closure_instructions()) {
+        const auto closure_has_bssrdf =
+            closure.operation == ClosureOperation::subsurface ||
+            (closure.operation == ClosureOperation::principled &&
+             principled_has_surface_bssrdf(
+                 program, parameters, closure));
+        has_bssrdf |= closure_has_bssrdf;
+        bssrdf_normal_uses_bump |=
+            closure_has_bssrdf && closure.normal_uses_bump;
+    }
+    if (!has_bssrdf) {
+        return false;
+    }
+    const auto displacement_uses_bump =
+        program.surface_normal_root().valid() &&
+        contract::uses_displacement_bump(displacement_method);
+    return bssrdf_normal_uses_bump || displacement_uses_bump;
 }
 
 SurfaceProgramCompilation compile_surface_program(

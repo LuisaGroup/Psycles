@@ -915,6 +915,8 @@ NodeRegistry make_core_node_registry() {
            input("SpecularTint", SocketType::color,
                  SocketValue::color({1.0f, 1.0f, 1.0f})),
            input("Alpha", SocketType::floating, SocketValue::floating(1.0f)),
+           input("ThinWall", SocketType::boolean,
+                 SocketValue::boolean(false)),
            input("SheenWeight", SocketType::floating,
                  SocketValue::floating(0.0f)),
            input("SheenRoughness", SocketType::floating,
