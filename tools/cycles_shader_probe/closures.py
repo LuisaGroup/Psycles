@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import bpy
+from mathutils import Vector
 
 from .support import (
     _bsdf_matrix_sun,
@@ -1132,6 +1133,191 @@ def _principled_transmission_surface(scene: Any) -> None:
         columns=4,
         rows=4,
         name="Principled Transmission Surface Matrix",
+        backfacing=backfacing,
+        frame_bleed=0.02,
+    )
+    surface.visible_shadow = False
+
+
+def _principled_thin_wall_surface(scene: Any) -> None:
+    """Exercise Cycles' zero-thin-film Principled Thin Wall expansion."""
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 0.01
+    scene.cycles.use_light_tree = False
+    scene.cycles.max_bounces = 3
+    scene.cycles.diffuse_bounces = 2
+    scene.cycles.glossy_bounces = 2
+    scene.cycles.transmission_bounces = 3
+    scene.cycles.light_sampling_threshold = 0.0
+    _world(scene, (0.035, 0.08, 0.16, 1.0), 0.45)
+
+    def add_sun(
+        name: str,
+        direction: tuple[float, float, float],
+        color: tuple[float, float, float],
+        energy: float,
+    ) -> None:
+        light_data = bpy.data.lights.new(name, type="SUN")
+        light_data.color = color
+        light_data.energy = energy
+        light_data.angle = 0.0
+        light_data.normalize = True
+        light_data.use_shadow = True
+        light = bpy.data.objects.new(name, light_data)
+        light.rotation_euler = Vector(direction).to_track_quat(
+            "Z", "Y"
+        ).to_euler()
+        scene.collection.objects.link(light)
+
+    # The two oblique delta lights expose reflection and transmission without
+    # conflating the thin-wall direction law with a normal-incidence special
+    # case. The low constant world also makes singular transmission visible.
+    add_sun(
+        "Thin Wall Front Sun",
+        (0.42, -0.23, 0.88),
+        (1.0, 0.38, 0.12),
+        1.6,
+    )
+    add_sun(
+        "Thin Wall Back Sun",
+        (-0.31, 0.27, -0.91),
+        (0.11, 0.48, 1.0),
+        2.1,
+    )
+
+    # mode, thin wall, linked Thin Wall, roughness, IOR, base color,
+    # diffuse roughness, subsurface anisotropy, explicit normal, backface,
+    # bump-map correction
+    cases = (
+        ("glass", False, False, 0.28, 1.45, (0.36, 0.64, 1.00),
+         0.0, 0.0, None, False, True),
+        ("glass", True, False, 0.28, 1.45, (0.36, 0.64, 1.00),
+         0.0, 0.0, None, False, True),
+        ("glass", True, True, 0.28, 1.45, (0.36, 0.64, 1.00),
+         0.0, 0.0, None, False, True),
+        ("glass", False, True, 0.28, 1.45, (0.36, 0.64, 1.00),
+         0.0, 0.0, None, False, True),
+        ("glass", True, False, 0.0, 1.0, (0.81, 0.25, 0.04),
+         0.0, 0.0, None, False, True),
+        ("glass", True, False, 0.0, 1.33, (0.16, 0.81, 0.36),
+         0.0, 0.0, None, False, True),
+        ("glass", True, False, 0.0, 2.0, (0.64, 0.09, 0.49),
+         0.0, 0.0, None, False, True),
+        ("glass", True, False, 0.05, 1.5, (0.81, 0.49, 0.09),
+         0.0, 0.0, None, False, True),
+        ("glass", True, False, 0.35, 1.33, (0.09, 0.49, 0.81),
+         0.0, 0.0, None, False, True),
+        ("glass", True, False, 0.7, 1.8, (0.49, 0.81, 0.16),
+         0.0, 0.0, None, False, True),
+        ("glass", True, False, 0.27, 1.6, (0.64, 0.09, 0.49),
+         0.0, 0.0, (0.3, 0.0, 0.4), False, True),
+        ("glass", True, False, 0.27, 1.6, (0.64, 0.09, 0.49),
+         0.0, 0.0, None, True, True),
+        ("subsurface", True, False, 0.32, 1.4, (0.72, 0.24, 0.08),
+         0.0, -0.8, None, False, True),
+        ("subsurface", True, False, 0.32, 1.4, (0.12, 0.52, 0.72),
+         0.18, -0.45, None, False, True),
+        ("subsurface", True, False, 0.32, 1.4, (0.18, 0.70, 0.20),
+         0.55, 0.0, None, False, True),
+        ("subsurface", True, True, 0.32, 1.4, (0.68, 0.22, 0.10),
+         0.9, 0.75, (0.6, 0.0, 0.8), False, True),
+        # Paired controls make conversion, reflection/transmission splitting,
+        # and bump-map correction independently observable.
+        ("subsurface", True, False, 0.32, 1.4, (0.68, 0.22, 0.10),
+         0.9, 0.75, (0.6, 0.0, 0.8), False, True),
+        ("subsurface", True, True, 0.32, 1.4, (0.68, 0.22, 0.10),
+         0.9, -1.0, (0.6, 0.0, 0.8), False, True),
+        ("subsurface", True, True, 0.32, 1.4, (0.68, 0.22, 0.10),
+         0.9, 1.0, (0.6, 0.0, 0.8), False, True),
+        ("subsurface", True, True, 0.32, 1.4, (0.68, 0.22, 0.10),
+         0.9, 0.75, (0.6, 0.0, 0.8), False, False),
+    )
+    materials = []
+    backfacing: set[int] = set()
+    for index, case in enumerate(cases):
+        (
+            mode,
+            thin_wall,
+            linked_thin_wall,
+            roughness,
+            ior,
+            base_color,
+            diffuse_roughness,
+            subsurface_anisotropy,
+            normal,
+            backface,
+            bump_correction,
+        ) = case
+        material, tree, output = _material(
+            f"Principled Thin Wall {index:02d}"
+        )
+        material.cycles.use_bump_map_correction = bump_correction
+        principled = tree.nodes.new("ShaderNodeBsdfPrincipled")
+        principled.name = f"Physical Principled Thin Wall {index:02d}"
+        principled.distribution = "GGX"
+        _input(principled, "Base Color").default_value = (
+            *base_color,
+            1.0,
+        )
+        _input(principled, "Metallic").default_value = 0.0
+        _input(principled, "Roughness").default_value = roughness
+        _input(principled, "Diffuse Roughness").default_value = (
+            diffuse_roughness
+        )
+        _input(principled, "IOR").default_value = ior
+        _input(principled, "Specular IOR Level").default_value = 0.5
+        _input(principled, "Specular Tint").default_value = (
+            0.4,
+            0.8,
+            1.0,
+            1.0,
+        )
+        _input(principled, "Transmission Weight").default_value = (
+            1.0 if mode == "glass" else 0.0
+        )
+        _input(principled, "Subsurface Weight").default_value = (
+            1.0 if mode == "subsurface" else 0.0
+        )
+        _input(principled, "Subsurface Anisotropy").default_value = (
+            subsurface_anisotropy
+        )
+        _input(principled, "Sheen Weight").default_value = 0.0
+        _input(principled, "Coat Weight").default_value = 0.0
+        _input(principled, "Alpha").default_value = 1.0
+        # Thin-film interference is deliberately outside this checkpoint.
+        # Pinning the authored thickness to exact zero keeps this scene on the
+        # analytically implemented no-film branch in both renderers.
+        _input(principled, "Thin Film Thickness").default_value = 0.0
+        if linked_thin_wall:
+            thin_wall_value = tree.nodes.new("ShaderNodeValue")
+            thin_wall_value.name = f"Linked Thin Wall {index:02d}"
+            _output(thin_wall_value, "Value").default_value = (
+                1.0 if thin_wall else 0.0
+            )
+            tree.links.new(
+                _output(thin_wall_value, "Value"),
+                _input(principled, "Thin Wall"),
+            )
+        else:
+            _input(principled, "Thin Wall").default_value = thin_wall
+        if normal is not None:
+            tree.links.new(
+                _linked_vector(tree, f"Linked Normal {index:02d}", normal),
+                _input(principled, "Normal"),
+            )
+        tree.links.new(
+            _output(principled, "BSDF"),
+            _input(output, "Surface"),
+        )
+        if backface:
+            backfacing.add(index)
+        materials.append(material)
+    surface = _material_matrix(
+        scene,
+        materials,
+        columns=5,
+        rows=4,
+        name="Principled Thin Wall Surface Matrix",
         backfacing=backfacing,
         frame_bleed=0.02,
     )

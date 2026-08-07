@@ -106,6 +106,7 @@ _ALL_PROBES = (
     "principled_emission_layers",
     "principled_sheen_surface",
     "principled_surface",
+    "principled_thin_wall_surface",
     "principled_transmission_surface",
     "random_walk_transport",
     "refraction_bsdf_matrix",

@@ -1459,11 +1459,113 @@ void test_integrator_settings_round_trip() {
          "Cycles light-tree setting was not preserved");
 }
 
+void test_cycles_float_to_boolean_conversion() {
+  TemporaryDirectory temporary;
+  {
+    std::ofstream geometry{temporary.path() / "geometry.bin",
+                           std::ios::binary};
+    geometry.write("PSYGEO1\0", 8);
+  }
+  {
+    std::ofstream scene{temporary.path() / "scene.json"};
+    scene << R"JSON({
+  "schema":"psycles.blender-scene.v1",
+  "images":[],
+  "node_groups":[],
+  "materials":[{
+    "name":"Linked Thin Wall",
+    "cycles_sync":{"shader_index":5},
+    "node_tree":{
+      "name":"Linked Thin Wall",
+      "surface_root":{"node":"Principled","socket":"BSDF"},
+      "volume_root":null,
+      "displacement_root":null,
+      "links":[
+        {"from_node":"Value","from_socket":"Value",
+         "to_node":"Principled","to_socket":"Thin Wall"}
+      ],
+      "nodes":[
+        {
+          "name":"Value","type":"VALUE","mute":false,
+          "internal_links":[],"inputs":[],
+          "outputs":[{"identifier":"Value","name":"Value",
+            "type":"NodeSocketFloat","linked":true,"default":1.25}],
+          "properties":{},"special":{}
+        },
+        {
+          "name":"Principled","type":"BSDF_PRINCIPLED","mute":false,
+          "internal_links":[],
+          "inputs":[
+            {"identifier":"Thin Wall","name":"Thin Wall",
+             "type":"NodeSocketBool","linked":true,"default":false}
+          ],
+          "outputs":[{"identifier":"BSDF","name":"BSDF",
+            "type":"NodeSocketShader","linked":true}],
+          "properties":{"distribution":"GGX",
+                        "subsurface_method":"RANDOM_WALK"},
+          "special":{}
+        }
+      ]
+    }
+  }],
+  "render":{"width":16,"height":16,"percentage":100,"cycles":{}},
+  "camera":{"name":"Camera","type":"PERSP",
+    "transform":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],
+    "clip_start":0.01,"clip_end":100.0},
+  "geometries":[],"curve_geometries":[],"instances":[],"lights":[],
+  "world":null,"world_environment":null
+})JSON";
+  }
+
+  const auto imported = load_blender_scene_bundle(temporary.path());
+  expect(imported.ok(), "linked float Thin Wall scene did not import");
+  const psycles::contract::MaterialDesc *material = nullptr;
+  for (const auto &[id, candidate] : imported.scene->materials) {
+    static_cast<void>(id);
+    if (candidate.name == "Linked Thin Wall") {
+      material = &candidate;
+      break;
+    }
+  }
+  expect(material != nullptr, "linked float Thin Wall material is missing");
+
+  bool has_float_to_boolean = false;
+  for (const auto &node : material->shader.nodes()) {
+    has_float_to_boolean |=
+        node.type ==
+        psycles::compiler::node_type::scalar_to_boolean;
+  }
+  expect(has_float_to_boolean,
+         "Cycles FLOAT-to-INT Boolean conversion was not materialized");
+  for (const auto &diagnostic : imported.diagnostics) {
+    expect(diagnostic.message.find("unsupported implicit socket conversion") ==
+               std::string::npos,
+           "supported FLOAT-to-Boolean conversion emitted a warning");
+  }
+
+  psycles::compiler::ShaderCompiler compiler{
+      psycles::compiler::make_core_node_registry()};
+  const auto shader = compiler.compile(material->shader);
+  expect(shader.ok(), "linked float Thin Wall graph did not validate");
+  const auto surface =
+      psycles::compiler::compile_surface_program(*shader.program);
+  expect(surface.ok(), "linked float Thin Wall graph did not lower");
+  bool has_float_to_boolean_instruction = false;
+  for (const auto &instruction : surface.program->value_instructions()) {
+    has_float_to_boolean_instruction |=
+        instruction.operation ==
+        psycles::compiler::ValueOperation::scalar_to_boolean;
+  }
+  expect(has_float_to_boolean_instruction,
+         "linked float Thin Wall emitted no conversion instruction");
+}
+
 } // namespace
 
 int main() {
   try {
     test_integrator_settings_round_trip();
+    test_cycles_float_to_boolean_conversion();
   } catch (const std::exception &exception) {
     std::cerr << "test failure: " << exception.what() << '\n';
     return EXIT_FAILURE;

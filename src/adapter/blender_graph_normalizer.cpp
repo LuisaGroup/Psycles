@@ -378,6 +378,16 @@ private:
             input = "Value";
             output = "Color";
         } else if (
+            source.type == SocketType::floating &&
+            target == SocketType::boolean) {
+            // Blender Boolean sockets are Cycles INT sockets. ShaderGraph's
+            // automatic FLOAT -> INT converter truncates toward zero before
+            // the kernel observes the integer as a boolean. Keep that rule
+            // explicit instead of applying Blender's geometry-node > 0 cast.
+            node_type = compiler::node_type::scalar_to_boolean;
+            input = "Value";
+            output = "Boolean";
+        } else if (
             source.type == SocketType::color &&
             target == SocketType::floating) {
             node_type = compiler::node_type::color_to_scalar;

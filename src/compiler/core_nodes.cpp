@@ -572,6 +572,14 @@ NodeRegistry make_core_node_registry() {
                  .required_features = {}}));
 
   static_cast<void>(registry.register_schema(
+      NodeSchema{.type = node_type::scalar_to_boolean,
+                 .inputs = {input("Value", SocketType::floating,
+                                  SocketValue::floating(0.0f))},
+                 .outputs = {output("Boolean", SocketType::boolean)},
+                 .properties = {},
+                 .required_features = {}}));
+
+  static_cast<void>(registry.register_schema(
       NodeSchema{.type = node_type::color_to_scalar,
                  .inputs = {input("Color", SocketType::color,
                                   SocketValue::color({0.0f, 0.0f, 0.0f}))},

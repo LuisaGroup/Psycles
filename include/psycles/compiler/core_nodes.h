@@ -40,6 +40,8 @@ inline constexpr auto clamp_range = "psycles.math.clamp_range";
 inline constexpr auto map_range = "psycles.math.map_range";
 inline constexpr auto vector_math = "psycles.math.vector";
 inline constexpr auto scalar_to_color = "psycles.convert.scalar_to_color";
+inline constexpr auto scalar_to_boolean =
+    "psycles.convert.scalar_to_boolean";
 inline constexpr auto color_to_scalar = "psycles.convert.color_to_scalar";
 inline constexpr auto vector_to_scalar = "psycles.convert.vector_to_scalar";
 inline constexpr auto vector_to_color = "psycles.convert.vector_to_color";

@@ -269,6 +269,15 @@ namespace {
             ValueOperation::scalar_to_color);
         return true;
     }
+    if (node.type == node_type::scalar_to_boolean) {
+        publish_unary_value(
+            node,
+            "Value",
+            "Boolean",
+            SocketType::boolean,
+            ValueOperation::scalar_to_boolean);
+        return true;
+    }
     if (node.type == node_type::color_to_scalar) {
         publish_unary_value(
             node,
