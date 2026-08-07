@@ -7,6 +7,7 @@
 
 #include <cstdint>
 
+#include <psycles/luisa/cycles_sample_mapping.h>
 #include <psycles/luisa/spherical_geometry.h>
 
 #include <luisa/dsl/sugar.h>
@@ -172,19 +173,11 @@ sample_sun(luisa::compute::Float3 axis,
            luisa::compute::Float2 random) noexcept {
     axis = spherical_geometry::normalize_or(
         axis, luisa::compute::make_float3(0.0f, 0.0f, 1.0f));
-    const auto cap_height = spherical_geometry::unit_cap_height(angular_radius);
-    const auto cosine_theta = 1.0f - random.x * cap_height;
-    const auto sine_theta = sqrt(max(1.0f - cosine_theta * cosine_theta, 0.0f));
-    const auto reference =
-        luisa::compute::select(luisa::compute::make_float3(0.0f, 0.0f, 1.0f),
-                               luisa::compute::make_float3(0.0f, 1.0f, 0.0f),
-                               abs(axis.z) > 0.999f);
-    const auto tangent = spherical_geometry::normalize_or(
-        cross(reference, axis), luisa::compute::make_float3(1.0f, 0.0f, 0.0f));
-    const auto bitangent = cross(axis, tangent);
-    const auto phi = two_pi * random.y;
-    return tangent * (cos(phi) * sine_theta) +
-           bitangent * (sin(phi) * sine_theta) + axis * cosine_theta;
+    const auto one_minus_cosine =
+        cycles_sample_mapping::one_minus_cosine_from_angle(angular_radius);
+    return cycles_sample_mapping::sample_uniform_cone(
+               axis, one_minus_cosine, random)
+        .direction;
 }
 
 [[nodiscard]] inline luisa::compute::Float
@@ -197,11 +190,13 @@ sun_pdf(luisa::compute::Float3 axis,
     axis = spherical_geometry::normalize_or(
         axis, luisa::compute::make_float3(0.0f, 0.0f, 1.0f));
     direction = spherical_geometry::normalize_or(direction, axis);
-    const auto cap_height = spherical_geometry::unit_cap_height(angular_radius);
-    const auto inside = dot(axis, direction) >= 1.0f - cap_height;
+    const auto inside =
+        spherical_geometry::precise_angle(axis, direction) < angular_radius;
+    const auto one_minus_cosine =
+        cycles_sample_mapping::one_minus_cosine_from_angle(angular_radius);
     return luisa::compute::select(
         0.0f,
-        1.0f / spherical_geometry::cap_solid_angle(angular_radius),
+        cycles_sample_mapping::inverse_two_pi / one_minus_cosine,
         inside);
 }
 

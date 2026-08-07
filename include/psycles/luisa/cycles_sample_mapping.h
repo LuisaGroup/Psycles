@@ -5,6 +5,8 @@
     "Include <psycles/luisa/cycles_sample_mapping.h> through the Psycles::luisa target."
 #endif
 
+#include <cmath>
+
 #include <luisa/dsl/sugar.h>
 
 namespace psycles::luisa_backend::cycles_sample_mapping {
@@ -28,6 +30,16 @@ struct UniformConeSample {
     luisa::compute::Float cosine;
     luisa::compute::Float pdf;
 };
+
+// Cycles deliberately switches to the second-order small-angle relation.
+// This is part of the cone measure: sampling and PDF evaluation must use the
+// same value or MIS is biased, and replacing it with an independently stable
+// trigonometric identity changes path-by-path results for solar discs.
+[[nodiscard]] inline float
+one_minus_cosine_from_angle(float angle) noexcept {
+    return angle > 0.02f ? 1.0f - std::cos(angle)
+                         : 0.5f * angle * angle;
+}
 
 // This is the Cycles square-to-disk measure-preserving map. The branch
 // at |a| == |b| and the center case are part of the mapping definition:

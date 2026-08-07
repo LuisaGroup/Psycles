@@ -55,6 +55,15 @@ canonical_direction_azimuth(
                   has_azimuth);
 }
 
+// Stable angle between unit vectors. Unlike acos(dot(a, b)), this retains
+// precision for solar-disc-sized separations. Cycles uses this relation for
+// both Nishita evaluation and finite-cone membership, so keep it shared.
+[[nodiscard]] inline luisa::compute::Float
+precise_angle(luisa::compute::Float3 a,
+              luisa::compute::Float3 b) noexcept {
+    return 2.0f * atan2(length(a - b), length(a + b));
+}
+
 // Height of a spherical cap on the unit sphere. The direct expression
 // 1 - cos(radius) catastrophically cancels for sun-sized angles when a GPU
 // backend lowers cos to a fast approximation. This equivalent half-angle
