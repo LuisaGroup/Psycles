@@ -1,0 +1,48 @@
+{
+  "schema": "psycles.hip-jit-comparison.v1",
+  "scene": "Monster Under the Bed",
+  "psycles_revision": "8b688ec",
+  "device": "AMD Radeon RX 9070 XT",
+  "resolution": [
+    960,
+    960
+  ],
+  "samples": 1,
+  "baseline": {
+    "description": "BSSRDF exit callable dispatches every surface graph",
+    "llvm_codegen_seconds": 26.453765122,
+    "amdgpu_input_bytes": 4475544,
+    "hip_bitcode_link_seconds": 100.736904761,
+    "code_object_bytes": 6978424,
+    "total_shader_jit_seconds": 134.160
+  },
+  "exact_bssrdf_tags": {
+    "description": "parameter-aware Cycles has_surface_bssrdf set mapped to deduplicated surface tags",
+    "llvm_codegen_seconds": 24.652291953,
+    "amdgpu_input_bytes": 4108096,
+    "hip_bitcode_link_seconds": 98.815950252,
+    "code_object_bytes": 6406480,
+    "total_shader_jit_seconds": 129.689
+  },
+  "exact_bssrdf_bump_tags": {
+    "description": "exact Cycles SD_HAS_BSSRDF_BUMP material predicate mapped conservatively to deduplicated surface tags",
+    "llvm_codegen_seconds": 24.630559887,
+    "amdgpu_input_bytes": 4099348,
+    "hip_bitcode_link_seconds": 96.675786924,
+    "code_object_bytes": 6393936,
+    "cache_entry_bytes": 6395723,
+    "total_shader_jit_seconds": 126.944
+  },
+  "relative_reduction_from_exact_bssrdf_percent": {
+    "llvm_codegen": 0.088154,
+    "amdgpu_input": 0.212945,
+    "hip_bitcode_link": 2.165808,
+    "code_object": 0.195802,
+    "total_shader_jit": 2.116602
+  },
+  "relative_total_jit_reduction_from_baseline_percent": 5.378652,
+  "evidence": {
+    "benchmark": "hip-1-bssrdf-bump-tags-benchmark.json",
+    "new_vs_previous": "hip-1-bssrdf-bump-tags-vs-bssrdf-tags.json"
+  }
+}

@@ -1,0 +1,119 @@
+{
+  "commands": {
+    "cycles_hip": {
+      "command": [
+        "/home/mike/Projects/blender-install-psycles-trace/blender",
+        "/home/mike/Projects/Psycles/assets/official-blender-scenes/monster-under-the-bed/monster_under_the_bed_sss_demo_by_metin_seven.blend",
+        "--background",
+        "--python-exit-code",
+        "1",
+        "--python",
+        "/home/mike/Projects/Psycles/tools/render_cycles_golden.py",
+        "--",
+        "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-bssrdf-bump-tags-8b688ec-512spp/cycles/hip.exr",
+        "960",
+        "960",
+        "512",
+        "--cycles-device",
+        "HIP",
+        "--device-name",
+        "Radeon RX 9070 XT"
+      ],
+      "log": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-bssrdf-bump-tags-8b688ec-512spp/logs/cycles-hip.log",
+      "returncode": 0,
+      "wall_seconds": 27.050010440987535
+    },
+    "export": {
+      "reused": true
+    },
+    "psycles_hip": {
+      "command": [
+        "/home/mike/Projects/Psycles/build/bin/psycles_render_blender_scene",
+        "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/export",
+        "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-bssrdf-bump-tags-8b688ec-512spp/psycles/hip.ppm",
+        "hip",
+        "960",
+        "960",
+        "512",
+        "4"
+      ],
+      "log": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-bssrdf-bump-tags-8b688ec-512spp/logs/psycles-hip.log",
+      "returncode": 0,
+      "wall_seconds": 139.9657893179683
+    }
+  },
+  "comparisons": {
+    "psycles-hip-vs-cycles-hip": {
+      "actual": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-bssrdf-bump-tags-8b688ec-512spp/psycles/hip.exr",
+      "process_wall_seconds": 6.668493613949977,
+      "reference": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-bssrdf-bump-tags-8b688ec-512spp/cycles/hip.exr",
+      "report": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-bssrdf-bump-tags-8b688ec-512spp/comparisons/psycles-hip-vs-cycles-hip/report.json"
+    }
+  },
+  "compiler_tmp": "/var/tmp/psycles-compiler-tmp",
+  "matrix": {
+    "cycles": [
+      "hip"
+    ],
+    "psycles": [
+      "hip"
+    ]
+  },
+  "relative_performance": {
+    "hip": {
+      "slowdown_vs_cycles_hip": 5.171939887621885,
+      "speedup_over_cycles_hip": 0.19335104849020412
+    }
+  },
+  "renderers": {
+    "cycles": {
+      "hip": {
+        "device": [
+          {
+            "id": "HIP_AMD Radeon RX 9070 XT_0000:03:00",
+            "name": "AMD Radeon RX 9070 XT",
+            "type": "HIP"
+          }
+        ],
+        "metadata": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-bssrdf-bump-tags-8b688ec-512spp/cycles/hip.json",
+        "metadata_sha256": "4158a29bb92d0722b74056024a63a8fa6bbef487f427c4a2de660fe326cddcc7",
+        "output": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-bssrdf-bump-tags-8b688ec-512spp/cycles/hip.exr",
+        "process_wall_seconds": 27.050010440987535,
+        "render_seconds": 26.544392043026164,
+        "sha256": "b2ae04a54b56c2dc9dab04a148d2c1d2295b49df969e4073b71ad99ac096dfc7"
+      }
+    },
+    "psycles": {
+      "hip": {
+        "output": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-bssrdf-bump-tags-8b688ec-512spp/psycles/hip.exr",
+        "process_wall_seconds": 139.9657893179683,
+        "render_seconds": 137.286,
+        "scene_compile_seconds": 1.70252,
+        "sha256": "ff8952b67fb4721e8efca54fc45c3d07ca704f5c8f5bfc15ccb1e2b52fad6315",
+        "shader_jit_seconds": 0.40195
+      }
+    }
+  },
+  "resume": {
+    "existing_manifest": false,
+    "requested": false,
+    "reused_stages": []
+  },
+  "scene": {
+    "blend": "/home/mike/Projects/Psycles/assets/official-blender-scenes/monster-under-the-bed/monster_under_the_bed_sss_demo_by_metin_seven.blend",
+    "bundle": "/home/mike/Projects/Psycles/build/benchmarks/2026-08-07/monster-head-2bea4e9/export",
+    "geometry_bin_sha256": "dcf25e4e63bb8e11ace4e639fbca0cf6eec6f862a8095b4e771a4b5e51274b15",
+    "scene_json_sha256": "d530583a73f8e0a310aa19d84e83e157ca95c93c5f56d1be789e291f6202ac12",
+    "sha256": "9463082f8d365ad8ae19c1ba86429deb3b532c5a2d0db0b9492c3c759f64d28d"
+  },
+  "schema": "psycles.scene-benchmark.v1",
+  "settings": {
+    "cycles_gpu_device": "HIP",
+    "cycles_gpu_device_name": "Radeon RX 9070 XT",
+    "height": 960,
+    "max_samples_per_dispatch": 4,
+    "samples": 512,
+    "width": 960
+  },
+  "status": "complete"
+}
