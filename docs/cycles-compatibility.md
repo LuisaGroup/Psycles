@@ -14,7 +14,13 @@ records the independent Principled Coat Normal correction and a remaining
 0.1561 Combined relative RMSE at 960x960x128. The
 [current Lone Monk checkpoint](validation/2026-08-07/lone-monk-current-head/README.md)
 records 0.0248--0.0262 Combined relative RMSE across the three Psycles
-backends at 960x720x128, with visually aligned fine grass and data passes.
+backends at 960x720x128, with visually aligned fine grass and data passes. The
+[muted-node follow-up](validation/2026-08-07/lone-monk-muted-node-bypass/README.md)
+then proves and repairs a stable book-material residual: the source graph's
+muted Mix is replaced by its exported runtime internal link. At 512 spp,
+Diffuse Color RMSE falls 20.52x to `0.00020008`; a fresh five-way matrix puts
+all three Psycles Diffuse Color relative RMSEs between `0.001106` and
+`0.001160`.
 
 Neither result is a blanket feature-parity claim. Monster still needs
 higher-spp transport alignment, while Lone Monk's indirect convergence and
@@ -28,11 +34,14 @@ Psycles does not consume SVM bytecode and does not bake Blender materials.
 Shader data follows this path:
 
 1. Blender exports the original node trees, links, socket defaults, static
-   node properties, image identities, and evaluated scene geometry.
+   node properties, mute state, runtime internal links, image identities, and
+   evaluated scene geometry.
 2. The Blender adapter walks the active Surface and Volume roots recursively.
-   It inserts explicit Cycles socket conversions and emits a single
-   topologically ordered typed-value instruction stream. Displacement remains
-   release-gated work.
+   Before node-specific lowering, it replaces muted nodes with their
+   Cycles-equivalent same-type internal-link proxies and removes dead input
+   branches. It then inserts explicit Cycles socket conversions and emits a
+   single topologically ordered typed-value instruction stream. Displacement
+   remains release-gated work.
 3. Surface- and volume-closure-producing nodes remain typed Add/Mix trees.
    Neither domain is flattened into a fixed-size closure array.
 4. Shader node groups are recursively expanded through their exported Group
@@ -45,6 +54,16 @@ Shader data follows this path:
    differential offsets.
 7. `Polymorphic<Surface>` performs device-side material dispatch. The same
    generated program runs on Luisa `fallback` and GPU backends.
+
+Muted-node normalization is relational rather than node-specific. A muted
+node's concrete implementation is absent, only the internal input reachable
+from the requested output is lowered, an unconnected proxy is the zero value
+of its output type, and a muted output without a proxy leaves the destination
+input default intact. Invalid, explicitly muted, and unavailable-socket links
+are absent at export. The Blender exporter regression, typed-topology
+regression with a deliberately unsupported dead branch, exact Lone Monk path
+trace, 512-spp HIP differential, and five-way full-scene rerun are recorded in
+the [muted-node checkpoint](validation/2026-08-07/lone-monk-muted-node-bypass/README.md).
 
 Image transport preserves Blender datablock ownership. Packed payloads are
 copied exactly, external `//` paths are resolved relative to the owning linked
