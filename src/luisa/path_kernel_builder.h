@@ -155,6 +155,11 @@ struct PathKernelInvocation {
     [[nodiscard]] SurfaceAov
     surface_aov(UInt surface_tag, const SurfacePoint &point) const noexcept;
     [[nodiscard]] Float3
+    surface_bssrdf_normal(UInt surface_tag,
+                          const SurfacePoint &point,
+                          Bool reflective_caustics,
+                          Bool refractive_caustics) const noexcept;
+    [[nodiscard]] Float3
     surface_shading_normal(UInt surface_tag,
                            const SurfacePoint &point) const noexcept;
     [[nodiscard]] Float3

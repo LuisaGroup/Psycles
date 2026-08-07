@@ -1451,6 +1451,19 @@ if(PSYCLES_ENABLE_LUISA)
 
                 psycles_add_luisa_backend_test(
                     TARGET
+                        psycles_luisa_subsurface_exit_tests
+                    SOURCE
+                        tests/test_luisa_subsurface_exit.cpp
+                    TEST_STEM
+                        luisa_subsurface_exit
+                    LIBRARIES Psycles::luisa_runtime)
+                target_include_directories(
+                    psycles_luisa_subsurface_exit_tests
+                    PRIVATE
+                        "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
+
+                psycles_add_luisa_backend_test(
+                    TARGET
                         psycles_luisa_random_walk_tests
                     SOURCE
                         tests/test_luisa_random_walk.cpp

@@ -333,6 +333,47 @@ const SurfaceClosureTrace &SurfaceClosureTraceVisitor::result() const noexcept {
     return _result;
 }
 
+SurfaceBssrdfNormalVisitor::SurfaceBssrdfNormalVisitor(
+    std::size_t capacity) noexcept
+    : SurfaceClosureExpressionVisitor{capacity} {}
+
+void SurfaceBssrdfNormalVisitor::visit(
+    Expr<luisa::float3> shading_normal_expression,
+    const luisa::vector<SurfaceClosureExpression> &closures) noexcept {
+    const auto shading_normal = Float3{shading_normal_expression};
+    Float3 weighted_normal = make_float3(0.0f);
+    UInt allocated_count = 0u;
+    for (const auto &closure : closures) {
+        const auto keep = retains(closure, allocated_count);
+        const auto is_bssrdf =
+            closure.kind == static_cast<std::uint32_t>(
+                                SurfaceClosureKind::bssrdf);
+        const auto contributes = keep & is_bssrdf;
+        const auto weight = detail::pass_weight(
+            Float3{closure.weight.expression()});
+        weighted_normal += select(
+            make_float3(0.0f),
+            Float3{closure.normal.expression()} * weight,
+            contributes);
+        allocated_count += select(0u, 1u, keep);
+    }
+
+    // Cycles tests is_zero() rather than applying an epsilon. Select a safe
+    // normalization operand so the inactive zero branch never manufactures
+    // a NaN, while preserving every non-zero weighted sum exactly.
+    const auto nonzero = any(weighted_normal != make_float3(0.0f));
+    const auto safe = select(
+        make_float3(0.0f, 0.0f, 1.0f),
+        weighted_normal,
+        nonzero);
+    _result = select(shading_normal, normalize(safe), nonzero);
+}
+
+Expr<luisa::float3>
+SurfaceBssrdfNormalVisitor::result() const noexcept {
+    return Expr<luisa::float3>{_result.expression()};
+}
+
 SurfaceAovVisitor::SurfaceAovVisitor(
     const SurfacePoint &point,
     std::size_t capacity,

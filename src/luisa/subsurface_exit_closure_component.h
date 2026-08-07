@@ -26,6 +26,7 @@ public:
 
     [[nodiscard]] SurfaceClosureTrace trace(
         const SurfacePoint &point,
+        const SurfaceQuery &query,
         Expr<std::uint32_t> requested_index) const noexcept;
 
     [[nodiscard]] SurfaceSampleTrace sample_trace(

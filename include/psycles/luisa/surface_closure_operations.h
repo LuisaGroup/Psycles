@@ -127,6 +127,27 @@ class SurfaceClosureTraceVisitor final
     [[nodiscard]] const SurfaceClosureTrace &result() const noexcept;
 };
 
+// Cycles' surface_shader_bssrdf_normal() reduction. This intentionally sees
+// the original, retained closure array at the exit shading point; it neither
+// substitutes the entry closure nor derives the result from a combined AOV.
+class SurfaceBssrdfNormalVisitor final
+    : public SurfaceClosureExpressionVisitor {
+
+  private:
+    Float3 _result{make_float3(0.0f, 0.0f, 1.0f)};
+
+  protected:
+    void visit(
+        Expr<luisa::float3> shading_normal,
+        const luisa::vector<SurfaceClosureExpression> &closures) noexcept override;
+
+  public:
+    explicit SurfaceBssrdfNormalVisitor(
+        std::size_t capacity) noexcept;
+
+    [[nodiscard]] Expr<luisa::float3> result() const noexcept;
+};
+
 class SurfaceAovVisitor final
     : public SurfaceClosureExpressionVisitor {
 
