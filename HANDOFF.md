@@ -2,12 +2,24 @@
 
 ## Current continuation — 2026-08-07
 
-The current renderer implementation boundary is Psycles `main@9ac8bab` with
+The current renderer implementation boundary is Psycles `main@fb69b15` with
 LuisaCompute `next@3e63df0c6` and Blender/Cycles 5.3 Alpha
 `82186b01ad2e`. The older published-boundary section below remains a
 historical record; do not reset to its July revisions.
 
 The current official complex-scene checkpoints are:
+
+- [Monster BSSRDF exit normal](docs/validation/2026-08-07/monster-bssrdf-exit-normal/README.md)
+  formally aligns Cycles' retained-BSSRDF closure-normal reduction and the
+  synthetic unit Lambert used at a subsurface exit. The exact Monster path
+  now agrees through the exit normal, cosine sample, and following
+  object/primitive. At 960x960x512, Combined relative RMSE falls 1.69x from
+  `0.082721` to `0.048905`, and the mean-luminance ratio becomes `1.003553`.
+  Original-resolution Combined, direct/indirect diffuse, and indirect glossy
+  triptychs were inspected; 218/218 tests pass. The correctness repair is
+  published as `fb69b15`. Its independent material dispatch increases the
+  cold HIP link to 100.7 seconds and Monster render time by about 4.8%, so
+  capability-specialized code generation is the immediate performance task.
 
 - [Lone Monk background-Sun sampling](docs/validation/2026-08-07/lone-monk-background-sun-sampling/README.md)
   aligns the complete Sobol-to-guided-Nishita-Sun relation. The old polar-cap
@@ -45,15 +57,14 @@ The current official complex-scene checkpoints are:
   than Cycles CPU, and Vulkan is `103.61x` slower than Cycles HIP with a
   19.75-minute cache-cold JIT.
 
-The 512-spp Lone Monk Combined relative RMSE is now `0.012203`. The exact
-guided-Sun proposal is aligned; its first-event remaining residual follows the
-already-measured surface-normal and closure-weight differences, plus explicit
-infinity and shadow-light trace identities. The next correctness gate is to
-isolate those relations formally, continue Monster higher-spp transport
-alignment, and promote fresh current-head Classroom, Barbershop, and Blender
-4.1 Splash matrices. The next performance gate must separate exact traversal
-cost from the monolithic path shader and reduce generated-kernel size without
-pre-baking or weakening raw closure semantics.
+The 512-spp Lone Monk Combined relative RMSE is `0.012203`; the 512-spp
+Monster result is now `0.048905` after exact BSSRDF exit-frame alignment. The
+next correctness gate is to isolate the remaining Monster indirect residuals
+and promote fresh current-head Classroom, Barbershop, Blender 4.1 Splash, and
+Monster matrices across all five backends. The immediate performance gate is
+to restrict the new BSSRDF-exit callable to statically capable material
+programs, then continue separating exact traversal cost from monolithic path
+shader code generation without pre-baking or weakening raw closure semantics.
 
 ## Published boundary
 

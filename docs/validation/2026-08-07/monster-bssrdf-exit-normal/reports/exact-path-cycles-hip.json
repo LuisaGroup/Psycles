@@ -1,0 +1,2168 @@
+{
+  "events": [
+    {
+      "closures": [
+        {
+          "index": 0,
+          "meta": {
+            "aov": "PsyTrace056",
+            "index": 0.0,
+            "sample_weight": 0.029849881306290627,
+            "slot": 56,
+            "type": 12.0,
+            "written": true
+          },
+          "normal": {
+            "aov": "PsyTrace058",
+            "slot": 58,
+            "written": true,
+            "x": -0.09374050050973892,
+            "y": -0.5250651836395264,
+            "z": 0.8458836674690247
+          },
+          "weight": {
+            "aov": "PsyTrace057",
+            "b": 0.47213423252105713,
+            "g": 0.47213423252105713,
+            "r": 0.47213423252105713,
+            "slot": 57,
+            "written": true
+          }
+        },
+        {
+          "index": 1,
+          "meta": {
+            "aov": "PsyTrace059",
+            "index": 1.0,
+            "sample_weight": 0.009055940434336662,
+            "slot": 59,
+            "type": 12.0,
+            "written": true
+          },
+          "normal": {
+            "aov": "PsyTrace061",
+            "slot": 61,
+            "written": true,
+            "x": -0.21405480802059174,
+            "y": -0.6778327822685242,
+            "z": 0.7033655643463135
+          },
+          "weight": {
+            "aov": "PsyTrace060",
+            "b": 0.7261813282966614,
+            "g": 0.7261813282966614,
+            "r": 0.7261813282966614,
+            "slot": 60,
+            "written": true
+          }
+        },
+        {
+          "index": 2,
+          "meta": {
+            "aov": "PsyTrace062",
+            "index": 2.0,
+            "sample_weight": 1.3378431797027588,
+            "slot": 62,
+            "type": 33.0,
+            "written": true
+          },
+          "normal": {
+            "aov": "PsyTrace064",
+            "slot": 64,
+            "written": true,
+            "x": -0.21405480802059174,
+            "y": -0.6778327822685242,
+            "z": 0.7033655643463135
+          },
+          "weight": {
+            "aov": "PsyTrace063",
+            "b": 0.7688753604888916,
+            "g": 0.23066261410713196,
+            "r": 0.3383050560951233,
+            "slot": 63,
+            "written": true
+          }
+        }
+      ],
+      "index": 0,
+      "slots": {
+        "bsdf_eval": {
+          "aov": "PsyTrace038",
+          "b": 0.0,
+          "g": 0.0,
+          "r": 0.0,
+          "slot": 38,
+          "written": false
+        },
+        "bsdf_meta": {
+          "aov": "PsyTrace036",
+          "label": 0.0,
+          "pdf": 0.0,
+          "slot": 36,
+          "unguided_pdf": 0.0,
+          "written": false
+        },
+        "bsdf_roughness_eta": {
+          "aov": "PsyTrace039",
+          "eta": 0.0,
+          "roughness_u": 0.0,
+          "roughness_v": 0.0,
+          "slot": 39,
+          "written": false
+        },
+        "bsdf_wo": {
+          "aov": "PsyTrace037",
+          "slot": 37,
+          "written": false,
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "closure_n": {
+          "aov": "PsyTrace035",
+          "slot": 35,
+          "written": true,
+          "x": -0.21405480802059174,
+          "y": -0.6778327822685242,
+          "z": 0.7033655643463135
+        },
+        "closure_pick": {
+          "aov": "PsyTrace032",
+          "index": 2.0,
+          "sample_weight": 1.3378431797027588,
+          "slot": 32,
+          "type": 33.0,
+          "written": true
+        },
+        "closure_random": {
+          "aov": "PsyTrace033",
+          "selection_rescaled": 0.2309475690126419,
+          "slot": 33,
+          "u": 0.5687861442565918,
+          "v": 0.18780513107776642,
+          "written": true
+        },
+        "closure_weight": {
+          "aov": "PsyTrace034",
+          "b": 0.7688753604888916,
+          "g": 0.23066261410713196,
+          "r": 0.3383050560951233,
+          "slot": 34,
+          "written": true
+        },
+        "isect_coord": {
+          "aov": "PsyTrace016",
+          "distance": 10.138797760009766,
+          "slot": 16,
+          "u": 0.03169168531894684,
+          "v": 0.9162405729293823,
+          "written": true
+        },
+        "isect_id": {
+          "aov": "PsyTrace017",
+          "object": 44.0,
+          "primitive": 1534796.0,
+          "primitive_type": 1.0,
+          "slot": 17,
+          "written": true
+        },
+        "light_d": {
+          "aov": "PsyTrace028",
+          "slot": 28,
+          "written": true,
+          "x": -0.7924201488494873,
+          "y": 0.4184664189815521,
+          "z": 0.44379740953445435
+        },
+        "light_eval": {
+          "aov": "PsyTrace031",
+          "bsdf_pdf": 0.0009667619015090168,
+          "distance": 2.4240050315856934,
+          "mis_weight": 0.9999792575836182,
+          "slot": 31,
+          "written": true
+        },
+        "light_id": {
+          "aov": "PsyTrace026",
+          "group": -1.0,
+          "object": 6.0,
+          "reserved": 0.0,
+          "slot": 26,
+          "written": true
+        },
+        "light_meta": {
+          "aov": "PsyTrace025",
+          "emitter": 9.0,
+          "primitive": 3.0,
+          "slot": 25,
+          "type": 3.0,
+          "written": true
+        },
+        "light_ng": {
+          "aov": "PsyTrace030",
+          "slot": 30,
+          "written": true,
+          "x": 1.0,
+          "y": -4.0133926404450904e-07,
+          "z": -1.9470718370939721e-07
+        },
+        "light_p": {
+          "aov": "PsyTrace029",
+          "slot": 29,
+          "written": true,
+          "x": -1.7134068012237549,
+          "y": 0.47484683990478516,
+          "z": 2.1395668983459473
+        },
+        "light_pdf": {
+          "aov": "PsyTrace027",
+          "eval_factor": 0.15915492177009583,
+          "pdf": 0.21225470304489136,
+          "selection_pdf": 0.0555555559694767,
+          "slot": 27,
+          "written": true
+        },
+        "light_shader": {
+          "aov": "PsyTrace048",
+          "reserved": 0.0,
+          "shader": 1358954504,
+          "shader_high16": 20736.0,
+          "shader_low16": 8.0,
+          "slot": 48,
+          "written": true
+        },
+        "nee_bsdf": {
+          "aov": "PsyTrace049",
+          "b": 0.0017585997702553868,
+          "g": 0.0017585997702553868,
+          "r": 0.0017585997702553868,
+          "slot": 49,
+          "written": true
+        },
+        "nee_contribution": {
+          "aov": "PsyTrace055",
+          "b": 0.0,
+          "g": 0.0,
+          "r": 0.0,
+          "slot": 55,
+          "written": false
+        },
+        "nee_diffuse": {
+          "aov": "PsyTrace050",
+          "b": 0.0,
+          "g": 0.0,
+          "r": 0.0,
+          "slot": 50,
+          "written": true
+        },
+        "nee_glossy": {
+          "aov": "PsyTrace051",
+          "b": 0.0017585997702553868,
+          "g": 0.0017585997702553868,
+          "r": 0.0017585997702553868,
+          "slot": 51,
+          "written": true
+        },
+        "nee_light_shader": {
+          "aov": "PsyTrace053",
+          "b": 0.0,
+          "g": 0.0,
+          "r": 0.0,
+          "slot": 53,
+          "written": true
+        },
+        "nee_unshadowed": {
+          "aov": "PsyTrace054",
+          "b": 0.0,
+          "g": 0.0,
+          "r": 0.0,
+          "slot": 54,
+          "written": true
+        },
+        "nee_weighted_bsdf": {
+          "aov": "PsyTrace052",
+          "b": 0.010356443002820015,
+          "g": 0.010356443002820015,
+          "r": 0.010356443002820015,
+          "slot": 52,
+          "written": true
+        },
+        "post_depth": {
+          "aov": "PsyTrace040",
+          "bounce": 0.0,
+          "rng_offset": 0.0,
+          "slot": 40,
+          "transparent_bounce": 0.0,
+          "written": false
+        },
+        "post_flags": {
+          "aov": "PsyTrace044",
+          "path_flag": 0,
+          "path_flag_high16": 0.0,
+          "path_flag_low16": 0.0,
+          "reserved": 0.0,
+          "slot": 44,
+          "written": false
+        },
+        "post_mis": {
+          "aov": "PsyTrace045",
+          "continuation_probability": 0.0,
+          "min_ray_pdf": 0.0,
+          "mis_ray_pdf": 0.0,
+          "slot": 45,
+          "written": false
+        },
+        "post_ray_d": {
+          "aov": "PsyTrace043",
+          "slot": 43,
+          "written": false,
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "post_ray_p": {
+          "aov": "PsyTrace042",
+          "slot": 42,
+          "written": false,
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "post_throughput": {
+          "aov": "PsyTrace041",
+          "b": 0.0,
+          "g": 0.0,
+          "r": 0.0,
+          "slot": 41,
+          "written": false
+        },
+        "post_visibility": {
+          "aov": "PsyTrace047",
+          "reserved": 0.0,
+          "slot": 47,
+          "visibility": 0,
+          "visibility_high16": 0.0,
+          "visibility_low16": 0.0,
+          "written": false
+        },
+        "random_bsdf": {
+          "aov": "PsyTrace024",
+          "selection": 0.25268039107322693,
+          "slot": 24,
+          "u": 0.5687861442565918,
+          "v": 0.18780513107776642,
+          "written": true
+        },
+        "random_light": {
+          "aov": "PsyTrace023",
+          "selection": 0.6856803894042969,
+          "slot": 23,
+          "u": 0.3233664035797119,
+          "v": 0.551051676273346,
+          "written": true
+        },
+        "random_scalars": {
+          "aov": "PsyTrace022",
+          "light_terminate": 0.9465722441673279,
+          "reserved": 0.0,
+          "slot": 22,
+          "terminate": 0.7505737543106079,
+          "written": true
+        },
+        "ray_d": {
+          "aov": "PsyTrace014",
+          "slot": 14,
+          "written": true,
+          "x": 0.041354257613420486,
+          "y": 0.9933599233627319,
+          "z": -0.10735833644866943
+        },
+        "ray_p": {
+          "aov": "PsyTrace013",
+          "slot": 13,
+          "written": true,
+          "x": -0.21185889840126038,
+          "y": -10.610993385314941,
+          "z": 2.1522843837738037
+        },
+        "ray_range": {
+          "aov": "PsyTrace015",
+          "slot": 15,
+          "time": 0.5,
+          "tmax": 100.0369873046875,
+          "tmin": 0.0,
+          "written": true
+        },
+        "shadow_hit_coord": {
+          "aov": "PsyTrace302",
+          "distance": 0.0,
+          "slot": 302,
+          "u": 0.0,
+          "v": 0.0,
+          "written": false
+        },
+        "shadow_hit_id": {
+          "aov": "PsyTrace301",
+          "kind": 0.0,
+          "object": 0.0,
+          "primitive": 0.0,
+          "slot": 301,
+          "written": false
+        },
+        "shadow_light": {
+          "aov": "PsyTrace300",
+          "object": 6.0,
+          "primitive": 3.0,
+          "reserved": 0.0,
+          "slot": 300,
+          "written": true
+        },
+        "shadow_ray_d": {
+          "aov": "PsyTrace297",
+          "slot": 297,
+          "written": true,
+          "x": -0.7924201488494873,
+          "y": 0.4184664189815521,
+          "z": 0.44379740953445435
+        },
+        "shadow_ray_p": {
+          "aov": "PsyTrace296",
+          "slot": 296,
+          "written": true,
+          "x": 0.20742356777191162,
+          "y": -0.5395178198814392,
+          "z": 1.0637997388839722
+        },
+        "shadow_ray_range": {
+          "aov": "PsyTrace298",
+          "cast_shadow": 1.0,
+          "slot": 298,
+          "tmax": 2.4240050315856934,
+          "tmin": 0.0,
+          "written": true
+        },
+        "shadow_source": {
+          "aov": "PsyTrace299",
+          "object": 44.0,
+          "primitive": 1534796.0,
+          "skip_self": 1.0,
+          "slot": 299,
+          "written": true
+        },
+        "shadow_transmittance": {
+          "aov": "PsyTrace303",
+          "b": 0.0,
+          "g": 0.0,
+          "r": 0.0,
+          "slot": 303,
+          "written": false
+        },
+        "state_depth": {
+          "aov": "PsyTrace008",
+          "bounce": 0.0,
+          "event": 0.0,
+          "rng_offset": 16.0,
+          "slot": 8,
+          "written": true
+        },
+        "state_flags": {
+          "aov": "PsyTrace011",
+          "continuation_probability": 1.0,
+          "path_flag": 896,
+          "path_flag_high16": 0.0,
+          "path_flag_low16": 896.0,
+          "slot": 11,
+          "written": true
+        },
+        "state_lobes": {
+          "aov": "PsyTrace009",
+          "diffuse_bounce": 0.0,
+          "glossy_bounce": 0.0,
+          "slot": 9,
+          "transparent_bounce": 0.0,
+          "written": true
+        },
+        "state_visibility": {
+          "aov": "PsyTrace010",
+          "slot": 10,
+          "transmission_bounce": 0.0,
+          "visibility": 1,
+          "visibility_high16": 0.0,
+          "visibility_low16": 1.0,
+          "written": true
+        },
+        "surface_flags": {
+          "aov": "PsyTrace046",
+          "reserved": 0.0,
+          "runtime_flag": 56,
+          "runtime_flag_high16": 0.0,
+          "runtime_flag_low16": 56.0,
+          "slot": 46,
+          "written": true
+        },
+        "surface_meta": {
+          "aov": "PsyTrace018",
+          "closure_count": 3.0,
+          "shader": 3221225503,
+          "shader_high16": 49152.0,
+          "shader_low16": 31.0,
+          "slot": 18,
+          "written": true
+        },
+        "surface_n": {
+          "aov": "PsyTrace021",
+          "slot": 21,
+          "written": true,
+          "x": -0.09374050050973892,
+          "y": -0.5250651836395264,
+          "z": 0.8458836674690247
+        },
+        "surface_ng": {
+          "aov": "PsyTrace020",
+          "slot": 20,
+          "written": true,
+          "x": 0.013897391967475414,
+          "y": -0.5303946733474731,
+          "z": 0.8476369380950928
+        },
+        "surface_p": {
+          "aov": "PsyTrace019",
+          "slot": 19,
+          "written": true,
+          "x": 0.20742356777191162,
+          "y": -0.5395178198814392,
+          "z": 1.0637997388839722
+        },
+        "throughput": {
+          "aov": "PsyTrace012",
+          "b": 1.0,
+          "g": 1.0,
+          "r": 1.0,
+          "slot": 12,
+          "written": true
+        }
+      },
+      "written": true
+    },
+    {
+      "closures": [],
+      "index": 1,
+      "slots": {
+        "bsdf_eval": {
+          "aov": "PsyTrace110",
+          "b": 0.0,
+          "g": 0.0,
+          "r": 0.0,
+          "slot": 110,
+          "written": false
+        },
+        "bsdf_meta": {
+          "aov": "PsyTrace108",
+          "label": 0.0,
+          "pdf": 0.0,
+          "slot": 108,
+          "unguided_pdf": 0.0,
+          "written": false
+        },
+        "bsdf_roughness_eta": {
+          "aov": "PsyTrace111",
+          "eta": 0.0,
+          "roughness_u": 0.0,
+          "roughness_v": 0.0,
+          "slot": 111,
+          "written": false
+        },
+        "bsdf_wo": {
+          "aov": "PsyTrace109",
+          "slot": 109,
+          "written": false,
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "closure_n": {
+          "aov": "PsyTrace107",
+          "slot": 107,
+          "written": false,
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "closure_pick": {
+          "aov": "PsyTrace104",
+          "index": 0.0,
+          "sample_weight": 0.0,
+          "slot": 104,
+          "type": 0.0,
+          "written": false
+        },
+        "closure_random": {
+          "aov": "PsyTrace105",
+          "selection_rescaled": 0.0,
+          "slot": 105,
+          "u": 0.0,
+          "v": 0.0,
+          "written": false
+        },
+        "closure_weight": {
+          "aov": "PsyTrace106",
+          "b": 0.0,
+          "g": 0.0,
+          "r": 0.0,
+          "slot": 106,
+          "written": false
+        },
+        "isect_coord": {
+          "aov": "PsyTrace088",
+          "distance": 0.0,
+          "slot": 88,
+          "u": 0.0,
+          "v": 0.0,
+          "written": false
+        },
+        "isect_id": {
+          "aov": "PsyTrace089",
+          "object": 0.0,
+          "primitive": 0.0,
+          "primitive_type": 0.0,
+          "slot": 89,
+          "written": false
+        },
+        "light_d": {
+          "aov": "PsyTrace100",
+          "slot": 100,
+          "written": false,
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "light_eval": {
+          "aov": "PsyTrace103",
+          "bsdf_pdf": 0.0,
+          "distance": 0.0,
+          "mis_weight": 0.0,
+          "slot": 103,
+          "written": false
+        },
+        "light_id": {
+          "aov": "PsyTrace098",
+          "group": 0.0,
+          "object": 0.0,
+          "reserved": 0.0,
+          "slot": 98,
+          "written": false
+        },
+        "light_meta": {
+          "aov": "PsyTrace097",
+          "emitter": 0.0,
+          "primitive": 0.0,
+          "slot": 97,
+          "type": 0.0,
+          "written": false
+        },
+        "light_ng": {
+          "aov": "PsyTrace102",
+          "slot": 102,
+          "written": false,
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "light_p": {
+          "aov": "PsyTrace101",
+          "slot": 101,
+          "written": false,
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "light_pdf": {
+          "aov": "PsyTrace099",
+          "eval_factor": 0.0,
+          "pdf": 0.0,
+          "selection_pdf": 0.0,
+          "slot": 99,
+          "written": false
+        },
+        "light_shader": {
+          "aov": "PsyTrace120",
+          "reserved": 0.0,
+          "shader": 0,
+          "shader_high16": 0.0,
+          "shader_low16": 0.0,
+          "slot": 120,
+          "written": false
+        },
+        "nee_bsdf": {
+          "aov": "PsyTrace121",
+          "b": 0.0,
+          "g": 0.0,
+          "r": 0.0,
+          "slot": 121,
+          "written": false
+        },
+        "nee_contribution": {
+          "aov": "PsyTrace127",
+          "b": 0.0,
+          "g": 0.0,
+          "r": 0.0,
+          "slot": 127,
+          "written": false
+        },
+        "nee_diffuse": {
+          "aov": "PsyTrace122",
+          "b": 0.0,
+          "g": 0.0,
+          "r": 0.0,
+          "slot": 122,
+          "written": false
+        },
+        "nee_glossy": {
+          "aov": "PsyTrace123",
+          "b": 0.0,
+          "g": 0.0,
+          "r": 0.0,
+          "slot": 123,
+          "written": false
+        },
+        "nee_light_shader": {
+          "aov": "PsyTrace125",
+          "b": 0.0,
+          "g": 0.0,
+          "r": 0.0,
+          "slot": 125,
+          "written": false
+        },
+        "nee_unshadowed": {
+          "aov": "PsyTrace126",
+          "b": 0.0,
+          "g": 0.0,
+          "r": 0.0,
+          "slot": 126,
+          "written": false
+        },
+        "nee_weighted_bsdf": {
+          "aov": "PsyTrace124",
+          "b": 0.0,
+          "g": 0.0,
+          "r": 0.0,
+          "slot": 124,
+          "written": false
+        },
+        "post_depth": {
+          "aov": "PsyTrace112",
+          "bounce": 0.0,
+          "rng_offset": 0.0,
+          "slot": 112,
+          "transparent_bounce": 0.0,
+          "written": false
+        },
+        "post_flags": {
+          "aov": "PsyTrace116",
+          "path_flag": 0,
+          "path_flag_high16": 0.0,
+          "path_flag_low16": 0.0,
+          "reserved": 0.0,
+          "slot": 116,
+          "written": false
+        },
+        "post_mis": {
+          "aov": "PsyTrace117",
+          "continuation_probability": 0.0,
+          "min_ray_pdf": 0.0,
+          "mis_ray_pdf": 0.0,
+          "slot": 117,
+          "written": false
+        },
+        "post_ray_d": {
+          "aov": "PsyTrace115",
+          "slot": 115,
+          "written": false,
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "post_ray_p": {
+          "aov": "PsyTrace114",
+          "slot": 114,
+          "written": false,
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "post_throughput": {
+          "aov": "PsyTrace113",
+          "b": 0.0,
+          "g": 0.0,
+          "r": 0.0,
+          "slot": 113,
+          "written": false
+        },
+        "post_visibility": {
+          "aov": "PsyTrace119",
+          "reserved": 0.0,
+          "slot": 119,
+          "visibility": 0,
+          "visibility_high16": 0.0,
+          "visibility_low16": 0.0,
+          "written": false
+        },
+        "random_bsdf": {
+          "aov": "PsyTrace096",
+          "selection": 0.0,
+          "slot": 96,
+          "u": 0.0,
+          "v": 0.0,
+          "written": false
+        },
+        "random_light": {
+          "aov": "PsyTrace095",
+          "selection": 0.0,
+          "slot": 95,
+          "u": 0.0,
+          "v": 0.0,
+          "written": false
+        },
+        "random_scalars": {
+          "aov": "PsyTrace094",
+          "light_terminate": 0.0,
+          "reserved": 0.0,
+          "slot": 94,
+          "terminate": 0.0,
+          "written": false
+        },
+        "ray_d": {
+          "aov": "PsyTrace086",
+          "slot": 86,
+          "written": false,
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "ray_p": {
+          "aov": "PsyTrace085",
+          "slot": 85,
+          "written": false,
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "ray_range": {
+          "aov": "PsyTrace087",
+          "slot": 87,
+          "time": 0.0,
+          "tmax": 0.0,
+          "tmin": 0.0,
+          "written": false
+        },
+        "shadow_hit_coord": {
+          "aov": "PsyTrace310",
+          "distance": 0.0,
+          "slot": 310,
+          "u": 0.0,
+          "v": 0.0,
+          "written": false
+        },
+        "shadow_hit_id": {
+          "aov": "PsyTrace309",
+          "kind": 0.0,
+          "object": 0.0,
+          "primitive": 0.0,
+          "slot": 309,
+          "written": false
+        },
+        "shadow_light": {
+          "aov": "PsyTrace308",
+          "object": 0.0,
+          "primitive": 0.0,
+          "reserved": 0.0,
+          "slot": 308,
+          "written": false
+        },
+        "shadow_ray_d": {
+          "aov": "PsyTrace305",
+          "slot": 305,
+          "written": false,
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "shadow_ray_p": {
+          "aov": "PsyTrace304",
+          "slot": 304,
+          "written": false,
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "shadow_ray_range": {
+          "aov": "PsyTrace306",
+          "cast_shadow": 0.0,
+          "slot": 306,
+          "tmax": 0.0,
+          "tmin": 0.0,
+          "written": false
+        },
+        "shadow_source": {
+          "aov": "PsyTrace307",
+          "object": 0.0,
+          "primitive": 0.0,
+          "skip_self": 0.0,
+          "slot": 307,
+          "written": false
+        },
+        "shadow_transmittance": {
+          "aov": "PsyTrace311",
+          "b": 0.0,
+          "g": 0.0,
+          "r": 0.0,
+          "slot": 311,
+          "written": false
+        },
+        "state_depth": {
+          "aov": "PsyTrace080",
+          "bounce": 0.0,
+          "event": 0.0,
+          "rng_offset": 0.0,
+          "slot": 80,
+          "written": false
+        },
+        "state_flags": {
+          "aov": "PsyTrace083",
+          "continuation_probability": 0.0,
+          "path_flag": 0,
+          "path_flag_high16": 0.0,
+          "path_flag_low16": 0.0,
+          "slot": 83,
+          "written": false
+        },
+        "state_lobes": {
+          "aov": "PsyTrace081",
+          "diffuse_bounce": 0.0,
+          "glossy_bounce": 0.0,
+          "slot": 81,
+          "transparent_bounce": 0.0,
+          "written": false
+        },
+        "state_visibility": {
+          "aov": "PsyTrace082",
+          "slot": 82,
+          "transmission_bounce": 0.0,
+          "visibility": 0,
+          "visibility_high16": 0.0,
+          "visibility_low16": 0.0,
+          "written": false
+        },
+        "surface_flags": {
+          "aov": "PsyTrace118",
+          "reserved": 0.0,
+          "runtime_flag": 0,
+          "runtime_flag_high16": 0.0,
+          "runtime_flag_low16": 0.0,
+          "slot": 118,
+          "written": false
+        },
+        "surface_meta": {
+          "aov": "PsyTrace090",
+          "closure_count": 0.0,
+          "shader": 0,
+          "shader_high16": 0.0,
+          "shader_low16": 0.0,
+          "slot": 90,
+          "written": false
+        },
+        "surface_n": {
+          "aov": "PsyTrace093",
+          "slot": 93,
+          "written": false,
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "surface_ng": {
+          "aov": "PsyTrace092",
+          "slot": 92,
+          "written": false,
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "surface_p": {
+          "aov": "PsyTrace091",
+          "slot": 91,
+          "written": false,
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "throughput": {
+          "aov": "PsyTrace084",
+          "b": 0.0,
+          "g": 0.0,
+          "r": 0.0,
+          "slot": 84,
+          "written": false
+        }
+      },
+      "written": false
+    },
+    {
+      "closures": [
+        {
+          "index": 0,
+          "meta": {
+            "aov": "PsyTrace200",
+            "index": 0.0,
+            "sample_weight": 1.0,
+            "slot": 200,
+            "type": 2.0,
+            "written": true
+          },
+          "normal": {
+            "aov": "PsyTrace202",
+            "slot": 202,
+            "written": true,
+            "x": 0.06996151059865952,
+            "y": -0.44716334342956543,
+            "z": 0.8917120695114136
+          },
+          "weight": {
+            "aov": "PsyTrace201",
+            "b": 1.0,
+            "g": 1.0,
+            "r": 1.0,
+            "slot": 201,
+            "written": true
+          }
+        }
+      ],
+      "index": 2,
+      "slots": {
+        "bsdf_eval": {
+          "aov": "PsyTrace182",
+          "b": 0.255903422832489,
+          "g": 0.255903422832489,
+          "r": 0.255903422832489,
+          "slot": 182,
+          "written": true
+        },
+        "bsdf_meta": {
+          "aov": "PsyTrace180",
+          "label": 6.0,
+          "pdf": 0.2559816241264343,
+          "slot": 180,
+          "unguided_pdf": 0.2559816241264343,
+          "written": true
+        },
+        "bsdf_roughness_eta": {
+          "aov": "PsyTrace183",
+          "eta": 1.0,
+          "roughness_u": 1.0,
+          "roughness_v": 1.0,
+          "slot": 183,
+          "written": true
+        },
+        "bsdf_wo": {
+          "aov": "PsyTrace181",
+          "slot": 181,
+          "written": true,
+          "x": 0.5856168866157532,
+          "y": -0.10363007336854935,
+          "z": 0.8039364814758301
+        },
+        "closure_n": {
+          "aov": "PsyTrace179",
+          "slot": 179,
+          "written": true,
+          "x": 0.06996151059865952,
+          "y": -0.44716334342956543,
+          "z": 0.8917120695114136
+        },
+        "closure_pick": {
+          "aov": "PsyTrace176",
+          "index": 0.0,
+          "sample_weight": 1.0,
+          "slot": 176,
+          "type": 2.0,
+          "written": true
+        },
+        "closure_random": {
+          "aov": "PsyTrace177",
+          "selection_rescaled": 0.07229607552289963,
+          "slot": 177,
+          "u": 0.681433916091919,
+          "v": 0.7971861958503723,
+          "written": true
+        },
+        "closure_weight": {
+          "aov": "PsyTrace178",
+          "b": 1.0,
+          "g": 1.0,
+          "r": 1.0,
+          "slot": 178,
+          "written": true
+        },
+        "isect_coord": {
+          "aov": "PsyTrace160",
+          "distance": 0.035020411014556885,
+          "slot": 160,
+          "u": 0.17584264278411865,
+          "v": 0.7623852491378784,
+          "written": true
+        },
+        "isect_id": {
+          "aov": "PsyTrace161",
+          "object": 44.0,
+          "primitive": 1534791.0,
+          "primitive_type": 1.0,
+          "slot": 161,
+          "written": true
+        },
+        "light_d": {
+          "aov": "PsyTrace172",
+          "slot": 172,
+          "written": true,
+          "x": 0.18291281163692474,
+          "y": 0.2899549603462219,
+          "z": 0.9393982291221619
+        },
+        "light_eval": {
+          "aov": "PsyTrace175",
+          "bsdf_pdf": 0.22944170236587524,
+          "distance": 4.101616382598877,
+          "mis_weight": 0.9613755345344543,
+          "slot": 175,
+          "written": true
+        },
+        "light_id": {
+          "aov": "PsyTrace170",
+          "group": -1.0,
+          "object": 2.0,
+          "reserved": 0.0,
+          "slot": 170,
+          "written": true
+        },
+        "light_meta": {
+          "aov": "PsyTrace169",
+          "emitter": 4.0,
+          "primitive": 4.0,
+          "slot": 169,
+          "type": 5.0,
+          "written": true
+        },
+        "light_ng": {
+          "aov": "PsyTrace174",
+          "slot": 174,
+          "written": true,
+          "x": 0.0,
+          "y": -0.0,
+          "z": -1.0
+        },
+        "light_p": {
+          "aov": "PsyTrace173",
+          "slot": 173,
+          "written": true,
+          "x": 0.9441275000572205,
+          "y": 0.6224864721298218,
+          "z": 4.900000095367432
+        },
+        "light_pdf": {
+          "aov": "PsyTrace171",
+          "eval_factor": 1.0,
+          "pdf": 1.1446894407272339,
+          "selection_pdf": 0.0833333358168602,
+          "slot": 171,
+          "written": true
+        },
+        "light_shader": {
+          "aov": "PsyTrace192",
+          "reserved": 0.0,
+          "shader": 3493855245,
+          "shader_high16": 53312.0,
+          "shader_low16": 13.0,
+          "slot": 192,
+          "written": true
+        },
+        "nee_bsdf": {
+          "aov": "PsyTrace193",
+          "b": 0.22932317852973938,
+          "g": 0.22932317852973938,
+          "r": 0.22932317852973938,
+          "slot": 193,
+          "written": true
+        },
+        "nee_contribution": {
+          "aov": "PsyTrace199",
+          "b": 0.0,
+          "g": 0.0,
+          "r": 0.0,
+          "slot": 199,
+          "written": false
+        },
+        "nee_diffuse": {
+          "aov": "PsyTrace194",
+          "b": 0.22932317852973938,
+          "g": 0.22932317852973938,
+          "r": 0.22932317852973938,
+          "slot": 194,
+          "written": true
+        },
+        "nee_glossy": {
+          "aov": "PsyTrace195",
+          "b": 0.0,
+          "g": 0.0,
+          "r": 0.0,
+          "slot": 195,
+          "written": true
+        },
+        "nee_light_shader": {
+          "aov": "PsyTrace197",
+          "b": 0.8142271637916565,
+          "g": 1.1796468496322632,
+          "r": 1.6230356693267822,
+          "slot": 197,
+          "written": true
+        },
+        "nee_unshadowed": {
+          "aov": "PsyTrace198",
+          "b": 0.26359060406684875,
+          "g": 0.07999216020107269,
+          "r": 0.00564525555819273,
+          "slot": 198,
+          "written": true
+        },
+        "nee_weighted_bsdf": {
+          "aov": "PsyTrace196",
+          "b": 0.19259868562221527,
+          "g": 0.19259868562221527,
+          "r": 0.19259868562221527,
+          "slot": 196,
+          "written": true
+        },
+        "post_depth": {
+          "aov": "PsyTrace184",
+          "bounce": 1.0,
+          "rng_offset": 64.0,
+          "slot": 184,
+          "transparent_bounce": 0.0,
+          "written": true
+        },
+        "post_flags": {
+          "aov": "PsyTrace188",
+          "path_flag": 262417,
+          "path_flag_high16": 4.0,
+          "path_flag_low16": 273.0,
+          "reserved": 0.0,
+          "slot": 188,
+          "written": true
+        },
+        "post_mis": {
+          "aov": "PsyTrace189",
+          "continuation_probability": 1.0,
+          "min_ray_pdf": 0.2559816241264343,
+          "mis_ray_pdf": 0.2559816241264343,
+          "slot": 189,
+          "written": true
+        },
+        "post_ray_d": {
+          "aov": "PsyTrace187",
+          "slot": 187,
+          "written": true,
+          "x": 0.5856168270111084,
+          "y": -0.10363005846738815,
+          "z": 0.8039363622665405
+        },
+        "post_ray_p": {
+          "aov": "PsyTrace186",
+          "slot": 186,
+          "written": true,
+          "x": 0.193889319896698,
+          "y": -0.5667975544929504,
+          "z": 1.046948790550232
+        },
+        "post_throughput": {
+          "aov": "PsyTrace185",
+          "b": 1.6803443431854248,
+          "g": 0.3519729971885681,
+          "r": 0.01805383712053299,
+          "slot": 185,
+          "written": true
+        },
+        "post_visibility": {
+          "aov": "PsyTrace191",
+          "reserved": 0.0,
+          "slot": 191,
+          "visibility": 4,
+          "visibility_high16": 0.0,
+          "visibility_low16": 4.0,
+          "written": true
+        },
+        "random_bsdf": {
+          "aov": "PsyTrace168",
+          "selection": 0.07229607552289963,
+          "slot": 168,
+          "u": 0.681433916091919,
+          "v": 0.7971861958503723,
+          "written": true
+        },
+        "random_light": {
+          "aov": "PsyTrace167",
+          "selection": 0.4028119742870331,
+          "slot": 167,
+          "u": 0.003781369421631098,
+          "v": 0.8552365899085999,
+          "written": true
+        },
+        "random_scalars": {
+          "aov": "PsyTrace166",
+          "light_terminate": 0.5991422533988953,
+          "reserved": 0.0,
+          "slot": 166,
+          "terminate": 0.5328937768936157,
+          "written": true
+        },
+        "ray_d": {
+          "aov": "PsyTrace158",
+          "slot": 158,
+          "written": true,
+          "x": 0.4059002101421356,
+          "y": 0.8727112412452698,
+          "z": 0.2713301181793213
+        },
+        "ray_p": {
+          "aov": "PsyTrace157",
+          "slot": 157,
+          "written": true,
+          "x": 0.16545972228050232,
+          "y": -0.6279229521751404,
+          "z": 1.027944564819336
+        },
+        "ray_range": {
+          "aov": "PsyTrace159",
+          "slot": 159,
+          "time": 0.5,
+          "tmax": 0.035020411014556885,
+          "tmin": 0.0,
+          "written": true
+        },
+        "shadow_hit_coord": {
+          "aov": "PsyTrace318",
+          "distance": 0.0,
+          "slot": 318,
+          "u": 0.0,
+          "v": 0.0,
+          "written": false
+        },
+        "shadow_hit_id": {
+          "aov": "PsyTrace317",
+          "kind": 0.0,
+          "object": 0.0,
+          "primitive": 0.0,
+          "slot": 317,
+          "written": false
+        },
+        "shadow_light": {
+          "aov": "PsyTrace316",
+          "object": 2.0,
+          "primitive": 4.0,
+          "reserved": 0.0,
+          "slot": 316,
+          "written": true
+        },
+        "shadow_ray_d": {
+          "aov": "PsyTrace313",
+          "slot": 313,
+          "written": true,
+          "x": 0.18291281163692474,
+          "y": 0.2899549603462219,
+          "z": 0.9393982291221619
+        },
+        "shadow_ray_p": {
+          "aov": "PsyTrace312",
+          "slot": 312,
+          "written": true,
+          "x": 0.193889319896698,
+          "y": -0.5667975544929504,
+          "z": 1.046948790550232
+        },
+        "shadow_ray_range": {
+          "aov": "PsyTrace314",
+          "cast_shadow": 1.0,
+          "slot": 314,
+          "tmax": 4.101616382598877,
+          "tmin": 0.0,
+          "written": true
+        },
+        "shadow_source": {
+          "aov": "PsyTrace315",
+          "object": 44.0,
+          "primitive": 1534791.0,
+          "skip_self": 1.0,
+          "slot": 315,
+          "written": true
+        },
+        "shadow_transmittance": {
+          "aov": "PsyTrace319",
+          "b": 0.0,
+          "g": 0.0,
+          "r": 0.0,
+          "slot": 319,
+          "written": false
+        },
+        "state_depth": {
+          "aov": "PsyTrace152",
+          "bounce": 0.0,
+          "event": 2.0,
+          "rng_offset": 48.0,
+          "slot": 152,
+          "written": true
+        },
+        "state_flags": {
+          "aov": "PsyTrace155",
+          "continuation_probability": 1.0,
+          "path_flag": 896,
+          "path_flag_high16": 0.0,
+          "path_flag_low16": 896.0,
+          "slot": 155,
+          "written": true
+        },
+        "state_lobes": {
+          "aov": "PsyTrace153",
+          "diffuse_bounce": 0.0,
+          "glossy_bounce": 0.0,
+          "slot": 153,
+          "transparent_bounce": 0.0,
+          "written": true
+        },
+        "state_visibility": {
+          "aov": "PsyTrace154",
+          "slot": 154,
+          "transmission_bounce": 0.0,
+          "visibility": 0,
+          "visibility_high16": 0.0,
+          "visibility_low16": 0.0,
+          "written": true
+        },
+        "surface_flags": {
+          "aov": "PsyTrace190",
+          "reserved": 0.0,
+          "runtime_flag": 24,
+          "runtime_flag_high16": 0.0,
+          "runtime_flag_low16": 24.0,
+          "slot": 190,
+          "written": true
+        },
+        "surface_meta": {
+          "aov": "PsyTrace162",
+          "closure_count": 1.0,
+          "shader": 3221225503,
+          "shader_high16": 49152.0,
+          "shader_low16": 31.0,
+          "slot": 162,
+          "written": true
+        },
+        "surface_n": {
+          "aov": "PsyTrace165",
+          "slot": 165,
+          "written": true,
+          "x": 0.005917973816394806,
+          "y": -0.5253199338912964,
+          "z": 0.8508841395378113
+        },
+        "surface_ng": {
+          "aov": "PsyTrace164",
+          "slot": 164,
+          "written": true,
+          "x": 0.013555243611335754,
+          "y": -0.5312961339950562,
+          "z": 0.8470777273178101
+        },
+        "surface_p": {
+          "aov": "PsyTrace163",
+          "slot": 163,
+          "written": true,
+          "x": 0.193889319896698,
+          "y": -0.5667975544929504,
+          "z": 1.046948790550232
+        },
+        "throughput": {
+          "aov": "PsyTrace156",
+          "b": 1.6808578968048096,
+          "g": 0.3520805835723877,
+          "r": 0.01805935427546501,
+          "slot": 156,
+          "written": true
+        }
+      },
+      "written": true
+    },
+    {
+      "closures": [
+        {
+          "index": 0,
+          "meta": {
+            "aov": "PsyTrace272",
+            "index": 0.0,
+            "sample_weight": 0.018101423978805542,
+            "slot": 272,
+            "type": 12.0,
+            "written": true
+          },
+          "normal": {
+            "aov": "PsyTrace274",
+            "slot": 274,
+            "written": true,
+            "x": -0.0024672611616551876,
+            "y": -0.0015476366970688105,
+            "z": -0.999995768070221
+          },
+          "weight": {
+            "aov": "PsyTrace273",
+            "b": 0.45917755365371704,
+            "g": 0.45917755365371704,
+            "r": 0.45917755365371704,
+            "slot": 273,
+            "written": true
+          }
+        },
+        {
+          "index": 1,
+          "meta": {
+            "aov": "PsyTrace275",
+            "index": 1.0,
+            "sample_weight": 0.12959910929203033,
+            "slot": 275,
+            "type": 2.0,
+            "written": true
+          },
+          "normal": {
+            "aov": "PsyTrace277",
+            "slot": 277,
+            "written": true,
+            "x": -0.0024672611616551876,
+            "y": -0.0015476366970688105,
+            "z": -0.999995768070221
+          },
+          "weight": {
+            "aov": "PsyTrace276",
+            "b": 0.035491324961185455,
+            "g": 0.11234698444604874,
+            "r": 0.24095900356769562,
+            "slot": 276,
+            "written": true
+          }
+        },
+        {
+          "index": 2,
+          "meta": {
+            "aov": "PsyTrace278",
+            "index": 2.0,
+            "sample_weight": 0.002739435527473688,
+            "slot": 278,
+            "type": 12.0,
+            "written": true
+          },
+          "normal": {
+            "aov": "PsyTrace280",
+            "slot": 280,
+            "written": true,
+            "x": -4.5717217290075496e-05,
+            "y": -6.681746890535578e-05,
+            "z": -0.9999999403953552
+          },
+          "weight": {
+            "aov": "PsyTrace279",
+            "b": 0.06245919689536095,
+            "g": 0.06245919689536095,
+            "r": 0.06245919689536095,
+            "slot": 279,
+            "written": true
+          }
+        },
+        {
+          "index": 3,
+          "meta": {
+            "aov": "PsyTrace281",
+            "index": 3.0,
+            "sample_weight": 0.0030589436646550894,
+            "slot": 281,
+            "type": 12.0,
+            "written": true
+          },
+          "normal": {
+            "aov": "PsyTrace283",
+            "slot": 283,
+            "written": true,
+            "x": -4.5717217290075496e-05,
+            "y": -6.681746890535578e-05,
+            "z": -0.9999999403953552
+          },
+          "weight": {
+            "aov": "PsyTrace282",
+            "b": 0.4644429087638855,
+            "g": 0.4644429087638855,
+            "r": 0.4644429087638855,
+            "slot": 282,
+            "written": true
+          }
+        },
+        {
+          "index": 4,
+          "meta": {
+            "aov": "PsyTrace284",
+            "index": 4.0,
+            "sample_weight": 0.1827852427959442,
+            "slot": 284,
+            "type": 2.0,
+            "written": true
+          },
+          "normal": {
+            "aov": "PsyTrace286",
+            "slot": 286,
+            "written": true,
+            "x": -4.5717217290075496e-05,
+            "y": -6.681746890535578e-05,
+            "z": -0.9999999403953552
+          },
+          "weight": {
+            "aov": "PsyTrace285",
+            "b": 0.03670620918273926,
+            "g": 0.1897130012512207,
+            "r": 0.3219365179538727,
+            "slot": 285,
+            "written": true
+          }
+        }
+      ],
+      "index": 3,
+      "slots": {
+        "bsdf_eval": {
+          "aov": "PsyTrace254",
+          "b": 0.012787716463208199,
+          "g": 0.04377417266368866,
+          "r": 0.07890234142541885,
+          "slot": 254,
+          "written": true
+        },
+        "bsdf_meta": {
+          "aov": "PsyTrace252",
+          "label": 10.0,
+          "pdf": 0.13398778438568115,
+          "slot": 252,
+          "unguided_pdf": 0.13398778438568115,
+          "written": true
+        },
+        "bsdf_roughness_eta": {
+          "aov": "PsyTrace255",
+          "eta": 1.0,
+          "roughness_u": 0.43128249049186707,
+          "roughness_v": 0.43128249049186707,
+          "slot": 255,
+          "written": true
+        },
+        "bsdf_wo": {
+          "aov": "PsyTrace253",
+          "slot": 253,
+          "written": true,
+          "x": 0.7023442983627319,
+          "y": 0.5714696645736694,
+          "z": -0.4244230389595032
+        },
+        "closure_n": {
+          "aov": "PsyTrace251",
+          "slot": 251,
+          "written": true,
+          "x": -0.0024672611616551876,
+          "y": -0.0015476366970688105,
+          "z": -0.999995768070221
+        },
+        "closure_pick": {
+          "aov": "PsyTrace248",
+          "index": 0.0,
+          "sample_weight": 0.018101423978805542,
+          "slot": 248,
+          "type": 12.0,
+          "written": true
+        },
+        "closure_random": {
+          "aov": "PsyTrace249",
+          "selection_rescaled": 0.48278552293777466,
+          "slot": 249,
+          "u": 0.9054760336875916,
+          "v": 0.61054527759552,
+          "written": true
+        },
+        "closure_weight": {
+          "aov": "PsyTrace250",
+          "b": 0.45917755365371704,
+          "g": 0.45917755365371704,
+          "r": 0.45917755365371704,
+          "slot": 250,
+          "written": true
+        },
+        "isect_coord": {
+          "aov": "PsyTrace232",
+          "distance": 0.6920821666717529,
+          "slot": 232,
+          "u": 0.11512301862239838,
+          "v": 0.5099965929985046,
+          "written": true
+        },
+        "isect_id": {
+          "aov": "PsyTrace233",
+          "object": 34.0,
+          "primitive": 952675.0,
+          "primitive_type": 1.0,
+          "slot": 233,
+          "written": true
+        },
+        "light_d": {
+          "aov": "PsyTrace244",
+          "slot": 244,
+          "written": true,
+          "x": 0.8883359432220459,
+          "y": 0.4238578975200653,
+          "z": -0.17664587497711182
+        },
+        "light_eval": {
+          "aov": "PsyTrace247",
+          "bsdf_pdf": 0.059327632188797,
+          "distance": 3.265448808670044,
+          "mis_weight": 0.993741512298584,
+          "slot": 247,
+          "written": true
+        },
+        "light_id": {
+          "aov": "PsyTrace242",
+          "group": -1.0,
+          "object": 1.0,
+          "reserved": 0.0,
+          "slot": 242,
+          "written": true
+        },
+        "light_meta": {
+          "aov": "PsyTrace241",
+          "emitter": 3.0,
+          "primitive": 3.0,
+          "slot": 241,
+          "type": 5.0,
+          "written": true
+        },
+        "light_ng": {
+          "aov": "PsyTrace246",
+          "slot": 246,
+          "written": true,
+          "x": -1.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "light_p": {
+          "aov": "PsyTrace245",
+          "slot": 245,
+          "written": true,
+          "x": 3.499999761581421,
+          "y": 0.7455682158470154,
+          "z": 1.0265108346939087
+        },
+        "light_pdf": {
+          "aov": "PsyTrace243",
+          "eval_factor": 1.0,
+          "pdf": 0.747586190700531,
+          "selection_pdf": 0.0833333358168602,
+          "slot": 243,
+          "written": true
+        },
+        "light_shader": {
+          "aov": "PsyTrace264",
+          "reserved": 0.0,
+          "shader": 3493855245,
+          "shader_high16": 53312.0,
+          "shader_low16": 13.0,
+          "slot": 264,
+          "written": true
+        },
+        "nee_bsdf": {
+          "aov": "PsyTrace265",
+          "b": 0.0065001146867871284,
+          "g": 0.019351772964000702,
+          "r": 0.0338984951376915,
+          "slot": 265,
+          "written": true
+        },
+        "nee_contribution": {
+          "aov": "PsyTrace271",
+          "b": 0.023938067257404327,
+          "g": 0.021627498790621758,
+          "r": 0.002673635259270668,
+          "slot": 271,
+          "written": true
+        },
+        "nee_diffuse": {
+          "aov": "PsyTrace266",
+          "b": 0.004026531241834164,
+          "g": 0.016878189519047737,
+          "r": 0.03142491355538368,
+          "slot": 266,
+          "written": true
+        },
+        "nee_glossy": {
+          "aov": "PsyTrace267",
+          "b": 0.002473583910614252,
+          "g": 0.002473583910614252,
+          "r": 0.002473583910614252,
+          "slot": 267,
+          "written": true
+        },
+        "nee_light_shader": {
+          "aov": "PsyTrace269",
+          "b": 1.6487606763839722,
+          "g": 2.3887133598327637,
+          "r": 3.2865488529205322,
+          "slot": 269,
+          "written": true
+        },
+        "nee_unshadowed": {
+          "aov": "PsyTrace270",
+          "b": 0.023938067257404327,
+          "g": 0.021627498790621758,
+          "r": 0.002673635259270668,
+          "slot": 270,
+          "written": true
+        },
+        "nee_weighted_bsdf": {
+          "aov": "PsyTrace268",
+          "b": 0.008640386164188385,
+          "g": 0.025723669677972794,
+          "r": 0.04506014287471771,
+          "slot": 268,
+          "written": true
+        },
+        "post_depth": {
+          "aov": "PsyTrace256",
+          "bounce": 2.0,
+          "rng_offset": 80.0,
+          "slot": 256,
+          "transparent_bounce": 0.0,
+          "written": true
+        },
+        "post_flags": {
+          "aov": "PsyTrace260",
+          "path_flag": 262417,
+          "path_flag_high16": 4.0,
+          "path_flag_low16": 273.0,
+          "reserved": 0.0,
+          "slot": 260,
+          "written": true
+        },
+        "post_mis": {
+          "aov": "PsyTrace261",
+          "continuation_probability": 1.0,
+          "min_ray_pdf": 0.13398778438568115,
+          "mis_ray_pdf": 0.13398778438568115,
+          "slot": 261,
+          "written": true
+        },
+        "post_ray_d": {
+          "aov": "PsyTrace259",
+          "slot": 259,
+          "written": true,
+          "x": 0.7023442983627319,
+          "y": 0.5714696645736694,
+          "z": -0.4244230389595032
+        },
+        "post_ray_p": {
+          "aov": "PsyTrace258",
+          "slot": 258,
+          "written": true,
+          "x": 0.5991842746734619,
+          "y": -0.6385180354118347,
+          "z": 1.6033388376235962
+        },
+        "post_throughput": {
+          "aov": "PsyTrace257",
+          "b": 0.1603710949420929,
+          "g": 0.11499053239822388,
+          "r": 0.010631492361426353,
+          "slot": 257,
+          "written": true
+        },
+        "post_visibility": {
+          "aov": "PsyTrace263",
+          "reserved": 0.0,
+          "slot": 263,
+          "visibility": 8,
+          "visibility_high16": 0.0,
+          "visibility_low16": 8.0,
+          "written": true
+        },
+        "random_bsdf": {
+          "aov": "PsyTrace240",
+          "selection": 0.02598726376891136,
+          "slot": 240,
+          "u": 0.9054760336875916,
+          "v": 0.61054527759552,
+          "written": true
+        },
+        "random_light": {
+          "aov": "PsyTrace239",
+          "selection": 0.25230374932289124,
+          "slot": 239,
+          "u": 0.5022038817405701,
+          "v": 0.9951120615005493,
+          "written": true
+        },
+        "random_scalars": {
+          "aov": "PsyTrace238",
+          "light_terminate": 0.33958134055137634,
+          "reserved": 0.0,
+          "slot": 238,
+          "terminate": 0.26879265904426575,
+          "written": true
+        },
+        "ray_d": {
+          "aov": "PsyTrace230",
+          "slot": 230,
+          "written": true,
+          "x": 0.5856168270111084,
+          "y": -0.10363005846738815,
+          "z": 0.8039363622665405
+        },
+        "ray_p": {
+          "aov": "PsyTrace229",
+          "slot": 229,
+          "written": true,
+          "x": 0.193889319896698,
+          "y": -0.5667975544929504,
+          "z": 1.046948790550232
+        },
+        "ray_range": {
+          "aov": "PsyTrace231",
+          "slot": 231,
+          "time": 0.5,
+          "tmax": 3.4028234663852886e+38,
+          "tmin": 0.0,
+          "written": true
+        },
+        "shadow_hit_coord": {
+          "aov": "PsyTrace326",
+          "distance": 0.0,
+          "slot": 326,
+          "u": 0.0,
+          "v": 0.0,
+          "written": false
+        },
+        "shadow_hit_id": {
+          "aov": "PsyTrace325",
+          "kind": 0.0,
+          "object": 0.0,
+          "primitive": 0.0,
+          "slot": 325,
+          "written": false
+        },
+        "shadow_light": {
+          "aov": "PsyTrace324",
+          "object": 1.0,
+          "primitive": 3.0,
+          "reserved": 0.0,
+          "slot": 324,
+          "written": true
+        },
+        "shadow_ray_d": {
+          "aov": "PsyTrace321",
+          "slot": 321,
+          "written": true,
+          "x": 0.8883359432220459,
+          "y": 0.4238578975200653,
+          "z": -0.17664586007595062
+        },
+        "shadow_ray_p": {
+          "aov": "PsyTrace320",
+          "slot": 320,
+          "written": true,
+          "x": 0.5991842746734619,
+          "y": -0.6385180354118347,
+          "z": 1.6033388376235962
+        },
+        "shadow_ray_range": {
+          "aov": "PsyTrace322",
+          "cast_shadow": 1.0,
+          "slot": 322,
+          "tmax": 3.265448808670044,
+          "tmin": 0.0,
+          "written": true
+        },
+        "shadow_source": {
+          "aov": "PsyTrace323",
+          "object": 34.0,
+          "primitive": 952675.0,
+          "skip_self": 1.0,
+          "slot": 323,
+          "written": true
+        },
+        "shadow_transmittance": {
+          "aov": "PsyTrace327",
+          "b": 0.0,
+          "g": 0.0,
+          "r": 0.0,
+          "slot": 327,
+          "written": false
+        },
+        "state_depth": {
+          "aov": "PsyTrace224",
+          "bounce": 1.0,
+          "event": 3.0,
+          "rng_offset": 64.0,
+          "slot": 224,
+          "written": true
+        },
+        "state_flags": {
+          "aov": "PsyTrace227",
+          "continuation_probability": 1.0,
+          "path_flag": 262417,
+          "path_flag_high16": 4.0,
+          "path_flag_low16": 273.0,
+          "slot": 227,
+          "written": true
+        },
+        "state_lobes": {
+          "aov": "PsyTrace225",
+          "diffuse_bounce": 1.0,
+          "glossy_bounce": 0.0,
+          "slot": 225,
+          "transparent_bounce": 0.0,
+          "written": true
+        },
+        "state_visibility": {
+          "aov": "PsyTrace226",
+          "slot": 226,
+          "transmission_bounce": 0.0,
+          "visibility": 4,
+          "visibility_high16": 0.0,
+          "visibility_low16": 4.0,
+          "written": true
+        },
+        "surface_flags": {
+          "aov": "PsyTrace262",
+          "reserved": 0.0,
+          "runtime_flag": 24,
+          "runtime_flag_high16": 0.0,
+          "runtime_flag_low16": 24.0,
+          "slot": 262,
+          "written": true
+        },
+        "surface_meta": {
+          "aov": "PsyTrace234",
+          "closure_count": 5.0,
+          "shader": 3221225499,
+          "shader_high16": 49152.0,
+          "shader_low16": 27.0,
+          "slot": 234,
+          "written": true
+        },
+        "surface_n": {
+          "aov": "PsyTrace237",
+          "slot": 237,
+          "written": true,
+          "x": -4.5717217290075496e-05,
+          "y": -6.681746890535578e-05,
+          "z": -0.9999999403953552
+        },
+        "surface_ng": {
+          "aov": "PsyTrace236",
+          "slot": 236,
+          "written": true,
+          "x": 0.0,
+          "y": 0.0,
+          "z": -1.0
+        },
+        "surface_p": {
+          "aov": "PsyTrace235",
+          "slot": 235,
+          "written": true,
+          "x": 0.5991842746734619,
+          "y": -0.6385180354118347,
+          "z": 1.6033388376235962
+        },
+        "throughput": {
+          "aov": "PsyTrace228",
+          "b": 1.6803443431854248,
+          "g": 0.3519729971885681,
+          "r": 0.01805383712053299,
+          "slot": 228,
+          "written": true
+        }
+      },
+      "written": true
+    }
+  ],
+  "global": {
+    "filter": {
+      "aov": "PsyTrace002",
+      "filter_x": 0.5,
+      "filter_y": 0.5,
+      "reserved": 0.0,
+      "slot": 2,
+      "written": true
+    },
+    "header": {
+      "aov": "PsyTrace000",
+      "pixel_x": 534.0,
+      "pixel_y": 374.0,
+      "schema_version": 2.0,
+      "slot": 0,
+      "written": true
+    },
+    "lens_time": {
+      "aov": "PsyTrace003",
+      "lens_u": 0.0,
+      "lens_v": 0.0,
+      "slot": 3,
+      "time": 0.0,
+      "written": true
+    },
+    "ray_d": {
+      "aov": "PsyTrace005",
+      "slot": 5,
+      "written": true,
+      "x": 0.041354257613420486,
+      "y": 0.9933599233627319,
+      "z": -0.10735833644866943
+    },
+    "ray_p": {
+      "aov": "PsyTrace004",
+      "slot": 4,
+      "written": true,
+      "x": -0.21185889840126038,
+      "y": -10.610993385314941,
+      "z": 2.1522843837738037
+    },
+    "ray_range": {
+      "aov": "PsyTrace006",
+      "slot": 6,
+      "time": 0.5,
+      "tmax": 100.0369873046875,
+      "tmin": 0.0,
+      "written": true
+    },
+    "reserved": {
+      "aov": "PsyTrace007",
+      "slot": 7,
+      "written": false,
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0
+    },
+    "rng": {
+      "aov": "PsyTrace001",
+      "rng_pixel": 936484124,
+      "rng_pixel_high16": 14289.0,
+      "rng_pixel_low16": 40220.0,
+      "sample": 0.0,
+      "slot": 1,
+      "written": true
+    }
+  },
+  "schema": "psycles.cycles-path-trace",
+  "source": "/var/tmp/psycles-monster-trace/534-374-s0/cycles-hip.exr",
+  "version": 2
+}
