@@ -2,7 +2,7 @@
 
 ## Current continuation — 2026-08-07
 
-The current renderer implementation boundary is Psycles `main@dc98dd0` with
+The current renderer implementation boundary is Psycles `main@8b688ec` with
 LuisaCompute `next@3e63df0c6` and Blender/Cycles 5.3 Alpha
 `82186b01ad2e`. The older published-boundary section below remains a
 historical record; do not reset to its July revisions.
@@ -20,10 +20,16 @@ The current official complex-scene checkpoints are:
   published as `fb69b15`. Follow-up `dc98dd0` maps the parameter-aware Cycles
   `has_surface_bssrdf` material set onto deduplicated Luisa surface tags, so
   the exit callable omits provably unreachable graphs without baking closure
-  values. All 15 AOVs are pixel-exact before/after at 1 and 512 spp. AMDGPU
-  input and code-object sizes fall 8.21% and 8.20%, cold JIT falls 3.33% to
-  `129.689 s`, and render-only time falls 0.90% to `134.636 s` (`5.051x`
-  Cycles HIP). HIP bitcode linking remains the dominant 98.8-second stage.
+  values. Current `8b688ec` tightens that superset to Cycles'
+  `SD_HAS_BSSRDF_BUMP` predicate, including immediate Normal-parent topology,
+  BUMP/BOTH displacement policy, direct Thin Wall semantics, and per-real-
+  BSSRDF closure attribution. Monster keeps only its linked-normal material;
+  the unbumped child-skin material skips exit re-evaluation exactly as Cycles
+  does. Cold JIT falls another 2.12% to `126.944 s` (5.38% below the
+  unfiltered callable), with HIP linking still dominant at `96.676 s`.
+  Current 960x960x512 Combined relative RMSE remains `0.04890434`; the warm
+  run is `137.286 s`, or `5.172x` Cycles HIP, so no runtime speedup is claimed.
+  Two new original-resolution triptychs were inspected and 218/218 tests pass.
 
 - [Lone Monk background-Sun sampling](docs/validation/2026-08-07/lone-monk-background-sun-sampling/README.md)
   aligns the complete Sobol-to-guided-Nishita-Sun relation. The old polar-cap
@@ -63,10 +69,11 @@ The current official complex-scene checkpoints are:
 
 The 512-spp Lone Monk Combined relative RMSE is `0.012203`; the 512-spp
 Monster result is now `0.048905` after exact BSSRDF exit-frame alignment. The
-next correctness gate is to isolate the remaining Monster indirect residuals
-and promote fresh current-head Classroom, Barbershop, Blender 4.1 Splash, and
-Monster matrices across all five backends. The immediate performance gate is
-now the still-dominant HIP bitcode link and broader monolithic path-shader code
+next correctness gate is to isolate the remaining Monster indirect residuals,
+implement the currently explicit Principled Thin Wall runtime gap, and promote
+fresh current-head Classroom, Barbershop, Blender 4.1 Splash, and Monster
+matrices across all five backends. The immediate performance gate is the
+still-dominant HIP bitcode link and broader monolithic path-shader code
 generation, followed by exact-vs-hardware traversal measurement, without
 pre-baking or weakening raw closure semantics.
 

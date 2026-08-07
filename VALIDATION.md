@@ -15,13 +15,19 @@ unit Lambert at a subsurface exit. A real Monster path now agrees through the
 weighted exit normal, cosine-hemisphere sample, and following
 object/primitive. At 960x960x512, Combined relative RMSE falls 1.69x from
 `0.082721` to `0.048905`, Diffuse Direct falls 1.89x, and Combined mean
-luminance becomes `1.003553x` Cycles. Four original-resolution triptychs were
-inspected and 218/218 tests pass across the complete gate. The exit-only
-dispatch now uses the exact scene-level BSSRDF surface-tag set: all 15 AOVs
-remain pixel-identical at 1 and 512 spp, while the HIP code object falls 8.20%
-and total cold JIT falls 3.33% to `129.689 s`. Render-only time is `134.636 s`,
-or `5.051x` Cycles HIP; the remaining 98.8-second HIP bitcode link is retained
-as the next code-generation issue.
+luminance becomes `1.003553x` Cycles. Current `main@8b688ec` further restricts
+the exit callable from the real-BSSRDF superset to Cycles' exact
+`SD_HAS_BSSRDF_BUMP` predicate. It models immediate Normal-parent topology,
+BUMP/BOTH displacement policy, direct Thin Wall semantics, and per-real-
+BSSRDF closure attribution without baking a closure or device expression.
+Monster's unbumped child-skin material now skips exit graph evaluation while
+the linked-normal monster material remains. Total cache-cold HIP JIT falls
+another 2.12% to `126.944 s`, 5.38% below the unfiltered callable; the
+96.676-second HIP bitcode link remains dominant. The current warm render is
+`137.286 s`, or `5.172x` Cycles HIP, so no runtime speedup is claimed. Combined
+relative RMSE remains `0.04890434`; two new original-resolution triptychs were
+inspected and the complete 218/218 gate passes. Full Principled Thin Wall
+closure evaluation remains an explicit, unexercised runtime gap.
 
 The newest
 [Lone Monk background-Sun checkpoint](docs/validation/2026-08-07/lone-monk-background-sun-sampling/README.md)
