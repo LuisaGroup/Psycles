@@ -9,9 +9,14 @@ feature-specific differential threshold.
 
 The official Monster Under the Bed and Lone Monk scenes now both complete on
 the canonical five-way matrix: Cycles CPU/HIP and Psycles fallback/HIP/Vulkan.
-The [Monster checkpoint](validation/2026-08-07/monster-current-head/README.md)
-records the independent Principled Coat Normal correction and a remaining
-0.1561 Combined relative RMSE at 960x960x128. The
+The [Monster BSSRDF exit-normal checkpoint](validation/2026-08-07/monster-bssrdf-exit-normal/README.md)
+now aligns the closure-weighted normal of Cycles' synthetic exit Lambert. The
+exact path agrees through the next primitive, and 960x960x512 Combined
+relative RMSE falls 1.69x to `0.048905` with a `1.003553` mean-luminance
+ratio. The preceding
+[Monster current-head checkpoint](validation/2026-08-07/monster-current-head/README.md)
+retains the five-way 128-spp matrix and independent Principled Coat Normal
+evidence. The
 [current Lone Monk checkpoint](validation/2026-08-07/lone-monk-current-head/README.md)
 records 0.0248--0.0262 Combined relative RMSE across the three Psycles
 backends at 960x720x128, with visually aligned fine grass and data passes. The
@@ -22,11 +27,12 @@ Diffuse Color RMSE falls 20.52x to `0.00020008`; a fresh five-way matrix puts
 all three Psycles Diffuse Color relative RMSEs between `0.001106` and
 `0.001160`.
 
-Neither result is a blanket feature-parity claim. Monster still needs
-higher-spp transport alignment, while Lone Monk's indirect convergence and
-severe current performance gaps remain open. Classroom, Barbershop, and
-Blender 4.1 Splash retain historical evidence but still require fresh
-current-head five-way promotion runs.
+Neither result is a blanket feature-parity claim. Monster's remaining
+high-spp indirect residual and the new BSSRDF callable's compile/render cost
+remain open, while Lone Monk's indirect convergence and severe current
+performance gaps also remain open. Classroom, Barbershop, and Blender 4.1
+Splash retain historical evidence but still require fresh current-head
+five-way promotion runs.
 
 ## Shader graph path
 
