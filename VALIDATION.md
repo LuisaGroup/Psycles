@@ -9,6 +9,19 @@ multilayer OpenEXR output.
 ## Latest checkpoint
 
 The newest
+[sparse XIR restructure analyses checkpoint](docs/validation/2026-08-10/xir-restructure-sparse-analyses/README.md)
+value-numbers loop-boundary membership per immutable CFG, constructs the
+physical hierarchy with enter/merge events on the sparse immediate-dominator
+tree, and replaces the final selection-by-block re-entry scan with exact
+dominance-frontier queries. All 48 XIR tests and 92 Vulkan native-codegen
+runtime tests pass. On the unchanged Lone Monk module, raw/optimized SPIR-V
+remain 1,431,985/1,116,158 words and the compile-smoke output is byte-identical.
+`restructure_cfg` falls from `53.138 s` to `37.088 s`; complete cache-cold
+Vulkan JIT falls from `180.533 s` to `162.519 s`. The remaining compiler
+hotspot is the formally separate `drain_selection_exits` fixed point at
+`14.502 s`, while RADV pipeline creation remains `85.384 s`.
+
+The preceding
 [sparse XIR verifier dominance checkpoint](docs/validation/2026-08-10/xir-verifier-sparse-dominance/README.md)
 replaces the verifier's quadratic all-dominator sets with block value
 numbering, sparse predecessor CSR, one immediate-dominator parent per block,
