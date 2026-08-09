@@ -306,6 +306,52 @@ class ShaderProbeRunnerContract(unittest.TestCase):
             any("relative RMSE" in failure for failure in failures)
         )
 
+    def test_principled_thin_wall_gate_rejects_selected_bump_shadowing(
+        self,
+    ) -> None:
+        report = {
+            "passes": {
+                pass_name: {
+                    "luminance_mean_ratio": 1.0,
+                    "relative_rmse": 0.0,
+                }
+                for pass_name in (
+                    "Combined",
+                    "DiffCol",
+                    "GlossCol",
+                    "TransCol",
+                    "GlossDir",
+                    "TransDir",
+                    "Normal",
+                )
+            }
+        }
+        self.assertEqual(
+            self.runner._probe_gate_failures(
+                "principled_thin_wall_surface", report
+            ),
+            [],
+        )
+
+        # The former implementation applied post-sample bump shadowing to a
+        # selected rough-translucent transmission event. Cycles omits that
+        # factor for LABEL_TRANSMIT, while retaining it for ordinary closure
+        # evaluation. Preserve the measured whole-matrix structural failure.
+        report["passes"]["Combined"] = {
+            "luminance_mean_ratio": 0.99902799,
+            "relative_rmse": 0.00181607,
+        }
+        failures = self.runner._probe_gate_failures(
+            "principled_thin_wall_surface", report
+        )
+        self.assertEqual(len(failures), 2)
+        self.assertTrue(
+            any("energy ratio" in failure for failure in failures)
+        )
+        self.assertTrue(
+            any("relative RMSE" in failure for failure in failures)
+        )
+
 
 if __name__ == "__main__":
     # unittest would otherwise treat the runner path as a test selector.

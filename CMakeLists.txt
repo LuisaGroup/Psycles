@@ -1831,6 +1831,22 @@ if(PSYCLES_ENABLE_LUISA)
 
             psycles_add_luisa_backend_test(
                 TARGET
+                    psycles_luisa_surface_nee_normal_tests
+                SOURCE
+                    tests/test_luisa_surface_nee_normal.cpp
+                TEST_STEM
+                    luisa_surface_nee_normal
+                LIBRARIES Psycles::luisa_runtime)
+            foreach(_backend IN ITEMS fallback metal hip vk)
+                if(TEST psycles.luisa_surface_nee_normal_${_backend})
+                    set_tests_properties(
+                        psycles.luisa_surface_nee_normal_${_backend}
+                        PROPERTIES TIMEOUT 180)
+                endif()
+            endforeach()
+
+            psycles_add_luisa_backend_test(
+                TARGET
                     psycles_luisa_curve_path_tests
                 SOURCE
                     tests/test_luisa_curve_path.cpp
