@@ -625,3 +625,56 @@ normalization at about `0.520 s`, followed by selection-exit drain at about
 pointer-hash lookups in `DomTree::dominates`; the next stage therefore targets
 versioned dense loop-region discovery and direct dominance-node queries while
 retaining immediate invalidation after every CFG mutation.
+
+## Deferred dominance frontiers for loop rewrites
+
+The first decomposed profile showed that the region walk was not the remaining
+loop-continue bottleneck. Of `526.492 ms`, mutation-triggered dominator rebuilds
+consumed `475.692 ms` (90.4%), ownership-set reconstruction consumed
+`46.323 ms`, and region discovery plus rewrite scanning consumed only
+`1.463 ms`. All 129 CFG mutations require a fresh ancestry relation before the
+next loop site, but none of those intermediate versions observes a dominance
+frontier.
+
+Luisa `next@23bc5b064` therefore separates the two mathematical products of a
+dominator tree. Immediate dominators and DFS ancestry intervals are rebuilt
+after every mutation exactly as before. The derived frontier relation is
+omitted from intermediate versions and materialized once on the final tree
+retained by each mutating normalization batch. Frontier construction is
+idempotent by clearing and recomputing node-local frontier vectors; no state is
+added to the exported `DomTree` layout. The original one-argument
+`compute_dom_tree(Function *)` symbol remains the default full-tree entry point,
+while an explicit options overload selects ancestry-only construction.
+
+The production Lone Monk run still performs 129 dominance invalidations and
+129 ancestry rebuilds, but only eight final frontier materializations. A new
+16-loop mutation regression requires rebuild count to equal invalidation count
+and frontier materializations to be strictly fewer. Direct node-interval
+queries also remove the former `contains()+node()` double lookup while retaining
+foreign/null-block behavior. Full 32-thread rebuilding is part of the gate so
+mixed-layout incremental artifacts cannot hide an ABI regression.
+
+The final matched run is recorded under
+`/var/tmp/psycles-lazy-dom-frontier-final-20260810/`:
+
+| Boundary | Dense post-dominance | Deferred frontier | Change |
+| --- | ---: | ---: | ---: |
+| Loop-continue normalization | 0.520 s | 0.356 s | -31.6% |
+| `restructure_cfg` | 3.036 s | 2.877 s | -5.2% |
+| SPIR-V XIR legalization | 17.722 s | 17.675 s | -0.3% |
+| Native AST-to-SPIR-V | 31.228 s | 30.921 s | -1.0% |
+| Peak RSS | 1,660,856 KiB | 1,652,776 KiB | -0.5% |
+
+All 48 XIR tests pass after a complete rebuild, the system-STL focused gates
+pass 8/8 dominance, 67/67 restructure, and 350/350 pass tests, and the RX 9070
+XT native Vulkan route passes 92/92 tests with 2,096 assertions. Raw and
+optimized SPIR-V sizes remain 1,431,985 and 1,116,158 words. The PPM is
+byte-identical with SHA-256
+`3ff6c5463ace13c0f26a735ac1af2bb96ab8a9ba1cb4398359cf2466f63a4d1b`.
+
+The residual `308.926 ms` dominance-rebuild cost is now the primary component
+inside loop-continue normalization. Its constructor still hashes block
+pointers throughout the immediate-dominator fixed point and walks linked
+predecessors repeatedly. The next step is a single pointer-to-ID boundary,
+sparse predecessor CSR, and a fully dense RPO fixed point, while preserving
+the public tree and frontier API.
