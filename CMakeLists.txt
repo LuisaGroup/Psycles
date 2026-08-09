@@ -1837,6 +1837,10 @@ if(PSYCLES_ENABLE_LUISA)
                 TEST_STEM
                     luisa_surface_nee_normal
                 LIBRARIES Psycles::luisa_runtime)
+            target_include_directories(
+                psycles_luisa_surface_nee_normal_tests
+                PRIVATE
+                    "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
             foreach(_backend IN ITEMS fallback metal hip vk)
                 if(TEST psycles.luisa_surface_nee_normal_${_backend})
                     set_tests_properties(

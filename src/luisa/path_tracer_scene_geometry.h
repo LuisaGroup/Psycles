@@ -50,6 +50,15 @@ class CyclesPrimitiveIntervalResolver {
     Vec3f p1,
     Vec3f p2) noexcept;
 
+// Computes the exact host-side image of material bindings that a surface
+// primitive can produce. World and analytic-light shaders are intentionally
+// excluded: they cannot enter surface transport. Primitive slot selection,
+// instance overrides, and Cycles' last-slot clamp all mirror the device-side
+// PrimitiveMaterialComponent contract.
+[[nodiscard]] std::set<contract::MaterialId>
+collect_reachable_surface_materials(
+    const contract::SceneSnapshot &scene);
+
 // One entry per SceneSnapshot instance, in stable map iteration order. Exact
 // coincident triangle supports form a circular list so a device ray query can
 // recover source candidates that an acceleration backend legally coalesces.

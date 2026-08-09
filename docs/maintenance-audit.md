@@ -372,6 +372,15 @@ claimed as final 1:1 parity. Reports, timings, compiler logs, and the six
 triptychs are in
 [`validation/2026-08-03/hip-callable-boundary`](validation/2026-08-03/hip-callable-boundary/README.md).
 
+The path kernel now also treats spatial BSSRDF transport as a scene capability
+instead of recording it unconditionally. The capability is computed from the
+exact primitive/instance material-resolution image, including overrides and
+last-slot clamping. On a non-BSSRDF production fixture this removes 9.39% of
+optimized SPIR-V, reduces cold Vulkan wall time by 20.50%, and lowers peak RSS
+by 15.73%. The formal reachability rule, control measurement, and regressions
+are in
+[`validation/2026-08-09/reachable-subsurface-specialization`](validation/2026-08-09/reachable-subsurface-specialization/README.md).
+
 ## Target boundaries
 
 The path tracer is split by renderer semantics:

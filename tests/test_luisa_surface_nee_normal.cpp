@@ -3,6 +3,8 @@
 #include <psycles/io/image.h>
 #include <psycles/luisa/path_tracer.h>
 
+#include "path_tracer_internal.h"
+
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -84,6 +86,34 @@ using namespace psycles::contract;
     graph.set_root(
         ShaderDomain::surface,
         OutputRef{.node = principled, .socket = "Closure"});
+    return graph;
+}
+
+[[nodiscard]] ShaderGraph subsurface_shader() {
+    ShaderGraph graph;
+    const auto bssrdf = graph.add_node(
+        node_type::subsurface_scattering,
+        "Reachable BSSRDF capability");
+    const auto configured =
+        graph.set_input(
+            bssrdf,
+            "Color",
+            SocketValue::color({0.7f, 0.25f, 0.1f})) &&
+        graph.set_input(
+            bssrdf,
+            "Normal",
+            SocketValue::normal({0.0f, 0.0f, 1.0f})) &&
+        graph.set_input(
+            bssrdf,
+            "Scale",
+            SocketValue::floating(1.0f));
+    if (!configured) {
+        throw std::runtime_error{
+            "failed to configure BSSRDF capability shader"};
+    }
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = bssrdf, .socket = "Closure"});
     return graph;
 }
 
@@ -192,6 +222,18 @@ using namespace psycles::contract;
             .channels = 4u}}};
 }
 
+[[nodiscard]] bool compiled_scene_has_subsurface(
+    const SceneCompilation &compilation) {
+    const auto *compiled = dynamic_cast<
+        const psycles::luisa_backend::detail::LuisaCompiledScene *>(
+        compilation.scene.get());
+    if (compiled == nullptr || !compiled->data()) {
+        throw std::runtime_error{
+            "compiled scene does not expose Luisa scene data"};
+    }
+    return compiled->data()->has_subsurface;
+}
+
 }// namespace
 
 int main(int argc, char **argv) {
@@ -203,6 +245,39 @@ int main(int argc, char **argv) {
         std::move(device),
         {.next_event_estimation = true,
             .max_samples_per_dispatch = 1u}};
+
+    {
+        auto unreachable = make_scene();
+        unreachable.materials.emplace(
+            MaterialId{99u},
+            MaterialDesc{
+                .name = "Unreachable BSSRDF",
+                .shader = subsurface_shader(),
+                .cycles_shader_index = 2u});
+        const auto capability =
+            renderer.compile_scene(unreachable);
+        if (!capability.ok() ||
+            compiled_scene_has_subsurface(capability)) {
+            std::cerr
+                << "unreachable BSSRDF enabled path transport on "
+                << backend << '\n';
+            return EXIT_FAILURE;
+        }
+    }
+    {
+        auto reachable = make_scene();
+        reachable.materials.at(MaterialId{1u}).shader =
+            subsurface_shader();
+        const auto capability =
+            renderer.compile_scene(reachable);
+        if (!capability.ok() ||
+            !compiled_scene_has_subsurface(capability)) {
+            std::cerr
+                << "reachable BSSRDF did not enable path transport on "
+                << backend << '\n';
+            return EXIT_FAILURE;
+        }
+    }
 
     const auto compilation = renderer.compile_scene(make_scene());
     if (!compilation.ok()) {
