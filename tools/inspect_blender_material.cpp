@@ -240,9 +240,16 @@ int main(int argc, char **argv) {
             std::cout << "  [" << i << "] op "
                       << static_cast<unsigned>(instruction.operation)
                       << " node " << instruction.source_node.value
-                      << " a=" << instruction.a.value
-                      << " b=" << instruction.b.value
-                      << " u0=" << instruction.static_u0
+                      << " operands=[";
+            for (std::size_t operand_index = 0u;
+                 operand_index < instruction.operands.size();
+                 ++operand_index) {
+                if (operand_index != 0u) {
+                    std::cout << ',';
+                }
+                std::cout << instruction.operands[operand_index].value;
+            }
+            std::cout << "] u0=" << instruction.static_u0
                       << " u1=" << instruction.static_u1 << '\n';
         }
         std::cout << "closures "
