@@ -16,7 +16,7 @@ tree, replaces the final selection-by-block re-entry scan with exact
 dominance-frontier queries, carries enclosing loops as persistent contexts,
 and solves all loop-boundary arm classifications with block value numbering
 plus sparse reverse-CFG dataflow. The follow-ups through Luisa
-`next@58984c670` replace DCE's repeated whole-function least-fixed-point scan
+`next@8c6951520` replace DCE's repeated whole-function least-fixed-point scan
 with an
 equivalent linear reverse-use worklist, then replace the remaining per-arm
 loop-boundary merge searches with versioned sparse dataflow and explicitly
@@ -82,6 +82,12 @@ physical repair. Site scanning falls from `307.857 ms` to `58.156 ms`
 `restructure_cfg` to `2.428 s`, XIR legalization to `17.201 s`, and native
 AST-to-SPIR-V to `30.399 s`. Full XIR, system-STL, and native Vulkan gates
 pass; both SPIR-V modules and the output remain byte-identical.
+Selection-merge scoring now enumerates only the query's aggregate support,
+and its enclosing-selection fallback walks exactly the header's dominator
+ancestors. Dense block IDs preserve the prior tie order. On Lone Monk,
+`try_restructure_if_batch` falls from `271.223 ms` to `101.746 ms` (-62.5%)
+and `restructure_cfg` to `2.271 s`. All gates pass and both SPIR-V modules and
+the PPM remain byte-identical.
 Against the earlier complete
 run, `drain_selection_exits` falls 18.30x to `0.723 s`, `restructure_cfg`
 falls 49.0% to `17.945 s`, native AST-to-SPIR-V falls 23.9% to `57.766 s`,
@@ -91,8 +97,9 @@ compiler change. The DCE follow-up retriggered an `84.119 s` RADV compile, so
 its total wall and process RSS are likewise separated from compiler-boundary
 comparisons. The former merge-inference hotspot is now only part of a
 `0.286 s` if batch, and dense post-dominance is no longer a primary perf
-hotspot. Selection-exit drain is now `0.163 s`; the next measured restructure
-targets are the `0.271 s` if batch and `0.265 s` loop-continue normalization.
+hotspot. If-batch is now `0.102 s` and selection-exit drain `0.162 s`; the
+next measured restructure target is `0.269 s` loop-continue normalization,
+including `0.219 s` of exact dominance rebuilding.
 
 The preceding
 [sparse XIR verifier dominance checkpoint](docs/validation/2026-08-10/xir-verifier-sparse-dominance/README.md)
