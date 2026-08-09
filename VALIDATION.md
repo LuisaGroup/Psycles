@@ -12,14 +12,19 @@ The newest
 [sparse XIR restructure analyses checkpoint](docs/validation/2026-08-10/xir-restructure-sparse-analyses/README.md)
 value-numbers loop-boundary membership per immutable CFG, constructs the
 physical hierarchy with enter/merge events on the sparse immediate-dominator
-tree, and replaces the final selection-by-block re-entry scan with exact
-dominance-frontier queries. All 48 XIR tests and 92 Vulkan native-codegen
-runtime tests pass. On the unchanged Lone Monk module, raw/optimized SPIR-V
-remain 1,431,985/1,116,158 words and the compile-smoke output is byte-identical.
-`restructure_cfg` falls from `53.138 s` to `37.088 s`; complete cache-cold
-Vulkan JIT falls from `180.533 s` to `162.519 s`. The remaining compiler
-hotspot is the formally separate `drain_selection_exits` fixed point at
-`14.502 s`, while RADV pipeline creation remains `85.384 s`.
+tree, replaces the final selection-by-block re-entry scan with exact
+dominance-frontier queries, carries enclosing loops as persistent contexts,
+and solves all loop-boundary arm classifications with block value numbering
+plus sparse reverse-CFG dataflow. Luisa `next@c340b1841` is published. All 48
+XIR tests and 92 Vulkan native-codegen runtime tests pass. On the unchanged
+Lone Monk module, raw/optimized SPIR-V remain 1,431,985/1,116,158 words and
+the compile-smoke output is byte-identical. Against the preceding complete
+run, `drain_selection_exits` falls 18.30x to `0.723 s`, `restructure_cfg`
+falls 49.0% to `17.945 s`, native AST-to-SPIR-V falls 23.9% to `57.766 s`,
+and peak RSS falls 82.4% to `1,654,768 KiB`. The observed complete JIT hit the
+RADV disk cache, so its `57.933 s` wall is recorded but not attributed to the
+compiler change. The next independent transform hotspot is the mutating
+`canonicalize_loop_boundary_selection_merges` phase at `5.558 s`.
 
 The preceding
 [sparse XIR verifier dominance checkpoint](docs/validation/2026-08-10/xir-verifier-sparse-dominance/README.md)
