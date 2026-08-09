@@ -165,30 +165,33 @@ surface_closure_selection(
     eligible &= detail::closure_allocated(identity) &
                 Bool{closure.setup_valid};
 
-    Float3 geometric_normal{context.geometric_normal};
-    Float3 incoming{context.incoming};
-    Float3 normal{closure.normal};
-    const auto correction_enabled =
-        Bool{context.use_bump_map_correction} &
-        !all(geometric_normal == normal);
-    const auto corrected_normal = select(normal,
-        detail::ensure_valid_specular_reflection(
-            geometric_normal, incoming, normal),
-        correction_enabled);
-    const auto glossy_normal =
-        select(corrected_normal,
-            normal,
-            is_sheen | is_rough_translucent |
-                is_thin_glass_transmission);
-
     luisa::compute::Var<SurfaceClosureSelectionCall> result;
-    result.weight = select(
-        0.0f, Float{closure.sample_weight}, eligible);
-    result.glossy_normal = glossy_normal;
+    result.weight = 0.0f;
+    result.glossy_normal = closure.normal;
     result.runtime_flags = detail::cycles_runtime_flags(
         identity, Float{context.glossy_filter_roughness});
     result.closure_type = detail::cycles_closure_type(identity);
     result.closure_sample_weight = Float{closure.sample_weight};
+    $if(eligible) {
+        const Float3 geometric_normal{context.geometric_normal};
+        const Float3 incoming{context.incoming};
+        const Float3 normal{closure.normal};
+        const auto correction_enabled =
+            Bool{context.use_bump_map_correction} &
+            !all(geometric_normal == normal);
+        const auto corrected_normal = select(
+            normal,
+            detail::ensure_valid_specular_reflection(
+                geometric_normal, incoming, normal),
+            correction_enabled);
+        const auto glossy_normal =
+            select(corrected_normal,
+                normal,
+                is_sheen | is_rough_translucent |
+                    is_thin_glass_transmission);
+        result.weight = Float{closure.sample_weight};
+        result.glossy_normal = glossy_normal;
+    };
     return result;
 }
 
@@ -220,10 +223,6 @@ surface_closure_conditional_sample(
     Float3 glossy_normal{glossy_normal_expression};
     Float2 random_direction{random_direction_expression};
     Float rescaled_lobe{rescaled_lobe_expression};
-    const detail::MicrofacetGlassComponent microfacet_glass{
-        services, point};
-    const detail::ThinGlassComponent thin_glass{
-        services, point};
 
     const auto is_translucent = has_kind(
         closure, SurfaceClosureKind::translucent);
@@ -271,6 +270,8 @@ surface_closure_conditional_sample(
         roughness = make_float2(0.0f);
     }
     $elif(is_dielectric) {
+        const detail::MicrofacetGlassComponent microfacet_glass{
+            services, point};
         const auto glass = microfacet_glass.sample(
             closure,
             incoming,
@@ -292,6 +293,8 @@ surface_closure_conditional_sample(
         valid = glass.valid;
     }
     $elif(is_thin_glass_transmission) {
+        const detail::ThinGlassComponent thin_glass{
+            services, point};
         const auto thin = thin_glass.sample(
             closure,
             incoming,

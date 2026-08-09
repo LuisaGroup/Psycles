@@ -411,9 +411,17 @@ differentials pass on fallback, HIP, and Vulkan; formulas, strict regressions,
 the Luisa fallback Boolean-codegen correction, reports, EXRs, and all inspected
 triptychs are in
 [`validation/2026-08-03/principled-transmission`](validation/2026-08-03/principled-transmission/README.md).
-Subsurface, thin film, thin-wall behavior, anisotropy interactions, and their
-remaining Principled combinations are still open, so these checkpoints do not
-overstate complete Principled support.
+Zero-thin-film Principled Thin Wall now retains the original linked Boolean,
+normal, Glass, and Rough Translucent closures. A formal closure-family device
+dispatch fixes a HIP non-termination caused by eagerly evaluating every
+inactive BSDF family during sampled-light evaluation. The fixed 16-spp HIP
+probe has Combined relative RMSE `2.37e-6` and mean-luminance ratio
+`1.00000094` against Cycles HIP; profiler isolation, the three-backend
+production-path regression, strict probe gates, and inspected triptychs are in
+[`validation/2026-08-07/hip-closure-family-dispatch`](validation/2026-08-07/hip-closure-family-dispatch/README.md).
+Thin film and the remaining thick/thin subsurface and anisotropy combinations
+are still active compatibility work, so these checkpoints do not overstate
+complete Principled support.
 
 The first heterogeneous transport checkpoint now isolates the formal
 null-collision transition in a Luisa `.h`/`.cpp` component. It pins current

@@ -77,6 +77,10 @@ The boundary is defined by invariants rather than material-specific cases:
     scalar/vector type. A parameter node reads exactly one corresponding typed
     buffer at `parameter_block + ParameterId`; it cannot recover a scalar or
     vector by swizzling a weak `float4` value.
+14. Physical closure kind is a disjoint device-side sum. Evaluation branches
+    over Transparent, diffuse-family, reflection-microfacet, dielectric, and
+    thin-glass families before emitting family-specific math; an inactive
+    family is not evaluated and then discarded through an eager `select`.
 
 The OOP boundary is host/JIT-stage metaprogramming: virtual material components
 record the graph-dependent AST once. Branch-local operation objects then emit
@@ -104,6 +108,13 @@ The focused matrix passes 3/3 and the complete project suite passes 132/132 with
 32-way CTest scheduling. Sampling comparison uses `1e-4` only for backend
 operation-order rounding; it does not relax closure identity, event, validity,
 or selection-index checks.
+
+The later linked-normal NEE profiler checkpoint applies invariant 14 to the
+production contribution callable. It reduces an active HIP dispatch from more
+than five minutes to 0.415 ms without changing the ordered mixture equations;
+the profiler traces, Cycles HIP differential, production liveness test, and
+inspected triptychs are in
+[`validation/2026-08-07/hip-closure-family-dispatch`](../../2026-08-07/hip-closure-family-dispatch/README.md).
 
 ## Branch-local light-evaluation checkpoint at `fbcb7b4`
 
