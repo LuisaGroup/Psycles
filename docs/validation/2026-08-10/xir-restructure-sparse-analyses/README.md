@@ -350,3 +350,62 @@ The next measured transform hotspot is main structurization:
 the five DCE calls now total `2.989 s`. Further work should first decompose the
 if-batch cost by immutable analysis, candidate ordering, and post-dominator
 invalidation rather than weaken legality checks.
+
+## Immutable-dominance if batching
+
+The decomposed profile showed that merge discovery was not the dominant cost
+inside `try_restructure_if_batch`. Across 1,723 candidates, the initial and
+dynamic merge queries took `0.877 s` and `1.157 s`, while 1,723 complete
+dominator-tree rebuilds took `5.229 s`. Allowed-target construction, scope
+collection, and edge-retarget walks together took less than `14 ms`. Rebuilding
+global dominance after every local structural edge subdivision was therefore
+the scaling error.
+
+Luisa `next@6a03ec2f7` uses an exact quotient-graph invariant instead. One
+batch starts with an immutable dominator tree. A successful rewrite replaces a
+raw conditional with a structured If and introduces only a transparent merge
+subdivision. Contracting all such new blocks recovers the input CFG, so
+dominance between any two pre-existing blocks is unchanged. Each new merge
+stores a dominance anchor: the nearest common dominator, in the immutable tree,
+of all dynamic predecessor anchors. For every old block `d` and new merge `m`,
+`d` dominates `m` exactly when `d` dominates `anchor(m)`. Dynamic merge
+inference and later enclosing-scope retargeting can therefore query inserted
+blocks without rebuilding global dominance.
+
+The lexical merge discovered on the immutable graph is retained only as the
+exact contracted-graph fallback. A preliminary implementation that reused it
+unconditionally failed the existing nested loop/switch break/continue
+round-trip regression by changing the structured block count; that
+approximation was discarded rather than weakening the regression. The final
+implementation performs dynamic merge inference through the overlay and uses
+the fallback only when transparent subdivisions hide all normal paths.
+
+The 64-diamond complexity regression now proves one immutable analysis per CFG
+version, exactly one candidate query per eligible diamond and analysis, and no
+overlay query for sibling diamonds. The nested loop/switch regression exercises
+the mutation-sensitive case. The complete `unit_xir` label passes `48/48`; the
+RX 9070 XT Vulkan native-codegen route passes `92/92` tests with `2,096`
+assertions.
+
+The unchanged Lone Monk command writes to
+`/var/tmp/psycles-if-batch-overlay-20260810/`:
+
+| Boundary | Per-rewrite dom rebuild | Dominance overlay | Change |
+| --- | ---: | ---: | ---: |
+| Dominator rebuilds | 1,723 | 0 | eliminated |
+| `try_restructure_if_batch` | 7.930 s | 2.091 s | 3.79x |
+| `restructure_cfg` | 12.737 s | 6.826 s | -46.4% |
+| SPIR-V XIR legalization | 27.515 s | 21.587 s | -21.5% |
+| Native AST-to-SPIR-V | 41.046 s | 35.714 s | -13.0% |
+| Raw SPIR-V | 1,431,985 words | 1,431,985 words | identical size |
+| Optimized SPIR-V | 1,116,158 words | 1,116,158 words | identical size |
+
+The production module used 11 immutable if-batch analyses, 1,723 candidate
+queries, and 378 overlay-block queries. Both PPM files remain byte-identical
+with SHA-256
+`3ff6c5463ace13c0f26a735ac1af2bb96ab8a9ba1cb4398359cf2466f63a4d1b`.
+The cache-cold RADV pipeline took `85.652 s` and process peak RSS was about
+`9.419 GB`; neither is attributed to this compiler-boundary change. The
+remaining `2.091 s` if-batch cost is almost entirely the two merge-inference
+passes (`0.922 s` plus `1.142 s` in the final detailed run), which is the next
+independent optimization target.
