@@ -16,7 +16,7 @@ tree, replaces the final selection-by-block re-entry scan with exact
 dominance-frontier queries, carries enclosing loops as persistent contexts,
 and solves all loop-boundary arm classifications with block value numbering
 plus sparse reverse-CFG dataflow. The follow-ups through Luisa
-`next@23bc5b064` replace DCE's repeated whole-function least-fixed-point scan
+`next@13fadb811` replace DCE's repeated whole-function least-fixed-point scan
 with an
 equivalent linear reverse-use worklist, then replace the remaining per-arm
 loop-boundary merge searches with versioned sparse dataflow and explicitly
@@ -66,6 +66,13 @@ final tree retained by each batch. Loop-continue falls from `0.520 s` to
 `0.356 s`, `restructure_cfg` to `2.877 s`, and native AST-to-SPIR-V to
 `30.921 s`; 129 invalidations still cause 129 ancestry rebuilds but only eight
 frontier materializations. The output and SPIR-V remain identical.
+The current dense-dominator follow-up retains the historical reachable domain
+but value-numbers it once, stores predecessors as sparse CSR, and performs the
+CHK fixed point entirely on RPO IDs. Loop-continue ancestry falls from
+`319.951 ms` to `230.078 ms` (-28.1%) and `restructure_cfg` from `3.056 s` to
+`2.745 s` (-10.2%). The 129 rebuilds converge in exactly 258 passes over
+645,720 numbered blocks and 807,853 edges. Full XIR, system-STL, and native
+Vulkan gates pass; raw/optimized SPIR-V and the output remain identical.
 Against the earlier complete
 run, `drain_selection_exits` falls 18.30x to `0.723 s`, `restructure_cfg`
 falls 49.0% to `17.945 s`, native AST-to-SPIR-V falls 23.9% to `57.766 s`,
@@ -75,10 +82,9 @@ compiler change. The DCE follow-up retriggered an `84.119 s` RADV compile, so
 its total wall and process RSS are likewise separated from compiler-boundary
 comparisons. The former merge-inference hotspot is now only part of a
 `0.286 s` if batch, and dense post-dominance is no longer a primary perf
-hotspot. The next restructure target is the residual `0.309 s` loop-continue
-dominance rebuild: value-number blocks once per version, store predecessors as
-sparse CSR, and run the immediate-dominator fixed point entirely on dense RPO
-IDs.
+hotspot. Dense loop-continue dominance is now below selection-exit site
+scanning (`0.308 s` inside a `0.392 s` drain), which is the next measured
+restructure target.
 
 The preceding
 [sparse XIR verifier dominance checkpoint](docs/validation/2026-08-10/xir-verifier-sparse-dominance/README.md)
