@@ -509,3 +509,64 @@ analyses; 129 site rewrites caused and justified the 129 invalidations. The
 RADV cache hit produced a `15.287 ms` pipeline and `32.860 s` shader JIT with
 `1,661,080 KiB` peak RSS. The PPM remains byte-identical with SHA-256
 `3ff6c5463ace13c0f26a735ac1af2bb96ab8a9ba1cb4398359cf2466f63a4d1b`.
+
+## Sparse selection-exit follow-up
+
+The next profile separated three costs that had previously appeared under one
+selection-exit timer. First, every successful rewrite rebuilt both dominance
+and post-dominance even though the inner drain observes only dominance.
+Second, each loop-boundary dataflow value-numbered the CFG but still cleared,
+seeded, scanned, and propagated over the complete function for every loop.
+Third, every rewrite restarted the selection-site scan from the beginning.
+
+Luisa `next@5c3ce4334` applies three invariant-preserving changes:
+
+- a successful rewrite immediately refreshes dominance, while post-dominance
+  is refreshed once after the drain reaches its fixed point and before its
+  next observer;
+- loop-boundary classification solves its finite lattice only on the
+  structurally reachable, successor-closed induced region plus explicit
+  break/continue boundary seeds; by closure, this is exactly the restriction
+  of the whole-CFG least fixed point; and
+- one-target quotient-CFG funnels invalidate only the selected site, affected
+  enclosing constructs, changed transparent headers, and structural
+  references to bypassed proxies. Multi-target state dispatch still performs
+  a conservative global invalidation because its correlated reachability is
+  not representable as one local funnel.
+
+The dataflow implementation is now a real standalone `.h`/`.cpp` component,
+not an included implementation fragment. A 64-loop scale regression requires
+block and edge visits to remain linear in the active loop regions. A
+65-selection funnel regression bounds queries by `3N` and requires every
+rewrite to use local invalidation. The complete `unit_xir` label passes
+`48/48`; the RX 9070 XT native Vulkan route passes `92/92` tests with `2,096`
+assertions.
+
+The unchanged Lone Monk cold-cache run is recorded under
+`/var/tmp/psycles-selection-worklist-split-20260810/`:
+
+| Boundary | Versioned loop analysis | Sparse selection-exit analysis | Change |
+| --- | ---: | ---: | ---: |
+| Selection-exit drain | 0.726 s | 0.408 s | 1.78x |
+| Loop-boundary relation construction | about 0.282 s | 0.069 s | 4.09x |
+| Loop-boundary merge analysis | about 0.079 s | 0.021 s | 3.76x |
+| Aggregate post-dominator construction | 0.714 s / 239 calls | 0.649 s / 229 calls | -9.1% |
+| `restructure_cfg` | 4.053 s | 3.555 s | -12.3% |
+
+Production issued 1,599 loop dataflows over 222,912 active block visits and
+605,194 active edge visits. Selection-exit analysis performed 14,813 site
+queries: three rewrites used dependency-local invalidation and nine
+multi-target state dispatches conservatively invalidated the site set. The
+post-dominator refresh count fell from 12 per-rewrite refreshes to two
+fixed-point-boundary refreshes. Raw/optimized SPIR-V remain exactly
+1,431,985/1,116,158 words, and the output is byte-identical with SHA-256
+`3ff6c5463ace13c0f26a735ac1af2bb96ab8a9ba1cb4398359cf2466f63a4d1b`.
+
+The next measured transform hotspot is therefore the 229 private
+post-dominator constructions. Although their old implementation stores the
+fixed-point state in dense vectors, it still hashes block pointers for every
+query, builds predecessor hash maps, allocates temporary successor vectors per
+block and iteration, and repeatedly rediscovers sinks. The next step is block
+value numbering plus a sparse reverse-CFG edge representation and a fully
+dense immediate-dominator fixed point, with pointer maps only at the API
+boundary.
