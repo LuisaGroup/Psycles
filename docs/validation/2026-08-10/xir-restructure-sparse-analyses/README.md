@@ -1026,3 +1026,69 @@ is also visible in the profile; restructure retains exactly its input and
 output boundary checks (297.944 ms and 317.966 ms). The next analysis targets
 pointer-argument planning/mutation and verifier data structures, not verifier
 frequency or semantics.
+
+## Sparse SPIR-V argument-usage propagation
+
+Luisa `next@7636699b9` replaces the SPIR-V callable argument-usage global
+fixed point with an explicit reverse call dependency graph. The previous
+solver rescanned every instruction in every structurally owned function after
+any argument changed. On a call chain, function-list order could therefore
+turn one new usage bit per edge into one complete module traversal per level.
+
+The new solver still scans each exact structural closure once per immutable
+module version. During that scan it records only transfers whose actual value
+is an argument of the caller, since every other actual is a no-op under the
+existing transfer function. Local resource operations initialize the finite
+argument lattice. When a formal's `Usage` bits or one of its five SPIR-V
+feature requirements grows, only the recorded caller actuals depending on
+that formal are scheduled. Queue coalescing reads the latest lattice value,
+so propagation order does not affect the result.
+
+Formally, every dependency implements the same monotone transfer
+`state(callee formal) -> state(caller actual)`. The lattice is a finite product
+of two usage bits and five booleans. Chaotic worklist iteration from the same
+local seeds therefore reaches the same least fixed point as repeated global
+scans. Each slot can grow only finitely many times, while unrelated
+instructions are never revisited.
+
+The regression deliberately creates a 128-callable chain in the adverse
+physical order. It requires all 129 structural closures and all 258
+instructions to be scanned exactly once, with 128 recorded dependencies, 129
+worklist pops, and exactly 128 dependency visits. The terminal buffer read
+must still propagate to the kernel buffer. A separate legalization assertion
+requires one pointer-call batch plus its empty confirmation to perform exactly
+two argument analyses.
+
+Lone Monk requires two specialization batches plus the final empty
+confirmation. Across those three immutable module versions, the production
+report records 87 structural closures, 3,982,983 one-time instruction visits,
+3,798 call dependencies, 171 worklist pops, and only 199 dependency visits.
+The matched cold run is under
+`/var/tmp/psycles-spirv-arg-usage-worklist-20260810/`, against
+`/var/tmp/psycles-dce-product-worklists-20260810/`:
+
+| Boundary | Global rescans | Sparse dependencies | Change |
+| --- | ---: | ---: | ---: |
+| Argument-usage self samples | 2.50% | 0.83% | -66.8% |
+| `inline-spirv-pointer-args` | 2,317.93 ms | 1,930.77 ms | -16.7% |
+| SPIR-V XIR legalization | 11.271 s | 11.018 s | -2.2% |
+| Native AST-to-SPIR-V | 24.468 s | 24.175 s | -1.2% |
+| End-to-end cold smoke | 26.65 s | 26.41 s | -0.9% |
+| Peak RSS | 1,656,896 KiB | 1,658,144 KiB | within run noise |
+| Raw SPIR-V | 1,431,985 words | 1,431,985 words | identical size |
+| Optimized SPIR-V | 1,116,158 words | 1,116,158 words | identical size |
+
+The PPM remains byte-identical with SHA-256
+`3ff6c5463ace13c0f26a735ac1af2bb96ab8a9ba1cb4398359cf2466f63a4d1b`.
+The complete default-STL build passes, as do all 21 SPIR-V tests. The focused
+pointer-legalization suite passes 21/21 tests with 188 assertions, and the RX
+9070 XT native Vulkan route passes 92/92 tests with 2,096 assertions. The
+Psycles production build itself uses system STL; its complete rebuild and the
+matched render above pass with that configuration.
+
+The new no-loss 26,000-sample profile moves argument propagation below the
+next costs. Inline call-site barrier preflight is now the largest named
+pointer-legalization subproblem at 1.46% self time, followed by readonly
+resource-origin analysis at 0.82%. The next change should cache immutable
+per-function inline properties across call sites within one plan, while still
+invalidating a summary if an earlier planned inline mutates that function.
