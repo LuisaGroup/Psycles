@@ -901,3 +901,61 @@ output verification remain the two public boundaries and account for about
 614 ms; they are deliberately not candidates for removal. The next profile
 must determine which post-dominator constructions share a CFG version before
 changing that exact analysis.
+
+## Batched straight-line CFG contraction
+
+The whole-pipeline profile changed the priority. `simplify-cfg` was the largest
+independent XIR leaf at `3.465 s`, well above any remaining restructure
+component. Its straight-line transform found the first eligible edge, removed
+exactly one successor block, and restarted the complete pass fixed point.
+Lone Monk contained 892 such edges, so the pass repeatedly traversed the
+function and rebuilt the structural-target set about once per contraction.
+
+Luisa `next@6022a8f04` contracts every currently eligible maximal chain in one
+physical-order scan. An edge `A -> B` is accepted only when A branches
+unconditionally, B is neither the entry nor a declared structural target, B
+has exactly A as its predecessor, B contains no Phi, and replacing B's outgoing
+predecessor identity cannot affect a successor Phi. Under those conditions
+every execution of A continues through B, no other path enters B, and
+concatenating B's instructions onto A is the standard semantics-preserving
+single-predecessor edge contraction.
+
+After contracting `A -> B`, no unrelated source changes predecessor count or
+structural role. Only A can become newly eligible through B's former
+terminator, so the implementation immediately rechecks A and consumes that
+maximal chain. Independent contractions commute; overlapping contractions are
+the same chain. This is therefore the same least fixed point as the former
+one-edge loop, in the same physical source order, without interleaving a
+quadratic number of read-only scans. Detached blocks remain owned until the
+snapshot worklist is exhausted, so skipped raw pointers cannot dangle.
+
+A 256-edge regression requires exactly two scans: one maximal-chain mutation
+and one fixed-point confirmation. It also bounds live block visits by twice
+the input block count. On the production module, all 892 contractions require
+30 module-wide per-function scans and 23,412 live source visits:
+
+| Boundary | One edge per fixed-point scan | Maximal-chain batch | Change |
+| --- | ---: | ---: | ---: |
+| `simplify-cfg` | 3,465.08 ms | 53.44 ms | 64.8x |
+| SPIR-V XIR legalization | 16.752 s | 13.346 s | -20.3% |
+| Native AST-to-SPIR-V | 29.984 s | 26.570 s | -11.4% |
+| End-to-end cold smoke | 32.14 s | 28.74 s | -10.6% |
+| Peak RSS | 1,656,720 KiB | 1,658,920 KiB | within run noise |
+| Raw SPIR-V | 1,431,985 words | 1,431,985 words | identical size |
+| Optimized SPIR-V | 1,116,158 words | 1,116,158 words | identical size |
+
+The matched run is under
+`/var/tmp/psycles-simplify-chain-batch-20260810/`. The PPM is byte-identical
+with SHA-256
+`3ff6c5463ace13c0f26a735ac1af2bb96ab8a9ba1cb4398359cf2466f63a4d1b`.
+The simplify regression passes 21/21 tests with 79 assertions under both
+container configurations. A complete all-thread build and all 48 XIR tests
+pass; the system-STL pass suite passes 350/350 tests with 1,997 assertions;
+and the RX 9070 XT native Vulkan route passes 92/92 tests with 2,096
+assertions.
+
+After removing this quadratic scan, the largest independent XIR leaves are
+the five DCE invocations at 2.990 s total, SPIR-V pointer-argument inlining at
+2.374 s, CFG destructuring at 2.186 s, and restructure at about 2.005 s. The
+next profile should split DCE's initial discovery scans from its mutation
+worklist before changing another pass.
