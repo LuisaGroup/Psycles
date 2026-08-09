@@ -959,3 +959,70 @@ the five DCE invocations at 2.990 s total, SPIR-V pointer-argument inlining at
 2.374 s, CFG destructuring at 2.186 s, and restructure at about 2.005 s. The
 next profile should split DCE's initial discovery scans from its mutation
 worklist before changing another pass.
+
+## Sparse product fixed point for DCE
+
+Luisa `next@4e81dcc0f` replaces DCE's candidate numbering and repeated
+whole-function confirmation with two event-driven worklists. For ordinary
+dead values, unlinking the last live user is the exact event that can make a
+removable definition dead. The solver therefore seeds zero-user definitions
+once, detaches them while retaining ownership, and follows only operand
+use-lists that just became empty. Repeated operands in one instruction are
+deduplicated before testing that transition.
+
+Ordinary values and write-only allocas cannot be solved as unrelated phases.
+For example, deleting a write-only sink alloca can make a load from a source
+alloca unused; deleting that load then makes the source alloca write-only. The
+first implementation audit detected this formally relevant case because the
+production pass removed 148 fewer instructions even though later passes
+produced identical SPIR-V. The final solver treats the two rules as a product
+fixed point. Every alloca is considered initially. A rejected alloca is
+requeued only when an actual removed user of its exact `Alloca -> GEP*`
+pointer chain changes the write-only predicate. No other mutation can change
+that predicate.
+
+Both deletion rules are monotone and the instruction set is finite. Ordinary
+work is exhausted before the next alloca query; each successful action
+strictly removes at least one linked instruction; and a failed alloca is
+revisited only after one of its blockers disappears. The worklists therefore
+terminate at the same least fixed point as the former alternating global
+scans. Production `removed_inst`, `removed_block`, and dead-value worklist
+counts match the old implementation for all five invocations, including the
+148-node cascade found by the audit.
+
+The regressions cover a 64-node dead chain, a repeated shared operand, value
+propagation out of an explicitly removed alloca graph, and a two-alloca
+`sink -> load -> source` cascade. The cascade must finish in one invocation,
+scan each of its six instructions once, and make a second invocation a strict
+no-op. The matched cold Lone Monk run is under
+`/var/tmp/psycles-dce-product-worklists-20260810/`, against
+`/var/tmp/psycles-simplify-chain-batch-20260810/`:
+
+| Boundary | Numbered/repeated DCE | Sparse product worklists | Change |
+| --- | ---: | ---: | ---: |
+| DCE instruction scans, five calls | 5,279,368 | 2,454,040 | -53.5% |
+| DCE time, five calls | 2,989.58 ms | 1,079.94 ms | -63.9% |
+| Post-inline cleanup group | 3,770.64 ms | 1,924.46 ms | -49.0% |
+| SPIR-V XIR legalization | 13.346 s | 11.271 s | -15.5% |
+| Native AST-to-SPIR-V | 26.570 s | 24.468 s | -7.9% |
+| End-to-end cold smoke | 28.74 s | 26.65 s | -7.3% |
+| Peak RSS | 1,658,920 KiB | 1,656,896 KiB | within run noise |
+| Raw SPIR-V | 1,431,985 words | 1,431,985 words | identical size |
+| Optimized SPIR-V | 1,116,158 words | 1,116,158 words | identical size |
+
+The PPM remains byte-identical with SHA-256
+`3ff6c5463ace13c0f26a735ac1af2bb96ab8a9ba1cb4398359cf2466f63a4d1b`.
+A complete all-thread build and all 48 XIR tests pass. The pass suite passes
+353/353 tests with 2,018 assertions under both the default and system-STL
+configurations. The RX 9070 XT native Vulkan route passes 92/92 tests with
+2,096 assertions.
+
+The post-change 26,000-cycle-sample profile lost no samples. DCE's remaining
+instruction-set hash insertion accounts for only about 0.55% self time, so a
+larger alloca-container rewrite is no longer the next priority. The largest
+independent leaves are now SPIR-V pointer-argument inlining at 2.318 s, CFG
+destructuring at 2.119 s, and restructuring at 1.960 s. Exact XIR verification
+is also visible in the profile; restructure retains exactly its input and
+output boundary checks (297.944 ms and 317.966 ms). The next analysis targets
+pointer-argument planning/mutation and verifier data structures, not verifier
+frequency or semantics.
