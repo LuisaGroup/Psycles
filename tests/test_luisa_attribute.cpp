@@ -4,8 +4,10 @@
 #include <psycles/luisa/graph_surface.h>
 
 #include "luisa_surface_test_support.h"
+#include "../src/luisa/shader_table_data.h"
 
 #include <array>
+#include <bit>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
@@ -25,6 +27,7 @@ using namespace psycles;
 using namespace psycles::compiler;
 using namespace psycles::contract;
 using namespace psycles::luisa_backend;
+using namespace psycles::luisa_backend::detail;
 using psycles::test_support::approximately_equal;
 using psycles::test_support::make_surface_point;
 using psycles::test_support::parameter_data;
@@ -115,6 +118,248 @@ public:
         return make_float3(0.0f);
     }
 };
+
+class TableShaderServices final : public ShaderServices {
+
+private:
+    const BufferFloat &_scalars;
+    const BufferFloat3 &_vectors;
+
+public:
+    TableShaderServices(
+        const BufferFloat &scalars,
+        const BufferFloat3 &vectors) noexcept
+        : _scalars{scalars}, _vectors{vectors} {}
+
+    [[nodiscard]] Float4 texture_2d(
+        Expr<std::uint32_t>, Expr<luisa::float2>,
+        Expr<luisa::float2>, Expr<luisa::float2>,
+        std::uint32_t, std::uint32_t) const noexcept override {
+        return make_float4(0.0f);
+    }
+
+    [[nodiscard]] ShaderAttribute attribute(
+        Expr<luisa::ulong>,
+        const SurfacePoint &) const noexcept override {
+        return ShaderAttribute::missing();
+    }
+
+    [[nodiscard]] Float parameter_float(
+        Expr<std::uint32_t> block,
+        Expr<std::uint32_t> slot) const noexcept override {
+        return _scalars.read(block + slot);
+    }
+
+    [[nodiscard]] Float3 parameter_float3(
+        Expr<std::uint32_t> block,
+        Expr<std::uint32_t> slot) const noexcept override {
+        return _vectors.read(block + slot);
+    }
+
+    [[nodiscard]] ULong parameter_uint64(
+        Expr<std::uint32_t> block,
+        Expr<std::uint32_t> slot) const noexcept override {
+        return _vectors.read(block + slot)
+            .xy()
+            .bitcast<luisa::ulong>();
+    }
+
+    [[nodiscard]] Float cycles_bsdf_data(
+        Expr<std::uint32_t>) const noexcept override {
+        return 1.0f;
+    }
+
+    [[nodiscard]] Float3 xyz_to_rgb(
+        Expr<luisa::float3> value) const noexcept override {
+        return Float3{value};
+    }
+
+    [[nodiscard]] Float3 rec709_to_rgb(
+        Expr<luisa::float3> value) const noexcept override {
+        return Float3{value};
+    }
+
+    [[nodiscard]] Float3 nishita_sky(
+        Expr<std::uint32_t>, std::uint32_t,
+        Expr<luisa::float3>, Expr<float>, Expr<float>,
+        Expr<float>, Expr<float>) const noexcept override {
+        return make_float3(0.0f);
+    }
+};
+
+struct PackedTableParameters {
+    luisa::vector<float> scalars;
+    luisa::vector<luisa::float3> vectors;
+};
+
+[[nodiscard]] PackedTableParameters pack_table_parameters(
+    const SurfaceProgram &program) {
+    PackedTableParameters result;
+    SurfaceParameterBlock parameters{program};
+    std::vector<PendingShaderTable> tables;
+    for (const auto &parameter : program.parameters()) {
+        const auto *value = parameters.find(parameter.id);
+        if (value == nullptr) {
+            throw std::runtime_error{
+                "shader-table fixture lost a parameter"};
+        }
+        auto scalar = 0.0f;
+        auto vector = luisa::make_float3(0.0f);
+        using contract::SocketType;
+        switch (parameter.type) {
+            case SocketType::boolean:
+                scalar = std::get<bool>(value->value) ? 1.0f : 0.0f;
+                break;
+            case SocketType::integer:
+                scalar = static_cast<float>(
+                    std::get<std::int64_t>(value->value));
+                break;
+            case SocketType::floating:
+                scalar = std::get<float>(value->value);
+                break;
+            case SocketType::float2: {
+                const auto authored = std::get<Vec2f>(value->value);
+                vector = luisa::make_float3(
+                    authored.x, authored.y, 0.0f);
+                break;
+            }
+            case SocketType::float3:
+            case SocketType::color:
+            case SocketType::spectrum:
+            case SocketType::point:
+            case SocketType::vector:
+            case SocketType::normal: {
+                const auto authored = std::get<Vec3f>(value->value);
+                vector = luisa::make_float3(
+                    authored.x, authored.y, authored.z);
+                break;
+            }
+            case SocketType::unsigned_integer: {
+                const auto authored =
+                    std::get<std::uint64_t>(value->value);
+                vector = luisa::make_float3(
+                    std::bit_cast<float>(
+                        static_cast<std::uint32_t>(authored)),
+                    std::bit_cast<float>(
+                        static_cast<std::uint32_t>(authored >> 32u)),
+                    0.0f);
+                break;
+            }
+            case SocketType::string: {
+                auto staged = stage_shader_table(
+                    program,
+                    parameter,
+                    *value,
+                    static_cast<std::uint32_t>(result.vectors.size()));
+                if (!staged.valid) {
+                    throw std::runtime_error{
+                        "failed to stage shader table: " +
+                        staged.diagnostic};
+                }
+                tables.emplace_back(std::move(staged.table));
+                break;
+            }
+            case SocketType::transform:
+            case SocketType::closure:
+            case SocketType::volume_closure:
+                throw std::runtime_error{
+                    "shader-table fixture has an unsupported parameter"};
+        }
+        result.scalars.emplace_back(scalar);
+        result.vectors.emplace_back(vector);
+    }
+    std::string diagnostic;
+    if (!finalize_shader_tables(
+            tables, result.scalars, result.vectors, diagnostic)) {
+        throw std::runtime_error{
+            "failed to finalize shader tables: " + diagnostic};
+    }
+    return result;
+}
+
+[[nodiscard]] ShaderGraph sampled_color_ramp_graph() {
+    ShaderGraph graph;
+    const auto ramp = graph.add_node(
+        node_type::color_ramp, "Sampled ColorRamp oracle");
+    const auto emission = graph.add_node(
+        node_type::emission, "ColorRamp emission");
+    if (!graph.set_input(
+            ramp, "Factor", SocketValue::floating(0.25f)) ||
+        !graph.set_property(
+            ramp, "Sampled", SocketValue::boolean(true)) ||
+        !graph.set_property(
+            ramp,
+            "Table",
+            SocketValue::string(
+                "0,0.1,0.2,0.3,0.4;"
+                "0.5,0.5,0.6,0.7,0.8;"
+                "1,0.9,1,0.1,0.2")) ||
+        !graph.set_input(
+            emission, "Strength", SocketValue::floating(1.0f)) ||
+        !graph.connect(
+            {.node = ramp, .socket = "Color"},
+            emission,
+            "Color")) {
+        throw std::runtime_error{
+            "failed to build sampled ColorRamp oracle"};
+    }
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = emission, .socket = "Closure"});
+    return graph;
+}
+
+[[nodiscard]] ShaderGraph sampled_rgb_curve_graph() {
+    ShaderGraph graph;
+    const auto curve = graph.add_node(
+        node_type::rgb_curve, "Sampled RGB Curve oracle");
+    const auto emission = graph.add_node(
+        node_type::emission, "RGB Curve emission");
+    if (!graph.set_input(
+            curve, "Factor", SocketValue::floating(1.0f)) ||
+        !graph.set_input(
+            curve,
+            "Color",
+            SocketValue::color({0.25f, 0.5f, 0.75f})) ||
+        !graph.set_property(
+            curve, "Sampled", SocketValue::boolean(true)) ||
+        !graph.set_property(
+            curve,
+            "Table",
+            SocketValue::string(
+                "0,0,0.1,0.2;"
+                "0.5,0.5,0.6,0.7;"
+                "1,1,0.9,0.8")) ||
+        !graph.set_input(
+            emission, "Strength", SocketValue::floating(1.0f)) ||
+        !graph.connect(
+            {.node = curve, .socket = "Color"},
+            emission,
+            "Color")) {
+        throw std::runtime_error{
+            "failed to build sampled RGB Curve oracle"};
+    }
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = emission, .socket = "Closure"});
+    return graph;
+}
+
+[[nodiscard]] std::shared_ptr<const SurfaceProgram> compile_table_program(
+    ShaderCompiler &compiler,
+    const ShaderGraph &graph) {
+    const auto shader = compiler.compile(graph);
+    if (!shader.ok()) {
+        throw std::runtime_error{
+            "shader-table graph failed validation"};
+    }
+    auto lowered = compile_surface_program(*shader.program);
+    if (!lowered.ok()) {
+        throw std::runtime_error{
+            "shader-table graph failed lowering"};
+    }
+    return std::move(lowered.program);
+}
 
 [[nodiscard]] ShaderGraph attribute_graph(
     std::string_view output) {
@@ -327,6 +572,101 @@ int main(int argc, char **argv) {
                       << actual[index].x << ", " << actual[index].y
                       << ", " << actual[index].z << ", "
                       << actual[index].w << "}\n";
+            return EXIT_FAILURE;
+        }
+    }
+
+    const std::array table_programs{
+        compile_table_program(compiler, sampled_color_ramp_graph()),
+        compile_table_program(compiler, sampled_rgb_curve_graph())};
+    SurfaceDispatch table_surfaces;
+    const std::array table_tags{
+        table_surfaces.create<GraphSurface>(table_programs[0u]),
+        table_surfaces.create<GraphSurface>(table_programs[1u])};
+    const std::array table_parameters{
+        pack_table_parameters(*table_programs[0u]),
+        pack_table_parameters(*table_programs[1u])};
+
+    Kernel1D evaluate_tables = [&](BufferFloat ramp_scalars,
+                                    BufferFloat3 ramp_vectors,
+                                    BufferFloat curve_scalars,
+                                    BufferFloat3 curve_vectors,
+                                    BufferFloat4 output) noexcept {
+        TableShaderServices ramp_services{
+            ramp_scalars, ramp_vectors};
+        TableShaderServices curve_services{
+            curve_scalars, curve_vectors};
+        const auto point = make_surface_point();
+        output.write(
+            0u,
+            make_float4(
+                table_surfaces.emission(
+                    table_tags[0u],
+                    ramp_services,
+                    point,
+                    make_float3(0.0f, 0.0f, 1.0f),
+                    true),
+                1.0f));
+        output.write(
+            1u,
+            make_float4(
+                table_surfaces.emission(
+                    table_tags[1u],
+                    curve_services,
+                    point,
+                    make_float3(0.0f, 0.0f, 1.0f),
+                    true),
+                1.0f));
+    };
+    auto ramp_scalar_buffer = device.create_buffer<float>(
+        table_parameters[0u].scalars.size());
+    auto ramp_vector_buffer = device.create_buffer<luisa::float3>(
+        table_parameters[0u].vectors.size());
+    auto curve_scalar_buffer = device.create_buffer<float>(
+        table_parameters[1u].scalars.size());
+    auto curve_vector_buffer = device.create_buffer<luisa::float3>(
+        table_parameters[1u].vectors.size());
+    auto table_result_buffer =
+        device.create_buffer<luisa::float4>(2u);
+    auto table_kernel = device.compile(
+        evaluate_tables,
+        ShaderOption{
+            .enable_cache = false,
+            .enable_fast_math = false});
+    std::array<luisa::float4, 2u> table_actual{};
+    stream << ramp_scalar_buffer.copy_from(
+                  luisa::span{table_parameters[0u].scalars})
+           << ramp_vector_buffer.copy_from(
+                  luisa::span{table_parameters[0u].vectors})
+           << curve_scalar_buffer.copy_from(
+                  luisa::span{table_parameters[1u].scalars})
+           << curve_vector_buffer.copy_from(
+                  luisa::span{table_parameters[1u].vectors})
+           << table_kernel(
+                  ramp_scalar_buffer,
+                  ramp_vector_buffer,
+                  curve_scalar_buffer,
+                  curve_vector_buffer,
+                  table_result_buffer)
+                  .dispatch(1u)
+           << table_result_buffer.copy_to(
+                  luisa::span{table_actual})
+           << synchronize();
+    constexpr std::array table_expected{
+        luisa::float4{0.3f, 0.4f, 0.5f, 1.0f},
+        luisa::float4{0.25f, 0.6f, 0.75f, 1.0f}};
+    for (std::size_t index = 0u;
+         index < table_actual.size();
+         ++index) {
+        if (!approximately_equal(
+                table_actual[index], table_expected[index])) {
+            std::cerr
+                << "Runtime shader table " << index
+                << " mismatch on " << backend << ": got {"
+                << table_actual[index].x << ", "
+                << table_actual[index].y << ", "
+                << table_actual[index].z << ", "
+                << table_actual[index].w << "}\n";
             return EXIT_FAILURE;
         }
     }

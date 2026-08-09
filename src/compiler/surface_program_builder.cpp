@@ -2,7 +2,6 @@
 #include "surface_program_compaction.h"
 
 #include <algorithm>
-#include <cstdlib>
 #include <utility>
 
 namespace psycles::compiler::detail {
@@ -86,30 +85,6 @@ find_property(const contract::ShaderNode &node,
     return fallback;
   }
   return std::get<Mat4f>(value->value);
-}
-
-[[nodiscard]] std::vector<float> parse_float_table(const std::string &encoded) {
-  std::vector<float> result;
-  const char *cursor = encoded.c_str();
-  const char *end = cursor + encoded.size();
-  while (cursor < end) {
-    while (cursor < end &&
-           (*cursor == ',' || *cursor == ';' || *cursor == ' ' ||
-            *cursor == '\t' || *cursor == '\n' || *cursor == '\r')) {
-      ++cursor;
-    }
-    if (cursor == end) {
-      break;
-    }
-    char *next = nullptr;
-    const auto value = std::strtof(cursor, &next);
-    if (next == cursor) {
-      break;
-    }
-    result.emplace_back(value);
-    cursor = next;
-  }
-  return result;
 }
 
 [[nodiscard]] std::string node_prefix(contract::NodeId node) {
@@ -434,6 +409,21 @@ SurfaceProgramBuilder::add_parameter(const contract::ShaderNode &node,
 SurfaceProgramBuilder::lower_property_parameter(
     const contract::ShaderNode &node,
     std::string_view property) {
+  const auto parameter = lower_property_data(node, property);
+  if (!parameter) {
+    return std::nullopt;
+  }
+  const auto &desc = _parameters[parameter->value];
+  return append(ValueInstruction{.operation = ValueOperation::parameter,
+                                 .source_node = node.id,
+                                 .result_type = desc.type,
+                                 .parameter = *parameter});
+}
+
+[[nodiscard]] std::optional<ParameterId>
+SurfaceProgramBuilder::lower_property_data(
+    const contract::ShaderNode &node,
+    std::string_view property) {
   const auto *value = find_property(node, property);
   if (value == nullptr) {
     diagnose(SurfaceProgramDiagnosticCode::missing_input,
@@ -442,12 +432,8 @@ SurfaceProgramBuilder::lower_property_parameter(
              node.id, std::string{property});
     return std::nullopt;
   }
-  const auto parameter = add_parameter(
+  return add_parameter(
       node, property, *value, ParameterSource::property);
-  return append(ValueInstruction{.operation = ValueOperation::parameter,
-                                 .source_node = node.id,
-                                 .result_type = value->type,
-                                 .parameter = parameter});
 }
 
 [[nodiscard]] ValueExpressionId

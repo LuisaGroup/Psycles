@@ -23,6 +23,11 @@ using namespace psycles::adapter;
 using namespace psycles::compiler;
 using namespace psycles::contract;
 
+static_assert(value_instruction_dependencies.size() == 14u);
+static_assert(
+    value_instruction_dependencies.back() ==
+    &ValueInstruction::n);
+
 void expect(bool condition, const std::string &message) {
     if (!condition) {
         throw std::runtime_error{message};
@@ -226,6 +231,89 @@ void test_shader_graph_and_invalidation() {
             std::get<Vec3f>(value->value) ==
                 Vec3f{0.0f, 0.0f, 1.0f},
         "rebound parameter block retained the red color");
+}
+
+void test_surface_program_schedules_shared_subgraph_once() {
+    ShaderGraph graph;
+    const auto shared = graph.add_node(
+        node_type::constant_float, "Shared scalar");
+    const auto diffuse = graph.add_node(
+        node_type::diffuse_bsdf, "Diffuse branch");
+    const auto emission = graph.add_node(
+        node_type::emission, "Emission branch");
+    const auto add = graph.add_node(
+        node_type::add_closure, "Join branches");
+    expect(
+        graph.set_input(
+            shared, "Value", SocketValue::floating(0.375f)),
+        "failed to author the shared scalar");
+    expect(
+        graph.connect(
+            {.node = shared, .socket = "Value"},
+            diffuse,
+            "Roughness") &&
+            graph.connect(
+                {.node = shared, .socket = "Value"},
+                emission,
+                "Strength") &&
+            graph.connect(
+                {.node = diffuse, .socket = "Closure"},
+                add,
+                "A") &&
+            graph.connect(
+                {.node = emission, .socket = "Closure"},
+                add,
+                "B"),
+        "failed to connect the shared-subgraph fixture");
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = add, .socket = "Closure"});
+
+    ShaderCompiler compiler{make_core_node_registry()};
+    const auto shader = compiler.compile(graph);
+    expect(shader.ok(), "shared-subgraph fixture failed validation");
+    expect(
+        std::ranges::count(
+            shader.program->analysis().evaluation_order,
+            shared) == 1,
+        "ShaderGraph topological order scheduled one node more than once");
+    const auto surface = compile_surface_program(*shader.program);
+    expect(surface.ok(), "shared-subgraph fixture failed to lower");
+
+    const auto &values = surface.program->value_instructions();
+    const auto shared_value = std::ranges::find_if(
+        values,
+        [&](const ValueInstruction &instruction) noexcept {
+            return instruction.source_node == shared;
+        });
+    expect(
+        std::ranges::count_if(
+            values,
+            [&](const ValueInstruction &instruction) noexcept {
+                return instruction.source_node == shared;
+            }) == 1 &&
+            shared_value != values.end(),
+        "shared ShaderGraph node was duplicated in the linear value IR");
+    const auto shared_id = ValueExpressionId{
+        static_cast<std::uint32_t>(
+            std::distance(values.begin(), shared_value))};
+    const auto diffuse_closure = std::ranges::find_if(
+        surface.program->closure_instructions(),
+        [](const ClosureInstruction &instruction) noexcept {
+            return instruction.operation == ClosureOperation::diffuse;
+        });
+    const auto emission_closure = std::ranges::find_if(
+        surface.program->closure_instructions(),
+        [](const ClosureInstruction &instruction) noexcept {
+            return instruction.operation == ClosureOperation::emission;
+        });
+    expect(
+        diffuse_closure != surface.program->closure_instructions().end() &&
+            emission_closure !=
+                surface.program->closure_instructions().end() &&
+            diffuse_closure->roughness == shared_id &&
+            emission_closure->strength == shared_id,
+        "branch consumers did not reuse the same topological IR value");
 }
 
 void test_image_texture_modes_are_structural() {
@@ -2004,6 +2092,43 @@ void test_sampled_color_ramp_is_part_of_the_graph_contract() {
     expect(
         (ramp_instruction->static_u0 & 2u) != 0u,
         "sampled Color Ramp lost its normalized-table flag");
+    const auto table_parameter = find_property_parameter(
+        *surface.program, "Table");
+    expect(
+        table_parameter != nullptr &&
+            table_parameter->type == SocketType::string &&
+            ramp_instruction->parameter == table_parameter->id &&
+            ramp_instruction->static_table.empty(),
+        "sampled Color Ramp table was embedded in shader topology");
+
+    auto different_table_graph = graph;
+    expect(
+        different_table_graph.set_property(
+            ramp,
+            "Table",
+            SocketValue::string(
+                "0,1,0,0,1;0.25,0,1,0,0.75;"
+                "0.5,0,0,1,0.5;0.75,1,1,0,0.25;1,1,1,1,0")),
+        "failed to author a second sampled Color Ramp table");
+    const auto different = compiler.compile(different_table_graph);
+    expect(
+        different.ok() &&
+            compiled.program->analysis().structure_signature ==
+                different.program->analysis().structure_signature &&
+            compiled.program->analysis().parameter_signature !=
+                different.program->analysis().parameter_signature,
+        "Color Ramp table length/content fragmented shader topology");
+    const auto rebound = bind_surface_parameters(
+        *surface.program, *different.program);
+    const auto *rebound_table =
+        rebound.ok()
+            ? rebound.parameters->find(table_parameter->id)
+            : nullptr;
+    expect(
+        rebound_table != nullptr &&
+            std::get<std::string>(rebound_table->value).find("0.25") !=
+                std::string::npos,
+        "same-topology Color Ramp did not rebind its runtime table");
 }
 
 void test_point_to_vector_conversion_lowers() {
@@ -2134,6 +2259,7 @@ void test_scene_delta_is_atomic() {
 int main() {
     try {
         test_shader_graph_and_invalidation();
+        test_surface_program_schedules_shared_subgraph_once();
         test_image_texture_modes_are_structural();
         test_magic_depth_is_a_runtime_property();
         test_environment_texture_modes_are_structural();

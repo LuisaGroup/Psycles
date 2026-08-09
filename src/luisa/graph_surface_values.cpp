@@ -47,18 +47,9 @@ std::vector<bool> GraphSurfaceImplementation::value_dependency_mask(
         active[id.value] = true;
         const auto &instruction =
             _program->value_instructions()[id.value];
-        const std::array dependencies{
-            instruction.a,
-            instruction.b,
-            instruction.c,
-            instruction.d,
-            instruction.e,
-            instruction.f,
-            instruction.g,
-            instruction.h,
-            instruction.i,
-            instruction.j};
-        for (const auto dependency : dependencies) {
+        for (const auto member :
+             compiler::value_instruction_dependencies) {
+            const auto dependency = instruction.*member;
             if (dependency.valid()) {
                 pending.emplace_back(dependency);
             }

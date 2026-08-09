@@ -9,22 +9,6 @@
 namespace psycles::compiler::detail {
 namespace {
 
-constexpr auto value_dependencies = std::array{
-    &ValueInstruction::a,
-    &ValueInstruction::b,
-    &ValueInstruction::c,
-    &ValueInstruction::d,
-    &ValueInstruction::e,
-    &ValueInstruction::f,
-    &ValueInstruction::g,
-    &ValueInstruction::h,
-    &ValueInstruction::i,
-    &ValueInstruction::j,
-    &ValueInstruction::k,
-    &ValueInstruction::l,
-    &ValueInstruction::m,
-    &ValueInstruction::n};
-
 constexpr auto closure_value_dependencies = std::array{
     &ClosureInstruction::color,
     &ClosureInstruction::normal,
@@ -191,7 +175,7 @@ SurfaceProgramStorage compact_surface_program(
             instruction.parameter.value < reachable_parameters.size()) {
             reachable_parameters[instruction.parameter.value] = true;
         }
-        for (const auto dependency : value_dependencies) {
+        for (const auto dependency : value_instruction_dependencies) {
             enqueue(
                 instruction.*dependency,
                 reachable_values,
@@ -234,7 +218,7 @@ SurfaceProgramStorage compact_surface_program(
     for (auto &instruction : storage.values) {
         instruction.parameter = remap(
             instruction.parameter, parameter_mapping);
-        for (const auto dependency : value_dependencies) {
+        for (const auto dependency : value_instruction_dependencies) {
             instruction.*dependency = remap(
                 instruction.*dependency, value_mapping);
         }

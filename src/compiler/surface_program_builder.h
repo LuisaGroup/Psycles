@@ -44,8 +44,6 @@ using LoweredOutput =
 
 [[nodiscard]] VolumePhase volume_phase(const contract::ShaderNode &node);
 
-[[nodiscard]] std::vector<float> parse_float_table(const std::string &encoded);
-
 [[nodiscard]] std::string node_prefix(contract::NodeId node);
 
 [[nodiscard]] std::uint64_t color_mode(const contract::ShaderNode &node);
@@ -85,6 +83,13 @@ private:
   [[nodiscard]] std::optional<ValueExpressionId>
   lower_property_parameter(const contract::ShaderNode &node,
                            std::string_view property);
+
+  // Runtime data which is not itself a shader expression (for example a
+  // variable-length ColorRamp table) still occupies a typed material slot.
+  // Its owning instruction addresses the slot directly.
+  [[nodiscard]] std::optional<ParameterId>
+  lower_property_data(const contract::ShaderNode &node,
+                      std::string_view property);
 
   [[nodiscard]] ValueExpressionId append(ValueInstruction instruction);
 

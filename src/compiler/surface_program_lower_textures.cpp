@@ -549,11 +549,14 @@ namespace {
         return true;
     }
     if (node.type == node_type::color_ramp) {
-        if (auto factor = lower_value_input(node, "Factor")) {
+        auto factor = lower_value_input(node, "Factor");
+        auto table = lower_property_data(node, "Table");
+        if (factor && table) {
             auto instruction = ValueInstruction{
                 .operation = ValueOperation::color_ramp,
                 .source_node = node.id,
                 .result_type = SocketType::color,
+                .parameter = *table,
                 .a = *factor,
                 .static_u0 =
                     (property_string(
@@ -563,9 +566,7 @@ namespace {
                          : 0u) |
                     (property_bool(node, "Sampled")
                          ? 2u
-                         : 0u),
-                .static_table = parse_float_table(
-                    property_string(node, "Table"))};
+                         : 0u)};
             publish(
                 node.id,
                 "Color",
@@ -582,7 +583,12 @@ namespace {
     if (node.type == node_type::rgb_curve) {
         auto factor = lower_value_input(node, "Factor");
         auto color = lower_value_input(node, "Color");
-        if (factor && color) {
+        auto min_x = lower_property_parameter(node, "MinX");
+        auto max_x = lower_property_parameter(node, "MaxX");
+        auto extrapolate =
+            lower_property_parameter(node, "Extrapolate");
+        auto table = lower_property_data(node, "Table");
+        if (factor && color && min_x && max_x && extrapolate && table) {
             publish(
                 node.id,
                 "Color",
@@ -590,22 +596,16 @@ namespace {
                     .operation = ValueOperation::rgb_curve,
                     .source_node = node.id,
                     .result_type = SocketType::color,
+                    .parameter = *table,
                     .a = *color,
                     .b = *factor,
+                    .c = *min_x,
+                    .d = *max_x,
+                    .e = *extrapolate,
                     .static_u0 =
-                        (property_bool(node, "Sampled")
-                             ? 1u
-                             : 0u) |
-                        (property_bool(
-                             node, "Extrapolate", true)
-                             ? 2u
-                             : 0u),
-                    .static_f0 =
-                        property_float(node, "MinX", 0.0f),
-                    .static_f1 =
-                        property_float(node, "MaxX", 1.0f),
-                    .static_table = parse_float_table(
-                        property_string(node, "Table"))}));
+                        property_bool(node, "Sampled")
+                            ? 1u
+                            : 0u}));
         }
         return true;
     }

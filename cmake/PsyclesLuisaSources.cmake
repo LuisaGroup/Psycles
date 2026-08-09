@@ -31,6 +31,7 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/graph_surface_value_wave.cpp
     src/luisa/graph_surface_value_voronoi.cpp
     src/luisa/graph_surface_value_procedural.cpp
+    src/luisa/shader_table_data.cpp
     src/luisa/cycles_transform.cpp
     src/luisa/cycles_magic.cpp
     src/luisa/cycles_triangle_intersection_component.cpp

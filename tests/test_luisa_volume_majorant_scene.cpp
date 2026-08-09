@@ -1798,6 +1798,33 @@ void run_scene_build(
             std::string{backend});
 }
 
+void test_last_value_operand_participates_in_volume_analysis() {
+    // Isolate the IR edge contract from graph lowering: a spatial source is
+    // reachable only through the final operand slot. An analysis that
+    // hand-spells an a..j prefix will misclassify this volume as homogeneous.
+    const SurfaceProgram program{
+        0u,
+        {},
+        {ValueInstruction{
+             .operation = ValueOperation::surface_position,
+             .result_type = SocketType::point},
+         ValueInstruction{
+             .operation = ValueOperation::brick_factor,
+             .result_type = SocketType::floating,
+             .n = ValueExpressionId{0u}}},
+        {},
+        {},
+        {VolumeInstruction{
+            .operation = VolumeOperation::scatter,
+            .density = ValueExpressionId{1u}}},
+        VolumeExpressionId{0u}};
+    const auto capabilities =
+        VolumeProgramCapabilityComponent{}.analyze(program);
+    expect(
+        !capabilities.homogeneous,
+        "ValueInstruction::n was omitted from volume dependency analysis");
+}
+
 }// namespace
 
 int main(int argc, char **argv) {
@@ -1809,6 +1836,7 @@ int main(int argc, char **argv) {
                     : "fallback"};
         test_scene_plan();
         test_flatten_contract();
+        test_last_value_operand_participates_in_volume_analysis();
         run_scene_build(backend, argv[0]);
         std::cout
             << "All current-Cycles volume-majorant "

@@ -7,10 +7,16 @@
 #include "../src/luisa/path_tracer_shader_services.h"
 
 #include <luisa/xir/instructions/if.h>
+#include <luisa/xir/instructions/loop.h>
 #include <luisa/xir/translators/ast2xir.h>
 
+#include <compare>
+#include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <stdexcept>
+#include <string>
+#include <utility>
 
 namespace {
 
@@ -89,6 +95,74 @@ public:
         Expr<float>,
         Expr<float>,
         Expr<float>) const noexcept override {
+        return make_float3(0.0f);
+    }
+};
+
+class BufferParameterShaderServices final : public ShaderServices {
+
+private:
+    const BufferFloat &_scalars;
+    const BufferFloat3 &_vectors;
+
+public:
+    BufferParameterShaderServices(
+        const BufferFloat &scalars,
+        const BufferFloat3 &vectors) noexcept
+        : _scalars{scalars}, _vectors{vectors} {}
+
+    [[nodiscard]] Float4 texture_2d(
+        Expr<std::uint32_t>, Expr<luisa::float2>,
+        Expr<luisa::float2>, Expr<luisa::float2>,
+        std::uint32_t, std::uint32_t) const noexcept override {
+        return make_float4(0.0f);
+    }
+
+    [[nodiscard]] ShaderAttribute attribute(
+        Expr<luisa::ulong>,
+        const SurfacePoint &) const noexcept override {
+        return ShaderAttribute::missing();
+    }
+
+    [[nodiscard]] Float parameter_float(
+        Expr<std::uint32_t> block,
+        Expr<std::uint32_t> slot) const noexcept override {
+        return _scalars.read(block + slot);
+    }
+
+    [[nodiscard]] Float3 parameter_float3(
+        Expr<std::uint32_t> block,
+        Expr<std::uint32_t> slot) const noexcept override {
+        return _vectors.read(block + slot);
+    }
+
+    [[nodiscard]] ULong parameter_uint64(
+        Expr<std::uint32_t> block,
+        Expr<std::uint32_t> slot) const noexcept override {
+        return _vectors.read(block + slot)
+            .xy()
+            .bitcast<luisa::ulong>();
+    }
+
+    [[nodiscard]] Float cycles_bsdf_data(
+        Expr<std::uint32_t>) const noexcept override {
+        return 1.0f;
+    }
+
+    [[nodiscard]] Float3 xyz_to_rgb(
+        Expr<luisa::float3> value) const noexcept override {
+        return Float3{value};
+    }
+
+    [[nodiscard]] Float3 rec709_to_rgb(
+        Expr<luisa::float3> value) const noexcept override {
+        return Float3{value};
+    }
+
+    [[nodiscard]] Float3 nishita_sky(
+        Expr<std::uint32_t>, std::uint32_t,
+        Expr<luisa::float3>, Expr<float>, Expr<float>,
+        Expr<float>, Expr<float>) const noexcept override {
         return make_float3(0.0f);
     }
 };
@@ -247,6 +321,132 @@ public:
     return structured_if_count <= 8u;
 }
 
+[[nodiscard]] ShaderGraph make_ramp_graph(
+    std::string table,
+    bool sampled) {
+    ShaderGraph graph;
+    const auto ramp = graph.add_node(
+        node_type::color_ramp, "Runtime ColorRamp table");
+    const auto emission = graph.add_node(
+        node_type::emission, "ColorRamp emission");
+    if (!graph.set_property(
+            ramp, "Sampled", SocketValue::boolean(sampled)) ||
+        !graph.set_property(
+            ramp, "Table", SocketValue::string(std::move(table))) ||
+        !graph.connect(
+            {.node = ramp, .socket = "Color"},
+            emission,
+            "Color")) {
+        throw std::runtime_error{
+            "failed to construct ColorRamp XIR fixture"};
+    }
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = emission, .socket = "Closure"});
+    return graph;
+}
+
+struct XirShape {
+    std::size_t instructions{};
+    std::size_t loops{};
+
+    auto operator<=>(const XirShape &) const noexcept = default;
+};
+
+[[nodiscard]] XirShape ramp_xir_shape(
+    const ShaderCompiler &compiler,
+    std::string table,
+    bool sampled) {
+    const auto shader = compiler.compile(
+        make_ramp_graph(std::move(table), sampled));
+    if (!shader.ok()) {
+        throw std::runtime_error{
+            "ColorRamp XIR fixture failed graph validation"};
+    }
+    const auto lowered = compile_surface_program(*shader.program);
+    if (!lowered.ok()) {
+        throw std::runtime_error{
+            "ColorRamp XIR fixture failed surface lowering"};
+    }
+    SurfaceDispatch surfaces;
+    const auto tag = surfaces.create<GraphSurface>(lowered.program);
+    Kernel1D kernel = [&](BufferFloat scalar_parameters,
+                          BufferFloat3 vector_parameters,
+                          BufferFloat4 output) noexcept {
+        BufferParameterShaderServices services{
+            scalar_parameters, vector_parameters};
+        SurfacePoint point{};
+        point.parameter_block = 0u;
+        point.geometric_normal = make_float3(0.0f, 0.0f, 1.0f);
+        point.shading_normal = make_float3(0.0f, 0.0f, 1.0f);
+        point.incoming = make_float3(0.0f, 0.0f, 1.0f);
+        auto value = surfaces.emission(
+            tag, services, point,
+            make_float3(0.0f, 0.0f, 1.0f), true);
+        output.write(0u, make_float4(value, 1.0f));
+    };
+    auto module = luisa::compute::xir::ast_to_xir_translate(
+        kernel.function()->function(), {});
+    XirShape shape;
+    for (auto *function : module->function_list()) {
+        if (auto *definition = function->definition()) {
+            definition->traverse_instructions(
+                [&](const luisa::compute::xir::Instruction
+                        *instruction) noexcept {
+                    ++shape.instructions;
+                    shape.loops +=
+                        instruction->isa<
+                            luisa::compute::xir::LoopInst>() ||
+                                instruction->isa<
+                                    luisa::compute::xir::SimpleLoopInst>()
+                            ? 1u
+                            : 0u;
+                });
+        }
+    }
+    return shape;
+}
+
+[[nodiscard]] bool shader_table_cfg_is_bounded(
+    const ShaderCompiler &compiler) {
+    const auto short_control_points =
+        std::string{"0,0,0,0,1;1,1,1,1,1"};
+    auto long_control_points = std::string{};
+    for (auto index = 0u; index < 128u; ++index) {
+        if (!long_control_points.empty()) {
+            long_control_points.push_back(';');
+        }
+        const auto coordinate =
+            static_cast<float>(index) / 127.0f;
+        long_control_points +=
+            std::to_string(coordinate) + "," +
+            std::to_string(coordinate) + ",0.25,0.75,1";
+    }
+    const auto short_shape = ramp_xir_shape(
+        compiler, short_control_points, false);
+    const auto long_shape = ramp_xir_shape(
+        compiler, long_control_points, false);
+    const auto sampled_shape = ramp_xir_shape(
+        compiler,
+        "0,0,0,0,1;0.5,0.5,0.5,0.5,1;1,1,1,1,1",
+        true);
+    const auto valid =
+        short_shape == long_shape &&
+        short_shape.loops == 1u &&
+        sampled_shape.loops == 0u;
+    if (!valid) {
+        std::cerr
+            << "ColorRamp XIR shape mismatch: short={instructions="
+            << short_shape.instructions << ", loops="
+            << short_shape.loops << "}, long={instructions="
+            << long_shape.instructions << ", loops="
+            << long_shape.loops << "}, sampled={instructions="
+            << sampled_shape.instructions << ", loops="
+            << sampled_shape.loops << "}\n";
+    }
+    return valid;
+}
+
 }// namespace
 
 int main() {
@@ -384,6 +584,9 @@ int main() {
     if (!attribute_lookup_cfg_is_bounded()) {
         return 4;
     }
+    if (!shader_table_cfg_is_bounded(shader_compiler)) {
+        return 5;
+    }
 
     Kernel1D sampler_kernel = [](
                                   BufferFloat4 table,
@@ -411,5 +614,5 @@ int main() {
                 rng_hash,
                 dimension));
     };
-    return sampler_kernel.function() ? 0 : 5;
+    return sampler_kernel.function() ? 0 : 6;
 }
