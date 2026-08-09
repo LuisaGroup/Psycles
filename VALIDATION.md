@@ -16,14 +16,16 @@ tree, replaces the final selection-by-block re-entry scan with exact
 dominance-frontier queries, carries enclosing loops as persistent contexts,
 and solves all loop-boundary arm classifications with block value numbering
 plus sparse reverse-CFG dataflow. The follow-ups through Luisa
-`next@6a03ec2f7` replace DCE's repeated whole-function least-fixed-point scan
+`next@411322cd2` replace DCE's repeated whole-function least-fixed-point scan
 with an
 equivalent linear reverse-use worklist, then replace the remaining per-arm
 loop-boundary merge searches with versioned sparse dataflow and explicitly
 invalidated rewrite batches. The newest follow-up eliminates per-If dominator
 rebuilds with an exact immutable-tree overlay: transparent merge subdivisions
 carry nearest-common-dominator anchors, while dynamic merge inference still
-observes the mutated graph. All 48
+observes the mutated graph. Selection-merge inference now also value-numbers
+blocks once per batch, carries enclosing loops as persistent dominator-tree
+contexts, and reuses dense epoch arrays for shortest reachability. All 48
 XIR tests and 92 Vulkan native-codegen runtime tests pass. On the unchanged
 Lone Monk module, raw/optimized SPIR-V remain 1,431,985/1,116,158 words and
 the compile-smoke output is byte-identical. DCE aggregate time falls 4.72x
@@ -35,6 +37,9 @@ AST-to-SPIR-V to `41.046 s`. Eliminating 1,723 redundant dominator rebuilds
 then takes `try_restructure_if_batch` from `7.930 s` to `2.091 s` (3.79x),
 `restructure_cfg` to `6.826 s`, XIR legalization to `21.587 s`, and native
 AST-to-SPIR-V to `35.714 s`, again with identical SPIR-V and output.
+The dense merge workspace then takes the if batch to `0.299 s` (another
+6.99x), `restructure_cfg` to `5.191 s`, XIR legalization to `20.334 s`, and
+native AST-to-SPIR-V to `33.752 s`, still with byte-identical output.
 Against the earlier complete
 run, `drain_selection_exits` falls 18.30x to `0.723 s`, `restructure_cfg`
 falls 49.0% to `17.945 s`, native AST-to-SPIR-V falls 23.9% to `57.766 s`,
@@ -42,9 +47,9 @@ and peak RSS falls 82.4% to `1,654,768 KiB`. The observed complete JIT hit the
 RADV disk cache, so its `57.933 s` wall is recorded but not attributed to the
 compiler change. The DCE follow-up retriggered an `84.119 s` RADV compile, so
 its total wall and process RSS are likewise separated from compiler-boundary
-comparisons. The next independent transform hotspot is the pair of
-merge-inference passes that account for about `2.064 s` of the remaining
-`2.091 s` if-batch time.
+comparisons. The former merge-inference hotspot is now only part of a
+`0.299 s` if batch; subsequent optimization should be selected from the new
+whole-pipeline profile rather than continuing to micro-optimize it.
 
 The preceding
 [sparse XIR verifier dominance checkpoint](docs/validation/2026-08-10/xir-verifier-sparse-dominance/README.md)
