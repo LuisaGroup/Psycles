@@ -55,6 +55,8 @@ virtual-memory ceiling.
 | Principled Transmission | 1:37, 17.9 GiB, incomplete | 8.86 s, pass | 377 MiB |
 | Principled Thin Wall | 0:34, 6.86 GiB, incomplete | 11.38 s, pass | 409 MiB |
 | Standalone Refraction | proactively refactored after the same pattern was found | 0.28 s, pass | 193 MiB |
+| Principled Coat | three aggregate kernels recorded 3,522,270 XIR instructions | 10.34 s, pass; eight semantic kernels record 655,845 instructions | 379 MiB |
+| Standalone Beckmann Glossy | one aggregate kernel recorded 143,240 XIR instructions | 0.27 s, pass; seven semantic kernels record 62,012 instructions | 187 MiB |
 
 The successful runs preserved every previous semantic assertion. Cached runs
 are intentionally excluded from the before/after table.
@@ -71,6 +73,8 @@ XIR-to-SPIR-V compilation and SPIR-V optimization; DXC is not loaded.
 | Principled Transmission | 11.76 s, pass | 13.32 s, pass |
 | Principled Thin Wall | 13.95 s, pass | 15.04 s, pass |
 | Standalone Refraction | 0.49 s, pass | 0.44 s, pass |
+| Principled Coat | 12.89 s, pass | 14.61 s, pass |
+| Standalone Beckmann Glossy | 0.55 s, pass | 0.30 s, pass |
 
 These are cold shader-regression wall times, not scene-render throughput.
 
@@ -88,7 +92,27 @@ LLVM. Representative largest kernels are:
 | `transmission_sample_ggx` | 309,441 | 390,000 |
 | `thin_wall_sample_closures` | 309,516 | 390,000 |
 | `cycles_closure_subsurface` | 361,813 | 455,000 |
+| `principled_coat_sample` | 309,391 | 390,000 |
 | `refraction_sample` | 22,784 | 30,000 |
+| `beckmann_glossy_sample` | 22,132 | 30,000 |
+
+Principled Coat previously recorded three aggregate kernels containing
+1,255,564, 2,144,563, and 122,143 XIR instructions. Its largest new kernel is
+309,391 instructions (85.6% smaller), and the sum across all compilation units
+is 81.4% smaller. Standalone Beckmann's largest new kernel is 22,132
+instructions (84.5% smaller); its total recorded XIR is 56.7% smaller. These
+reductions come from scheduling each operation once, not from weakening any
+numeric assertion or changing a material graph.
+
+The Coat and Beckmann refactors were verified together with:
+
+```sh
+ctest --test-dir build \
+  -R 'psycles\\.luisa_(beckmann_glossy|principled_coat)_(fallback|hip|vk)$' \
+  --output-on-failure
+```
+
+All six backend combinations passed. The combined cached run took 28.64 s.
 
 All kernel counts can be reproduced with:
 
