@@ -46,6 +46,7 @@ struct PathKernelConfig {
     bool use_light_tree{};
     bool reflective_caustics{};
     bool refractive_caustics{};
+    bool has_subsurface{};
     bool path_trace_enabled{};
     std::uint32_t volume_stack_size{};
     bool camera_may_be_inside_volume{};

@@ -289,6 +289,11 @@ struct LuisaSceneData {
     // conservative image of this exact material predicate; closures and
     // parameters remain device expressions.
     luisa::vector<luisa::uint> surface_bssrdf_bump_tags;
+    // Host-stage scene capability used to decide whether the production path
+    // kernel must record spatial BSSRDF transport at all. The predicate is
+    // derived from the raw SurfaceProgram plus its parameter block; it never
+    // rewrites, bakes, or approximates a material closure.
+    bool has_subsurface{};
     std::map<contract::MaterialId, MaterialBinding>
         material_bindings;
     std::optional<MaterialBinding> world_surface;

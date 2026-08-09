@@ -412,6 +412,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         .use_light_tree = use_light_tree,
         .reflective_caustics = reflective_caustics,
         .refractive_caustics = refractive_caustics,
+        .has_subsurface = scene->has_subsurface,
         .path_trace_enabled = path_trace_enabled,
         .volume_stack_size =
             scene->volume_metadata.stack_size,

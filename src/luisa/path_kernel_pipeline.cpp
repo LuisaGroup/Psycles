@@ -33,8 +33,7 @@ class PathKernelPipeline::Impl {
     std::vector<std::unique_ptr<DirectLightingComponent>> direct_lighting;
     std::unique_ptr<SurfaceScatterStage> surface_scatter{
         make_surface_scatter_stage()};
-    std::unique_ptr<SubsurfaceTransportStage> subsurface_transport{
-        make_subsurface_transport_stage()};
+    std::unique_ptr<SubsurfaceTransportStage> subsurface_transport;
 
     explicit Impl(
         const PathKernelConfig &config)
@@ -55,6 +54,10 @@ class PathKernelPipeline::Impl {
         direct_lighting.emplace_back(
             make_analytic_lighting_component(
                 direct_light_trace));
+        if (config.has_subsurface) {
+            subsurface_transport =
+                make_subsurface_transport_stage();
+        }
     }
 };
 
@@ -170,17 +173,19 @@ void PathKernelPipeline::emit(PathSampleContext &sample) const noexcept {
             };
         }
         const auto scatter = _impl->surface_scatter->emit(lighting);
-        $if(scatter.subsurface) {
-            const auto transported =
-                _impl->subsurface_transport->emit(
-                    lighting, scatter.sample);
-            $if(transported) {
-                $continue;
-            }
-            $else {
-                $break;
+        if (_impl->subsurface_transport) {
+            $if(scatter.subsurface) {
+                const auto transported =
+                    _impl->subsurface_transport->emit(
+                        lighting, scatter.sample);
+                $if(transported) {
+                    $continue;
+                }
+                $else {
+                    $break;
+                };
             };
-        };
+        }
     };
 }
 

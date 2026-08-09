@@ -139,8 +139,13 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     }
     std::set<contract::MaterialId> surface_bssrdf_materials;
     std::set<contract::MaterialId> surface_bssrdf_bump_materials;
+    const auto reachable_surface_materials =
+        collect_reachable_surface_materials(snapshot);
     for (const auto &[material_id, material] :
          data->materials.materials()) {
+        if (!reachable_surface_materials.contains(material_id)) {
+            continue;
+        }
         const auto &source_material =
             snapshot.materials.at(material_id);
         const auto has_bssrdf = compiler::cycles_surface_has_bssrdf(
@@ -156,6 +161,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             surface_bssrdf_bump_materials.emplace(material_id);
         }
     }
+    data->has_subsurface = !surface_bssrdf_materials.empty();
     auto cycles_instance_intersection_plan =
         build_cycles_instance_intersection_plan(
             snapshot, surface_bssrdf_materials);

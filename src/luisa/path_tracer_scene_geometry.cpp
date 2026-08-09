@@ -46,6 +46,71 @@ CyclesPrimitiveIntervalResolver::resolve(
 
 namespace {
 
+void include_resolved_material(
+    std::set<contract::MaterialId> &result,
+    std::span<const contract::MaterialId> geometry_materials,
+    std::span<const contract::MaterialId> material_overrides,
+    std::uint32_t slot) {
+    if (slot < material_overrides.size()) {
+        result.emplace(material_overrides[slot]);
+    } else if (!geometry_materials.empty()) {
+        result.emplace(geometry_materials[std::min<std::size_t>(
+            slot, geometry_materials.size() - 1u)]);
+    }
+}
+
+void include_triangle_materials(
+    std::set<contract::MaterialId> &result,
+    const contract::TriangleMeshDesc &geometry,
+    const contract::InstanceDesc &instance) {
+    for (auto primitive = std::size_t{0u};
+         primitive < geometry.triangles.size();
+         ++primitive) {
+        const auto slot =
+            primitive < geometry.triangle_material_slots.size()
+                ? geometry.triangle_material_slots[primitive]
+                : 0u;
+        include_resolved_material(
+            result,
+            geometry.material_slots,
+            instance.material_overrides,
+            slot);
+    }
+}
+
+void include_curve_materials(
+    std::set<contract::MaterialId> &result,
+    const contract::CurveGeometryDesc &geometry,
+    const contract::InstanceDesc &instance) {
+    for (auto curve = std::size_t{0u};
+         curve < geometry.curve_first_key.size();
+         ++curve) {
+        const auto first = static_cast<std::size_t>(
+            geometry.curve_first_key[curve]);
+        const auto end =
+            curve + 1u < geometry.curve_first_key.size()
+                ? static_cast<std::size_t>(
+                      geometry.curve_first_key[curve + 1u])
+                : geometry.keys.size();
+        // A curve with fewer than two valid keys generates no procedural
+        // primitive and therefore cannot make its material reachable.
+        if (first >= geometry.keys.size() ||
+            end > geometry.keys.size() ||
+            end <= first || end - first < 2u) {
+            continue;
+        }
+        const auto slot =
+            curve < geometry.curve_material_slots.size()
+                ? geometry.curve_material_slots[curve]
+                : 0u;
+        include_resolved_material(
+            result,
+            geometry.material_slots,
+            instance.material_overrides,
+            slot);
+    }
+}
+
 [[nodiscard]] Vec3f cross(Vec3f a, Vec3f b) noexcept {
     return {
         a.y * b.z - a.z * b.y,
@@ -195,6 +260,28 @@ struct ClosedPrimitiveBounds {
 }
 
 }// namespace
+
+std::set<contract::MaterialId>
+collect_reachable_surface_materials(
+    const contract::SceneSnapshot &scene) {
+    std::set<contract::MaterialId> result;
+    for (const auto &[instance_id, instance] : scene.instances) {
+        static_cast<void>(instance_id);
+        // Scene upload gives curve geometry precedence when an invalid scene
+        // reuses an id in both geometry maps. Match that rule exactly so the
+        // capability image cannot diverge from runtime material resolution.
+        if (const auto curve =
+                scene.curve_geometries.find(instance.geometry);
+            curve != scene.curve_geometries.end()) {
+            include_curve_materials(result, curve->second, instance);
+        } else if (const auto mesh =
+                       scene.geometries.find(instance.geometry);
+                   mesh != scene.geometries.end()) {
+            include_triangle_materials(result, mesh->second, instance);
+        }
+    }
+    return result;
+}
 
 float world_triangle_area(
     const Mat4f &transform,
