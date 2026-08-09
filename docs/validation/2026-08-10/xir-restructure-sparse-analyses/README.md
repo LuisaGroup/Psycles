@@ -233,3 +233,57 @@ formally defined immutable snapshot plus transactional rewrite batch, or an
 explicit invalidation/worklist rule; reusing stale classifications across a
 mutation would be incorrect. The complete pass still verifies only its input
 and output boundaries by default.
+
+## Reverse-use DCE fixed-point follow-up
+
+After the sparse restructure changes, a compile-interval `perf` recording
+captured 46,885 samples with none lost. The next independent cost was no
+longer dominance or loop-boundary classification: the five DCE invocations
+took `14.182 s` in aggregate, and the recursive whole-function dead-code
+scan alone accounted for `10.22%` of compile samples. The implementation
+revisited every reachable instruction, recomputed memory effects, and
+rescanned every use until a dead-value fixed point stopped changing. A dead
+SSA chain therefore admitted quadratic work.
+
+For removable instructions `R`, let `U(i)` be the multiset of instruction
+users of `i`. The old algorithm computed the least fixed point
+
+```text
+D = { i in R | U(i) is a subset of D }
+```
+
+from `D = empty`. Luisa `next@f0018499d` solves the same equation by
+reverse-use peeling: value-number removable instructions once, count live
+instruction uses, seed zero-count values, and decrement operand-definition
+counts when a user enters `D`. Duplicate operand uses are counted and
+decremented separately. Each instruction and use is visited `O(1)` times, so
+the solve is `O(I + U)`. A removable cycle without a dead sink is deliberately
+retained, preserving the old least-fixed-point semantics rather than silently
+switching to a greatest fixed point.
+
+The 64-instruction dead-chain regression now checks the complexity contract,
+not merely the final IR: the worklist pops exactly 64 values, while the two
+outer CFG versions scan exactly `65 + 1` instructions. The complete
+all-thread rebuild passes `unit_xir` `48/48`; the RX 9070 XT native Vulkan
+route passes `92/92` tests and `2,096` assertions.
+
+The unchanged production command writes to
+`/var/tmp/psycles-dce-worklist-20260810/`. Comparison is against the
+immediately preceding sparse-dataflow run:
+
+| Boundary | Repeated DCE scan | Reverse-use worklist | Change |
+| --- | ---: | ---: | ---: |
+| Aggregate DCE | 14.182 s | 3.004 s | 4.72x |
+| SPIR-V XIR legalization | 44.126 s | 33.540 s | -24.0% |
+| Native AST-to-SPIR-V | 57.766 s | 47.533 s | -17.7% |
+| Raw SPIR-V | 1,431,985 words | 1,431,985 words | identical size |
+| Optimized SPIR-V | 1,116,158 words | 1,116,158 words | identical size |
+
+Both PPM files hash to
+`3ff6c5463ace13c0f26a735ac1af2bb96ab8a9ba1cb4398359cf2466f63a4d1b`
+and compare byte-for-byte equal. This run rebuilt the Vulkan backend and
+retriggered `84.119 s` of RADV pipeline compilation, so its `131.808 s` total
+JIT and `9,414,528 KiB` process peak are not compared with the preceding
+driver-cache-hit run. The compiler-boundary timings above exclude that driver
+stage. The complete log is
+`/var/tmp/psycles-dce-worklist-20260810/vk.log`.

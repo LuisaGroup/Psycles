@@ -2,8 +2,8 @@
 
 ## Current continuation — 2026-08-10
 
-The current renderer implementation boundary is Psycles `main@8b688ec` with
-LuisaCompute `next@c340b1841` and Blender/Cycles 5.3 Alpha
+The current renderer implementation boundary advances from Psycles
+`main@a078a84` with LuisaCompute `next@f0018499d` and Blender/Cycles 5.3 Alpha
 `82186b01ad2e`. The older published-boundary section below remains a
 historical record; do not reset to its July revisions.
 
@@ -15,13 +15,19 @@ The current official complex-scene checkpoints are:
   re-entry through exact dominance frontiers. The follow-up carries enclosing
   loops as persistent contexts and replaces per-arm graph searches with block
   value numbering plus one sparse reverse-CFG dataflow per loop. Luisa
-  `next@c340b1841` is published. The complete XIR suite passes `48/48`, and
+  `next@f0018499d` is published. Its follow-up replaces the quadratic
+  repeated DCE scan with an equivalent reverse-use least-fixed-point
+  worklist. The complete XIR suite passes `48/48`, and
   the RX 9070 XT native Vulkan path passes `92/92` tests with `2,096`
   assertions. On the unchanged Lone Monk module, `drain_selection_exits`
-  falls 18.30x to `0.723 s`, `restructure_cfg` falls from `35.226 s` to
-  `17.945 s`, AST-to-SPIR-V falls from `75.920 s` to `57.766 s`, and peak RSS
-  falls from `9,415,608 KiB` to `1,654,768 KiB`, with identical SPIR-V sizes
-  and byte-identical output. The next measured compiler target is the mutating
+  falls 18.30x to `0.723 s`; DCE subsequently falls 4.72x from `14.182 s` to
+  `3.004 s`. `restructure_cfg` falls from `35.226 s` to
+  `17.945 s`; AST-to-SPIR-V falls from `75.920 s` to `57.766 s`, then to
+  `47.533 s` after DCE. Peak RSS
+  falls from `9,415,608 KiB` to `1,654,768 KiB` in the matched driver-cache
+  state, with identical SPIR-V sizes and byte-identical output. The DCE run
+  retriggered RADV compilation, so its process peak is not compared across
+  cache states. The next measured compiler target is the mutating
   loop-boundary merge canonicalizer at `5.558 s`; its classifications cannot
   be cached across rewrites without an explicit invalidation rule.
 
