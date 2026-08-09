@@ -5,6 +5,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -284,11 +285,258 @@ void test_cycles_surface_bssrdf_metadata() {
         "zero-weight bumped closure contaminated another BSSRDF's proof");
 }
 
+[[nodiscard]] ShaderGraph make_closure_plan_principled(
+    float alpha, float sheen, float coat, float metallic, float transmission,
+    float subsurface, bool thin_wall, float subsurface_scale = 1.0f) {
+    ShaderGraph graph;
+    const auto principled =
+        graph.add_node(node_type::principled_bsdf, "Closure-plan Principled");
+    require(
+        graph.set_input(principled, "BaseColor",
+                        SocketValue::color({0.4f, 0.3f, 0.2f})) &&
+            graph.set_input(principled, "Alpha", SocketValue::floating(alpha)) &&
+            graph.set_input(principled, "SheenWeight",
+                            SocketValue::floating(sheen)) &&
+            graph.set_input(principled, "CoatWeight",
+                            SocketValue::floating(coat)) &&
+            graph.set_input(principled, "Metallic",
+                            SocketValue::floating(metallic)) &&
+            graph.set_input(principled, "TransmissionWeight",
+                            SocketValue::floating(transmission)) &&
+            graph.set_input(principled, "SubsurfaceWeight",
+                            SocketValue::floating(subsurface)) &&
+            graph.set_input(principled, "SubsurfaceScale",
+                            SocketValue::floating(subsurface_scale)) &&
+            graph.set_input(principled, "ThinWall",
+                            SocketValue::boolean(thin_wall)) &&
+            graph.set_input(principled, "IOR", SocketValue::floating(1.45f)) &&
+            graph.set_input(principled, "SpecularIORLevel",
+                            SocketValue::floating(0.5f)),
+        "failed to configure closure-plan Principled");
+    graph.set_root(ShaderDomain::surface,
+                   OutputRef{.node = principled, .socket = "Closure"});
+    return graph;
+}
+
+void test_surface_closure_plan() {
+    ShaderCompiler compiler{make_core_node_registry()};
+    const auto compile = [&](ShaderGraph graph) {
+        const auto shader = compiler.compile(graph);
+        require(shader.ok(), "closure-plan graph failed to compile");
+        const auto lowered = compile_surface_program(*shader.program);
+        require(lowered.ok(), "closure-plan graph failed to lower");
+        return std::pair{shader.program, lowered.program};
+    };
+    const auto feature = [](const SurfaceClosurePlanEntry &entry,
+                            PrincipledClosureFeature value) noexcept {
+        return (entry.principled_features &
+                principled_closure_feature_bit(value)) != 0u;
+    };
+    const auto principled_entry =
+        [](const SurfaceProgram &program,
+           const SurfaceClosurePlan &plan) -> const SurfaceClosurePlanEntry & {
+        for (std::size_t index = 0u; index < program.closure_instructions().size();
+             ++index) {
+            if (program.closure_instructions()[index].operation ==
+                ClosureOperation::principled) {
+                return plan.entry(
+                    ClosureExpressionId{static_cast<std::uint32_t>(index)});
+            }
+        }
+        throw std::runtime_error{"closure-plan graph has no Principled leaf"};
+    };
+
+    const auto [base_shader, base_program] = compile(
+        make_closure_plan_principled(1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, false));
+    const auto base_binding =
+        bind_surface_parameters(*base_program, *base_shader);
+    require(base_binding.ok(), "failed to bind base closure plan");
+    auto union_plan =
+        analyze_surface_closure_plan(*base_program, *base_binding.parameters);
+    const auto &base = principled_entry(*base_program, union_plan);
+    require(base.reachable && !feature(base, PrincipledClosureFeature::alpha) &&
+                !feature(base, PrincipledClosureFeature::sheen) &&
+                !feature(base, PrincipledClosureFeature::coat) &&
+                !feature(base, PrincipledClosureFeature::metallic) &&
+                !feature(base, PrincipledClosureFeature::thick_transmission) &&
+                !feature(base, PrincipledClosureFeature::thin_transmission) &&
+                feature(base, PrincipledClosureFeature::dielectric) &&
+                !feature(base, PrincipledClosureFeature::thick_subsurface) &&
+                !feature(base, PrincipledClosureFeature::thin_subsurface) &&
+                feature(base, PrincipledClosureFeature::diffuse),
+            "direct zero Principled sockets did not remove physical lobe code");
+
+    const auto [thin_shader, thin_program] = compile(
+        make_closure_plan_principled(0.6f, 0.2f, 0.3f, 0.4f, 0.5f, 0.25f, true));
+    require(thin_program->structure_signature() ==
+                base_program->structure_signature(),
+            "closure-plan literals changed reusable topology");
+    const auto thin_binding =
+        bind_surface_parameters(*base_program, *thin_shader);
+    require(thin_binding.ok(), "failed to bind thin closure plan");
+    union_plan.merge(
+        analyze_surface_closure_plan(*base_program, *thin_binding.parameters));
+    const auto &combined = principled_entry(*base_program, union_plan);
+    require(
+        feature(combined, PrincipledClosureFeature::alpha) &&
+            feature(combined, PrincipledClosureFeature::sheen) &&
+            feature(combined, PrincipledClosureFeature::coat) &&
+            feature(combined, PrincipledClosureFeature::metallic) &&
+            !feature(combined, PrincipledClosureFeature::thick_transmission) &&
+            feature(combined, PrincipledClosureFeature::thin_transmission) &&
+            feature(combined, PrincipledClosureFeature::dielectric) &&
+            !feature(combined, PrincipledClosureFeature::thick_subsurface) &&
+            feature(combined, PrincipledClosureFeature::thin_subsurface) &&
+            feature(combined, PrincipledClosureFeature::diffuse),
+        "same-topology parameter union lost reachable thin Principled lobes");
+
+    const auto [thick_shader, thick_program] = compile(
+        make_closure_plan_principled(0.6f, 0.2f, 0.3f, 0.4f, 0.5f, 0.25f, false));
+    require(thick_program->structure_signature() ==
+                base_program->structure_signature(),
+            "thick closure-plan literals changed reusable topology");
+    const auto thick_binding =
+        bind_surface_parameters(*base_program, *thick_shader);
+    require(thick_binding.ok(), "failed to bind thick closure plan");
+    union_plan.merge(
+        analyze_surface_closure_plan(*base_program, *thick_binding.parameters));
+    const auto &both = principled_entry(*base_program, union_plan);
+    require(feature(both, PrincipledClosureFeature::thick_transmission) &&
+                feature(both, PrincipledClosureFeature::thin_transmission) &&
+                feature(both, PrincipledClosureFeature::thick_subsurface) &&
+                feature(both, PrincipledClosureFeature::thin_subsurface),
+            "same topology did not union mutually exclusive thick/thin lobes");
+
+    ShaderGraph linked_graph;
+    const auto zero =
+        linked_graph.add_node(node_type::constant_float, "Linked zero sheen");
+    const auto linked_principled = linked_graph.add_node(
+        node_type::principled_bsdf, "Linked closure-plan Principled");
+    require(linked_graph.set_input(zero, "Value", SocketValue::floating(0.0f)) &&
+                linked_graph.connect({.node = zero, .socket = "Value"},
+                                     linked_principled, "SheenWeight"),
+            "failed to configure linked closure plan");
+    linked_graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = linked_principled, .socket = "Closure"});
+    const auto [linked_shader, linked_program] = compile(linked_graph);
+    const auto linked_binding =
+        bind_surface_parameters(*linked_program, *linked_shader);
+    require(linked_binding.ok(), "failed to bind linked closure plan");
+    const auto linked_plan =
+        analyze_surface_closure_plan(*linked_program, *linked_binding.parameters);
+    require(
+        feature(principled_entry(*linked_program, linked_plan),
+                PrincipledClosureFeature::sheen),
+        "linked numerical zero was incorrectly host-folded from closure plan");
+
+    const auto [thin_zero_scale_shader, thin_zero_scale_program] =
+        compile(make_closure_plan_principled(1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.25f,
+                                             true, 0.0f));
+    const auto thin_zero_scale_binding = bind_surface_parameters(
+        *thin_zero_scale_program, *thin_zero_scale_shader);
+    require(thin_zero_scale_binding.ok(),
+            "failed to bind zero-scale thin-subsurface closure plan");
+    require(feature(principled_entry(*thin_zero_scale_program,
+                                     analyze_surface_closure_plan(
+                                         *thin_zero_scale_program,
+                                         *thin_zero_scale_binding.parameters)),
+                    PrincipledClosureFeature::thin_subsurface),
+            "subsurface scale incorrectly disabled Thin Wall scattering");
+
+    const auto make_mix = [](float factor) {
+        ShaderGraph graph;
+        const auto diffuse =
+            graph.add_node(node_type::diffuse_bsdf, "Closure-plan diffuse");
+        const auto glossy =
+            graph.add_node(node_type::glossy_bsdf, "Closure-plan glossy");
+        const auto mix = graph.add_node(node_type::mix_closure, "Closure-plan mix");
+        require(
+            graph.connect({.node = diffuse, .socket = "Closure"}, mix, "A") &&
+                graph.connect({.node = glossy, .socket = "Closure"}, mix, "B") &&
+                graph.set_input(mix, "Factor", SocketValue::floating(factor)),
+            "failed to configure closure-plan mix");
+        graph.set_root(ShaderDomain::surface,
+                       OutputRef{.node = mix, .socket = "Closure"});
+        return graph;
+    };
+    const auto [mix_zero_shader, mix_program] = compile(make_mix(0.0f));
+    const auto mix_zero_binding =
+        bind_surface_parameters(*mix_program, *mix_zero_shader);
+    require(mix_zero_binding.ok(), "failed to bind zero closure mix");
+    auto mix_plan =
+        analyze_surface_closure_plan(*mix_program, *mix_zero_binding.parameters);
+    auto diffuse_reachable = false;
+    auto glossy_reachable = false;
+    for (std::size_t index = 0u;
+         index < mix_program->closure_instructions().size(); ++index) {
+        const auto &instruction = mix_program->closure_instructions()[index];
+        const auto reachable =
+            mix_plan.entry(ClosureExpressionId{static_cast<std::uint32_t>(index)})
+                .reachable;
+        diffuse_reachable |=
+            instruction.operation == ClosureOperation::diffuse && reachable;
+        glossy_reachable |=
+            instruction.operation == ClosureOperation::glossy && reachable;
+    }
+    require(diffuse_reachable && !glossy_reachable,
+            "direct zero Mix factor did not prune its B closure");
+    const auto [mix_one_shader, mix_one_program] = compile(make_mix(1.0f));
+    require(mix_one_program->structure_signature() ==
+                mix_program->structure_signature(),
+            "Mix factor literal changed reusable topology");
+    const auto mix_one_binding =
+        bind_surface_parameters(*mix_program, *mix_one_shader);
+    require(mix_one_binding.ok(), "failed to bind one closure mix");
+    mix_plan.merge(
+        analyze_surface_closure_plan(*mix_program, *mix_one_binding.parameters));
+    diffuse_reachable = false;
+    glossy_reachable = false;
+    for (std::size_t index = 0u;
+         index < mix_program->closure_instructions().size(); ++index) {
+        const auto &instruction = mix_program->closure_instructions()[index];
+        const auto reachable =
+            mix_plan.entry(ClosureExpressionId{static_cast<std::uint32_t>(index)})
+                .reachable;
+        diffuse_reachable |=
+            instruction.operation == ClosureOperation::diffuse && reachable;
+        glossy_reachable |=
+            instruction.operation == ClosureOperation::glossy && reachable;
+    }
+    require(diffuse_reachable && glossy_reachable,
+            "same-topology Mix plans did not union both selected branches");
+
+    const auto [mix_nan_shader, mix_nan_program] =
+        compile(make_mix(std::numeric_limits<float>::quiet_NaN()));
+    const auto mix_nan_binding =
+        bind_surface_parameters(*mix_nan_program, *mix_nan_shader);
+    require(mix_nan_binding.ok(), "failed to bind NaN closure mix");
+    const auto mix_nan_plan = analyze_surface_closure_plan(
+        *mix_nan_program, *mix_nan_binding.parameters);
+    diffuse_reachable = false;
+    glossy_reachable = false;
+    for (std::size_t index = 0u;
+         index < mix_nan_program->closure_instructions().size(); ++index) {
+        const auto &instruction = mix_nan_program->closure_instructions()[index];
+        const auto reachable =
+            mix_nan_plan
+                .entry(ClosureExpressionId{static_cast<std::uint32_t>(index)})
+                .reachable;
+        diffuse_reachable |=
+            instruction.operation == ClosureOperation::diffuse && reachable;
+        glossy_reachable |=
+            instruction.operation == ClosureOperation::glossy && reachable;
+    }
+    require(diffuse_reachable && glossy_reachable,
+            "non-finite Mix factor was incorrectly treated as a proof");
+}
+
 }// namespace
 
 int main() {
     try {
         test_cycles_surface_bssrdf_metadata();
+        test_surface_closure_plan();
         return EXIT_SUCCESS;
     } catch (const std::exception &error) {
         std::cerr << "Surface-program metadata test failure: "

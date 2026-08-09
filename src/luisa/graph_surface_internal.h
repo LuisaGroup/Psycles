@@ -51,6 +51,7 @@ struct TracedClosure {
     // device expressions.
     SurfaceClosureKind physical_kind{SurfaceClosureKind::none};
     PrincipledLobe principled_lobe{PrincipledLobe::none};
+    compiler::PrincipledClosureFeatureMask principled_features{};
     Float3 weight;
     // Allocation and sampling are distinct in Cycles: Fresnel setup may
     // reduce sample_weight after a closure has already been allocated.
@@ -412,6 +413,7 @@ private:
     };
 
     std::shared_ptr<const compiler::SurfaceProgram> _program;
+    compiler::SurfaceClosurePlan _closure_plan;
     SurfaceCapabilities _capabilities;
     std::vector<std::unique_ptr<ValueNode>> _value_nodes;
     std::vector<bool> _displacement_dependency_mask;
@@ -488,6 +490,9 @@ public:
     explicit GraphSurfaceImplementation(
         std::shared_ptr<const compiler::SurfaceProgram>
             program) noexcept;
+    GraphSurfaceImplementation(
+        std::shared_ptr<const compiler::SurfaceProgram> program,
+        compiler::SurfaceClosurePlan closure_plan) noexcept;
     ~GraphSurfaceImplementation() noexcept;
 
     [[nodiscard]] SurfaceCapabilities capabilities() const noexcept;

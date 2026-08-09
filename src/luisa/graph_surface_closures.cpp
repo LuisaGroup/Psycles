@@ -9,6 +9,10 @@ void GraphSurfaceImplementation::for_each_closure(
         [&](auto &&self,
             compiler::ClosureExpressionId id,
             Float mix_weight) noexcept -> void {
+        if (!id.valid() ||
+            !_closure_plan.entry(id).reachable) {
+            return;
+        }
         const auto &closure =
             _program->closure_instructions()[id.value];
         switch (closure.operation) {
@@ -19,6 +23,23 @@ void GraphSurfaceImplementation::for_each_closure(
                 self(self, closure.b, mix_weight);
                 return;
             case compiler::ClosureOperation::mix: {
+                const auto a_reachable =
+                    closure.a.valid() &&
+                    _closure_plan.entry(closure.a).reachable;
+                const auto b_reachable =
+                    closure.b.valid() &&
+                    _closure_plan.entry(closure.b).reachable;
+                if (!a_reachable && !b_reachable) {
+                    return;
+                }
+                if (a_reachable && !b_reachable) {
+                    self(self, closure.a, mix_weight);
+                    return;
+                }
+                if (!a_reachable && b_reachable) {
+                    self(self, closure.b, mix_weight);
+                    return;
+                }
                 auto factor = clamp(
                     scalar(closure.factor, values),
                     0.0f,
@@ -208,6 +229,12 @@ void GraphSurfaceImplementation::for_each_closure(
                         : make_float3(0.0f);
                 function(TracedClosure{
                     .operation = closure.operation,
+                    .principled_features =
+                        closure.operation ==
+                                compiler::ClosureOperation::principled
+                            ? _closure_plan.entry(id)
+                                  .principled_features
+                            : compiler::PrincipledClosureFeatureMask{},
                     .weight =
                         closure.operation ==
                                 compiler::ClosureOperation::principled

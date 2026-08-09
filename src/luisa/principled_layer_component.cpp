@@ -286,14 +286,28 @@ PrincipledLayerComponent::evaluate_coat(
 PrincipledEmissionLayerResult
 PrincipledLayerComponent::evaluate_emission(
     const TracedClosure &closure,
+    compiler::PrincipledClosureFeatureMask features,
     Bool reflective_caustics) const noexcept {
+    const auto enabled = [features](
+                             compiler::PrincipledClosureFeature feature) noexcept {
+        return (features &
+                compiler::principled_closure_feature_bit(feature)) != 0u;
+    };
     auto lower_weight =
-        evaluate_principled_alpha_layer(closure).lower_weight;
-    const auto sheen = evaluate_sheen(closure, lower_weight);
-    lower_weight = sheen.lower_weight;
-    const auto coat = evaluate_coat(
-        closure, lower_weight, reflective_caustics);
-    lower_weight = coat.lower_weight;
+        enabled(compiler::PrincipledClosureFeature::alpha)
+            ? evaluate_principled_alpha_layer(closure).lower_weight
+            : closure.weight;
+    if (enabled(compiler::PrincipledClosureFeature::sheen)) {
+        lower_weight =
+            evaluate_sheen(closure, lower_weight).lower_weight;
+    }
+    if (enabled(compiler::PrincipledClosureFeature::coat)) {
+        lower_weight = evaluate_coat(
+                           closure,
+                           lower_weight,
+                           reflective_caustics)
+                           .lower_weight;
+    }
 
     return {
         .lower_weight = lower_weight,

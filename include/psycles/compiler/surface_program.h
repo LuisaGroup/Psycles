@@ -9,6 +9,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <psycles/compiler/shader_program.h>
@@ -1064,6 +1065,73 @@ public:
   [[nodiscard]] bool set(const SurfaceProgram &program, ParameterId id,
                          contract::SocketValue value);
 };
+
+// Host/JIT-stage reachability of the physical lobes produced by one
+// Principled closure instruction. These bits describe code which may be
+// needed by at least one parameter block sharing a SurfaceProgram topology;
+// they never encode a shading-point decision or replace a device expression.
+enum class PrincipledClosureFeature : std::uint32_t {
+  alpha = 1u << 0u,
+  sheen = 1u << 1u,
+  coat = 1u << 2u,
+  metallic = 1u << 3u,
+  thick_transmission = 1u << 4u,
+  thin_transmission = 1u << 5u,
+  dielectric = 1u << 6u,
+  thick_subsurface = 1u << 7u,
+  thin_subsurface = 1u << 8u,
+  diffuse = 1u << 9u,
+};
+
+using PrincipledClosureFeatureMask = std::uint32_t;
+
+[[nodiscard]] constexpr PrincipledClosureFeatureMask
+principled_closure_feature_bit(PrincipledClosureFeature feature) noexcept {
+  return static_cast<PrincipledClosureFeatureMask>(feature);
+}
+
+struct SurfaceClosurePlanEntry {
+  bool reachable{};
+  PrincipledClosureFeatureMask principled_features{};
+};
+
+// One entry per ClosureInstruction. Plans for material instances with the
+// same structure signature are merged before Luisa records their shared
+// material branch. This is the formal binding-time boundary: a direct socket
+// literal may prove a branch/lobe unreachable, while a linked expression is
+// conservatively retained.
+class SurfaceClosurePlan {
+
+private:
+  std::vector<SurfaceClosurePlanEntry> _entries;
+
+public:
+  SurfaceClosurePlan() = default;
+  explicit SurfaceClosurePlan(
+      std::vector<SurfaceClosurePlanEntry> entries) noexcept
+      : _entries{std::move(entries)} {}
+
+  [[nodiscard]] const std::vector<SurfaceClosurePlanEntry> &entries()
+      const noexcept {
+    return _entries;
+  }
+  [[nodiscard]] bool compatible(const SurfaceProgram &program) const noexcept;
+  [[nodiscard]] const SurfaceClosurePlanEntry &entry(
+      ClosureExpressionId id) const noexcept;
+  void merge(const SurfaceClosurePlan &other) noexcept;
+};
+
+// Conservative topology-only plan used by standalone GraphSurface clients
+// which do not provide the scene's complete set of parameter bindings.
+[[nodiscard]] SurfaceClosurePlan conservative_surface_closure_plan(
+    const SurfaceProgram &program) noexcept;
+
+// Material-specific proof. Mix branches selected by direct 0/1 factors and
+// Principled lobes disabled by direct literals are omitted. Linked inputs are
+// never host-evaluated and therefore remain reachable.
+[[nodiscard]] SurfaceClosurePlan analyze_surface_closure_plan(
+    const SurfaceProgram &program,
+    const SurfaceParameterBlock &parameters) noexcept;
 
 // Cycles' host-stage output_estimate_emission metadata query. This evaluates
 // only direct parameter literals and the closure topology; linked value

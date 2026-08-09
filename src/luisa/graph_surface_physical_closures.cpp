@@ -25,6 +25,13 @@ namespace {
     return SurfaceBssrdfMethod::random_walk;
 }
 
+[[nodiscard]] bool has_principled_feature(
+    const TracedClosure &closure,
+    compiler::PrincipledClosureFeature feature) noexcept {
+    return (closure.principled_features &
+            compiler::principled_closure_feature_bit(feature)) != 0u;
+}
+
 }// namespace
 
 SurfaceClosureRecord canonical_surface_closure(
@@ -227,8 +234,11 @@ void GraphSurfaceImplementation::for_each_physical_closure(
             const auto produces_transparency =
                 graph_closure.operation ==
                     compiler::ClosureOperation::transparent ||
-                graph_closure.operation ==
-                    compiler::ClosureOperation::principled;
+                (graph_closure.operation ==
+                     compiler::ClosureOperation::principled &&
+                 has_principled_feature(
+                     graph_closure,
+                     compiler::PrincipledClosureFeature::alpha));
             if (produces_transparency) {
                 auto contribution = TransparentClosureState{
                     .weight = make_float3(0.0f),
@@ -270,96 +280,117 @@ void GraphSurfaceImplementation::for_each_physical_closure(
             switch (graph_closure.operation) {
             case compiler::ClosureOperation::principled: {
                 closure.weight =
-                    evaluate_principled_alpha_layer(graph_closure)
-                        .lower_weight;
-                const auto sheen = principled_layers.evaluate_sheen(
-                    graph_closure, closure.weight);
-                emit(sheen.closure);
-                closure.weight = sheen.lower_weight;
-                const auto coat = principled_layers.evaluate_coat(
-                    graph_closure,
-                    closure.weight,
-                    reflective_caustics);
-                emit(coat.closure);
-                closure.weight = coat.lower_weight;
-                const auto base = principled_base.evaluate(
-                    closure, reflective_caustics, refractive_caustics);
-                emit(base.metallic);
-                emit(base.transmission);
-                emit(base.thin_glass_reflection);
-                emit(base.thin_glass_transmission);
-                emit(base.thin_glass_transparency);
-                emit(base.dielectric);
+                    has_principled_feature(graph_closure,
+                                           compiler::PrincipledClosureFeature::alpha) ?
+                        evaluate_principled_alpha_layer(graph_closure).lower_weight :
+                        graph_closure.weight;
+                if (has_principled_feature(graph_closure,
+                                           compiler::PrincipledClosureFeature::sheen)) {
+                    const auto sheen =
+                        principled_layers.evaluate_sheen(graph_closure, closure.weight);
+                    emit(sheen.closure);
+                    closure.weight = sheen.lower_weight;
+                }
+                if (has_principled_feature(graph_closure,
+                                           compiler::PrincipledClosureFeature::coat)) {
+                    const auto coat = principled_layers.evaluate_coat(
+                        graph_closure, closure.weight, reflective_caustics);
+                    emit(coat.closure);
+                    closure.weight = coat.lower_weight;
+                }
+                const auto base =
+                    principled_base.evaluate(closure, graph_closure.principled_features,
+                                             reflective_caustics, refractive_caustics);
+                if (has_principled_feature(
+                        graph_closure, compiler::PrincipledClosureFeature::metallic)) {
+                    emit(*base.metallic);
+                }
+                if (has_principled_feature(
+                        graph_closure,
+                        compiler::PrincipledClosureFeature::thick_transmission)) {
+                    emit(*base.transmission);
+                }
+                if (has_principled_feature(
+                        graph_closure,
+                        compiler::PrincipledClosureFeature::thin_transmission)) {
+                    emit(*base.thin_glass_reflection);
+                    emit(*base.thin_glass_transmission);
+                    emit(*base.thin_glass_transparency);
+                }
+                if (has_principled_feature(
+                        graph_closure, compiler::PrincipledClosureFeature::dielectric)) {
+                    emit(*base.dielectric);
+                }
 
                 const auto subsurface_weight =
                     clamp(graph_closure.subsurface_weight, 0.0f, 1.0f);
-                auto bssrdf = closure;
-                bssrdf.operation = compiler::ClosureOperation::subsurface;
-                bssrdf.principled_lobe = PrincipledLobe::none;
-                const auto subsurface_closure_weight =
-                    min(max(graph_closure.color, make_float3(0.0f)),
-                        make_float3(1.0f)) *
-                    subsurface_weight * base.base_weight;
-                bssrdf.weight = subsurface_closure_weight;
-                bssrdf.color = min(
-                    max(graph_closure.color, make_float3(0.0f)),
-                    make_float3(1.0f));
-                bssrdf.normal = graph_closure.normal;
-                const auto surface_roughness =
-                    clamp(graph_closure.roughness, 0.0f, 1.0f);
-                bssrdf.roughness = surface_roughness * surface_roughness;
-                bssrdf.subsurface_radius =
-                    graph_closure.subsurface_radius;
-                bssrdf.subsurface_scale =
-                    graph_closure.subsurface_scale;
-                bssrdf.subsurface_method =
-                    graph_closure.subsurface_method;
-                bssrdf.subsurface_ior =
-                    graph_closure.subsurface_method ==
-                            compiler::BssrdfMethod::random_walk_skin
-                        ? graph_closure.subsurface_ior
-                        : adjusted_ior(graph_closure).eta;
-                bssrdf.subsurface_anisotropy =
-                    graph_closure.subsurface_anisotropy;
-                const auto thin_subsurface_setup = thin_subsurface.setup(
-                    bssrdf,
-                    subsurface_closure_weight,
-                    graph_closure.thin_wall &
-                        (subsurface_weight >
-                         cycles_closure::closure_weight_cutoff));
-                emit(thin_subsurface_setup.reflection);
-                emit(thin_subsurface_setup.smooth_transmission);
-                emit(thin_subsurface_setup.rough_transmission);
+                const auto thin_subsurface_enabled = has_principled_feature(
+                    graph_closure, compiler::PrincipledClosureFeature::thin_subsurface);
+                const auto thick_subsurface_enabled = has_principled_feature(
+                    graph_closure, compiler::PrincipledClosureFeature::thick_subsurface);
+                if (thin_subsurface_enabled || thick_subsurface_enabled) {
+                    auto bssrdf = closure;
+                    bssrdf.operation = compiler::ClosureOperation::subsurface;
+                    bssrdf.principled_lobe = PrincipledLobe::none;
+                    const auto subsurface_closure_weight =
+                        min(max(graph_closure.color, make_float3(0.0f)),
+                            make_float3(1.0f)) *
+                        subsurface_weight * base.base_weight;
+                    bssrdf.weight = subsurface_closure_weight;
+                    bssrdf.color =
+                        min(max(graph_closure.color, make_float3(0.0f)), make_float3(1.0f));
+                    bssrdf.normal = graph_closure.normal;
+                    const auto surface_roughness =
+                        clamp(graph_closure.roughness, 0.0f, 1.0f);
+                    bssrdf.roughness = surface_roughness * surface_roughness;
+                    bssrdf.subsurface_radius = graph_closure.subsurface_radius;
+                    bssrdf.subsurface_scale = graph_closure.subsurface_scale;
+                    bssrdf.subsurface_method = graph_closure.subsurface_method;
+                    bssrdf.subsurface_ior = graph_closure.subsurface_method ==
+                                                    compiler::BssrdfMethod::random_walk_skin ?
+                                                graph_closure.subsurface_ior :
+                                                adjusted_ior(graph_closure).eta;
+                    bssrdf.subsurface_anisotropy = graph_closure.subsurface_anisotropy;
+                    if (thin_subsurface_enabled) {
+                        const auto thin_subsurface_setup = thin_subsurface.setup(
+                            bssrdf, subsurface_closure_weight,
+                            graph_closure.thin_wall &
+                                (subsurface_weight > cycles_closure::closure_weight_cutoff));
+                        emit(thin_subsurface_setup.reflection);
+                        emit(thin_subsurface_setup.smooth_transmission);
+                        emit(thin_subsurface_setup.rough_transmission);
+                    }
 
-                bssrdf.weight = select(
-                    subsurface_closure_weight,
-                    make_float3(0.0f),
-                    graph_closure.thin_wall);
-                bssrdf.normal = maybe_ensure_valid_specular_reflection(
-                    point, incoming, graph_closure.normal);
-                const auto bssrdf_setup = bssrdf_closure.setup(bssrdf);
-                emit(bssrdf_setup.bssrdf);
-                emit(bssrdf_setup.diffuse_fallback);
+                    if (thick_subsurface_enabled) {
+                        bssrdf.weight = select(subsurface_closure_weight, make_float3(0.0f),
+                                               graph_closure.thin_wall);
+                        bssrdf.normal = maybe_ensure_valid_specular_reflection(
+                            point, incoming, graph_closure.normal);
+                        const auto bssrdf_setup = bssrdf_closure.setup(bssrdf);
+                        emit(bssrdf_setup.bssrdf);
+                        emit(bssrdf_setup.diffuse_fallback);
+                    }
+                }
 
-                auto diffuse = closure;
-                diffuse.operation = compiler::ClosureOperation::diffuse;
-                diffuse.principled_lobe = PrincipledLobe::none;
-                diffuse.weight =
-                    base.diffuse_weight * (1.0f - subsurface_weight);
-                diffuse.allocation_weight = sample_weight(
-                    max(diffuse.weight, make_float3(0.0f)));
-                const auto diffuse_allocated =
-                    diffuse.allocation_weight >=
-                    cycles_closure::closure_weight_cutoff;
-                diffuse.weight = select(make_float3(0.0f),
-                    diffuse.weight,
-                    diffuse_allocated);
-                diffuse.sample_weight = select(
-                    0.0f, diffuse.allocation_weight, diffuse_allocated);
-                diffuse.albedo = diffuse.weight;
-                diffuse.roughness = graph_closure.diffuse_roughness;
-                diffuse.evaluation_scale = make_float3(1.0f);
-                emit(diffuse);
+                if (has_principled_feature(graph_closure,
+                                           compiler::PrincipledClosureFeature::diffuse)) {
+                    auto diffuse = closure;
+                    diffuse.operation = compiler::ClosureOperation::diffuse;
+                    diffuse.principled_lobe = PrincipledLobe::none;
+                    diffuse.weight = base.diffuse_weight * (1.0f - subsurface_weight);
+                    diffuse.allocation_weight =
+                        sample_weight(max(diffuse.weight, make_float3(0.0f)));
+                    const auto diffuse_allocated =
+                        diffuse.allocation_weight >= cycles_closure::closure_weight_cutoff;
+                    diffuse.weight =
+                        select(make_float3(0.0f), diffuse.weight, diffuse_allocated);
+                    diffuse.sample_weight =
+                        select(0.0f, diffuse.allocation_weight, diffuse_allocated);
+                    diffuse.albedo = diffuse.weight;
+                    diffuse.roughness = graph_closure.diffuse_roughness;
+                    diffuse.evaluation_scale = make_float3(1.0f);
+                    emit(diffuse);
+                }
                 return;
             }
             case compiler::ClosureOperation::subsurface: {

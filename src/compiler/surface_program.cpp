@@ -2,6 +2,7 @@
 
 #include <psycles/contract/scene.h>
 
+#include <cmath>
 #include <utility>
 #include <vector>
 
@@ -195,6 +196,261 @@ namespace {
     return parameters.find(instruction.parameter);
 }
 
+[[nodiscard]] const contract::SocketValue *direct_parameter_value(
+    const SurfaceProgram &program,
+    const SurfaceParameterBlock *parameters,
+    ValueExpressionId expression,
+    contract::NodeId owner) noexcept {
+    return parameters == nullptr
+               ? nullptr
+               : direct_parameter_value(
+                     program, *parameters, expression, owner);
+}
+
+[[nodiscard]] const float *direct_float(
+    const SurfaceProgram &program,
+    const SurfaceParameterBlock *parameters,
+    ValueExpressionId expression,
+    contract::NodeId owner) noexcept {
+    const auto *value = direct_parameter_value(
+        program, parameters, expression, owner);
+    return value == nullptr
+               ? nullptr
+               : std::get_if<float>(&value->value);
+}
+
+[[nodiscard]] const bool *direct_bool(
+    const SurfaceProgram &program,
+    const SurfaceParameterBlock *parameters,
+    ValueExpressionId expression,
+    contract::NodeId owner) noexcept {
+    const auto *value = direct_parameter_value(
+        program, parameters, expression, owner);
+    return value == nullptr
+               ? nullptr
+               : std::get_if<bool>(&value->value);
+}
+
+[[nodiscard]] const Vec3f *direct_color(
+    const SurfaceProgram &program,
+    const SurfaceParameterBlock *parameters,
+    ValueExpressionId expression,
+    contract::NodeId owner) noexcept {
+    const auto *value = direct_parameter_value(
+        program, parameters, expression, owner);
+    return value == nullptr
+               ? nullptr
+               : std::get_if<Vec3f>(&value->value);
+}
+
+[[nodiscard]] bool may_have_positive_component(
+    const Vec3f *value) noexcept {
+    return value == nullptr ||
+           !std::isfinite(value->x) ||
+           !std::isfinite(value->y) ||
+           !std::isfinite(value->z) ||
+           value->x > 0.0f ||
+           value->y > 0.0f ||
+           value->z > 0.0f;
+}
+
+[[nodiscard]] bool unknown_float(const float *value) noexcept {
+    return value == nullptr || !std::isfinite(*value);
+}
+
+[[nodiscard]] PrincipledClosureFeatureMask principled_feature_mask(
+    const SurfaceProgram &program,
+    const SurfaceParameterBlock *parameters,
+    const ClosureInstruction &closure) noexcept {
+    constexpr auto cutoff = 1.0e-5f;
+    const auto feature = [](PrincipledClosureFeature value) noexcept {
+        return principled_closure_feature_bit(value);
+    };
+    auto result = PrincipledClosureFeatureMask{};
+
+    const auto *alpha = direct_float(
+        program, parameters, closure.alpha, closure.source_node);
+    const auto opaque =
+        !unknown_float(alpha) && *alpha >= 1.0f;
+    if (!opaque) {
+        result |= feature(PrincipledClosureFeature::alpha);
+    }
+    // Alpha is the first Principled layer. A direct non-positive value proves
+    // that every lower physical lobe has zero weight, independently of the
+    // closure-tree mix weight and caustics policy.
+    if (!unknown_float(alpha) && *alpha <= 0.0f) {
+        return result;
+    }
+
+    const auto *sheen_weight = direct_float(
+        program, parameters, closure.sheen_weight, closure.source_node);
+    const auto *sheen_tint = direct_color(
+        program, parameters, closure.sheen_tint, closure.source_node);
+    if ((unknown_float(sheen_weight) || *sheen_weight > cutoff) &&
+        may_have_positive_component(sheen_tint)) {
+        result |= feature(PrincipledClosureFeature::sheen);
+    }
+
+    const auto *coat_weight = direct_float(
+        program, parameters, closure.coat_weight, closure.source_node);
+    if (unknown_float(coat_weight) || *coat_weight > cutoff) {
+        result |= feature(PrincipledClosureFeature::coat);
+    }
+
+    const auto *metallic = direct_float(
+        program, parameters, closure.metallic, closure.source_node);
+    const auto metallic_possible =
+        unknown_float(metallic) || *metallic > cutoff;
+    if (metallic_possible) {
+        result |= feature(PrincipledClosureFeature::metallic);
+    }
+    const auto metallic_saturates_lower =
+        !unknown_float(metallic) && *metallic >= 1.0f;
+
+    const auto *transmission = direct_float(
+        program,
+        parameters,
+        closure.transmission_weight,
+        closure.source_node);
+    const auto transmission_possible =
+        !metallic_saturates_lower &&
+        (unknown_float(transmission) || *transmission > cutoff);
+    const auto *thin_wall = direct_bool(
+        program, parameters, closure.thin_wall, closure.source_node);
+    const auto may_be_thick = thin_wall == nullptr || !*thin_wall;
+    const auto may_be_thin = thin_wall == nullptr || *thin_wall;
+    if (transmission_possible && may_be_thick) {
+        result |= feature(
+            PrincipledClosureFeature::thick_transmission);
+    }
+    if (transmission_possible && may_be_thin) {
+        result |= feature(
+            PrincipledClosureFeature::thin_transmission);
+    }
+    const auto transmission_saturates_lower =
+        transmission_possible &&
+        !unknown_float(transmission) && *transmission >= 1.0f;
+    const auto lower_possible =
+        !metallic_saturates_lower &&
+        !transmission_saturates_lower;
+    if (!lower_possible) {
+        return result;
+    }
+
+    const auto *ior = direct_float(
+        program, parameters, closure.ior, closure.source_node);
+    const auto *specular_level = direct_float(
+        program,
+        parameters,
+        closure.specular_ior_level,
+        closure.source_node);
+    // adjusted_ior() is exactly one when a direct Specular IOR Level is
+    // non-positive, or when the unadjusted default level observes a direct
+    // unit IOR. Other combinations remain conservative rather than
+    // duplicating floating-point Fresnel algebra on the host.
+    const auto dielectric_proven_unit =
+        (!unknown_float(specular_level) &&
+         *specular_level <= 0.0f) ||
+        (!unknown_float(specular_level) &&
+         *specular_level == 0.5f &&
+         !unknown_float(ior) && *ior == 1.0f);
+    if (!dielectric_proven_unit) {
+        result |= feature(PrincipledClosureFeature::dielectric);
+    }
+
+    const auto *subsurface_weight = direct_float(
+        program,
+        parameters,
+        closure.subsurface_weight,
+        closure.source_node);
+    const auto *base_color = direct_color(
+        program, parameters, closure.color, closure.source_node);
+    // Scale and radius do not prove the family unreachable: thick BSSRDF
+    // setup produces Cycles' diffuse fallback for inactive radius channels,
+    // while Thin Wall scattering does not consume scale/radius at all.
+    const auto subsurface_possible =
+        (unknown_float(subsurface_weight) ||
+         *subsurface_weight > cutoff) &&
+        may_have_positive_component(base_color);
+    if (subsurface_possible && may_be_thick) {
+        result |= feature(
+            PrincipledClosureFeature::thick_subsurface);
+    }
+    if (subsurface_possible && may_be_thin) {
+        result |= feature(
+            PrincipledClosureFeature::thin_subsurface);
+    }
+
+    const auto subsurface_saturates_diffuse =
+        !unknown_float(subsurface_weight) &&
+        *subsurface_weight >= 1.0f;
+    if (!subsurface_saturates_diffuse &&
+        may_have_positive_component(base_color)) {
+        result |= feature(PrincipledClosureFeature::diffuse);
+    }
+    return result;
+}
+
+[[nodiscard]] SurfaceClosurePlan build_surface_closure_plan(
+    const SurfaceProgram &program,
+    const SurfaceParameterBlock *parameters) noexcept {
+    std::vector<SurfaceClosurePlanEntry> entries(
+        program.closure_instructions().size());
+    if (!program.root().valid() ||
+        program.root().value >= entries.size()) {
+        return SurfaceClosurePlan{std::move(entries)};
+    }
+    const auto visit = [&](auto &&self,
+                           ClosureExpressionId id) noexcept -> void {
+        if (!id.valid() || id.value >= entries.size()) {
+            return;
+        }
+        auto &entry = entries[id.value];
+        if (entry.reachable) {
+            return;
+        }
+        entry.reachable = true;
+        const auto &closure =
+            program.closure_instructions()[id.value];
+        switch (closure.operation) {
+            case ClosureOperation::add:
+                self(self, closure.a);
+                self(self, closure.b);
+                return;
+            case ClosureOperation::mix: {
+                const auto *factor = direct_float(
+                    program,
+                    parameters,
+                    closure.factor,
+                    closure.source_node);
+                if (unknown_float(factor) || *factor < 1.0f) {
+                    self(self, closure.a);
+                }
+                if (unknown_float(factor) || *factor > 0.0f) {
+                    self(self, closure.b);
+                }
+                return;
+            }
+            case ClosureOperation::principled:
+                entry.principled_features = principled_feature_mask(
+                    program, parameters, closure);
+                return;
+            case ClosureOperation::null_closure:
+            case ClosureOperation::diffuse:
+            case ClosureOperation::translucent:
+            case ClosureOperation::glossy:
+            case ClosureOperation::glass:
+            case ClosureOperation::emission:
+            case ClosureOperation::transparent:
+            case ClosureOperation::subsurface:
+            case ClosureOperation::refraction:
+                return;
+        }
+    };
+    visit(visit, program.root());
+    return SurfaceClosurePlan{std::move(entries)};
+}
+
 [[nodiscard]] bool principled_has_surface_bssrdf(
     const SurfaceProgram &program,
     const SurfaceParameterBlock &parameters,
@@ -250,6 +506,50 @@ namespace {
 }
 
 }// namespace
+
+bool SurfaceClosurePlan::compatible(
+    const SurfaceProgram &program) const noexcept {
+    return _entries.size() ==
+           program.closure_instructions().size();
+}
+
+const SurfaceClosurePlanEntry &SurfaceClosurePlan::entry(
+    ClosureExpressionId id) const noexcept {
+    if (!id.valid() || id.value >= _entries.size()) {
+        std::abort();
+    }
+    return _entries[id.value];
+}
+
+void SurfaceClosurePlan::merge(
+    const SurfaceClosurePlan &other) noexcept {
+    if (_entries.empty()) {
+        _entries = other._entries;
+        return;
+    }
+    if (_entries.size() != other._entries.size()) {
+        std::abort();
+    }
+    for (std::size_t index = 0u;
+         index < _entries.size();
+         ++index) {
+        _entries[index].reachable |=
+            other._entries[index].reachable;
+        _entries[index].principled_features |=
+            other._entries[index].principled_features;
+    }
+}
+
+SurfaceClosurePlan conservative_surface_closure_plan(
+    const SurfaceProgram &program) noexcept {
+    return build_surface_closure_plan(program, nullptr);
+}
+
+SurfaceClosurePlan analyze_surface_closure_plan(
+    const SurfaceProgram &program,
+    const SurfaceParameterBlock &parameters) noexcept {
+    return build_surface_closure_plan(program, &parameters);
+}
 
 Vec3f estimate_surface_emission(
     const SurfaceProgram &program,

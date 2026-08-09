@@ -7,6 +7,8 @@
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <map>
+#include <set>
 #include <stdexcept>
 #include <string_view>
 
@@ -203,6 +205,21 @@ int main(int argc, char **argv) {
 
     const auto requested = std::string_view{argv[2]};
     const auto inspect_all = requested == "*";
+    std::map<std::uint64_t, psycles::compiler::SurfaceClosurePlan>
+        closure_plans;
+    std::map<std::uint64_t, const psycles::compiler::SurfaceProgram *>
+        representative_programs;
+    if (inspect_all) {
+        for (const auto &[id, material] : materials.materials()) {
+            static_cast<void>(id);
+            const auto &program = *material.surface_program();
+            representative_programs.try_emplace(
+                program.structure_signature(), &program);
+            closure_plans[program.structure_signature()].merge(
+                psycles::compiler::analyze_surface_closure_plan(
+                    program, material.parameters()));
+        }
+    }
     for (const auto &[id, material] : materials.materials()) {
         if (!inspect_all && material.name() != requested) {
             continue;
@@ -213,10 +230,42 @@ int main(int argc, char **argv) {
                   << "\nparameters " << program.parameters().size()
                   << "\n";
         if (inspect_all) {
+            std::set<std::uint32_t> source_nodes;
+            for (const auto &instruction :
+                 program.value_instructions()) {
+                if (instruction.source_node) {
+                    source_nodes.emplace(
+                        instruction.source_node.value);
+                }
+            }
+            for (const auto &instruction :
+                 program.closure_instructions()) {
+                if (instruction.source_node) {
+                    source_nodes.emplace(
+                        instruction.source_node.value);
+                }
+            }
+            for (const auto &instruction :
+                 program.volume_instructions()) {
+                if (instruction.source_node) {
+                    source_nodes.emplace(
+                        instruction.source_node.value);
+                }
+            }
+            const auto source =
+                imported.scene->materials.find(id);
+            std::cout << "nodes "
+                      << (source != imported.scene->materials.end()
+                              ? source->second.shader.nodes().size()
+                              : 0u)
+                      << "\nsource_nodes " << source_nodes.size()
+                      << "\n";
             std::cout << "values "
                       << program.value_instructions().size()
                       << "\nclosures "
                       << program.closure_instructions().size()
+                      << "\nvolumes "
+                      << program.volume_instructions().size()
                       << "\n";
             continue;
         }
@@ -267,6 +316,90 @@ int main(int argc, char **argv) {
         return EXIT_SUCCESS;
     }
     if (inspect_all) {
+        using psycles::compiler::PrincipledClosureFeature;
+        using psycles::compiler::ValueOperation;
+        std::map<ValueOperation, std::size_t> value_operations;
+        auto unique_values = std::size_t{};
+        auto unique_closures = std::size_t{};
+        auto reachable_closures = std::size_t{};
+        std::map<PrincipledClosureFeature, std::size_t>
+            feature_occurrences;
+        for (const auto &[signature, program] :
+             representative_programs) {
+            unique_values += program->value_instructions().size();
+            unique_closures +=
+                program->closure_instructions().size();
+            for (const auto &instruction :
+                 program->value_instructions()) {
+                value_operations[instruction.operation] += 1u;
+            }
+            const auto &plan = closure_plans.at(signature);
+            for (const auto &entry : plan.entries()) {
+                reachable_closures += entry.reachable ? 1u : 0u;
+                for (const auto feature : {
+                         PrincipledClosureFeature::alpha,
+                         PrincipledClosureFeature::sheen,
+                         PrincipledClosureFeature::coat,
+                         PrincipledClosureFeature::metallic,
+                         PrincipledClosureFeature::thick_transmission,
+                         PrincipledClosureFeature::thin_transmission,
+                         PrincipledClosureFeature::dielectric,
+                         PrincipledClosureFeature::thick_subsurface,
+                         PrincipledClosureFeature::thin_subsurface,
+                         PrincipledClosureFeature::diffuse}) {
+                    feature_occurrences[feature] +=
+                        (entry.principled_features &
+                         psycles::compiler::
+                             principled_closure_feature_bit(feature)) != 0u
+                            ? 1u
+                            : 0u;
+                }
+            }
+        }
+        const auto feature_count =
+            [&](PrincipledClosureFeature feature) {
+                const auto iter = feature_occurrences.find(feature);
+                return iter == feature_occurrences.end()
+                           ? std::size_t{}
+                           : iter->second;
+            };
+        std::cout
+            << "scene_summary\nunique_topologies "
+            << representative_programs.size()
+            << "\nunique_values " << unique_values
+            << "\nunique_closures " << unique_closures
+            << "\nreachable_closures " << reachable_closures
+            << "\nvalue_opcode_kinds " << value_operations.size()
+            << "\nprincipled_alpha "
+            << feature_count(PrincipledClosureFeature::alpha)
+            << "\nprincipled_sheen "
+            << feature_count(PrincipledClosureFeature::sheen)
+            << "\nprincipled_coat "
+            << feature_count(PrincipledClosureFeature::coat)
+            << "\nprincipled_metallic "
+            << feature_count(PrincipledClosureFeature::metallic)
+            << "\nprincipled_thick_transmission "
+            << feature_count(
+                   PrincipledClosureFeature::thick_transmission)
+            << "\nprincipled_thin_transmission "
+            << feature_count(
+                   PrincipledClosureFeature::thin_transmission)
+            << "\nprincipled_dielectric "
+            << feature_count(PrincipledClosureFeature::dielectric)
+            << "\nprincipled_thick_subsurface "
+            << feature_count(
+                   PrincipledClosureFeature::thick_subsurface)
+            << "\nprincipled_thin_subsurface "
+            << feature_count(
+                   PrincipledClosureFeature::thin_subsurface)
+            << "\nprincipled_diffuse "
+            << feature_count(PrincipledClosureFeature::diffuse)
+            << '\n';
+        for (const auto &[operation, count] : value_operations) {
+            std::cout << "value_opcode "
+                      << static_cast<unsigned>(operation)
+                      << ' ' << count << '\n';
+        }
         return EXIT_SUCCESS;
     }
     std::cerr << "material not found: " << requested << '\n';

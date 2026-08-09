@@ -10,6 +10,7 @@
 
 namespace psycles::compiler {
 class SurfaceProgram;
+class SurfaceClosurePlan;
 }// namespace psycles::compiler
 
 namespace psycles::luisa_backend {
@@ -30,6 +31,9 @@ private:
 public:
     explicit GraphSurface(
         std::shared_ptr<const compiler::SurfaceProgram> program) noexcept;
+    GraphSurface(
+        std::shared_ptr<const compiler::SurfaceProgram> program,
+        compiler::SurfaceClosurePlan closure_plan) noexcept;
     ~GraphSurface() noexcept override;
 
     GraphSurface(const GraphSurface &) = delete;
