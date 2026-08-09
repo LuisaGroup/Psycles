@@ -9,6 +9,18 @@ historical record; do not reset to its July revisions.
 
 The current official complex-scene checkpoints are:
 
+- [Sparse XIR restructure analyses](docs/validation/2026-08-10/xir-restructure-sparse-analyses/README.md)
+  reuses loop-boundary facts per CFG version, derives construct parents by an
+  event walk over the sparse immediate-dominator tree, and audits post-merge
+  re-entry through exact dominance frontiers. Luisa `next@62737f27d` is
+  published. The complete XIR suite passes `48/48`, and the RX 9070 XT native
+  Vulkan path passes `92/92` tests with `2,096` assertions. On the unchanged
+  Lone Monk module, `restructure_cfg` falls from `53.138 s` to `37.088 s` and
+  complete cold JIT from `180.533 s` to `162.519 s`, with identical SPIR-V
+  sizes and byte-identical output. The next measured compiler target is
+  `drain_selection_exits` (`14.502 s`); RADV pipeline creation remains a
+  separate `85.384 s` driver cost.
+
 - [Sparse XIR verifier dominance](docs/validation/2026-08-10/xir-verifier-sparse-dominance/README.md)
   gives every locally reachable block a numeric RPO ID, stores predecessors
   as sparse CSR and only one idom parent per block, then answers dominance by
