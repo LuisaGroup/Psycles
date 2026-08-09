@@ -409,3 +409,60 @@ The cache-cold RADV pipeline took `85.652 s` and process peak RSS was about
 remaining `2.091 s` if-batch cost is almost entirely the two merge-inference
 passes (`0.922 s` plus `1.142 s` in the final detailed run), which is the next
 independent optimization target.
+
+## Value-numbered selection-merge inference
+
+The remaining implementation performed the same allocation-heavy query twice
+per raw If: once while collecting the immutable candidate set and again while
+processing the overlay graph. Every query rescanned all structured loops,
+created one `unordered_map<BasicBlock *, distance>` per arm, traversed the
+reachable subgraph, and rescanned every owned block up to three times. Even
+canonicalizing a chain of transparent branches allocated a fresh visited set.
+The measured pair of query phases consumed about `2.064 s` despite reaching
+only a small portion of the 6,145-block function from a typical arm.
+
+Luisa `next@411322cd2` moves the query into a 582-line standalone
+`SelectionMergeBatchAnalysis` component. One immutable batch now:
+
+- value-numbers owned blocks once and retains definition order, preserving the
+  old candidate and tie-break order exactly;
+- derives a persistent enclosing-loop context along the sparse dominator tree,
+  so each header obtains its boundary set by walking only its active context;
+- reuses dense distance, support, minimum, maximum, and total arrays with epoch
+  markers instead of constructing pointer maps per arm;
+- registers each transparent overlay block and evaluates its exact immutable
+  dominance anchor; and
+- canonicalizes transparent branch chains with Floyd cycle detection, returning
+  the same terminal or first cycle-entry block with `O(1)` scratch storage.
+
+For each query, the finite state is the product of `(entry, block)` shortest
+reachability within the header-dominated region, plus the historical one-edge
+normal-boundary candidates. Each state is discovered once and every traversed
+edge is inspected once. Aggregate merge scores are reduced in stable block-ID
+order, so the result is equivalent to the former maps and whole-definition
+scans. Overlay mutation remains visible to the second query; this optimization
+does not revive the invalid unconditional lexical-merge cache.
+
+The 64-diamond regression requires exactly two dense merge queries per accepted
+candidate and nonzero block/edge visits. The nested loop/switch
+break/continue regression now also requires a nonempty persistent loop-context
+tree. The complete `unit_xir` label passes `48/48`; the RX 9070 XT native
+Vulkan route passes `92/92` tests with `2,096` assertions.
+
+The unchanged Lone Monk run is recorded under
+`/var/tmp/psycles-merge-dense-20260810/`:
+
+| Boundary | Hash-map queries | Dense epoch workspace | Change |
+| --- | ---: | ---: | ---: |
+| `try_restructure_if_batch` | 2.091 s | 0.299 s | 6.99x |
+| `restructure_cfg` | 6.826 s | 5.191 s | -24.0% |
+| SPIR-V XIR legalization | 21.587 s | 20.334 s | -5.8% |
+| Native AST-to-SPIR-V | 35.714 s | 33.752 s | -5.5% |
+| Raw SPIR-V | 1,431,985 words | 1,431,985 words | identical size |
+| Optimized SPIR-V | 1,116,158 words | 1,116,158 words | identical size |
+
+Across all definitions, 3,448 queries reused 357 loop-context nodes and visited
+584,856 block states plus 734,477 successor edges. The RADV cache hit reduced
+pipeline creation to `15.873 ms`; end-to-end shader JIT was `33.926 s` with
+`1,661,244 KiB` peak RSS. The output remains byte-identical with SHA-256
+`3ff6c5463ace13c0f26a735ac1af2bb96ab8a9ba1cb4398359cf2466f63a4d1b`.
