@@ -30,6 +30,15 @@ Diffuse Color RMSE falls 20.52x to `0.00020008`; a fresh five-way matrix puts
 all three Psycles Diffuse Color relative RMSEs between `0.001106` and
 `0.001160`.
 
+The subsequent
+[scene-union closure-reachability checkpoint](validation/2026-08-10/closure-reachability/README.md)
+keeps those raw graphs but records only physical Principled families reachable
+by at least one parameter block sharing each topology. On Lone Monk it reduces
+cold fallback/HIP/Vulkan path-kernel JIT by 3.25x/2.47x/2.06x, reduces native
+Vulkan optimized SPIR-V by 62.4%, and lowers its peak compiler RSS from about
+38.1 GiB to 8.98 GiB. The proof treats linked and non-finite inputs as unknown
+and has both host reachability and generated-XIR regressions.
+
 Neither result is a blanket feature-parity claim. Monster's remaining
 high-spp indirect residual and dominant HIP link/render cost remain open,
 while Lone Monk's indirect convergence and severe current

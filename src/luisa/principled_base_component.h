@@ -4,15 +4,17 @@
 #include "microfacet_glass_component.h"
 #include "thin_glass_component.h"
 
+#include <optional>
+
 namespace psycles::luisa_backend::detail {
 
 struct PrincipledBaseResult {
-    TracedClosure metallic;
-    TracedClosure transmission;
-    TracedClosure thin_glass_reflection;
-    TracedClosure thin_glass_transmission;
-    TracedClosure thin_glass_transparency;
-    TracedClosure dielectric;
+    std::optional<TracedClosure> metallic;
+    std::optional<TracedClosure> transmission;
+    std::optional<TracedClosure> thin_glass_reflection;
+    std::optional<TracedClosure> thin_glass_transmission;
+    std::optional<TracedClosure> thin_glass_transparency;
+    std::optional<TracedClosure> dielectric;
     Float3 base_weight;
     Float3 diffuse_weight;
 };
@@ -33,7 +35,9 @@ public:
                             const SurfacePoint &point) noexcept;
 
     [[nodiscard]] PrincipledBaseResult
-    evaluate(const TracedClosure &closure, Bool reflective_caustics,
+    evaluate(const TracedClosure &closure,
+             compiler::PrincipledClosureFeatureMask features,
+             Bool reflective_caustics,
              Bool refractive_caustics) const noexcept;
 };
 

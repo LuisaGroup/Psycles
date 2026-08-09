@@ -530,6 +530,123 @@ void write_preparation(
         make_float4(preparation.aov.transparency, 0.0f));
 }
 
+[[nodiscard]] ShaderGraph make_closure_plan_shape_graph() {
+    ShaderGraph graph;
+    const auto principled = graph.add_node(
+        node_type::principled_bsdf,
+        "Closure-plan XIR shape");
+    if (!graph.set_input(
+            principled,
+            "BaseColor",
+            SocketValue::color({0.4f, 0.3f, 0.2f})) ||
+        !graph.set_input(
+            principled,
+            "Alpha",
+            SocketValue::floating(1.0f)) ||
+        !graph.set_input(
+            principled,
+            "SheenWeight",
+            SocketValue::floating(0.0f)) ||
+        !graph.set_input(
+            principled,
+            "CoatWeight",
+            SocketValue::floating(0.0f)) ||
+        !graph.set_input(
+            principled,
+            "Metallic",
+            SocketValue::floating(0.0f)) ||
+        !graph.set_input(
+            principled,
+            "TransmissionWeight",
+            SocketValue::floating(0.0f)) ||
+        !graph.set_input(
+            principled,
+            "SubsurfaceWeight",
+            SocketValue::floating(0.0f))) {
+        throw std::runtime_error{
+            "failed to configure closure-plan XIR fixture"};
+    }
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = principled, .socket = "Closure"});
+    return graph;
+}
+
+[[nodiscard]] XirShape closure_plan_xir_shape(
+    const ShaderCompiler &compiler,
+    bool specialized) {
+    const auto shader = compiler.compile(
+        make_closure_plan_shape_graph());
+    if (!shader.ok()) {
+        throw std::runtime_error{
+            "closure-plan XIR fixture failed graph validation"};
+    }
+    const auto lowered = compile_surface_program(*shader.program);
+    if (!lowered.ok()) {
+        throw std::runtime_error{
+            "closure-plan XIR fixture failed surface lowering"};
+    }
+    const auto binding = bind_surface_parameters(
+        *lowered.program, *shader.program);
+    if (!binding.ok()) {
+        throw std::runtime_error{
+            "closure-plan XIR fixture failed parameter binding"};
+    }
+
+    SurfaceDispatch surfaces;
+    const auto tag = specialized
+                         ? surfaces.create<GraphSurface>(
+                               lowered.program,
+                               analyze_surface_closure_plan(
+                                   *lowered.program,
+                                   *binding.parameters))
+                         : surfaces.create<GraphSurface>(
+                               lowered.program);
+    Kernel1D kernel = [&](BufferFloat scalar_parameters,
+                          BufferFloat3 vector_parameters,
+                          BufferFloat4 output) noexcept {
+        BufferParameterShaderServices services{
+            scalar_parameters, vector_parameters};
+        const auto point = make_preparation_point();
+        write_preparation(
+            output,
+            surfaces.prepare(
+                tag,
+                services,
+                point,
+                {.outgoing = point.incoming,
+                 .glossy_filter_roughness = 0.04f,
+                 .emission_reflective_caustics = true,
+                 .reflective_caustics = true,
+                 .refractive_caustics = true,
+                 .include_runtime_flags = true,
+                 .include_aov = true}));
+    };
+    return xir_shape(kernel);
+}
+
+[[nodiscard]] bool closure_plan_reduces_xir(
+    const ShaderCompiler &compiler) {
+    const auto conservative = closure_plan_xir_shape(
+        compiler, false);
+    const auto specialized = closure_plan_xir_shape(
+        compiler, true);
+    if (std::getenv("PSYCLES_REPORT_CLOSURE_PLAN") != nullptr) {
+        std::cout
+            << "closure plan XIR: conservative={instructions="
+            << conservative.instructions
+            << ", loops=" << conservative.loops
+            << "}, specialized={instructions="
+            << specialized.instructions
+            << ", loops=" << specialized.loops << "}\n";
+    }
+    // The fixture disables every optional Principled family. Requiring a
+    // factor-of-two reduction keeps this a code-shape regression rather than
+    // allowing a token amount of dead-code removal to satisfy the test.
+    return specialized.instructions * 2u <
+           conservative.instructions;
+}
+
 [[nodiscard]] bool preparation_graph_is_fused(
     const ShaderCompiler &compiler) {
     const auto shader = compiler.compile(make_preparation_graph());
@@ -842,6 +959,9 @@ int main() {
     if (!preparation_graph_is_fused(shader_compiler)) {
         return 6;
     }
+    if (!closure_plan_reduces_xir(shader_compiler)) {
+        return 7;
+    }
 
     Kernel1D sampler_kernel = [](
                                   BufferFloat4 table,
@@ -869,5 +989,5 @@ int main() {
                 rng_hash,
                 dimension));
     };
-    return sampler_kernel.function() ? 0 : 7;
+    return sampler_kernel.function() ? 0 : 8;
 }

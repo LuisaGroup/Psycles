@@ -12,6 +12,13 @@ GraphSurface::GraphSurface(
           std::make_unique<detail::GraphSurfaceImplementation>(
               std::move(program))} {}
 
+GraphSurface::GraphSurface(
+    std::shared_ptr<const compiler::SurfaceProgram> program,
+    compiler::SurfaceClosurePlan closure_plan) noexcept
+    : _implementation{
+          std::make_unique<detail::GraphSurfaceImplementation>(
+              std::move(program), std::move(closure_plan))} {}
+
 GraphSurface::~GraphSurface() noexcept = default;
 
 SurfaceCapabilities GraphSurface::capabilities() const noexcept {

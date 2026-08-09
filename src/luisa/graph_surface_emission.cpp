@@ -34,7 +34,9 @@ namespace psycles::luisa_backend::detail {
                        compiler::ClosureOperation::principled) {
                 result += principled_layers
                               .evaluate_emission(
-                                  closure, reflective_caustics)
+                                  closure,
+                                  closure.principled_features,
+                                  reflective_caustics)
                               .radiance;
             }
         });

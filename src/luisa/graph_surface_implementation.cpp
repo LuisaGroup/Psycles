@@ -15,8 +15,22 @@ namespace psycles::luisa_backend::detail {
 
 GraphSurfaceImplementation::GraphSurfaceImplementation(
     std::shared_ptr<const compiler::SurfaceProgram> program) noexcept
-    : _program{std::move(program)} {
+    : GraphSurfaceImplementation{
+          program,
+          program
+              ? compiler::conservative_surface_closure_plan(*program)
+              : compiler::SurfaceClosurePlan{}} {}
+
+GraphSurfaceImplementation::GraphSurfaceImplementation(
+    std::shared_ptr<const compiler::SurfaceProgram> program,
+    compiler::SurfaceClosurePlan closure_plan) noexcept
+    : _program{std::move(program)},
+      _closure_plan{std::move(closure_plan)} {
     if (_program) {
+        if (!_closure_plan.compatible(*_program)) {
+            _closure_plan =
+                compiler::conservative_surface_closure_plan(*_program);
+        }
         for (const auto &instruction : _program->value_instructions()) {
             _value_nodes.emplace_back(make_value_node(instruction));
             if (instruction.operation ==

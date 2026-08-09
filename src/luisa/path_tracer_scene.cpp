@@ -193,6 +193,17 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         volume_surface_flags;
     std::map<std::uint64_t, std::uint32_t>
         surface_tags_by_signature;
+    std::map<std::uint64_t, compiler::SurfaceClosurePlan>
+        closure_plans_by_signature;
+    for (const auto &[id, material] :
+         data->materials.materials()) {
+        static_cast<void>(id);
+        const auto &program = *material.surface_program();
+        closure_plans_by_signature[
+            program.structure_signature()]
+            .merge(compiler::analyze_surface_closure_plan(
+                program, material.parameters()));
+    }
     std::set<std::uint32_t> surface_bssrdf_bump_tags;
     std::set<contract::MaterialId>
         pointiness_materials;
@@ -207,7 +218,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         if (inserted) {
             surface_iter->second =
                 data->surfaces.create<GraphSurface>(
-                    material.surface_program());
+                    material.surface_program(),
+                    closure_plans_by_signature.at(signature));
         }
         if (surface_bssrdf_bump_materials.contains(id)) {
             surface_bssrdf_bump_tags.emplace(surface_iter->second);

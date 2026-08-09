@@ -52,6 +52,7 @@ public:
 
     [[nodiscard]] PrincipledEmissionLayerResult evaluate_emission(
         const TracedClosure &closure,
+        compiler::PrincipledClosureFeatureMask features,
         Bool reflective_caustics) const noexcept;
 };
 
