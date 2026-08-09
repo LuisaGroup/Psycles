@@ -3,7 +3,7 @@
 ## Current continuation — 2026-08-10
 
 The current renderer implementation boundary advances from Psycles
-`main@79e5774` with LuisaCompute `next@411322cd2` and Blender/Cycles 5.3 Alpha
+`main@cc59515` with LuisaCompute `next@d17763dc4` and Blender/Cycles 5.3 Alpha
 `82186b01ad2e`. The older published-boundary section below remains a
 historical record; do not reset to its July revisions.
 
@@ -15,7 +15,7 @@ The current official complex-scene checkpoints are:
   re-entry through exact dominance frontiers. The follow-up carries enclosing
   loops as persistent contexts and replaces per-arm graph searches with block
   value numbering plus one sparse reverse-CFG dataflow per loop. Luisa
-  `next@411322cd2` is published. Its follow-ups replace the quadratic
+  `next@d17763dc4` is published. Its follow-ups replace the quadratic
   repeated DCE scan with an equivalent reverse-use least-fixed-point
   worklist and replace per-arm loop-boundary merge graph searches with one
   versioned sparse dataflow per loop plus explicit batch invalidation. The
@@ -35,13 +35,17 @@ The current official complex-scene checkpoints are:
   `35.714 s` after dominance-overlay batching. The if batch itself falls
   3.79x from `7.930 s` to `2.091 s`, `restructure_cfg` reaches `6.826 s`,
   then dense merge inference takes the if batch to `0.299 s` (another 6.99x),
-  `restructure_cfg` to `5.191 s`, and AST-to-SPIR-V to `33.752 s`. The merge
+  `restructure_cfg` to `5.191 s`, and AST-to-SPIR-V to `33.752 s`. Versioned
+  loop-continue analysis then takes its phase from `1.531 s` to `0.552 s`,
+  `restructure_cfg` to `4.053 s`, XIR legalization to `18.883 s`, and
+  AST-to-SPIR-V to `32.691 s`. The merge
   canonicalizer itself remains at `0.084 s`. Peak RSS
   falls from `9,415,608 KiB` to `1,654,768 KiB` in the matched driver-cache
   state, with identical SPIR-V sizes and byte-identical output. The DCE run
   retriggered RADV compilation, so its process peak is not compared across
-  cache states. The next compiler target must come from a fresh whole-pipeline
-  profile; if batching is no longer the dominant transform.
+  cache states. The next measured restructure targets are selection-exit drain
+  at `0.726 s` and aggregate post-dominator construction at `0.714 s`. If
+  batching is no longer the dominant transform.
 
 - [Sparse XIR verifier dominance](docs/validation/2026-08-10/xir-verifier-sparse-dominance/README.md)
   gives every locally reachable block a numeric RPO ID, stores predecessors
