@@ -398,27 +398,43 @@ unpack_surface_sample_trace(
             trace.closure_valid != 0u};
 }
 
-[[nodiscard]] Var<SurfaceAovCall> pack_surface_aov(
-    const SurfaceAov &aov) noexcept {
-    Var<SurfaceAovCall> result;
-    result.albedo = aov.albedo;
-    result.glossy_albedo = aov.glossy_albedo;
-    result.transmission_albedo = aov.transmission_albedo;
-    result.roughness = aov.roughness;
-    result.normal = aov.normal;
-    result.transparency = aov.transparency;
+[[nodiscard]] Var<SurfacePreparationQueryCall>
+pack_surface_preparation_query(
+    const SurfacePreparationQuery &query) noexcept {
+    using namespace surface_preparation_query_flag;
+    Var<SurfacePreparationQueryCall> result;
+    result.outgoing = query.outgoing;
+    result.glossy_filter_roughness =
+        query.glossy_filter_roughness;
+    result.flags =
+        select(0u, emission_reflective_caustics,
+               query.emission_reflective_caustics) |
+        select(0u, reflective_caustics,
+               query.reflective_caustics) |
+        select(0u, refractive_caustics,
+               query.refractive_caustics) |
+        select(0u, include_runtime_flags,
+               query.include_runtime_flags) |
+        select(0u, include_aov, query.include_aov);
     return result;
 }
 
-[[nodiscard]] SurfaceAov unpack_surface_aov(
-    const Var<SurfaceAovCall> &aov) noexcept {
+[[nodiscard]] SurfacePreparationQuery
+unpack_surface_preparation_query(
+    const Var<SurfacePreparationQueryCall> &query) noexcept {
+    using namespace surface_preparation_query_flag;
     return {
-        .albedo = aov.albedo,
-        .glossy_albedo = aov.glossy_albedo,
-        .transmission_albedo = aov.transmission_albedo,
-        .roughness = aov.roughness,
-        .normal = aov.normal,
-        .transparency = aov.transparency};
+        .outgoing = query.outgoing,
+        .glossy_filter_roughness = query.glossy_filter_roughness,
+        .emission_reflective_caustics =
+            (query.flags & emission_reflective_caustics) != 0u,
+        .reflective_caustics =
+            (query.flags & reflective_caustics) != 0u,
+        .refractive_caustics =
+            (query.flags & refractive_caustics) != 0u,
+        .include_runtime_flags =
+            (query.flags & include_runtime_flags) != 0u,
+        .include_aov = (query.flags & include_aov) != 0u};
 }
 
 [[nodiscard]] Var<SurfacePreparationCall> pack_surface_preparation(

@@ -6,6 +6,7 @@
 #include <psycles/luisa/graph_surface.h>
 
 #include "luisa_surface_test_support.h"
+#include "luisa_shader_shape_test_support.h"
 
 #include <array>
 #include <cmath>
@@ -26,14 +27,56 @@ using namespace psycles::compiler;
 using namespace psycles::contract;
 using namespace psycles::luisa_backend;
 using psycles::test_support::approximately_equal;
+using psycles::test_support::compile_named_kernel;
 using psycles::test_support::make_surface_point;
 using psycles::test_support::parameter_data;
 using psycles::test_support::ParameterShaderServices;
+using psycles::test_support::require_bounded_xir;
+using psycles::test_support::surface_aov;
 
 constexpr std::uint32_t case_count = 7u;
 constexpr std::uint32_t record_count = 51u;
 constexpr luisa::float3 base_color{0.25f, 0.64f, 1.0f};
 constexpr luisa::float3 specular_tint{0.5f, 1.0f, 0.25f};
+
+namespace trace_case {
+constexpr std::uint32_t thick_glass = 0u;
+constexpr std::uint32_t smooth_begin = 1u;
+constexpr std::uint32_t smooth_end = 4u;
+constexpr std::uint32_t noncamera_begin = 5u;
+constexpr std::uint32_t noncamera_end = 6u;
+constexpr std::uint32_t rough_thin_begin = 7u;
+constexpr std::uint32_t rough_thin_end = 8u;
+constexpr std::uint32_t smooth_subsurface_begin = 9u;
+constexpr std::uint32_t smooth_subsurface_end = 10u;
+constexpr std::uint32_t rough_subsurface_begin = 11u;
+constexpr std::uint32_t rough_subsurface_end = 12u;
+constexpr std::uint32_t thick_subsurface = 13u;
+constexpr std::uint32_t count = 14u;
+}// namespace trace_case
+
+namespace sample_case {
+constexpr std::uint32_t smooth_thin = 0u;
+constexpr std::uint32_t rough_subsurface = 1u;
+constexpr std::uint32_t tilted_corrected = 2u;
+constexpr std::uint32_t tilted_uncorrected = 3u;
+constexpr std::uint32_t count = 4u;
+}// namespace sample_case
+
+namespace evaluation_case {
+constexpr std::uint32_t rough_transmission = 0u;
+constexpr std::uint32_t rough_reflection = 1u;
+constexpr std::uint32_t rough_subsurface = 2u;
+constexpr std::uint32_t count = 3u;
+}// namespace evaluation_case
+
+namespace light_case {
+constexpr std::uint32_t rough_exclude_glossy = 0u;
+constexpr std::uint32_t rough_exclude_transmit = 1u;
+constexpr std::uint32_t subsurface_exclude_transmit = 2u;
+constexpr std::uint32_t subsurface_exclude_diffuse = 3u;
+constexpr std::uint32_t count = 4u;
+}// namespace light_case
 
 [[nodiscard]] ShaderGraph make_thin_wall_graph() {
     ShaderGraph graph;
@@ -303,273 +346,350 @@ int main(int argc, char **argv) {
     SurfaceDispatch surfaces;
     const auto surface_tag = surfaces.create<GraphSurface>(lowered.program);
 
-    Kernel1D evaluate = [&](BufferFloat4 parameter_buffer,
-                            BufferFloat4 output) noexcept {
+    Kernel1D trace_closures = [&](BufferFloat4 parameter_buffer,
+                                  BufferFloat4 output) noexcept {
         // A unit table value isolates the closure algebra from GGX energy
         // table interpolation. Production scene regressions use the exact
         // versioned Cycles tables.
         ParameterShaderServices services{parameter_buffer, 1.0f};
-        const auto make_point = [&](std::uint32_t parameter_case) noexcept {
-            auto point = make_surface_point();
-            point.parameter_block = parameter_case * parameter_stride;
-            return point;
-        };
-        const auto write_trace = [&](std::uint32_t record,
-                                     const SurfaceClosureTrace &trace) noexcept {
-            output.write(record,
-                make_float4(cast<float>(trace.count),
-                    cast<float>(trace.type),
-                    trace.sample_weight,
-                    select(0.0f, 1.0f, trace.valid)));
-            output.write(record + 1u,
-                make_float4(trace.weight, 0.0f));
-        };
-        constexpr auto all_lobes = static_cast<std::uint32_t>(
-            event_diffuse | event_glossy | event_transmission |
-            event_transparent);
+        const auto case_index = dispatch_x();
+        const auto smooth =
+            (case_index >= trace_case::smooth_begin) &
+            (case_index <= trace_case::smooth_end);
+        const auto noncamera =
+            (case_index >= trace_case::noncamera_begin) &
+            (case_index <= trace_case::noncamera_end);
+        const auto rough_thin =
+            (case_index >= trace_case::rough_thin_begin) &
+            (case_index <= trace_case::rough_thin_end);
+        const auto smooth_subsurface =
+            (case_index >= trace_case::smooth_subsurface_begin) &
+            (case_index <= trace_case::smooth_subsurface_end);
+        const auto rough_subsurface =
+            (case_index >= trace_case::rough_subsurface_begin) &
+            (case_index <= trace_case::rough_subsurface_end);
+        auto point = make_surface_point();
+        UInt parameter_case = 0u;
+        parameter_case = select(
+            parameter_case, 1u, smooth | noncamera);
+        parameter_case = select(parameter_case, 2u, rough_thin);
+        parameter_case =
+            select(parameter_case, 3u, smooth_subsurface);
+        parameter_case =
+            select(parameter_case, 4u, rough_subsurface);
+        parameter_case = select(parameter_case,
+            5u,
+            case_index == trace_case::thick_subsurface);
+        point.parameter_block = parameter_case * parameter_stride;
+        point.ray_visibility = select(
+            point.ray_visibility, 1u << 1u, noncamera);
+        UInt closure_index = 0u;
+        closure_index = select(closure_index,
+            case_index - trace_case::smooth_begin,
+            smooth);
+        closure_index = select(closure_index,
+            case_index - trace_case::noncamera_begin,
+            noncamera);
+        closure_index = select(closure_index,
+            case_index - trace_case::rough_thin_begin,
+            rough_thin);
+        closure_index = select(closure_index,
+            case_index - trace_case::smooth_subsurface_begin,
+            smooth_subsurface);
+        closure_index = select(closure_index,
+            case_index - trace_case::rough_subsurface_begin,
+            rough_subsurface);
+        const auto value = surfaces.closure_trace(UInt{surface_tag},
+            services,
+            point,
+            closure_index,
+            true,
+            true);
+        UInt record = 0u;
+        record = select(record, case_index * 2u, smooth | noncamera);
+        record = select(record,
+            21u + (case_index - trace_case::rough_thin_begin) * 2u,
+            rough_thin);
+        record = select(record,
+            29u +
+                (case_index - trace_case::smooth_subsurface_begin) * 2u,
+            smooth_subsurface);
+        record = select(record,
+            33u +
+                (case_index - trace_case::rough_subsurface_begin) * 2u,
+            rough_subsurface);
+        record = select(record,
+            43u,
+            case_index == trace_case::thick_subsurface);
+        output.write(record,
+            make_float4(cast<float>(value.count),
+                cast<float>(value.type),
+                value.sample_weight,
+                select(0.0f, 1.0f, value.valid)));
+        output.write(record + 1u, make_float4(value.weight, 0.0f));
+    };
+
+    Kernel1D evaluate_extinction = [&](BufferFloat4 parameter_buffer,
+                                       BufferFloat4 output) noexcept {
+        ParameterShaderServices services{parameter_buffer, 1.0f};
+        auto point = make_surface_point();
+        point.parameter_block = parameter_stride;
+        point.ray_visibility = 1u << 1u;
+        const auto extinction = surfaces.transparent_extinction(
+            UInt{surface_tag}, services, point);
+        output.write(14u, make_float4(extinction, 0.0f));
+    };
+
+    Kernel1D sample_closures = [&](BufferFloat4 parameter_buffer,
+                                   BufferFloat3 tilted_directions,
+                                   BufferFloat4 output) noexcept {
+        ParameterShaderServices services{parameter_buffer, 1.0f};
+        const auto case_index = dispatch_x();
+        auto point = make_surface_point();
+        UInt parameter_case = 1u;
+        parameter_case = select(parameter_case,
+            4u,
+            case_index == sample_case::rough_subsurface);
+        parameter_case = select(parameter_case,
+            6u,
+            case_index >= sample_case::tilted_corrected);
+        point.parameter_block = parameter_case * parameter_stride;
+        point.use_bump_map_correction =
+            case_index != sample_case::tilted_uncorrected;
         const auto query = SurfaceQuery{
-            .lobe_mask = all_lobes,
+            .lobe_mask = static_cast<std::uint32_t>(event_diffuse |
+                                                    event_glossy |
+                                                    event_transmission |
+                                                    event_transparent),
             .transport_mode = static_cast<std::uint32_t>(
                 TransportMode::radiance),
             .glossy_filter_roughness = 0.0f,
             .reflective_caustics = true,
             .refractive_caustics = true};
-        const auto trace = [&](const SurfacePoint &point,
-                               std::uint32_t index) noexcept {
-            return surfaces.closure_trace(
-                UInt{surface_tag},
-                services,
-                point,
-                index,
-                true,
-                true);
+        const auto value = surfaces.sample_trace(UInt{surface_tag},
+            services,
+            point,
+            select(0.9f,
+                0.99f,
+                case_index == sample_case::smooth_thin),
+            select(make_float2(0.23f, 0.79f),
+                make_float2(0.37f, 0.73f),
+                case_index == sample_case::smooth_thin),
+            query);
+        UInt record = 15u;
+        record = select(record,
+            40u,
+            case_index == sample_case::rough_subsurface);
+        record = select(record,
+            47u + (case_index - sample_case::tilted_corrected),
+            case_index >= sample_case::tilted_corrected);
+        output.write(record,
+            make_float4(
+                value.sample.evaluation.f, value.sample.evaluation.pdf));
+        $if(case_index < sample_case::tilted_corrected) {
+            output.write(record + 1u,
+                make_float4(value.sample.wi,
+                    select(0.0f, 1.0f, value.sample.valid)));
+            output.write(record + 2u,
+                make_float4(value.sample.roughness.x,
+                    value.sample.eta,
+                    cast<float>(value.sample.evaluation.events),
+                    cast<float>(value.closure_type)));
         };
-        const auto light = [&](const SurfacePoint &point,
-                               Float3 outgoing,
-                               std::uint32_t flags) noexcept {
-            return surfaces.evaluate_light(
-                UInt{surface_tag},
-                services,
-                point,
-                outgoing,
-                SurfaceLightQuery{
-                    .surface = query,
-                    .shader_flags =
-                        flags | cycles_abi::shader_use_mis});
+        $if(case_index >= sample_case::tilted_corrected) {
+            tilted_directions.write(
+                case_index - sample_case::tilted_corrected,
+                value.sample.wi);
         };
-
-        const auto thick_glass = make_point(0u);
-        write_trace(0u, trace(thick_glass, 0u));
-
-        const auto smooth_thin = make_point(1u);
-        write_trace(2u, trace(smooth_thin, 0u));
-        write_trace(4u, trace(smooth_thin, 1u));
-        write_trace(6u, trace(smooth_thin, 2u));
-        write_trace(8u, trace(smooth_thin, 3u));
-
-        auto noncamera_thin = smooth_thin;
-        noncamera_thin.ray_visibility = 1u << 1u;
-        write_trace(10u, trace(noncamera_thin, 0u));
-        write_trace(12u, trace(noncamera_thin, 1u));
-        output.write(14u,
-            make_float4(surfaces.transparent_extinction(
-                            UInt{surface_tag},
-                            services,
-                            noncamera_thin),
-                0.0f));
-
-        const auto smooth_sample = surfaces.sample_trace(
-            UInt{surface_tag},
-            services,
-            smooth_thin,
-            0.99f,
-            make_float2(0.37f, 0.73f),
-            query);
-        output.write(15u,
-            make_float4(smooth_sample.sample.evaluation.f,
-                smooth_sample.sample.evaluation.pdf));
-        output.write(16u,
-            make_float4(smooth_sample.sample.wi,
-                select(0.0f, 1.0f, smooth_sample.sample.valid)));
-        output.write(17u,
-            make_float4(smooth_sample.sample.roughness.x,
-                smooth_sample.sample.eta,
-                cast<float>(smooth_sample.sample.evaluation.events),
-                cast<float>(smooth_sample.closure_type)));
-
-        const auto smooth_aov = surfaces.aov(
-            UInt{surface_tag}, services, smooth_thin);
-        output.write(18u,
-            make_float4(smooth_aov.glossy_albedo,
-                smooth_aov.roughness.x));
-        output.write(19u,
-            make_float4(smooth_aov.transmission_albedo,
-                smooth_aov.roughness.y));
-        output.write(20u,
-            make_float4(smooth_aov.transparency, 0.0f));
-
-        const auto rough_thin = make_point(2u);
-        write_trace(21u, trace(rough_thin, 0u));
-        write_trace(23u, trace(rough_thin, 1u));
-        const auto rough_transmission = surfaces.evaluate(
-            UInt{surface_tag},
-            services,
-            rough_thin,
-            make_float3(0.0f, 0.0f, -1.0f),
-            query);
-        output.write(25u,
-            make_float4(
-                rough_transmission.f, rough_transmission.pdf));
-        const auto rough_exclude_glossy = light(
-            rough_thin,
-            make_float3(0.0f, 0.0f, -1.0f),
-            cycles_abi::shader_exclude_glossy);
-        output.write(26u,
-            make_float4(
-                rough_exclude_glossy.f,
-                rough_exclude_glossy.pdf));
-        const auto rough_exclude_transmit = light(
-            rough_thin,
-            make_float3(0.0f, 0.0f, -1.0f),
-            cycles_abi::shader_exclude_transmit);
-        output.write(27u,
-            make_float4(
-                rough_exclude_transmit.f,
-                rough_exclude_transmit.pdf));
-        const auto rough_reflection = surfaces.evaluate(
-            UInt{surface_tag},
-            services,
-            rough_thin,
-            make_float3(0.0f, 0.0f, 1.0f),
-            query);
-        output.write(28u,
-            make_float4(rough_reflection.f, rough_reflection.pdf));
-
-        const auto smooth_subsurface = make_point(3u);
-        write_trace(29u, trace(smooth_subsurface, 0u));
-        write_trace(31u, trace(smooth_subsurface, 1u));
-
-        const auto rough_subsurface = make_point(4u);
-        write_trace(33u, trace(rough_subsurface, 0u));
-        write_trace(35u, trace(rough_subsurface, 1u));
-        const auto rough_subsurface_value = surfaces.evaluate(
-            UInt{surface_tag},
-            services,
-            rough_subsurface,
-            make_float3(0.0f, 0.0f, -1.0f),
-            query);
-        output.write(37u,
-            make_float4(rough_subsurface_value.f,
-                rough_subsurface_value.pdf));
-        const auto subsurface_exclude_transmit = light(
-            rough_subsurface,
-            make_float3(0.0f, 0.0f, -1.0f),
-            cycles_abi::shader_exclude_transmit);
-        output.write(38u,
-            make_float4(subsurface_exclude_transmit.f,
-                subsurface_exclude_transmit.pdf));
-        const auto subsurface_exclude_diffuse = light(
-            rough_subsurface,
-            make_float3(0.0f, 0.0f, -1.0f),
-            cycles_abi::shader_exclude_diffuse);
-        output.write(39u,
-            make_float4(subsurface_exclude_diffuse.f,
-                subsurface_exclude_diffuse.pdf));
-
-        const auto rough_subsurface_sample = surfaces.sample_trace(
-            UInt{surface_tag},
-            services,
-            rough_subsurface,
-            0.9f,
-            make_float2(0.23f, 0.79f),
-            query);
-        output.write(40u,
-            make_float4(
-                rough_subsurface_sample.sample.evaluation.f,
-                rough_subsurface_sample.sample.evaluation.pdf));
-        output.write(41u,
-            make_float4(rough_subsurface_sample.sample.wi,
-                select(0.0f,
-                    1.0f,
-                    rough_subsurface_sample.sample.valid)));
-        output.write(42u,
-            make_float4(
-                rough_subsurface_sample.sample.roughness.x,
-                rough_subsurface_sample.sample.eta,
-                cast<float>(
-                    rough_subsurface_sample.sample.evaluation.events),
-                cast<float>(rough_subsurface_sample.closure_type)));
-
-        const auto thick_subsurface = make_point(5u);
-        write_trace(43u, trace(thick_subsurface, 0u));
-        const auto subsurface_aov = surfaces.aov(
-            UInt{surface_tag}, services, rough_subsurface);
-        output.write(45u,
-            make_float4(
-                subsurface_aov.albedo, subsurface_aov.roughness.x));
-        output.write(46u,
-            make_float4(subsurface_aov.normal,
-                subsurface_aov.transmission_albedo.x));
-
-        // Cycles applies bump shadowing to an ordinary Rough Translucent
-        // evaluation, but not to the selected bsdf_sample() contribution
-        // because its event label contains LABEL_TRANSMIT. A tilted closure
-        // normal makes the two contracts observably different.
-        const auto tilted_subsurface = make_point(6u);
-        auto uncorrected_tilted_subsurface = tilted_subsurface;
-        uncorrected_tilted_subsurface.use_bump_map_correction = false;
-        const auto tilted_sample = surfaces.sample_trace(
-            UInt{surface_tag},
-            services,
-            tilted_subsurface,
-            0.9f,
-            make_float2(0.23f, 0.79f),
-            query);
-        const auto uncorrected_tilted_sample = surfaces.sample_trace(
-            UInt{surface_tag},
-            services,
-            uncorrected_tilted_subsurface,
-            0.9f,
-            make_float2(0.23f, 0.79f),
-            query);
-        const auto tilted_evaluation = surfaces.evaluate(
-            UInt{surface_tag},
-            services,
-            tilted_subsurface,
-            tilted_sample.sample.wi,
-            query);
-        const auto uncorrected_tilted_evaluation = surfaces.evaluate(
-            UInt{surface_tag},
-            services,
-            uncorrected_tilted_subsurface,
-            tilted_sample.sample.wi,
-            query);
-        output.write(47u,
-            make_float4(tilted_sample.sample.evaluation.f,
-                tilted_sample.sample.evaluation.pdf));
-        output.write(48u,
-            make_float4(
-                uncorrected_tilted_sample.sample.evaluation.f,
-                uncorrected_tilted_sample.sample.evaluation.pdf));
-        output.write(49u,
-            make_float4(
-                tilted_evaluation.f, tilted_evaluation.pdf));
-        output.write(50u,
-            make_float4(uncorrected_tilted_evaluation.f,
-                uncorrected_tilted_evaluation.pdf));
     };
+
+    Kernel1D evaluate_aov = [&](BufferFloat4 parameter_buffer,
+                                BufferFloat4 output) noexcept {
+        ParameterShaderServices services{parameter_buffer, 1.0f};
+        const auto case_index = dispatch_x();
+        auto point = make_surface_point();
+        point.parameter_block =
+            select(1u, 4u, case_index != 0u) * parameter_stride;
+        const auto aov =
+            surface_aov(surfaces, UInt{surface_tag}, services, point);
+        $if(case_index == 0u) {
+            output.write(18u,
+                make_float4(aov.glossy_albedo, aov.roughness.x));
+            output.write(19u,
+                make_float4(
+                    aov.transmission_albedo, aov.roughness.y));
+            output.write(20u, make_float4(aov.transparency, 0.0f));
+        }
+        $else {
+            output.write(
+                45u, make_float4(aov.albedo, aov.roughness.x));
+            output.write(46u,
+                make_float4(aov.normal, aov.transmission_albedo.x));
+        };
+    };
+
+    Kernel1D evaluate_surface = [&](BufferFloat4 parameter_buffer,
+                                    BufferFloat4 output) noexcept {
+        ParameterShaderServices services{parameter_buffer, 1.0f};
+        const auto case_index = dispatch_x();
+        auto point = make_surface_point();
+        point.parameter_block =
+            select(2u,
+                4u,
+                case_index == evaluation_case::rough_subsurface) *
+            parameter_stride;
+        const auto outgoing = select(make_float3(0.0f, 0.0f, -1.0f),
+            make_float3(0.0f, 0.0f, 1.0f),
+            case_index == evaluation_case::rough_reflection);
+        const auto query = SurfaceQuery{
+            .lobe_mask = static_cast<std::uint32_t>(event_diffuse |
+                                                    event_glossy |
+                                                    event_transmission |
+                                                    event_transparent),
+            .transport_mode = static_cast<std::uint32_t>(
+                TransportMode::radiance),
+            .glossy_filter_roughness = 0.0f,
+            .reflective_caustics = true,
+            .refractive_caustics = true};
+        const auto value = surfaces.evaluate(
+            UInt{surface_tag}, services, point, outgoing, query);
+        UInt record = 25u;
+        record = select(record,
+            28u,
+            case_index == evaluation_case::rough_reflection);
+        record = select(record,
+            37u,
+            case_index == evaluation_case::rough_subsurface);
+        output.write(record, make_float4(value.f, value.pdf));
+    };
+
+    Kernel1D evaluate_light = [&](BufferFloat4 parameter_buffer,
+                                  BufferFloat4 output) noexcept {
+        ParameterShaderServices services{parameter_buffer, 1.0f};
+        const auto case_index = dispatch_x();
+        auto point = make_surface_point();
+        point.parameter_block =
+            select(2u,
+                4u,
+                case_index >= light_case::subsurface_exclude_transmit) *
+            parameter_stride;
+        UInt shader_flags = cycles_abi::shader_exclude_transmit;
+        shader_flags = select(shader_flags,
+            cycles_abi::shader_exclude_glossy,
+            case_index == light_case::rough_exclude_glossy);
+        shader_flags = select(shader_flags,
+            cycles_abi::shader_exclude_diffuse,
+            case_index == light_case::subsurface_exclude_diffuse);
+        const auto query = SurfaceQuery{
+            .lobe_mask = static_cast<std::uint32_t>(event_diffuse |
+                                                    event_glossy |
+                                                    event_transmission |
+                                                    event_transparent),
+            .transport_mode = static_cast<std::uint32_t>(
+                TransportMode::radiance),
+            .glossy_filter_roughness = 0.0f,
+            .reflective_caustics = true,
+            .refractive_caustics = true};
+        const auto value = surfaces.evaluate_light(UInt{surface_tag},
+            services,
+            point,
+            make_float3(0.0f, 0.0f, -1.0f),
+            SurfaceLightQuery{
+                .surface = query,
+                .shader_flags =
+                    shader_flags | cycles_abi::shader_use_mis});
+        const auto record = select(26u + case_index,
+            36u + case_index,
+            case_index >= light_case::subsurface_exclude_transmit);
+        output.write(record, make_float4(value.f, value.pdf));
+    };
+
+    Kernel1D evaluate_tilted = [&](BufferFloat4 parameter_buffer,
+                                   BufferFloat3 tilted_directions,
+                                   BufferFloat4 output) noexcept {
+        ParameterShaderServices services{parameter_buffer, 1.0f};
+        const auto case_index = dispatch_x();
+        auto point = make_surface_point();
+        point.parameter_block = 6u * parameter_stride;
+        point.use_bump_map_correction = case_index == 0u;
+        const auto query = SurfaceQuery{
+            .lobe_mask = static_cast<std::uint32_t>(event_diffuse |
+                                                    event_glossy |
+                                                    event_transmission |
+                                                    event_transparent),
+            .transport_mode = static_cast<std::uint32_t>(
+                TransportMode::radiance),
+            .glossy_filter_roughness = 0.0f,
+            .reflective_caustics = true,
+            .refractive_caustics = true};
+        const auto value = surfaces.evaluate(UInt{surface_tag},
+            services,
+            point,
+            tilted_directions.read(0u),
+            query);
+        output.write(49u + case_index, make_float4(value.f, value.pdf));
+    };
+
+    if (backend == "fallback") {
+        auto bounded = true;
+        bounded &= require_bounded_xir(
+            "thin_wall_trace_closures", trace_closures, 35000u);
+        bounded &= require_bounded_xir(
+            "thin_wall_extinction", evaluate_extinction, 22000u);
+        bounded &= require_bounded_xir(
+            "thin_wall_sample_closures", sample_closures, 390000u);
+        bounded &= require_bounded_xir(
+            "thin_wall_aov", evaluate_aov, 27000u);
+        bounded &= require_bounded_xir(
+            "thin_wall_evaluate", evaluate_surface, 205000u);
+        bounded &= require_bounded_xir(
+            "thin_wall_evaluate_light", evaluate_light, 205000u);
+        bounded &= require_bounded_xir(
+            "thin_wall_evaluate_tilted", evaluate_tilted, 205000u);
+        if (!bounded) {
+            return EXIT_FAILURE;
+        }
+    }
 
     Context context{argv[0]};
     auto device = context.create_device(backend);
     auto stream = device.create_stream();
     auto parameter_buffer =
         device.create_buffer<luisa::float4>(parameters.size());
+    auto tilted_directions = device.create_buffer<luisa::float3>(2u);
     auto output_buffer =
         device.create_buffer<luisa::float4>(record_count);
-    auto kernel = device.compile(evaluate);
+    auto trace_kernel = compile_named_kernel(
+        device, "thin_wall_trace_closures", trace_closures);
+    auto extinction_kernel = compile_named_kernel(
+        device, "thin_wall_extinction", evaluate_extinction);
+    auto sample_kernel = compile_named_kernel(
+        device, "thin_wall_sample_closures", sample_closures);
+    auto aov_kernel =
+        compile_named_kernel(device, "thin_wall_aov", evaluate_aov);
+    auto evaluation_kernel = compile_named_kernel(
+        device, "thin_wall_evaluate", evaluate_surface);
+    auto light_kernel = compile_named_kernel(
+        device, "thin_wall_evaluate_light", evaluate_light);
+    auto tilted_kernel = compile_named_kernel(
+        device, "thin_wall_evaluate_tilted", evaluate_tilted);
     std::array<luisa::float4, record_count> actual{};
     stream << parameter_buffer.copy_from(luisa::span{parameters})
-           << kernel(parameter_buffer, output_buffer).dispatch(1u)
+           << trace_kernel(parameter_buffer, output_buffer)
+                  .dispatch(trace_case::count)
+           << extinction_kernel(parameter_buffer, output_buffer)
+                  .dispatch(1u)
+           << sample_kernel(
+                  parameter_buffer, tilted_directions, output_buffer)
+                  .dispatch(sample_case::count)
+           << aov_kernel(parameter_buffer, output_buffer).dispatch(2u)
+           << evaluation_kernel(parameter_buffer, output_buffer)
+                  .dispatch(evaluation_case::count)
+           << light_kernel(parameter_buffer, output_buffer)
+                  .dispatch(light_case::count)
+           << tilted_kernel(
+                  parameter_buffer, tilted_directions, output_buffer)
+                  .dispatch(2u)
            << output_buffer.copy_to(luisa::span{actual})
            << synchronize();
 

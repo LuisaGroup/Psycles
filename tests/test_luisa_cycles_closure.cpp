@@ -5,6 +5,7 @@
 #include <psycles/luisa/graph_surface.h>
 
 #include "luisa_surface_test_support.h"
+#include "luisa_shader_shape_test_support.h"
 
 #include <algorithm>
 #include <array>
@@ -27,8 +28,11 @@ using namespace psycles::luisa_backend;
 namespace cycles_abi = psycles::contract::cycles_abi;
 using psycles::test_support::ParameterShaderServices;
 using psycles::test_support::approximately_equal;
+using psycles::test_support::compile_named_kernel;
 using psycles::test_support::make_surface_point;
 using psycles::test_support::parameter_data;
+using psycles::test_support::require_bounded_xir;
+using psycles::test_support::surface_aov;
 
 static_assert(cycles_closure::runtime_backfacing == 1u);
 static_assert(cycles_closure::runtime_cache_miss == 2u);
@@ -365,54 +369,6 @@ public:
     return graph;
 }
 
-[[nodiscard]] ShaderGraph make_principled_sheen_graph() {
-    ShaderGraph graph;
-    const auto normal = graph.add_node(
-        node_type::vector_to_normal, "Linked Sheen Normal");
-    const auto principled = graph.add_node(
-        node_type::principled_bsdf, "Isolated Principled Sheen");
-    const auto configured =
-        graph.set_input(normal,
-            "Vector",
-            SocketValue::vector({0.3f, -0.2f, 0.9f})) &&
-        graph.set_input(principled,
-            "BaseColor",
-            SocketValue::color({0.0f, 0.0f, 0.0f})) &&
-        graph.set_input(
-            principled, "Metallic", SocketValue::floating(0.0f)) &&
-        graph.set_input(
-            principled, "Roughness", SocketValue::floating(0.27f)) &&
-        graph.set_input(
-            principled, "IOR", SocketValue::floating(1.0f)) &&
-        graph.set_input(principled,
-            "SpecularIORLevel",
-            SocketValue::floating(0.5f)) &&
-        graph.set_input(
-            principled, "Alpha", SocketValue::floating(1.0f)) &&
-        graph.set_input(principled,
-            "SheenWeight",
-            SocketValue::floating(0.75f)) &&
-        graph.set_input(principled,
-            "SheenRoughness",
-            SocketValue::floating(0.37f)) &&
-        graph.set_input(principled,
-            "SheenTint",
-            SocketValue::color({0.8f, 0.4f, 0.2f})) &&
-        graph.set_input(
-            principled, "CoatWeight", SocketValue::floating(0.0f)) &&
-        graph.connect(
-            {.node = normal, .socket = "Normal"}, principled, "Normal") &&
-        graph.set_property(
-            principled, "Distribution", SocketValue::string("GGX"));
-    if (!configured) {
-        throw std::runtime_error{
-            "failed to configure isolated Principled Sheen graph"};
-    }
-    graph.set_root(ShaderDomain::surface,
-        OutputRef{.node = principled, .socket = "Closure"});
-    return graph;
-}
-
 [[nodiscard]] ShaderGraph make_tangent_normal_graph() {
     ShaderGraph graph;
     const auto normal_map =
@@ -603,21 +559,6 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
-    auto sheen_shader =
-        compiler.compile(make_principled_sheen_graph());
-    if (!sheen_shader.ok()) {
-        std::cerr
-            << "failed to compile isolated Principled Sheen graph\n";
-        return EXIT_FAILURE;
-    }
-    auto sheen_program =
-        compile_surface_program(*sheen_shader.program);
-    if (!sheen_program.ok()) {
-        std::cerr
-            << "failed to lower isolated Principled Sheen program\n";
-        return EXIT_FAILURE;
-    }
-
     auto tangent_normal_shader =
         compiler.compile(make_tangent_normal_graph());
     if (!tangent_normal_shader.ok()) {
@@ -661,30 +602,39 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
-    SurfaceDispatch surfaces;
+    SurfaceDispatch diffuse_surfaces;
     const auto surface_tag =
-        surfaces.create<GraphSurface>(program.program);
+        diffuse_surfaces.create<GraphSurface>(program.program);
+    SurfaceDispatch physical_surfaces;
     const auto physical_surface_tag =
-        surfaces.create<GraphSurface>(physical_program.program);
+        physical_surfaces.create<GraphSurface>(physical_program.program);
+    SurfaceDispatch transparent_order_surfaces;
     const auto transparent_order_surface_tag =
-        surfaces.create<GraphSurface>(transparent_order_program.program);
+        transparent_order_surfaces.create<GraphSurface>(
+            transparent_order_program.program);
+    SurfaceDispatch subsurface_surfaces;
     const auto subsurface_surface_tag =
-        surfaces.create<GraphSurface>(subsurface_program.program);
+        subsurface_surfaces.create<GraphSurface>(
+            subsurface_program.program);
+    SurfaceDispatch principled_emission_surfaces;
     const auto principled_emission_surface_tag =
-        surfaces.create<GraphSurface>(
+        principled_emission_surfaces.create<GraphSurface>(
             principled_emission_program.program);
+    SurfaceDispatch layered_emission_surfaces;
     const auto layered_emission_surface_tag =
-        surfaces.create<GraphSurface>(
+        layered_emission_surfaces.create<GraphSurface>(
             layered_emission_program.program);
-    const auto sheen_surface_tag =
-        surfaces.create<GraphSurface>(sheen_program.program);
+    SurfaceDispatch tangent_normal_surfaces;
     const auto tangent_normal_surface_tag =
-        surfaces.create<GraphSurface>(
+        tangent_normal_surfaces.create<GraphSurface>(
             tangent_normal_program.program);
+    SurfaceDispatch glass_surfaces;
     const auto glass_surface_tag =
-        surfaces.create<GraphSurface>(glass_program.program);
+        glass_surfaces.create<GraphSurface>(glass_program.program);
+    SurfaceDispatch translucent_surfaces;
     const auto translucent_surface_tag =
-        surfaces.create<GraphSurface>(translucent_program.program);
+        translucent_surfaces.create<GraphSurface>(
+            translucent_program.program);
     auto color_parameter = std::uint32_t{~std::uint32_t{0u}};
     const auto &parameters = program.program->parameters();
     for (std::uint32_t index = 0u; index < parameters.size(); ++index) {
@@ -705,9 +655,9 @@ int main(int argc, char **argv) {
             .transport_mode =
                 static_cast<std::uint32_t>(TransportMode::radiance),
             .glossy_filter_roughness = 0.0f};
-        const auto closure = surfaces.closure_trace(
+        const auto closure = diffuse_surfaces.closure_trace(
             UInt{surface_tag}, services, point, 0u);
-        const auto sample = surfaces.sample_trace(UInt{surface_tag},
+        const auto sample = diffuse_surfaces.sample_trace(UInt{surface_tag},
             services,
             point,
             0.37341177463531494f,
@@ -750,9 +700,9 @@ int main(int argc, char **argv) {
             color_parameter, {0.5e-5f, 0.5e-5f, 0.5e-5f}};
         OracleShaderServices boundary_services{
             color_parameter, {1.0e-5f, 1.0e-5f, 1.0e-5f}};
-        const auto below_cutoff = surfaces.closure_trace(
+        const auto below_cutoff = diffuse_surfaces.closure_trace(
             UInt{surface_tag}, below_cutoff_services, point, 0u);
-        const auto at_boundary = surfaces.closure_trace(
+        const auto at_boundary = diffuse_surfaces.closure_trace(
             UInt{surface_tag}, boundary_services, point, 0u);
         output.write(10u,
             make_float4(cast<float>(closure.runtime_flags),
@@ -766,7 +716,7 @@ int main(int argc, char **argv) {
             ParameterShaderServices services{parameters};
             const auto point = make_surface_point();
             const auto requested = dispatch_x();
-            const auto closure = surfaces.closure_trace(
+            const auto closure = physical_surfaces.closure_trace(
                 UInt{physical_surface_tag}, services, point, requested);
             output.write(requested,
                 make_float4(cast<float>(closure.count),
@@ -791,7 +741,7 @@ int main(int argc, char **argv) {
                     make_float3(0.0f),
                     requested != 0u);
             const auto closure =
-                surfaces.closure_trace(
+                tangent_normal_surfaces.closure_trace(
                     UInt{tangent_normal_surface_tag},
                     services,
                     point,
@@ -810,9 +760,9 @@ int main(int argc, char **argv) {
         [&](BufferFloat4 parameters, BufferFloat4 output) noexcept {
             ParameterShaderServices services{parameters};
             const auto point = make_surface_point();
-            const auto first = surfaces.closure_trace(
+            const auto first = transparent_order_surfaces.closure_trace(
                 UInt{transparent_order_surface_tag}, services, point, 0u);
-            const auto second = surfaces.closure_trace(
+            const auto second = transparent_order_surfaces.closure_trace(
                 UInt{transparent_order_surface_tag}, services, point, 1u);
             output.write(0u,
                 make_float4(cast<float>(first.count),
@@ -837,11 +787,11 @@ int main(int argc, char **argv) {
                 .transport_mode = static_cast<std::uint32_t>(
                     TransportMode::radiance),
                 .glossy_filter_roughness = 0.0f};
-            const auto closure = surfaces.closure_trace(
+            const auto closure = subsurface_surfaces.closure_trace(
                 UInt{subsurface_surface_tag}, services, point, 1u);
-            const auto aov = surfaces.aov(
+            const auto aov = surface_aov(subsurface_surfaces,
                 UInt{subsurface_surface_tag}, services, point);
-            const auto sample = surfaces.sample_trace(
+            const auto sample = subsurface_surfaces.sample_trace(
                 UInt{subsurface_surface_tag},
                 services,
                 point,
@@ -886,13 +836,14 @@ int main(int argc, char **argv) {
         [&](BufferFloat4 parameters, BufferFloat4 output) noexcept {
             ParameterShaderServices services{parameters};
             const auto point = make_surface_point();
-            const auto emission = surfaces.emission(
+            const auto emission = principled_emission_surfaces.emission(
                 UInt{principled_emission_surface_tag},
                 services,
                 point,
                 make_float3(0.0f, 0.0f, 1.0f),
                 true);
-            const auto constant = surfaces.constant_emission(
+            const auto constant =
+                principled_emission_surfaces.constant_emission(
                 UInt{principled_emission_surface_tag},
                 services,
                 0u);
@@ -904,28 +855,32 @@ int main(int argc, char **argv) {
         [&](BufferFloat4 parameters, BufferFloat4 output) noexcept {
             ParameterShaderServices services{parameters};
             const auto point = make_surface_point();
-            const auto with_reflection = surfaces.emission(
+            const auto with_reflection = layered_emission_surfaces.emission(
                 UInt{layered_emission_surface_tag},
                 services,
                 point,
                 make_float3(0.0f, 0.0f, 1.0f),
                 true);
-            const auto without_reflection = surfaces.emission(
+            const auto without_reflection =
+                layered_emission_surfaces.emission(
                 UInt{layered_emission_surface_tag},
                 services,
                 point,
                 make_float3(0.0f, 0.0f, 1.0f),
                 false);
-            const auto constant = surfaces.constant_emission(
+            const auto constant =
+                layered_emission_surfaces.constant_emission(
                 UInt{layered_emission_surface_tag},
                 services,
                 0u);
-            const auto first_closure = surfaces.closure_trace(
+            const auto first_closure =
+                layered_emission_surfaces.closure_trace(
                 UInt{layered_emission_surface_tag},
                 services,
                 point,
                 0u);
-            const auto extinction = surfaces.transparent_extinction(
+            const auto extinction =
+                layered_emission_surfaces.transparent_extinction(
                 UInt{layered_emission_surface_tag},
                 services,
                 point);
@@ -944,194 +899,6 @@ int main(int argc, char **argv) {
                 make_float4(first_closure.weight,
                     cast<float>(first_closure.runtime_flags)));
             output.write(5u, make_float4(extinction, 0.0f));
-        };
-
-    Kernel1D evaluate_principled_sheen =
-        [&](BufferFloat4 parameters, BufferFloat4 output) noexcept {
-            ParameterShaderServices valid_services{parameters};
-            ParameterShaderServices invalid_services{parameters, 0.0f};
-            const auto point = make_surface_point();
-            const auto query = SurfaceQuery{
-                .lobe_mask = ~std::uint32_t{0u},
-                .transport_mode = static_cast<std::uint32_t>(
-                    TransportMode::radiance),
-                .glossy_filter_roughness = 0.0f};
-            const auto outgoing = normalize(
-                make_float3(0.25f, 0.35f, 0.9027735f));
-            const auto closure = surfaces.closure_trace(
-                UInt{sheen_surface_tag}, valid_services, point, 0u);
-            const auto evaluation = surfaces.evaluate(
-                UInt{sheen_surface_tag},
-                valid_services,
-                point,
-                outgoing,
-                query);
-            const auto sample = surfaces.sample_trace(
-                UInt{sheen_surface_tag},
-                valid_services,
-                point,
-                0.41f,
-                make_float2(0.23f, 0.71f),
-                query);
-            const auto aov = surfaces.aov(
-                UInt{sheen_surface_tag}, valid_services, point);
-            output.write(0u,
-                make_float4(cast<float>(closure.count),
-                    cast<float>(closure.type),
-                    closure.sample_weight,
-                    select(0.0f, 1.0f, closure.valid)));
-            output.write(1u,
-                make_float4(closure.weight,
-                    cast<float>(closure.runtime_flags)));
-            output.write(2u, make_float4(closure.normal, 0.0f));
-            output.write(3u,
-                make_float4(evaluation.f, evaluation.pdf));
-            output.write(4u,
-                make_float4(
-                    evaluation.diffuse_f, evaluation.diffuse_pdf));
-            output.write(5u,
-                make_float4(evaluation.glossy_f,
-                    cast<float>(evaluation.events)));
-            output.write(6u,
-                make_float4(cast<float>(sample.closure_index),
-                    cast<float>(sample.closure_type),
-                    sample.closure_sample_weight,
-                    sample.selection_rescaled));
-            output.write(7u,
-                make_float4(sample.sample.wi,
-                    select(0.0f, 1.0f, sample.sample.valid)));
-            output.write(8u,
-                make_float4(sample.sample.evaluation.f,
-                    sample.sample.evaluation.pdf));
-            output.write(9u,
-                make_float4(sample.sample.evaluation.diffuse_f,
-                    sample.sample.evaluation.diffuse_pdf));
-            output.write(10u,
-                make_float4(sample.sample.roughness,
-                    sample.sample.eta,
-                    cast<float>(sample.sample.evaluation.events)));
-            output.write(11u,
-                make_float4(aov.albedo, aov.roughness.x));
-            output.write(12u,
-                make_float4(aov.normal, aov.roughness.y));
-
-            const auto invalid_closure = surfaces.closure_trace(
-                UInt{sheen_surface_tag}, invalid_services, point, 0u);
-            const auto invalid_evaluation = surfaces.evaluate(
-                UInt{sheen_surface_tag},
-                invalid_services,
-                point,
-                outgoing,
-                query);
-            const auto invalid_sample = surfaces.sample_trace(
-                UInt{sheen_surface_tag},
-                invalid_services,
-                point,
-                0.41f,
-                make_float2(0.23f, 0.71f),
-                query);
-            const auto invalid_aov = surfaces.aov(
-                UInt{sheen_surface_tag}, invalid_services, point);
-            output.write(13u,
-                make_float4(cast<float>(invalid_closure.count),
-                    cast<float>(invalid_closure.type),
-                    invalid_closure.sample_weight,
-                    select(0.0f, 1.0f, invalid_closure.valid)));
-            output.write(14u,
-                make_float4(invalid_closure.weight,
-                    cast<float>(invalid_closure.runtime_flags)));
-            output.write(15u,
-                make_float4(invalid_evaluation.f,
-                    invalid_evaluation.pdf));
-            output.write(16u,
-                make_float4(cast<float>(invalid_sample.closure_type),
-                    invalid_sample.closure_sample_weight,
-                    select(0.0f,
-                        1.0f,
-                        invalid_sample.closure_valid),
-                    select(0.0f,
-                        1.0f,
-                        invalid_sample.sample.valid)));
-            output.write(17u,
-                make_float4(
-                    invalid_aov.albedo, invalid_aov.roughness.x));
-            output.write(18u,
-                make_float4(
-                    invalid_aov.normal, invalid_aov.roughness.y));
-
-            auto uncorrected_point = point;
-            uncorrected_point.use_bump_map_correction = false;
-            const auto uncorrected_evaluation = surfaces.evaluate(
-                UInt{sheen_surface_tag},
-                valid_services,
-                uncorrected_point,
-                outgoing,
-                query);
-            const auto uncorrected_sample = surfaces.sample_trace(
-                UInt{sheen_surface_tag},
-                valid_services,
-                uncorrected_point,
-                0.41f,
-                make_float2(0.23f, 0.71f),
-                query);
-            const auto leaking_direction = normalize(
-                make_float3(0.8f, 0.0f, -0.1f));
-            const auto rejected_leak = surfaces.evaluate(
-                UInt{sheen_surface_tag},
-                valid_services,
-                uncorrected_point,
-                leaking_direction,
-                query);
-            const auto grazing_direction = normalize(
-                make_float3(1.0f, 0.0f, 5.0e-7f));
-            const auto rejected_grazing = surfaces.evaluate(
-                UInt{sheen_surface_tag},
-                valid_services,
-                point,
-                grazing_direction,
-                query);
-            const auto sampled_grazing = surfaces.sample_trace(
-                UInt{sheen_surface_tag},
-                valid_services,
-                point,
-                0.41f,
-                make_float2(0.200493872f, 0.5f),
-                query);
-            const auto invalid_geometric_sample = surfaces.sample_trace(
-                UInt{sheen_surface_tag},
-                valid_services,
-                point,
-                0.41f,
-                make_float2(0.200491f, 0.5f),
-                query);
-            output.write(19u,
-                make_float4(uncorrected_evaluation.f,
-                    uncorrected_evaluation.pdf));
-            output.write(20u,
-                make_float4(uncorrected_sample.sample.evaluation.f,
-                    uncorrected_sample.sample.evaluation.pdf));
-            output.write(21u,
-                make_float4(rejected_leak.f, rejected_leak.pdf));
-            output.write(22u,
-                make_float4(
-                    rejected_grazing.f, rejected_grazing.pdf));
-            output.write(23u,
-                make_float4(sampled_grazing.sample.wi,
-                    select(0.0f,
-                        1.0f,
-                        sampled_grazing.sample.valid)));
-            output.write(24u,
-                make_float4(sampled_grazing.sample.evaluation.f,
-                    sampled_grazing.sample.evaluation.pdf));
-            output.write(25u,
-                make_float4(invalid_geometric_sample.sample.wi,
-                    select(0.0f,
-                        1.0f,
-                        invalid_geometric_sample.sample.valid)));
-            output.write(26u,
-                make_float4(
-                    invalid_geometric_sample.sample.evaluation.f,
-                    invalid_geometric_sample.sample.evaluation.pdf));
         };
 
     Kernel1D evaluate_physical_light =
@@ -1153,7 +920,7 @@ int main(int argc, char **argv) {
                 (case_index == 2u) | (case_index == 3u));
             shader_flags =
                 select(shader_flags, 0u, case_index == 4u);
-            const auto evaluation = surfaces.evaluate_light(
+            const auto evaluation = physical_surfaces.evaluate_light(
                 UInt{physical_surface_tag},
                 services,
                 point,
@@ -1189,7 +956,7 @@ int main(int argc, char **argv) {
             shader_flags |= select(0u,
                 cycles_abi::shader_exclude_transmit,
                 (case_index == 2u) | (case_index == 3u));
-            const auto evaluation = surfaces.evaluate_light(
+            const auto evaluation = glass_surfaces.evaluate_light(
                 UInt{glass_surface_tag},
                 services,
                 point,
@@ -1225,7 +992,7 @@ int main(int argc, char **argv) {
             shader_flags |= select(0u,
                 cycles_abi::shader_exclude_transmit,
                 case_index == 2u);
-            const auto evaluation = surfaces.evaluate_light(
+            const auto evaluation = translucent_surfaces.evaluate_light(
                 UInt{translucent_surface_tag},
                 services,
                 point,
@@ -1243,6 +1010,41 @@ int main(int argc, char **argv) {
                 make_float4(evaluation.glossy_f,
                     cast<float>(evaluation.events)));
         };
+
+    if (backend == "fallback") {
+        auto bounded = true;
+        bounded &= require_bounded_xir(
+            "cycles_closure_evaluate", evaluate, 33000u);
+        bounded &= require_bounded_xir("cycles_closure_physical",
+            trace_physical_closures,
+            37000u);
+        bounded &= require_bounded_xir("cycles_closure_transparent_order",
+            trace_transparent_order,
+            11000u);
+        bounded &= require_bounded_xir(
+            "cycles_closure_subsurface", trace_subsurface, 455000u);
+        bounded &= require_bounded_xir("cycles_closure_emission",
+            evaluate_principled_emission,
+            5500u);
+        bounded &= require_bounded_xir("cycles_closure_layered_emission",
+            evaluate_layered_emission,
+            65000u);
+        bounded &= require_bounded_xir("cycles_closure_tangent_normal",
+            trace_tangent_normal,
+            2700u);
+        bounded &= require_bounded_xir("cycles_closure_physical_light",
+            evaluate_physical_light,
+            220000u);
+        bounded &= require_bounded_xir("cycles_closure_glass_light",
+            evaluate_glass_light,
+            16000u);
+        bounded &= require_bounded_xir("cycles_closure_translucent_light",
+            evaluate_translucent_light,
+            14500u);
+        if (!bounded) {
+            return EXIT_FAILURE;
+        }
+    }
 
     Context context{argv[0]};
     auto device = context.create_device(backend);
@@ -1279,12 +1081,6 @@ int main(int argc, char **argv) {
             layered_emission_parameters.size());
     auto layered_emission_output =
         device.create_buffer<luisa::float4>(6u);
-    const auto sheen_parameters =
-        parameter_data(*sheen_program.program);
-    auto sheen_parameter_buffer =
-        device.create_buffer<luisa::float4>(sheen_parameters.size());
-    auto sheen_output =
-        device.create_buffer<luisa::float4>(27u);
     const auto tangent_normal_parameters =
         parameter_data(*tangent_normal_program.program);
     auto tangent_normal_parameter_buffer =
@@ -1307,25 +1103,25 @@ int main(int argc, char **argv) {
         device.create_buffer<luisa::float4>(12u);
     auto translucent_light_output =
         device.create_buffer<luisa::float4>(9u);
-    auto kernel = device.compile(evaluate);
-    auto physical_kernel = device.compile(trace_physical_closures);
-    auto transparent_order_kernel =
-        device.compile(trace_transparent_order);
-    auto subsurface_kernel = device.compile(trace_subsurface);
-    auto principled_emission_kernel =
-        device.compile(evaluate_principled_emission);
-    auto layered_emission_kernel =
-        device.compile(evaluate_layered_emission);
-    auto sheen_kernel =
-        device.compile(evaluate_principled_sheen);
-    auto tangent_normal_kernel =
-        device.compile(trace_tangent_normal);
-    auto physical_light_kernel =
-        device.compile(evaluate_physical_light);
-    auto glass_light_kernel =
-        device.compile(evaluate_glass_light);
-    auto translucent_light_kernel =
-        device.compile(evaluate_translucent_light);
+    auto kernel = compile_named_kernel(device, "evaluate", evaluate);
+    auto physical_kernel = compile_named_kernel(
+        device, "trace_physical_closures", trace_physical_closures);
+    auto transparent_order_kernel = compile_named_kernel(device,
+        "trace_transparent_order", trace_transparent_order);
+    auto subsurface_kernel = compile_named_kernel(
+        device, "trace_subsurface", trace_subsurface);
+    auto principled_emission_kernel = compile_named_kernel(device,
+        "evaluate_principled_emission", evaluate_principled_emission);
+    auto layered_emission_kernel = compile_named_kernel(device,
+        "evaluate_layered_emission", evaluate_layered_emission);
+    auto tangent_normal_kernel = compile_named_kernel(
+        device, "trace_tangent_normal", trace_tangent_normal);
+    auto physical_light_kernel = compile_named_kernel(device,
+        "evaluate_physical_light", evaluate_physical_light);
+    auto glass_light_kernel = compile_named_kernel(
+        device, "evaluate_glass_light", evaluate_glass_light);
+    auto translucent_light_kernel = compile_named_kernel(device,
+        "evaluate_translucent_light", evaluate_translucent_light);
     std::array<luisa::float4, 11u> actual{};
     std::array<luisa::float4, 8u> physical_actual{};
     std::array<luisa::float4, 4u> transparent_order_actual{};
@@ -1334,7 +1130,6 @@ int main(int argc, char **argv) {
         principled_emission_actual{};
     std::array<luisa::float4, 6u>
         layered_emission_actual{};
-    std::array<luisa::float4, 27u> sheen_actual{};
     std::array<luisa::float4, 2u>
         tangent_normal_actual{};
     std::array<luisa::float4, 15u> physical_light_actual{};
@@ -1350,8 +1145,6 @@ int main(int argc, char **argv) {
                   luisa::span{principled_emission_parameters})
            << layered_emission_parameter_buffer.copy_from(
                   luisa::span{layered_emission_parameters})
-           << sheen_parameter_buffer.copy_from(
-                  luisa::span{sheen_parameters})
            << tangent_normal_parameter_buffer.copy_from(
                   luisa::span{
                       tangent_normal_parameters})
@@ -1388,11 +1181,6 @@ int main(int argc, char **argv) {
                   .dispatch(1u)
            << layered_emission_output.copy_to(
                   luisa::span{layered_emission_actual})
-           << sheen_kernel(
-                  sheen_parameter_buffer, sheen_output)
-                  .dispatch(1u)
-           << sheen_output.copy_to(
-                  luisa::span{sheen_actual})
            << tangent_normal_kernel(
                   tangent_normal_parameter_buffer,
                   tangent_normal_output)
@@ -1419,15 +1207,6 @@ int main(int argc, char **argv) {
            << translucent_light_output.copy_to(
                   luisa::span{translucent_light_actual})
            << synchronize();
-
-    if (std::getenv("PSYCLES_DUMP_SHEEN_REGRESSION") != nullptr) {
-        for (std::size_t index = 0u; index < sheen_actual.size(); ++index) {
-            const auto value = sheen_actual[index];
-            std::cerr << index << ": {" << value.x << ", "
-                      << value.y << ", " << value.z << ", "
-                      << value.w << "}\n";
-        }
-    }
 
     constexpr std::array expected{
         luisa::float4{1.0f, 0.0f, 2.0f, 0.420000017f},
@@ -1468,75 +1247,6 @@ int main(int argc, char **argv) {
             << value.y << ", " << value.z << ", "
             << value.w << "}\n";
         return EXIT_FAILURE;
-    }
-
-    // The service supplies a constant Cycles table value of 0.5 for the
-    // valid branch, making the complete LTC setup/eval/sample relation a
-    // deterministic device oracle. The zero-table branch models Cycles'
-    // failed setup state: its allocated slot remains observable as type
-    // NONE with the pre-setup weight, but contributes no flags, AOV, PDF,
-    // or sample.
-    constexpr auto diffuse_reflection_events =
-        static_cast<float>(event_diffuse | event_reflection);
-    constexpr std::array sheen_expected{
-        luisa::float4{1.0f,
-            static_cast<float>(cycles_closure::type_sheen),
-            0.175f,
-            1.0f},
-        luisa::float4{0.3f, 0.15f, 0.075f, 24.0f},
-        luisa::float4{0.309426f, -0.206284f, 0.928279f, 0.0f},
-        luisa::float4{0.0167059f, 0.00835297f, 0.00417648f, 0.0557498f},
-        luisa::float4{0.0167059f, 0.00835297f, 0.00417648f, 0.0557498f},
-        luisa::float4{0.0f, 0.0f, 0.0f, diffuse_reflection_events},
-        luisa::float4{0.0f,
-            static_cast<float>(cycles_closure::type_sheen),
-            0.175f,
-            0.41f},
-        luisa::float4{0.61952f, -0.78194f, 0.069027f, 1.0f},
-        luisa::float4{0.100744f, 0.0503718f, 0.0251859f, 0.550437f},
-        luisa::float4{0.100744f, 0.0503718f, 0.0251859f, 0.550437f},
-        luisa::float4{1.0f, 1.0f, 1.0f, diffuse_reflection_events},
-        luisa::float4{0.3f, 0.15f, 0.075f, 1.0f},
-        luisa::float4{0.309426f, -0.206284f, 0.928279f, 1.0f},
-        luisa::float4{1.0f,
-            static_cast<float>(cycles_closure::type_none),
-            0.0f,
-            1.0f},
-        luisa::float4{0.6f, 0.3f, 0.15f, 0.0f},
-        luisa::float4{},
-        luisa::float4{},
-        luisa::float4{0.0f, 0.0f, 0.0f, 1.0f},
-        luisa::float4{0.0f, 0.0f, 1.0f, 1.0f},
-        // Disabling material bump correction removes only the GGX
-        // smoothing factor. The LTC density remains unchanged.
-        luisa::float4{0.0167249f, 0.00836247f, 0.00418123f, 0.0557498f},
-        luisa::float4{0.165131f, 0.0825655f, 0.0412828f, 0.550437f},
-        // The smooth-normal hemisphere rejection is a separate invariant
-        // and remains active when smoothing is disabled.
-        luisa::float4{},
-        // Cycles explicitly rejects corrected diffuse evaluation when the
-        // direction is within 1e-6 of the smooth-normal tangent plane.
-        luisa::float4{},
-        // The same direction sampled from the selected closure remains a
-        // valid geometric reflection. bsdf_sample scales its evaluation to
-        // zero but preserves the selected technique's original PDF.
-        luisa::float4{0.83205f, -0.5547f, 0.0f, 1.0f},
-        luisa::float4{0.0f, 0.0f, 0.0f, 0.636108f},
-        // A nearby sample crosses below the geometric normal. Cycles
-        // returns a zero selected PDF and skips all competing evaluation.
-        luisa::float4{0.83205f, -0.5547f, -2.6e-6f, 0.0f},
-        luisa::float4{}};
-    for (std::size_t index = 0u; index < sheen_expected.size(); ++index) {
-        if (!approximately_equal(
-                sheen_actual[index], sheen_expected[index])) {
-            const auto value = sheen_actual[index];
-            std::cerr
-                << "Cycles Principled Sheen LTC regression failed on "
-                << backend << " at record " << index << ": got {"
-                << value.x << ", " << value.y << ", " << value.z
-                << ", " << value.w << "}\n";
-            return EXIT_FAILURE;
-        }
     }
 
     const auto with_coat_reflection = layered_emission_actual[0u];

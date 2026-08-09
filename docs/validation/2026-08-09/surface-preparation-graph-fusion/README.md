@@ -41,7 +41,7 @@ fused kernels before backend optimization.
 | Measurement | Split calls | Fused preparation | Change |
 | --- | ---: | ---: | ---: |
 | Shader-service parameter recordings | 12 | 4 | -66.7% |
-| Unoptimized XIR instructions | 4,666 | 3,534 | -24.3% |
+| Unoptimized XIR instructions | 4,798 | 3,559 | -25.8% |
 
 The exact 3:1 recording ratio is asserted by the test, so this result does not
 depend on backend common-subexpression elimination. Metrics can be reproduced
@@ -59,15 +59,22 @@ every returned field and separately checks the disabled flags/AOV contract.
 
 | Backend | Result | Elapsed time |
 | --- | --- | ---: |
-| fallback | pass | 27.88 s |
-| HIP | pass | 34.50 s |
-| Vulkan XIR/SPIR-V | pass | 40.93 s |
+| fallback | pass | 27.43 s |
+| HIP | pass | 35.57 s |
+| Vulkan XIR/SPIR-V | pass | 41.23 s |
 
 Additional checks:
 
 - `psycles.luisa_ast`: pass
 - 32-thread complete project build: pass
 - fallback, HIP, and Vulkan camera sampling regressions: pass
+
+The follow-up breaking API cleanup removed the split production
+`Surface::runtime_flags` and `Surface::aov` virtual entry points. Path-hit
+preparation is now expressed only as a strongly typed
+`SurfacePreparationQuery`; the callable ABI packs its five Boolean selectors
+into one `uint` flag word. Independent emission evaluation remains available
+because environment and emissive-triangle queries do not represent path hits.
 
 The timings above are regression-test wall times and are not renderer
 throughput measurements. Scene-level cold compilation, kernel size, and

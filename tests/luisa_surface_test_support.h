@@ -2,11 +2,15 @@
 
 #include <psycles/compiler/surface_program.h>
 #include <psycles/luisa/graph_surface.h>
+#include <psycles/luisa/surface_closure_operations.h>
 
 #include <algorithm>
 #include <bit>
 #include <cmath>
+#include <cstdlib>
+#include <iostream>
 #include <stdexcept>
+#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -22,12 +26,12 @@ class ParameterShaderServices final : public ShaderServices {
 
 private:
     const BufferFloat4 &_parameters;
-    float _cycles_value;
+    Float _cycles_value;
 
 public:
     explicit ParameterShaderServices(
         const BufferFloat4 &parameters,
-        float cycles_value = 0.5f) noexcept
+        Expr<float> cycles_value = 0.5f) noexcept
         : _parameters{parameters},
           _cycles_value{cycles_value} {
     }
@@ -91,6 +95,21 @@ public:
         return make_float3(0.0f);
     }
 };
+
+template<typename Device, typename Kernel>
+[[nodiscard]] auto compile_named_kernel(
+    Device &device, std::string_view name, const Kernel &kernel) {
+    const auto trace_compilation =
+        std::getenv("PSYCLES_TRACE_SHADER_COMPILATION") != nullptr;
+    if (trace_compilation) {
+        std::cerr << "compiling " << name << "..." << std::endl;
+    }
+    auto shader = device.compile(kernel);
+    if (trace_compilation) {
+        std::cerr << "compiled " << name << std::endl;
+    }
+    return shader;
+}
 
 [[nodiscard]] inline std::vector<luisa::float4> parameter_data(
     const SurfaceProgram &program) {
@@ -230,6 +249,24 @@ public:
         .time = 0.0f,
         .use_bump_map_correction = true,
         .back_facing = false};
+}
+
+// AOV-focused unit tests exercise the reduction directly instead of recording
+// unrelated emission and runtime-flag projections into already large closure
+// kernels. Production path hits still have only the fused prepare boundary.
+[[nodiscard]] inline SurfaceAov surface_aov(
+    const SurfaceDispatch &surfaces,
+    Expr<std::uint32_t> tag,
+    const ShaderServices &services,
+    const SurfacePoint &point) noexcept {
+    const auto operation = make_surface_closure_aov_callable();
+    SurfaceAovVisitor visitor{
+        point,
+        maximum_surface_closure_capacity,
+        operation};
+    static_cast<void>(surfaces.collect_closures(
+        tag, services, point, true, true, visitor));
+    return visitor.result();
 }
 
 [[nodiscard]] inline bool approximately_equal(

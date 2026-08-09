@@ -33,6 +33,7 @@ using psycles::test_support::approximately_equal;
 using psycles::test_support::make_surface_point;
 using psycles::test_support::parameter_data;
 using psycles::test_support::ParameterShaderServices;
+using psycles::test_support::surface_aov;
 
 constexpr std::uint32_t case_count = 3u;
 constexpr std::uint32_t records_per_case = 10u;
@@ -205,7 +206,7 @@ int main(int argc, char **argv) {
             0.0f,
             make_float2(0.37f, 0.61f),
             query);
-        const auto aov = surfaces.aov(
+        const auto aov = surface_aov(surfaces,
             UInt{surface_tag}, services, point);
         const auto base = case_index * records_per_case;
         output.write(base,

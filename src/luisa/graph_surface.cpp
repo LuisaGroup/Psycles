@@ -32,20 +32,6 @@ SurfaceClosureCollection GraphSurface::collect_closures(
         collector);
 }
 
-UInt GraphSurface::runtime_flags(
-    const ShaderServices &services,
-    const SurfacePoint &point,
-    Expr<float> glossy_filter_roughness,
-    Expr<bool> reflective_caustics,
-    Expr<bool> refractive_caustics) const noexcept {
-    return _implementation->runtime_flags(
-        services,
-        point,
-        glossy_filter_roughness,
-        reflective_caustics,
-        refractive_caustics);
-}
-
 SurfaceEvaluation GraphSurface::evaluate(
     const ShaderServices &services,
     const SurfacePoint &point,
@@ -101,23 +87,8 @@ SurfaceSampleTrace GraphSurface::sample_trace(
 SurfacePreparation GraphSurface::prepare(
     const ShaderServices &services,
     const SurfacePoint &point,
-    Expr<luisa::float3> outgoing,
-    Expr<float> glossy_filter_roughness,
-    Expr<bool> emission_reflective_caustics,
-    Expr<bool> reflective_caustics,
-    Expr<bool> refractive_caustics,
-    Expr<bool> include_runtime_flags,
-    Expr<bool> include_aov) const noexcept {
-    return _implementation->prepare(
-        services,
-        point,
-        outgoing,
-        glossy_filter_roughness,
-        emission_reflective_caustics,
-        reflective_caustics,
-        refractive_caustics,
-        include_runtime_flags,
-        include_aov);
+    const SurfacePreparationQuery &query) const noexcept {
+    return _implementation->prepare(services, point, query);
 }
 
 Float3 GraphSurface::emission(
@@ -169,12 +140,6 @@ Float3 GraphSurface::shading_normal(
     const SurfacePoint &point) const noexcept {
     return _implementation->shading_normal(
         services, point);
-}
-
-SurfaceAov GraphSurface::aov(
-    const ShaderServices &services,
-    const SurfacePoint &point) const noexcept {
-    return _implementation->aov(services, point);
 }
 
 }// namespace psycles::luisa_backend

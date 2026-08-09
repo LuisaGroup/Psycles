@@ -129,12 +129,6 @@ struct PathKernelInvocation {
                     const SurfaceQuery &query,
                     Bool include_runtime_flags,
                     Bool include_aov) const noexcept;
-    [[nodiscard]] UInt surface_runtime_flags(
-        UInt surface_tag,
-        const SurfacePoint &point,
-        Float glossy_filter_roughness,
-        Bool reflective_caustics,
-        Bool refractive_caustics) const noexcept;
     [[nodiscard]] Float3 surface_emission(UInt surface_tag,
                                           const SurfacePoint &point,
                                           Float3 outgoing) const noexcept;
@@ -159,8 +153,6 @@ struct PathKernelInvocation {
                          Float u_lobe,
                          Float2 u_direction,
                          const SurfaceQuery &query) const noexcept;
-    [[nodiscard]] SurfaceAov
-    surface_aov(UInt surface_tag, const SurfacePoint &point) const noexcept;
     [[nodiscard]] Float3
     surface_bssrdf_normal(UInt surface_tag,
                           const SurfacePoint &point,

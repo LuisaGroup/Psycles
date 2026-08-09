@@ -47,13 +47,6 @@ public:
         Expr<bool> refractive_caustics,
         SurfaceClosureCollector &collector) const noexcept override;
 
-    [[nodiscard]] UInt runtime_flags(
-        const ShaderServices &services,
-        const SurfacePoint &point,
-        Expr<float> glossy_filter_roughness,
-        Expr<bool> reflective_caustics,
-        Expr<bool> refractive_caustics) const noexcept override;
-
     [[nodiscard]] SurfaceEvaluation evaluate(
         const ShaderServices &services,
         const SurfacePoint &point,
@@ -90,13 +83,7 @@ public:
     [[nodiscard]] SurfacePreparation prepare(
         const ShaderServices &services,
         const SurfacePoint &point,
-        Expr<luisa::float3> outgoing,
-        Expr<float> glossy_filter_roughness,
-        Expr<bool> emission_reflective_caustics,
-        Expr<bool> reflective_caustics,
-        Expr<bool> refractive_caustics,
-        Expr<bool> include_runtime_flags,
-        Expr<bool> include_aov) const noexcept override;
+        const SurfacePreparationQuery &query) const noexcept override;
 
     [[nodiscard]] Float3 emission(
         const ShaderServices &services,
@@ -126,9 +113,6 @@ public:
         const ShaderServices &services,
         const SurfacePoint &point) const noexcept override;
 
-    [[nodiscard]] SurfaceAov aov(
-        const ShaderServices &services,
-        const SurfacePoint &point) const noexcept override;
 };
 
 }// namespace psycles::luisa_backend

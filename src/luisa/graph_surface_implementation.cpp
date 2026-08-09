@@ -207,38 +207,6 @@ GraphSurfaceImplementation::evaluate_light(
             .selected_closure_index = ~std::uint32_t{0u}});
 }
 
-[[nodiscard]] UInt GraphSurfaceImplementation::runtime_flags(
-    const ShaderServices &services,
-    const SurfacePoint &point,
-    Expr<float> glossy_filter_roughness_expression,
-    Expr<bool> reflective_caustics_expression,
-    Expr<bool> refractive_caustics_expression) const noexcept {
-    if (!_program) {
-        return 0u;
-    }
-    auto values = trace_values(services, point);
-    auto glossy_filter_roughness =
-        Float{glossy_filter_roughness_expression};
-    auto reflective_caustics = Bool{reflective_caustics_expression};
-    auto refractive_caustics = Bool{refractive_caustics_expression};
-    UInt result = select(
-        0u,
-        cycles_closure::runtime_backfacing,
-        point.back_facing);
-    for_each_physical_closure(
-        services,
-        point,
-        values,
-        reflective_caustics,
-        refractive_caustics,
-        [&](const TracedClosure &closure) noexcept {
-            result |= cycles_runtime_flags(
-                canonical_surface_closure(closure),
-                glossy_filter_roughness);
-        });
-    return result;
-}
-
 [[nodiscard]] SurfaceClosureTrace
 GraphSurfaceImplementation::closure_trace(
     const ShaderServices &services,
@@ -442,29 +410,6 @@ GraphSurfaceImplementation::evaluate_volume(
         services, point, &_displacement_dependency_mask);
     return values.values[
         _program->displacement_root().value].vector();
-}
-
-[[nodiscard]] SurfaceAov GraphSurfaceImplementation::aov(
-    const ShaderServices &services,
-    const SurfacePoint &point) const noexcept {
-    if (!_program) {
-        return SurfaceAov{
-            .albedo = make_float3(0.0f),
-            .glossy_albedo = make_float3(0.0f),
-            .transmission_albedo = make_float3(0.0f),
-            .roughness = make_float2(0.0f),
-            .normal = point.shading_normal,
-            .transparency = make_float3(0.0f)};
-    }
-    const auto operation =
-        make_surface_closure_aov_callable();
-    SurfaceAovVisitor visitor{
-        point,
-        maximum_surface_closure_capacity,
-        operation};
-    static_cast<void>(collect_closures(
-        services, point, true, true, visitor));
-    return visitor.result();
 }
 
 } // namespace psycles::luisa_backend::detail

@@ -44,14 +44,7 @@ namespace psycles::luisa_backend::detail {
 [[nodiscard]] SurfacePreparation GraphSurfaceImplementation::prepare(
     const ShaderServices &services,
     const SurfacePoint &point,
-    Expr<luisa::float3> outgoing,
-    Expr<float> glossy_filter_roughness,
-    Expr<bool> emission_reflective_caustics,
-    Expr<bool> reflective_caustics,
-    Expr<bool> refractive_caustics,
-    Expr<bool> include_runtime_flags,
-    Expr<bool> include_aov) const noexcept {
-    static_cast<void>(outgoing);
+    const SurfacePreparationQuery &query) const noexcept {
     auto result = SurfacePreparation::zero(point);
     if (!_program) {
         return result;
@@ -66,14 +59,14 @@ namespace psycles::luisa_backend::detail {
         services,
         point,
         values,
-        emission_reflective_caustics);
+        query.emission_reflective_caustics);
     const auto identity = make_surface_closure_identity_callable();
     const auto aov_operation = make_surface_closure_aov_callable();
     SurfacePreparationVisitor visitor{
         point,
-        glossy_filter_roughness,
-        include_runtime_flags,
-        include_aov,
+        query.glossy_filter_roughness,
+        query.include_runtime_flags,
+        query.include_aov,
         maximum_surface_closure_capacity,
         identity,
         aov_operation};
@@ -81,8 +74,8 @@ namespace psycles::luisa_backend::detail {
         services,
         point,
         values,
-        reflective_caustics,
-        refractive_caustics,
+        query.reflective_caustics,
+        query.refractive_caustics,
         visitor));
     result.runtime_flags = visitor.runtime_flags();
     result.aov = visitor.aov();
