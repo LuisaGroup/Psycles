@@ -5,6 +5,8 @@
 
 namespace psycles::compiler::detail {
 
+namespace operand = value_operand;
+
 // Lowers graph context and path-state inputs. A true result means the node
 // family was recognized, even when input diagnostics prevented an
 // instruction from being emitted.
@@ -77,7 +79,8 @@ SurfaceProgramBuilder::lower_context_node(const contract::ShaderNode &node) {
                   .operation = ValueOperation::uv,
                   .source_node = node.id,
                   .result_type = SocketType::vector,
-                  .a = *uv_map,
+                  .operands = make_value_operands<operand::uv>({
+                      {operand::uv::map, *uv_map}}),
                   .static_u0 = property_bool(node, "UvMapNamed") ? 1u : 0u}));
     }
     publish(node.id, "Normal",
@@ -178,16 +181,18 @@ SurfaceProgramBuilder::lower_context_node(const contract::ShaderNode &node) {
                   .operation = ValueOperation::layer_weight_fresnel,
                   .source_node = node.id,
                   .result_type = SocketType::floating,
-                  .a = *blend,
-                  .b = *normal,
+                  .operands = make_value_operands<operand::layer_weight>({
+                      {operand::layer_weight::blend, *blend},
+                      {operand::layer_weight::normal, *normal}}),
                   .static_u0 = property_bool(node, "NormalLinked") ? 1u : 0u}));
       publish(node.id, "Facing",
               append(ValueInstruction{
                   .operation = ValueOperation::layer_weight_facing,
                   .source_node = node.id,
                   .result_type = SocketType::floating,
-                  .a = *blend,
-                  .b = *normal,
+                  .operands = make_value_operands<operand::layer_weight>({
+                      {operand::layer_weight::blend, *blend},
+                      {operand::layer_weight::normal, *normal}}),
                   .static_u0 = property_bool(node, "NormalLinked") ? 1u : 0u}));
     }
     return true;
@@ -200,8 +205,11 @@ SurfaceProgramBuilder::lower_context_node(const contract::ShaderNode &node) {
               append(ValueInstruction{.operation = ValueOperation::fresnel,
                                       .source_node = node.id,
                                       .result_type = SocketType::floating,
-                                      .a = *ior,
-                                      .b = *normal,
+                                      .operands =
+                                          make_value_operands<operand::fresnel>({
+                                              {operand::fresnel::ior, *ior},
+                                              {operand::fresnel::normal,
+                                               *normal}}),
                                       .static_u0 =
                                           property_bool(node, "NormalLinked")
                                               ? 1u

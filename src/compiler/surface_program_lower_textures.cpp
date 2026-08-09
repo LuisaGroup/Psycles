@@ -8,6 +8,8 @@
 namespace psycles::compiler::detail {
 namespace {
 
+namespace operand = value_operand;
+
 [[nodiscard]] std::uint32_t texture_interpolation(
     std::string_view name) noexcept {
     return name == "Closest"
@@ -81,9 +83,11 @@ namespace {
                     .operation = ValueOperation::image_color,
                     .source_node = node.id,
                     .result_type = SocketType::color,
-                    .a = *vector,
-                    .b = *image,
-                    .c = *projection_blend,
+                    .operands = make_value_operands<operand::image_texture>({
+                        {operand::image_texture::vector, *vector},
+                        {operand::image_texture::image, *image},
+                        {operand::image_texture::projection_blend,
+                         *projection_blend}}),
                     .static_u1 = flags}));
             publish(
                 node.id,
@@ -92,9 +96,11 @@ namespace {
                     .operation = ValueOperation::image_alpha,
                     .source_node = node.id,
                     .result_type = SocketType::floating,
-                    .a = *vector,
-                    .b = *image,
-                    .c = *projection_blend,
+                    .operands = make_value_operands<operand::image_texture>({
+                        {operand::image_texture::vector, *vector},
+                        {operand::image_texture::image, *image},
+                        {operand::image_texture::projection_blend,
+                         *projection_blend}}),
                     .static_u1 = flags}));
         }
         return true;
@@ -121,8 +127,10 @@ namespace {
                     .operation = ValueOperation::environment_color,
                     .source_node = node.id,
                     .result_type = SocketType::color,
-                    .a = *vector,
-                    .b = *image,
+                    .operands =
+                        make_value_operands<operand::environment_texture>({
+                            {operand::environment_texture::vector, *vector},
+                            {operand::environment_texture::image, *image}}),
                     .static_u1 = flags}));
             publish(
                 node.id,
@@ -131,8 +139,10 @@ namespace {
                     .operation = ValueOperation::environment_alpha,
                     .source_node = node.id,
                     .result_type = SocketType::floating,
-                    .a = *vector,
-                    .b = *image,
+                    .operands =
+                        make_value_operands<operand::environment_texture>({
+                            {operand::environment_texture::vector, *vector},
+                            {operand::environment_texture::image, *image}}),
                     .static_u1 = flags}));
         }
         return true;
@@ -146,7 +156,8 @@ namespace {
             .operation = ValueOperation::attribute_color,
             .source_node = node.id,
             .result_type = SocketType::color,
-            .a = *attribute};
+            .operands = make_value_operands<operand::attribute>({
+                {operand::attribute::id, *attribute}})};
         publish(
             node.id,
             "Color",
@@ -212,15 +223,16 @@ namespace {
                     needs_color
                         ? SocketType::color
                         : SocketType::floating,
-                .a = *vector,
-                .b = *scale,
-                .c = *detail,
-                .d = *roughness,
-                .e = *lacunarity,
-                .f = *distortion,
-                .g = *w,
-                .h = *offset,
-                .i = *gain,
+                .operands = make_value_operands<operand::noise>({
+                    {operand::noise::vector, *vector},
+                    {operand::noise::scale, *scale},
+                    {operand::noise::detail, *detail},
+                    {operand::noise::roughness, *roughness},
+                    {operand::noise::lacunarity, *lacunarity},
+                    {operand::noise::distortion, *distortion},
+                    {operand::noise::w, *w},
+                    {operand::noise::offset, *offset},
+                    {operand::noise::gain, *gain}}),
                 .static_u0 =
                     property_uint(node, "Dimensions", 3u),
                 .static_u1 =
@@ -252,8 +264,9 @@ namespace {
                     needs_color
                         ? SocketType::color
                         : SocketType::floating,
-                .a = *vector,
-                .b = *w,
+                .operands = make_value_operands<operand::white_noise>({
+                    {operand::white_noise::vector, *vector},
+                    {operand::white_noise::w, *w}}),
                 .static_u0 =
                     property_uint(node, "Dimensions", 3u)};
             publish(
@@ -273,10 +286,11 @@ namespace {
                 .operation = ValueOperation::checker_color,
                 .source_node = node.id,
                 .result_type = SocketType::color,
-                .a = *vector,
-                .b = *color1,
-                .c = *color2,
-                .d = *scale};
+                .operands = make_value_operands<operand::checker>({
+                    {operand::checker::vector, *vector},
+                    {operand::checker::color1, *color1},
+                    {operand::checker::color2, *color2},
+                    {operand::checker::scale, *scale}})};
             publish(
                 node.id,
                 "Color",
@@ -323,20 +337,21 @@ namespace {
                 .operation = ValueOperation::brick_color,
                 .source_node = node.id,
                 .result_type = SocketType::color,
-                .a = *vector,
-                .b = *color1,
-                .c = *color2,
-                .d = *mortar,
-                .e = *scale,
-                .f = *mortar_size,
-                .g = *mortar_smooth,
-                .h = *bias,
-                .i = *brick_width,
-                .j = *row_height,
-                .k = *offset_amount,
-                .l = *offset_frequency,
-                .m = *squash_amount,
-                .n = *squash_frequency};
+                .operands = make_value_operands<operand::brick>({
+                    {operand::brick::vector, *vector},
+                    {operand::brick::color1, *color1},
+                    {operand::brick::color2, *color2},
+                    {operand::brick::mortar, *mortar},
+                    {operand::brick::scale, *scale},
+                    {operand::brick::mortar_size, *mortar_size},
+                    {operand::brick::mortar_smooth, *mortar_smooth},
+                    {operand::brick::bias, *bias},
+                    {operand::brick::brick_width, *brick_width},
+                    {operand::brick::row_height, *row_height},
+                    {operand::brick::offset_amount, *offset_amount},
+                    {operand::brick::offset_frequency, *offset_frequency},
+                    {operand::brick::squash_amount, *squash_amount},
+                    {operand::brick::squash_frequency, *squash_frequency}})};
             publish(
                 node.id,
                 "Color",
@@ -371,10 +386,11 @@ namespace {
                     .result_type = needs_color
                                        ? SocketType::color
                                        : SocketType::floating,
-                    .a = *vector,
-                    .b = *scale,
-                    .c = *distortion,
-                    .d = *depth}));
+                    .operands = make_value_operands<operand::magic>({
+                        {operand::magic::vector, *vector},
+                        {operand::magic::scale, *scale},
+                        {operand::magic::distortion, *distortion},
+                        {operand::magic::depth, *depth}})}));
         }
         return true;
     }
@@ -403,7 +419,8 @@ namespace {
                     .operation = ValueOperation::gradient,
                     .source_node = node.id,
                     .result_type = SocketType::floating,
-                    .a = *vector,
+                    .operands = make_value_operands<operand::gradient>({
+                        {operand::gradient::vector, *vector}}),
                     .static_u0 = mode}));
         }
         return true;
@@ -458,13 +475,14 @@ namespace {
                 .result_type = needs_color
                                    ? SocketType::color
                                    : SocketType::floating,
-                .a = *vector,
-                .b = *scale,
-                .c = *distortion,
-                .d = *detail,
-                .e = *detail_scale,
-                .f = *detail_roughness,
-                .g = *phase,
+                .operands = make_value_operands<operand::wave>({
+                    {operand::wave::vector, *vector},
+                    {operand::wave::scale, *scale},
+                    {operand::wave::distortion, *distortion},
+                    {operand::wave::detail, *detail},
+                    {operand::wave::detail_scale, *detail_scale},
+                    {operand::wave::detail_roughness, *detail_roughness},
+                    {operand::wave::phase, *phase}}),
                 .static_u0 = configuration};
             publish(
                 node.id,
@@ -535,15 +553,16 @@ namespace {
                     .operation = operation,
                     .source_node = node.id,
                     .result_type = result_type,
-                    .a = *vector,
-                    .b = *w,
-                    .c = *scale,
-                    .d = *detail,
-                    .e = *roughness,
-                    .f = *lacunarity,
-                    .g = *smoothness,
-                    .h = *exponent,
-                    .i = *randomness,
+                    .operands = make_value_operands<operand::voronoi>({
+                        {operand::voronoi::vector, *vector},
+                        {operand::voronoi::w, *w},
+                        {operand::voronoi::scale, *scale},
+                        {operand::voronoi::detail, *detail},
+                        {operand::voronoi::roughness, *roughness},
+                        {operand::voronoi::lacunarity, *lacunarity},
+                        {operand::voronoi::smoothness, *smoothness},
+                        {operand::voronoi::exponent, *exponent},
+                        {operand::voronoi::randomness, *randomness}}),
                     .static_u0 = configuration}));
         }
         return true;
@@ -557,7 +576,8 @@ namespace {
                 .source_node = node.id,
                 .result_type = SocketType::color,
                 .parameter = *table,
-                .a = *factor,
+                .operands = make_value_operands<operand::color_ramp>({
+                    {operand::color_ramp::factor, *factor}}),
                 .static_u0 =
                     (property_string(
                          node, "Interpolation", "LINEAR") ==
@@ -597,11 +617,12 @@ namespace {
                     .source_node = node.id,
                     .result_type = SocketType::color,
                     .parameter = *table,
-                    .a = *color,
-                    .b = *factor,
-                    .c = *min_x,
-                    .d = *max_x,
-                    .e = *extrapolate,
+                    .operands = make_value_operands<operand::rgb_curve>({
+                        {operand::rgb_curve::color, *color},
+                        {operand::rgb_curve::factor, *factor},
+                        {operand::rgb_curve::min_x, *min_x},
+                        {operand::rgb_curve::max_x, *max_x},
+                        {operand::rgb_curve::extrapolate, *extrapolate}}),
                     .static_u0 =
                         property_bool(node, "Sampled")
                             ? 1u
@@ -622,7 +643,9 @@ namespace {
                         .operation = operation,
                         .source_node = node.id,
                         .result_type = SocketType::floating,
-                        .a = *color,
+                        .operands =
+                            make_value_operands<operand::separate_color>({
+                                {operand::separate_color::color, *color}}),
                         .static_u0 = color_mode(node)}));
             }
         }
@@ -640,9 +663,10 @@ namespace {
                     .operation = ValueOperation::combine_color,
                     .source_node = node.id,
                     .result_type = SocketType::color,
-                    .a = *r,
-                    .b = *g,
-                    .c = *b,
+                    .operands = make_value_operands<operand::combine_color>({
+                        {operand::combine_color::r, *r},
+                        {operand::combine_color::g, *g},
+                        {operand::combine_color::b, *b}}),
                     .static_u0 = color_mode(node)}));
         }
         return true;
@@ -657,7 +681,8 @@ namespace {
                         ValueOperation::hosek_wilkie_sky,
                     .source_node = node.id,
                     .result_type = SocketType::color,
-                    .a = *direction,
+                    .operands = make_value_operands<operand::sky>({
+                        {operand::sky::direction, *direction}}),
                     .static_table = cook_hosek_wilkie_sky(
                         property_float(
                             node, "SunDirectionX", 0.0f),
@@ -692,15 +717,16 @@ namespace {
                     .operation = ValueOperation::nishita_sky,
                     .source_node = node.id,
                     .result_type = SocketType::color,
-                    .a = *elevation,
-                    .b = *rotation,
-                    .c = *size,
-                    .d = *intensity,
-                    .e = *altitude,
-                    .f = *air,
-                    .g = *dust,
-                    .h = *ozone,
-                    .i = *direction,
+                    .operands = make_value_operands<operand::nishita_sky>({
+                        {operand::nishita_sky::elevation, *elevation},
+                        {operand::nishita_sky::rotation, *rotation},
+                        {operand::nishita_sky::size, *size},
+                        {operand::nishita_sky::intensity, *intensity},
+                        {operand::nishita_sky::altitude, *altitude},
+                        {operand::nishita_sky::air, *air},
+                        {operand::nishita_sky::dust, *dust},
+                        {operand::nishita_sky::ozone, *ozone},
+                        {operand::nishita_sky::direction, *direction}}),
                     .static_u0 = _nishita_count++}));
         }
         return true;

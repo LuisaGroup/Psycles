@@ -69,6 +69,6 @@ Value instructions historically exposed fourteen operand slots, but two
 reachability analyses enumerated only the first ten. Dependency enumeration
 was centralized and a volume fixture places its only spatial dependency in
 the final operand. Misclassifying that program as homogeneous now fails the
-test. The follow-up IR cleanup replaces the fixed lettered slots with an
-iterable operand container so this class of prefix omission is structurally
-impossible.
+test. The fixed lettered slots have since been replaced with an exact-arity
+iterable operand container and shared semantic indices; see the
+[value-operand IR validation](../value-operand-vector-ir/README.md).

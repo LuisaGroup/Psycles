@@ -7,6 +7,8 @@
 namespace psycles::luisa_backend::detail {
 namespace {
 
+namespace operand = compiler::value_operand;
+
 [[nodiscard]] bool supports_image_value(
     compiler::ValueOperation operation) noexcept {
     switch (operation) {
@@ -84,6 +86,14 @@ public:
                             compiler::ValueOperation::environment_color ||
                         instruction.operation ==
                             compiler::ValueOperation::environment_alpha;
+                    const auto vector_operand =
+                        environment
+                            ? operand::environment_texture::vector
+                            : operand::image_texture::vector;
+                    const auto image_operand =
+                        environment
+                            ? operand::environment_texture::image
+                            : operand::image_texture::image;
                     const auto extension =
                         static_cast<std::uint32_t>(
                             instruction.static_u1 & 0xffu);
@@ -139,7 +149,8 @@ public:
                             services.texture_2d(
                                 cast<std::uint32_t>(
                                     unsigned_integer(
-                                        instruction.b, result)),
+                                        instruction.operand(image_operand),
+                                        result)),
                                 uv,
                                 make_float2(0.0f),
                                 make_float2(0.0f),
@@ -148,7 +159,9 @@ public:
                     };
 
                     auto coordinate =
-                        vector(instruction.a, result);
+                        vector(
+                            instruction.operand(vector_operand),
+                            result);
                     Float4 sampled;
                     if (environment) {
                         const auto uv = projection == 1u
@@ -192,7 +205,10 @@ public:
                         Float3 weight =
                             make_float3(0.0f);
                         const auto blend =
-                            scalar(instruction.c, result);
+                            scalar(
+                                instruction.operand(
+                                    operand::image_texture::projection_blend),
+                                result);
                         const auto limit =
                             0.5f * (1.0f + blend);
                         $if ((normal.x >
@@ -383,7 +399,8 @@ public:
                 case compiler::ValueOperation::attribute_alpha: {
                     auto attribute = services.attribute(
                         unsigned_integer(
-                            instruction.a, result),
+                            instruction.operand(operand::attribute::id),
+                            result),
                         point);
                     if (instruction.operation ==
                         compiler::ValueOperation::attribute_factor) {

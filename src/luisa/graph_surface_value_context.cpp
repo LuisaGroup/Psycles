@@ -8,6 +8,8 @@
 namespace psycles::luisa_backend::detail {
 namespace {
 
+namespace operand = compiler::value_operand;
+
 [[nodiscard]] bool
 supports_context_value(compiler::ValueOperation operation) noexcept {
   switch (operation) {
@@ -78,9 +80,17 @@ public:
     Float4 value = make_float4(0.0f);
     switch (instruction.operation) {
     case compiler::ValueOperation::multiply_color: {
-      auto t = clamp(scalar(instruction.c, result), 0.0f, 1.0f);
-      auto a = vector(instruction.a, result);
-      value = make_float4(lerp(a, a * vector(instruction.b, result), t), 1.0f);
+      auto t = clamp(
+          scalar(instruction.operand(operand::mix::factor), result),
+          0.0f,
+          1.0f);
+      auto a = vector(instruction.operand(operand::mix::a), result);
+      value = make_float4(
+          lerp(
+              a,
+              a * vector(instruction.operand(operand::mix::b), result),
+              t),
+          1.0f);
       break;
     }
     case compiler::ValueOperation::hue_saturation: {
@@ -89,27 +99,43 @@ public:
       // with the unmodified input, and clamp the final RGB
       // against negative oversaturation artifacts. Fac is
       // intentionally not clamped.
-      auto color = vector(instruction.a, result);
+      auto color = vector(
+          instruction.operand(operand::hue_saturation::color), result);
       auto adjusted = rgb_to_hsv(color);
-      adjusted.x = fract(adjusted.x + scalar(instruction.b, result) + 0.5f);
+      adjusted.x = fract(
+          adjusted.x +
+          scalar(instruction.operand(operand::hue_saturation::hue), result) +
+          0.5f);
       adjusted.y =
-          clamp(adjusted.y * scalar(instruction.c, result), 0.0f, 1.0f);
-      adjusted.z *= scalar(instruction.d, result);
+          clamp(
+              adjusted.y *
+                  scalar(
+                      instruction.operand(
+                          operand::hue_saturation::saturation),
+                      result),
+              0.0f,
+              1.0f);
+      adjusted.z *= scalar(
+          instruction.operand(operand::hue_saturation::value), result);
       adjusted = hsv_to_rgb(adjusted);
-      auto factor = scalar(instruction.e, result);
+      auto factor = scalar(
+          instruction.operand(operand::hue_saturation::factor), result);
       value = make_float4(max(lerp(color, adjusted, factor), make_float3(0.0f)),
                           1.0f);
       break;
     }
     case compiler::ValueOperation::invert: {
-      auto color = vector(instruction.a, result);
-      auto factor = scalar(instruction.b, result);
+      auto color = vector(
+          instruction.operand(operand::color_factor::color), result);
+      auto factor = scalar(
+          instruction.operand(operand::color_factor::factor), result);
       value = make_float4(lerp(color, make_float3(1.0f) - color, factor), 1.0f);
       break;
     }
     case compiler::ValueOperation::gamma: {
-      auto color = vector(instruction.a, result);
-      auto exponent = scalar(instruction.b, result);
+      auto color = vector(instruction.operand(operand::gamma::color), result);
+      auto exponent = scalar(
+          instruction.operand(operand::gamma::exponent), result);
       auto adjusted = make_float3(
           select(color.x, pow(max(color.x, 0.0f), exponent), color.x > 0.0f),
           select(color.y, pow(max(color.y, 0.0f), exponent), color.y > 0.0f),
@@ -119,9 +145,14 @@ public:
       break;
     }
     case compiler::ValueOperation::brightness_contrast: {
-      auto color = vector(instruction.a, result);
-      auto brightness = scalar(instruction.b, result);
-      auto contrast = scalar(instruction.c, result);
+      auto color = vector(
+          instruction.operand(operand::brightness_contrast::color), result);
+      auto brightness = scalar(
+          instruction.operand(operand::brightness_contrast::brightness),
+          result);
+      auto contrast = scalar(
+          instruction.operand(operand::brightness_contrast::contrast),
+          result);
       auto a = 1.0f + contrast;
       auto b = brightness - contrast * 0.5f;
       value =
@@ -131,14 +162,18 @@ public:
     case compiler::ValueOperation::blackbody:
       value = make_float4(
           max(services.rec709_to_rgb(cycles_color_nodes::blackbody_rec709(
-                  scalar(instruction.a, result))),
+                  scalar(
+                      instruction.operand(operand::blackbody::temperature),
+                      result))),
               make_float3(0.0f)),
           1.0f);
       break;
     case compiler::ValueOperation::wavelength:
       value = make_float4(
           max(services.xyz_to_rgb(cycles_color_nodes::wavelength_xyz(
-                  scalar(instruction.a, result))) *
+                  scalar(
+                      instruction.operand(operand::wavelength::nanometers),
+                      result))) *
                   (1.0f / 2.52f),
               make_float3(0.0f)),
           1.0f);
@@ -161,7 +196,9 @@ public:
     case compiler::ValueOperation::uv:
       if (instruction.static_u0 != 0u) {
         value = services.attribute(
-            unsigned_integer(instruction.a, result), point).value;
+            unsigned_integer(
+                instruction.operand(operand::uv::map), result),
+            point).value;
       } else {
         value = make_float4(point.uv.x, point.uv.y, 0.0f, 0.0f);
       }
@@ -280,22 +317,32 @@ public:
       value = make_float4(cast<float>(point.transmission_depth));
       break;
     case compiler::ValueOperation::fresnel: {
-      auto eta = max(scalar(instruction.a, result), 1.0e-5f);
+      auto eta = max(
+          scalar(instruction.operand(operand::fresnel::ior), result),
+          1.0e-5f);
       eta = select(eta, 1.0f / eta, point.back_facing);
       // Cycles' stack_load_float3_default substitutes sd->N only for an
       // unconnected socket. A connected vector is consumed verbatim: shader
       // vector sockets do not acquire an implicit normalization operation.
       const auto normal = instruction.static_u0 != 0u
-                              ? vector(instruction.b, result)
+                              ? vector(
+                                    instruction.operand(
+                                        operand::fresnel::normal),
+                                    result)
                               : result.shading_normal;
       value =
           make_float4(fresnel_dielectric_cos(dot(point.incoming, normal), eta));
       break;
     }
     case compiler::ValueOperation::layer_weight_fresnel: {
-      auto blend = scalar(instruction.a, result);
-      auto normal = instruction.static_u0 != 0u ? vector(instruction.b, result)
-                                                : result.shading_normal;
+      auto blend = scalar(
+          instruction.operand(operand::layer_weight::blend), result);
+      auto normal =
+          instruction.static_u0 != 0u
+              ? vector(
+                    instruction.operand(operand::layer_weight::normal),
+                    result)
+              : result.shading_normal;
       auto eta = max(1.0f - blend, 1.0e-5f);
       eta = select(1.0f / eta, eta, point.back_facing);
       value =
@@ -303,16 +350,25 @@ public:
       break;
     }
     case compiler::ValueOperation::layer_weight_facing: {
-      auto blend = clamp(scalar(instruction.a, result), 0.0f, 1.0f - 1.0e-5f);
-      auto normal = instruction.static_u0 != 0u ? vector(instruction.b, result)
-                                                : result.shading_normal;
+      auto blend = clamp(
+          scalar(
+              instruction.operand(operand::layer_weight::blend), result),
+          0.0f,
+          1.0f - 1.0e-5f);
+      auto normal =
+          instruction.static_u0 != 0u
+              ? vector(
+                    instruction.operand(operand::layer_weight::normal),
+                    result)
+              : result.shading_normal;
       auto facing = abs(dot(point.incoming, normal));
       auto exponent = select(0.5f / (1.0f - blend), 2.0f * blend, blend < 0.5f);
       value = make_float4(1.0f - pow(facing, exponent));
       break;
     }
     case compiler::ValueOperation::mapping: {
-      auto input = vector(instruction.a, result);
+      auto input = vector(
+          instruction.operand(operand::mapping::vector), result);
       if (instruction.static_u1 != 0u) {
         const auto component = [&input](std::uint64_t axis) noexcept -> Float {
           switch (axis) {
@@ -330,9 +386,12 @@ public:
                             component((instruction.static_u1 >> 2u) & 0x3u),
                             component((instruction.static_u1 >> 4u) & 0x3u));
       }
-      auto location = vector(instruction.b, result);
-      auto rotation = vector(instruction.c, result);
-      auto scale = vector(instruction.d, result);
+      auto location = vector(
+          instruction.operand(operand::mapping::location), result);
+      auto rotation = vector(
+          instruction.operand(operand::mapping::rotation), result);
+      auto scale = vector(
+          instruction.operand(operand::mapping::scale), result);
       Float3 mapped = input;
       if (instruction.static_u0 == 1u) {
         mapped = safe_divide_components(

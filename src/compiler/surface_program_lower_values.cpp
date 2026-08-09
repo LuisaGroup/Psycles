@@ -6,6 +6,8 @@
 namespace psycles::compiler::detail {
 namespace {
 
+namespace operand = value_operand;
+
 [[nodiscard]] std::uint64_t mapping_axis(
     std::string_view axis) noexcept {
     return axis == "X"
@@ -56,10 +58,11 @@ namespace {
                     .operation = ValueOperation::mapping,
                     .source_node = node.id,
                     .result_type = SocketType::vector,
-                    .a = *vector,
-                    .b = *location,
-                    .c = *rotation,
-                    .d = *scale,
+                    .operands = make_value_operands<operand::mapping>({
+                        {operand::mapping::vector, *vector},
+                        {operand::mapping::location, *location},
+                        {operand::mapping::rotation, *rotation},
+                        {operand::mapping::scale, *scale}}),
                     .static_u0 = mode,
                     .static_u1 = mapping_axes(node)}));
         }
@@ -109,9 +112,10 @@ namespace {
                     .operation = ValueOperation::math,
                     .source_node = node.id,
                     .result_type = SocketType::floating,
-                    .a = *a,
-                    .b = *b,
-                    .c = *c,
+                    .operands = make_value_operands<operand::ternary>({
+                        {operand::ternary::a, *a},
+                        {operand::ternary::b, *b},
+                        {operand::ternary::c, *c}}),
                     .static_u0 = static_cast<std::uint64_t>(
                         math_operation(node))}));
         }
@@ -141,9 +145,10 @@ namespace {
                     .operation = ValueOperation::clamp_range,
                     .source_node = node.id,
                     .result_type = SocketType::floating,
-                    .a = *value,
-                    .b = *minimum,
-                    .c = *maximum,
+                    .operands = make_value_operands<operand::clamp_range>({
+                        {operand::clamp_range::value, *value},
+                        {operand::clamp_range::minimum, *minimum},
+                        {operand::clamp_range::maximum, *maximum}}),
                     .static_u0 =
                         property_string(
                             node, "Mode", "MINMAX") == "RANGE"
@@ -182,12 +187,13 @@ namespace {
                             ValueOperation::map_range_vector,
                         .source_node = node.id,
                         .result_type = SocketType::vector,
-                        .a = *value,
-                        .b = *from_min,
-                        .c = *from_max,
-                        .d = *to_min,
-                        .e = *to_max,
-                        .f = *steps,
+                        .operands = make_value_operands<operand::map_range>({
+                            {operand::map_range::value, *value},
+                            {operand::map_range::from_min, *from_min},
+                            {operand::map_range::from_max, *from_max},
+                            {operand::map_range::to_min, *to_min},
+                            {operand::map_range::to_max, *to_max},
+                            {operand::map_range::steps, *steps}}),
                         .static_u0 = interpolation,
                         .static_u1 = clamp}));
             }
@@ -210,12 +216,13 @@ namespace {
                             ValueOperation::map_range_float,
                         .source_node = node.id,
                         .result_type = SocketType::floating,
-                        .a = *value,
-                        .b = *from_min,
-                        .c = *from_max,
-                        .d = *to_min,
-                        .e = *to_max,
-                        .f = *steps,
+                        .operands = make_value_operands<operand::map_range>({
+                            {operand::map_range::value, *value},
+                            {operand::map_range::from_min, *from_min},
+                            {operand::map_range::from_max, *from_max},
+                            {operand::map_range::to_min, *to_min},
+                            {operand::map_range::to_max, *to_max},
+                            {operand::map_range::steps, *steps}}),
                         .static_u0 = interpolation,
                         .static_u1 = clamp}));
             }
@@ -239,10 +246,11 @@ namespace {
                         ValueOperation::vector_math_vector,
                     .source_node = node.id,
                     .result_type = SocketType::vector,
-                    .a = *a,
-                    .b = *b,
-                    .c = *c,
-                    .d = *scale,
+                    .operands = make_value_operands<operand::vector_math>({
+                        {operand::vector_math::a, *a},
+                        {operand::vector_math::b, *b},
+                        {operand::vector_math::c, *c},
+                        {operand::vector_math::scale, *scale}}),
                     .static_u0 = operation}));
             publish(
                 node.id,
@@ -252,10 +260,11 @@ namespace {
                         ValueOperation::vector_math_value,
                     .source_node = node.id,
                     .result_type = SocketType::floating,
-                    .a = *a,
-                    .b = *b,
-                    .c = *c,
-                    .d = *scale,
+                    .operands = make_value_operands<operand::vector_math>({
+                        {operand::vector_math::a, *a},
+                        {operand::vector_math::b, *b},
+                        {operand::vector_math::c, *c},
+                        {operand::vector_math::scale, *scale}}),
                     .static_u0 = operation}));
         }
         return true;
@@ -345,9 +354,10 @@ namespace {
                     .operation = ValueOperation::mix_float,
                     .source_node = node.id,
                     .result_type = SocketType::floating,
-                    .a = *a,
-                    .b = *b,
-                    .c = *factor,
+                    .operands = make_value_operands<operand::mix>({
+                        {operand::mix::a, *a},
+                        {operand::mix::b, *b},
+                        {operand::mix::factor, *factor}}),
                     .static_u0 = property_bool(
                                      node,
                                      "ClampFactor",
@@ -370,9 +380,10 @@ namespace {
                     .operation = ValueOperation::mix_vector,
                     .source_node = node.id,
                     .result_type = SocketType::vector,
-                    .a = *a,
-                    .b = *b,
-                    .c = *factor,
+                    .operands = make_value_operands<operand::mix>({
+                        {operand::mix::a, *a},
+                        {operand::mix::b, *b},
+                        {operand::mix::factor, *factor}}),
                     .static_u0 =
                         node.type ==
                                 node_type::mix_vector_nonuniform
@@ -399,9 +410,10 @@ namespace {
                     .operation = ValueOperation::mix,
                     .source_node = node.id,
                     .result_type = SocketType::color,
-                    .a = *a,
-                    .b = *b,
-                    .c = *factor,
+                    .operands = make_value_operands<operand::mix>({
+                        {operand::mix::a, *a},
+                        {operand::mix::b, *b},
+                        {operand::mix::factor, *factor}}),
                     .static_u0 = static_cast<std::uint64_t>(
                         blend_operation(node)),
                     .static_u1 =
@@ -432,9 +444,10 @@ namespace {
                     .operation = ValueOperation::multiply_color,
                     .source_node = node.id,
                     .result_type = SocketType::color,
-                    .a = *a,
-                    .b = *b,
-                    .c = *factor}));
+                    .operands = make_value_operands<operand::mix>({
+                        {operand::mix::a, *a},
+                        {operand::mix::b, *b},
+                        {operand::mix::factor, *factor}})}));
         }
         return true;
     }
@@ -453,11 +466,13 @@ namespace {
                     .operation = ValueOperation::hue_saturation,
                     .source_node = node.id,
                     .result_type = SocketType::color,
-                    .a = *color,
-                    .b = *hue,
-                    .c = *saturation,
-                    .d = *value,
-                    .e = *factor}));
+                    .operands =
+                        make_value_operands<operand::hue_saturation>({
+                            {operand::hue_saturation::color, *color},
+                            {operand::hue_saturation::hue, *hue},
+                            {operand::hue_saturation::saturation, *saturation},
+                            {operand::hue_saturation::value, *value},
+                            {operand::hue_saturation::factor, *factor}})}));
         }
         return true;
     }
@@ -472,8 +487,9 @@ namespace {
                     .operation = ValueOperation::invert,
                     .source_node = node.id,
                     .result_type = SocketType::color,
-                    .a = *color,
-                    .b = *factor}));
+                    .operands = make_value_operands<operand::color_factor>({
+                        {operand::color_factor::color, *color},
+                        {operand::color_factor::factor, *factor}})}));
         }
         return true;
     }
@@ -488,8 +504,9 @@ namespace {
                     .operation = ValueOperation::gamma,
                     .source_node = node.id,
                     .result_type = SocketType::color,
-                    .a = *color,
-                    .b = *gamma}));
+                    .operands = make_value_operands<operand::gamma>({
+                        {operand::gamma::color, *color},
+                        {operand::gamma::exponent, *gamma}})}));
         }
         return true;
     }
@@ -506,9 +523,13 @@ namespace {
                         ValueOperation::brightness_contrast,
                     .source_node = node.id,
                     .result_type = SocketType::color,
-                    .a = *color,
-                    .b = *bright,
-                    .c = *contrast}));
+                    .operands =
+                        make_value_operands<operand::brightness_contrast>({
+                            {operand::brightness_contrast::color, *color},
+                            {operand::brightness_contrast::brightness,
+                             *bright},
+                            {operand::brightness_contrast::contrast,
+                             *contrast}})}));
         }
         return true;
     }
@@ -567,9 +588,10 @@ namespace {
                     .operation = ValueOperation::normal_map,
                     .source_node = node.id,
                     .result_type = SocketType::normal,
-                    .a = *color,
-                    .b = *strength,
-                    .c = *uv_map,
+                    .operands = make_value_operands<operand::normal_map>({
+                        {operand::normal_map::color, *color},
+                        {operand::normal_map::strength, *strength},
+                        {operand::normal_map::uv_map, *uv_map}}),
                     .static_u0 = encode_normal_map_configuration(
                         normal_map_space,
                         property_bool(node, "UvMapNamed"),
@@ -594,11 +616,12 @@ namespace {
                     .operation = ValueOperation::bump,
                     .source_node = node.id,
                     .result_type = SocketType::normal,
-                    .a = *height,
-                    .b = *strength,
-                    .c = *distance,
-                    .d = *filter_width,
-                    .e = *normal,
+                    .operands = make_value_operands<operand::bump>({
+                        {operand::bump::height, *height},
+                        {operand::bump::strength, *strength},
+                        {operand::bump::distance, *distance},
+                        {operand::bump::filter_width, *filter_width},
+                        {operand::bump::normal, *normal}}),
                     .static_u0 =
                         (property_bool(node, "Invert")
                              ? 1u

@@ -5,6 +5,8 @@
 namespace psycles::luisa_backend::detail {
 namespace {
 
+namespace operand = compiler::value_operand;
+
 [[nodiscard]] bool supports_math_value(
     compiler::ValueOperation operation) noexcept {
     switch (operation) {
@@ -80,9 +82,12 @@ public:
                     }
                     std::abort();
                 case compiler::ValueOperation::passthrough:
-                    return get(instruction.a, result.values);
+                    return get(
+                        instruction.operand(operand::unary::input),
+                        result.values);
                 case compiler::ValueOperation::scalar_to_color: {
-                    auto x = scalar(instruction.a, result);
+                    auto x = scalar(
+                        instruction.operand(operand::unary::input), result);
                     value = make_float4(x, x, x, 1.0f);
                     break;
                 }
@@ -92,7 +97,8 @@ public:
                     // truncation boundary exactly; values in (-1, 1) become
                     // false even though Blender's generic field conversion
                     // uses a different predicate.
-                    auto x = scalar(instruction.a, result);
+                    auto x = scalar(
+                        instruction.operand(operand::unary::input), result);
                     value = make_float4(select(
                         0.0f,
                         1.0f,
@@ -100,7 +106,8 @@ public:
                     break;
                 }
                 case compiler::ValueOperation::color_to_scalar: {
-                    auto color = vector(instruction.a, result);
+                    auto color = vector(
+                        instruction.operand(operand::unary::input), result);
                     value = make_float4(
                         dot(
                             color,
@@ -113,8 +120,8 @@ public:
                     break;
                 }
                 case compiler::ValueOperation::vector_to_scalar: {
-                    auto vector_value =
-                        vector(instruction.a, result);
+                    auto vector_value = vector(
+                        instruction.operand(operand::unary::input), result);
                     value = make_float4(
                         (vector_value.x +
                          vector_value.y +
@@ -124,50 +131,68 @@ public:
                 }
                 case compiler::ValueOperation::add:
                     value = make_float4(
-                        scalar(instruction.a, result) +
-                        scalar(instruction.b, result));
+                        scalar(
+                            instruction.operand(operand::binary::a), result) +
+                        scalar(
+                            instruction.operand(operand::binary::b), result));
                     break;
                 case compiler::ValueOperation::subtract:
                     value = make_float4(
-                        scalar(instruction.a, result) -
-                        scalar(instruction.b, result));
+                        scalar(
+                            instruction.operand(operand::binary::a), result) -
+                        scalar(
+                            instruction.operand(operand::binary::b), result));
                     break;
                 case compiler::ValueOperation::multiply:
                     value = make_float4(
-                        scalar(instruction.a, result) *
-                        scalar(instruction.b, result));
+                        scalar(
+                            instruction.operand(operand::binary::a), result) *
+                        scalar(
+                            instruction.operand(operand::binary::b), result));
                     break;
                 case compiler::ValueOperation::divide: {
                     auto denominator =
-                        scalar(instruction.b, result);
+                        scalar(
+                            instruction.operand(operand::binary::b), result);
                     value = make_float4(select(
                         0.0f,
-                        scalar(instruction.a, result) /
+                        scalar(
+                            instruction.operand(operand::binary::a), result) /
                             denominator,
                         abs(denominator) > 1.0e-20f));
                     break;
                 }
                 case compiler::ValueOperation::minimum:
                     value = make_float4(min(
-                        scalar(instruction.a, result),
-                        scalar(instruction.b, result)));
+                        scalar(
+                            instruction.operand(operand::binary::a), result),
+                        scalar(
+                            instruction.operand(operand::binary::b), result)));
                     break;
                 case compiler::ValueOperation::maximum:
                     value = make_float4(max(
-                        scalar(instruction.a, result),
-                        scalar(instruction.b, result)));
+                        scalar(
+                            instruction.operand(operand::binary::a), result),
+                        scalar(
+                            instruction.operand(operand::binary::b), result)));
                     break;
                 case compiler::ValueOperation::power:
                     value = make_float4(pow(
                         max(
-                            scalar(instruction.a, result),
+                            scalar(
+                                instruction.operand(operand::binary::a),
+                                result),
                             0.0f),
-                        scalar(instruction.b, result)));
+                        scalar(
+                            instruction.operand(operand::binary::b), result)));
                     break;
                 case compiler::ValueOperation::math: {
-                    auto a = scalar(instruction.a, result);
-                    auto b = scalar(instruction.b, result);
-                    auto c = scalar(instruction.c, result);
+                    auto a = scalar(
+                        instruction.operand(operand::ternary::a), result);
+                    auto b = scalar(
+                        instruction.operand(operand::ternary::b), result);
+                    auto c = scalar(
+                        instruction.operand(operand::ternary::c), result);
                     Float evaluated = 0.0f;
                     switch (static_cast<compiler::MathOperation>(
                         instruction.static_u0)) {
@@ -382,20 +407,28 @@ public:
                 }
                 case compiler::ValueOperation::absolute:
                     value = make_float4(abs(
-                        scalar(instruction.a, result)));
+                        scalar(
+                            instruction.operand(operand::unary::input),
+                            result)));
                     break;
                 case compiler::ValueOperation::clamp01:
                     value = make_float4(clamp(
-                        scalar(instruction.a, result),
+                        scalar(
+                            instruction.operand(operand::unary::input),
+                            result),
                         0.0f,
                         1.0f));
                     break;
                 case compiler::ValueOperation::clamp_range: {
-                    auto input = scalar(instruction.a, result);
-                    auto minimum =
-                        scalar(instruction.b, result);
-                    auto maximum =
-                        scalar(instruction.c, result);
+                    auto input = scalar(
+                        instruction.operand(operand::clamp_range::value),
+                        result);
+                    auto minimum = scalar(
+                        instruction.operand(operand::clamp_range::minimum),
+                        result);
+                    auto maximum = scalar(
+                        instruction.operand(operand::clamp_range::maximum),
+                        result);
                     if (instruction.static_u0 == 1u) {
                         auto reverse = minimum > maximum;
                         auto original_minimum = minimum;
@@ -411,17 +444,24 @@ public:
                     break;
                 }
                 case compiler::ValueOperation::map_range_float: {
-                    auto input = scalar(instruction.a, result);
-                    auto from_min =
-                        scalar(instruction.b, result);
-                    auto from_max =
-                        scalar(instruction.c, result);
-                    auto to_min =
-                        scalar(instruction.d, result);
-                    auto to_max =
-                        scalar(instruction.e, result);
-                    auto steps =
-                        scalar(instruction.f, result);
+                    auto input = scalar(
+                        instruction.operand(operand::map_range::value),
+                        result);
+                    auto from_min = scalar(
+                        instruction.operand(operand::map_range::from_min),
+                        result);
+                    auto from_max = scalar(
+                        instruction.operand(operand::map_range::from_max),
+                        result);
+                    auto to_min = scalar(
+                        instruction.operand(operand::map_range::to_min),
+                        result);
+                    auto to_max = scalar(
+                        instruction.operand(operand::map_range::to_max),
+                        result);
+                    auto steps = scalar(
+                        instruction.operand(operand::map_range::steps),
+                        result);
                     auto denominator = from_max - from_min;
                     auto has_range = denominator != 0.0f;
                     auto factor =
@@ -468,17 +508,24 @@ public:
                     break;
                 }
                 case compiler::ValueOperation::map_range_vector: {
-                    auto input = vector(instruction.a, result);
-                    auto from_min =
-                        vector(instruction.b, result);
-                    auto from_max =
-                        vector(instruction.c, result);
-                    auto to_min =
-                        vector(instruction.d, result);
-                    auto to_max =
-                        vector(instruction.e, result);
-                    auto steps =
-                        vector(instruction.f, result);
+                    auto input = vector(
+                        instruction.operand(operand::map_range::value),
+                        result);
+                    auto from_min = vector(
+                        instruction.operand(operand::map_range::from_min),
+                        result);
+                    auto from_max = vector(
+                        instruction.operand(operand::map_range::from_max),
+                        result);
+                    auto to_min = vector(
+                        instruction.operand(operand::map_range::to_min),
+                        result);
+                    auto to_max = vector(
+                        instruction.operand(operand::map_range::to_max),
+                        result);
+                    auto steps = vector(
+                        instruction.operand(operand::map_range::steps),
+                        result);
                     auto numerator = input - from_min;
                     auto denominator = from_max - from_min;
                     auto safe_divide = [](
@@ -554,11 +601,15 @@ public:
                 }
                 case compiler::ValueOperation::vector_math_value:
                 case compiler::ValueOperation::vector_math_vector: {
-                    auto a = vector(instruction.a, result);
-                    auto b = vector(instruction.b, result);
-                    auto c = vector(instruction.c, result);
-                    auto scale =
-                        scalar(instruction.d, result);
+                    auto a = vector(
+                        instruction.operand(operand::vector_math::a), result);
+                    auto b = vector(
+                        instruction.operand(operand::vector_math::b), result);
+                    auto c = vector(
+                        instruction.operand(operand::vector_math::c), result);
+                    auto scale = scalar(
+                        instruction.operand(operand::vector_math::scale),
+                        result);
                     auto safe_divide = [](
                                            Float numerator,
                                            Float denominator) {
@@ -823,41 +874,53 @@ public:
                     break;
                 }
                 case compiler::ValueOperation::mix_float: {
-                    auto t = scalar(instruction.c, result);
+                    auto t = scalar(
+                        instruction.operand(operand::mix::factor), result);
                     if (instruction.static_u0 != 0u) {
                         t = clamp(t, 0.0f, 1.0f);
                     }
                     value = make_float4(lerp(
-                        scalar(instruction.a, result),
-                        scalar(instruction.b, result),
+                        scalar(
+                            instruction.operand(operand::mix::a), result),
+                        scalar(
+                            instruction.operand(operand::mix::b), result),
                         t));
                     break;
                 }
                 case compiler::ValueOperation::mix_vector: {
                     auto t = instruction.static_u0 != 0u
-                                 ? vector(instruction.c, result)
+                                 ? vector(
+                                       instruction.operand(
+                                           operand::mix::factor),
+                                       result)
                                  : make_float3(
                                        scalar(
-                                           instruction.c,
+                                           instruction.operand(
+                                               operand::mix::factor),
                                            result));
                     if (instruction.static_u1 != 0u) {
                         t = clamp(t, 0.0f, 1.0f);
                     }
                     value = make_float4(
                         lerp(
-                            vector(instruction.a, result),
-                            vector(instruction.b, result),
+                            vector(
+                                instruction.operand(operand::mix::a), result),
+                            vector(
+                                instruction.operand(operand::mix::b), result),
                             t),
                         1.0f);
                     break;
                 }
                 case compiler::ValueOperation::mix: {
-                    auto t = scalar(instruction.c, result);
+                    auto t = scalar(
+                        instruction.operand(operand::mix::factor), result);
                     if ((instruction.static_u1 & 1u) != 0u) {
                         t = clamp(t, 0.0f, 1.0f);
                     }
-                    auto a = vector(instruction.a, result);
-                    auto b = vector(instruction.b, result);
+                    auto a = vector(
+                        instruction.operand(operand::mix::a), result);
+                    auto b = vector(
+                        instruction.operand(operand::mix::b), result);
                     Float3 mixed = a;
                     switch (static_cast<compiler::BlendOperation>(
                         instruction.static_u0)) {

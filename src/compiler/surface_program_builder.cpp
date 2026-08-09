@@ -6,6 +6,8 @@
 
 namespace psycles::compiler::detail {
 
+namespace operand = value_operand;
+
 [[nodiscard]] const contract::InputBinding *
 find_input(const contract::ShaderNode &node, std::string_view name) noexcept {
   auto iter = node.inputs.find(name);
@@ -438,6 +440,10 @@ SurfaceProgramBuilder::lower_property_data(
 
 [[nodiscard]] ValueExpressionId
 SurfaceProgramBuilder::append(ValueInstruction instruction) {
+  if (instruction.operands.size() !=
+      value_operation_operand_count(instruction.operation)) {
+    std::abort();
+  }
   auto id =
       ValueExpressionId{static_cast<std::uint32_t>(_value_instructions.size())};
   _value_instructions.emplace_back(std::move(instruction));
@@ -559,7 +565,10 @@ void SurfaceProgramBuilder::publish_unary_value(
             append(ValueInstruction{.operation = operation,
                                     .source_node = node.id,
                                     .result_type = result_type,
-                                    .a = *value}));
+                                    .operands =
+                                        make_value_operands<operand::unary>({
+                                            {operand::unary::input,
+                                             *value}})}));
   }
 }
 
@@ -574,8 +583,10 @@ void SurfaceProgramBuilder::publish_binary_value(
             append(ValueInstruction{.operation = operation,
                                     .source_node = node.id,
                                     .result_type = result_type,
-                                    .a = *a,
-                                    .b = *b}));
+                                    .operands =
+                                        make_value_operands<operand::binary>({
+                                            {operand::binary::a, *a},
+                                            {operand::binary::b, *b}})}));
   }
 }
 

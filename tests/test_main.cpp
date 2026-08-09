@@ -23,15 +23,54 @@ using namespace psycles::adapter;
 using namespace psycles::compiler;
 using namespace psycles::contract;
 
-static_assert(value_instruction_dependencies.size() == 14u);
 static_assert(
-    value_instruction_dependencies.back() ==
-    &ValueInstruction::n);
+    value_operand::rgb_curve::extrapolate + 1u ==
+    value_operand::rgb_curve::count);
+static_assert(
+    value_operand::brick::squash_frequency + 1u ==
+    value_operand::brick::count);
 
 void expect(bool condition, const std::string &message) {
     if (!condition) {
         throw std::runtime_error{message};
     }
+}
+
+void test_value_operand_layout_is_semantic_and_dense() {
+    const auto color = ValueExpressionId{11u};
+    const auto factor = ValueExpressionId{12u};
+    const auto min_x = ValueExpressionId{13u};
+    const auto max_x = ValueExpressionId{14u};
+    const auto extrapolate = ValueExpressionId{15u};
+
+    // Deliberately assign out of storage order: named constexpr indices, not
+    // initializer position, define the IR meaning.
+    const auto operands = make_value_operands<value_operand::rgb_curve>({
+        {value_operand::rgb_curve::max_x, max_x},
+        {value_operand::rgb_curve::color, color},
+        {value_operand::rgb_curve::extrapolate, extrapolate},
+        {value_operand::rgb_curve::factor, factor},
+        {value_operand::rgb_curve::min_x, min_x}});
+    expect(
+        operands.size() == value_operand::rgb_curve::count &&
+            operands[value_operand::rgb_curve::color] == color &&
+            operands[value_operand::rgb_curve::factor] == factor &&
+            operands[value_operand::rgb_curve::min_x] == min_x &&
+            operands[value_operand::rgb_curve::max_x] == max_x &&
+            operands[value_operand::rgb_curve::extrapolate] == extrapolate,
+        "named value operands did not preserve their semantic endpoints");
+
+    static_assert(
+        value_operation_operand_count(ValueOperation::parameter) == 0u);
+    static_assert(
+        value_operation_operand_count(ValueOperation::mapping) ==
+        value_operand::mapping::count);
+    static_assert(
+        value_operation_operand_count(ValueOperation::brick_color) ==
+        value_operand::brick::count);
+    static_assert(
+        value_operation_operand_count(ValueOperation::nishita_sky) ==
+        value_operand::nishita_sky::count);
 }
 
 [[nodiscard]] ShaderGraph make_diffuse_graph(Vec3f color) {
@@ -595,10 +634,10 @@ void test_wave_texture_configuration_lowers_structurally() {
         wave_color->static_u0 == expected_configuration,
         "Wave static configuration was not encoded structurally");
     expect(
-        wave_color->a.valid() && wave_color->b.valid() &&
-            wave_color->c.valid() && wave_color->d.valid() &&
-            wave_color->e.valid() && wave_color->f.valid() &&
-            wave_color->g.valid(),
+        wave_color->operands.size() == value_operand::wave::count &&
+            std::ranges::all_of(
+                wave_color->operands,
+                [](ValueExpressionId id) noexcept { return id.valid(); }),
         "Wave dynamic inputs were not preserved as typed dependencies");
     expect(
         std::ranges::none_of(
@@ -704,11 +743,10 @@ void test_voronoi_texture_configuration_lowers_structurally() {
         instruction->static_u0 == expected_configuration,
         "Voronoi static configuration was not encoded structurally");
     expect(
-        instruction->a.valid() && instruction->b.valid() &&
-            instruction->c.valid() && instruction->d.valid() &&
-            instruction->e.valid() && instruction->f.valid() &&
-            instruction->g.valid() && instruction->h.valid() &&
-            instruction->i.valid(),
+        instruction->operands.size() == value_operand::voronoi::count &&
+            std::ranges::all_of(
+                instruction->operands,
+                [](ValueExpressionId id) noexcept { return id.valid(); }),
         "Voronoi dynamic inputs were not preserved as typed dependencies");
     expect(
         std::ranges::none_of(
@@ -2258,6 +2296,7 @@ void test_scene_delta_is_atomic() {
 
 int main() {
     try {
+        test_value_operand_layout_is_semantic_and_dense();
         test_shader_graph_and_invalidation();
         test_surface_program_schedules_shared_subgraph_once();
         test_image_texture_modes_are_structural();
