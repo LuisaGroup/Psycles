@@ -8,6 +8,8 @@ using namespace luisa::compute;
 namespace psycles::luisa_backend::detail {
 namespace {
 
+namespace operand = compiler::value_operand;
+
 // Variable-length node tables are material data. Keeping both the element
 // count and payload address in the runtime parameter block prevents Luisa and
 // backend compilers from specializing/unrolling the graph by authored table
@@ -100,8 +102,8 @@ public:
                         static_cast<cycles_noise::Type>(
                             (instruction.static_u1 >> 8u) &
                             0xffu);
-                    auto scale =
-                        scalar(instruction.b, result);
+                    auto scale = scalar(
+                        instruction.operand(operand::noise::scale), result);
                     value = cycles_noise::
                         evaluate_texture_shared(
                         static_cast<std::uint32_t>(
@@ -109,14 +111,29 @@ public:
                         noise_type,
                         normalize,
                         color_needed,
-                        vector(instruction.a, result) * scale,
-                        scalar(instruction.g, result) * scale,
-                        scalar(instruction.c, result),
-                        scalar(instruction.d, result),
-                        scalar(instruction.e, result),
-                        scalar(instruction.h, result),
-                        scalar(instruction.i, result),
-                        scalar(instruction.f, result));
+                        vector(
+                            instruction.operand(operand::noise::vector),
+                            result) * scale,
+                        scalar(
+                            instruction.operand(operand::noise::w), result) *
+                            scale,
+                        scalar(
+                            instruction.operand(operand::noise::detail),
+                            result),
+                        scalar(
+                            instruction.operand(operand::noise::roughness),
+                            result),
+                        scalar(
+                            instruction.operand(operand::noise::lacunarity),
+                            result),
+                        scalar(
+                            instruction.operand(operand::noise::offset),
+                            result),
+                        scalar(
+                            instruction.operand(operand::noise::gain), result),
+                        scalar(
+                            instruction.operand(operand::noise::distortion),
+                            result));
                     break;
                 }
                 case compiler::ValueOperation::white_noise_value:
@@ -130,15 +147,24 @@ public:
                             static_cast<std::uint32_t>(
                                 instruction.static_u0),
                             color_needed,
-                            vector(instruction.a, result),
-                            scalar(instruction.b, result));
+                            vector(
+                                instruction.operand(
+                                    operand::white_noise::vector),
+                                result),
+                            scalar(
+                                instruction.operand(operand::white_noise::w),
+                                result));
                     break;
                 }
                 case compiler::ValueOperation::checker_color:
                 case compiler::ValueOperation::checker_factor: {
                     auto scaled_raw =
-                        vector(instruction.a, result) *
-                        scalar(instruction.d, result);
+                        vector(
+                            instruction.operand(operand::checker::vector),
+                            result) *
+                        scalar(
+                            instruction.operand(operand::checker::scale),
+                            result);
                     auto p = select(
                         scaled_raw,
                         make_float3(0.0f),
@@ -175,9 +201,13 @@ public:
                         value = make_float4(
                             lerp(
                                 vector(
-                                    instruction.c, result),
+                                    instruction.operand(
+                                        operand::checker::color2),
+                                    result),
                                 vector(
-                                    instruction.b, result),
+                                    instruction.operand(
+                                        operand::checker::color1),
+                                    result),
                                 factor),
                             1.0f);
                     } else {
@@ -188,29 +218,48 @@ public:
                 case compiler::ValueOperation::brick_color:
                 case compiler::ValueOperation::brick_factor: {
                     auto p =
-                        vector(instruction.a, result) *
-                        scalar(instruction.e, result);
+                        vector(
+                            instruction.operand(operand::brick::vector),
+                            result) *
+                        scalar(
+                            instruction.operand(operand::brick::scale),
+                            result);
                     auto mortar_size = max(
-                        scalar(instruction.f, result),
+                        scalar(
+                            instruction.operand(operand::brick::mortar_size),
+                            result),
                         0.0f);
                     auto mortar_smooth = max(
-                        scalar(instruction.g, result),
+                        scalar(
+                            instruction.operand(
+                                operand::brick::mortar_smooth),
+                            result),
                         0.0f);
-                    auto bias =
-                        scalar(instruction.h, result);
+                    auto bias = scalar(
+                        instruction.operand(operand::brick::bias), result);
                     auto brick_width = max(
-                        abs(scalar(instruction.i, result)),
+                        abs(scalar(
+                            instruction.operand(operand::brick::brick_width),
+                            result)),
                         1.0e-20f);
                     auto row_height = max(
-                        abs(scalar(instruction.j, result)),
+                        abs(scalar(
+                            instruction.operand(operand::brick::row_height),
+                            result)),
                         1.0e-20f);
                     auto row = cast<int>(
                         floor(p.y / row_height));
                     const auto offset_frequency = cast<int>(min(
-                        unsigned_integer(instruction.l, result),
+                        unsigned_integer(
+                            instruction.operand(
+                                operand::brick::offset_frequency),
+                            result),
                         luisa::ulong{0x7fffffffull}));
                     const auto squash_frequency = cast<int>(min(
-                        unsigned_integer(instruction.n, result),
+                        unsigned_integer(
+                            instruction.operand(
+                                operand::brick::squash_frequency),
+                            result),
                         luisa::ulong{0x7fffffffull}));
                     Float offset = 0.0f;
                     $if ((offset_frequency != 0) &
@@ -219,14 +268,20 @@ public:
                             (row % squash_frequency) == 0;
                         brick_width *= select(
                             1.0f,
-                            scalar(instruction.m, result),
+                            scalar(
+                                instruction.operand(
+                                    operand::brick::squash_amount),
+                                result),
                             squash_row);
                         auto offset_row =
                             (row % offset_frequency) == 0;
                         offset = select(
                             0.0f,
                             brick_width *
-                                scalar(instruction.k, result),
+                                scalar(
+                                    instruction.operand(
+                                        operand::brick::offset_amount),
+                                    result),
                             offset_row);
                     };
                     auto brick = cast<int>(floor(
@@ -286,21 +341,29 @@ public:
                         value = make_float4(mortar);
                     } else {
                         auto brick_color = lerp(
-                            vector(instruction.b, result),
-                            vector(instruction.c, result),
+                            vector(
+                                instruction.operand(operand::brick::color1),
+                                result),
+                            vector(
+                                instruction.operand(operand::brick::color2),
+                                result),
                             tint);
                         value = make_float4(
                             lerp(
                                 brick_color,
                                 vector(
-                                    instruction.d, result),
+                                    instruction.operand(
+                                        operand::brick::mortar),
+                                    result),
                                 mortar),
                             1.0f);
                     }
                     break;
                 }
                 case compiler::ValueOperation::gradient: {
-                    auto p = vector(instruction.a, result);
+                    auto p = vector(
+                        instruction.operand(operand::gradient::vector),
+                        result);
                     Float gradient = p.x;
                     if (instruction.static_u0 == 1u) {
                         gradient = max(p.x, 0.0f);
@@ -329,8 +392,9 @@ public:
                     break;
                 }
                 case compiler::ValueOperation::color_ramp: {
-                    auto factor =
-                        scalar(instruction.a, result);
+                    auto factor = scalar(
+                        instruction.operand(operand::color_ramp::factor),
+                        result);
                     Float3 color = make_float3(0.0f);
                     Float alpha = 1.0f;
                     RuntimeShaderTable table{
@@ -424,8 +488,12 @@ public:
                     break;
                 }
                 case compiler::ValueOperation::rgb_curve: {
-                    auto input = vector(instruction.a, result);
-                    auto factor = scalar(instruction.b, result);
+                    auto input = vector(
+                        instruction.operand(operand::rgb_curve::color),
+                        result);
+                    auto factor = scalar(
+                        instruction.operand(operand::rgb_curve::factor),
+                        result);
                     Float3 mapped = input;
                     RuntimeShaderTable table{
                         services, point, instruction.parameter};
@@ -459,7 +527,8 @@ public:
                                         lerp(sampled, next, t),
                                         t > 0.0f);
                                     $if (scalar(
-                                             instruction.e,
+                                             instruction.operand(
+                                                 operand::rgb_curve::extrapolate),
                                              result) != 0.0f) {
                                         auto first = component(0u, channel);
                                         auto second = component(1u, channel);
@@ -489,11 +558,20 @@ public:
                                     return sampled;
                                 };
                             const auto range =
-                                scalar(instruction.d, result) -
-                                scalar(instruction.c, result);
+                                scalar(
+                                    instruction.operand(
+                                        operand::rgb_curve::max_x),
+                                    result) -
+                                scalar(
+                                    instruction.operand(
+                                        operand::rgb_curve::min_x),
+                                    result);
                             auto relative =
                                 (input -
-                                 scalar(instruction.c, result)) /
+                                 scalar(
+                                     instruction.operand(
+                                         operand::rgb_curve::min_x),
+                                     result)) /
                                 range;
                             mapped = make_float3(
                                 lookup(relative.x, 0u),
@@ -537,29 +615,44 @@ public:
                 case compiler::ValueOperation::separate_r:
                     value = make_float4(
                         separate_color(
-                            vector(instruction.a, result),
+                            vector(
+                                instruction.operand(
+                                    operand::separate_color::color),
+                                result),
                             instruction.static_u0)
                             .x);
                     break;
                 case compiler::ValueOperation::separate_g:
                     value = make_float4(
                         separate_color(
-                            vector(instruction.a, result),
+                            vector(
+                                instruction.operand(
+                                    operand::separate_color::color),
+                                result),
                             instruction.static_u0)
                             .y);
                     break;
                 case compiler::ValueOperation::separate_b:
                     value = make_float4(
                         separate_color(
-                            vector(instruction.a, result),
+                            vector(
+                                instruction.operand(
+                                    operand::separate_color::color),
+                                result),
                             instruction.static_u0)
                             .z);
                     break;
                 case compiler::ValueOperation::combine_color: {
                     auto channels = make_float3(
-                        scalar(instruction.a, result),
-                        scalar(instruction.b, result),
-                        scalar(instruction.c, result));
+                        scalar(
+                            instruction.operand(operand::combine_color::r),
+                            result),
+                        scalar(
+                            instruction.operand(operand::combine_color::g),
+                            result),
+                        scalar(
+                            instruction.operand(operand::combine_color::b),
+                            result));
                     value = make_float4(
                         combine_color(
                             channels,
@@ -572,7 +665,9 @@ public:
                         break;
                     }
                     auto direction = safe_normalize(
-                        vector(instruction.a, result),
+                        vector(
+                            instruction.operand(operand::sky::direction),
+                            result),
                         make_float3(0.0f, 0.0f, 1.0f));
                     const auto sun_direction = make_float3(
                         instruction.static_table[0u],
@@ -645,7 +740,10 @@ public:
                 }
                 case compiler::ValueOperation::nishita_sky: {
                     auto direction = safe_normalize(
-                        vector(instruction.i, result),
+                        vector(
+                            instruction.operand(
+                                operand::nishita_sky::direction),
+                            result),
                         make_float3(0.0f, 0.0f, 1.0f));
                     value = make_float4(
                         services.nishita_sky(
@@ -653,10 +751,22 @@ public:
                             static_cast<std::uint32_t>(
                                 instruction.static_u0),
                             direction,
-                            scalar(instruction.a, result),
-                            scalar(instruction.b, result),
-                            scalar(instruction.c, result),
-                            scalar(instruction.d, result)),
+                            scalar(
+                                instruction.operand(
+                                    operand::nishita_sky::elevation),
+                                result),
+                            scalar(
+                                instruction.operand(
+                                    operand::nishita_sky::rotation),
+                                result),
+                            scalar(
+                                instruction.operand(
+                                    operand::nishita_sky::size),
+                                result),
+                            scalar(
+                                instruction.operand(
+                                    operand::nishita_sky::intensity),
+                                result)),
                         1.0f);
                     break;
                 }

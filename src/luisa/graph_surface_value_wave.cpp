@@ -7,6 +7,8 @@
 namespace psycles::luisa_backend::detail {
 namespace {
 
+namespace operand = compiler::value_operand;
+
 enum class WaveType : std::uint8_t {
     bands,
     rings
@@ -100,22 +102,38 @@ public:
         const auto configuration =
             decode_configuration(instruction.static_u0);
         auto point =
-            vector(instruction.a, context.result) *
-            scalar(instruction.b, context.result);
+            vector(
+                instruction.operand(operand::wave::vector),
+                context.result) *
+            scalar(
+                instruction.operand(operand::wave::scale),
+                context.result);
         // Exact Cycles precision correction from svm_wave(). Ordering is
         // intentionally preserved because unit-coordinate boundaries are
         // visible in the saw and triangle profiles.
         point = (point + 0.000001f) * 0.999999f;
         auto coordinate = wave_coordinate(point, configuration) +
-                          scalar(instruction.g, context.result);
-        auto distortion = scalar(instruction.c, context.result);
+                          scalar(
+                              instruction.operand(operand::wave::phase),
+                              context.result);
+        auto distortion = scalar(
+            instruction.operand(operand::wave::distortion),
+            context.result);
         $if (distortion != 0.0f) {
             coordinate +=
                 distortion *
                 (cycles_wave::distortion_noise(
-                     point * scalar(instruction.e, context.result),
-                     scalar(instruction.d, context.result),
-                     scalar(instruction.f, context.result)) *
+                     point * scalar(
+                                 instruction.operand(
+                                     operand::wave::detail_scale),
+                                 context.result),
+                     scalar(
+                         instruction.operand(operand::wave::detail),
+                         context.result),
+                     scalar(
+                         instruction.operand(
+                             operand::wave::detail_roughness),
+                         context.result)) *
                      2.0f -
                  1.0f);
         };

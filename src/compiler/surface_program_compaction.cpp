@@ -175,9 +175,9 @@ SurfaceProgramStorage compact_surface_program(
             instruction.parameter.value < reachable_parameters.size()) {
             reachable_parameters[instruction.parameter.value] = true;
         }
-        for (const auto dependency : value_instruction_dependencies) {
+        for (const auto dependency : instruction.operands) {
             enqueue(
-                instruction.*dependency,
+                dependency,
                 reachable_values,
                 value_worklist);
         }
@@ -218,9 +218,8 @@ SurfaceProgramStorage compact_surface_program(
     for (auto &instruction : storage.values) {
         instruction.parameter = remap(
             instruction.parameter, parameter_mapping);
-        for (const auto dependency : value_instruction_dependencies) {
-            instruction.*dependency = remap(
-                instruction.*dependency, value_mapping);
+        for (auto &dependency : instruction.operands) {
+            dependency = remap(dependency, value_mapping);
         }
     }
     for (auto &instruction : storage.closures) {

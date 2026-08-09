@@ -1811,7 +1811,13 @@ void test_last_value_operand_participates_in_volume_analysis() {
          ValueInstruction{
              .operation = ValueOperation::brick_factor,
              .result_type = SocketType::floating,
-             .n = ValueExpressionId{0u}}},
+             .operands = [] {
+                 std::vector<ValueExpressionId> operands(
+                     value_operand::brick::count);
+                 operands[value_operand::brick::squash_frequency] =
+                     ValueExpressionId{0u};
+                 return operands;
+             }()}},
         {},
         {},
         {VolumeInstruction{
@@ -1822,7 +1828,7 @@ void test_last_value_operand_participates_in_volume_analysis() {
         VolumeProgramCapabilityComponent{}.analyze(program);
     expect(
         !capabilities.homogeneous,
-        "ValueInstruction::n was omitted from volume dependency analysis");
+        "the final value operand was omitted from volume dependency analysis");
 }
 
 }// namespace

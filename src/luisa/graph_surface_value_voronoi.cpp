@@ -5,6 +5,8 @@
 namespace psycles::luisa_backend::detail {
 namespace {
 
+namespace operand = compiler::value_operand;
+
 class VoronoiValueNode final : public ValueNode {
 
 public:
@@ -15,15 +17,33 @@ public:
         const auto &instruction = this->instruction();
         const auto value = cycles_voronoi::evaluate(
             cycles_voronoi::decode_configuration(instruction),
-            vector(instruction.a, context.result),
-            scalar(instruction.b, context.result),
-            scalar(instruction.c, context.result),
-            scalar(instruction.d, context.result),
-            scalar(instruction.e, context.result),
-            scalar(instruction.f, context.result),
-            scalar(instruction.g, context.result),
-            scalar(instruction.h, context.result),
-            scalar(instruction.i, context.result));
+            vector(
+                instruction.operand(operand::voronoi::vector),
+                context.result),
+            scalar(
+                instruction.operand(operand::voronoi::w),
+                context.result),
+            scalar(
+                instruction.operand(operand::voronoi::scale),
+                context.result),
+            scalar(
+                instruction.operand(operand::voronoi::detail),
+                context.result),
+            scalar(
+                instruction.operand(operand::voronoi::roughness),
+                context.result),
+            scalar(
+                instruction.operand(operand::voronoi::lacunarity),
+                context.result),
+            scalar(
+                instruction.operand(operand::voronoi::smoothness),
+                context.result),
+            scalar(
+                instruction.operand(operand::voronoi::exponent),
+                context.result),
+            scalar(
+                instruction.operand(operand::voronoi::randomness),
+                context.result));
         return project_surface_value(instruction.result_type, value);
     }
 };

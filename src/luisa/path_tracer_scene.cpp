@@ -303,14 +303,22 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 continue;
             }
             const std::array expressions{
-                instruction.a,
-                instruction.b,
-                instruction.c,
-                instruction.d,
-                instruction.e,
-                instruction.f,
-                instruction.g,
-                instruction.h};
+                instruction.operand(
+                    compiler::value_operand::nishita_sky::elevation),
+                instruction.operand(
+                    compiler::value_operand::nishita_sky::rotation),
+                instruction.operand(
+                    compiler::value_operand::nishita_sky::size),
+                instruction.operand(
+                    compiler::value_operand::nishita_sky::intensity),
+                instruction.operand(
+                    compiler::value_operand::nishita_sky::altitude),
+                instruction.operand(
+                    compiler::value_operand::nishita_sky::air),
+                instruction.operand(
+                    compiler::value_operand::nishita_sky::dust),
+                instruction.operand(
+                    compiler::value_operand::nishita_sky::ozone)};
             std::array<float, expressions.size()> values{};
             auto static_parameters = true;
             for (std::size_t i = 0u;

@@ -129,7 +129,17 @@ SurfaceProgram::SurfaceProgram(
       _emission_evaluation{analyze_emission_evaluation(
           _value_instructions,
           _closure_instructions,
-          _root)} {}
+          _root)} {
+  // SurfaceProgram is also constructible by tooling/tests without going
+  // through SurfaceProgramBuilder. Keep exact operand arity an invariant at
+  // that public boundary as well.
+  for (const auto &instruction : _value_instructions) {
+    if (instruction.operands.size() !=
+        value_operation_operand_count(instruction.operation)) {
+      std::abort();
+    }
+  }
+}
 
 SurfaceParameterBlock::SurfaceParameterBlock(
     const SurfaceProgram &program) {

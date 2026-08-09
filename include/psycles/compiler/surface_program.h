@@ -1,8 +1,10 @@
 #pragma once
 
-#include <array>
+#include <cstdlib>
 #include <compare>
+#include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -163,6 +165,476 @@ enum class ValueOperation : std::uint8_t {
   hosek_wilkie_sky,
   nishita_sky
 };
+
+// Operand layouts are shared by lowering and backend AST construction. Named
+// constexpr indices make each operation's IR contract explicit without
+// storing socket names per instruction.
+namespace value_operand {
+
+struct unary {
+  static constexpr std::size_t input = 0u;
+  static constexpr std::size_t count = 1u;
+};
+
+struct binary {
+  static constexpr std::size_t a = 0u;
+  static constexpr std::size_t b = 1u;
+  static constexpr std::size_t count = 2u;
+};
+
+struct ternary {
+  static constexpr std::size_t a = 0u;
+  static constexpr std::size_t b = 1u;
+  static constexpr std::size_t c = 2u;
+  static constexpr std::size_t count = 3u;
+};
+
+struct mapping {
+  static constexpr std::size_t vector = 0u;
+  static constexpr std::size_t location = 1u;
+  static constexpr std::size_t rotation = 2u;
+  static constexpr std::size_t scale = 3u;
+  static constexpr std::size_t count = 4u;
+};
+
+struct clamp_range {
+  static constexpr std::size_t value = 0u;
+  static constexpr std::size_t minimum = 1u;
+  static constexpr std::size_t maximum = 2u;
+  static constexpr std::size_t count = 3u;
+};
+
+struct map_range {
+  static constexpr std::size_t value = 0u;
+  static constexpr std::size_t from_min = 1u;
+  static constexpr std::size_t from_max = 2u;
+  static constexpr std::size_t to_min = 3u;
+  static constexpr std::size_t to_max = 4u;
+  static constexpr std::size_t steps = 5u;
+  static constexpr std::size_t count = 6u;
+};
+
+struct vector_math {
+  static constexpr std::size_t a = 0u;
+  static constexpr std::size_t b = 1u;
+  static constexpr std::size_t c = 2u;
+  static constexpr std::size_t scale = 3u;
+  static constexpr std::size_t count = 4u;
+};
+
+struct mix {
+  static constexpr std::size_t a = 0u;
+  static constexpr std::size_t b = 1u;
+  static constexpr std::size_t factor = 2u;
+  static constexpr std::size_t count = 3u;
+};
+
+struct hue_saturation {
+  static constexpr std::size_t color = 0u;
+  static constexpr std::size_t hue = 1u;
+  static constexpr std::size_t saturation = 2u;
+  static constexpr std::size_t value = 3u;
+  static constexpr std::size_t factor = 4u;
+  static constexpr std::size_t count = 5u;
+};
+
+struct color_factor {
+  static constexpr std::size_t color = 0u;
+  static constexpr std::size_t factor = 1u;
+  static constexpr std::size_t count = 2u;
+};
+
+struct gamma {
+  static constexpr std::size_t color = 0u;
+  static constexpr std::size_t exponent = 1u;
+  static constexpr std::size_t count = 2u;
+};
+
+struct blackbody {
+  static constexpr std::size_t temperature = 0u;
+  static constexpr std::size_t count = 1u;
+};
+
+struct wavelength {
+  static constexpr std::size_t nanometers = 0u;
+  static constexpr std::size_t count = 1u;
+};
+
+struct brightness_contrast {
+  static constexpr std::size_t color = 0u;
+  static constexpr std::size_t brightness = 1u;
+  static constexpr std::size_t contrast = 2u;
+  static constexpr std::size_t count = 3u;
+};
+
+struct normal_map {
+  static constexpr std::size_t color = 0u;
+  static constexpr std::size_t strength = 1u;
+  static constexpr std::size_t uv_map = 2u;
+  static constexpr std::size_t count = 3u;
+};
+
+struct bump {
+  static constexpr std::size_t height = 0u;
+  static constexpr std::size_t strength = 1u;
+  static constexpr std::size_t distance = 2u;
+  static constexpr std::size_t filter_width = 3u;
+  static constexpr std::size_t normal = 4u;
+  static constexpr std::size_t count = 5u;
+};
+
+struct layer_weight {
+  static constexpr std::size_t blend = 0u;
+  static constexpr std::size_t normal = 1u;
+  static constexpr std::size_t count = 2u;
+};
+
+struct fresnel {
+  static constexpr std::size_t ior = 0u;
+  static constexpr std::size_t normal = 1u;
+  static constexpr std::size_t count = 2u;
+};
+
+struct uv {
+  static constexpr std::size_t map = 0u;
+  static constexpr std::size_t count = 1u;
+};
+
+struct image_texture {
+  static constexpr std::size_t vector = 0u;
+  static constexpr std::size_t image = 1u;
+  static constexpr std::size_t projection_blend = 2u;
+  static constexpr std::size_t count = 3u;
+};
+
+struct environment_texture {
+  static constexpr std::size_t vector = 0u;
+  static constexpr std::size_t image = 1u;
+  static constexpr std::size_t count = 2u;
+};
+
+struct attribute {
+  static constexpr std::size_t id = 0u;
+  static constexpr std::size_t count = 1u;
+};
+
+struct noise {
+  static constexpr std::size_t vector = 0u;
+  static constexpr std::size_t scale = 1u;
+  static constexpr std::size_t detail = 2u;
+  static constexpr std::size_t roughness = 3u;
+  static constexpr std::size_t lacunarity = 4u;
+  static constexpr std::size_t distortion = 5u;
+  static constexpr std::size_t w = 6u;
+  static constexpr std::size_t offset = 7u;
+  static constexpr std::size_t gain = 8u;
+  static constexpr std::size_t count = 9u;
+};
+
+struct white_noise {
+  static constexpr std::size_t vector = 0u;
+  static constexpr std::size_t w = 1u;
+  static constexpr std::size_t count = 2u;
+};
+
+struct checker {
+  static constexpr std::size_t vector = 0u;
+  static constexpr std::size_t color1 = 1u;
+  static constexpr std::size_t color2 = 2u;
+  static constexpr std::size_t scale = 3u;
+  static constexpr std::size_t count = 4u;
+};
+
+struct brick {
+  static constexpr std::size_t vector = 0u;
+  static constexpr std::size_t color1 = 1u;
+  static constexpr std::size_t color2 = 2u;
+  static constexpr std::size_t mortar = 3u;
+  static constexpr std::size_t scale = 4u;
+  static constexpr std::size_t mortar_size = 5u;
+  static constexpr std::size_t mortar_smooth = 6u;
+  static constexpr std::size_t bias = 7u;
+  static constexpr std::size_t brick_width = 8u;
+  static constexpr std::size_t row_height = 9u;
+  static constexpr std::size_t offset_amount = 10u;
+  static constexpr std::size_t offset_frequency = 11u;
+  static constexpr std::size_t squash_amount = 12u;
+  static constexpr std::size_t squash_frequency = 13u;
+  static constexpr std::size_t count = 14u;
+};
+
+struct magic {
+  static constexpr std::size_t vector = 0u;
+  static constexpr std::size_t scale = 1u;
+  static constexpr std::size_t distortion = 2u;
+  static constexpr std::size_t depth = 3u;
+  static constexpr std::size_t count = 4u;
+};
+
+struct wave {
+  static constexpr std::size_t vector = 0u;
+  static constexpr std::size_t scale = 1u;
+  static constexpr std::size_t distortion = 2u;
+  static constexpr std::size_t detail = 3u;
+  static constexpr std::size_t detail_scale = 4u;
+  static constexpr std::size_t detail_roughness = 5u;
+  static constexpr std::size_t phase = 6u;
+  static constexpr std::size_t count = 7u;
+};
+
+struct voronoi {
+  static constexpr std::size_t vector = 0u;
+  static constexpr std::size_t w = 1u;
+  static constexpr std::size_t scale = 2u;
+  static constexpr std::size_t detail = 3u;
+  static constexpr std::size_t roughness = 4u;
+  static constexpr std::size_t lacunarity = 5u;
+  static constexpr std::size_t smoothness = 6u;
+  static constexpr std::size_t exponent = 7u;
+  static constexpr std::size_t randomness = 8u;
+  static constexpr std::size_t count = 9u;
+};
+
+struct rgb_curve {
+  static constexpr std::size_t color = 0u;
+  static constexpr std::size_t factor = 1u;
+  static constexpr std::size_t min_x = 2u;
+  static constexpr std::size_t max_x = 3u;
+  static constexpr std::size_t extrapolate = 4u;
+  static constexpr std::size_t count = 5u;
+};
+
+struct color_ramp {
+  static constexpr std::size_t factor = 0u;
+  static constexpr std::size_t count = 1u;
+};
+
+struct gradient {
+  static constexpr std::size_t vector = 0u;
+  static constexpr std::size_t count = 1u;
+};
+
+struct separate_color {
+  static constexpr std::size_t color = 0u;
+  static constexpr std::size_t count = 1u;
+};
+
+struct combine_color {
+  static constexpr std::size_t r = 0u;
+  static constexpr std::size_t g = 1u;
+  static constexpr std::size_t b = 2u;
+  static constexpr std::size_t count = 3u;
+};
+
+struct sky {
+  static constexpr std::size_t direction = 0u;
+  static constexpr std::size_t count = 1u;
+};
+
+struct nishita_sky {
+  static constexpr std::size_t elevation = 0u;
+  static constexpr std::size_t rotation = 1u;
+  static constexpr std::size_t size = 2u;
+  static constexpr std::size_t intensity = 3u;
+  static constexpr std::size_t altitude = 4u;
+  static constexpr std::size_t air = 5u;
+  static constexpr std::size_t dust = 6u;
+  static constexpr std::size_t ozone = 7u;
+  static constexpr std::size_t direction = 8u;
+  static constexpr std::size_t count = 9u;
+};
+
+}// namespace value_operand
+
+struct ValueOperandAssignment {
+  std::size_t index;
+  ValueExpressionId value;
+};
+
+// Lowering names every socket-to-operand assignment with the same constexpr
+// layout consumed by backends. This prevents a positional initializer from
+// silently changing meaning when an operation's operand contract evolves.
+template <typename Layout>
+[[nodiscard]] std::vector<ValueExpressionId> make_value_operands(
+    std::initializer_list<ValueOperandAssignment> assignments) {
+  static_assert(Layout::count <= 64u);
+  if (assignments.size() != Layout::count) {
+    std::abort();
+  }
+  std::vector<ValueExpressionId> result(Layout::count);
+  std::uint64_t assigned{};
+  for (const auto [index, value] : assignments) {
+    if (index >= Layout::count) {
+      std::abort();
+    }
+    const auto bit = std::uint64_t{1u} << index;
+    if ((assigned & bit) != 0u) {
+      std::abort();
+    }
+    assigned |= bit;
+    result[index] = value;
+  }
+  const auto expected = Layout::count == 64u
+                            ? ~std::uint64_t{}
+                            : (std::uint64_t{1u} << Layout::count) - 1u;
+  if (assigned != expected) {
+    std::abort();
+  }
+  return result;
+}
+
+[[nodiscard]] constexpr std::size_t
+value_operation_operand_count(ValueOperation operation) noexcept {
+  switch (operation) {
+    case ValueOperation::parameter:
+    case ValueOperation::surface_position:
+    case ValueOperation::shading_normal:
+    case ValueOperation::geometric_normal:
+    case ValueOperation::incoming:
+    case ValueOperation::tangent:
+    case ValueOperation::generated:
+    case ValueOperation::object_position:
+    case ValueOperation::object_position_with_transform:
+    case ValueOperation::object_location:
+    case ValueOperation::object_random:
+    case ValueOperation::particle_index:
+    case ValueOperation::particle_random:
+    case ValueOperation::back_facing:
+    case ValueOperation::pointiness:
+    case ValueOperation::random_per_island:
+    case ValueOperation::curve_is_strand:
+    case ValueOperation::curve_intercept:
+    case ValueOperation::curve_length:
+    case ValueOperation::curve_thickness:
+    case ValueOperation::curve_tangent_normal:
+    case ValueOperation::curve_random:
+    case ValueOperation::path_is_camera:
+    case ValueOperation::path_is_shadow:
+    case ValueOperation::path_is_diffuse:
+    case ValueOperation::path_is_glossy:
+    case ValueOperation::path_is_singular:
+    case ValueOperation::path_is_reflection:
+    case ValueOperation::path_is_transmission:
+    case ValueOperation::path_is_volume_scatter:
+    case ValueOperation::path_ray_length:
+    case ValueOperation::path_ray_depth:
+    case ValueOperation::path_diffuse_depth:
+    case ValueOperation::path_glossy_depth:
+    case ValueOperation::path_transparent_depth:
+    case ValueOperation::path_transmission_depth:
+      return 0u;
+
+    case ValueOperation::passthrough:
+    case ValueOperation::scalar_to_color:
+    case ValueOperation::scalar_to_boolean:
+    case ValueOperation::color_to_scalar:
+    case ValueOperation::vector_to_scalar:
+    case ValueOperation::absolute:
+    case ValueOperation::clamp01:
+      return value_operand::unary::count;
+
+    case ValueOperation::add:
+    case ValueOperation::subtract:
+    case ValueOperation::multiply:
+    case ValueOperation::divide:
+    case ValueOperation::minimum:
+    case ValueOperation::maximum:
+    case ValueOperation::power:
+      return value_operand::binary::count;
+
+    case ValueOperation::math:
+      return value_operand::ternary::count;
+    case ValueOperation::clamp_range:
+      return value_operand::clamp_range::count;
+    case ValueOperation::map_range_float:
+    case ValueOperation::map_range_vector:
+      return value_operand::map_range::count;
+    case ValueOperation::vector_math_value:
+    case ValueOperation::vector_math_vector:
+      return value_operand::vector_math::count;
+    case ValueOperation::mix_float:
+    case ValueOperation::mix_vector:
+    case ValueOperation::mix:
+    case ValueOperation::multiply_color:
+      return value_operand::mix::count;
+    case ValueOperation::hue_saturation:
+      return value_operand::hue_saturation::count;
+    case ValueOperation::invert:
+      return value_operand::color_factor::count;
+    case ValueOperation::gamma:
+      return value_operand::gamma::count;
+    case ValueOperation::brightness_contrast:
+      return value_operand::brightness_contrast::count;
+    case ValueOperation::blackbody:
+      return value_operand::blackbody::count;
+    case ValueOperation::wavelength:
+      return value_operand::wavelength::count;
+    case ValueOperation::uv:
+      return value_operand::uv::count;
+    case ValueOperation::fresnel:
+      return value_operand::fresnel::count;
+    case ValueOperation::layer_weight_fresnel:
+    case ValueOperation::layer_weight_facing:
+      return value_operand::layer_weight::count;
+    case ValueOperation::mapping:
+      return value_operand::mapping::count;
+    case ValueOperation::image_color:
+    case ValueOperation::image_alpha:
+      return value_operand::image_texture::count;
+    case ValueOperation::environment_color:
+    case ValueOperation::environment_alpha:
+      return value_operand::environment_texture::count;
+    case ValueOperation::attribute_color:
+    case ValueOperation::attribute_factor:
+    case ValueOperation::attribute_alpha:
+      return value_operand::attribute::count;
+    case ValueOperation::normal_map:
+      return value_operand::normal_map::count;
+    case ValueOperation::bump:
+      return value_operand::bump::count;
+    case ValueOperation::noise_factor:
+    case ValueOperation::noise_color:
+      return value_operand::noise::count;
+    case ValueOperation::white_noise_value:
+    case ValueOperation::white_noise_color:
+      return value_operand::white_noise::count;
+    case ValueOperation::checker_color:
+    case ValueOperation::checker_factor:
+      return value_operand::checker::count;
+    case ValueOperation::brick_color:
+    case ValueOperation::brick_factor:
+      return value_operand::brick::count;
+    case ValueOperation::magic_color:
+    case ValueOperation::magic_factor:
+      return value_operand::magic::count;
+    case ValueOperation::wave_color:
+    case ValueOperation::wave_factor:
+      return value_operand::wave::count;
+    case ValueOperation::voronoi_distance:
+    case ValueOperation::voronoi_color:
+    case ValueOperation::voronoi_position:
+    case ValueOperation::voronoi_w:
+    case ValueOperation::voronoi_radius:
+      return value_operand::voronoi::count;
+    case ValueOperation::gradient:
+      return value_operand::gradient::count;
+    case ValueOperation::color_ramp:
+      return value_operand::color_ramp::count;
+    case ValueOperation::rgb_curve:
+      return value_operand::rgb_curve::count;
+    case ValueOperation::separate_r:
+    case ValueOperation::separate_g:
+    case ValueOperation::separate_b:
+      return value_operand::separate_color::count;
+    case ValueOperation::combine_color:
+      return value_operand::combine_color::count;
+    case ValueOperation::hosek_wilkie_sky:
+      return value_operand::sky::count;
+    case ValueOperation::nishita_sky:
+      return value_operand::nishita_sky::count;
+  }
+  std::abort();
+}
 
 // Blender 4.5.10 ShaderNodeMath operations. The values are part of the
 // topology/static-property program signature and are selected while the
@@ -368,20 +840,12 @@ struct ValueInstruction {
   contract::NodeId source_node;
   contract::SocketType result_type{contract::SocketType::floating};
   ParameterId parameter;
-  ValueExpressionId a;
-  ValueExpressionId b;
-  ValueExpressionId c;
-  ValueExpressionId d;
-  ValueExpressionId e;
-  ValueExpressionId f;
-  ValueExpressionId g;
-  ValueExpressionId h;
-  ValueExpressionId i;
-  ValueExpressionId j;
-  ValueExpressionId k;
-  ValueExpressionId l;
-  ValueExpressionId m;
-  ValueExpressionId n;
+  // SurfaceProgram is a host-side graph IR. Store its true arity instead of
+  // paying for fourteen fixed operand slots on every instruction. If scene
+  // profiling later identifies allocator/locality pressure here, replace the
+  // storage with a small-vector or shared operand arena without changing the
+  // iterable IR contract.
+  std::vector<ValueExpressionId> operands;
   std::uint64_t static_u0{};
   std::uint64_t static_u1{};
   float static_f0{};
@@ -389,26 +853,14 @@ struct ValueInstruction {
   // Node-specific immutable data. It is part of the topology/static-property
   // JIT signature; variable-length material tables do not belong here.
   std::vector<float> static_table;
-};
 
-// The dependency edges of the linear shader-graph IR have one canonical
-// definition. Every reachability, scheduling, and semantic analysis must use
-// this list instead of spelling out a prefix of the operand fields locally.
-inline constexpr auto value_instruction_dependencies = std::array{
-    &ValueInstruction::a,
-    &ValueInstruction::b,
-    &ValueInstruction::c,
-    &ValueInstruction::d,
-    &ValueInstruction::e,
-    &ValueInstruction::f,
-    &ValueInstruction::g,
-    &ValueInstruction::h,
-    &ValueInstruction::i,
-    &ValueInstruction::j,
-    &ValueInstruction::k,
-    &ValueInstruction::l,
-    &ValueInstruction::m,
-    &ValueInstruction::n};
+  [[nodiscard]] ValueExpressionId operand(std::size_t index) const noexcept {
+    if (index >= operands.size()) {
+      std::abort();
+    }
+    return operands[index];
+  }
+};
 
 enum class ClosureOperation : std::uint8_t {
   null_closure,

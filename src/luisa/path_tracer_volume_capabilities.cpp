@@ -118,8 +118,7 @@ private:
     visit = Visit::active;
     const auto &instruction = _program.value_instructions()[id.value];
     auto homogeneous = !is_spatial_source(instruction.operation);
-    for (const auto member : compiler::value_instruction_dependencies) {
-      const auto dependency = instruction.*member;
+    for (const auto dependency : instruction.operands) {
       const auto dependency_homogeneous = value(dependency);
       homogeneous = homogeneous && dependency_homogeneous;
     }

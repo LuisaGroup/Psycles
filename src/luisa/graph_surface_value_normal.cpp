@@ -5,6 +5,8 @@
 namespace psycles::luisa_backend::detail {
 namespace {
 
+namespace operand = compiler::value_operand;
+
 class NormalMapValueNode final : public ValueNode {
 
 public:
@@ -18,8 +20,13 @@ public:
         const auto &instruction = this->instruction();
 
         auto mapped =
-            vector(instruction.a, result) * 2.0f - 1.0f;
-        auto strength = scalar(instruction.b, result);
+            vector(
+                instruction.operand(operand::normal_map::color),
+                result) *
+                2.0f -
+            1.0f;
+        auto strength = scalar(
+            instruction.operand(operand::normal_map::strength), result);
         const auto space = compiler::decode_normal_map_space(
             instruction.static_u0);
         const auto named = compiler::normal_map_has_named_tangent(
@@ -46,7 +53,8 @@ public:
             auto named_tangent =
                 services.attribute(
                     unsigned_integer(
-                        instruction.c, result),
+                        instruction.operand(operand::normal_map::uv_map),
+                        result),
                     point);
             object_tangent =
                 named_tangent.value.xyz();
@@ -192,12 +200,17 @@ public:
 
         auto normal_in =
             (instruction.static_u0 & 2u) != 0u
-                ? vector(instruction.e, result)
+                ? vector(
+                      instruction.operand(operand::bump::normal),
+                      result)
                 : result.shading_normal;
         const auto use_object_space =
             (instruction.static_u0 & 4u) != 0u;
         auto filter_width = max(
-            scalar(instruction.d, result), 0.0f);
+            scalar(
+                instruction.operand(operand::bump::filter_width),
+                result),
+            0.0f);
 
         auto point_x = point;
         point_x.position =
@@ -233,7 +246,7 @@ public:
 
         const auto height_dependencies =
             context.surface.value_dependency_mask(
-                instruction.a);
+                instruction.operand(operand::bump::height));
         auto values_x =
             context.surface.trace_values(
                 services,
@@ -245,11 +258,14 @@ public:
                 point_y,
                 &height_dependencies);
         const auto height_center =
-            scalar(instruction.a, result);
+            scalar(
+                instruction.operand(operand::bump::height), result);
         const auto height_x =
-            scalar(instruction.a, values_x);
+            scalar(
+                instruction.operand(operand::bump::height), values_x);
         const auto height_y =
-            scalar(instruction.a, values_y);
+            scalar(
+                instruction.operand(operand::bump::height), values_y);
         auto dPdx = point.dPdx;
         auto dPdy = point.dPdy;
         if (use_object_space) {
@@ -286,7 +302,8 @@ public:
             (height_x - height_center) * rx +
             (height_y - height_center) * ry;
         auto distance =
-            scalar(instruction.c, result);
+            scalar(
+                instruction.operand(operand::bump::distance), result);
         if ((instruction.static_u0 & 1u) != 0u) {
             distance = -distance;
         }
@@ -309,7 +326,8 @@ public:
                 make_float3(0.0f));
         const auto strength =
             max(
-                scalar(instruction.b, result),
+                scalar(
+                    instruction.operand(operand::bump::strength), result),
                 0.0f);
         const auto blended =
             safe_normalize(

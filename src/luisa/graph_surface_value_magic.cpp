@@ -5,6 +5,8 @@
 namespace psycles::luisa_backend::detail {
 namespace {
 
+namespace operand = compiler::value_operand;
+
 class MagicValueNode final : public ValueNode {
 
 public:
@@ -15,12 +17,20 @@ public:
         const auto &instruction = this->instruction();
         const auto color = cycles_magic::evaluate(
             luisa::compute::cast<std::uint32_t>(luisa::compute::min(
-                unsigned_integer(instruction.d, context.result),
+                unsigned_integer(
+                    instruction.operand(operand::magic::depth),
+                    context.result),
                 static_cast<luisa::ulong>(
                     cycles_magic::maximum_depth))),
-            vector(instruction.a, context.result),
-            scalar(instruction.b, context.result),
-            scalar(instruction.c, context.result));
+            vector(
+                instruction.operand(operand::magic::vector),
+                context.result),
+            scalar(
+                instruction.operand(operand::magic::scale),
+                context.result),
+            scalar(
+                instruction.operand(operand::magic::distortion),
+                context.result));
         const auto value =
             instruction.operation ==
                     compiler::ValueOperation::magic_factor

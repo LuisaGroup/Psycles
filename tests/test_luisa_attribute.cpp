@@ -432,12 +432,15 @@ compile_attribute_program(
     auto found = false;
     for (const auto &instruction : values) {
         if (instruction.operation != expected_operation ||
-            instruction.result_type != expected_type ||
-            !instruction.a.valid() ||
-            instruction.a.value >= values.size()) {
+            instruction.result_type != expected_type) {
             continue;
         }
-        const auto &id_value = values[instruction.a.value];
+        const auto id = instruction.operand(
+            value_operand::attribute::id);
+        if (!id.valid() || id.value >= values.size()) {
+            continue;
+        }
+        const auto &id_value = values[id.value];
         if (id_value.operation != ValueOperation::parameter ||
             id_value.result_type != SocketType::unsigned_integer ||
             !id_value.parameter.valid() ||
