@@ -792,3 +792,50 @@ The largest remaining restructure leaves are `try_restructure_if_batch` at
 two public pass boundaries (about 626 ms combined). The next profile targets
 the if-batch computation and loop mutation strategy; it does not weaken those
 boundary checks.
+
+## Sparse selection-merge scoring
+
+Luisa `next@8c6951520` removes the whole-function scans identified by the
+if-batch profile. Of 152 samples below `try_restructure_if_batch`, 146 (96.1%)
+were inside selection-merge inference; batch construction and CFG rewriting
+were not material contributors. Each query had already value-numbered its
+graph walk, but merge scoring still filtered the complete physical block table
+up to three times.
+
+The query now records the exact support set when an aggregate epoch is first
+created and scores only those IDs. This is set-equivalent to the old scan
+because every rejected ID had `_has_aggregate(id) == false`. Fallback to an
+enclosing structured selection walks the header's immediate-dominator
+ancestors: for reachable blocks, that chain is exactly the set satisfying
+`dominates(candidate, header)`. Both sparse walks explicitly compare the
+original dense block ID after equal support and distance scores, preserving
+the old first-in-physical-order tie result rather than changing merge choice.
+
+The 64-diamond regression includes 256 physically present but unreachable
+blocks. It requires sparse scoring work to remain bounded by per-query support
+instead of the definition block table, while retaining all 64 structured
+selections and a verified module. On Lone Monk, 3,448 queries visit 584,856
+entry-relative blocks and 734,477 edges, but score only 344,125 aggregate IDs
+and inspect 7,397 dominator ancestors:
+
+| Boundary | Batched-SSA baseline | Sparse merge scoring | Change |
+| --- | ---: | ---: | ---: |
+| `try_restructure_if_batch` | 271.223 ms | 101.746 ms | -62.5% |
+| `restructure_cfg` | 2.428 s | 2.271 s | -6.4% |
+| SPIR-V XIR legalization | 17.201 s | 17.112 s | -0.5% |
+| Native AST-to-SPIR-V | 30.399 s | 30.464 s | within run noise |
+| Raw SPIR-V | 1,431,985 words | 1,431,985 words | identical size |
+| Optimized SPIR-V | 1,116,158 words | 1,116,158 words | identical size |
+
+The PPM is byte-identical with SHA-256
+`3ff6c5463ace13c0f26a735ac1af2bb96ab8a9ba1cb4398359cf2466f63a4d1b`.
+A complete all-thread standard build and all 48 XIR tests pass. The focused
+system-STL gates pass 9/9 dominance tests (56 assertions), 68/68 restructure
+tests (1,354 assertions), and 350/350 pass tests (1,991 assertions). The RX
+9070 XT native Vulkan route passes 92/92 tests with 2,096 assertions.
+
+Loop-continue normalization is now the largest mutable transform at
+269.093 ms, of which 218.621 ms is 129 exact dominance rebuilds. The next
+optimization must therefore reduce CFG versions or incrementally maintain an
+exact dominance relation; weakening dominance or moving the two public
+verifier boundaries is not an acceptable substitute.

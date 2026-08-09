@@ -3,7 +3,7 @@
 ## Current continuation — 2026-08-10
 
 The current renderer implementation boundary advances from Psycles main with
-LuisaCompute `next@58984c670` and Blender/Cycles 5.3 Alpha
+LuisaCompute `next@8c6951520` and Blender/Cycles 5.3 Alpha
 `82186b01ad2e`. The older published-boundary section below remains a
 historical record; do not reset to its July revisions.
 
@@ -15,7 +15,7 @@ The current official complex-scene checkpoints are:
   re-entry through exact dominance frontiers. The follow-up carries enclosing
   loops as persistent contexts and replaces per-arm graph searches with block
   value numbering plus one sparse reverse-CFG dataflow per loop. Luisa
-  `next@58984c670` is published. Its follow-ups replace the quadratic
+  `next@8c6951520` is published. Its follow-ups replace the quadratic
   repeated DCE scan with an equivalent reverse-use least-fixed-point
   worklist and replace per-arm loop-boundary merge graph searches with one
   versioned sparse dataflow per loop plus explicit batch invalidation. The
@@ -71,15 +71,20 @@ The current official complex-scene checkpoints are:
   to `58.156 ms`, the drain from `392.109 ms` to `163.168 ms`,
   `restructure_cfg` to `2.428 s`, XIR legalization to `17.201 s`, and
   AST-to-SPIR-V to `30.399 s`. Full gates, SPIR-V, and output remain exact.
+  Selection-merge scoring now walks only the query's aggregate support, while
+  enclosing-selection fallback walks exactly the header's dominator ancestors
+  and dense IDs retain historical tie order. The if batch falls from
+  `271.223 ms` to `101.746 ms` (-62.5%) and `restructure_cfg` to `2.271 s`;
+  output and both SPIR-V modules remain exact after all gates.
   The merge
   canonicalizer itself remains at `0.084 s`. Peak RSS
   falls from `9,415,608 KiB` to `1,654,768 KiB` in the matched driver-cache
   state, with identical SPIR-V sizes and byte-identical output. The DCE run
   retriggered RADV compilation, so its process peak is not compared across
   cache states. Dense post-dominance is no longer a primary perf hotspot; the
-  next measured targets are the `0.271 s` if batch and `0.265 s`
-  loop-continue normalization. Selection-exit drain is now `0.163 s` and no
-  longer the dominant transform.
+  next measured target is `0.269 s` loop-continue normalization, including
+  `0.219 s` of exact dominance rebuilding. If-batch is now `0.102 s` and
+  selection-exit drain `0.162 s`.
 
 - [Sparse XIR verifier dominance](docs/validation/2026-08-10/xir-verifier-sparse-dominance/README.md)
   gives every locally reachable block a numeric RPO ID, stores predecessors
