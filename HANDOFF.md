@@ -9,6 +9,18 @@ historical record; do not reset to its July revisions.
 
 The current official complex-scene checkpoints are:
 
+- [Sparse XIR verifier dominance](docs/validation/2026-08-10/xir-verifier-sparse-dominance/README.md)
+  gives every locally reachable block a numeric RPO ID, stores predecessors
+  as sparse CSR and only one idom parent per block, then answers dominance by
+  ancestry intervals. Luisa `next@f6a9b2728` is published. The complete XIR
+  suite passes `48/48`; the RX 9070 XT native Vulkan path passes `92/92` tests
+  and `2,096` assertions. On the unchanged Lone Monk production module,
+  cache-cold Vulkan JIT falls from `569.378 s` to `180.533 s` with identical
+  raw and optimized SPIR-V sizes. Handoff verification is `1.009 s`.
+  Restructure still costs `53.138 s` and RADV pipeline creation `86.780 s`, so
+  the immediate compiler follow-up is a formally invalidated worklist for the
+  repeated post-restructure scans, not weaker verification.
+
 - [Monster BSSRDF exit normal](docs/validation/2026-08-07/monster-bssrdf-exit-normal/README.md)
   formally aligns Cycles' retained-BSSRDF closure-normal reduction and the
   synthetic unit Lambert used at a subsurface exit. The exact Monster path
