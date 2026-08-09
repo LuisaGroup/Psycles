@@ -1092,3 +1092,72 @@ pointer-legalization subproblem at 1.46% self time, followed by readonly
 resource-origin analysis at 0.82%. The next change should cache immutable
 per-function inline properties across call sites within one plan, while still
 invalidating a summary if an earlier planned inline mutates that function.
+
+## Versioned inline-call preflight reuse
+
+Luisa `next@9df5171e1` makes that invalidation rule explicit. The selected-call
+pass first summarizes each function definition at most once while the module
+is immutable. A summary contains the single-block strategy, return-shape and
+metadata legality, and both caller-barrier predicates. Call-specific argument
+and metadata checks are still performed for every selected call before any IR
+is changed.
+
+Let `S(f, v)` be the summary of function `f` at definition version `v`. An
+inline operation changes only the caller definition; it does not change its
+callee. Therefore, after applying a prepared call `caller -> callee`, every
+cached summary remains valid except the one for `caller`. The implementation
+maintains the monotone set of functions already changed as callers:
+
+```text
+M(0) = empty
+M(i + 1) = M(i) union {caller(i)}
+```
+
+When `callee` is not in `M`, application uses the already-selected
+single-block or multi-block strategy without repeating whole-definition
+validation. When `callee` is in `M`, the pass takes the original generic path
+and completely revalidates its current definition. This is an exact version
+test, not a heuristic cache timeout. Multiple independent calls in one caller
+do not invalidate their shared callee; a nested call chain does invalidate the
+middle function when it changes from caller to later callee.
+
+The scale regression creates 32 selected calls to one 65-instruction callable
+and requires exactly one function summary, 65 summary instruction visits, 32
+cached applications, and zero revalidations. A separate
+`inner -> middle -> kernel` regression applies the inner call first and then
+uses the mutated `middle` as a callee; it requires one cached application and
+one full revalidation. Both end with no reachable calls and verified IR.
+
+The matched Lone Monk cold run is under
+`/var/tmp/psycles-inline-prevalidated-apply-20260810/`, against the immediately
+preceding summary-only checkpoint in
+`/var/tmp/psycles-inline-summary-cache-20260810/`:
+
+| Boundary | Summary-only application | Versioned prevalidated application | Change |
+| --- | ---: | ---: | ---: |
+| Selected pointer calls | 7 | 7 | unchanged |
+| Cached / revalidated applications | not reported | 7 / 0 | all immutable |
+| Summarized functions / instructions | not aggregated | 5 / 563,685 | one scan per function/version |
+| `inline-spirv-pointer-args` | 1,845.33 ms | 1,620.18 ms | -12.2% |
+| SPIR-V XIR legalization | 10,975.70 ms | 10,766.86 ms | -1.9% |
+| Native AST-to-SPIR-V | 24,231.55 ms | 24,038.64 ms | -0.8% |
+| Complete shader JIT | 24.4005 s | 24.2129 s | -0.8% |
+| Process wall time | 26.39 s | 26.22 s | -0.6% |
+| Peak RSS | 1,657,900 KiB | 1,656,976 KiB | effectively unchanged |
+| Raw SPIR-V | 1,431,985 words | 1,431,985 words | identical size |
+| Optimized SPIR-V | 1,116,158 words | 1,116,158 words | identical size |
+
+The PPM and linear Combined output are byte-identical to the preceding
+checkpoint, with SHA-256 respectively
+`3ff6c5463ace13c0f26a735ac1af2bb96ab8a9ba1cb4398359cf2466f63a4d1b` and
+`4f93bceff43a46a086454e9a50745a497b39cd27e8a694f617a5c934fe3ed3eb`.
+A complete all-thread standard build passes, as do `unit_xir` 48/48, all 21
+SPIR-V tests, the pointer legalization suite (21/21 tests, 188 assertions),
+and the RX 9070 XT native Vulkan route (92/92 tests, 2,096 assertions). The
+system-STL pass suite independently passes 355/355 tests with 2,051
+assertions, and the production Psycles build and render also use system STL.
+
+The remaining 1.62-second pointer pass is no longer dominated by repeated
+immutable legality scans. Its next profile must separate actual instruction
+cloning, resolver insertion, use-list rewrites, and callable cleanup. Boundary
+verification and malformed-input validation remain intact.
