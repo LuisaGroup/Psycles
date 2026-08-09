@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <variant>
 
 namespace {
 
@@ -21,7 +22,12 @@ void require(bool condition, std::string_view message) {
     }
 }
 
-[[nodiscard]] ValueInstruction lower_normal_map(
+struct LoweredNormalMap {
+    ValueInstruction instruction;
+    std::uint64_t uv_map_id{};
+};
+
+[[nodiscard]] LoweredNormalMap lower_normal_map(
     std::string_view base,
     std::string_view convention,
     bool named,
@@ -60,10 +66,29 @@ void require(bool condition, std::string_view message) {
     require(shader.ok(), "Normal Map semantic graph did not compile");
     const auto surface = compile_surface_program(*shader.program);
     require(surface.ok(), "Normal Map semantic graph did not lower");
-    for (const auto &instruction :
-         surface.program->value_instructions()) {
+    const auto &values = surface.program->value_instructions();
+    const auto &parameters = surface.program->parameters();
+    for (const auto &instruction : values) {
         if (instruction.operation == ValueOperation::normal_map) {
-            return instruction;
+            const auto uv_map = instruction.operand(
+                value_operand::normal_map::uv_map);
+            require(uv_map.valid() && uv_map.value < values.size(),
+                    "Normal Map UV operand is not a valid value expression");
+            const auto &parameter_value = values[uv_map.value];
+            require(parameter_value.operation == ValueOperation::parameter &&
+                        parameter_value.parameter.valid() &&
+                        parameter_value.parameter.value < parameters.size(),
+                    "Normal Map UV identity is not a typed parameter");
+            const auto &parameter =
+                parameters[parameter_value.parameter.value];
+            require(parameter.source == ParameterSource::property &&
+                        parameter.socket == "UvMapId" &&
+                        parameter.type == SocketType::unsigned_integer,
+                    "Normal Map UV identity lost its property contract");
+            return {
+                .instruction = instruction,
+                .uv_map_id = std::get<std::uint64_t>(
+                    parameter.default_value.value)};
         }
     }
     throw std::runtime_error{"Normal Map emitted no value instruction"};
@@ -79,30 +104,30 @@ void test_original_and_displaced_are_distinct_static_stages() {
     const auto original = lower_normal_map(
         "ORIGINAL", "OPENGL", true, original_id);
     require(
-        decode_normal_map_space(original.static_u0) ==
+        decode_normal_map_space(original.instruction.static_u0) ==
                 NormalMapSpace::tangent &&
-            normal_map_has_named_tangent(original.static_u0) &&
-            decode_normal_map_base(original.static_u0) ==
+            normal_map_has_named_tangent(original.instruction.static_u0) &&
+            decode_normal_map_base(original.instruction.static_u0) ==
                 NormalMapBase::original &&
-            decode_normal_map_convention(original.static_u0) ==
+            decode_normal_map_convention(original.instruction.static_u0) ==
                 NormalMapConvention::open_gl &&
-            original.static_u1 == original_id,
+            original.uv_map_id == original_id,
         "ORIGINAL/OpenGL Normal Map lost its immutable tangent contract");
 
     const auto displaced = lower_normal_map(
         "DISPLACED", "DIRECTX", true, current_id);
     require(
-        decode_normal_map_space(displaced.static_u0) ==
+        decode_normal_map_space(displaced.instruction.static_u0) ==
                 NormalMapSpace::tangent &&
-            normal_map_has_named_tangent(displaced.static_u0) &&
-            decode_normal_map_base(displaced.static_u0) ==
+            normal_map_has_named_tangent(displaced.instruction.static_u0) &&
+            decode_normal_map_base(displaced.instruction.static_u0) ==
                 NormalMapBase::displaced &&
-            decode_normal_map_convention(displaced.static_u0) ==
+            decode_normal_map_convention(displaced.instruction.static_u0) ==
                 NormalMapConvention::direct_x &&
-            displaced.static_u1 == current_id,
+            displaced.uv_map_id == current_id,
         "DISPLACED/DirectX Normal Map lost its current tangent contract");
 
-    require(original.static_u0 != displaced.static_u0,
+    require(original.instruction.static_u0 != displaced.instruction.static_u0,
             "Normal Map base/convention collapsed to one JIT specialization");
 }
 
