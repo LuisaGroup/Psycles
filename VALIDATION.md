@@ -16,7 +16,7 @@ tree, replaces the final selection-by-block re-entry scan with exact
 dominance-frontier queries, carries enclosing loops as persistent contexts,
 and solves all loop-boundary arm classifications with block value numbering
 plus sparse reverse-CFG dataflow. The follow-ups through Luisa
-`next@5c3ce4334` replace DCE's repeated whole-function least-fixed-point scan
+`next@f16af7348` replace DCE's repeated whole-function least-fixed-point scan
 with an
 equivalent linear reverse-use worklist, then replace the remaining per-arm
 loop-boundary merge searches with versioned sparse dataflow and explicitly
@@ -51,6 +51,14 @@ funnels. Selection-exit drain falls from `0.726 s` to about `0.408 s`, its
 relation construction falls from about `0.282 s` to `0.069 s`, and
 `restructure_cfg` reaches `3.555 s`. All 48 XIR and 92 native Vulkan tests
 still pass; SPIR-V sizes and the output SHA-256 remain identical.
+The newest dense post-dominator stage value-numbers each immutable CFG once,
+stores both graph directions as sparse CSR, and solves immediate dominance on
+the sink-reachable reversed graph using only dense RPO IDs. Aggregate
+post-dominator time falls 3.73x from `0.649 s` to `0.174 s` across the same
+229 calls; `restructure_cfg` reaches `3.036 s`, XIR legalization `17.722 s`,
+and native AST-to-SPIR-V `31.228 s`. The system-STL gates, all 48 XIR tests,
+and all 92 native Vulkan tests pass, with identical SPIR-V and byte-identical
+output.
 Against the earlier complete
 run, `drain_selection_exits` falls 18.30x to `0.723 s`, `restructure_cfg`
 falls 49.0% to `17.945 s`, native AST-to-SPIR-V falls 23.9% to `57.766 s`,
@@ -59,8 +67,10 @@ RADV disk cache, so its `57.933 s` wall is recorded but not attributed to the
 compiler change. The DCE follow-up retriggered an `84.119 s` RADV compile, so
 its total wall and process RSS are likewise separated from compiler-boundary
 comparisons. The former merge-inference hotspot is now only part of a
-`0.299 s` if batch. The next restructure target is aggregate post-dominator
-construction at about `0.649 s` across 229 calls.
+`0.286 s` if batch, and dense post-dominance is no longer a primary perf
+hotspot. The next restructure target is loop-continue normalization at about
+`0.520 s`, specifically its repeated pointer-hash dominance queries and
+per-site region workspace.
 
 The preceding
 [sparse XIR verifier dominance checkpoint](docs/validation/2026-08-10/xir-verifier-sparse-dominance/README.md)

@@ -570,3 +570,58 @@ block and iteration, and repeatedly rediscovers sinks. The next step is block
 value numbering plus a sparse reverse-CFG edge representation and a fully
 dense immediate-dominator fixed point, with pointer maps only at the API
 boundary.
+
+## Dense post-dominator fixed point
+
+Luisa `next@f16af7348` implements that boundary as a standalone 277-line
+component. Each immutable analysis value-numbers owned blocks exactly once,
+numbers every owned edge once, and builds the original and reverse CFG as two
+sparse CSR views. An iterative DFS from one synthetic exit produces reverse
+postorder over precisely the historical sink-reachable subgraph. A dense
+Cooper-Harvey-Kennedy immediate-dominator solve then runs on the reversed CFG;
+pointer hashing is confined to the initial numbering and final compatibility
+map.
+
+This intentionally does not reuse the public post-dominator pass: that pass
+models DFS backedges as virtual exits, whereas restructuring historically
+connects only real return, unreachable, raster-discard, unterminated, or
+successor-free sinks to its virtual exit. Preserving that domain is part of
+the transform semantics, not an optimization detail.
+
+A 128-diamond regression constrains the algorithm through the public
+restructure entry point. For every immutable analysis it requires exactly
+`1 + 3N` numbered blocks, `4N` numbered edges, two RPO fixed-point passes, and
+linear block/edge visits. This rules out a hidden pointer-valued Cartesian
+relation while also checking the structured no-op result. The system-STL
+focused gates pass 66/66 restructure tests with 1,325 assertions and 350/350
+pass tests with 1,978 assertions. The complete `unit_xir` label passes 48/48;
+the RX 9070 XT native Vulkan route passes 92/92 tests with 2,096 assertions.
+
+The exact cache-cold Lone Monk comparison is recorded under
+`/var/tmp/psycles-dense-postdom-20260810/`:
+
+| Boundary | Sparse selection-exit baseline | Dense post-dominance | Change |
+| --- | ---: | ---: | ---: |
+| Post-dominator construction | 0.649 s / 229 calls | 0.174 s / 229 calls | 3.73x |
+| `restructure_cfg` | 3.555 s | 3.036 s | -14.6% |
+| SPIR-V XIR legalization | 18.358 s | 17.722 s | -3.5% |
+| Native AST-to-SPIR-V | 31.847 s | 31.228 s | -1.9% |
+| Process wall time | 34.01 s | 33.42 s | -1.7% |
+| Peak RSS | 1,661,564 KiB | 1,660,856 KiB | effectively unchanged |
+| Raw SPIR-V | 1,431,985 words | 1,431,985 words | identical size |
+| Optimized SPIR-V | 1,116,158 words | 1,116,158 words | identical size |
+
+The production run performed 229 analyses over 666,268 numbered blocks and
+872,735 numbered edges. The dense fixed point made 1,975,437 block visits,
+2,589,358 edge visits, and 2,065,041 parent-intersection steps. The PPM is
+byte-identical with SHA-256
+`3ff6c5463ace13c0f26a735ac1af2bb96ab8a9ba1cb4398359cf2466f63a4d1b`, and
+both raw and optimized SPIR-V word counts are unchanged.
+
+After this change the post-dominator solver disappears from the primary perf
+hotspots. The largest measured restructure leaf is now loop-continue
+normalization at about `0.520 s`, followed by selection-exit drain at about
+`0.394 s` and the if batch at about `0.286 s`. Perf also exposes redundant
+pointer-hash lookups in `DomTree::dominates`; the next stage therefore targets
+versioned dense loop-region discovery and direct dominance-node queries while
+retaining immediate invalidation after every CFG mutation.
