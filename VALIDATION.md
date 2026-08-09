@@ -9,6 +9,20 @@ multilayer OpenEXR output.
 ## Latest checkpoint
 
 The newest
+[sparse XIR verifier dominance checkpoint](docs/validation/2026-08-10/xir-verifier-sparse-dominance/README.md)
+replaces the verifier's quadratic all-dominator sets with block value
+numbering, sparse predecessor CSR, one immediate-dominator parent per block,
+and ancestry-interval queries. The 6,145-block structural regression proves
+`V - 1` tree storage; malformed cross-function edges remain diagnosed and are
+excluded from the numbered CFG. All 48 XIR tests and 92 Vulkan native-codegen
+runtime tests pass. On the unchanged 37-material Lone Monk kernel, with
+identical 1,431,985/1,116,158-word raw/optimized SPIR-V, cache-cold Vulkan JIT
+falls 3.15x from `569.378 s` to `180.533 s`. Handoff verification is now
+`1.009 s`; the remaining `53.138 s` restructure cost is independently traced
+to repeated post-fixed-point graph scans, and RADV pipeline creation remains
+`86.780 s`.
+
+The newest
 [Monster BSSRDF exit-normal checkpoint](docs/validation/2026-08-07/monster-bssrdf-exit-normal/README.md)
 implements Cycles' exact retained-BSSRDF normal reduction for the synthetic
 unit Lambert at a subsurface exit. A real Monster path now agrees through the
