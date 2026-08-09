@@ -91,6 +91,11 @@ else()
 endif()
 
 if(PSYCLES_ENABLE_LUISA)
+    # Psycles uses the platform C++20 library throughout its host-side graph
+    # compiler. Keep the Luisa public ABI on the same STL implementation and
+    # avoid exposing bundled EASTL types through Luisa headers.
+    set(LUISA_COMPUTE_USE_SYSTEM_STL ON CACHE BOOL
+        "Use system STL for Psycles' LuisaCompute dependency" FORCE)
     set(_psycles_luisa_source_dir "")
     if(EXISTS "${PSYCLES_LUISA_SUBMODULE_DIR}/CMakeLists.txt")
         set(_psycles_luisa_source_dir "${PSYCLES_LUISA_SUBMODULE_DIR}")

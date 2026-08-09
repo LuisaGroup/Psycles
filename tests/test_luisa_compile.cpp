@@ -16,7 +16,15 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <utility>
+#include <vector>
+
+#ifndef LUISA_USE_SYSTEM_STL
+#error "Psycles requires LuisaCompute to use the system STL"
+#endif
+
+static_assert(std::is_same_v<luisa::vector<int>, std::vector<int>>);
 
 namespace {
 

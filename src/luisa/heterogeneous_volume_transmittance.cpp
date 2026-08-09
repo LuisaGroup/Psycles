@@ -4,6 +4,12 @@
 
 namespace psycles::luisa_backend {
 
+namespace {
+
+constexpr auto log_one_tenth = -2.302585092994046f;
+
+}// namespace
+
 HeterogeneousVolumeTransmittanceResult
 HeterogeneousVolumeTransmittance::evaluate(
     const VolumeMajorantSegment &segment,
@@ -52,7 +58,7 @@ HeterogeneousVolumeTransmittance::evaluate(
                     cast<luisa::uint>(
                         floor(
                             log(geometric_random) /
-                            log(0.1f))),
+                            log_one_tenth)),
                     4u);
             independent_estimators =
                 1u << order;
