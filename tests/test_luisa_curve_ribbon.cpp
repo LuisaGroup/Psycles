@@ -9,6 +9,8 @@
 #include <string_view>
 
 #include <luisa/luisa-compute.h>
+#include <luisa/xir/instructions/loop.h>
+#include <luisa/xir/translators/ast2xir.h>
 
 namespace {
 
@@ -32,12 +34,62 @@ void expect_near(
             ", expected " + std::to_string(expected));
 }
 
+void expect_runtime_subdivision_loop(
+    const std::shared_ptr<const CurveRibbonComponent> &ribbon) {
+    Kernel1D shape = [ribbon](BufferUInt subdivision,
+                              BufferFloat4 output) noexcept {
+        const auto ray = make_ray(
+            make_float3(0.0f),
+            make_float3(0.0f, 0.0f, 1.0f),
+            0.0f,
+            10.0f);
+        const CurveControlPoints curve{
+            .before = make_float4(-2.0f, 0.0f, 2.0f, 0.5f),
+            .begin = make_float4(-1.0f, 0.0f, 2.0f, 0.5f),
+            .end = make_float4(1.0f, 0.0f, 2.0f, 0.5f),
+            .after = make_float4(2.0f, 0.0f, 2.0f, 0.5f)};
+        const auto intersection = ribbon->intersect(
+            ray, curve, subdivision.read(0u));
+        output.write(
+            0u,
+            make_float4(
+                intersection.distance,
+                intersection.u,
+                intersection.v,
+                select(0.0f, 1.0f, intersection.valid)));
+    };
+    auto module = luisa::compute::xir::ast_to_xir_translate(
+        shape.function()->function(), {});
+    std::size_t loops = 0u;
+    for (auto *function : module->function_list()) {
+        if (auto *definition = function->definition()) {
+            definition->traverse_instructions(
+                [&](const luisa::compute::xir::Instruction
+                        *instruction) noexcept {
+                    loops +=
+                        instruction->isa<
+                            luisa::compute::xir::LoopInst>() ||
+                                instruction->isa<
+                                    luisa::compute::xir::SimpleLoopInst>()
+                            ? 1u
+                            : 0u;
+                });
+        }
+    }
+    expect(
+        loops == 1u,
+        "runtime curve subdivision did not lower to exactly one device loop");
+}
+
 }// namespace
 
 int main(int argc, char **argv) {
     const auto backend = std::string_view{
         argc > 1 ? argv[1] : "fallback"};
     try {
+        const auto ribbon = make_curve_ribbon_component();
+        expect_runtime_subdivision_loop(ribbon);
+
         Context context{argv[0]};
         auto device = context.create_device(backend);
         auto stream = device.create_stream();
@@ -76,7 +128,6 @@ int main(int argc, char **argv) {
             transformed_object_to_world);
 
         auto output = device.create_buffer<luisa::float4>(5u);
-        const auto ribbon = make_curve_ribbon_component();
         Kernel1D trace = [ribbon](
                              BufferFloat4 records,
                              AccelVar scene_accel) noexcept {
