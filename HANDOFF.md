@@ -3,7 +3,7 @@
 ## Current continuation — 2026-08-10
 
 The current renderer implementation boundary advances from Psycles
-`main@6422cd5` with LuisaCompute `next@8085ee23b` and Blender/Cycles 5.3 Alpha
+`main@f529903` with LuisaCompute `next@6a03ec2f7` and Blender/Cycles 5.3 Alpha
 `82186b01ad2e`. The older published-boundary section below remains a
 historical record; do not reset to its July revisions.
 
@@ -15,24 +15,30 @@ The current official complex-scene checkpoints are:
   re-entry through exact dominance frontiers. The follow-up carries enclosing
   loops as persistent contexts and replaces per-arm graph searches with block
   value numbering plus one sparse reverse-CFG dataflow per loop. Luisa
-  `next@8085ee23b` is published. Its follow-ups replace the quadratic
+  `next@6a03ec2f7` is published. Its follow-ups replace the quadratic
   repeated DCE scan with an equivalent reverse-use least-fixed-point
   worklist and replace per-arm loop-boundary merge graph searches with one
   versioned sparse dataflow per loop plus explicit batch invalidation. The
-  complete XIR suite passes `48/48`, and
+  latest follow-up replaces 1,723 per-candidate dominator rebuilds with an
+  exact immutable-tree overlay whose transparent merges carry
+  nearest-common-dominator anchors. Dynamic merge inference continues to see
+  the mutated graph; the immutable lexical merge is only the contracted-graph
+  fallback. The complete XIR suite passes `48/48`, and
   the RX 9070 XT native Vulkan path passes `92/92` tests with `2,096`
   assertions. On the unchanged Lone Monk module, `drain_selection_exits`
   falls 18.30x to `0.723 s`; DCE subsequently falls 4.72x from `14.182 s` to
   `3.004 s`. `restructure_cfg` falls from `35.226 s` to
   `17.945 s`; AST-to-SPIR-V falls from `75.920 s` to `57.766 s`, then to
-  `47.533 s` after DCE, then to `41.046 s` after merge batching; the merge
-  canonicalizer itself falls 67.8x to `0.084 s`. Peak RSS
+  `47.533 s` after DCE, then to `41.046 s` after merge batching, then to
+  `35.714 s` after dominance-overlay batching. The if batch itself falls
+  3.79x from `7.930 s` to `2.091 s`, `restructure_cfg` reaches `6.826 s`,
+  and the merge canonicalizer itself remains at `0.084 s`. Peak RSS
   falls from `9,415,608 KiB` to `1,654,768 KiB` in the matched driver-cache
   state, with identical SPIR-V sizes and byte-identical output. The DCE run
   retriggered RADV compilation, so its process peak is not compared across
-  cache states. The next measured compiler target is
-  `try_restructure_if_batch` at `7.930 s`; its analysis and post-dominator
-  invalidation costs must be decomposed before changing the algorithm.
+  cache states. The next measured compiler target is the pair of
+  merge-inference passes, which account for about `2.064 s` of the remaining
+  `2.091 s` if-batch time.
 
 - [Sparse XIR verifier dominance](docs/validation/2026-08-10/xir-verifier-sparse-dominance/README.md)
   gives every locally reachable block a numeric RPO ID, stores predecessors
