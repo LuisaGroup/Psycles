@@ -40,12 +40,18 @@ using ValueExpressionId = ProgramId<ValueExpressionTag>;
 using ClosureExpressionId = ProgramId<ClosureExpressionTag>;
 using VolumeExpressionId = ProgramId<VolumeExpressionTag>;
 
+enum class ParameterSource : std::uint8_t {
+  input,
+  property
+};
+
 struct ParameterDesc {
   ParameterId id;
   contract::NodeId node;
   std::string socket;
   contract::SocketType type{};
   contract::SocketValue default_value;
+  ParameterSource source{ParameterSource::input};
 };
 
 enum class ValueOperation : std::uint8_t {
@@ -371,6 +377,10 @@ struct ValueInstruction {
   ValueExpressionId h;
   ValueExpressionId i;
   ValueExpressionId j;
+  ValueExpressionId k;
+  ValueExpressionId l;
+  ValueExpressionId m;
+  ValueExpressionId n;
   std::uint64_t static_u0{};
   std::uint64_t static_u1{};
   float static_f0{};

@@ -72,11 +72,21 @@ struct SocketSchema {
     std::optional<SocketValue> default_value;
 };
 
+// A node property is either part of the program's generated code shape or
+// material data consumed by that program. This distinction is a compiler
+// contract: runtime parameters are excluded from the structure signature
+// only when surface lowering binds them through the typed parameter block.
+enum class PropertyRole : std::uint8_t {
+    code_shape,
+    runtime_parameter
+};
+
 struct PropertySchema {
     std::string name;
     SocketType type;
     bool required{false};
     std::optional<SocketValue> default_value;
+    PropertyRole role{PropertyRole::code_shape};
 };
 
 enum class ShaderFeature : std::uint64_t {
@@ -210,8 +220,15 @@ struct GraphDiagnostic {
     std::string socket;
 };
 
+struct RuntimePropertyRef {
+    NodeId node;
+    std::string property;
+    SocketType type{};
+};
+
 struct GraphAnalysis {
     std::vector<NodeId> evaluation_order;
+    std::vector<RuntimePropertyRef> runtime_properties;
     std::uint64_t required_features{};
     std::uint64_t structure_signature{};
     std::uint64_t parameter_signature{};

@@ -39,7 +39,7 @@ struct CurveSegmentGpu {
 };
 
 struct AttributeBindingGpu {
-    std::uint64_t id{};
+    luisa::ulong id{};
     luisa::uint value_slot{};
     luisa::uint domain{};
 };

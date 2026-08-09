@@ -7,10 +7,12 @@
 #include <psycles/contract/scene.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 
@@ -50,7 +52,8 @@ void expect(bool condition, const std::string &message) {
     std::string interpolation,
     std::string extension,
     std::string projection,
-    float projection_blend) {
+    float projection_blend,
+    std::uint64_t image_id = 0u) {
     ShaderGraph graph;
     const auto image =
         graph.add_node(node_type::image_texture, "Image Texture");
@@ -81,6 +84,12 @@ void expect(bool condition, const std::string &message) {
             SocketValue::floating(projection_blend)),
         "failed to set image projection blend");
     expect(
+        graph.set_property(
+            image,
+            "Image",
+            SocketValue::unsigned_integer(image_id)),
+        "failed to set image handle");
+    expect(
         graph.connect(
             {.node = image, .socket = "Color"},
             emission,
@@ -90,6 +99,52 @@ void expect(bool condition, const std::string &message) {
         ShaderDomain::surface,
         OutputRef{.node = emission, .socket = "Closure"});
     return graph;
+}
+
+[[nodiscard]] ShaderGraph make_magic_emission_graph(
+    std::uint64_t depth) {
+    ShaderGraph graph;
+    const auto magic = graph.add_node(
+        node_type::magic_texture, "Magic Texture");
+    const auto emission = graph.add_node(
+        node_type::emission, "Magic Emission");
+    expect(
+        graph.set_property(
+            magic,
+            "Depth",
+            SocketValue::unsigned_integer(depth)),
+        "failed to set Magic depth");
+    expect(
+        graph.set_property(
+            magic,
+            "NeedsColor",
+            SocketValue::boolean(true)),
+        "failed to request Magic color output");
+    expect(
+        graph.connect(
+            {.node = magic, .socket = "Color"},
+            emission,
+            "Color"),
+        "failed to connect Magic color to emission");
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = emission, .socket = "Closure"});
+    return graph;
+}
+
+[[nodiscard]] const ParameterDesc *find_property_parameter(
+    const SurfaceProgram &program,
+    std::string_view property) noexcept {
+    const auto found = std::find_if(
+        program.parameters().begin(),
+        program.parameters().end(),
+        [&](const ParameterDesc &parameter) {
+            return parameter.source == ParameterSource::property &&
+                   parameter.socket == property;
+        });
+    return found == program.parameters().end()
+               ? nullptr
+               : &*found;
 }
 
 [[nodiscard]] ShaderGraph make_environment_emission_graph(
@@ -190,12 +245,29 @@ void test_image_texture_modes_are_structural() {
     const auto box_blend = compiler.compile(
         make_image_emission_graph(
             "Linear", "REPEAT", "BOX", 0.55f));
+    const auto box_zero_blend = compiler.compile(
+        make_image_emission_graph(
+            "Linear", "REPEAT", "BOX", 0.0f));
+    constexpr auto image_a = 0xf123456789abcdefull;
+    constexpr auto image_b = 0x8123456789abcdefull;
+    const auto first_image = compiler.compile(
+        make_image_emission_graph(
+            "Linear", "REPEAT", "FLAT", 0.0f, image_a));
+    const auto second_image = compiler.compile(
+        make_image_emission_graph(
+            "Linear", "REPEAT", "FLAT", 0.0f, image_b));
 
     expect(baseline.ok(), "baseline image graph failed to compile");
     expect(closest.ok(), "closest image graph failed to compile");
     expect(mirror.ok(), "mirror image graph failed to compile");
     expect(sphere.ok(), "sphere image graph failed to compile");
     expect(box_blend.ok(), "box image graph failed to compile");
+    expect(
+        box_zero_blend.ok(),
+        "zero-blend box image graph failed to compile");
+    expect(
+        first_image.ok() && second_image.ok(),
+        "runtime image-handle graphs failed to compile");
 
     const auto baseline_signature =
         baseline.program->analysis().structure_signature;
@@ -214,7 +286,102 @@ void test_image_texture_modes_are_structural() {
     expect(
         box_blend.program->analysis().structure_signature !=
             baseline_signature,
-        "image projection blend did not invalidate shader structure");
+        "image projection did not invalidate shader structure");
+    expect(
+        box_blend.program->analysis().structure_signature ==
+            box_zero_blend.program->analysis().structure_signature,
+        "numeric box blend fragmented an identical shader topology");
+    expect(
+        box_blend.program->analysis().parameter_signature !=
+            box_zero_blend.program->analysis().parameter_signature,
+        "numeric box blend did not invalidate material parameters");
+    expect(
+        first_image.program->analysis().structure_signature ==
+            second_image.program->analysis().structure_signature,
+        "image handle fragmented an identical shader topology");
+    expect(
+        first_image.program->analysis().parameter_signature !=
+            second_image.program->analysis().parameter_signature,
+        "image handle did not invalidate material parameters");
+
+    const auto image_surface =
+        compile_surface_program(*first_image.program);
+    expect(
+        image_surface.ok(),
+        "runtime image-handle graph failed to lower");
+    const auto image_parameter = find_property_parameter(
+        *image_surface.program, "Image");
+    expect(
+        image_parameter != nullptr &&
+            image_parameter->type == SocketType::unsigned_integer,
+        "image handle was not lowered as a typed runtime property");
+    const auto rebound_image = bind_surface_parameters(
+        *image_surface.program, *second_image.program);
+    expect(
+        rebound_image.ok(),
+        "same-topology image material could not reuse its program");
+    const auto *rebound_image_id =
+        rebound_image.parameters->find(image_parameter->id);
+    expect(
+        rebound_image_id != nullptr &&
+            std::get<std::uint64_t>(rebound_image_id->value) == image_b,
+        "rebound image handle lost its exact 64-bit value");
+
+    const auto box_surface =
+        compile_surface_program(*box_zero_blend.program);
+    expect(box_surface.ok(), "box image graph failed to lower");
+    const auto blend_parameter = find_property_parameter(
+        *box_surface.program, "ProjectionBlend");
+    const auto rebound_box = bind_surface_parameters(
+        *box_surface.program, *box_blend.program);
+    expect(
+        blend_parameter != nullptr && rebound_box.ok(),
+        "same-topology box material could not reuse its program");
+    const auto *rebound_blend =
+        rebound_box.parameters->find(blend_parameter->id);
+    expect(
+        rebound_blend != nullptr &&
+            std::get<float>(rebound_blend->value) == 0.55f,
+        "rebound box blend retained the compiled material value");
+}
+
+void test_magic_depth_is_a_runtime_property() {
+    ShaderCompiler compiler{make_core_node_registry()};
+    const auto depth_two = compiler.compile(
+        make_magic_emission_graph(2u));
+    const auto depth_nine = compiler.compile(
+        make_magic_emission_graph(9u));
+    expect(
+        depth_two.ok() && depth_nine.ok(),
+        "Magic runtime-depth graphs failed to compile");
+    expect(
+        depth_two.program->analysis().structure_signature ==
+            depth_nine.program->analysis().structure_signature,
+        "Magic depth fragmented an identical shader topology");
+    expect(
+        depth_two.program->analysis().parameter_signature !=
+            depth_nine.program->analysis().parameter_signature,
+        "Magic depth did not invalidate material parameters");
+
+    const auto surface =
+        compile_surface_program(*depth_two.program);
+    expect(surface.ok(), "Magic runtime-depth graph failed to lower");
+    const auto depth_parameter = find_property_parameter(
+        *surface.program, "Depth");
+    expect(
+        depth_parameter != nullptr &&
+            depth_parameter->type == SocketType::unsigned_integer,
+        "Magic depth was not lowered as a typed runtime property");
+    const auto rebound = bind_surface_parameters(
+        *surface.program, *depth_nine.program);
+    expect(
+        rebound.ok(),
+        "same-topology Magic material could not reuse its program");
+    const auto *depth = rebound.parameters->find(depth_parameter->id);
+    expect(
+        depth != nullptr &&
+            std::get<std::uint64_t>(depth->value) == 9u,
+        "rebound Magic depth retained the compiled material value");
 }
 
 void test_environment_texture_modes_are_structural() {
@@ -1968,6 +2135,7 @@ int main() {
     try {
         test_shader_graph_and_invalidation();
         test_image_texture_modes_are_structural();
+        test_magic_depth_is_a_runtime_property();
         test_environment_texture_modes_are_structural();
         test_wave_texture_configuration_lowers_structurally();
         test_voronoi_texture_configuration_lowers_structurally();

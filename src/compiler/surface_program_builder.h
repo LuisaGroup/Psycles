@@ -79,7 +79,12 @@ private:
 
   [[nodiscard]] ParameterId add_parameter(const contract::ShaderNode &node,
                                           std::string_view socket,
-                                          const contract::SocketValue &value);
+                                          const contract::SocketValue &value,
+                                          ParameterSource source);
+
+  [[nodiscard]] std::optional<ValueExpressionId>
+  lower_property_parameter(const contract::ShaderNode &node,
+                           std::string_view property);
 
   [[nodiscard]] ValueExpressionId append(ValueInstruction instruction);
 

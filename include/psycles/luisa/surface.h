@@ -559,6 +559,10 @@ public:
     [[nodiscard]] virtual Float3 parameter_float3(
         Expr<std::uint32_t> block,
         Expr<std::uint32_t> slot) const noexcept = 0;
+
+    [[nodiscard]] virtual ULong parameter_uint64(
+        Expr<std::uint32_t> block,
+        Expr<std::uint32_t> slot) const noexcept = 0;
 };
 
 class ShaderServices : public SurfaceParameterServices {
@@ -575,8 +579,22 @@ public:
         std::uint32_t extension) const noexcept = 0;
 
     [[nodiscard]] virtual ShaderAttribute attribute(
-        Expr<std::uint64_t> attribute_id,
+        Expr<luisa::ulong> attribute_id,
         const SurfacePoint &point) const noexcept = 0;
+
+    // Attribute hashes are stored and serialized as std::uint64_t on the
+    // host, while device expressions use Luisa's canonical ulong type.
+    // Keep the only fundamental-type conversion at this staging boundary;
+    // the generated shader receives the exact 64-bit bit pattern.
+    [[nodiscard]] ShaderAttribute attribute(
+        std::uint64_t attribute_id,
+        const SurfacePoint &point) const noexcept {
+        static_assert(sizeof(std::uint64_t) == sizeof(luisa::ulong));
+        return attribute(
+            Expr<luisa::ulong>{
+                static_cast<luisa::ulong>(attribute_id)},
+            point);
+    }
 
     // Versioned Cycles compatibility data. The index addresses the
     // contiguous Blender BSDF table buffer; interpolation and table shape

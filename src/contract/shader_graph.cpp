@@ -600,6 +600,7 @@ GraphValidation validate_shader_graph(
 
     StableHash structure_hash;
     StableHash parameter_hash;
+    std::vector<RuntimePropertyRef> runtime_properties;
     std::uint64_t features{};
 
     for (auto id : order) {
@@ -610,11 +611,27 @@ GraphValidation validate_shader_graph(
 
         for (const auto &property : schema->properties) {
             structure_hash.string(property.name);
+            structure_hash.scalar(property.type);
+            structure_hash.scalar(property.role);
             auto value_iter = node->properties.find(property.name);
-            if (value_iter != node->properties.end()) {
-                hash_socket_value(structure_hash, value_iter->second);
-            } else if (property.default_value) {
-                hash_socket_value(structure_hash, *property.default_value);
+            const auto *value =
+                value_iter != node->properties.end()
+                    ? &value_iter->second
+                    : property.default_value
+                          ? &*property.default_value
+                          : nullptr;
+            if (property.role == PropertyRole::runtime_parameter) {
+                runtime_properties.emplace_back(RuntimePropertyRef{
+                    .node = id,
+                    .property = property.name,
+                    .type = property.type});
+                parameter_hash.string(node->type);
+                parameter_hash.string(property.name);
+                if (value != nullptr) {
+                    hash_socket_value(parameter_hash, *value);
+                }
+            } else if (value != nullptr) {
+                hash_socket_value(structure_hash, *value);
             }
         }
 
@@ -660,6 +677,7 @@ GraphValidation validate_shader_graph(
 
     result.analysis = GraphAnalysis{
         .evaluation_order = std::move(order),
+        .runtime_properties = std::move(runtime_properties),
         .required_features = features,
         .structure_signature = structure_hash.value(),
         .parameter_signature = parameter_hash.value()};

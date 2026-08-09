@@ -61,12 +61,13 @@ public:
     }
 
     [[nodiscard]] ShaderAttribute attribute(
-        Expr<std::uint64_t> id,
+        Expr<luisa::ulong> id,
         const SurfacePoint &) const noexcept override {
         auto result = ShaderAttribute::missing();
         if (_density_found) {
             const auto match =
-                id == contract::attribute_id("density");
+                id == static_cast<luisa::ulong>(
+                          contract::attribute_id("density"));
             result.value = select(
                 result.value,
                 make_float4(_density),
@@ -75,7 +76,8 @@ public:
         }
         if (_temperature_found) {
             const auto match =
-                id == contract::attribute_id("temperature");
+                id == static_cast<luisa::ulong>(
+                          contract::attribute_id("temperature"));
             result.value = select(
                 result.value,
                 make_float4(_temperature),
@@ -95,6 +97,15 @@ public:
         Expr<std::uint32_t> block,
         Expr<std::uint32_t> slot) const noexcept override {
         return _parameters.read(block + slot).xyz();
+    }
+
+    [[nodiscard]] ULong
+    parameter_uint64(
+        Expr<std::uint32_t> block,
+        Expr<std::uint32_t> slot) const noexcept override {
+        return _parameters.read(block + slot)
+            .xy()
+            .bitcast<luisa::ulong>();
     }
 
     [[nodiscard]] Float cycles_bsdf_data(

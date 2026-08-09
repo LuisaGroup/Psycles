@@ -49,9 +49,7 @@ GraphSurfaceImplementation::GraphSurfaceImplementation(
                     compiler::ValueOperation::magic_color ||
                 instruction.operation ==
                     compiler::ValueOperation::magic_factor) {
-                cycles_magic::prepare(
-                    static_cast<std::uint32_t>(
-                        instruction.static_u0));
+                cycles_magic::prepare();
             } else if (
                 instruction.operation ==
                     compiler::ValueOperation::wave_color ||

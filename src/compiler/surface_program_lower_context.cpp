@@ -63,6 +63,7 @@ SurfaceProgramBuilder::lower_context_node(const contract::ShaderNode &node) {
     return true;
   }
   if (node.type == node_type::texture_coordinate) {
+    const auto uv_map = lower_property_parameter(node, "UvMapId");
     const auto object_use_transform = property_bool(node, "ObjectUseTransform");
     std::vector<float> object_world_to_object;
     if (object_use_transform) {
@@ -70,13 +71,15 @@ SurfaceProgramBuilder::lower_context_node(const contract::ShaderNode &node) {
       object_world_to_object.assign(transform.elements.begin(),
                                     transform.elements.end());
     }
-    publish(node.id, "UV",
-            append(ValueInstruction{
-                .operation = ValueOperation::uv,
-                .source_node = node.id,
-                .result_type = SocketType::vector,
-                .static_u0 = property_bool(node, "UvMapNamed") ? 1u : 0u,
-                .static_u1 = property_uint(node, "UvMapId")}));
+    if (uv_map) {
+      publish(node.id, "UV",
+              append(ValueInstruction{
+                  .operation = ValueOperation::uv,
+                  .source_node = node.id,
+                  .result_type = SocketType::vector,
+                  .a = *uv_map,
+                  .static_u0 = property_bool(node, "UvMapNamed") ? 1u : 0u}));
+    }
     publish(node.id, "Normal",
             append(ValueInstruction{.operation = ValueOperation::shading_normal,
                                     .source_node = node.id,

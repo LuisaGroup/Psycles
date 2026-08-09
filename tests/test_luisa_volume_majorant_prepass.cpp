@@ -147,7 +147,7 @@ class FixtureShaderServices final
     }
 
     [[nodiscard]] ShaderAttribute attribute(
-        Expr<std::uint64_t>,
+        Expr<luisa::ulong>,
         const SurfacePoint &) const noexcept override {
         return ShaderAttribute::missing();
     }
@@ -168,6 +168,16 @@ class FixtureShaderServices final
         return _parameters
             .read(block + slot)
             .xyz();
+    }
+
+    [[nodiscard]] ULong
+    parameter_uint64(
+        Expr<std::uint32_t> block,
+        Expr<std::uint32_t> slot)
+        const noexcept override {
+        return _parameters.read(block + slot)
+            .xy()
+            .bitcast<luisa::ulong>();
     }
 
     [[nodiscard]] Float cycles_bsdf_data(

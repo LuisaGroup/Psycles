@@ -10,9 +10,10 @@ SurfaceValueCategory surface_value_category(
     switch (type) {
         case SocketType::boolean:
         case SocketType::integer:
-        case SocketType::unsigned_integer:
         case SocketType::floating:
             return SurfaceValueCategory::scalar;
+        case SocketType::unsigned_integer:
+            return SurfaceValueCategory::unsigned_integer;
         case SocketType::float2:
         case SocketType::float3:
         case SocketType::color:
@@ -38,6 +39,10 @@ SurfaceValueExpression::SurfaceValueExpression(
     Expr<luisa::float3> value) noexcept
     : _value{value} {}
 
+SurfaceValueExpression::SurfaceValueExpression(
+    Expr<luisa::ulong> value) noexcept
+    : _value{value} {}
+
 SurfaceValueExpression SurfaceValueExpression::from_scalar(
     Expr<float> value) noexcept {
     return SurfaceValueExpression{value};
@@ -48,14 +53,23 @@ SurfaceValueExpression SurfaceValueExpression::from_vector(
     return SurfaceValueExpression{value};
 }
 
+SurfaceValueExpression SurfaceValueExpression::from_unsigned_integer(
+    Expr<luisa::ulong> value) noexcept {
+    return SurfaceValueExpression{value};
+}
+
 SurfaceValueExpression SurfaceValueExpression::zero(
     contract::SocketType type) noexcept {
-    if (surface_value_category(type) ==
-        SurfaceValueCategory::scalar) {
-        return from_scalar(Expr<float>{0.0f});
+    switch (surface_value_category(type)) {
+        case SurfaceValueCategory::scalar:
+            return from_scalar(Expr<float>{0.0f});
+        case SurfaceValueCategory::vector:
+            return from_vector(Expr<luisa::float3>{
+                luisa::make_float3(0.0f)});
+        case SurfaceValueCategory::unsigned_integer:
+            return from_unsigned_integer(Expr<luisa::ulong>{0ull});
     }
-    return from_vector(Expr<luisa::float3>{
-        luisa::make_float3(0.0f)});
+    std::abort();
 }
 
 Float SurfaceValueExpression::scalar() const noexcept {
@@ -74,16 +88,28 @@ Float3 SurfaceValueExpression::vector() const noexcept {
     std::abort();
 }
 
+ULong SurfaceValueExpression::unsigned_integer() const noexcept {
+    if (const auto *value =
+            std::get_if<Expr<luisa::ulong>>(&_value)) {
+        return ULong{*value};
+    }
+    std::abort();
+}
+
 SurfaceValueExpression project_surface_value(
     contract::SocketType type,
     Float4 value) noexcept {
-    if (surface_value_category(type) ==
-        SurfaceValueCategory::scalar) {
-        return SurfaceValueExpression::from_scalar(
-            Expr<float>{value.x.expression()});
+    switch (surface_value_category(type)) {
+        case SurfaceValueCategory::scalar:
+            return SurfaceValueExpression::from_scalar(
+                Expr<float>{value.x.expression()});
+        case SurfaceValueCategory::vector:
+            return SurfaceValueExpression::from_vector(
+                Expr<luisa::float3>{value.xyz().expression()});
+        case SurfaceValueCategory::unsigned_integer:
+            std::abort();
     }
-    return SurfaceValueExpression::from_vector(
-        Expr<luisa::float3>{value.xyz().expression()});
+    std::abort();
 }
 
 }// namespace psycles::luisa_backend::detail

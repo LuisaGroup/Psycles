@@ -56,9 +56,10 @@ public:
     }
 
     [[nodiscard]] ShaderAttribute attribute(
-        Expr<std::uint64_t> id,
+        Expr<luisa::ulong> id,
         const SurfacePoint &) const noexcept override {
-        const auto found = Bool{_found} & (id == ::attribute);
+        const auto found = Bool{_found} &
+                           (id == static_cast<luisa::ulong>(::attribute));
         return {
             .value = select(
                 make_float4(0.0f),
@@ -77,6 +78,15 @@ public:
         Expr<std::uint32_t> block,
         Expr<std::uint32_t> slot) const noexcept override {
         return _parameters.read(block + slot).xyz();
+    }
+
+    [[nodiscard]] ULong
+    parameter_uint64(
+        Expr<std::uint32_t> block,
+        Expr<std::uint32_t> slot) const noexcept override {
+        return _parameters.read(block + slot)
+            .xy()
+            .bitcast<luisa::ulong>();
     }
 
     [[nodiscard]] Float cycles_bsdf_data(
@@ -172,12 +182,29 @@ compile_attribute_program(
         throw std::runtime_error{
             "failed to lower Attribute " + std::string{output}};
     }
+    const auto &values = lowered.program->value_instructions();
+    const auto &parameters = lowered.program->parameters();
     auto found = false;
-    for (const auto &instruction :
-         lowered.program->value_instructions()) {
-        found |= instruction.operation == expected_operation &&
-                 instruction.result_type == expected_type &&
-                 instruction.static_u0 == attribute;
+    for (const auto &instruction : values) {
+        if (instruction.operation != expected_operation ||
+            instruction.result_type != expected_type ||
+            !instruction.a.valid() ||
+            instruction.a.value >= values.size()) {
+            continue;
+        }
+        const auto &id_value = values[instruction.a.value];
+        if (id_value.operation != ValueOperation::parameter ||
+            id_value.result_type != SocketType::unsigned_integer ||
+            !id_value.parameter.valid() ||
+            id_value.parameter.value >= parameters.size()) {
+            continue;
+        }
+        const auto &parameter = parameters[id_value.parameter.value];
+        found = parameter.source == ParameterSource::property &&
+                parameter.socket == "AttributeId" &&
+                parameter.type == SocketType::unsigned_integer &&
+                std::get<std::uint64_t>(
+                    parameter.default_value.value) == attribute;
     }
     if (!found) {
         throw std::runtime_error{

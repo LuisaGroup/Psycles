@@ -544,6 +544,8 @@ unpack_surface_sample_trace(
     const contract::SocketValue &value) noexcept;
 [[nodiscard]] luisa::float3 vector_parameter_value(
     const contract::SocketValue &value) noexcept;
+[[nodiscard]] luisa::float3 unsigned_parameter_value(
+    const contract::SocketValue &value) noexcept;
 [[nodiscard]] PixelWindow effective_window(
     const RenderSettings &settings) noexcept;
 [[nodiscard]] std::uint32_t pass_channels(

@@ -37,8 +37,11 @@ namespace {
     using contract::SocketType;
 
     if (node.type == node_type::image_texture) {
-        if (auto vector = lower_value_input(node, "Vector")) {
-            const auto image = property_uint(node, "Image");
+        auto vector = lower_value_input(node, "Vector");
+        auto image = lower_property_parameter(node, "Image");
+        auto projection_blend =
+            lower_property_parameter(node, "ProjectionBlend");
+        if (vector && image && projection_blend) {
             const auto extension =
                 property_string(node, "Extension", "REPEAT");
             const auto color_space =
@@ -71,9 +74,6 @@ namespace {
                     interpolation_name,
                     unassociate_alpha) |
                 (projection << 12u);
-            const auto projection_blend =
-                property_float(
-                    node, "ProjectionBlend", 0.0f);
             publish(
                 node.id,
                 "Color",
@@ -82,9 +82,9 @@ namespace {
                     .source_node = node.id,
                     .result_type = SocketType::color,
                     .a = *vector,
-                    .static_u0 = image,
-                    .static_u1 = flags,
-                    .static_f0 = projection_blend}));
+                    .b = *image,
+                    .c = *projection_blend,
+                    .static_u1 = flags}));
             publish(
                 node.id,
                 "Alpha",
@@ -93,15 +93,16 @@ namespace {
                     .source_node = node.id,
                     .result_type = SocketType::floating,
                     .a = *vector,
-                    .static_u0 = image,
-                    .static_u1 = flags,
-                    .static_f0 = projection_blend}));
+                    .b = *image,
+                    .c = *projection_blend,
+                    .static_u1 = flags}));
         }
         return true;
     }
     if (node.type == node_type::environment_texture) {
-        if (auto vector = lower_value_input(node, "Vector")) {
-            const auto image = property_uint(node, "Image");
+        auto vector = lower_value_input(node, "Vector");
+        auto image = lower_property_parameter(node, "Image");
+        if (vector && image) {
             const auto projection =
                 property_string(
                     node, "Projection", "EQUIRECTANGULAR") ==
@@ -121,7 +122,7 @@ namespace {
                     .source_node = node.id,
                     .result_type = SocketType::color,
                     .a = *vector,
-                    .static_u0 = image,
+                    .b = *image,
                     .static_u1 = flags}));
             publish(
                 node.id,
@@ -131,18 +132,21 @@ namespace {
                     .source_node = node.id,
                     .result_type = SocketType::floating,
                     .a = *vector,
-                    .static_u0 = image,
+                    .b = *image,
                     .static_u1 = flags}));
         }
         return true;
     }
     if (node.type == node_type::vertex_color) {
+        auto attribute = lower_property_parameter(node, "AttributeId");
+        if (!attribute) {
+            return true;
+        }
         auto instruction = ValueInstruction{
             .operation = ValueOperation::attribute_color,
             .source_node = node.id,
             .result_type = SocketType::color,
-            .static_u0 =
-                property_uint(node, "AttributeId")};
+            .a = *attribute};
         publish(
             node.id,
             "Color",
@@ -303,9 +307,18 @@ namespace {
             lower_value_input(node, "BrickWidth");
         auto row_height =
             lower_value_input(node, "RowHeight");
+        auto offset_amount =
+            lower_property_parameter(node, "OffsetAmount");
+        auto offset_frequency =
+            lower_property_parameter(node, "OffsetFrequency");
+        auto squash_amount =
+            lower_property_parameter(node, "SquashAmount");
+        auto squash_frequency =
+            lower_property_parameter(node, "SquashFrequency");
         if (vector && color1 && color2 && mortar && scale &&
             mortar_size && mortar_smooth && bias &&
-            brick_width && row_height) {
+            brick_width && row_height && offset_amount &&
+            offset_frequency && squash_amount && squash_frequency) {
             auto instruction = ValueInstruction{
                 .operation = ValueOperation::brick_color,
                 .source_node = node.id,
@@ -320,14 +333,10 @@ namespace {
                 .h = *bias,
                 .i = *brick_width,
                 .j = *row_height,
-                .static_u0 = property_uint(
-                    node, "OffsetFrequency", 2u),
-                .static_u1 = property_uint(
-                    node, "SquashFrequency", 2u),
-                .static_f0 = property_float(
-                    node, "OffsetAmount", 0.5f),
-                .static_f1 = property_float(
-                    node, "SquashAmount", 1.0f)};
+                .k = *offset_amount,
+                .l = *offset_frequency,
+                .m = *squash_amount,
+                .n = *squash_frequency};
             publish(
                 node.id,
                 "Color",
@@ -347,12 +356,10 @@ namespace {
         auto vector = lower_value_input(node, "Vector");
         auto scale = lower_value_input(node, "Scale");
         auto distortion = lower_value_input(node, "Distortion");
-        if (vector && scale && distortion) {
+        auto depth = lower_property_parameter(node, "Depth");
+        if (vector && scale && distortion && depth) {
             const auto needs_color =
                 property_bool(node, "NeedsColor");
-            const auto depth = std::min(
-                property_uint(node, "Depth", 2u),
-                std::uint64_t{10u});
             publish(
                 node.id,
                 needs_color ? "Color" : "Factor",
@@ -367,7 +374,7 @@ namespace {
                     .a = *vector,
                     .b = *scale,
                     .c = *distortion,
-                    .static_u0 = depth}));
+                    .d = *depth}));
         }
         return true;
     }

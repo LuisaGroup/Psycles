@@ -160,7 +160,8 @@ public:
       break;
     case compiler::ValueOperation::uv:
       if (instruction.static_u0 != 0u) {
-        value = services.attribute(instruction.static_u1, point).value;
+        value = services.attribute(
+            unsigned_integer(instruction.a, result), point).value;
       } else {
         value = make_float4(point.uv.x, point.uv.y, 0.0f, 0.0f);
       }

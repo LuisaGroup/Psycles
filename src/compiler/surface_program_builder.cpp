@@ -1,6 +1,7 @@
 #include "surface_program_builder.h"
 #include "surface_program_compaction.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <utility>
 
@@ -417,14 +418,36 @@ void SurfaceProgramBuilder::diagnose(SurfaceProgramDiagnosticCode code,
 [[nodiscard]] ParameterId
 SurfaceProgramBuilder::add_parameter(const contract::ShaderNode &node,
                                      std::string_view socket,
-                                     const contract::SocketValue &value) {
+                                     const contract::SocketValue &value,
+                                     ParameterSource source) {
   auto id = ParameterId{static_cast<std::uint32_t>(_parameters.size())};
   _parameters.emplace_back(ParameterDesc{.id = id,
                                          .node = node.id,
                                          .socket = std::string{socket},
                                          .type = value.type,
-                                         .default_value = value});
+                                         .default_value = value,
+                                         .source = source});
   return id;
+}
+
+[[nodiscard]] std::optional<ValueExpressionId>
+SurfaceProgramBuilder::lower_property_parameter(
+    const contract::ShaderNode &node,
+    std::string_view property) {
+  const auto *value = find_property(node, property);
+  if (value == nullptr) {
+    diagnose(SurfaceProgramDiagnosticCode::missing_input,
+             node_prefix(node.id) + "runtime property '" +
+                 std::string{property} + "' is missing",
+             node.id, std::string{property});
+    return std::nullopt;
+  }
+  const auto parameter = add_parameter(
+      node, property, *value, ParameterSource::property);
+  return append(ValueInstruction{.operation = ValueOperation::parameter,
+                                 .source_node = node.id,
+                                 .result_type = value->type,
+                                 .parameter = parameter});
 }
 
 [[nodiscard]] ValueExpressionId
@@ -499,7 +522,8 @@ SurfaceProgramBuilder::lower_value_input(const contract::ShaderNode &node,
              node.id, std::string{socket});
     return std::nullopt;
   }
-  auto parameter = add_parameter(node, socket, *binding->value);
+  auto parameter = add_parameter(
+      node, socket, *binding->value, ParameterSource::input);
   return append(ValueInstruction{.operation = ValueOperation::parameter,
                                  .source_node = node.id,
                                  .result_type = binding->value->type,
@@ -678,6 +702,27 @@ SurfaceProgramBuilder::SurfaceProgramBuilder(
       diagnose(SurfaceProgramDiagnosticCode::type_mismatch,
                "displacement root did not lower to a value",
                displacement_root->node, displacement_root->socket);
+    }
+  }
+
+  for (const auto &property :
+       _shader.analysis().runtime_properties) {
+    const auto lowered = std::ranges::any_of(
+        _parameters,
+        [&](const ParameterDesc &parameter) noexcept {
+          return parameter.source == ParameterSource::property &&
+                 parameter.node == property.node &&
+                 parameter.socket == property.property &&
+                 parameter.type == property.type;
+        });
+    if (!lowered) {
+      diagnose(
+          SurfaceProgramDiagnosticCode::unsupported_node,
+          node_prefix(property.node) + "runtime property '" +
+              property.property +
+              "' was not lowered into the typed parameter block",
+          property.node,
+          property.property);
     }
   }
 

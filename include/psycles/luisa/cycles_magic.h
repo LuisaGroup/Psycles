@@ -12,13 +12,12 @@ namespace psycles::luisa_backend::cycles_magic {
 
 inline constexpr std::uint32_t maximum_depth = 10u;
 
-// Depth is Blender node storage and therefore known while Luisa traces the
-// shader AST. One specialized Callable is emitted for each used depth; the
-// authored Vector, Scale, and Distortion remain device expressions.
-void prepare(std::uint32_t depth) noexcept;
+// Depth is material data. One callable retains a structured runtime loop so
+// authored depth never creates a new shader AST or cache identity.
+void prepare() noexcept;
 
 [[nodiscard]] Float3 evaluate(
-    std::uint32_t depth,
+    UInt depth,
     Float3 vector,
     Float scale,
     Float distortion) noexcept;

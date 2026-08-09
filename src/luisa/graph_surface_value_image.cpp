@@ -137,8 +137,9 @@ public:
                         uv.y = 1.0f - uv.y;
                         return decode_sample(
                             services.texture_2d(
-                                static_cast<std::uint32_t>(
-                                    instruction.static_u0),
+                                cast<std::uint32_t>(
+                                    unsigned_integer(
+                                        instruction.b, result)),
                                 uv,
                                 make_float2(0.0f),
                                 make_float2(0.0f),
@@ -191,7 +192,7 @@ public:
                         Float3 weight =
                             make_float3(0.0f);
                         const auto blend =
-                            instruction.static_f0;
+                            scalar(instruction.c, result);
                         const auto limit =
                             0.5f * (1.0f + blend);
                         $if ((normal.x >
@@ -381,7 +382,9 @@ public:
                 case compiler::ValueOperation::attribute_factor:
                 case compiler::ValueOperation::attribute_alpha: {
                     auto attribute = services.attribute(
-                        instruction.static_u0, point);
+                        unsigned_integer(
+                            instruction.a, result),
+                        point);
                     if (instruction.operation ==
                         compiler::ValueOperation::attribute_factor) {
                         value = make_float4(

@@ -1,5 +1,7 @@
 #include "path_tracer_internal.h"
 
+#include <bit>
+
 namespace psycles::luisa_backend::detail {
 
 [[nodiscard]] MaterialBindingGpu to_luisa(
@@ -493,6 +495,18 @@ unpack_surface_sample_trace(
         default:
             std::abort();
     }
+}
+
+[[nodiscard]] luisa::float3 unsigned_parameter_value(
+    const contract::SocketValue &value) noexcept {
+    if (value.type != contract::SocketType::unsigned_integer) {
+        std::abort();
+    }
+    const auto word = std::get<std::uint64_t>(value.value);
+    return luisa::make_float3(
+        std::bit_cast<float>(static_cast<std::uint32_t>(word)),
+        std::bit_cast<float>(static_cast<std::uint32_t>(word >> 32u)),
+        0.0f);
 }
 
 [[nodiscard]] PixelWindow effective_window(

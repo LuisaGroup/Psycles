@@ -185,6 +185,8 @@ template <typename Id, typename Values>
     const TracedValues &values) noexcept;
 [[nodiscard]] Float3 vector(compiler::ValueExpressionId id,
     const TracedValues &values) noexcept;
+[[nodiscard]] ULong unsigned_integer(compiler::ValueExpressionId id,
+    const TracedValues &values) noexcept;
 [[nodiscard]] Float sample_weight(Float3 value) noexcept;
 [[nodiscard]] TransparentClosureState transparent_closure_state(
     Float3 weight) noexcept;

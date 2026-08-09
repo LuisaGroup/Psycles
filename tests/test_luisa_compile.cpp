@@ -34,7 +34,7 @@ public:
     }
 
     [[nodiscard]] ShaderAttribute attribute(
-        Expr<std::uint64_t>,
+        Expr<luisa::ulong>,
         const SurfacePoint &) const noexcept override {
         return ShaderAttribute::missing();
     }
@@ -49,6 +49,13 @@ public:
         Expr<std::uint32_t>,
         Expr<std::uint32_t>) const noexcept override {
         return make_float3(0.8f, 0.4f, 0.2f);
+    }
+
+    [[nodiscard]] ULong
+    parameter_uint64(
+        Expr<std::uint32_t>,
+        Expr<std::uint32_t>) const noexcept override {
+        return 0u;
     }
 
     [[nodiscard]] Float cycles_bsdf_data(
@@ -213,7 +220,7 @@ public:
             point.primitive_id = 0u;
             point.barycentric = make_float2(0.25f);
             auto value = services.attribute(
-                def<std::uint64_t>(
+                def<luisa::ulong>(
                     logical_binding_count),
                 point);
             device_assert(all(value.value >= 0.0f));
