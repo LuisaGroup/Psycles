@@ -12,13 +12,7 @@ using SurfacePreparationCallable = Callable<SurfacePreparationCall(
     BindlessArray,
     luisa::uint,
     SurfacePointCall,
-    luisa::float3,
-    float,
-    bool,
-    bool,
-    bool,
-    bool,
-    bool)>;
+    SurfacePreparationQueryCall)>;
 
 using SurfaceEvaluateLightCallable = Callable<SurfaceEvaluationCall(
     Buffer<float>,
@@ -35,17 +29,6 @@ using SurfaceEvaluateLightCallable = Callable<SurfaceEvaluationCall(
     bool,
     bool,
     luisa::uint)>;
-using SurfaceRuntimeFlagsCallable = Callable<luisa::uint(
-    Buffer<float>,
-    Buffer<luisa::float3>,
-    Buffer<float>,
-    BindlessArray,
-    BindlessArray,
-    luisa::uint,
-    SurfacePointCall,
-    float,
-    bool,
-    bool)>;
 using SurfaceEmissionCallable = Callable<luisa::float3(
     Buffer<float>,
     Buffer<luisa::float3>,
@@ -105,14 +88,6 @@ using SurfaceSampleTraceCallable =
         float,
         bool,
         bool)>;
-using SurfaceAovCallable = Callable<SurfaceAovCall(
-    Buffer<float>,
-    Buffer<luisa::float3>,
-    Buffer<float>,
-    BindlessArray,
-    BindlessArray,
-    luisa::uint,
-    SurfacePointCall)>;
 using SurfaceBssrdfNormalCallable = Callable<luisa::float3(
     Buffer<float>,
     Buffer<luisa::float3>,
@@ -135,13 +110,11 @@ using SurfaceShadingNormalCallable = Callable<luisa::float3(
 struct SurfaceCallables {
     SurfacePreparationCallable preparation;
     SurfaceEvaluateLightCallable evaluate_light;
-    SurfaceRuntimeFlagsCallable runtime_flags;
     SurfaceConstantEmissionCallable constant_emission;
     SurfaceEmissionCallable emission;
     SurfaceSampleCallable sample;
     SurfaceClosureTraceCallable closure_trace;
     SurfaceSampleTraceCallable sample_trace;
-    SurfaceAovCallable aov;
     SurfaceBssrdfNormalCallable bssrdf_normal;
     SurfaceShadingNormalCallable shading_normal;
 };

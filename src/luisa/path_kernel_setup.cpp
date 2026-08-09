@@ -254,6 +254,16 @@ SurfacePreparation PathKernelInvocation::prepare_surface(
              contract::visibility_bit(
                  contract::RayVisibility::diffuse)) ==
             0u);
+    const auto preparation_query = SurfacePreparationQuery{
+        .outgoing = outgoing,
+        .glossy_filter_roughness =
+            query.glossy_filter_roughness,
+        .emission_reflective_caustics =
+            emission_reflective_caustics,
+        .reflective_caustics = query.reflective_caustics,
+        .refractive_caustics = query.refractive_caustics,
+        .include_runtime_flags = include_runtime_flags,
+        .include_aov = include_aov};
     return unpack_surface_preparation(
         config.surfaces.preparation(
             config.scene->scalar_parameter_buffer,
@@ -263,32 +273,7 @@ SurfacePreparation PathKernelInvocation::prepare_surface(
             config.scene->heap,
             surface_tag,
             pack_surface_point(point),
-            outgoing,
-            query.glossy_filter_roughness,
-            emission_reflective_caustics,
-            query.reflective_caustics,
-            query.refractive_caustics,
-            include_runtime_flags,
-            include_aov));
-}
-
-UInt PathKernelInvocation::surface_runtime_flags(
-    UInt surface_tag,
-    const SurfacePoint &point,
-    Float glossy_filter_roughness,
-    Bool reflective_caustics,
-    Bool refractive_caustics) const noexcept {
-    return config.surfaces.runtime_flags(
-        config.scene->scalar_parameter_buffer,
-        config.scene->vector_parameter_buffer,
-        config.scene->cycles_bsdf_table_buffer,
-        config.scene->texture_heap,
-        config.scene->heap,
-        surface_tag,
-        pack_surface_point(point),
-        glossy_filter_roughness,
-        reflective_caustics,
-        refractive_caustics);
+            pack_surface_preparation_query(preparation_query)));
 }
 
 Float3 PathKernelInvocation::surface_emission(UInt surface_tag,
@@ -394,19 +379,6 @@ SurfaceSampleTrace PathKernelInvocation::trace_sample_surface(
             point, u_direction, query);
     };
     return result;
-}
-
-SurfaceAov
-PathKernelInvocation::surface_aov(UInt surface_tag,
-                                  const SurfacePoint &point) const noexcept {
-    return unpack_surface_aov(
-        config.surfaces.aov(config.scene->scalar_parameter_buffer,
-                            config.scene->vector_parameter_buffer,
-                            config.scene->cycles_bsdf_table_buffer,
-                            config.scene->texture_heap,
-                            config.scene->heap,
-                            surface_tag,
-                            pack_surface_point(point)));
 }
 
 Float3 PathKernelInvocation::surface_bssrdf_normal(

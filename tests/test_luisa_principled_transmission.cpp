@@ -5,6 +5,7 @@
 #include <psycles/luisa/graph_surface.h>
 
 #include "luisa_surface_test_support.h"
+#include "luisa_shader_shape_test_support.h"
 
 #include <array>
 #include <cmath>
@@ -25,11 +26,56 @@ using namespace psycles::compiler;
 using namespace psycles::contract;
 using namespace psycles::luisa_backend;
 using psycles::test_support::approximately_equal;
+using psycles::test_support::compile_named_kernel;
 using psycles::test_support::make_surface_point;
 using psycles::test_support::parameter_data;
 using psycles::test_support::ParameterShaderServices;
+using psycles::test_support::require_bounded_xir;
+using psycles::test_support::surface_aov;
 
 constexpr std::uint32_t record_count = 35u;
+
+namespace output_record {
+constexpr std::uint32_t trace_base = 0u;
+constexpr std::uint32_t sample_base = 11u;
+constexpr std::uint32_t aov_reflection = 26u;
+constexpr std::uint32_t aov_transmission = 27u;
+constexpr std::uint32_t rough_evaluation_base = 28u;
+constexpr std::uint32_t multi_trace = 30u;
+constexpr std::uint32_t multi_weight = 31u;
+constexpr std::uint32_t rough_backface = 32u;
+constexpr std::uint32_t unit_ior = 33u;
+constexpr std::uint32_t beckmann = 34u;
+}// namespace output_record
+
+namespace trace_case {
+constexpr std::uint32_t both = 0u;
+constexpr std::uint32_t reflection_only = 1u;
+constexpr std::uint32_t transmission_only = 2u;
+constexpr std::uint32_t neither = 3u;
+constexpr std::uint32_t below_cutoff = 4u;
+constexpr std::uint32_t cutoff_glass = 5u;
+constexpr std::uint32_t cutoff_reflection = 6u;
+constexpr std::uint32_t cutoff_diffuse = 7u;
+constexpr std::uint32_t count = 8u;
+}// namespace trace_case
+
+namespace sample_case {
+constexpr std::uint32_t both_reflection = 0u;
+constexpr std::uint32_t both_transmission = 1u;
+constexpr std::uint32_t reflection_only = 2u;
+constexpr std::uint32_t transmission_only = 3u;
+constexpr std::uint32_t backface_transmission = 4u;
+constexpr std::uint32_t count = 5u;
+}// namespace sample_case
+
+namespace evaluation_case {
+constexpr std::uint32_t rough_reflection = 0u;
+constexpr std::uint32_t rough_transmission = 1u;
+constexpr std::uint32_t rough_backface = 2u;
+constexpr std::uint32_t unit_ior = 3u;
+constexpr std::uint32_t count = 4u;
+}// namespace evaluation_case
 
 [[nodiscard]] ShaderGraph
 make_principled_transmission_graph(std::string_view distribution) {
@@ -170,152 +216,206 @@ int main(int argc, char **argv) {
     const auto parameter_stride =
         static_cast<std::uint32_t>(ggx_program.program->parameters().size());
 
-    SurfaceDispatch surfaces;
-    const auto ggx_tag = surfaces.create<GraphSurface>(ggx_program.program);
-    const auto multi_tag = surfaces.create<GraphSurface>(multi_program.program);
+    SurfaceDispatch ggx_surfaces;
+    const auto ggx_tag =
+        ggx_surfaces.create<GraphSurface>(ggx_program.program);
+    SurfaceDispatch multi_surfaces;
+    const auto multi_tag =
+        multi_surfaces.create<GraphSurface>(multi_program.program);
+    SurfaceDispatch beckmann_surfaces;
     const auto beckmann_tag =
-        surfaces.create<GraphSurface>(beckmann_program.program);
+        beckmann_surfaces.create<GraphSurface>(beckmann_program.program);
 
-    Kernel1D evaluate = [&](BufferFloat4 ggx_parameter_buffer,
-                            BufferFloat4 multi_parameter_buffer,
-                            BufferFloat4 beckmann_parameter_buffer,
-                            BufferFloat4 output) noexcept {
+    Kernel1D trace_ggx = [&](BufferFloat4 ggx_parameter_buffer,
+                             BufferFloat4 output) noexcept {
         ParameterShaderServices ggx_services{ggx_parameter_buffer};
-        ParameterShaderServices multi_services{multi_parameter_buffer};
-        ParameterShaderServices beckmann_services{beckmann_parameter_buffer};
+        const auto case_index = dispatch_x();
         auto point = make_surface_point();
-        const auto trace = [&](UInt block, UInt index, Bool reflection,
-                               Bool transmission) noexcept {
-            auto local_point = point;
-            local_point.parameter_block = block * parameter_stride;
-            return surfaces.closure_trace(UInt{ggx_tag}, ggx_services, local_point,
-                                          index, reflection, transmission);
+        UInt parameter_case = 0u;
+        parameter_case = select(parameter_case,
+            1u,
+            case_index == trace_case::below_cutoff);
+        parameter_case = select(parameter_case,
+            2u,
+            case_index >= trace_case::cutoff_glass);
+        point.parameter_block = parameter_case * parameter_stride;
+        const auto closure_index = select(0u,
+            case_index - trace_case::cutoff_glass,
+            case_index >= trace_case::cutoff_glass);
+        const auto reflection =
+            (case_index != trace_case::transmission_only) &
+            (case_index != trace_case::neither);
+        const auto transmission =
+            (case_index != trace_case::reflection_only) &
+            (case_index != trace_case::neither);
+        const auto value = ggx_surfaces.closure_trace(UInt{ggx_tag},
+            ggx_services,
+            point,
+            closure_index,
+            reflection,
+            transmission);
+        const auto record = select(case_index * 2u,
+            case_index + 3u,
+            case_index >= trace_case::below_cutoff);
+        output.write(record,
+            make_float4(cast<float>(value.count),
+                cast<float>(value.type),
+                value.sample_weight,
+                select(0.0f, 1.0f, value.valid)));
+        $if(case_index < trace_case::neither) {
+            output.write(record + 1u, make_float4(value.weight, 0.0f));
         };
-        const auto write_trace = [&](std::uint32_t record,
-                                     const SurfaceClosureTrace &value) noexcept {
-            output.write(record,
-                         make_float4(cast<float>(value.count),
-                                     cast<float>(value.type), value.sample_weight,
-                                     select(0.0f, 1.0f, value.valid)));
-        };
+    };
 
-        const auto both = trace(0u, 0u, true, true);
-        const auto reflection_only = trace(0u, 0u, true, false);
-        const auto transmission_only = trace(0u, 0u, false, true);
-        const auto neither = trace(0u, 0u, false, false);
-        write_trace(0u, both);
-        output.write(1u, make_float4(both.weight, 0.0f));
-        write_trace(2u, reflection_only);
-        output.write(3u, make_float4(reflection_only.weight, 0.0f));
-        write_trace(4u, transmission_only);
-        output.write(5u, make_float4(transmission_only.weight, 0.0f));
-        write_trace(6u, neither);
-        write_trace(7u, trace(1u, 0u, true, true));
-        write_trace(8u, trace(2u, 0u, true, true));
-        write_trace(9u, trace(2u, 1u, true, true));
-        write_trace(10u, trace(2u, 2u, true, true));
-
-        const auto all_query = SurfaceQuery{
+    Kernel1D sample_ggx = [&](BufferFloat4 ggx_parameter_buffer,
+                              BufferFloat4 output) noexcept {
+        ParameterShaderServices services{ggx_parameter_buffer};
+        const auto case_index = dispatch_x();
+        auto point = make_surface_point();
+        point.back_facing =
+            case_index == sample_case::backface_transmission;
+        Float u_lobe = 0.0f;
+        u_lobe = select(
+            u_lobe, 0.5f, case_index == sample_case::both_transmission);
+        u_lobe = select(
+            u_lobe, 0.9f, case_index == sample_case::reflection_only);
+        const auto query = SurfaceQuery{
             .lobe_mask = ~std::uint32_t{0u},
-            .transport_mode = static_cast<std::uint32_t>(TransportMode::radiance),
+            .transport_mode = static_cast<std::uint32_t>(
+                TransportMode::radiance),
+            .glossy_filter_roughness = 0.0f,
+            .reflective_caustics =
+                case_index < sample_case::transmission_only,
+            .refractive_caustics =
+                case_index != sample_case::reflection_only};
+        const auto value = ggx_surfaces.sample_trace(UInt{ggx_tag},
+            services,
+            point,
+            u_lobe,
+            make_float2(0.37f, 0.73f),
+            query);
+        const auto backface =
+            case_index == sample_case::backface_transmission;
+        const auto valid = select(0.0f, 1.0f, value.sample.valid);
+        const auto record =
+            output_record::sample_base + case_index * 3u;
+        output.write(record,
+            make_float4(value.sample.evaluation.f,
+                value.sample.evaluation.pdf));
+        output.write(record + 1u,
+            select(make_float4(value.sample.wi, valid),
+                make_float4(value.sample.wi, value.sample.eta),
+                backface));
+        output.write(record + 2u,
+            select(make_float4(value.sample.roughness.x,
+                       value.sample.eta,
+                       cast<float>(value.sample.evaluation.events),
+                       cast<float>(value.closure_type)),
+                make_float4(
+                    cast<float>(value.sample.evaluation.events),
+                    valid,
+                    0.0f,
+                    0.0f),
+                backface));
+    };
+
+    Kernel1D evaluate_ggx = [&](BufferFloat4 ggx_parameter_buffer,
+                                BufferFloat4 output) noexcept {
+        ParameterShaderServices services{ggx_parameter_buffer};
+        const auto case_index = dispatch_x();
+        auto point = make_surface_point();
+        point.parameter_block =
+            select(3u, 4u, case_index == evaluation_case::unit_ior) *
+            parameter_stride;
+        point.back_facing =
+            case_index == evaluation_case::rough_backface;
+        const auto outgoing = select(make_float3(0.0f, 0.0f, -1.0f),
+            make_float3(0.0f, 0.0f, 1.0f),
+            case_index == evaluation_case::rough_reflection);
+        const auto query = SurfaceQuery{
+            .lobe_mask = ~std::uint32_t{0u},
+            .transport_mode = static_cast<std::uint32_t>(
+                TransportMode::radiance),
             .glossy_filter_roughness = 0.0f,
             .reflective_caustics = true,
             .refractive_caustics = true};
-        const auto reflection_query = SurfaceQuery{
-            .lobe_mask = ~std::uint32_t{0u},
-            .transport_mode = static_cast<std::uint32_t>(TransportMode::radiance),
-            .glossy_filter_roughness = 0.0f,
-            .reflective_caustics = true,
-            .refractive_caustics = false};
-        const auto transmission_query = SurfaceQuery{
-            .lobe_mask = ~std::uint32_t{0u},
-            .transport_mode = static_cast<std::uint32_t>(TransportMode::radiance),
-            .glossy_filter_roughness = 0.0f,
-            .reflective_caustics = false,
-            .refractive_caustics = true};
-        const auto write_sample = [&](std::uint32_t record,
-                                      const SurfaceSampleTrace &sample) noexcept {
-            output.write(record, make_float4(sample.sample.evaluation.f,
-                                             sample.sample.evaluation.pdf));
-            output.write(record + 1u,
-                         make_float4(sample.sample.wi,
-                                     select(0.0f, 1.0f, sample.sample.valid)));
-            output.write(record + 2u,
-                         make_float4(sample.sample.roughness.x, sample.sample.eta,
-                                     cast<float>(sample.sample.evaluation.events),
-                                     cast<float>(sample.closure_type)));
-        };
-        write_sample(11u,
-                     surfaces.sample_trace(UInt{ggx_tag}, ggx_services, point, 0.0f,
-                                           make_float2(0.37f, 0.73f), all_query));
-        write_sample(14u,
-                     surfaces.sample_trace(UInt{ggx_tag}, ggx_services, point, 0.5f,
-                                           make_float2(0.37f, 0.73f), all_query));
-        write_sample(17u, surfaces.sample_trace(UInt{ggx_tag}, ggx_services, point,
-                                                0.9f, make_float2(0.37f, 0.73f),
-                                                reflection_query));
-        write_sample(20u, surfaces.sample_trace(UInt{ggx_tag}, ggx_services, point,
-                                                0.0f, make_float2(0.37f, 0.73f),
-                                                transmission_query));
-        auto backface = point;
-        backface.back_facing = true;
-        const auto backface_sample =
-            surfaces.sample_trace(UInt{ggx_tag}, ggx_services, backface, 0.0f,
-                                  make_float2(0.37f, 0.73f), transmission_query);
-        output.write(23u, make_float4(backface_sample.sample.evaluation.f,
-                                      backface_sample.sample.evaluation.pdf));
-        output.write(24u, make_float4(backface_sample.sample.wi,
-                                      backface_sample.sample.eta));
-        output.write(
-            25u, make_float4(cast<float>(backface_sample.sample.evaluation.events),
-                             select(0.0f, 1.0f, backface_sample.sample.valid), 0.0f,
-                             0.0f));
+        const auto value = ggx_surfaces.evaluate(
+            UInt{ggx_tag}, services, point, outgoing, query);
+        const auto record = output_record::rough_evaluation_base +
+                            case_index +
+                            select(0u, 2u, case_index >= 2u);
+        output.write(record, make_float4(value.f, value.pdf));
+    };
 
-        const auto aov = surfaces.aov(UInt{ggx_tag}, ggx_services, point);
-        output.write(26u, make_float4(aov.glossy_albedo, aov.roughness.x));
-        output.write(27u, make_float4(aov.transmission_albedo, aov.roughness.y));
+    Kernel1D evaluate_aov = [&](BufferFloat4 ggx_parameter_buffer,
+                                BufferFloat4 output) noexcept {
+        ParameterShaderServices services{ggx_parameter_buffer};
+        const auto point = make_surface_point();
+        const auto aov =
+            surface_aov(ggx_surfaces, UInt{ggx_tag}, services, point);
+        output.write(output_record::aov_reflection,
+            make_float4(aov.glossy_albedo, aov.roughness.x));
+        output.write(output_record::aov_transmission,
+            make_float4(aov.transmission_albedo, aov.roughness.y));
+    };
 
-        auto rough_point = point;
-        rough_point.parameter_block = 3u * parameter_stride;
-        const auto reflected =
-            surfaces.evaluate(UInt{ggx_tag}, ggx_services, rough_point,
-                              make_float3(0.0f, 0.0f, 1.0f), all_query);
-        const auto transmitted =
-            surfaces.evaluate(UInt{ggx_tag}, ggx_services, rough_point,
-                              make_float3(0.0f, 0.0f, -1.0f), all_query);
-        output.write(28u, make_float4(reflected.f, reflected.pdf));
-        output.write(29u, make_float4(transmitted.f, transmitted.pdf));
+    Kernel1D trace_multi = [&](BufferFloat4 multi_parameter_buffer,
+                               BufferFloat4 output) noexcept {
+        ParameterShaderServices services{multi_parameter_buffer};
+        const auto point = make_surface_point();
+        const auto value = multi_surfaces.closure_trace(
+            UInt{multi_tag}, services, point, 0u, true, true);
+        output.write(output_record::multi_trace,
+            make_float4(cast<float>(value.count),
+                cast<float>(value.type),
+                value.sample_weight,
+                select(0.0f, 1.0f, value.valid)));
+        output.write(output_record::multi_weight,
+            make_float4(value.weight, 0.0f));
+    };
 
-        const auto multi_trace = surfaces.closure_trace(
-            UInt{multi_tag}, multi_services, point, 0u, true, true);
-        write_trace(30u, multi_trace);
-        output.write(31u, make_float4(multi_trace.weight, 0.0f));
-
-        auto rough_backface = rough_point;
-        rough_backface.back_facing = true;
-        const auto backface_transmitted = surfaces.evaluate(
-            UInt{ggx_tag}, ggx_services, rough_backface,
-            make_float3(0.0f, 0.0f, -1.0f), all_query);
-        output.write(32u, make_float4(backface_transmitted.f,
-                                     backface_transmitted.pdf));
-
-        auto unit_ior_point = point;
-        unit_ior_point.parameter_block = 4u * parameter_stride;
-        const auto unit_ior_transmitted = surfaces.evaluate(
-            UInt{ggx_tag}, ggx_services, unit_ior_point,
-            make_float3(0.0f, 0.0f, -1.0f), all_query);
-        output.write(33u, make_float4(unit_ior_transmitted.f,
-                                     unit_ior_transmitted.pdf));
-
-        auto beckmann_point = point;
+    Kernel1D evaluate_beckmann =
+        [&](BufferFloat4 beckmann_parameter_buffer,
+            BufferFloat4 output) noexcept {
+        ParameterShaderServices services{beckmann_parameter_buffer};
+        auto beckmann_point = make_surface_point();
         beckmann_point.incoming =
             normalize(make_float3(0.9539392f, 0.0f, 0.3f));
-        const auto beckmann_reflected = surfaces.evaluate(
-            UInt{beckmann_tag}, beckmann_services, beckmann_point,
-            normalize(make_float3(-0.9539392f, 0.0f, 0.3f)), all_query);
-        output.write(34u, make_float4(beckmann_reflected.f,
-                                     beckmann_reflected.pdf));
+        const auto query = SurfaceQuery{
+            .lobe_mask = ~std::uint32_t{0u},
+            .transport_mode = static_cast<std::uint32_t>(
+                TransportMode::radiance),
+            .glossy_filter_roughness = 0.0f,
+            .reflective_caustics = true,
+            .refractive_caustics = true};
+        const auto value = beckmann_surfaces.evaluate(UInt{beckmann_tag},
+            services,
+            beckmann_point,
+            normalize(make_float3(-0.9539392f, 0.0f, 0.3f)),
+            query);
+        output.write(
+            output_record::beckmann, make_float4(value.f, value.pdf));
     };
+
+    if (backend == "fallback") {
+        auto bounded = true;
+        bounded &= require_bounded_xir(
+            "transmission_trace_ggx", trace_ggx, 35000u);
+        bounded &= require_bounded_xir(
+            "transmission_sample_ggx", sample_ggx, 390000u);
+        bounded &= require_bounded_xir(
+            "transmission_evaluate_ggx", evaluate_ggx, 205000u);
+        bounded &= require_bounded_xir(
+            "transmission_evaluate_aov", evaluate_aov, 27000u);
+        bounded &= require_bounded_xir(
+            "transmission_trace_multi", trace_multi, 37000u);
+        bounded &= require_bounded_xir("transmission_evaluate_beckmann",
+            evaluate_beckmann,
+            16000u);
+        if (!bounded) {
+            return EXIT_FAILURE;
+        }
+    }
 
     Context context{argv[0]};
     auto device = context.create_device(backend);
@@ -325,12 +425,31 @@ int main(int argc, char **argv) {
     auto beckmann_buffer =
         device.create_buffer<luisa::float4>(beckmann_values.size());
     auto output_buffer = device.create_buffer<luisa::float4>(record_count);
-    auto kernel = device.compile(evaluate);
+    auto trace_ggx_kernel =
+        compile_named_kernel(device, "transmission_trace_ggx", trace_ggx);
+    auto sample_ggx_kernel =
+        compile_named_kernel(device, "transmission_sample_ggx", sample_ggx);
+    auto evaluate_ggx_kernel = compile_named_kernel(
+        device, "transmission_evaluate_ggx", evaluate_ggx);
+    auto evaluate_aov_kernel = compile_named_kernel(
+        device, "transmission_evaluate_aov", evaluate_aov);
+    auto trace_multi_kernel = compile_named_kernel(
+        device, "transmission_trace_multi", trace_multi);
+    auto evaluate_beckmann_kernel = compile_named_kernel(
+        device, "transmission_evaluate_beckmann", evaluate_beckmann);
     std::array<luisa::float4, record_count> actual{};
     stream << ggx_buffer.copy_from(luisa::span{ggx_values})
            << multi_buffer.copy_from(luisa::span{multi_values})
            << beckmann_buffer.copy_from(luisa::span{beckmann_values})
-           << kernel(ggx_buffer, multi_buffer, beckmann_buffer, output_buffer)
+           << trace_ggx_kernel(ggx_buffer, output_buffer)
+                  .dispatch(trace_case::count)
+           << sample_ggx_kernel(ggx_buffer, output_buffer)
+                  .dispatch(sample_case::count)
+           << evaluate_ggx_kernel(ggx_buffer, output_buffer)
+                  .dispatch(evaluation_case::count)
+           << evaluate_aov_kernel(ggx_buffer, output_buffer).dispatch(1u)
+           << trace_multi_kernel(multi_buffer, output_buffer).dispatch(1u)
+           << evaluate_beckmann_kernel(beckmann_buffer, output_buffer)
                   .dispatch(1u)
            << output_buffer.copy_to(luisa::span{actual}) << synchronize();
 

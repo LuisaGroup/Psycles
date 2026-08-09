@@ -3,6 +3,7 @@
 #include <psycles/compiler/surface_program.h>
 #include <psycles/luisa/cycles_sampler.h>
 #include <psycles/luisa/graph_surface.h>
+#include <psycles/luisa/surface_closure_operations.h>
 
 #include "../src/luisa/path_tracer_shader_services.h"
 
@@ -258,6 +259,13 @@ public:
         Expr<luisa::float2>,
         const SurfaceQuery &) const noexcept override {
         return SurfaceSample::zero();
+    }
+
+    [[nodiscard]] SurfacePreparation prepare(
+        const ShaderServices &,
+        const SurfacePoint &point,
+        const SurfacePreparationQuery &) const noexcept override {
+        return SurfacePreparation::zero(point);
     }
 
     [[nodiscard]] Float3 transparent_extinction(
@@ -555,6 +563,10 @@ void write_preparation(
 
     SurfaceDispatch surfaces;
     const auto tag = surfaces.create<GraphSurface>(lowered.program);
+    const auto closure_identity =
+        make_surface_closure_identity_callable();
+    const auto closure_aov =
+        make_surface_closure_aov_callable();
     using Recordings = BufferParameterShaderServices::Recordings;
     Recordings split_recordings;
     Kernel1D split = [&](BufferFloat scalar_parameters,
@@ -572,14 +584,26 @@ void write_preparation(
             point,
             point.incoming,
             true);
-        result.runtime_flags = surfaces.runtime_flags(
+        SurfaceRuntimeFlagsVisitor runtime_flags{
+            point,
+            0.04f,
+            maximum_surface_closure_capacity,
+            closure_identity};
+        static_cast<void>(surfaces.collect_closures(
             tag,
             services,
             point,
-            0.04f,
             true,
-            true);
-        result.aov = surfaces.aov(tag, services, point);
+            true,
+            runtime_flags));
+        result.runtime_flags = runtime_flags.result();
+        SurfaceAovVisitor aov{
+            point,
+            maximum_surface_closure_capacity,
+            closure_aov};
+        static_cast<void>(surfaces.collect_closures(
+            tag, services, point, true, true, aov));
+        result.aov = aov.result();
         write_preparation(output, result);
     };
 
@@ -598,13 +622,13 @@ void write_preparation(
                 tag,
                 services,
                 point,
-                point.incoming,
-                0.04f,
-                true,
-                true,
-                true,
-                true,
-                true));
+                {.outgoing = point.incoming,
+                 .glossy_filter_roughness = 0.04f,
+                 .emission_reflective_caustics = true,
+                 .reflective_caustics = true,
+                 .refractive_caustics = true,
+                 .include_runtime_flags = true,
+                 .include_aov = true}));
     };
 
     const auto split_shape = xir_shape(split);

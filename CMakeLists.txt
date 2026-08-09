@@ -1423,6 +1423,15 @@ if(PSYCLES_ENABLE_LUISA)
 
                 psycles_add_luisa_backend_test(
                     TARGET
+                        psycles_luisa_principled_sheen_tests
+                    SOURCE
+                        tests/test_luisa_principled_sheen.cpp
+                    TEST_STEM
+                        luisa_principled_sheen
+                    LIBRARIES Psycles::luisa)
+
+                psycles_add_luisa_backend_test(
+                    TARGET
                         psycles_luisa_beckmann_glossy_tests
                     SOURCE
                         tests/test_luisa_beckmann_glossy.cpp

@@ -528,10 +528,12 @@ pack_surface_sample_trace(
 [[nodiscard]] SurfaceSampleTrace
 unpack_surface_sample_trace(
     const Var<SurfaceSampleTraceCall> &trace) noexcept;
-[[nodiscard]] Var<SurfaceAovCall> pack_surface_aov(
-    const SurfaceAov &aov) noexcept;
-[[nodiscard]] SurfaceAov unpack_surface_aov(
-    const Var<SurfaceAovCall> &aov) noexcept;
+[[nodiscard]] Var<SurfacePreparationQueryCall>
+pack_surface_preparation_query(
+    const SurfacePreparationQuery &query) noexcept;
+[[nodiscard]] SurfacePreparationQuery
+unpack_surface_preparation_query(
+    const Var<SurfacePreparationQueryCall> &query) noexcept;
 [[nodiscard]] Var<SurfacePreparationCall> pack_surface_preparation(
     const SurfacePreparation &preparation) noexcept;
 [[nodiscard]] SurfacePreparation unpack_surface_preparation(

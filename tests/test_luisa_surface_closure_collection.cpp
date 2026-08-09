@@ -874,13 +874,13 @@ int main(int argc, char **argv) {
                 tag,
                 services,
                 point,
-                point.incoming,
-                0.04f,
-                true,
-                true,
-                true,
-                true,
-                true);
+                {.outgoing = point.incoming,
+                 .glossy_filter_roughness = 0.04f,
+                 .emission_reflective_caustics = true,
+                 .reflective_caustics = true,
+                 .refractive_caustics = true,
+                 .include_runtime_flags = true,
+                 .include_aov = true});
             const auto split_emission = surfaces.emission(
                 tag,
                 services,
@@ -891,13 +891,13 @@ int main(int argc, char **argv) {
                 tag,
                 services,
                 point,
-                point.incoming,
-                0.04f,
-                true,
-                true,
-                true,
-                false,
-                false);
+                {.outgoing = point.incoming,
+                 .glossy_filter_roughness = 0.04f,
+                 .emission_reflective_caustics = true,
+                 .reflective_caustics = true,
+                 .refractive_caustics = true,
+                 .include_runtime_flags = false,
+                 .include_aov = false});
             const auto &split_aov = aov_visitor.result();
             device_assert(
                 preparation.runtime_flags == runtime_flags);
@@ -955,6 +955,17 @@ int main(int argc, char **argv) {
                 UInt{layered_tag},
                 UInt{glass_tag},
                 material != 0u);
+            const auto preparation = surfaces.prepare(
+                tag,
+                services,
+                point,
+                {.outgoing = point.incoming,
+                 .glossy_filter_roughness = 0.04f,
+                 .emission_reflective_caustics = true,
+                 .reflective_caustics = true,
+                 .refractive_caustics = true,
+                 .include_runtime_flags = true,
+                 .include_aov = true});
             const auto base =
                 invocation * evaluator_records_per_slot;
             write_evaluator_result(
@@ -967,14 +978,8 @@ int main(int argc, char **argv) {
                     requested,
                     true,
                     true),
-                surfaces.runtime_flags(
-                    tag,
-                    services,
-                    point,
-                    0.04f,
-                    true,
-                    true),
-                surfaces.aov(tag, services, point));
+                preparation.runtime_flags,
+                preparation.aov);
         };
 
     Kernel1D scatter_shared =

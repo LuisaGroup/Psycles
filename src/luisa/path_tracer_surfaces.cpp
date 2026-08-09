@@ -14,8 +14,6 @@ SurfaceCallables make_surface_callables(
     const std::shared_ptr<LuisaSceneData> &scene) noexcept {
     const auto closure_identity =
         make_surface_closure_identity_callable();
-    const auto closure_aov =
-        make_surface_closure_aov_callable();
     const auto closure_evaluation =
         make_surface_closure_evaluation_callable(scene);
     const auto closure_sampling =
@@ -29,13 +27,7 @@ SurfaceCallables make_surface_callables(
             BindlessVar geometry_heap,
             UInt surface_tag,
             Var<SurfacePointCall> packed_point,
-            Float3 outgoing,
-            Float glossy_filter_roughness,
-            Bool emission_reflective_caustics,
-            Bool reflective_caustics,
-            Bool refractive_caustics,
-            Bool include_runtime_flags,
-            Bool include_aov) noexcept {
+            Var<SurfacePreparationQueryCall> packed_query) noexcept {
             BufferShaderServices services{
                 scalar_parameters,
                 vector_parameters,
@@ -51,13 +43,7 @@ SurfaceCallables make_surface_callables(
                     surface_tag,
                     services,
                     unpack_surface_point(packed_point),
-                    outgoing,
-                    glossy_filter_roughness,
-                    emission_reflective_caustics,
-                    reflective_caustics,
-                    refractive_caustics,
-                    include_runtime_flags,
-                    include_aov));
+                    unpack_surface_preparation_query(packed_query)));
         };
     SurfaceEvaluateLightCallable evaluate_light =
         [scene, closure_evaluation](
@@ -126,44 +112,6 @@ SurfaceCallables make_surface_callables(
                 refractive_caustics,
                 visitor));
             return pack_surface_evaluation(visitor.result());
-        };
-    SurfaceRuntimeFlagsCallable runtime_flags =
-        [scene, closure_identity](
-            BufferFloat scalar_parameters,
-            BufferFloat3 vector_parameters,
-            BufferFloat cycles_bsdf_tables,
-            BindlessVar textures,
-            BindlessVar geometry_heap,
-            UInt surface_tag,
-            Var<SurfacePointCall> packed_point,
-            Float glossy_filter_roughness,
-            Bool reflective_caustics,
-            Bool refractive_caustics) noexcept {
-            BufferShaderServices services{
-                scalar_parameters,
-                vector_parameters,
-                cycles_bsdf_tables,
-                textures,
-                geometry_heap,
-                scene->attribute_binding_slot,
-                scene->attribute_range_slot,
-                scene->nishita_texture_bindings,
-                scene->shader_color_space};
-            const auto point =
-                unpack_surface_point(packed_point);
-            SurfaceRuntimeFlagsVisitor visitor{
-                point,
-                glossy_filter_roughness,
-                scene->volume_metadata.closure_allocation_budget,
-                closure_identity};
-            static_cast<void>(scene->surfaces.collect_closures(
-                surface_tag,
-                services,
-                point,
-                reflective_caustics,
-                refractive_caustics,
-                visitor));
-            return visitor.result();
         };
     SurfaceEmissionCallable emission =
         [scene](
@@ -355,40 +303,6 @@ SurfaceCallables make_surface_callables(
                     query,
                     true));
         };
-    SurfaceAovCallable aov =
-        [scene, closure_aov](
-            BufferFloat scalar_parameters,
-            BufferFloat3 vector_parameters,
-            BufferFloat cycles_bsdf_tables,
-            BindlessVar textures,
-            BindlessVar geometry_heap,
-            UInt surface_tag,
-            Var<SurfacePointCall> packed_point) noexcept {
-            BufferShaderServices services{
-                scalar_parameters,
-                vector_parameters,
-                cycles_bsdf_tables,
-                textures,
-                geometry_heap,
-                scene->attribute_binding_slot,
-                scene->attribute_range_slot,
-                scene->nishita_texture_bindings,
-                scene->shader_color_space};
-            const auto point =
-                unpack_surface_point(packed_point);
-            SurfaceAovVisitor visitor{
-                point,
-                scene->volume_metadata.closure_allocation_budget,
-                closure_aov};
-            static_cast<void>(scene->surfaces.collect_closures(
-                surface_tag,
-                services,
-                point,
-                true,
-                true,
-                visitor));
-            return pack_surface_aov(visitor.result());
-        };
     SurfaceBssrdfNormalCallable bssrdf_normal =
         [scene](
             BufferFloat scalar_parameters,
@@ -451,13 +365,11 @@ SurfaceCallables make_surface_callables(
     return {
         std::move(preparation),
         std::move(evaluate_light),
-        std::move(runtime_flags),
         std::move(constant_emission),
         std::move(emission),
         std::move(sample),
         std::move(closure_trace),
         std::move(sample_trace),
-        std::move(aov),
         std::move(bssrdf_normal),
         std::move(shading_normal)};
 }

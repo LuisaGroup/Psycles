@@ -388,14 +388,19 @@ struct SurfaceSampleTraceCall {
     luisa::uint closure_valid{};
 };
 
-struct SurfaceAovCall {
-    luisa::float3 albedo{};
-    luisa::float3 glossy_albedo{};
-    luisa::float3 transmission_albedo{};
-    luisa::float2 roughness{};
-    luisa::float3 normal{};
-    luisa::float3 transparency{};
+struct SurfacePreparationQueryCall {
+    luisa::float3 outgoing{};
+    float glossy_filter_roughness{};
+    luisa::uint flags{};
 };
+
+namespace surface_preparation_query_flag {
+inline constexpr luisa::uint emission_reflective_caustics = 1u << 0u;
+inline constexpr luisa::uint reflective_caustics = 1u << 1u;
+inline constexpr luisa::uint refractive_caustics = 1u << 2u;
+inline constexpr luisa::uint include_runtime_flags = 1u << 3u;
+inline constexpr luisa::uint include_aov = 1u << 4u;
+}// namespace surface_preparation_query_flag
 
 // Largest-alignment fields first: this callable ABI is crossed for every
 // surface hit, so avoid padding holes between the vector reductions.
@@ -750,13 +755,10 @@ LUISA_STRUCT(
     closure_normal,
     closure_valid) {};
 LUISA_STRUCT(
-    psycles::luisa_backend::detail::SurfaceAovCall,
-    albedo,
-    glossy_albedo,
-    transmission_albedo,
-    roughness,
-    normal,
-    transparency) {};
+    psycles::luisa_backend::detail::SurfacePreparationQueryCall,
+    outgoing,
+    glossy_filter_roughness,
+    flags) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::SurfacePreparationCall,
     emission,
