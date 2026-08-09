@@ -3,7 +3,7 @@
 ## Current continuation — 2026-08-10
 
 The current renderer implementation boundary advances from Psycles main with
-LuisaCompute `next@5c3ce4334` and Blender/Cycles 5.3 Alpha
+LuisaCompute `next@f16af7348` and Blender/Cycles 5.3 Alpha
 `82186b01ad2e`. The older published-boundary section below remains a
 historical record; do not reset to its July revisions.
 
@@ -15,7 +15,7 @@ The current official complex-scene checkpoints are:
   re-entry through exact dominance frontiers. The follow-up carries enclosing
   loops as persistent contexts and replaces per-arm graph searches with block
   value numbering plus one sparse reverse-CFG dataflow per loop. Luisa
-  `next@5c3ce4334` is published. Its follow-ups replace the quadratic
+  `next@f16af7348` is published. Its follow-ups replace the quadratic
   repeated DCE scan with an equivalent reverse-use least-fixed-point
   worklist and replace per-arm loop-boundary merge graph searches with one
   versioned sparse dataflow per loop plus explicit batch invalidation. The
@@ -43,14 +43,21 @@ The current official complex-scene checkpoints are:
   to successor-closed active regions, and locally invalidates one-target
   funnel dependencies. Its drain falls from `0.726 s` to about `0.408 s`,
   relation construction to `0.069 s`, and `restructure_cfg` to `3.555 s`.
+  The newest stage value-numbers each immutable CFG once, stores sparse CSR
+  edges in both directions, and solves post-dominance entirely with dense RPO
+  IDs on the historical sink-reachable domain. Aggregate post-dominator time
+  falls 3.73x from `0.649 s` to `0.174 s` across 229 calls;
+  `restructure_cfg` reaches `3.036 s`, XIR legalization `17.722 s`, and
+  AST-to-SPIR-V `31.228 s`.
   The merge
   canonicalizer itself remains at `0.084 s`. Peak RSS
   falls from `9,415,608 KiB` to `1,654,768 KiB` in the matched driver-cache
   state, with identical SPIR-V sizes and byte-identical output. The DCE run
   retriggered RADV compilation, so its process peak is not compared across
-  cache states. The next measured restructure target is the fully private
-  post-dominator construction at about `0.649 s` across 229 calls. If batching
-  is no longer the dominant transform.
+  cache states. Dense post-dominance is no longer a primary perf hotspot; the
+  next measured target is loop-continue normalization at about `0.520 s`,
+  especially repeated pointer-hash dominance queries and per-site region
+  workspace. If batching is no longer the dominant transform.
 
 - [Sparse XIR verifier dominance](docs/validation/2026-08-10/xir-verifier-sparse-dominance/README.md)
   gives every locally reachable block a numeric RPO ID, stores predecessors
