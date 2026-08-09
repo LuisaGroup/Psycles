@@ -532,6 +532,10 @@ unpack_surface_sample_trace(
     const SurfaceAov &aov) noexcept;
 [[nodiscard]] SurfaceAov unpack_surface_aov(
     const Var<SurfaceAovCall> &aov) noexcept;
+[[nodiscard]] Var<SurfacePreparationCall> pack_surface_preparation(
+    const SurfacePreparation &preparation) noexcept;
+[[nodiscard]] SurfacePreparation unpack_surface_preparation(
+    const Var<SurfacePreparationCall> &preparation) noexcept;
 [[nodiscard]] luisa::float3 to_luisa(Vec3f value) noexcept;
 [[nodiscard]] luisa::float2 to_luisa(Vec2f value) noexcept;
 [[nodiscard]] luisa::float4x4 to_luisa(Mat4f value) noexcept;

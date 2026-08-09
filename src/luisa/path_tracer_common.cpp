@@ -421,6 +421,35 @@ unpack_surface_sample_trace(
         .transparency = aov.transparency};
 }
 
+[[nodiscard]] Var<SurfacePreparationCall> pack_surface_preparation(
+    const SurfacePreparation &preparation) noexcept {
+    Var<SurfacePreparationCall> result;
+    result.emission = preparation.emission;
+    result.albedo = preparation.aov.albedo;
+    result.glossy_albedo = preparation.aov.glossy_albedo;
+    result.transmission_albedo =
+        preparation.aov.transmission_albedo;
+    result.normal = preparation.aov.normal;
+    result.transparency = preparation.aov.transparency;
+    result.roughness = preparation.aov.roughness;
+    result.runtime_flags = preparation.runtime_flags;
+    return result;
+}
+
+[[nodiscard]] SurfacePreparation unpack_surface_preparation(
+    const Var<SurfacePreparationCall> &preparation) noexcept {
+    return {
+        .emission = preparation.emission,
+        .runtime_flags = preparation.runtime_flags,
+        .aov = {
+            .albedo = preparation.albedo,
+            .glossy_albedo = preparation.glossy_albedo,
+            .transmission_albedo = preparation.transmission_albedo,
+            .roughness = preparation.roughness,
+            .normal = preparation.normal,
+            .transparency = preparation.transparency}};
+}
+
 [[nodiscard]] luisa::float3 to_luisa(Vec3f value) noexcept {
     return luisa::make_float3(value.x, value.y, value.z);
 }

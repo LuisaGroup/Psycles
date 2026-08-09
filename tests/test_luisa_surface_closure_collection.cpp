@@ -870,14 +870,74 @@ int main(int argc, char **argv) {
                 true,
                 true,
                 aov_visitor));
+            const auto preparation = surfaces.prepare(
+                tag,
+                services,
+                point,
+                point.incoming,
+                0.04f,
+                true,
+                true,
+                true,
+                true,
+                true);
+            const auto split_emission = surfaces.emission(
+                tag,
+                services,
+                point,
+                point.incoming,
+                true);
+            const auto omitted = surfaces.prepare(
+                tag,
+                services,
+                point,
+                point.incoming,
+                0.04f,
+                true,
+                true,
+                true,
+                false,
+                false);
+            const auto &split_aov = aov_visitor.result();
+            device_assert(
+                preparation.runtime_flags == runtime_flags);
+            device_assert(all(abs(
+                preparation.emission - split_emission) <= 1.0e-6f));
+            device_assert(all(abs(
+                preparation.aov.albedo - split_aov.albedo) <= 1.0e-6f));
+            device_assert(all(abs(
+                preparation.aov.glossy_albedo -
+                split_aov.glossy_albedo) <= 1.0e-6f));
+            device_assert(all(abs(
+                preparation.aov.transmission_albedo -
+                split_aov.transmission_albedo) <= 1.0e-6f));
+            device_assert(all(abs(
+                preparation.aov.roughness - split_aov.roughness) <=
+                1.0e-6f));
+            device_assert(all(abs(
+                preparation.aov.normal - split_aov.normal) <= 1.0e-6f));
+            device_assert(all(abs(
+                preparation.aov.transparency -
+                split_aov.transparency) <= 1.0e-6f));
+            device_assert(all(abs(
+                omitted.emission - split_emission) <= 1.0e-6f));
+            device_assert(omitted.runtime_flags == 0u);
+            device_assert(all(omitted.aov.albedo == 0.0f));
+            device_assert(all(omitted.aov.glossy_albedo == 0.0f));
+            device_assert(all(
+                omitted.aov.transmission_albedo == 0.0f));
+            device_assert(all(omitted.aov.roughness == 0.0f));
+            device_assert(all(
+                omitted.aov.normal == point.shading_normal));
+            device_assert(all(omitted.aov.transparency == 0.0f));
             const auto base =
                 invocation * evaluator_records_per_slot;
             write_evaluator_result(
                 output,
                 base,
                 trace,
-                runtime_flags,
-                aov_visitor.result());
+                preparation.runtime_flags,
+                preparation.aov);
         };
 
     Kernel1D evaluate_legacy =

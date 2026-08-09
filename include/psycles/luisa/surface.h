@@ -547,6 +547,30 @@ struct SurfaceAov {
     Float3 transparency;
 };
 
+// Compact output of one production surface-program traversal. This is not a
+// baked material representation: GraphSurface still evaluates the original
+// typed value graph and raw physical closures at the current SurfacePoint.
+// Only the reductions consumed before BSDF sampling cross this boundary.
+struct SurfacePreparation {
+    Float3 emission;
+    UInt runtime_flags;
+    SurfaceAov aov;
+
+    [[nodiscard]] static SurfacePreparation zero(
+        const SurfacePoint &point) noexcept {
+        return {
+            .emission = make_float3(0.0f),
+            .runtime_flags = 0u,
+            .aov = {
+                .albedo = make_float3(0.0f),
+                .glossy_albedo = make_float3(0.0f),
+                .transmission_albedo = make_float3(0.0f),
+                .roughness = make_float2(0.0f),
+                .normal = point.shading_normal,
+                .transparency = make_float3(0.0f)}};
+    }
+};
+
 class SurfaceParameterServices {
 
 public:
@@ -697,6 +721,56 @@ public:
             u_lobe,
             u_direction,
             query);
+        return result;
+    }
+
+    // Production path-hit fusion boundary. Custom surfaces retain correct
+    // behavior through this default; GraphSurface overrides it so the three
+    // reductions share one typed graph evaluation and one closure traversal.
+    [[nodiscard]] virtual SurfacePreparation prepare(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        Expr<luisa::float3> outgoing,
+        Expr<float> glossy_filter_roughness,
+        Expr<bool> emission_reflective_caustics,
+        Expr<bool> reflective_caustics,
+        Expr<bool> refractive_caustics,
+        Expr<bool> include_runtime_flags,
+        Expr<bool> include_aov) const noexcept {
+        auto result = SurfacePreparation::zero(point);
+        result.emission = emission(
+            services,
+            point,
+            outgoing,
+            emission_reflective_caustics);
+        result.runtime_flags = select(
+            0u,
+            runtime_flags(
+                services,
+                point,
+                glossy_filter_roughness,
+                reflective_caustics,
+                refractive_caustics),
+            include_runtime_flags);
+        const auto computed_aov = aov(services, point);
+        result.aov.albedo = select(
+            result.aov.albedo, computed_aov.albedo, include_aov);
+        result.aov.glossy_albedo = select(
+            result.aov.glossy_albedo,
+            computed_aov.glossy_albedo,
+            include_aov);
+        result.aov.transmission_albedo = select(
+            result.aov.transmission_albedo,
+            computed_aov.transmission_albedo,
+            include_aov);
+        result.aov.roughness = select(
+            result.aov.roughness, computed_aov.roughness, include_aov);
+        result.aov.normal = select(
+            result.aov.normal, computed_aov.normal, include_aov);
+        result.aov.transparency = select(
+            result.aov.transparency,
+            computed_aov.transparency,
+            include_aov);
         return result;
     }
 
@@ -865,6 +939,33 @@ public:
         _surfaces.dispatch(tag, [&](const Surface *surface) noexcept {
             result = surface->evaluate(
                 services, point, outgoing, query);
+        });
+        return result;
+    }
+
+    [[nodiscard]] SurfacePreparation prepare(
+        Expr<std::uint32_t> tag,
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        Expr<luisa::float3> outgoing,
+        Expr<float> glossy_filter_roughness,
+        Expr<bool> emission_reflective_caustics,
+        Expr<bool> reflective_caustics,
+        Expr<bool> refractive_caustics,
+        Expr<bool> include_runtime_flags,
+        Expr<bool> include_aov) const noexcept {
+        auto result = SurfacePreparation::zero(point);
+        _surfaces.dispatch(tag, [&](const Surface *surface) noexcept {
+            result = surface->prepare(
+                services,
+                point,
+                outgoing,
+                glossy_filter_roughness,
+                emission_reflective_caustics,
+                reflective_caustics,
+                refractive_caustics,
+                include_runtime_flags,
+                include_aov);
         });
         return result;
     }
@@ -1156,3 +1257,4 @@ LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::SurfaceSample)
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::SurfaceClosureTrace)
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::SurfaceSampleTrace)
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::SurfaceAov)
+LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::SurfacePreparation)

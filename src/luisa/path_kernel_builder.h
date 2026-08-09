@@ -122,6 +122,13 @@ struct PathKernelInvocation {
                            Float3 outgoing,
                            const SurfaceQuery &query,
                            UInt shader_flags) const noexcept;
+    [[nodiscard]] SurfacePreparation
+    prepare_surface(UInt surface_tag,
+                    const SurfacePoint &point,
+                    Float3 outgoing,
+                    const SurfaceQuery &query,
+                    Bool include_runtime_flags,
+                    Bool include_aov) const noexcept;
     [[nodiscard]] UInt surface_runtime_flags(
         UInt surface_tag,
         const SurfacePoint &point,

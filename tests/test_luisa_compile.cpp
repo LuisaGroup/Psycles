@@ -13,6 +13,7 @@
 #include <compare>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -109,15 +110,30 @@ public:
 
 class BufferParameterShaderServices final : public ShaderServices {
 
+public:
+    struct Recordings {
+        std::size_t scalar{};
+        std::size_t vector{};
+        std::size_t uint64{};
+
+        [[nodiscard]] std::size_t total() const noexcept {
+            return scalar + vector + uint64;
+        }
+    };
+
 private:
     const BufferFloat &_scalars;
     const BufferFloat3 &_vectors;
+    Recordings *_recordings{};
 
 public:
     BufferParameterShaderServices(
         const BufferFloat &scalars,
-        const BufferFloat3 &vectors) noexcept
-        : _scalars{scalars}, _vectors{vectors} {}
+        const BufferFloat3 &vectors,
+        Recordings *recordings = nullptr) noexcept
+        : _scalars{scalars},
+          _vectors{vectors},
+          _recordings{recordings} {}
 
     [[nodiscard]] Float4 texture_2d(
         Expr<std::uint32_t>, Expr<luisa::float2>,
@@ -135,18 +151,27 @@ public:
     [[nodiscard]] Float parameter_float(
         Expr<std::uint32_t> block,
         Expr<std::uint32_t> slot) const noexcept override {
+        if (_recordings != nullptr) {
+            ++_recordings->scalar;
+        }
         return _scalars.read(block + slot);
     }
 
     [[nodiscard]] Float3 parameter_float3(
         Expr<std::uint32_t> block,
         Expr<std::uint32_t> slot) const noexcept override {
+        if (_recordings != nullptr) {
+            ++_recordings->vector;
+        }
         return _vectors.read(block + slot);
     }
 
     [[nodiscard]] ULong parameter_uint64(
         Expr<std::uint32_t> block,
         Expr<std::uint32_t> slot) const noexcept override {
+        if (_recordings != nullptr) {
+            ++_recordings->uint64;
+        }
         return _vectors.read(block + slot)
             .xy()
             .bitcast<luisa::ulong>();
@@ -361,6 +386,31 @@ struct XirShape {
     auto operator<=>(const XirShape &) const noexcept = default;
 };
 
+template<typename... Args>
+[[nodiscard]] XirShape xir_shape(
+    const Kernel1D<Args...> &kernel) {
+    auto module = luisa::compute::xir::ast_to_xir_translate(
+        kernel.function()->function(), {});
+    XirShape shape;
+    for (auto *function : module->function_list()) {
+        if (auto *definition = function->definition()) {
+            definition->traverse_instructions(
+                [&](const luisa::compute::xir::Instruction
+                        *instruction) noexcept {
+                    ++shape.instructions;
+                    shape.loops +=
+                        instruction->isa<
+                            luisa::compute::xir::LoopInst>() ||
+                                instruction->isa<
+                                    luisa::compute::xir::SimpleLoopInst>()
+                            ? 1u
+                            : 0u;
+                });
+        }
+    }
+    return shape;
+}
+
 [[nodiscard]] XirShape ramp_xir_shape(
     const ShaderCompiler &compiler,
     std::string table,
@@ -393,26 +443,196 @@ struct XirShape {
             make_float3(0.0f, 0.0f, 1.0f), true);
         output.write(0u, make_float4(value, 1.0f));
     };
-    auto module = luisa::compute::xir::ast_to_xir_translate(
-        kernel.function()->function(), {});
-    XirShape shape;
-    for (auto *function : module->function_list()) {
-        if (auto *definition = function->definition()) {
-            definition->traverse_instructions(
-                [&](const luisa::compute::xir::Instruction
-                        *instruction) noexcept {
-                    ++shape.instructions;
-                    shape.loops +=
-                        instruction->isa<
-                            luisa::compute::xir::LoopInst>() ||
-                                instruction->isa<
-                                    luisa::compute::xir::SimpleLoopInst>()
-                            ? 1u
-                            : 0u;
-                });
+    return xir_shape(kernel);
+}
+
+[[nodiscard]] ShaderGraph make_preparation_graph() {
+    ShaderGraph graph;
+    const auto shared_color = graph.add_node(
+        node_type::constant_color, "Shared preparation color");
+    const auto diffuse = graph.add_node(
+        node_type::diffuse_bsdf, "Prepared diffuse");
+    const auto emission = graph.add_node(
+        node_type::emission, "Prepared emission");
+    const auto add = graph.add_node(
+        node_type::add_closure, "Prepared closure sum");
+    if (!graph.connect(
+            {.node = shared_color, .socket = "Color"},
+            diffuse,
+            "Color") ||
+        !graph.connect(
+            {.node = shared_color, .socket = "Color"},
+            emission,
+            "Color") ||
+        !graph.connect(
+            {.node = diffuse, .socket = "Closure"},
+            add,
+            "A") ||
+        !graph.connect(
+            {.node = emission, .socket = "Closure"},
+            add,
+            "B")) {
+        throw std::runtime_error{
+            "failed to construct preparation graph fixture"};
+    }
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = add, .socket = "Closure"});
+    return graph;
+}
+
+[[nodiscard]] SurfacePoint make_preparation_point() noexcept {
+    auto point = SurfacePoint{};
+    point.geometric_normal = make_float3(0.0f, 0.0f, 1.0f);
+    point.shading_normal = make_float3(0.0f, 0.0f, 1.0f);
+    point.incoming = make_float3(0.0f, 0.0f, 1.0f);
+    point.ray_visibility = 1u;
+    point.use_bump_map_correction = true;
+    return point;
+}
+
+void write_preparation(
+    const BufferFloat4 &output,
+    const SurfacePreparation &preparation) noexcept {
+    output.write(
+        0u,
+        make_float4(
+            preparation.emission,
+            cast<float>(preparation.runtime_flags)));
+    output.write(
+        1u,
+        make_float4(
+            preparation.aov.albedo,
+            preparation.aov.roughness.x));
+    output.write(
+        2u,
+        make_float4(
+            preparation.aov.glossy_albedo,
+            preparation.aov.roughness.y));
+    output.write(
+        3u,
+        make_float4(
+            preparation.aov.transmission_albedo,
+            0.0f));
+    output.write(
+        4u,
+        make_float4(preparation.aov.normal, 0.0f));
+    output.write(
+        5u,
+        make_float4(preparation.aov.transparency, 0.0f));
+}
+
+[[nodiscard]] bool preparation_graph_is_fused(
+    const ShaderCompiler &compiler) {
+    const auto shader = compiler.compile(make_preparation_graph());
+    if (!shader.ok()) {
+        throw std::runtime_error{
+            "preparation graph fixture failed graph validation"};
+    }
+    const auto lowered = compile_surface_program(*shader.program);
+    if (!lowered.ok()) {
+        throw std::runtime_error{
+            "preparation graph fixture failed surface lowering"};
+    }
+
+    auto diffuse_color = compiler::ValueExpressionId{};
+    auto emission_color = compiler::ValueExpressionId{};
+    for (const auto &closure :
+         lowered.program->closure_instructions()) {
+        if (closure.operation == compiler::ClosureOperation::diffuse) {
+            diffuse_color = closure.color;
+        } else if (
+            closure.operation == compiler::ClosureOperation::emission) {
+            emission_color = closure.color;
         }
     }
-    return shape;
+    if (!diffuse_color.valid() ||
+        diffuse_color != emission_color) {
+        std::cerr
+            << "preparation fixture did not retain one shared value node\n";
+        return false;
+    }
+
+    SurfaceDispatch surfaces;
+    const auto tag = surfaces.create<GraphSurface>(lowered.program);
+    using Recordings = BufferParameterShaderServices::Recordings;
+    Recordings split_recordings;
+    Kernel1D split = [&](BufferFloat scalar_parameters,
+                         BufferFloat3 vector_parameters,
+                         BufferFloat4 output) noexcept {
+        BufferParameterShaderServices services{
+            scalar_parameters,
+            vector_parameters,
+            &split_recordings};
+        const auto point = make_preparation_point();
+        auto result = SurfacePreparation::zero(point);
+        result.emission = surfaces.emission(
+            tag,
+            services,
+            point,
+            point.incoming,
+            true);
+        result.runtime_flags = surfaces.runtime_flags(
+            tag,
+            services,
+            point,
+            0.04f,
+            true,
+            true);
+        result.aov = surfaces.aov(tag, services, point);
+        write_preparation(output, result);
+    };
+
+    Recordings fused_recordings;
+    Kernel1D fused = [&](BufferFloat scalar_parameters,
+                         BufferFloat3 vector_parameters,
+                         BufferFloat4 output) noexcept {
+        BufferParameterShaderServices services{
+            scalar_parameters,
+            vector_parameters,
+            &fused_recordings};
+        const auto point = make_preparation_point();
+        write_preparation(
+            output,
+            surfaces.prepare(
+                tag,
+                services,
+                point,
+                point.incoming,
+                0.04f,
+                true,
+                true,
+                true,
+                true,
+                true));
+    };
+
+    const auto split_shape = xir_shape(split);
+    const auto fused_shape = xir_shape(fused);
+    const auto exact_single_schedule =
+        fused_recordings.total() > 0u &&
+        split_recordings.scalar == 3u * fused_recordings.scalar &&
+        split_recordings.vector == 3u * fused_recordings.vector &&
+        split_recordings.uint64 == 3u * fused_recordings.uint64;
+    const auto smaller_xir =
+        fused_shape.instructions < split_shape.instructions;
+    if (std::getenv("PSYCLES_REPORT_GRAPH_FUSION") != nullptr) {
+        std::cout
+            << "surface preparation fusion: split={records="
+            << split_recordings.total() << ", instructions="
+            << split_shape.instructions << "}, fused={records="
+            << fused_recordings.total() << ", instructions="
+            << fused_shape.instructions << "}\n";
+    }
+    if (!exact_single_schedule || !smaller_xir) {
+        std::cerr
+            << "surface preparation fusion mismatch: split={records="
+            << split_recordings.total() << ", instructions="
+            << split_shape.instructions << "}, fused={records="
+            << fused_recordings.total() << ", instructions="
+            << fused_shape.instructions << "}\n";
+    }
+    return exact_single_schedule && smaller_xir;
 }
 
 [[nodiscard]] bool shader_table_cfg_is_bounded(
@@ -595,6 +815,9 @@ int main() {
     if (!shader_table_cfg_is_bounded(shader_compiler)) {
         return 5;
     }
+    if (!preparation_graph_is_fused(shader_compiler)) {
+        return 6;
+    }
 
     Kernel1D sampler_kernel = [](
                                   BufferFloat4 table,
@@ -622,5 +845,5 @@ int main() {
                 rng_hash,
                 dimension));
     };
-    return sampler_kernel.function() ? 0 : 6;
+    return sampler_kernel.function() ? 0 : 7;
 }

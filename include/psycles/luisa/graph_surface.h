@@ -87,6 +87,17 @@ public:
         Expr<luisa::float2> u_direction,
         const SurfaceQuery &query) const noexcept override;
 
+    [[nodiscard]] SurfacePreparation prepare(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        Expr<luisa::float3> outgoing,
+        Expr<float> glossy_filter_roughness,
+        Expr<bool> emission_reflective_caustics,
+        Expr<bool> reflective_caustics,
+        Expr<bool> refractive_caustics,
+        Expr<bool> include_runtime_flags,
+        Expr<bool> include_aov) const noexcept override;
+
     [[nodiscard]] Float3 emission(
         const ShaderServices &services,
         const SurfacePoint &point,

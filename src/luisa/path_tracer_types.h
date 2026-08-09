@@ -397,6 +397,19 @@ struct SurfaceAovCall {
     luisa::float3 transparency{};
 };
 
+// Largest-alignment fields first: this callable ABI is crossed for every
+// surface hit, so avoid padding holes between the vector reductions.
+struct SurfacePreparationCall {
+    luisa::float3 emission{};
+    luisa::float3 albedo{};
+    luisa::float3 glossy_albedo{};
+    luisa::float3 transmission_albedo{};
+    luisa::float3 normal{};
+    luisa::float3 transparency{};
+    luisa::float2 roughness{};
+    luisa::uint runtime_flags{};
+};
+
 struct LightPassContributionCall {
     luisa::float3 diffuse_direct{};
     luisa::float3 diffuse_indirect{};
@@ -744,6 +757,16 @@ LUISA_STRUCT(
     roughness,
     normal,
     transparency) {};
+LUISA_STRUCT(
+    psycles::luisa_backend::detail::SurfacePreparationCall,
+    emission,
+    albedo,
+    glossy_albedo,
+    transmission_albedo,
+    normal,
+    transparency,
+    roughness,
+    runtime_flags) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::LightPassContributionCall,
     diffuse_direct,

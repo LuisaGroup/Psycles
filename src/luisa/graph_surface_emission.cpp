@@ -1,6 +1,8 @@
 #include "graph_surface_internal.h"
 #include "principled_layer_component.h"
 
+#include <psycles/luisa/surface_closure_operations.h>
+
 namespace psycles::luisa_backend::detail {
 
 [[nodiscard]] Float3 GraphSurfaceImplementation::emission(
@@ -11,7 +13,16 @@ namespace psycles::luisa_backend::detail {
     if (!_program) {
         return make_float3(0.0f);
     }
-    auto values = trace_values(services, point);
+    const auto values = trace_values(services, point);
+    return emission_traced(
+        services, point, values, reflective_caustics);
+}
+
+[[nodiscard]] Float3 GraphSurfaceImplementation::emission_traced(
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    const TracedValues &values,
+    Expr<bool> reflective_caustics) const noexcept {
     const PrincipledLayerComponent principled_layers{services, point};
     Float3 result = make_float3(0.0f);
     for_each_closure(
@@ -27,6 +38,54 @@ namespace psycles::luisa_backend::detail {
                               .radiance;
             }
         });
+    return result;
+}
+
+[[nodiscard]] SurfacePreparation GraphSurfaceImplementation::prepare(
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    Expr<luisa::float3> outgoing,
+    Expr<float> glossy_filter_roughness,
+    Expr<bool> emission_reflective_caustics,
+    Expr<bool> reflective_caustics,
+    Expr<bool> refractive_caustics,
+    Expr<bool> include_runtime_flags,
+    Expr<bool> include_aov) const noexcept {
+    static_cast<void>(outgoing);
+    auto result = SurfacePreparation::zero(point);
+    if (!_program) {
+        return result;
+    }
+
+    // This is the production graph-fusion point: one strongly typed value
+    // schedule feeds both the authored emission root and the raw physical
+    // closure reductions. No closure record is baked or stored in a weakly
+    // typed device array.
+    const auto values = trace_values(services, point);
+    result.emission = emission_traced(
+        services,
+        point,
+        values,
+        emission_reflective_caustics);
+    const auto identity = make_surface_closure_identity_callable();
+    const auto aov_operation = make_surface_closure_aov_callable();
+    SurfacePreparationVisitor visitor{
+        point,
+        glossy_filter_roughness,
+        include_runtime_flags,
+        include_aov,
+        maximum_surface_closure_capacity,
+        identity,
+        aov_operation};
+    static_cast<void>(collect_traced_closures(
+        services,
+        point,
+        values,
+        reflective_caustics,
+        refractive_caustics,
+        visitor));
+    result.runtime_flags = visitor.runtime_flags();
+    result.aov = visitor.aov();
     return result;
 }
 
