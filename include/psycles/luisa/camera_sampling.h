@@ -4,6 +4,7 @@
 #error "Include <psycles/luisa/camera_sampling.h> through the Psycles::luisa target."
 #endif
 
+#include <cmath>
 #include <cstdint>
 
 #include <psycles/luisa/cycles_sample_mapping.h>
@@ -133,7 +134,8 @@ sample_regular_polygon(luisa::compute::Float2 random,
 
     const auto half_corner_angle = pi / corners;
     const auto point = luisa::compute::make_float2(
-        (u + v) * cos(half_corner_angle), (u - v) * sin(half_corner_angle));
+        (u + v) * std::cos(half_corner_angle),
+        (u - v) * std::sin(half_corner_angle));
     const auto angle = rotation + corner * (2.0f * half_corner_angle);
     const auto cosine = cos(angle);
     const auto sine = sin(angle);
