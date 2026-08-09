@@ -1222,6 +1222,10 @@ void test_integrator_settings_round_trip() {
           },
           {
             "name": "Diffuse",)JSON");
+  struct LoweredNormalMap {
+    psycles::compiler::ValueInstruction instruction;
+    std::uint64_t uv_map_id{};
+  };
   const auto lower_imported_normal_map =
       [&](const std::string &scene_text) {
         {
@@ -1239,11 +1243,33 @@ void test_integrator_settings_round_trip() {
         const auto surface =
             psycles::compiler::compile_surface_program(*shader.program);
         expect(surface.ok(), "Normal Map semantic graph did not lower");
-        for (const auto &instruction :
-             surface.program->value_instructions()) {
+        const auto &values = surface.program->value_instructions();
+        const auto &parameters = surface.program->parameters();
+        for (const auto &instruction : values) {
           if (instruction.operation ==
               psycles::compiler::ValueOperation::normal_map) {
-            return instruction;
+            const auto uv_map = instruction.operand(
+                psycles::compiler::value_operand::normal_map::uv_map);
+            expect(uv_map.valid() && uv_map.value < values.size(),
+                   "Normal Map UV operand is invalid");
+            const auto &parameter_value = values[uv_map.value];
+            expect(parameter_value.operation ==
+                           psycles::compiler::ValueOperation::parameter &&
+                       parameter_value.parameter.valid() &&
+                       parameter_value.parameter.value < parameters.size(),
+                   "Normal Map UV identity is not a typed parameter");
+            const auto &parameter =
+                parameters[parameter_value.parameter.value];
+            expect(parameter.source ==
+                           psycles::compiler::ParameterSource::property &&
+                       parameter.socket == "UvMapId" &&
+                       parameter.type ==
+                           psycles::contract::SocketType::unsigned_integer,
+                   "Normal Map UV identity lost its property contract");
+            return LoweredNormalMap{
+                .instruction = instruction,
+                .uv_map_id = std::get<std::uint64_t>(
+                    parameter.default_value.value)};
           }
         }
         throw std::runtime_error{
@@ -1252,13 +1278,13 @@ void test_integrator_settings_round_trip() {
   const auto original_normal_map =
       lower_imported_normal_map(normal_map_scene);
   expect(
-      original_normal_map.static_u0 ==
+      original_normal_map.instruction.static_u0 ==
               psycles::compiler::encode_normal_map_configuration(
                   psycles::compiler::NormalMapSpace::tangent,
                   true,
                   psycles::compiler::NormalMapBase::original,
                   psycles::compiler::NormalMapConvention::direct_x) &&
-          original_normal_map.static_u1 ==
+          original_normal_map.uv_map_id ==
               psycles::contract::uv_undisplaced_tangent_attribute_id(
                   "MappedUV"),
       "Blender ORIGINAL/DirectX Normal Map lost its Cycles attributes");
@@ -1270,13 +1296,13 @@ void test_integrator_settings_round_trip() {
   const auto displaced_normal_map =
       lower_imported_normal_map(displaced_normal_map_scene);
   expect(
-      displaced_normal_map.static_u0 ==
+      displaced_normal_map.instruction.static_u0 ==
               psycles::compiler::encode_normal_map_configuration(
                   psycles::compiler::NormalMapSpace::tangent,
                   true,
                   psycles::compiler::NormalMapBase::displaced,
                   psycles::compiler::NormalMapConvention::direct_x) &&
-          displaced_normal_map.static_u1 ==
+          displaced_normal_map.uv_map_id ==
               psycles::contract::uv_tangent_attribute_id("MappedUV"),
       "Blender DISPLACED Normal Map did not select the current Mikk frame");
 
