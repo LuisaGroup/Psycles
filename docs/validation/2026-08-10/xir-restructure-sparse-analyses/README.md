@@ -287,3 +287,66 @@ JIT and `9,414,528 KiB` process peak are not compared with the preceding
 driver-cache-hit run. The compiler-boundary timings above exclude that driver
 stage. The complete log is
 `/var/tmp/psycles-dce-worklist-20260810/vk.log`.
+
+## Versioned loop-boundary merge canonicalization
+
+The post-DCE profile captured 97K user-cycle samples with none lost. It
+confirmed that `canonicalize_loop_boundary_selection_merges` still performed
+the retired per-arm graph search: 48 invocations took `5.706 s`, while the
+flat profile again exposed pointer-set allocation, hashing, recursive block
+traversal, and `classify_loop_boundary_path`. The four expensive invocations
+were `2.272 s`, `2.244 s`, `0.592 s`, and `0.597 s`; only one post iteration
+actually changed this phase.
+
+Luisa `next@8085ee23b` now treats every classification as a value of one
+immutable CFG version. Blocks are numbered once, the structured reverse CFG
+is stored sparsely in CSR, and the finite `{BREAK, CONTINUE, INVALID}` lattice
+is solved once per visited loop. Every IfInst arm is then an `O(1)` fact
+lookup. Rewrites for one loop context are planned against the snapshot:
+
+- replacing a forwarding break arm with `Break(loop_merge)` preserves its
+  `BREAK` fact;
+- replacing an obsolete selection merge with a transparent false-arm proxy
+  retains both executable arms and can only remove spurious successor facts.
+
+Thus every planned rewrite remains sound under the batch. A batch may expose
+additional canonicalization opportunities, but it cannot invalidate a fact
+that justified an existing action. After each batch, the entire numbering,
+CSR, and fact solution is discarded and rebuilt before another loop context
+is inspected. This is an explicit versioned-analysis rule, not reuse of stale
+facts across mutation.
+
+The 128-selection regression observes one dataflow solution per loop and CFG
+version, exactly two constant-time classifications per selection, and zero
+rewrite invalidations. The existing physical loop-guard regression requires
+a nonzero rewrite-batch count. The complete `unit_xir` label passes `48/48`;
+the RX 9070 XT native Vulkan route passes `92/92` tests and `2,096`
+assertions.
+
+The unchanged Lone Monk command writes to
+`/var/tmp/psycles-boundary-merge-dataflow-20260810/`:
+
+| Boundary | Per-arm graph search | Versioned sparse dataflow | Change |
+| --- | ---: | ---: | ---: |
+| Merge canonicalizer | 5.706 s | 0.084 s | 67.8x |
+| `restructure_cfg` | 18.343 s | 12.737 s | -30.6% |
+| SPIR-V XIR legalization | 33.540 s | 27.515 s | -18.0% |
+| Native AST-to-SPIR-V | 47.533 s | 41.046 s | -13.6% |
+| Raw SPIR-V | 1,431,985 words | 1,431,985 words | identical size |
+| Optimized SPIR-V | 1,116,158 words | 1,116,158 words | identical size |
+
+The production module used 26 immutable analyses, 496 per-loop dataflow
+solutions, 33,984 constant-time arm classifications, and only 4 invalidating
+rewrite batches. Both PPM files remain byte-identical with SHA-256
+`3ff6c5463ace13c0f26a735ac1af2bb96ab8a9ba1cb4398359cf2466f63a4d1b`.
+The RADV disk cache hit in `22.149 ms`; the resulting `41.220 s` total JIT and
+`1,661,008 KiB` process peak are recorded but not used to inflate the
+compiler-boundary speedups. The complete log is
+`/var/tmp/psycles-boundary-merge-dataflow-20260810/vk.log`.
+
+The next measured transform hotspot is main structurization:
+`try_restructure_if_batch` takes `7.930 s` of the `8.977 s`
+`main_loop_iteration` aggregate. `simplify_cfg` follows at `3.495 s`, while
+the five DCE calls now total `2.989 s`. Further work should first decompose the
+if-batch cost by immutable analysis, candidate ordering, and post-dominator
+invalidation rather than weaken legality checks.

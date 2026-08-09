@@ -15,14 +15,20 @@ physical hierarchy with enter/merge events on the sparse immediate-dominator
 tree, replaces the final selection-by-block re-entry scan with exact
 dominance-frontier queries, carries enclosing loops as persistent contexts,
 and solves all loop-boundary arm classifications with block value numbering
-plus sparse reverse-CFG dataflow. The follow-up Luisa `next@f0018499d`
-replaces DCE's repeated whole-function least-fixed-point scan with an
-equivalent linear reverse-use worklist. All 48
+plus sparse reverse-CFG dataflow. The follow-ups through Luisa
+`next@8085ee23b` replace DCE's repeated whole-function least-fixed-point scan
+with an
+equivalent linear reverse-use worklist, then replace the remaining per-arm
+loop-boundary merge searches with versioned sparse dataflow and explicitly
+invalidated rewrite batches. All 48
 XIR tests and 92 Vulkan native-codegen runtime tests pass. On the unchanged
 Lone Monk module, raw/optimized SPIR-V remain 1,431,985/1,116,158 words and
 the compile-smoke output is byte-identical. DCE aggregate time falls 4.72x
 from `14.182 s` to `3.004 s`, XIR legalization falls another 24.0% to
 `33.540 s`, and native AST-to-SPIR-V falls another 17.7% to `47.533 s`.
+The merge canonicalizer then falls 67.8x from `5.706 s` to `0.084 s`, taking
+`restructure_cfg` to `12.737 s`, XIR legalization to `27.515 s`, and native
+AST-to-SPIR-V to `41.046 s`, again with identical SPIR-V and output.
 Against the earlier complete
 run, `drain_selection_exits` falls 18.30x to `0.723 s`, `restructure_cfg`
 falls 49.0% to `17.945 s`, native AST-to-SPIR-V falls 23.9% to `57.766 s`,
@@ -30,8 +36,8 @@ and peak RSS falls 82.4% to `1,654,768 KiB`. The observed complete JIT hit the
 RADV disk cache, so its `57.933 s` wall is recorded but not attributed to the
 compiler change. The DCE follow-up retriggered an `84.119 s` RADV compile, so
 its total wall and process RSS are likewise separated from compiler-boundary
-comparisons. The next independent transform hotspot is the mutating
-`canonicalize_loop_boundary_selection_merges` phase at `5.558 s`.
+comparisons. The next independent transform hotspot is
+`try_restructure_if_batch` at `7.930 s`.
 
 The preceding
 [sparse XIR verifier dominance checkpoint](docs/validation/2026-08-10/xir-verifier-sparse-dominance/README.md)
