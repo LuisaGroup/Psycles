@@ -16,7 +16,7 @@ tree, replaces the final selection-by-block re-entry scan with exact
 dominance-frontier queries, carries enclosing loops as persistent contexts,
 and solves all loop-boundary arm classifications with block value numbering
 plus sparse reverse-CFG dataflow. The follow-ups through Luisa
-`next@13fadb811` replace DCE's repeated whole-function least-fixed-point scan
+`next@58984c670` replace DCE's repeated whole-function least-fixed-point scan
 with an
 equivalent linear reverse-use worklist, then replace the remaining per-arm
 loop-boundary merge searches with versioned sparse dataflow and explicitly
@@ -73,6 +73,15 @@ CHK fixed point entirely on RPO IDs. Loop-continue ancestry falls from
 `2.745 s` (-10.2%). The 129 rebuilds converge in exactly 258 passes over
 645,720 numbered blocks and 807,853 edges. Full XIR, system-STL, and native
 Vulkan gates pass; raw/optimized SPIR-V and the output remain identical.
+The selection-exit drain now batches SSA transport at its final CFG fixed
+point. This is exact because intervening drain queries inspect graph structure
+but never instruction operands, while state dispatch preserves each original
+dynamic successor. Nine logical repair requests therefore require one
+physical repair. Site scanning falls from `307.857 ms` to `58.156 ms`
+(-81.1%), the drain from `392.109 ms` to `163.168 ms` (-58.4%),
+`restructure_cfg` to `2.428 s`, XIR legalization to `17.201 s`, and native
+AST-to-SPIR-V to `30.399 s`. Full XIR, system-STL, and native Vulkan gates
+pass; both SPIR-V modules and the output remain byte-identical.
 Against the earlier complete
 run, `drain_selection_exits` falls 18.30x to `0.723 s`, `restructure_cfg`
 falls 49.0% to `17.945 s`, native AST-to-SPIR-V falls 23.9% to `57.766 s`,
@@ -82,9 +91,8 @@ compiler change. The DCE follow-up retriggered an `84.119 s` RADV compile, so
 its total wall and process RSS are likewise separated from compiler-boundary
 comparisons. The former merge-inference hotspot is now only part of a
 `0.286 s` if batch, and dense post-dominance is no longer a primary perf
-hotspot. Dense loop-continue dominance is now below selection-exit site
-scanning (`0.308 s` inside a `0.392 s` drain), which is the next measured
-restructure target.
+hotspot. Selection-exit drain is now `0.163 s`; the next measured restructure
+targets are the `0.271 s` if batch and `0.265 s` loop-continue normalization.
 
 The preceding
 [sparse XIR verifier dominance checkpoint](docs/validation/2026-08-10/xir-verifier-sparse-dominance/README.md)

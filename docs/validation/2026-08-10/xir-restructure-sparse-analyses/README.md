@@ -737,3 +737,58 @@ batch. Input/output verification remains exactly at the two public pass
 boundaries. The next profile therefore targets selection-exit query and
 invalidation work rather than weakening verification or approximating
 dominance.
+
+## Batched selection-exit SSA repair
+
+Luisa `next@58984c670` moves selection-exit SSA repair to the exact drain
+boundary. A 65,213-cycle-sample `perf` capture with no lost samples showed
+that the apparent site-scan hotspot was mostly eager whole-function work:
+within `drain_selection_exits`, exact reg2mem repair accounted for 43.2% of
+samples, relation construction for 23.8%, and dominance construction for
+18.0%. Every multi-target state-dispatch rewrite was scanning the complete
+function and rebuilding dominance even though no intervening drain query
+observes instruction operands.
+
+The drain now records that SSA transport is required, reaches its final CFG
+fixed point, and performs one exact repair over the resulting graph. This is
+trace-equivalent to eager repair: a state-dispatch selector preserves the
+original dynamic successor; later drain decisions inspect only CFG edges,
+structured targets, and dominance; and no rewrite moves or evaluates the
+path-local value. Therefore every feasible final use is still preceded on its
+original dynamic path by the same definition. The final reg2mem pass
+transports exactly those remaining syntactic cross-path uses. Other
+restructure clients retain eager repair because they do not share this drain
+boundary.
+
+The regression `restructure_batches_state_dispatch_ssa_repair_at_drain_boundary`
+uses two sequential three-way selections with distinct path-local return
+values. It requires more logical repair requests than physical repairs,
+exactly two cross-block spills, loaded return operands after repair, and a
+verified output module. Production counters report nine requests and one
+physical repair:
+
+| Boundary | Dense-dominator baseline | Batched SSA repair | Change |
+| --- | ---: | ---: | ---: |
+| Repair requests / physical repairs | 9 / 9 | 9 / 1 | 8 scans removed |
+| Final isolated SSA repair | included per site | 25.388 ms | measured boundary |
+| Selection-exit site scan | 307.857 ms | 58.156 ms | -81.1% |
+| `drain_selection_exits` | 392.109 ms | 163.168 ms | -58.4% |
+| `restructure_cfg` | 2.745 s | 2.428 s | -11.6% |
+| SPIR-V XIR legalization | 17.796 s | 17.201 s | -3.3% |
+| Native AST-to-SPIR-V | 31.371 s | 30.399 s | -3.1% |
+| Raw SPIR-V | 1,431,985 words | 1,431,985 words | identical size |
+| Optimized SPIR-V | 1,116,158 words | 1,116,158 words | identical size |
+
+The production output remains byte-identical with SHA-256
+`3ff6c5463ace13c0f26a735ac1af2bb96ab8a9ba1cb4398359cf2466f63a4d1b`.
+After a complete all-thread rebuild, all 48 XIR tests pass. The system-STL
+gates pass 9/9 dominance tests (56 assertions), 68/68 restructure tests
+(1,351 assertions), and 350/350 pass tests (1,989 assertions). The RX 9070 XT
+native Vulkan route passes 92/92 tests with 2,096 assertions.
+
+The largest remaining restructure leaves are `try_restructure_if_batch` at
+271.223 ms and loop-continue normalization at 264.942 ms, including
+216.460 ms of exact dominance ancestry. Verification remains exactly at the
+two public pass boundaries (about 626 ms combined). The next profile targets
+the if-batch computation and loop mutation strategy; it does not weaken those
+boundary checks.
