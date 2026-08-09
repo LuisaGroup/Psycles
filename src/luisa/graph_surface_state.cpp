@@ -16,6 +16,12 @@ namespace psycles::luisa_backend::detail {
     return get(id, values.values).vector();
 }
 
+[[nodiscard]] ULong unsigned_integer(
+    compiler::ValueExpressionId id,
+    const TracedValues &values) noexcept {
+    return get(id, values.values).unsigned_integer();
+}
+
 [[nodiscard]] Float sample_weight(Float3 value) noexcept {
     // Cycles stores fabsf(average(weight)) in ShaderClosure. Ordinary
     // BSDF allocation has already clamped negative spectral components;

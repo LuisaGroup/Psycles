@@ -52,22 +52,33 @@ public:
         Float4 value = make_float4(0.0f);
         switch (instruction.operation) {
                 case compiler::ValueOperation::parameter:
-                    if (surface_value_category(
-                            instruction.result_type) ==
-                        SurfaceValueCategory::scalar) {
-                        auto parameter = services.parameter_float(
-                            point.parameter_block,
-                            instruction.parameter.value);
-                        return SurfaceValueExpression::from_scalar(
-                            Expr<float>{parameter.expression()});
-                    } else {
-                        auto parameter = services.parameter_float3(
-                            point.parameter_block,
-                            instruction.parameter.value);
-                        return SurfaceValueExpression::from_vector(
-                            Expr<luisa::float3>{
-                                parameter.expression()});
+                    switch (surface_value_category(
+                        instruction.result_type)) {
+                        case SurfaceValueCategory::scalar: {
+                            auto parameter = services.parameter_float(
+                                point.parameter_block,
+                                instruction.parameter.value);
+                            return SurfaceValueExpression::from_scalar(
+                                Expr<float>{parameter.expression()});
+                        }
+                        case SurfaceValueCategory::vector: {
+                            auto parameter = services.parameter_float3(
+                                point.parameter_block,
+                                instruction.parameter.value);
+                            return SurfaceValueExpression::from_vector(
+                                Expr<luisa::float3>{
+                                    parameter.expression()});
+                        }
+                        case SurfaceValueCategory::unsigned_integer: {
+                            auto parameter = services.parameter_uint64(
+                                point.parameter_block,
+                                instruction.parameter.value);
+                            return SurfaceValueExpression::from_unsigned_integer(
+                                Expr<luisa::ulong>{
+                                    parameter.expression()});
+                        }
                     }
+                    std::abort();
                 case compiler::ValueOperation::passthrough:
                     return get(instruction.a, result.values);
                 case compiler::ValueOperation::scalar_to_color: {

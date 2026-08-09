@@ -416,19 +416,38 @@ SurfaceParameterBinding bind_surface_parameters(
                     .socket = parameter.socket});
             continue;
         }
-        auto input = node->inputs.find(parameter.socket);
-        if (input == node->inputs.end() ||
-            input->second.source ||
-            !input->second.value) {
+        const contract::SocketValue *value = nullptr;
+        if (parameter.source == ParameterSource::input) {
+            const auto input = node->inputs.find(parameter.socket);
+            if (input != node->inputs.end() &&
+                !input->second.source &&
+                input->second.value) {
+                value = &*input->second.value;
+            }
+        } else {
+            const auto property =
+                node->properties.find(parameter.socket);
+            if (property != node->properties.end()) {
+                value = &property->second;
+            }
+        }
+        if (value == nullptr) {
+            const auto source_name =
+                parameter.source == ParameterSource::input
+                    ? "input"
+                    : "property";
             result.diagnostics.emplace_back(
                 SurfaceProgramDiagnostic{
                     .code =
                         SurfaceProgramDiagnosticCode::missing_input,
                     .message =
                         detail::node_prefix(parameter.node) +
-                        "runtime parameter input '" +
+                        "runtime parameter " + source_name + " '" +
                         parameter.socket +
-                        "' is missing or connected",
+                        "' is missing" +
+                        (parameter.source == ParameterSource::input
+                             ? " or connected"
+                             : ""),
                     .node = parameter.node,
                     .socket = parameter.socket});
             continue;
@@ -436,14 +455,18 @@ SurfaceParameterBinding bind_surface_parameters(
         if (!block.set(
                 program,
                 parameter.id,
-                *input->second.value)) {
+                *value)) {
+            const auto source_name =
+                parameter.source == ParameterSource::input
+                    ? "input"
+                    : "property";
             result.diagnostics.emplace_back(
                 SurfaceProgramDiagnostic{
                     .code =
                         SurfaceProgramDiagnosticCode::type_mismatch,
                     .message =
                         detail::node_prefix(parameter.node) +
-                        "runtime parameter input '" +
+                        "runtime parameter " + source_name + " '" +
                         parameter.socket +
                         "' changed type",
                     .node = parameter.node,

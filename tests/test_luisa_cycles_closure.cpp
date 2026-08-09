@@ -65,7 +65,7 @@ public:
         return make_float4(0.0f);
     }
 
-    [[nodiscard]] ShaderAttribute attribute(Expr<std::uint64_t>,
+    [[nodiscard]] ShaderAttribute attribute(Expr<luisa::ulong>,
         const SurfacePoint &) const noexcept override {
         return ShaderAttribute::missing();
     }
@@ -80,6 +80,13 @@ public:
         return select(make_float3(0.0f),
             make_float3(_color),
             slot == _color_parameter);
+    }
+
+    [[nodiscard]] ULong
+    parameter_uint64(
+        Expr<std::uint32_t>,
+        Expr<std::uint32_t>) const noexcept override {
+        return 0u;
     }
 
     [[nodiscard]] Float cycles_bsdf_data(

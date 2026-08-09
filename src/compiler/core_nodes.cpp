@@ -45,6 +45,16 @@ namespace {
           .default_value = std::move(default_value)};
 }
 
+[[nodiscard]] PropertySchema runtime_property(
+    std::string name,
+    SocketType type,
+    SocketValue default_value) {
+  auto schema = property(
+      std::move(name), type, std::move(default_value));
+  schema.role = contract::PropertyRole::runtime_parameter;
+  return schema;
+}
+
 } // namespace
 
 NodeRegistry make_core_node_registry() {
@@ -90,8 +100,9 @@ NodeRegistry make_core_node_registry() {
                   output("Object", SocketType::vector)},
       .properties = {property("UvMapNamed", SocketType::boolean,
                               SocketValue::boolean(false)),
-                     property("UvMapId", SocketType::unsigned_integer,
-                              SocketValue::unsigned_integer(0u)),
+                     runtime_property(
+                         "UvMapId", SocketType::unsigned_integer,
+                         SocketValue::unsigned_integer(0u)),
                      property("ObjectUseTransform", SocketType::boolean,
                               SocketValue::boolean(false)),
                      property("ObjectWorldToObject", SocketType::transform,
@@ -201,16 +212,18 @@ NodeRegistry make_core_node_registry() {
                        SocketValue::vector({0.0f, 0.0f, 0.0f}))},
       .outputs = {output("Color", SocketType::color),
                   output("Alpha", SocketType::floating)},
-      .properties = {property("Image", SocketType::unsigned_integer,
-                              SocketValue::unsigned_integer(0u)),
+      .properties = {runtime_property(
+                         "Image", SocketType::unsigned_integer,
+                         SocketValue::unsigned_integer(0u)),
                      property("Extension", SocketType::string,
                               SocketValue::string("REPEAT")),
                      property("Interpolation", SocketType::string,
                               SocketValue::string("Linear")),
                      property("Projection", SocketType::string,
                               SocketValue::string("FLAT")),
-                     property("ProjectionBlend", SocketType::floating,
-                              SocketValue::floating(0.0f)),
+                     runtime_property(
+                         "ProjectionBlend", SocketType::floating,
+                         SocketValue::floating(0.0f)),
                      property("ColorSpace", SocketType::string,
                               SocketValue::string("sRGB")),
                      property("UnassociateAlpha", SocketType::boolean,
@@ -224,8 +237,9 @@ NodeRegistry make_core_node_registry() {
                        SocketValue::vector({0.0f, 0.0f, 0.0f}))},
       .outputs = {output("Color", SocketType::color),
                   output("Alpha", SocketType::floating)},
-      .properties = {property("Image", SocketType::unsigned_integer,
-                              SocketValue::unsigned_integer(0u)),
+      .properties = {runtime_property(
+                         "Image", SocketType::unsigned_integer,
+                         SocketValue::unsigned_integer(0u)),
                      property("Interpolation", SocketType::string,
                               SocketValue::string("Linear")),
                      property("Projection", SocketType::string,
@@ -314,14 +328,18 @@ NodeRegistry make_core_node_registry() {
                  SocketValue::floating(0.25f))},
       .outputs = {output("Color", SocketType::color),
                   output("Factor", SocketType::floating)},
-      .properties = {property("OffsetAmount", SocketType::floating,
-                              SocketValue::floating(0.5f)),
-                     property("OffsetFrequency", SocketType::unsigned_integer,
-                              SocketValue::unsigned_integer(2u)),
-                     property("SquashAmount", SocketType::floating,
-                              SocketValue::floating(1.0f)),
-                     property("SquashFrequency", SocketType::unsigned_integer,
-                              SocketValue::unsigned_integer(2u))},
+      .properties = {runtime_property(
+                         "OffsetAmount", SocketType::floating,
+                         SocketValue::floating(0.5f)),
+                     runtime_property(
+                         "OffsetFrequency", SocketType::unsigned_integer,
+                         SocketValue::unsigned_integer(2u)),
+                     runtime_property(
+                         "SquashAmount", SocketType::floating,
+                         SocketValue::floating(1.0f)),
+                     runtime_property(
+                         "SquashFrequency", SocketType::unsigned_integer,
+                         SocketValue::unsigned_integer(2u))},
       .required_features = feature_bit(ShaderFeature::surface)}));
 
   static_cast<void>(registry.register_schema(
@@ -334,8 +352,9 @@ NodeRegistry make_core_node_registry() {
                                   SocketValue::floating(1.0f))},
                  .outputs = {output("Color", SocketType::color),
                              output("Factor", SocketType::floating)},
-                 .properties = {property("Depth", SocketType::unsigned_integer,
-                                         SocketValue::unsigned_integer(2u)),
+                 .properties = {runtime_property(
+                                    "Depth", SocketType::unsigned_integer,
+                                    SocketValue::unsigned_integer(2u)),
                                 property("NeedsColor", SocketType::boolean,
                                          SocketValue::boolean(false))},
                  .required_features = feature_bit(ShaderFeature::surface)}));
@@ -832,8 +851,9 @@ NodeRegistry make_core_node_registry() {
                               SocketValue::string("ORIGINAL")),
                      property("UvMapNamed", SocketType::boolean,
                               SocketValue::boolean(false)),
-                     property("UvMapId", SocketType::unsigned_integer,
-                              SocketValue::unsigned_integer(0u))},
+                     runtime_property(
+                         "UvMapId", SocketType::unsigned_integer,
+                         SocketValue::unsigned_integer(0u))},
       .required_features = feature_bit(ShaderFeature::surface) |
                            feature_bit(ShaderFeature::derivatives)}));
 
@@ -868,8 +888,9 @@ NodeRegistry make_core_node_registry() {
                   output("Vector", SocketType::vector),
                   output("Factor", SocketType::floating),
                   output("Alpha", SocketType::floating)},
-      .properties = {property("AttributeId", SocketType::unsigned_integer,
-                              SocketValue::unsigned_integer(0u))},
+      .properties = {runtime_property(
+          "AttributeId", SocketType::unsigned_integer,
+          SocketValue::unsigned_integer(0u))},
       .required_features = feature_bit(ShaderFeature::surface) |
                            feature_bit(ShaderFeature::attributes)}));
 

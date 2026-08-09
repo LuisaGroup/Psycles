@@ -45,7 +45,8 @@ public:
         if (named) {
             auto named_tangent =
                 services.attribute(
-                    instruction.static_u1,
+                    unsigned_integer(
+                        instruction.c, result),
                     point);
             object_tangent =
                 named_tangent.value.xyz();

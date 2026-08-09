@@ -33,6 +33,14 @@ public:
         Expr<std::uint32_t> slot) const noexcept override {
         return _vector_parameters->read(block + slot);
     }
+
+    [[nodiscard]] ULong parameter_uint64(
+        Expr<std::uint32_t> block,
+        Expr<std::uint32_t> slot) const noexcept override {
+        return _vector_parameters->read(block + slot)
+            .xy()
+            .template bitcast<luisa::ulong>();
+    }
 };
 
 template<typename ScalarParameterBuffer,
@@ -211,7 +219,7 @@ public:
     }
 
     [[nodiscard]] ShaderAttribute attribute(
-        Expr<std::uint64_t> attribute_id,
+        Expr<luisa::ulong> attribute_id,
         const SurfacePoint &point) const noexcept override {
         auto result = ShaderAttribute::missing();
         // Attribute cardinality is scene data, not shader structure. Look up
@@ -294,6 +302,14 @@ public:
         Expr<std::uint32_t> block,
         Expr<std::uint32_t> slot) const noexcept override {
         return _vector_parameters->read(block + slot);
+    }
+
+    [[nodiscard]] ULong parameter_uint64(
+        Expr<std::uint32_t> block,
+        Expr<std::uint32_t> slot) const noexcept override {
+        return _vector_parameters->read(block + slot)
+            .xy()
+            .template bitcast<luisa::ulong>();
     }
 
     [[nodiscard]] Float cycles_bsdf_data(

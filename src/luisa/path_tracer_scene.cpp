@@ -364,6 +364,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                     case SurfaceValueCategory::vector:
                         vector = vector_parameter_value(*value);
                         break;
+                    case SurfaceValueCategory::unsigned_integer:
+                        vector = unsigned_parameter_value(*value);
+                        break;
                 }
             }
             scalar_parameters.emplace_back(scalar);

@@ -4,6 +4,7 @@
 #include <psycles/luisa/graph_surface.h>
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <stdexcept>
 #include <variant>
@@ -40,7 +41,7 @@ public:
         return make_float4(0.0f);
     }
 
-    [[nodiscard]] ShaderAttribute attribute(Expr<std::uint64_t>,
+    [[nodiscard]] ShaderAttribute attribute(Expr<luisa::ulong>,
         const SurfacePoint &) const noexcept override {
         return ShaderAttribute::missing();
     }
@@ -53,6 +54,14 @@ public:
     [[nodiscard]] Float3 parameter_float3(Expr<std::uint32_t> block,
         Expr<std::uint32_t> slot) const noexcept override {
         return _parameters.read(block + slot).xyz();
+    }
+
+    [[nodiscard]] ULong
+    parameter_uint64(Expr<std::uint32_t> block,
+        Expr<std::uint32_t> slot) const noexcept override {
+        return _parameters.read(block + slot)
+            .xy()
+            .bitcast<luisa::ulong>();
     }
 
     [[nodiscard]] Float cycles_bsdf_data(
@@ -111,12 +120,17 @@ public:
                     0.0f);
                 break;
             case SocketType::unsigned_integer:
-                result.emplace_back(
-                    static_cast<float>(
-                        std::get<std::uint64_t>(value.value)),
-                    0.0f,
-                    0.0f,
-                    0.0f);
+                {
+                    const auto word =
+                        std::get<std::uint64_t>(value.value);
+                    result.emplace_back(
+                        std::bit_cast<float>(
+                            static_cast<std::uint32_t>(word)),
+                        std::bit_cast<float>(
+                            static_cast<std::uint32_t>(word >> 32u)),
+                        0.0f,
+                        0.0f);
+                }
                 break;
             case SocketType::floating:
                 result.emplace_back(

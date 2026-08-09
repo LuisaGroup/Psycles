@@ -9,7 +9,8 @@ namespace psycles::luisa_backend::detail {
 
 enum class SurfaceValueCategory : std::uint8_t {
     scalar,
-    vector
+    vector,
+    unsigned_integer
 };
 
 // Classify the compiler IR type while recording the shader AST. Unsupported
@@ -25,22 +26,27 @@ enum class SurfaceValueCategory : std::uint8_t {
 class SurfaceValueExpression {
 
   private:
-    std::variant<Expr<float>, Expr<luisa::float3>> _value;
+    std::variant<Expr<float>, Expr<luisa::float3>, Expr<luisa::ulong>> _value;
 
     explicit SurfaceValueExpression(Expr<float> value) noexcept;
     explicit SurfaceValueExpression(
         Expr<luisa::float3> value) noexcept;
+    explicit SurfaceValueExpression(
+        Expr<luisa::ulong> value) noexcept;
 
   public:
     [[nodiscard]] static SurfaceValueExpression from_scalar(
         Expr<float> value) noexcept;
     [[nodiscard]] static SurfaceValueExpression from_vector(
         Expr<luisa::float3> value) noexcept;
+    [[nodiscard]] static SurfaceValueExpression from_unsigned_integer(
+        Expr<luisa::ulong> value) noexcept;
     [[nodiscard]] static SurfaceValueExpression zero(
         contract::SocketType type) noexcept;
 
     [[nodiscard]] Float scalar() const noexcept;
     [[nodiscard]] Float3 vector() const noexcept;
+    [[nodiscard]] ULong unsigned_integer() const noexcept;
 };
 
 // Migration boundary for node implementations whose local computation is

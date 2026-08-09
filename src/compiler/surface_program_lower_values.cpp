@@ -533,7 +533,8 @@ namespace {
     if (node.type == node_type::normal_map) {
         auto strength = lower_value_input(node, "Strength");
         auto color = lower_value_input(node, "Color");
-        if (strength && color) {
+        auto uv_map = lower_property_parameter(node, "UvMapId");
+        if (strength && color && uv_map) {
             const auto space =
                 property_string(node, "Space", "TANGENT");
             const auto normal_map_space =
@@ -568,13 +569,12 @@ namespace {
                     .result_type = SocketType::normal,
                     .a = *color,
                     .b = *strength,
+                    .c = *uv_map,
                     .static_u0 = encode_normal_map_configuration(
                         normal_map_space,
                         property_bool(node, "UvMapNamed"),
                         normal_map_base,
-                        normal_map_convention),
-                    .static_u1 =
-                        property_uint(node, "UvMapId")}));
+                        normal_map_convention)}));
         }
         return true;
     }

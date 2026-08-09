@@ -19,7 +19,11 @@ constexpr auto value_dependencies = std::array{
     &ValueInstruction::g,
     &ValueInstruction::h,
     &ValueInstruction::i,
-    &ValueInstruction::j};
+    &ValueInstruction::j,
+    &ValueInstruction::k,
+    &ValueInstruction::l,
+    &ValueInstruction::m,
+    &ValueInstruction::n};
 
 constexpr auto closure_value_dependencies = std::array{
     &ClosureInstruction::color,

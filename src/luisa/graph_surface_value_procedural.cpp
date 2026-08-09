@@ -164,29 +164,29 @@ public:
                         1.0e-20f);
                     auto row = cast<int>(
                         floor(p.y / row_height));
+                    const auto offset_frequency = cast<int>(min(
+                        unsigned_integer(instruction.l, result),
+                        luisa::ulong{0x7fffffffull}));
+                    const auto squash_frequency = cast<int>(min(
+                        unsigned_integer(instruction.n, result),
+                        luisa::ulong{0x7fffffffull}));
                     Float offset = 0.0f;
-                    if (instruction.static_u0 != 0u &&
-                        instruction.static_u1 != 0u) {
+                    $if ((offset_frequency != 0) &
+                         (squash_frequency != 0)) {
                         auto squash_row =
-                            (row %
-                             static_cast<int>(
-                                 instruction.static_u1)) ==
-                            0;
+                            (row % squash_frequency) == 0;
                         brick_width *= select(
                             1.0f,
-                            instruction.static_f1,
+                            scalar(instruction.m, result),
                             squash_row);
                         auto offset_row =
-                            (row %
-                             static_cast<int>(
-                                 instruction.static_u0)) ==
-                            0;
+                            (row % offset_frequency) == 0;
                         offset = select(
                             0.0f,
                             brick_width *
-                                instruction.static_f0,
+                                scalar(instruction.k, result),
                             offset_row);
-                    }
+                    };
                     auto brick = cast<int>(floor(
                         (p.x + offset) / brick_width));
                     auto x =

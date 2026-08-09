@@ -14,7 +14,10 @@ public:
         ValueEvaluationContext &context) const noexcept override {
         const auto &instruction = this->instruction();
         const auto color = cycles_magic::evaluate(
-            static_cast<std::uint32_t>(instruction.static_u0),
+            luisa::compute::cast<std::uint32_t>(luisa::compute::min(
+                unsigned_integer(instruction.d, context.result),
+                static_cast<luisa::ulong>(
+                    cycles_magic::maximum_depth))),
             vector(instruction.a, context.result),
             scalar(instruction.b, context.result),
             scalar(instruction.c, context.result));
