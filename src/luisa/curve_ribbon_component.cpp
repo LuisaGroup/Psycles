@@ -180,10 +180,11 @@ public:
         Float hit_distance = object_ray->t_max();
         Float hit_u = 0.0f;
         Float hit_v = 0.0f;
-        for (std::uint32_t interval = 0u;
-             interval < 16u;
-             ++interval) {
-            $if((interval < interval_count) & !found) {
+        // Subdivision is scene data. Keep it as a device loop so a level-four
+        // ribbon records one interval body instead of sixteen guarded copies.
+        // The loop remains bounded by the Cycles-compatible clamp above.
+        $for(interval, interval_count) {
+            $if(!found) {
                 const auto interval_u =
                     cast<float>(interval) * interval_size;
                 const auto interval_end =
@@ -255,7 +256,7 @@ public:
                 interval_begin = interval_end;
                 begin_width = end_width;
             };
-        }
+        };
         return {
             .valid = found,
             .distance = hit_distance,
