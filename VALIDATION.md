@@ -15,15 +15,22 @@ physical hierarchy with enter/merge events on the sparse immediate-dominator
 tree, replaces the final selection-by-block re-entry scan with exact
 dominance-frontier queries, carries enclosing loops as persistent contexts,
 and solves all loop-boundary arm classifications with block value numbering
-plus sparse reverse-CFG dataflow. Luisa `next@c340b1841` is published. All 48
+plus sparse reverse-CFG dataflow. The follow-up Luisa `next@f0018499d`
+replaces DCE's repeated whole-function least-fixed-point scan with an
+equivalent linear reverse-use worklist. All 48
 XIR tests and 92 Vulkan native-codegen runtime tests pass. On the unchanged
 Lone Monk module, raw/optimized SPIR-V remain 1,431,985/1,116,158 words and
-the compile-smoke output is byte-identical. Against the preceding complete
+the compile-smoke output is byte-identical. DCE aggregate time falls 4.72x
+from `14.182 s` to `3.004 s`, XIR legalization falls another 24.0% to
+`33.540 s`, and native AST-to-SPIR-V falls another 17.7% to `47.533 s`.
+Against the earlier complete
 run, `drain_selection_exits` falls 18.30x to `0.723 s`, `restructure_cfg`
 falls 49.0% to `17.945 s`, native AST-to-SPIR-V falls 23.9% to `57.766 s`,
 and peak RSS falls 82.4% to `1,654,768 KiB`. The observed complete JIT hit the
 RADV disk cache, so its `57.933 s` wall is recorded but not attributed to the
-compiler change. The next independent transform hotspot is the mutating
+compiler change. The DCE follow-up retriggered an `84.119 s` RADV compile, so
+its total wall and process RSS are likewise separated from compiler-boundary
+comparisons. The next independent transform hotspot is the mutating
 `canonicalize_loop_boundary_selection_merges` phase at `5.558 s`.
 
 The preceding
