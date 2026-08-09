@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <compare>
 #include <cstdint>
 #include <limits>
@@ -385,10 +386,29 @@ struct ValueInstruction {
   std::uint64_t static_u1{};
   float static_f0{};
   float static_f1{};
-  // Node-specific immutable data, such as a sampled ColorRamp/RGB Curves
-  // table. It is part of the topology/static-property JIT signature.
+  // Node-specific immutable data. It is part of the topology/static-property
+  // JIT signature; variable-length material tables do not belong here.
   std::vector<float> static_table;
 };
+
+// The dependency edges of the linear shader-graph IR have one canonical
+// definition. Every reachability, scheduling, and semantic analysis must use
+// this list instead of spelling out a prefix of the operand fields locally.
+inline constexpr auto value_instruction_dependencies = std::array{
+    &ValueInstruction::a,
+    &ValueInstruction::b,
+    &ValueInstruction::c,
+    &ValueInstruction::d,
+    &ValueInstruction::e,
+    &ValueInstruction::f,
+    &ValueInstruction::g,
+    &ValueInstruction::h,
+    &ValueInstruction::i,
+    &ValueInstruction::j,
+    &ValueInstruction::k,
+    &ValueInstruction::l,
+    &ValueInstruction::m,
+    &ValueInstruction::n};
 
 enum class ClosureOperation : std::uint8_t {
   null_closure,

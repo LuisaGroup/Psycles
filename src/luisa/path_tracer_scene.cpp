@@ -9,6 +9,7 @@
 #include "path_tracer_light_sampling_scene.h"
 #include "path_tracer_scene_geometry.h"
 #include "path_tracer_scene_upload.h"
+#include "shader_table_data.h"
 #include "path_tracer_shader_services.h"
 #include "path_tracer_surfaces.h"
 #include "path_tracer_tangent_space.h"
@@ -181,6 +182,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
 
     luisa::vector<float> scalar_parameters;
     luisa::vector<luisa::float3> vector_parameters;
+    std::vector<PendingShaderTable> shader_tables;
     std::vector<std::uint32_t>
         volume_surface_flags;
     std::map<std::uint64_t, std::uint32_t>
@@ -356,7 +358,35 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 material.parameters().find(parameter.id);
             auto scalar = 0.0f;
             auto vector = luisa::make_float3(0.0f);
-            if (value != nullptr) {
+            if (parameter.type == contract::SocketType::string) {
+                if (value == nullptr) {
+                    diagnose(
+                        result.diagnostics,
+                        "Material '" + material.name() +
+                            "' has no value for shader table property '" +
+                            parameter.socket + "'.");
+                } else {
+                    const auto descriptor_index =
+                        static_cast<std::uint32_t>(
+                            vector_parameters.size());
+                    auto staged = stage_shader_table(
+                        program,
+                        parameter,
+                        *value,
+                        descriptor_index);
+                    if (!staged.valid) {
+                        diagnose(
+                            result.diagnostics,
+                            "Material '" + material.name() +
+                                "' shader table property '" +
+                                parameter.socket + "': " +
+                                staged.diagnostic + ".");
+                    } else {
+                        shader_tables.emplace_back(
+                            std::move(staged.table));
+                    }
+                }
+            } else if (value != nullptr) {
                 switch (surface_value_category(parameter.type)) {
                     case SurfaceValueCategory::scalar:
                         scalar = scalar_parameter_value(*value);
@@ -372,6 +402,17 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             scalar_parameters.emplace_back(scalar);
             vector_parameters.emplace_back(vector);
         }
+    }
+    std::string shader_table_diagnostic;
+    if (!finalize_shader_tables(
+            shader_tables,
+            scalar_parameters,
+            vector_parameters,
+            shader_table_diagnostic)) {
+        diagnose(
+            result.diagnostics,
+            "Shader table upload: " +
+                shader_table_diagnostic + ".");
     }
     if (!result.diagnostics.empty()) {
         return result;

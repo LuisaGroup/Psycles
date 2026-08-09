@@ -794,8 +794,9 @@ NodeRegistry make_core_node_registry() {
                               SocketValue::string("LINEAR")),
                      property("Sampled", SocketType::boolean,
                               SocketValue::boolean(false)),
-                     property("Table", SocketType::string,
-                              SocketValue::string("0,0,0,0,1;1,1,1,1,1"))},
+                     runtime_property(
+                         "Table", SocketType::string,
+                         SocketValue::string("0,0,0,0,1;1,1,1,1,1"))},
       .required_features = {}}));
 
   static_cast<void>(registry.register_schema(NodeSchema{
@@ -808,11 +809,18 @@ NodeRegistry make_core_node_registry() {
       .properties =
           {property("Sampled", SocketType::boolean,
                     SocketValue::boolean(false)),
-           property("MinX", SocketType::floating, SocketValue::floating(0.0f)),
-           property("MaxX", SocketType::floating, SocketValue::floating(1.0f)),
-           property("Extrapolate", SocketType::boolean,
-                    SocketValue::boolean(true)),
-           property("Table", SocketType::string, SocketValue::string(""))},
+           runtime_property(
+               "MinX", SocketType::floating,
+               SocketValue::floating(0.0f)),
+           runtime_property(
+               "MaxX", SocketType::floating,
+               SocketValue::floating(1.0f)),
+           runtime_property(
+               "Extrapolate", SocketType::boolean,
+               SocketValue::boolean(true)),
+           runtime_property(
+               "Table", SocketType::string,
+               SocketValue::string(""))},
       .required_features = {}}));
 
   static_cast<void>(registry.register_schema(

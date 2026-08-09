@@ -8,6 +8,48 @@ using namespace luisa::compute;
 namespace psycles::luisa_backend::detail {
 namespace {
 
+// Variable-length node tables are material data. Keeping both the element
+// count and payload address in the runtime parameter block prevents Luisa and
+// backend compilers from specializing/unrolling the graph by authored table
+// cardinality. Official Cycles-style sampled tables use direct indexed reads;
+// the loop is only for the legacy control-point representation.
+class RuntimeShaderTable {
+
+private:
+    const ShaderServices &_services;
+    UInt _offset;
+    UInt _count;
+    UInt _width;
+
+public:
+    RuntimeShaderTable(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        compiler::ParameterId parameter) noexcept
+        : _services{services} {
+        auto descriptor = services
+                              .parameter_float3(
+                                  point.parameter_block,
+                                  parameter.value)
+                              .template bitcast<luisa::uint3>();
+        _offset = descriptor.x;
+        _count = descriptor.y;
+        _width = descriptor.z;
+    }
+
+    [[nodiscard]] UInt count() const noexcept {
+        return _count;
+    }
+
+    [[nodiscard]] Float read(
+        Expr<std::uint32_t> element,
+        std::uint32_t component) const noexcept {
+        return _services.parameter_float(
+            0u,
+            _offset + element * _width + component);
+    }
+};
+
 [[nodiscard]] bool supports_procedural_value(
     compiler::ValueOperation operation) noexcept {
     switch (operation) {
@@ -291,118 +333,89 @@ public:
                         scalar(instruction.a, result);
                     Float3 color = make_float3(0.0f);
                     Float alpha = 1.0f;
-                    const auto count =
-                        instruction.static_table.size() / 5u;
-                    if (
-                        count >= 2u &&
-                        (instruction.static_u0 & 2u) != 0u) {
-                        std::vector<luisa::float4> samples;
-                        samples.reserve(count);
-                        for (std::size_t i = 0u;
-                             i < count;
-                             ++i) {
-                            samples.emplace_back(
-                                instruction.static_table[
-                                    i * 5u + 1u],
-                                instruction.static_table[
-                                    i * 5u + 2u],
-                                instruction.static_table[
-                                    i * 5u + 3u],
-                                instruction.static_table[
-                                    i * 5u + 4u]);
-                        }
-                        luisa::compute::Constant<luisa::float4>
-                            table{samples};
-                        auto scaled =
-                            clamp(factor, 0.0f, 1.0f) *
-                            static_cast<float>(count - 1u);
-                        auto index = min(
-                            cast<luisa::uint>(scaled),
-                            static_cast<std::uint32_t>(
-                                count - 1u));
-                        auto t =
-                            scaled - cast<float>(index);
-                        auto sampled = table.read(index);
-                        if ((instruction.static_u0 & 1u) == 0u) {
-                            auto next = table.read(min(
-                                index + 1u,
-                                static_cast<std::uint32_t>(
-                                    count - 1u)));
-                            sampled = select(
-                                sampled,
-                                lerp(sampled, next, t),
-                                t > 0.0f);
-                        }
-                        color = sampled.xyz();
-                        alpha = sampled.w;
-                    } else if (count != 0u) {
-                        color = make_float3(
-                            instruction.static_table[1u],
-                            instruction.static_table[2u],
-                            instruction.static_table[3u]);
-                        alpha = instruction.static_table[4u];
-                        for (std::size_t i = 1u; i < count; ++i) {
-                            const auto p0 =
-                                instruction.static_table[
-                                    (i - 1u) * 5u];
-                            const auto p1 =
-                                instruction.static_table[i * 5u];
-                            auto t = clamp(
-                                (factor - p0) /
-                                    std::max(p1 - p0, 1.0e-20f),
-                                0.0f,
-                                1.0f);
-                            if (
-                                (instruction.static_u0 & 1u) !=
-                                0u) {
-                                t = 0.0f;
+                    RuntimeShaderTable table{
+                        services, point, instruction.parameter};
+                    auto count = table.count();
+                    if ((instruction.static_u0 & 2u) != 0u) {
+                        $if (count >= 2u) {
+                            auto last = count - 1u;
+                            auto scaled =
+                                clamp(factor, 0.0f, 1.0f) *
+                                cast<float>(last);
+                            auto index = min(cast<uint>(scaled), last);
+                            auto t = scaled - cast<float>(index);
+                            auto sampled = make_float4(
+                                table.read(index, 0u),
+                                table.read(index, 1u),
+                                table.read(index, 2u),
+                                table.read(index, 3u));
+                            if ((instruction.static_u0 & 1u) == 0u) {
+                                auto next_index = min(index + 1u, last);
+                                auto next = make_float4(
+                                    table.read(next_index, 0u),
+                                    table.read(next_index, 1u),
+                                    table.read(next_index, 2u),
+                                    table.read(next_index, 3u));
+                                sampled = select(
+                                    sampled,
+                                    lerp(sampled, next, t),
+                                    t > 0.0f);
                             }
-                            auto c0 = make_float3(
-                                instruction.static_table[
-                                    (i - 1u) * 5u + 1u],
-                                instruction.static_table[
-                                    (i - 1u) * 5u + 2u],
-                                instruction.static_table[
-                                    (i - 1u) * 5u + 3u]);
-                            auto c1 = make_float3(
-                                instruction.static_table[
-                                    i * 5u + 1u],
-                                instruction.static_table[
-                                    i * 5u + 2u],
-                                instruction.static_table[
-                                    i * 5u + 3u]);
-                            auto a0 =
-                                instruction.static_table[
-                                    (i - 1u) * 5u + 4u];
-                            auto a1 =
-                                instruction.static_table[
-                                    i * 5u + 4u];
-                            auto use =
-                                factor >= p0;
+                            color = sampled.xyz();
+                            alpha = sampled.w;
+                        };
+                    } else {
+                        $if (count != 0u) {
+                            color = make_float3(
+                                table.read(0u, 1u),
+                                table.read(0u, 2u),
+                                table.read(0u, 3u));
+                            alpha = table.read(0u, 4u);
+                            UInt element = 1u;
+                            $while (element < count) {
+                                auto previous = element - 1u;
+                                auto p0 = table.read(previous, 0u);
+                                auto p1 = table.read(element, 0u);
+                                auto t = clamp(
+                                    (factor - p0) /
+                                        max(p1 - p0, 1.0e-20f),
+                                    0.0f,
+                                    1.0f);
+                                if ((instruction.static_u0 & 1u) != 0u) {
+                                    t = 0.0f;
+                                }
+                                auto c0 = make_float3(
+                                    table.read(previous, 1u),
+                                    table.read(previous, 2u),
+                                    table.read(previous, 3u));
+                                auto c1 = make_float3(
+                                    table.read(element, 1u),
+                                    table.read(element, 2u),
+                                    table.read(element, 3u));
+                                auto a0 = table.read(previous, 4u);
+                                auto a1 = table.read(element, 4u);
+                                auto use = factor >= p0;
+                                color = select(
+                                    color, lerp(c0, c1, t), use);
+                                alpha = select(
+                                    alpha, lerp(a0, a1, t), use);
+                                element += 1u;
+                            };
+                            auto last = count - 1u;
+                            auto use_last =
+                                factor >= table.read(last, 0u);
                             color = select(
-                                color, lerp(c0, c1, t), use);
+                                color,
+                                make_float3(
+                                    table.read(last, 1u),
+                                    table.read(last, 2u),
+                                    table.read(last, 3u)),
+                                use_last);
                             alpha = select(
-                                alpha, lerp(a0, a1, t), use);
-                        }
-                        const auto last =
-                            (count - 1u) * 5u;
-                        auto use_last =
-                            factor >=
-                            instruction.static_table[last];
-                        color = select(
-                            color,
-                            make_float3(
-                                instruction.static_table[
-                                    last + 1u],
-                                instruction.static_table[
-                                    last + 2u],
-                                instruction.static_table[
-                                    last + 3u]),
-                            use_last);
-                        alpha = select(
-                            alpha,
-                            instruction.static_table[last + 4u],
-                            use_last);
+                                alpha,
+                                table.read(last, 4u),
+                                use_last);
+                        };
                     }
                     value =
                         instruction.static_u1 != 0u
@@ -414,151 +427,107 @@ public:
                     auto input = vector(instruction.a, result);
                     auto factor = scalar(instruction.b, result);
                     Float3 mapped = input;
-                    const auto count =
-                        instruction.static_table.size() / 4u;
-                    if (
-                        count >= 2u &&
-                        (instruction.static_u0 & 1u) != 0u) {
-                        std::vector<luisa::float3> samples;
-                        samples.reserve(count);
-                        for (std::size_t i = 0u;
-                             i < count;
-                             ++i) {
-                            samples.emplace_back(
-                                instruction.static_table[
-                                    i * 4u + 1u],
-                                instruction.static_table[
-                                    i * 4u + 2u],
-                                instruction.static_table[
-                                    i * 4u + 3u]);
-                        }
-                        luisa::compute::Constant<luisa::float3>
-                            table{samples};
-                        const auto component =
-                            [](Float3 value,
-                               std::uint32_t channel) {
-                                return channel == 0u
-                                           ? value.x
-                                           : channel == 1u
-                                                 ? value.y
-                                                 : value.z;
-                            };
-                        const auto lookup =
-                            [&](Float coordinate,
-                                std::uint32_t channel) {
-                                auto scaled =
-                                    clamp(
-                                        coordinate,
-                                        0.0f,
-                                        1.0f) *
-                                    static_cast<float>(
-                                        count - 1u);
-                                auto index = min(
-                                    cast<luisa::uint>(scaled),
-                                    static_cast<std::uint32_t>(
-                                        count - 1u));
-                                auto t =
-                                    scaled - cast<float>(index);
-                                auto sampled = component(
-                                    table.read(index), channel);
-                                auto next = component(
-                                    table.read(min(
-                                        index + 1u,
-                                        static_cast<
-                                            std::uint32_t>(
-                                            count - 1u))),
-                                    channel);
-                                sampled = select(
-                                    sampled,
-                                    lerp(sampled, next, t),
-                                    t > 0.0f);
-                                if (
-                                    (instruction.static_u0 &
-                                     2u) != 0u) {
-                                    auto first = component(
-                                        table.read(0u),
-                                        channel);
-                                    auto second = component(
-                                        table.read(1u),
-                                        channel);
-                                    auto last = component(
-                                        table.read(
-                                            static_cast<
-                                                std::uint32_t>(
-                                                count - 1u)),
-                                        channel);
-                                    auto previous = component(
-                                        table.read(
-                                            static_cast<
-                                                std::uint32_t>(
-                                                count - 2u)),
-                                        channel);
-                                    auto below =
-                                        first +
-                                        (first - second) *
-                                            (-coordinate) *
-                                            static_cast<float>(
-                                                count - 1u);
-                                    auto above =
-                                        last +
-                                        (last - previous) *
-                                            (coordinate - 1.0f) *
-                                            static_cast<float>(
-                                                count - 1u);
+                    RuntimeShaderTable table{
+                        services, point, instruction.parameter};
+                    auto count = table.count();
+                    if ((instruction.static_u0 & 1u) != 0u) {
+                        $if (count >= 2u) {
+                            const auto component =
+                                [&](Expr<std::uint32_t> index,
+                                    std::uint32_t channel) {
+                                    return table.read(index, channel);
+                                };
+                            const auto lookup =
+                                [&](Float coordinate,
+                                    std::uint32_t channel) {
+                                    auto last = count - 1u;
+                                    auto scaled =
+                                        clamp(
+                                            coordinate,
+                                            0.0f,
+                                            1.0f) *
+                                        cast<float>(last);
+                                    auto index = min(
+                                        cast<uint>(scaled), last);
+                                    auto t =
+                                        scaled - cast<float>(index);
+                                    auto sampled = component(index, channel);
+                                    auto next = component(
+                                        min(index + 1u, last), channel);
                                     sampled = select(
                                         sampled,
-                                        below,
-                                        coordinate < 0.0f);
-                                    sampled = select(
-                                        sampled,
-                                        above,
-                                        coordinate > 1.0f);
-                                }
-                                return sampled;
+                                        lerp(sampled, next, t),
+                                        t > 0.0f);
+                                    $if (scalar(
+                                             instruction.e,
+                                             result) != 0.0f) {
+                                        auto first = component(0u, channel);
+                                        auto second = component(1u, channel);
+                                        auto final_value = component(
+                                            last, channel);
+                                        auto previous = component(
+                                            last - 1u, channel);
+                                        auto below =
+                                            first +
+                                            (first - second) *
+                                                (-coordinate) *
+                                                cast<float>(last);
+                                        auto above =
+                                            final_value +
+                                            (final_value - previous) *
+                                                (coordinate - 1.0f) *
+                                                cast<float>(last);
+                                        sampled = select(
+                                            sampled,
+                                            below,
+                                            coordinate < 0.0f);
+                                        sampled = select(
+                                            sampled,
+                                            above,
+                                            coordinate > 1.0f);
+                                    };
+                                    return sampled;
+                                };
+                            const auto range =
+                                scalar(instruction.d, result) -
+                                scalar(instruction.c, result);
+                            auto relative =
+                                (input -
+                                 scalar(instruction.c, result)) /
+                                range;
+                            mapped = make_float3(
+                                lookup(relative.x, 0u),
+                                lookup(relative.y, 1u),
+                                lookup(relative.z, 2u));
+                        };
+                    } else {
+                        $if (count >= 2u) {
+                            mapped = make_float3(0.0f);
+                            UInt element = 1u;
+                            $while (element < count) {
+                                auto previous = element - 1u;
+                                auto x0 = table.read(previous, 0u);
+                                auto x1 = table.read(element, 0u);
+                                auto t = clamp(
+                                    (input - x0) /
+                                        max(x1 - x0, 1.0e-20f),
+                                    make_float3(0.0f),
+                                    make_float3(1.0f));
+                                auto y0 = make_float3(
+                                    table.read(previous, 1u),
+                                    table.read(previous, 2u),
+                                    table.read(previous, 3u));
+                                auto y1 = make_float3(
+                                    table.read(element, 1u),
+                                    table.read(element, 2u),
+                                    table.read(element, 3u));
+                                mapped = select(
+                                    mapped,
+                                    lerp(y0, y1, t),
+                                    input >= x0);
+                                element += 1u;
                             };
-                        const auto range =
-                            instruction.static_f1 -
-                            instruction.static_f0;
-                        auto relative =
-                            (input -
-                             instruction.static_f0) /
-                            range;
-                        mapped = make_float3(
-                            lookup(relative.x, 0u),
-                            lookup(relative.y, 1u),
-                            lookup(relative.z, 2u));
-                    } else if (count >= 2u) {
-                        mapped = make_float3(0.0f);
-                        for (std::size_t i = 1u; i < count; ++i) {
-                            const auto x0 =
-                                instruction.static_table[
-                                    (i - 1u) * 4u];
-                            const auto x1 =
-                                instruction.static_table[i * 4u];
-                            auto t = clamp(
-                                (input - x0) /
-                                    std::max(x1 - x0, 1.0e-20f),
-                                make_float3(0.0f),
-                                make_float3(1.0f));
-                            auto y0 = make_float3(
-                                instruction.static_table[
-                                    (i - 1u) * 4u + 1u],
-                                instruction.static_table[
-                                    (i - 1u) * 4u + 2u],
-                                instruction.static_table[
-                                    (i - 1u) * 4u + 3u]);
-                            auto y1 = make_float3(
-                                instruction.static_table[
-                                    i * 4u + 1u],
-                                instruction.static_table[
-                                    i * 4u + 2u],
-                                instruction.static_table[
-                                    i * 4u + 3u]);
-                            mapped = select(
-                                mapped,
-                                lerp(y0, y1, t),
-                                input >= x0);
-                        }
+                        };
                     }
                     value = make_float4(
                         lerp(input, mapped, factor),
