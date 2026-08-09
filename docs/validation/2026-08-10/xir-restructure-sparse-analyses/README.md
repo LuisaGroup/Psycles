@@ -839,3 +839,65 @@ Loop-continue normalization is now the largest mutable transform at
 optimization must therefore reduce CFG versions or incrementally maintain an
 exact dominance relation; weakening dominance or moving the two public
 verifier boundaries is not an acceptable substitute.
+
+## Immutable-version loop-continue batches
+
+Luisa `next@1db5b30a3` removes those per-site CFG versions. Each normalization
+invocation first discovers every loop region and records its raw-edge rewrites
+against one immutable CFG and dominance version. Only then are the guarded
+actions applied, followed by one exact dense dominance rebuild and one
+frontier materialization for the resulting version. The outer restructure
+fixed point handles the next version.
+
+The batching invariant is stronger than retaining a source-block pointer. A
+planned action exists only when its supported raw terminator targets the old
+block in the immutable input graph. Application checks that exact edge again.
+Therefore an earlier action may consume a later action's precondition, making
+it fail closed, but it cannot create a newly eligible planned action. Raw
+branches converted to BREAK/CONTINUE retain their structured destination;
+conditional and indexed edges are subdivided by a proxy; and canonical
+backedges are factored through their declared continue target. None introduces
+an incoming path from outside the entry-dominated loop region used to justify
+another action. Thus non-conflicting actions preserve the membership facts
+observed by the immutable analysis, while conflicting actions are reconsidered
+on the next exact CFG version.
+
+This edge condition was caught during the pre-commit proof audit: before it
+was made explicit, the production planner recorded 17,463 syntactic
+possibilities and relied on application-time rejection. With the condition it
+records exactly the 134 edges that existed, and all 134 apply. A 16-loop
+disjoint regression requires `planned == applied`; it would fail if an action
+could become eligible only because an earlier action created its source edge.
+
+The matched Lone Monk cold-JIT run is under
+`/var/tmp/psycles-loop-continue-batch-guarded-20260810/`, against
+`/var/tmp/psycles-if-merge-sparse-20260810/`:
+
+| Boundary | Per-site dominance versions | Immutable-version batch | Change |
+| --- | ---: | ---: | ---: |
+| Loop-continue normalization | 269.093 ms | 12.865 ms | -95.2% |
+| Loop-continue dominance rebuild | 218.621 ms / 129 | 4.823 ms / 8 | -97.8% |
+| `restructure_cfg` | 2.271 s | 1.964 s | -13.5% |
+| SPIR-V XIR legalization | 17.112 s | 16.752 s | -2.1% |
+| Native AST-to-SPIR-V | 30.464 s | 29.984 s | -1.6% |
+| End-to-end cold smoke | 32.65 s | 32.14 s | -1.6% |
+| Peak RSS | 1,655,344 KiB | 1,656,720 KiB | within run noise |
+| Raw SPIR-V | 1,431,985 words | 1,431,985 words | identical size |
+| Optimized SPIR-V | 1,116,158 words | 1,116,158 words | identical size |
+
+The eight retained dominance versions number 14,064 blocks and 17,596 edges,
+requiring 16 CHK passes, 28,112 block visits, 35,192 edge visits, and 27,542
+parent climbs. All 48 XIR tests pass after a complete all-thread rebuild. The
+system-STL focused gates pass 9/9 post-dominance tests (56 assertions), 68/68
+restructure tests (1,358 assertions), and 350/350 pass tests (1,995
+assertions). The RX 9070 XT native Vulkan route passes 92/92 tests with 2,096
+assertions. The PPM is byte-identical with SHA-256
+`3ff6c5463ace13c0f26a735ac1af2bb96ab8a9ba1cb4398359cf2466f63a4d1b`.
+
+The largest remaining mutable leaves are now 229 exact post-dominator
+constructions at 171.274 ms, selection-exit draining at 159.605 ms,
+`try_restructure_loop` at 105.357 ms, and if batching at 104.430 ms. Input and
+output verification remain the two public boundaries and account for about
+614 ms; they are deliberately not candidates for removal. The next profile
+must determine which post-dominator constructions share a CFG version before
+changing that exact analysis.
