@@ -678,3 +678,62 @@ pointers throughout the immediate-dominator fixed point and walks linked
 predecessors repeatedly. The next step is a single pointer-to-ID boundary,
 sparse predecessor CSR, and a fully dense RPO fixed point, while preserving
 the public tree and frontier API.
+
+## Dense RPO dominance for mutation versions
+
+Luisa `next@13fadb811` implements that next step without changing the analyzed
+CFG domain or the public pointer-based tree. Reachable blocks retain the
+historical DFS postorder and receive consecutive reverse-postorder IDs once.
+Predecessors are then stored as one sparse CSR. Cooper-Harvey-Kennedy solves
+the immediate-dominator relation entirely over IDs: an intersection only
+climbs the parent of the larger RPO ID, and the pointer-valued `DomTree` is
+constructed after the fixed point converges. The hot solve therefore performs
+no pointer hashing, predecessor allocation, or repeated block-to-index lookup.
+
+For entry ID zero, `idom[0] = 0`. Each non-entry block joins only already
+resolved predecessor chains, and every parent climb moves to a smaller RPO ID.
+This preserves the standard CHK fixed point and proves termination; it is not
+a graph-shape special case. Unreachable predecessors remain excluded at the
+single numbering boundary. The pre-existing one- and two-argument exported
+functions and `DomTreeBuildOptions` layout are unchanged; a new three-argument
+diagnostic overload reports work without creating a silent ABI break.
+
+A raw 128-diamond CFG regression requires exactly `1 + 3N` numbered blocks,
+`4N` numbered edges, two RPO passes, `2(V - 1)` block visits, and `2E` edge
+visits. The production report exposes the same counts. The matched cold-cache
+Lone Monk comparison is recorded under
+`/var/tmp/psycles-dense-dom-20260810/`, against
+`/var/tmp/psycles-dom-components-baseline-20260810/`:
+
+| Boundary | Pointer-valued fixed point | Dense RPO/CSR fixed point | Change |
+| --- | ---: | ---: | ---: |
+| Loop-continue dominance ancestry | 319.951 ms | 230.078 ms | -28.1% |
+| Loop-continue normalization | 372.243 ms | 281.445 ms | -24.4% |
+| `restructure_cfg` | 3.056 s | 2.745 s | -10.2% |
+| SPIR-V XIR legalization | 18.169 s | 17.796 s | -2.1% |
+| Native AST-to-SPIR-V | 31.873 s | 31.371 s | -1.6% |
+| Raw SPIR-V | 1,431,985 words | 1,431,985 words | identical size |
+| Optimized SPIR-V | 1,116,158 words | 1,116,158 words | identical size |
+
+The 129 mutation-triggered rebuilds numbered 645,720 blocks and 807,853
+edges. They made exactly 258 fixed-point passes, 1,291,182 block visits,
+1,615,706 edge visits, and 1,274,837 parent climbs. The output remains
+byte-identical with SHA-256
+`3ff6c5463ace13c0f26a735ac1af2bb96ab8a9ba1cb4398359cf2466f63a4d1b`.
+Peak RSS is `1,652,660 KiB`.
+
+After a complete all-thread rebuild, all 48 XIR tests pass. The system-STL
+gates pass 9/9 dominance tests (56 assertions), 67/67 restructure tests
+(1,340 assertions), and 350/350 pass tests (1,986 assertions). The RX 9070 XT
+native Vulkan route passes 92/92 tests with 2,096 assertions. The initial
+partial target build deliberately was not accepted as a gate: tests retaining
+the older public report-struct size detected the mixed object ABI, after which
+the complete rebuild passed.
+
+The dense solve moves loop-continue ancestry below the next independent
+hotspot. The current largest restructure leaf is selection-exit site scanning
+at `307.857 ms` inside a `392.109 ms` drain, followed by the `290.665 ms` if
+batch. Input/output verification remains exactly at the two public pass
+boundaries. The next profile therefore targets selection-exit query and
+invalidation work rather than weakening verification or approximating
+dominance.
