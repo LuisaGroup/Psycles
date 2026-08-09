@@ -466,3 +466,46 @@ Across all definitions, 3,448 queries reused 357 loop-context nodes and visited
 pipeline creation to `15.873 ms`; end-to-end shader JIT was `33.926 s` with
 `1,661,244 KiB` peak RSS. The output remains byte-identical with SHA-256
 `3ff6c5463ace13c0f26a735ac1af2bb96ab8a9ba1cb4398359cf2466f63a4d1b`.
+
+## Versioned loop-continue normalization
+
+The next restructure profile isolated `normalize_structured_loop_continues` at
+`1.531 s`. Its loop-region walk was not itself large. The implementation
+materialized the complete owned-block set and rebuilt the full dominator tree
+before every loop site, even when all preceding sites were read-only. This
+made an immutable CFG version pay `O(L * (V + E))` analysis cost for `L` loop
+sites.
+
+Luisa `next@d17763dc4` gives ownership and dominance an explicit version. One
+normalization invocation consumes the already-current dominator tree and builds
+the owned-block set once. Consecutive site queries share both analyses. A site
+first computes its complete loop region, then applies the historical rewrite;
+if it mutates the CFG, both analyses are immediately invalidated and rebuilt
+before the next site is inspected. Thus query observations are identical to
+the former per-site rebuild, while a read-only run costs `O(V + E + L)`.
+
+A new 64-loop regression constructs canonical sequential loops, requires zero
+invalidations, and proves exactly one ownership/dominance analysis per observed
+CFG version rather than one per loop. Mutation-sensitive loop, nested-loop,
+proxy-chain, break, and continue regressions remain unchanged. The complete
+`unit_xir` label passes `48/48`; the RX 9070 XT native Vulkan route passes
+`92/92` tests with `2,096` assertions.
+
+The unchanged Lone Monk run is recorded under
+`/var/tmp/psycles-loop-continue-versioned-20260810/`:
+
+| Boundary | Per-site analysis | Versioned analysis | Change |
+| --- | ---: | ---: | ---: |
+| Continue normalization | 1.531 s | 0.552 s | 2.77x |
+| Post-restructure fixed point | 2.884 s | 1.867 s | -35.3% |
+| `restructure_cfg` | 5.191 s | 4.053 s | -21.9% |
+| SPIR-V XIR legalization | 20.334 s | 18.883 s | -7.1% |
+| Native AST-to-SPIR-V | 33.752 s | 32.691 s | -3.1% |
+| Raw SPIR-V | 1,431,985 words | 1,431,985 words | identical size |
+| Optimized SPIR-V | 1,116,158 words | 1,116,158 words | identical size |
+
+The production module issued 361 loop-site queries against 157 CFG-version
+analyses; 129 site rewrites caused and justified the 129 invalidations. The
+RADV cache hit produced a `15.287 ms` pipeline and `32.860 s` shader JIT with
+`1,661,080 KiB` peak RSS. The PPM remains byte-identical with SHA-256
+`3ff6c5463ace13c0f26a735ac1af2bb96ab8a9ba1cb4398359cf2466f63a4d1b`.

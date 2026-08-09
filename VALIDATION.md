@@ -16,7 +16,7 @@ tree, replaces the final selection-by-block re-entry scan with exact
 dominance-frontier queries, carries enclosing loops as persistent contexts,
 and solves all loop-boundary arm classifications with block value numbering
 plus sparse reverse-CFG dataflow. The follow-ups through Luisa
-`next@411322cd2` replace DCE's repeated whole-function least-fixed-point scan
+`next@d17763dc4` replace DCE's repeated whole-function least-fixed-point scan
 with an
 equivalent linear reverse-use worklist, then replace the remaining per-arm
 loop-boundary merge searches with versioned sparse dataflow and explicitly
@@ -40,6 +40,10 @@ AST-to-SPIR-V to `35.714 s`, again with identical SPIR-V and output.
 The dense merge workspace then takes the if batch to `0.299 s` (another
 6.99x), `restructure_cfg` to `5.191 s`, XIR legalization to `20.334 s`, and
 native AST-to-SPIR-V to `33.752 s`, still with byte-identical output.
+Versioning ownership and dominance across read-only loop-continue sites then
+takes continue normalization from `1.531 s` to `0.552 s`, `restructure_cfg`
+to `4.053 s`, XIR legalization to `18.883 s`, and native AST-to-SPIR-V to
+`32.691 s`, again without changing SPIR-V or output.
 Against the earlier complete
 run, `drain_selection_exits` falls 18.30x to `0.723 s`, `restructure_cfg`
 falls 49.0% to `17.945 s`, native AST-to-SPIR-V falls 23.9% to `57.766 s`,
@@ -48,8 +52,8 @@ RADV disk cache, so its `57.933 s` wall is recorded but not attributed to the
 compiler change. The DCE follow-up retriggered an `84.119 s` RADV compile, so
 its total wall and process RSS are likewise separated from compiler-boundary
 comparisons. The former merge-inference hotspot is now only part of a
-`0.299 s` if batch; subsequent optimization should be selected from the new
-whole-pipeline profile rather than continuing to micro-optimize it.
+`0.299 s` if batch. The next restructure candidates are selection-exit drain
+at `0.726 s` and aggregate post-dominator construction at `0.714 s`.
 
 The preceding
 [sparse XIR verifier dominance checkpoint](docs/validation/2026-08-10/xir-verifier-sparse-dominance/README.md)
