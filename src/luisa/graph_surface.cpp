@@ -98,6 +98,28 @@ SurfaceSampleTrace GraphSurface::sample_trace(
         services, point, u_lobe, u_direction, query);
 }
 
+SurfacePreparation GraphSurface::prepare(
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    Expr<luisa::float3> outgoing,
+    Expr<float> glossy_filter_roughness,
+    Expr<bool> emission_reflective_caustics,
+    Expr<bool> reflective_caustics,
+    Expr<bool> refractive_caustics,
+    Expr<bool> include_runtime_flags,
+    Expr<bool> include_aov) const noexcept {
+    return _implementation->prepare(
+        services,
+        point,
+        outgoing,
+        glossy_filter_roughness,
+        emission_reflective_caustics,
+        reflective_caustics,
+        refractive_caustics,
+        include_runtime_flags,
+        include_aov);
+}
+
 Float3 GraphSurface::emission(
     const ShaderServices &services,
     const SurfacePoint &point,

@@ -20,6 +20,45 @@ SurfaceCallables make_surface_callables(
         make_surface_closure_evaluation_callable(scene);
     const auto closure_sampling =
         make_surface_closure_sampling_callables(scene);
+    SurfacePreparationCallable preparation =
+        [scene](
+            BufferFloat scalar_parameters,
+            BufferFloat3 vector_parameters,
+            BufferFloat cycles_bsdf_tables,
+            BindlessVar textures,
+            BindlessVar geometry_heap,
+            UInt surface_tag,
+            Var<SurfacePointCall> packed_point,
+            Float3 outgoing,
+            Float glossy_filter_roughness,
+            Bool emission_reflective_caustics,
+            Bool reflective_caustics,
+            Bool refractive_caustics,
+            Bool include_runtime_flags,
+            Bool include_aov) noexcept {
+            BufferShaderServices services{
+                scalar_parameters,
+                vector_parameters,
+                cycles_bsdf_tables,
+                textures,
+                geometry_heap,
+                scene->attribute_binding_slot,
+                scene->attribute_range_slot,
+                scene->nishita_texture_bindings,
+                scene->shader_color_space};
+            return pack_surface_preparation(
+                scene->surfaces.prepare(
+                    surface_tag,
+                    services,
+                    unpack_surface_point(packed_point),
+                    outgoing,
+                    glossy_filter_roughness,
+                    emission_reflective_caustics,
+                    reflective_caustics,
+                    refractive_caustics,
+                    include_runtime_flags,
+                    include_aov));
+        };
     SurfaceEvaluateLightCallable evaluate_light =
         [scene, closure_evaluation](
             BufferFloat scalar_parameters,
@@ -410,6 +449,7 @@ SurfaceCallables make_surface_callables(
                 unpack_surface_point(packed_point));
         };
     return {
+        std::move(preparation),
         std::move(evaluate_light),
         std::move(runtime_flags),
         std::move(constant_emission),

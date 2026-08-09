@@ -241,6 +241,37 @@ SurfaceEvaluation PathKernelInvocation::evaluate_light_surface(
     return result;
 }
 
+SurfacePreparation PathKernelInvocation::prepare_surface(
+    UInt surface_tag,
+    const SurfacePoint &point,
+    Float3 outgoing,
+    const SurfaceQuery &query,
+    Bool include_runtime_flags,
+    Bool include_aov) const noexcept {
+    const auto emission_reflective_caustics =
+        Bool{config.reflective_caustics} |
+        ((point.ray_visibility &
+             contract::visibility_bit(
+                 contract::RayVisibility::diffuse)) ==
+            0u);
+    return unpack_surface_preparation(
+        config.surfaces.preparation(
+            config.scene->scalar_parameter_buffer,
+            config.scene->vector_parameter_buffer,
+            config.scene->cycles_bsdf_table_buffer,
+            config.scene->texture_heap,
+            config.scene->heap,
+            surface_tag,
+            pack_surface_point(point),
+            outgoing,
+            query.glossy_filter_roughness,
+            emission_reflective_caustics,
+            query.reflective_caustics,
+            query.refractive_caustics,
+            include_runtime_flags,
+            include_aov));
+}
+
 UInt PathKernelInvocation::surface_runtime_flags(
     UInt surface_tag,
     const SurfacePoint &point,

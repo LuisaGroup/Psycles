@@ -449,6 +449,20 @@ private:
         const SurfaceQuery &query,
         bool trace_selection) const noexcept;
 
+    [[nodiscard]] Float3 emission_traced(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        const TracedValues &values,
+        Expr<bool> reflective_caustics) const noexcept;
+
+    [[nodiscard]] SurfaceClosureCollection collect_traced_closures(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        const TracedValues &values,
+        Expr<bool> reflective_caustics,
+        Expr<bool> refractive_caustics,
+        SurfaceClosureCollector &collector) const noexcept;
+
 public:
     [[nodiscard]] std::vector<bool> value_dependency_mask(
         compiler::ValueExpressionId root) const;
@@ -504,6 +518,16 @@ public:
         Expr<float> u_lobe,
         Expr<luisa::float2> u_direction,
         const SurfaceQuery &query) const noexcept;
+    [[nodiscard]] SurfacePreparation prepare(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        Expr<luisa::float3> outgoing,
+        Expr<float> glossy_filter_roughness,
+        Expr<bool> emission_reflective_caustics,
+        Expr<bool> reflective_caustics,
+        Expr<bool> refractive_caustics,
+        Expr<bool> include_runtime_flags,
+        Expr<bool> include_aov) const noexcept;
     [[nodiscard]] SurfaceClosureTrace closure_trace(
         const ShaderServices &services,
         const SurfacePoint &point,

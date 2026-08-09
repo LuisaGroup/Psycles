@@ -71,10 +71,19 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
             config.light_transport.forward_light_weight;
         const auto next_event_estimation = config.next_event_estimation;
         const auto path_trace_enabled = config.path_trace_enabled;
-        auto surface_emission = [&](UInt tag,
-                                    const SurfacePoint &surface_point,
-                                    Float3 outgoing) noexcept {
-            return invocation.surface_emission(tag, surface_point, outgoing);
+        auto prepare_surface = [&](UInt tag,
+                                   const SurfacePoint &surface_point,
+                                   Float3 outgoing,
+                                   const SurfaceQuery &query,
+                                   Bool include_runtime_flags,
+                                   Bool include_aov) noexcept {
+            return invocation.prepare_surface(
+                tag,
+                surface_point,
+                outgoing,
+                query,
+                include_runtime_flags,
+                include_aov);
         };
         auto clamp_contribution = [&](Float3 contribution,
                                       UInt depth) noexcept {
@@ -108,11 +117,14 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         auto trace_uint32 = [&](UInt value) noexcept {
             return sample.trace_uint32(value);
         };
-        auto surface_aov = [&](UInt tag,
-                               const SurfacePoint &surface_point) noexcept {
-            return invocation.surface_aov(tag, surface_point);
-        };
-        Float3 emitted = surface_emission(surface_tag, point, point.incoming);
+        const auto preparation = prepare_surface(
+            surface_tag,
+            point,
+            point.incoming,
+            surface.path_surface_query,
+            Bool{next_event_estimation || path_trace_enabled},
+            (!bounce.subsurface_exit) & (path_depth == 0u));
+        Float3 emitted = preparation.emission;
         emitted = select(
             emitted, make_float3(0.0f), bounce.subsurface_exit);
         Float emission_weight = 1.0f;
@@ -224,7 +236,7 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
             // Cycles writes camera data passes only at the entry surface.
             // A BSSRDF exit skips them along with duplicate roulette.
             $if(path_depth == 0u) {
-                auto aov = surface_aov(surface_tag, point);
+                const auto &aov = preparation.aov;
                 sample_albedo += throughput * aov.albedo;
                 sample_glossy_color += throughput * aov.glossy_albedo;
                 sample_transmission_color +=
@@ -252,16 +264,7 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
 
         UInt cycles_surface_runtime_flags = 0u;
         if (next_event_estimation || path_trace_enabled) {
-            cycles_surface_runtime_flags =
-                invocation.surface_runtime_flags(
-                    surface_tag,
-                    point,
-                    surface.path_surface_query
-                        .glossy_filter_roughness,
-                    surface.path_surface_query
-                        .reflective_caustics,
-                    surface.path_surface_query
-                        .refractive_caustics);
+            cycles_surface_runtime_flags = preparation.runtime_flags;
             cycles_surface_runtime_flags = select(
                 cycles_surface_runtime_flags,
                 SubsurfaceExitClosureComponent{}.runtime_flags(point),

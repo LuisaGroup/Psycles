@@ -170,4 +170,42 @@ class SurfaceAovVisitor final
     [[nodiscard]] const SurfaceAov &result() const noexcept;
 };
 
+// Combined production reduction over one raw physical-closure sequence.
+// Runtime flags and the optional camera AOV are deliberately reduced in the
+// same host-scheduled pass, after GraphSurface has evaluated its typed value
+// graph exactly once.
+class SurfacePreparationVisitor final
+    : public SurfaceClosureExpressionVisitor {
+
+  private:
+    const SurfacePoint &_point;
+    Expr<float> _glossy_filter_roughness;
+    Expr<bool> _include_runtime_flags;
+    Expr<bool> _include_aov;
+    const SurfaceClosureIdentityCallable &_identity;
+    const SurfaceClosureAovCallable &_aov_operation;
+    UInt _runtime_flags{0u};
+    SurfaceAov _aov;
+
+  protected:
+    void visit(
+        Expr<luisa::float3> shading_normal,
+        const luisa::vector<SurfaceClosureExpression>
+            &closures) noexcept override;
+
+  public:
+    SurfacePreparationVisitor(
+        const SurfacePoint &point,
+        Expr<float> glossy_filter_roughness,
+        Expr<bool> include_runtime_flags,
+        Expr<bool> include_aov,
+        std::size_t capacity,
+        const SurfaceClosureIdentityCallable &identity,
+        const SurfaceClosureAovCallable &aov_operation) noexcept;
+
+    [[nodiscard]] Expr<std::uint32_t>
+    runtime_flags() const noexcept;
+    [[nodiscard]] const SurfaceAov &aov() const noexcept;
+};
+
 }// namespace psycles::luisa_backend

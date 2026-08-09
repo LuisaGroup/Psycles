@@ -163,6 +163,204 @@ aov_contribution(
     return result;
 }
 
+[[nodiscard]] SurfaceAov zero_aov(
+    const SurfacePoint &point) noexcept {
+    return {
+        .albedo = make_float3(0.0f),
+        .glossy_albedo = make_float3(0.0f),
+        .transmission_albedo = make_float3(0.0f),
+        .roughness = make_float2(0.0f),
+        .normal = point.shading_normal,
+        .transparency = make_float3(0.0f)};
+}
+
+template<bool Enabled>
+class RuntimeFlagReduction;
+
+template<>
+class RuntimeFlagReduction<false> {
+
+public:
+    RuntimeFlagReduction(
+        const SurfacePoint &,
+        Expr<bool>) noexcept {}
+};
+
+template<>
+class RuntimeFlagReduction<true> {
+
+private:
+    UInt _result;
+
+public:
+    RuntimeFlagReduction(
+        const SurfacePoint &point,
+        Expr<bool> include) noexcept
+        : _result{select(
+              0u,
+              cycles_closure::runtime_backfacing,
+              Bool{include} & point.back_facing)} {}
+
+    template<typename Identity>
+    void accumulate(
+        Expr<bool> keep,
+        Expr<bool> include,
+        const Identity &identity,
+        const SurfaceClosureExpression &closure,
+        Expr<float> glossy_filter_roughness) noexcept {
+        $if(keep & include) {
+            _result |= classify(
+                identity,
+                closure,
+                glossy_filter_roughness)
+                           .x;
+        };
+    }
+
+    [[nodiscard]] Expr<std::uint32_t> result() const noexcept {
+        return Expr<std::uint32_t>{_result.expression()};
+    }
+};
+
+template<bool Enabled>
+class AovReduction;
+
+template<>
+class AovReduction<false> {
+
+public:
+    explicit AovReduction(const SurfacePoint &) noexcept {}
+};
+
+template<>
+class AovReduction<true> {
+
+private:
+    SurfaceAov _result;
+    Float _total_weight{0.0f};
+    Float _roughness_weight{0.0f};
+    Float _roughness{0.0f};
+    Float3 _normal{make_float3(0.0f)};
+
+public:
+    explicit AovReduction(const SurfacePoint &point) noexcept
+        : _result{zero_aov(point)} {}
+
+    template<typename Operation>
+    void accumulate(
+        Expr<bool> keep,
+        Expr<bool> include,
+        const Operation &operation,
+        const SurfacePoint &point,
+        const SurfaceClosureExpression &closure) noexcept {
+        $if(keep & include) {
+            const auto contribution = operation(
+                point.incoming,
+                point.shading_normal,
+                point.geometric_normal,
+                point.use_bump_map_correction,
+                closure.kind,
+                closure.lobe,
+                closure.weight,
+                closure.setup_valid,
+                closure.albedo,
+                closure.reflection_albedo,
+                closure.transmission_albedo,
+                closure.normal,
+                closure.roughness);
+            _result.albedo += contribution.albedo;
+            _result.glossy_albedo +=
+                contribution.glossy_albedo;
+            _result.transmission_albedo +=
+                contribution.transmission_albedo;
+            _result.transparency +=
+                contribution.transparency;
+            _total_weight += contribution.total_weight;
+            _roughness_weight += contribution.roughness_weight;
+            _roughness += contribution.roughness;
+            _normal += contribution.normal;
+        };
+    }
+
+    void finish(
+        const SurfacePoint &point,
+        Expr<bool> include) noexcept {
+        const auto computed_roughness = make_float2(select(
+            1.0f,
+            _roughness / max(_roughness_weight, 1.0e-20f),
+            _roughness_weight > 0.0f));
+        _result.roughness = select(
+            make_float2(0.0f),
+            computed_roughness,
+            include);
+        _result.normal = detail::safe_normalize(
+            select(
+                point.shading_normal,
+                _normal,
+                _total_weight > 0.0f),
+            point.shading_normal);
+    }
+
+    [[nodiscard]] const SurfaceAov &result() const noexcept {
+        return _result;
+    }
+};
+
+template<bool ReduceRuntimeFlags, bool ReduceAov>
+struct ClosureReductions {
+    RuntimeFlagReduction<ReduceRuntimeFlags> runtime_flags;
+    AovReduction<ReduceAov> aov;
+};
+
+template<bool ReduceRuntimeFlags,
+         bool ReduceAov,
+         typename Identity,
+         typename AovOperation,
+         typename Retains>
+[[nodiscard]] ClosureReductions<ReduceRuntimeFlags, ReduceAov>
+reduce_closures(
+    const SurfacePoint &point,
+    Expr<float> glossy_filter_roughness,
+    Expr<bool> include_runtime_flags,
+    Expr<bool> include_aov,
+    const Identity &identity,
+    const AovOperation &aov_operation,
+    const luisa::vector<SurfaceClosureExpression> &closures,
+    Retains &&retains) noexcept {
+    auto result = ClosureReductions<
+        ReduceRuntimeFlags,
+        ReduceAov>{
+        .runtime_flags = RuntimeFlagReduction<ReduceRuntimeFlags>{
+            point,
+            include_runtime_flags},
+        .aov = AovReduction<ReduceAov>{point}};
+    UInt allocated_count = 0u;
+    for (const auto &closure : closures) {
+        const auto keep = retains(closure, allocated_count);
+        if constexpr (ReduceRuntimeFlags) {
+            result.runtime_flags.accumulate(
+                keep,
+                include_runtime_flags,
+                identity,
+                closure,
+                glossy_filter_roughness);
+        }
+        if constexpr (ReduceAov) {
+            result.aov.accumulate(
+                keep,
+                include_aov,
+                aov_operation,
+                point,
+                closure);
+        }
+        allocated_count += select(0u, 1u, keep);
+    }
+    if constexpr (ReduceAov) {
+        result.aov.finish(point, include_aov);
+    }
+    return result;
+}
+
 }// namespace
 
 SurfaceClosureIdentityCallable
@@ -262,23 +460,19 @@ void SurfaceRuntimeFlagsVisitor::visit(
     Expr<luisa::float3> shading_normal,
     const luisa::vector<SurfaceClosureExpression> &closures) noexcept {
     static_cast<void>(shading_normal);
-    _result = select(
-        0u,
-        cycles_closure::runtime_backfacing,
-        _point.back_facing);
-    UInt allocated_count = 0u;
-    for (const auto &closure : closures) {
-        const auto keep = retains(
-            closure, allocated_count);
-        $if(keep) {
-            _result |= classify(
-                _identity,
-                closure,
-                _glossy_filter_roughness)
-                           .x;
-        };
-        allocated_count += select(0u, 1u, keep);
-    }
+    const auto reductions = reduce_closures<true, false>(
+        _point,
+        _glossy_filter_roughness,
+        Expr<bool>{true},
+        Expr<bool>{false},
+        _identity,
+        nullptr,
+        closures,
+        [&](const SurfaceClosureExpression &closure,
+            Expr<std::uint32_t> allocated_count) noexcept {
+            return retains(closure, allocated_count);
+        });
+    _result = reductions.runtime_flags.result();
 }
 
 Expr<std::uint32_t> SurfaceRuntimeFlagsVisitor::result() const noexcept {
@@ -391,78 +585,75 @@ SurfaceAovVisitor::SurfaceAovVisitor(
     : SurfaceClosureExpressionVisitor{capacity},
       _point{point},
       _aov{aov},
-      _result{
-          .albedo = make_float3(0.0f),
-          .glossy_albedo = make_float3(0.0f),
-          .transmission_albedo = make_float3(0.0f),
-          .roughness = make_float2(0.0f),
-          .normal = point.shading_normal,
-          .transparency = make_float3(0.0f)} {}
+      _result{zero_aov(point)} {}
 
 void SurfaceAovVisitor::visit(
     Expr<luisa::float3> shading_normal,
     const luisa::vector<SurfaceClosureExpression> &closures) noexcept {
     static_cast<void>(shading_normal);
-    _result.albedo = make_float3(0.0f);
-    _result.glossy_albedo = make_float3(0.0f);
-    _result.transmission_albedo = make_float3(0.0f);
-    _result.roughness = make_float2(0.0f);
-    _result.normal = _point.shading_normal;
-    _result.transparency = make_float3(0.0f);
-    Float total_weight = 0.0f;
-    Float roughness_weight = 0.0f;
-    Float roughness = 0.0f;
-    Float3 normal = make_float3(0.0f);
-
-    UInt allocated_count = 0u;
-    for (const auto &closure : closures) {
-        const auto keep = retains(
-            closure, allocated_count);
-        $if(keep) {
-            const auto contribution = _aov(
-                _point.incoming,
-                _point.shading_normal,
-                _point.geometric_normal,
-                _point.use_bump_map_correction,
-                closure.kind,
-                closure.lobe,
-                closure.weight,
-                closure.setup_valid,
-                closure.albedo,
-                closure.reflection_albedo,
-                closure.transmission_albedo,
-                closure.normal,
-                closure.roughness);
-            _result.albedo += contribution.albedo;
-            _result.glossy_albedo +=
-                contribution.glossy_albedo;
-            _result.transmission_albedo +=
-                contribution.transmission_albedo;
-            _result.transparency +=
-                contribution.transparency;
-            total_weight += contribution.total_weight;
-            roughness_weight +=
-                contribution.roughness_weight;
-            roughness += contribution.roughness;
-            normal += contribution.normal;
-        };
-        allocated_count += select(0u, 1u, keep);
-    }
-    _result.roughness = make_float2(select(
-        1.0f,
-        roughness /
-            max(roughness_weight, 1.0e-20f),
-        roughness_weight > 0.0f));
-    _result.normal = detail::safe_normalize(
-        select(
-            _point.shading_normal,
-            normal,
-            total_weight > 0.0f),
-        _point.shading_normal);
+    _result = reduce_closures<false, true>(
+                  _point,
+                  Expr<float>{0.0f},
+                  Expr<bool>{false},
+                  Expr<bool>{true},
+                  nullptr,
+                  _aov,
+                  closures,
+                  [&](const SurfaceClosureExpression &closure,
+                      Expr<std::uint32_t> allocated_count) noexcept {
+                      return retains(closure, allocated_count);
+                  })
+                  .aov.result();
 }
 
 const SurfaceAov &SurfaceAovVisitor::result() const noexcept {
     return _result;
+}
+
+SurfacePreparationVisitor::SurfacePreparationVisitor(
+    const SurfacePoint &point,
+    Expr<float> glossy_filter_roughness,
+    Expr<bool> include_runtime_flags,
+    Expr<bool> include_aov,
+    std::size_t capacity,
+    const SurfaceClosureIdentityCallable &identity,
+    const SurfaceClosureAovCallable &aov_operation) noexcept
+    : SurfaceClosureExpressionVisitor{capacity},
+      _point{point},
+      _glossy_filter_roughness{glossy_filter_roughness},
+      _include_runtime_flags{include_runtime_flags},
+      _include_aov{include_aov},
+      _identity{identity},
+      _aov_operation{aov_operation},
+      _aov{zero_aov(point)} {}
+
+void SurfacePreparationVisitor::visit(
+    Expr<luisa::float3> shading_normal,
+    const luisa::vector<SurfaceClosureExpression> &closures) noexcept {
+    static_cast<void>(shading_normal);
+    const auto reductions = reduce_closures<true, true>(
+        _point,
+        _glossy_filter_roughness,
+        _include_runtime_flags,
+        _include_aov,
+        _identity,
+        _aov_operation,
+        closures,
+        [&](const SurfaceClosureExpression &closure,
+            Expr<std::uint32_t> allocated_count) noexcept {
+            return retains(closure, allocated_count);
+        });
+    _runtime_flags = reductions.runtime_flags.result();
+    _aov = reductions.aov.result();
+}
+
+Expr<std::uint32_t>
+SurfacePreparationVisitor::runtime_flags() const noexcept {
+    return Expr<std::uint32_t>{_runtime_flags.expression()};
+}
+
+const SurfaceAov &SurfacePreparationVisitor::aov() const noexcept {
+    return _aov;
 }
 
 }// namespace psycles::luisa_backend
