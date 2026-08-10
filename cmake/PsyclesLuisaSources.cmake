@@ -86,6 +86,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/adapter/blender_scene.cpp
     src/adapter/blender_scene_json.cpp
     src/luisa/path_tracer.cpp
+    src/luisa/path_tracer_attribute_lookup.cpp
     src/luisa/path_tracer_camera.cpp
     src/luisa/path_tracer_bump.cpp
     src/luisa/path_tracer_color_transforms.cpp

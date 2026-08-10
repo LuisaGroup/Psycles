@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cycles_texture_sampling.h"
+#include "path_tracer_attribute_lookup.h"
 #include "path_tracer_bump.h"
 #include "path_tracer_color_transforms.h"
 #include "path_tracer_internal.h"
@@ -69,6 +70,8 @@ private:
     const contract::ShaderColorSpace &_shader_color_space;
     const SurfaceClosureSetupProvider *_surface_closure_setup_provider{};
     const CallableTexture2DSamplingProvider *_texture_sampling_provider{};
+    const CallableSurfaceAttributeLookupProvider
+        *_attribute_lookup_provider{};
     CallableSurfaceBumpProvider _bump_provider;
     CallableSurfaceColorTransformProvider _color_transform_provider;
     CallableSurfaceVectorMappingProvider _vector_mapping_provider;
@@ -92,7 +95,9 @@ public:
         const SurfaceClosureSetupProvider
             *surface_closure_setup_provider = nullptr,
         const CallableTexture2DSamplingProvider
-            *texture_sampling_provider = nullptr) noexcept
+            *texture_sampling_provider = nullptr,
+        const CallableSurfaceAttributeLookupProvider
+            *attribute_lookup_provider = nullptr) noexcept
         : _scalar_parameters{scalar_parameters},
           _vector_parameters{vector_parameters},
           _cycles_bsdf_tables{cycles_bsdf_tables},
@@ -108,6 +113,8 @@ public:
               surface_closure_setup_provider},
           _texture_sampling_provider{
               texture_sampling_provider},
+          _attribute_lookup_provider{
+              attribute_lookup_provider},
           _shader_table_provider{scalar_parameters} {}
 
     [[nodiscard]] const SurfaceClosureSetupProvider *
@@ -162,75 +169,18 @@ public:
     [[nodiscard]] ShaderAttribute attribute(
         Expr<luisa::ulong> attribute_id,
         const SurfacePoint &point) const noexcept override {
-        auto result = ShaderAttribute::missing();
-        // Attribute cardinality is scene data, not shader structure. Look up
-        // only the current geometry's compact range so AST/XIR size remains
-        // constant as scenes add meshes, UV maps, or color attributes.
-        $if (point.geometry_index != ~0u) {
-            Var<AttributeRangeGpu> range =
-                _geometry_heap
-                    ->template buffer<AttributeRangeGpu>(
-                        _attribute_range_slot)
-                    .read(point.geometry_index);
-            UInt local_index = 0u;
-            Bool found = false;
-            $while ((local_index < range.count) & !found) {
-                Var<AttributeBindingGpu> binding =
-                    _geometry_heap
-                        ->template buffer<
-                            AttributeBindingGpu>(
-                            _attribute_binding_slot)
-                        .read(range.offset + local_index);
-                $if (attribute_id == binding.id) {
-                    Var<Triangle> triangle =
-                        _geometry_heap
-                            ->template buffer<Triangle>(
-                                range.triangle_slot)
-                            .read(point.primitive_id);
-                    UInt i0 = triangle.i0;
-                    UInt i1 = triangle.i1;
-                    UInt i2 = triangle.i2;
-                    $if (binding.domain ==
-                         attribute_domain_corner) {
-                        const auto corner =
-                            point.primitive_id * 3u;
-                        i0 = corner;
-                        i1 = corner + 1u;
-                        i2 = corner + 2u;
-                    };
-                    $if (binding.domain ==
-                         attribute_domain_face) {
-                        i0 = point.primitive_id;
-                        i1 = point.primitive_id;
-                        i2 = point.primitive_id;
-                    };
-                    auto v0 =
-                        _geometry_heap
-                            ->template buffer<
-                                luisa::float4>(
-                                binding.value_slot)
-                            .read(i0);
-                    auto v1 =
-                        _geometry_heap
-                            ->template buffer<
-                                luisa::float4>(
-                                binding.value_slot)
-                            .read(i1);
-                    auto v2 =
-                        _geometry_heap
-                            ->template buffer<
-                                luisa::float4>(
-                                binding.value_slot)
-                            .read(i2);
-                    result.value = triangle_interpolate(
-                        point.barycentric, v0, v1, v2);
-                    found = true;
-                };
-                local_index += 1u;
-            };
-            result.found = found;
-        };
-        return result;
+        if (_attribute_lookup_provider != nullptr) {
+            return _attribute_lookup_provider->lookup(
+                attribute_id, point);
+        }
+        return resolve_surface_attribute(
+            _geometry_heap,
+            _attribute_binding_slot,
+            _attribute_range_slot,
+            attribute_id,
+            point.geometry_index,
+            point.primitive_id,
+            point.barycentric);
     }
 
     [[nodiscard]] Float parameter_float(
