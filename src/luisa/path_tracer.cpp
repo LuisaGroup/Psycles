@@ -5,6 +5,25 @@ namespace psycles::luisa_backend {
 
 using namespace detail;
 
+namespace {
+
+[[nodiscard]] bool valid_scheduler_options(
+    const LuisaPathTracerOptions &options) noexcept {
+    switch (options.scheduler) {
+        case LuisaPathScheduler::megakernel:
+            return true;
+        case LuisaPathScheduler::wavefront:
+            return options.wavefront_frame_capacity != 0u;
+        case LuisaPathScheduler::persistent:
+            return options.persistent_worker_count != 0u &&
+                   options.persistent_block_size != 0u &&
+                   options.persistent_fetch_size != 0u;
+    }
+    return false;
+}
+
+}// namespace
+
 LuisaPathTracerBackend::LuisaPathTracerBackend(
     luisa::compute::Device device,
     LuisaPathTracerOptions options) noexcept
@@ -28,7 +47,8 @@ LuisaPathTracerBackend::create_session(
     if (settings.full_extent.width == 0u ||
         settings.full_extent.height == 0u ||
         _options.max_samples_per_dispatch == 0u ||
-        _options.max_pixel_samples_per_dispatch == 0u) {
+        _options.max_pixel_samples_per_dispatch == 0u ||
+        !valid_scheduler_options(_options)) {
         return nullptr;
     }
     if (const auto &trace = _options.path_trace) {

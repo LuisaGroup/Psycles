@@ -2,11 +2,13 @@
 #include "cycles_filter_glossy.h"
 #include "cycles_integrator_limits.h"
 #include "path_kernel_builder.h"
+#include "path_kernel_executor.h"
 
 #include <psycles/luisa/camera_sampling.h>
 #include <psycles/luisa/pixel_filter.h>
 #include <psycles/sampling/light_distribution.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <string_view>
 #include <utility>
@@ -426,17 +428,33 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         .surfaces = std::move(surface_callables),
         .environment = std::move(environment_callables),
         .trace_shadow = std::move(trace_shadow_callable)};
-    auto kernel = build_path_kernel(kernel_config);
-
-    _render_shader = _scene->device.compile(
-        kernel,
-        luisa::compute::ShaderOption{
+    _render_executor = build_path_kernel_executor(
+        _scene->device,
+        kernel_config,
+        PathKernelExecutorConfig{
+            .scheduler = _options.scheduler,
+            .wavefront_frame_capacity =
+                static_cast<std::uint32_t>(
+                    std::min<std::size_t>(
+                        _options.wavefront_frame_capacity,
+                        count)),
+            .persistent_worker_count =
+                _options.persistent_worker_count,
+            .persistent_block_size =
+                _options.persistent_block_size,
+            .persistent_fetch_size =
+                _options.persistent_fetch_size,
+            .persistent_shared_memory_soa =
+                _options.persistent_shared_memory_soa,
+            .persistent_global_memory_extension =
+                _options.persistent_global_memory_extension,
+            .shader_option = {
             .enable_cache =
                 render_shader_cache_enabled(),
             .enable_fast_math = false,
             .enable_driver_optimization =
                 render_shader_driver_optimization_enabled(
-                    _scene->device)});
+                    _scene->device)}});
 }
 
 }// namespace psycles::luisa_backend::detail

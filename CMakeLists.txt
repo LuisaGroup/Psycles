@@ -283,6 +283,19 @@ if(PSYCLES_ENABLE_LUISA)
                 COMMAND psycles_luisa_compile_tests)
 
             add_executable(
+                psycles_luisa_path_scheduler_tests
+                tests/test_luisa_path_scheduler.cpp)
+            target_link_libraries(
+                psycles_luisa_path_scheduler_tests
+                PRIVATE Psycles::luisa_runtime)
+            target_compile_features(
+                psycles_luisa_path_scheduler_tests
+                PRIVATE cxx_std_20)
+            add_test(
+                NAME psycles.luisa_path_scheduler
+                COMMAND psycles_luisa_path_scheduler_tests)
+
+            add_executable(
                 psycles_luisa_volume_coefficients_tests
                 tests/test_luisa_volume_coefficients.cpp)
             target_link_libraries(

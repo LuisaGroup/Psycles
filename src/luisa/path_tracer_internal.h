@@ -9,6 +9,7 @@
 #include <psycles/luisa/volume_majorant_hierarchy.h>
 
 #include "path_tracer_types.h"
+#include "path_kernel_executor.h"
 #include "path_tracer_volume_metadata.h"
 #include "volume_guiding_filter.h"
 
@@ -437,21 +438,6 @@ inline constexpr auto light_pass_buffer_count =
     light_pass_index(LightPassBuffer::count);
 
 
-using RenderShader = Shader1D<
-    Buffer<luisa::float4>,
-    Buffer<luisa::float4>,
-    Buffer<luisa::float4>,
-    Buffer<luisa::float4>,
-    Buffer<luisa::uint>,
-    Buffer<luisa::float4>,
-    Buffer<luisa::uint>,
-    Buffer<luisa::float4>,
-    std::uint32_t,
-    std::uint32_t,
-    Buffer<luisa::float4>,
-    Buffer<float>,
-    RenderKernelParameters>;
-
 class LuisaRenderSession final : public contract::RenderSession {
 
 private:
@@ -475,7 +461,7 @@ private:
     std::uint32_t _total_aa_samples{};
     std::uint32_t _rendered_samples{};
     RenderKernelParameters _kernel_parameters{};
-    RenderShader _render_shader;
+    PathKernelExecutor _render_executor;
     std::unique_ptr<VolumeGuidingFilter>
         _volume_guiding_filter;
     bool _path_trace_delivered{false};

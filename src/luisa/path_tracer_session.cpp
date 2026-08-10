@@ -347,29 +347,35 @@ bool LuisaRenderSession::render_samples(
             const auto volume_denoised_count =
                 pixel_count *
                 volume_guiding::denoised_pixel_stride;
-            _stream
-                << _render_shader(
-                       _combined.view(pixel_offset, pixel_count),
-                       _normal.view(pixel_offset, pixel_count),
-                       _albedo.view(pixel_offset, pixel_count),
-                       _light_passes.view(
-                           light_offset, light_count),
-                       _sample_count.view(
-                           pixel_offset, pixel_count),
-                       _volume_guiding_raw.view(
-                           volume_raw_offset,
-                           volume_raw_count),
-                       _volume_guiding_denoised.view(
-                           volume_denoised_offset,
-                           volume_denoised_count),
-                       _path_trace,
-                       batch->first,
-                       batch->count,
-                       _sobol_table,
-                       _pixel_filter_table,
-                       parameters)
-                       .dispatch(rows->pixel_count)
-                << synchronize();
+            _render_executor.dispatch(
+                _stream,
+                PathKernelDispatch{
+                    .combined = _combined.view(
+                        pixel_offset, pixel_count),
+                    .normal = _normal.view(
+                        pixel_offset, pixel_count),
+                    .albedo = _albedo.view(
+                        pixel_offset, pixel_count),
+                    .light_passes = _light_passes.view(
+                        light_offset, light_count),
+                    .sample_count = _sample_count.view(
+                        pixel_offset, pixel_count),
+                    .volume_guiding_raw =
+                        _volume_guiding_raw.view(
+                            volume_raw_offset,
+                            volume_raw_count),
+                    .volume_guiding_denoised =
+                        _volume_guiding_denoised.view(
+                            volume_denoised_offset,
+                            volume_denoised_count),
+                    .path_trace = _path_trace.view(),
+                    .sample_first = batch->first,
+                    .samples = batch->count,
+                    .sobol_table = _sobol_table.view(),
+                    .filter_table = _pixel_filter_table.view(),
+                    .parameters = parameters,
+                    .pixel_count = rows->pixel_count});
+            _stream << synchronize();
         }
         _rendered_samples +=
             batch->count;

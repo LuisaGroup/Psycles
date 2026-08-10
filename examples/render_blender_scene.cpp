@@ -222,8 +222,9 @@ int main(int argc, char **argv) {
                "[path-trace.json|-] [trace-x] [trace-y] "
                "[trace-sample=0] [sample-first=0] "
                "[sample-count=samples-sample-first] "
-               "[sample-chunk-pixel.json] "
-               "[probe-chunk-size=1] [probe-full-frame=0]\n";
+               "[sample-chunk-pixel.json|-] "
+               "[probe-chunk-size=1] [probe-full-frame=0] "
+               "[scheduler=megakernel|wavefront|persistent]\n";
         return EXIT_FAILURE;
     }
     const auto bundle = std::filesystem::path{argv[1]};
@@ -341,10 +342,13 @@ int main(int argc, char **argv) {
     }
     std::optional<std::filesystem::path> sample_chunk_output;
     if (argc > 14) {
-        sample_chunk_output =
-            std::filesystem::path{argv[14]};
-        if (sample_chunk_output->empty()) {
-            return EXIT_FAILURE;
+        const auto output_argument = std::string_view{argv[14]};
+        if (output_argument != "-") {
+            sample_chunk_output =
+                std::filesystem::path{output_argument};
+            if (sample_chunk_output->empty()) {
+                return EXIT_FAILURE;
+            }
         }
     }
     auto probe_chunk_size = std::uint32_t{1u};
@@ -362,6 +366,20 @@ int main(int argc, char **argv) {
             return EXIT_FAILURE;
         }
         probe_full_frame = *value != 0u;
+    }
+    auto scheduler =
+        psycles::luisa_backend::LuisaPathScheduler::megakernel;
+    if (argc > 17) {
+        const auto parsed =
+            psycles::luisa_backend::parse_luisa_path_scheduler(
+                argv[17]);
+        if (!parsed) {
+            std::cerr
+                << "error: invalid path scheduler '" << argv[17]
+                << "' (expected megakernel, wavefront, or persistent)\n";
+            return EXIT_FAILURE;
+        }
+        scheduler = *parsed;
     }
     auto path_trace_sink =
         path_trace_output
@@ -385,6 +403,7 @@ int main(int argc, char **argv) {
     psycles::luisa_backend::LuisaPathTracerBackend renderer{
         std::move(device),
         {.next_event_estimation = true,
+         .scheduler = scheduler,
          .max_samples_per_dispatch =
              max_samples_per_dispatch,
          .path_trace = path_trace_request}};
@@ -583,7 +602,10 @@ int main(int argc, char **argv) {
                 std::chrono::steady_clock::now() - render_begin)
                 .count();
         std::cout
-            << "Luisa/" << backend_name << " compiled "
+            << "Luisa/" << backend_name << '/'
+            << psycles::luisa_backend::luisa_path_scheduler_name(
+                   scheduler)
+            << " compiled "
             << imported.scene->geometries.size() << " geometries, "
             << imported.scene->instances.size() << " instances, "
             << imported.scene->materials.size() << " materials in "
@@ -727,7 +749,10 @@ int main(int argc, char **argv) {
 #endif
 
     std::cout
-        << "Luisa/" << backend_name << " compiled "
+        << "Luisa/" << backend_name << '/'
+        << psycles::luisa_backend::luisa_path_scheduler_name(
+               scheduler)
+        << " compiled "
         << imported.scene->geometries.size() << " geometries, "
         << imported.scene->instances.size() << " instances, "
         << imported.scene->materials.size() << " materials in "
