@@ -4,7 +4,7 @@ Date: 2026-08-10
 
 ## Outcome
 
-This checkpoint removes thirteen independent sources of scene-dependent path-kernel
+This checkpoint removes fourteen independent sources of scene-dependent path-kernel
 growth without changing Blender graph values or Cycles closure semantics:
 
 1. emission code is recorded only for surface tags whose scene-unioned closure
@@ -40,16 +40,24 @@ growth without changing Blender graph values or Cycles closure semantics:
     behind device-side kind tests; and
 13. analytic-lamp closest-event intersection and forward shading are recorded
     only when the uploaded scene contains at least one analytic lamp, instead
-    of relying on a zero-trip device loop to erase its already-recorded body.
+    of relying on a zero-trip device loop to erase its already-recorded body;
+    and
+14. triangle and curve traversal, primitive resolution, material lookup, and
+    differential geometry are recorded only for primitive populations present
+    in the immutable uploaded scene. Device hit-kind dispatch remains only for
+    genuinely mixed triangle/curve acceleration structures.
 
 On the unchanged Lone Monk export, the complete cold Vulkan path module falls
-from 203,652 to 92,229 pre-restructure XIR instructions (54.7%). The main
-kernel falls 51.4%, raw SPIR-V falls 56.7%, and native AST-to-SPIR-V time falls
-65.2%. Complete cold JIT time falls 45.3%. The 1x1 compiler-isolation PPM, all
-fifteen PFM passes, and
-capture-date-normalized EXR remain byte-identical. A separate 960x540 HIP
-render confirms no structured image change. The latest same-period interleaved
-HIP A/B is throughput-neutral within 0.13%.
+from 203,652 to 85,160 pre-restructure XIR instructions (58.2%). The main
+kernel falls 56.3%, raw SPIR-V falls 60.9%, optimized SPIR-V falls 54.1%, and
+native AST-to-SPIR-V time falls 67.8%. The latest primitive specialization by
+itself removes 10.1% of the main kernel and improves a same-period interleaved
+960x540, 64 spp HIP A/B by 2.94% (`1.0303x`). The 1x1 compiler-isolation PPM
+and all fifteen PFM passes remain byte-identical, while the high-resolution HIP
+difference remains inside unchanged-binary nondeterminism and has no structured
+image change. The current cold Vulkan driver sample is reported separately and
+is not presented as a JIT-time win because driver pipeline creation varied in
+the opposite direction.
 
 ## Formal reachability rule
 
@@ -860,6 +868,100 @@ black apart from isolated subpixel points and has no structured feature:
 
 ![Lone Monk retained/pruned analytic endpoints and linear difference](lone-monk-analytic-endpoint-capability-triptych.png)
 
+## Host-specialized scene primitive plan
+
+The next source-attributed audit found the same staging error around primitive
+kinds. Lone Monk uploads 348 triangle geometries and 87,534 instances, but no
+curve geometry. The former kernel nevertheless recorded curve primitive and
+material resolution, ribbon intersection, procedural ray-query callbacks, and
+curve surface geometry behind device-side hit-kind tests. Conversely, a
+curve-only scene would retain the complete triangle resolver. The runtime
+predicate could prevent execution but could not prevent AST construction.
+
+Geometry populations are immutable while a render kernel is recorded, so the
+central host/JIT scene plan now implements the exact finite relation
+
+```text
+primitive_stages(scene) =
+    {triangle | triangle_geometry_count > 0}
+    union {curve | curve_geometry_count > 0}
+
+dynamic_hit_kind_dispatch(scene) iff
+    triangle in primitive_stages(scene)
+    and curve in primitive_stages(scene)
+```
+
+The same plan is consumed by primary and shadow traversal, closest-event
+material resolution, primitive surface geometry, triangle differentials,
+shadow-terminator geometry, ray-origin construction, and the exact
+source-completion path. Triangle and procedural ray-query callbacks are
+registered only when their corresponding population exists. An empty scene
+records a typed miss/default result without a ray query. A positive population
+does not specialize instance transforms, primitive indices, materials, alpha,
+visibility, or hit values; it only selects which original Luisa DSL components
+can be reached.
+
+The focused traversal regression records all four members of the finite
+population lattice and inspects the translated XIR ray-query operations. It
+requires absent callback bodies to be genuinely absent, not merely guarded by
+a constant or zero-trip loop:
+
+| Primitive population | XIR instructions | triangle candidate read | procedural candidate read |
+| --- | ---: | ---: | ---: |
+| empty | 119 | absent | absent |
+| triangles only | 5,975 | present | absent |
+| curves only | 5,009 | absent | present |
+| triangles and curves | 10,343 | present | present |
+
+Thus triangle-only traversal is 42.2% smaller than mixed traversal in the
+focused fixture. On the full triangle-only Lone Monk scene, relative to the
+analytic-endpoint checkpoint:
+
+| Metric | Analytic endpoint plan | + primitive capability plan | Change |
+| --- | ---: | ---: | ---: |
+| XIR definitions | 35 | 35 | unchanged |
+| total XIR instructions | 92,229 | 85,160 | -7,069 (-7.67%) |
+| main-kernel XIR instructions | 70,043 | 62,974 | -7,069 (-10.09%) |
+| `surface_evaluate_light` XIR instructions | 13,710 | 13,710 | unchanged |
+| raw SPIR-V words | 619,582 | 559,906 | -59,676 (-9.63%) |
+| optimized SPIR-V words | 568,660 | 511,858 | -56,802 (-9.99%) |
+| structured XIR optimization | 1,018.04 ms | 1,011.51 ms | -0.64% |
+| ordinary XIR inline | 197.99 ms | 188.94 ms | -4.57% |
+| SPIR-V XIR legalization | 3,433.42 ms | 3,185.73 ms | -7.21% |
+| native AST-to-SPIR-V | 8,183.65 ms | 7,567.40 ms | -7.53% |
+| driver compute-pipeline creation | 51,845.50 ms | 55,623.00 ms | +7.29% |
+| complete shader JIT | 60,120.4 ms | 63,276.7 ms | +5.25% |
+
+The structural and frontend reductions are deterministic. The one cold RADV
+driver sample moved in the opposite direction and dominates end-to-end JIT, so
+neither that row nor the resulting JIT row is claimed as a timing improvement.
+The detailed native-Vulkan trace and outputs are under
+`/var/tmp/psycles-primitive-capability-xir-20260810/` and
+`/var/tmp/psycles-primitive-capability-20260810/`. Native XIR-to-SPIR-V was
+required and no DXC module was loaded. The 1x1 PPM and all fifteen PFM passes
+are byte-identical to the analytic-endpoint checkpoint; the EXR pixels are also
+exactly equal.
+
+A controlled same-period HIP A/B used separate executables and the fixed order
+retained/pruned/pruned/retained/retained/pruned. At 960x540 and 64 spp the
+retained mixed-primitive body took `{6.13302, 6.09590, 6.11007}` seconds (mean
+`6.112997`), while the triangle-specialized body took
+`{5.92284, 5.94545, 5.93101}` seconds (mean `5.933100`). This is a measured
+2.94% render-stage reduction, or `1.0303x` speedup.
+
+Twelve of fifteen linear PFM passes are byte-identical. Combined, Diffuse
+Indirect, and Glossy Indirect contain the same sparse HIP nondeterminism seen
+before this refactor. Combined differs at 31 of 518,400 pixels above `1e-6`
+(0.00598%), with RMSE `1.1312e-4`, relative RMSE `6.1763e-5`, and maximum
+linear error `0.09108`. An unchanged retained-binary repetition already has
+RMSE `1.1285e-4` and the same maximum error, so the A/B is inside the measured
+same-binary envelope. I inspected the full-resolution triptych: geometry,
+silhouettes, grass, materials, textures, and illumination are visually
+identical, and the difference panel contains only isolated pixels with no
+structured feature:
+
+![Lone Monk retained/pruned primitive stages and linear difference](lone-monk-primitive-capability-triptych.png)
+
 ## Lone Monk cold Vulkan measurements
 
 Each row is one shader-cache-disabled process compiling and executing the full
@@ -912,11 +1014,12 @@ ramp, and sampled RGB Curve definitions contain 72, 48, and 189 instructions.
 The only reachable Normal Map definition is the 75-instruction
 tangent-displaced endpoint. The only reachable Bump definition is the
 49-instruction world endpoint. The reachable signed-Perlin definitions contain
-524 instructions for 3D and 262 for 2D. After both emitter-capability plans,
-driver pipeline creation remains 86.2% of the current JIT wall time and is the
-dominant Vulkan tail; further
-IR work should still reduce its input, but XIR passes are no longer the
-majority of the measured wall time.
+524 instructions for 3D and 262 for 2D. Across the analytic-endpoint and
+primitive-capability cold samples, driver pipeline creation is 86--88% of JIT
+wall time and remains the dominant Vulkan tail. Further IR work should still
+reduce its input, but XIR passes are no longer the majority of the measured
+wall time. The one-sample driver variance is why structural counts and
+frontend phases are reported independently above.
 
 The exact output fingerprints for all retained checkpoints are:
 
@@ -929,8 +1032,9 @@ EXR (capDate normalized):
 
 Raw EXR files intentionally carry their capture time in `capDate`, so their
 container hashes differ between runs. Rewriting only that metadata attribute to
-the same fixed value makes the retained shader-table, Normal Map, Bump, and
-signed-Perlin compiler-isolation EXRs byte-identical.
+the same fixed value makes the retained shader-table, Normal Map, Bump,
+signed-Perlin, emitter-capability, and primitive-capability compiler-isolation
+EXRs byte-identical.
 
 The cold table itself remains a 1x1 compile-isolation measurement. The 960x540
 triptych above is a before/after refactor check, not a Cycles/Psycles scene
@@ -969,13 +1073,17 @@ for each specular family.
 | signed-Perlin used-only/bound/runtime-loop guards | pass | pass | pass |
 | direct-light component capability plan | pass | pass | pass |
 | analytic endpoint zero/nonzero scene plan | pass | pass | pass |
+| primitive population lattice and device-visible plan | pass | pass | pass |
+| traversal callback absence and XIR shape bound | pass | pass | pass |
 | environment/mesh/analytic/no-light full path fixtures | pass | pass | pass |
 | surface metadata/reachability regressions | pass | shared host test | shared host test |
 
 A complete `cmake --build build -j$(nproc)` passed after the capability plan
-was finalized. Its dedicated fallback/HIP/native-Vulkan regression passes all
-three zero/nonzero population combinations, and the existing full-path fixture
-passes environment, emissive mesh, analytic area light, no-light, and
+was finalized. Twelve dedicated device runs cover scene traversal, the central
+scene-stage plan, curve paths, and forward area-light paths on fallback, HIP,
+and native-XIR Vulkan. The population fixture covers empty, triangles-only,
+curves-only, and mixed scenes, while the existing full-path fixture continues
+to pass environment, emissive mesh, analytic area light, no-light, and
 non-evaluable-BSDF scenes on all three backends. The light-tree scene tests also
 pass on all three backends.
 
@@ -985,17 +1093,18 @@ run and all focused regressions used the same production implementation.
 
 ## Remaining hotspot
 
-The next structural target is the remaining 70,043-instruction main kernel.
-The source-attributed raw-XIR audit identifies scene traversal/primitive
-material resolution and the two reachable NEE components as the next large
-regions. They must first be split into capability-controlled semantic stages;
-moving a body to a callable without reducing complete-module instructions is
-not sufficient. The shared Bump endpoint now bounds its post-height geometry,
-but each topology must still schedule its own height dependency at three
+The next structural target is the remaining 62,974-instruction main kernel.
+The triangle-only traversal leak is now removed, so the next source-attributed
+audit must separate exact triangle source completion, the two reachable NEE
+components, and graph evaluation before choosing another boundary. In
+particular, source completion and tie traversal may be specialized only from
+scene metadata that formally proves those paths unreachable; a device zero-trip
+loop is not such a proof. The shared Bump endpoint bounds its post-height
+geometry, but each topology still schedules its height dependency at three
 differential points. Graph-value operators and that dependency scheduling also
-warrant measurement because the already-deduplicated 24 topologies still
-contain 1,438 unique values. Any extraction must preserve a typed semantic
-contract and pass a complete-module negative-boundary A/B like the ones above.
-Separately, Vulkan driver pipeline creation warrants driver-level profiling
-against optimized SPIR-V shape; blindly adding more XIR passes would not
-address its measured share.
+warrant measurement because the already-deduplicated 24 topologies contain
+1,438 unique values. Any extraction must preserve a typed semantic contract and
+pass a complete-module negative-boundary A/B like the ones above. Separately,
+Vulkan driver pipeline creation warrants driver-level profiling against
+optimized SPIR-V shape; blindly adding more XIR passes would not address its
+measured share.

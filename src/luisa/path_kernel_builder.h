@@ -1,5 +1,6 @@
 #pragma once
 
+#include "path_kernel_scene_geometry_plan.h"
 #include "path_kernel_volume_state.h"
 #include "path_tracer_camera.h"
 #include "path_tracer_environment.h"
@@ -87,6 +88,7 @@ struct PathKernelSceneStagePlan {
     // proves that neither the software intersection loop nor forward-light
     // shading can be reached.
     bool analytic_light_endpoints{};
+    ScenePrimitiveStagePlan primitives{};
     DirectLightingStagePlan direct_lighting{};
 };
 
@@ -113,10 +115,16 @@ make_path_kernel_scene_stage_plan(
     bool next_event_estimation,
     bool environment_in_distribution,
     std::uint32_t emissive_triangle_count,
-    std::uint32_t analytic_light_count) noexcept {
+    std::uint32_t analytic_light_count,
+    std::size_t triangle_geometry_count,
+    std::size_t curve_geometry_count) noexcept {
     return {
         .analytic_light_endpoints =
             analytic_light_count != 0u,
+        .primitives =
+            make_scene_primitive_stage_plan(
+                triangle_geometry_count,
+                curve_geometry_count),
         .direct_lighting =
             make_direct_lighting_stage_plan(
                 next_event_estimation,
@@ -410,6 +418,8 @@ struct VolumeSegmentEvent {
 
 struct SurfaceGeometryContext {
     PathBounceContext &bounce;
+    // Host/JIT metadata; this field never crosses the device ABI.
+    ScenePrimitiveStagePlan primitive_plan;
     UInt emission_sampling;
     Var<InstanceGpu> instance;
     Float3 p0;
@@ -545,10 +555,12 @@ class SubsurfaceTransportStage {
 };
 
 [[nodiscard]] std::unique_ptr<PathBounceSetupStage>
-make_path_bounce_setup_stage();
+make_path_bounce_setup_stage(
+    ScenePrimitiveStagePlan plan);
 [[nodiscard]] std::unique_ptr<ClosestEventStage>
 make_closest_event_stage(
-    bool analytic_light_endpoints);
+    bool analytic_light_endpoints,
+    ScenePrimitiveStagePlan primitive_plan);
 [[nodiscard]] std::unique_ptr<ForwardLightStage>
 make_forward_light_stage();
 [[nodiscard]] std::unique_ptr<PathVolumeSegmentStage>
@@ -557,7 +569,8 @@ make_path_volume_segment_stage(
 [[nodiscard]] std::unique_ptr<BackgroundEventStage>
 make_background_event_stage();
 [[nodiscard]] std::unique_ptr<SurfaceGeometryStage>
-make_surface_geometry_stage();
+make_surface_geometry_stage(
+    ScenePrimitiveStagePlan plan);
 [[nodiscard]] std::unique_ptr<SurfaceShadingStage> make_surface_shading_stage();
 [[nodiscard]] std::unique_ptr<DirectLightingComponent>
 make_environment_lighting_component(

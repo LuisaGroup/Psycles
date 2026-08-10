@@ -15,6 +15,8 @@
 #include <string_view>
 
 #include <luisa/luisa-compute.h>
+#include <luisa/xir/instructions/ray_query.h>
+#include <luisa/xir/translators/ast2xir.h>
 
 namespace {
 
@@ -69,6 +71,54 @@ inline constexpr std::size_t record_count = 26u;
       InstanceGpu{.cycles_object_index = 5u},
       InstanceGpu{.cycles_object_index = 5u}};
   return !make_cycles_completion_source_lookup(duplicate_instances).ok();
+}
+
+struct TraversalXirShape {
+  std::size_t instructions{};
+  std::size_t triangle_candidate_reads{};
+  std::size_t procedural_candidate_reads{};
+};
+
+[[nodiscard]] TraversalXirShape traversal_xir_shape(
+    const std::shared_ptr<LuisaSceneData> &scene,
+    ScenePrimitiveStagePlan plan) {
+  const auto traversal = make_scene_traversal_component(plan);
+  Kernel1D shape = [scene, traversal](BufferUInt output) noexcept {
+    const auto ray = make_ray(
+        make_float3(0.0f), make_float3(0.0f, 0.0f, 1.0f), 0.0f, 10.0f);
+    const auto hit = traversal->closest(
+        scene, ray, 0xffu, ScenePrimitiveIdentity::invalid());
+    output.write(0u, hit->inst);
+  };
+  auto module = luisa::compute::xir::ast_to_xir_translate(
+      shape.function()->function(), {});
+  TraversalXirShape result;
+  for (auto *function : module->function_list()) {
+    if (const auto *definition = function->definition()) {
+      definition->traverse_instructions(
+          [&](const luisa::compute::xir::Instruction *instruction) noexcept {
+            ++result.instructions;
+            if (instruction->isa<
+                    luisa::compute::xir::RayQueryObjectReadInst>()) {
+              const auto *read = static_cast<const luisa::compute::xir::
+                  RayQueryObjectReadInst *>(instruction);
+              result.triangle_candidate_reads +=
+                  read->op() == luisa::compute::xir::
+                                    RayQueryObjectReadOp::
+                                        RAY_QUERY_OBJECT_TRIANGLE_CANDIDATE_HIT
+                      ? 1u
+                      : 0u;
+              result.procedural_candidate_reads +=
+                  read->op() == luisa::compute::xir::
+                                    RayQueryObjectReadOp::
+                                        RAY_QUERY_OBJECT_PROCEDURAL_CANDIDATE_HIT
+                      ? 1u
+                      : 0u;
+            }
+          });
+    }
+  }
+  return result;
 }
 
 } // namespace
@@ -549,8 +599,41 @@ int main(int argc, char **argv) {
       partial_support_mesh, to_luisa(partial_b_transform),
       0xffu, false, 11u);
 
+  const auto empty_shape = traversal_xir_shape(scene, {});
+  const auto triangle_shape = traversal_xir_shape(
+      scene, {.triangles = true});
+  const auto curve_shape = traversal_xir_shape(
+      scene, {.curves = true});
+  const auto mixed_shape = traversal_xir_shape(
+      scene, {.triangles = true, .curves = true});
+  const auto report_shapes =
+      std::getenv("PSYCLES_REPORT_SHADER_SHAPES") != nullptr;
+  if (report_shapes) {
+    std::cerr << "scene traversal XIR: empty=" << empty_shape.instructions
+              << ", triangles=" << triangle_shape.instructions
+              << ", curves=" << curve_shape.instructions
+              << ", mixed=" << mixed_shape.instructions << '\n';
+  }
+  if (empty_shape.triangle_candidate_reads != 0u ||
+      empty_shape.procedural_candidate_reads != 0u ||
+      triangle_shape.triangle_candidate_reads == 0u ||
+      triangle_shape.procedural_candidate_reads != 0u ||
+      curve_shape.triangle_candidate_reads != 0u ||
+      curve_shape.procedural_candidate_reads == 0u ||
+      mixed_shape.triangle_candidate_reads == 0u ||
+      mixed_shape.procedural_candidate_reads == 0u ||
+      !(empty_shape.instructions < triangle_shape.instructions &&
+        empty_shape.instructions < curve_shape.instructions &&
+        triangle_shape.instructions < mixed_shape.instructions &&
+        curve_shape.instructions < mixed_shape.instructions)) {
+    std::cerr << "FAILED: primitive capability did not bound scene-traversal "
+                 "XIR\n";
+    return EXIT_FAILURE;
+  }
+
   auto output = device.create_buffer<luisa::float4>(record_count);
-  const auto traversal = make_scene_traversal_component();
+  const auto traversal = make_scene_traversal_component(
+      {.triangles = true, .curves = true});
   const auto curve_primitive = make_curve_primitive_component();
   const auto curve_geometry = make_curve_geometry_component();
   Kernel1D evaluate = [scene, traversal, curve_primitive,

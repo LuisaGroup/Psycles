@@ -15,17 +15,27 @@ class ClosestEventStageImpl final
 
   private:
     bool _analytic_light_endpoints;
+    ScenePrimitiveStagePlan _primitive_plan;
     std::shared_ptr<const TrianglePrimitiveComponent>
-        _triangles{
-            make_triangle_primitive_component()};
+        _triangles;
     std::shared_ptr<const CurvePrimitiveComponent>
-        _curves{make_curve_primitive_component()};
+        _curves;
 
   public:
     explicit ClosestEventStageImpl(
-        bool analytic_light_endpoints) noexcept
+        bool analytic_light_endpoints,
+        ScenePrimitiveStagePlan primitive_plan) noexcept
         : _analytic_light_endpoints{
-              analytic_light_endpoints} {}
+              analytic_light_endpoints},
+          _primitive_plan{primitive_plan},
+          _triangles{
+              primitive_plan.triangles
+                  ? make_triangle_primitive_component()
+                  : nullptr},
+          _curves{
+              primitive_plan.curves
+                  ? make_curve_primitive_component()
+                  : nullptr} {}
 
     ClosestPathEvent
     emit(
@@ -229,8 +239,8 @@ class ClosestEventStageImpl final
         UInt surface_emission_sampling =
             static_cast<std::uint32_t>(
                 contract::EmissionSampling::none);
-        $if(surface) {
-            $if(bounce.hit->is_procedural()) {
+        if (!_primitive_plan.empty()) {
+            const auto resolve_curve = [&] {
                 const auto primitive =
                     _curves->emit(
                         scene,
@@ -241,8 +251,8 @@ class ClosestEventStageImpl final
                 surface_emission_sampling =
                     primitive
                         .triangle_emission_sampling;
-            }
-            $else {
+            };
+            const auto resolve_triangle = [&] {
                 const auto primitive =
                     _triangles->emit(
                         scene,
@@ -254,7 +264,21 @@ class ClosestEventStageImpl final
                     primitive
                         .triangle_emission_sampling;
             };
-        };
+            $if(surface) {
+                if (_primitive_plan.mixed()) {
+                    $if(bounce.hit->is_procedural()) {
+                        resolve_curve();
+                    }
+                    $else {
+                        resolve_triangle();
+                    };
+                } else if (_primitive_plan.curves) {
+                    resolve_curve();
+                } else {
+                    resolve_triangle();
+                }
+            };
+        }
         return {
             bounce,
             std::move(light_hit),
@@ -278,10 +302,12 @@ class ClosestEventStageImpl final
 
 std::unique_ptr<ClosestEventStage>
 make_closest_event_stage(
-    bool analytic_light_endpoints) {
+    bool analytic_light_endpoints,
+    ScenePrimitiveStagePlan primitive_plan) {
     return std::make_unique<
         ClosestEventStageImpl>(
-        analytic_light_endpoints);
+        analytic_light_endpoints,
+        primitive_plan);
 }
 
 }// namespace psycles::luisa_backend::detail

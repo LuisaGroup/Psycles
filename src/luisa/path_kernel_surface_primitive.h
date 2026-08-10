@@ -1,5 +1,6 @@
 #pragma once
 
+#include "path_kernel_scene_geometry_plan.h"
 #include "path_tracer_lighting.h"
 
 #include <memory>
@@ -51,6 +52,7 @@ public:
 };
 
 [[nodiscard]] std::shared_ptr<const SurfacePrimitiveGeometryComponent>
-make_surface_primitive_geometry_component();
+make_surface_primitive_geometry_component(
+    ScenePrimitiveStagePlan plan);
 
 } // namespace psycles::luisa_backend::detail

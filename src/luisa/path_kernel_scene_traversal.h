@@ -1,5 +1,6 @@
 #pragma once
 
+#include "path_kernel_scene_geometry_plan.h"
 #include "path_tracer_internal.h"
 
 #include <memory>
@@ -41,6 +42,7 @@ public:
 };
 
 [[nodiscard]] std::shared_ptr<const SceneTraversalComponent>
-make_scene_traversal_component();
+make_scene_traversal_component(
+    ScenePrimitiveStagePlan plan);
 
 } // namespace psycles::luisa_backend::detail
