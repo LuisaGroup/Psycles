@@ -97,6 +97,15 @@ target_include_directories(
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
 
 psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_texture_sampling_callable_tests
+    SOURCE tests/test_luisa_texture_sampling_callable.cpp
+    TEST_STEM luisa_texture_sampling_callable
+    LIBRARIES Psycles::luisa_runtime)
+target_include_directories(
+    psycles_luisa_texture_sampling_callable_tests
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
+
+psycles_add_luisa_backend_test(
     TARGET psycles_luisa_principled_thin_wall_tests
     SOURCE tests/test_luisa_principled_thin_wall.cpp
     TEST_STEM luisa_principled_thin_wall

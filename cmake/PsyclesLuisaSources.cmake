@@ -140,6 +140,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_tracer_surface_closure_sampling.cpp
     src/luisa/path_tracer_surface_closure_setup.cpp
     src/luisa/path_tracer_surfaces.cpp
+    src/luisa/path_tracer_texture_sampling.cpp
     src/luisa/path_tracer_volume_capabilities.cpp
     src/luisa/path_tracer_volume_majorant_scene.cpp
     src/luisa/path_tracer_volume_metadata.cpp

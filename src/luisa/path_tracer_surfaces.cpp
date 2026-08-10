@@ -21,8 +21,10 @@ SurfaceCallables make_surface_callables(
         make_surface_closure_sampling_callables(scene);
     const auto closure_setup =
         make_surface_closure_setup_callables();
+    const auto texture_sampling =
+        make_texture_2d_sampling_callables();
     SurfacePreparationCallable preparation =
-        [scene, closure_setup](
+        [scene, closure_setup, texture_sampling](
             BufferFloat scalar_parameters,
             BufferFloat3 vector_parameters,
             BufferFloat cycles_bsdf_tables,
@@ -34,6 +36,9 @@ SurfaceCallables make_surface_callables(
             CallableSurfaceClosureSetupProvider setup_provider{
                 cycles_bsdf_tables,
                 closure_setup};
+            CallableTexture2DSamplingProvider texture_provider{
+                textures,
+                texture_sampling};
             BufferShaderServices services{
                 scalar_parameters,
                 vector_parameters,
@@ -44,7 +49,8 @@ SurfaceCallables make_surface_callables(
                 scene->attribute_range_slot,
                 scene->nishita_texture_bindings,
                 scene->shader_color_space,
-                &setup_provider};
+                &setup_provider,
+                &texture_provider};
             return pack_surface_preparation(
                 scene->surfaces.prepare(
                     surface_tag,
@@ -54,7 +60,10 @@ SurfaceCallables make_surface_callables(
         };
     preparation.set_name("surface_prepare");
     SurfaceEvaluateLightCallable evaluate_light =
-        [scene, closure_evaluation, closure_setup](
+        [scene,
+         closure_evaluation,
+         closure_setup,
+         texture_sampling](
             BufferFloat scalar_parameters,
             BufferFloat3 vector_parameters,
             BufferFloat cycles_bsdf_tables,
@@ -72,6 +81,9 @@ SurfaceCallables make_surface_callables(
             CallableSurfaceClosureSetupProvider setup_provider{
                 cycles_bsdf_tables,
                 closure_setup};
+            CallableTexture2DSamplingProvider texture_provider{
+                textures,
+                texture_sampling};
             BufferShaderServices services{
                 scalar_parameters,
                 vector_parameters,
@@ -82,7 +94,8 @@ SurfaceCallables make_surface_callables(
                 scene->attribute_range_slot,
                 scene->nishita_texture_bindings,
                 scene->shader_color_space,
-                &setup_provider};
+                &setup_provider,
+                &texture_provider};
             auto query = SurfaceLightQuery{
                 .surface = {
                     .lobe_mask = lobe_mask,
@@ -127,7 +140,7 @@ SurfaceCallables make_surface_callables(
         };
     evaluate_light.set_name("surface_evaluate_light");
     SurfaceEmissionCallable emission =
-        [scene](
+        [scene, texture_sampling](
             BufferFloat scalar_parameters,
             BufferFloat3 vector_parameters,
             BufferFloat cycles_bsdf_tables,
@@ -137,6 +150,9 @@ SurfaceCallables make_surface_callables(
             Var<SurfacePointCall> packed_point,
             Float3 outgoing,
             Bool reflective_caustics) noexcept {
+            CallableTexture2DSamplingProvider texture_provider{
+                textures,
+                texture_sampling};
             BufferShaderServices services{
                 scalar_parameters,
                 vector_parameters,
@@ -146,7 +162,9 @@ SurfaceCallables make_surface_callables(
                 scene->attribute_binding_slot,
                 scene->attribute_range_slot,
                 scene->nishita_texture_bindings,
-                scene->shader_color_space};
+                scene->shader_color_space,
+                nullptr,
+                &texture_provider};
             return scene->surfaces.emission(
                 surface_tag,
                 services,
@@ -174,7 +192,8 @@ SurfaceCallables make_surface_callables(
         [scene,
          closure_sampling,
          closure_evaluation,
-         closure_setup](
+         closure_setup,
+         texture_sampling](
             BufferFloat scalar_parameters,
             BufferFloat3 vector_parameters,
             BufferFloat cycles_bsdf_tables,
@@ -192,6 +211,9 @@ SurfaceCallables make_surface_callables(
             CallableSurfaceClosureSetupProvider setup_provider{
                 cycles_bsdf_tables,
                 closure_setup};
+            CallableTexture2DSamplingProvider texture_provider{
+                textures,
+                texture_sampling};
             BufferShaderServices services{
                 scalar_parameters,
                 vector_parameters,
@@ -202,7 +224,8 @@ SurfaceCallables make_surface_callables(
                 scene->attribute_range_slot,
                 scene->nishita_texture_bindings,
                 scene->shader_color_space,
-                &setup_provider};
+                &setup_provider,
+                &texture_provider};
             auto query = SurfaceQuery{
                 .lobe_mask = lobe_mask,
                 .transport_mode = transport_mode,
@@ -233,7 +256,10 @@ SurfaceCallables make_surface_callables(
         };
     sample.set_name("surface_sample");
     SurfaceClosureTraceCallable closure_trace =
-        [scene, closure_identity, closure_setup](
+        [scene,
+         closure_identity,
+         closure_setup,
+         texture_sampling](
             BufferFloat scalar_parameters,
             BufferFloat3 vector_parameters,
             BufferFloat cycles_bsdf_tables,
@@ -247,6 +273,9 @@ SurfaceCallables make_surface_callables(
             CallableSurfaceClosureSetupProvider setup_provider{
                 cycles_bsdf_tables,
                 closure_setup};
+            CallableTexture2DSamplingProvider texture_provider{
+                textures,
+                texture_sampling};
             BufferShaderServices services{
                 scalar_parameters,
                 vector_parameters,
@@ -257,7 +286,8 @@ SurfaceCallables make_surface_callables(
                 scene->attribute_range_slot,
                 scene->nishita_texture_bindings,
                 scene->shader_color_space,
-                &setup_provider};
+                &setup_provider,
+                &texture_provider};
             const auto point =
                 unpack_surface_point(packed_point);
             SurfaceClosureTraceVisitor visitor{
@@ -279,7 +309,8 @@ SurfaceCallables make_surface_callables(
         [scene,
          closure_sampling,
          closure_evaluation,
-         closure_setup](
+         closure_setup,
+         texture_sampling](
             BufferFloat scalar_parameters,
             BufferFloat3 vector_parameters,
             BufferFloat cycles_bsdf_tables,
@@ -297,6 +328,9 @@ SurfaceCallables make_surface_callables(
             CallableSurfaceClosureSetupProvider setup_provider{
                 cycles_bsdf_tables,
                 closure_setup};
+            CallableTexture2DSamplingProvider texture_provider{
+                textures,
+                texture_sampling};
             BufferShaderServices services{
                 scalar_parameters,
                 vector_parameters,
@@ -307,7 +341,8 @@ SurfaceCallables make_surface_callables(
                 scene->attribute_range_slot,
                 scene->nishita_texture_bindings,
                 scene->shader_color_space,
-                &setup_provider};
+                &setup_provider,
+                &texture_provider};
             auto query = SurfaceQuery{
                 .lobe_mask = lobe_mask,
                 .transport_mode = transport_mode,
@@ -340,7 +375,7 @@ SurfaceCallables make_surface_callables(
         };
     sample_trace.set_name("surface_sample_trace");
     SurfaceBssrdfNormalCallable bssrdf_normal =
-        [scene, closure_setup](
+        [scene, closure_setup, texture_sampling](
             BufferFloat scalar_parameters,
             BufferFloat3 vector_parameters,
             BufferFloat cycles_bsdf_tables,
@@ -353,6 +388,9 @@ SurfaceCallables make_surface_callables(
             CallableSurfaceClosureSetupProvider setup_provider{
                 cycles_bsdf_tables,
                 closure_setup};
+            CallableTexture2DSamplingProvider texture_provider{
+                textures,
+                texture_sampling};
             BufferShaderServices services{
                 scalar_parameters,
                 vector_parameters,
@@ -363,7 +401,8 @@ SurfaceCallables make_surface_callables(
                 scene->attribute_range_slot,
                 scene->nishita_texture_bindings,
                 scene->shader_color_space,
-                &setup_provider};
+                &setup_provider,
+                &texture_provider};
             const auto point =
                 unpack_surface_point(packed_point);
             SurfaceBssrdfNormalVisitor visitor{
@@ -380,7 +419,7 @@ SurfaceCallables make_surface_callables(
         };
     bssrdf_normal.set_name("surface_bssrdf_normal");
     SurfaceShadingNormalCallable shading_normal =
-        [scene](
+        [scene, texture_sampling](
             BufferFloat scalar_parameters,
             BufferFloat3 vector_parameters,
             BufferFloat cycles_bsdf_tables,
@@ -388,6 +427,9 @@ SurfaceCallables make_surface_callables(
             BindlessVar geometry_heap,
             UInt surface_tag,
             Var<SurfacePointCall> packed_point) noexcept {
+            CallableTexture2DSamplingProvider texture_provider{
+                textures,
+                texture_sampling};
             BufferShaderServices services{
                 scalar_parameters,
                 vector_parameters,
@@ -397,7 +439,9 @@ SurfaceCallables make_surface_callables(
                 scene->attribute_binding_slot,
                 scene->attribute_range_slot,
                 scene->nishita_texture_bindings,
-                scene->shader_color_space};
+                scene->shader_color_space,
+                nullptr,
+                &texture_provider};
             return scene->surfaces.shading_normal(
                 surface_tag,
                 services,
