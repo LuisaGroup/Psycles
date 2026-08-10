@@ -1,9 +1,7 @@
 #include "path_kernel_builder.h"
-#include "cycles_shader_identity.h"
 #include "path_kernel_direct_light_trace.h"
 #include "path_kernel_emissive_triangle.h"
 
-#include <psycles/luisa/cycles_ray_differential.h>
 #include <psycles/luisa/surface_ray.h>
 
 #include <utility>
@@ -27,8 +25,9 @@ class EmissiveMeshLightingComponent final
         std::shared_ptr<const DirectLightTraceRecorder> trace)
         : _trace{std::move(trace)} {}
 
-    void emit(
-        DirectLightingContext &context)
+    void prepare(
+        DirectLightingContext &context,
+        DirectLightTransportState &transport)
         const noexcept override {
         auto &bounce = context.bounce;
         auto &sample = bounce.sample;
@@ -40,8 +39,6 @@ class EmissiveMeshLightingComponent final
             context.surface;
         auto &selected_light =
             bounce.selected_light;
-        auto &hit =
-            bounce.hit;
         const auto selected_mesh =
             selected_light.kind ==
             static_cast<std::uint32_t>(
@@ -172,121 +169,16 @@ class EmissiveMeshLightingComponent final
                     _trace->record_weighted_bsdf(
                         bounce, weighted_bsdf);
                     $if(any(weighted_bsdf != 0.0f)) {
-                        const auto unshadowed =
-                            weighted_bsdf * light_shader_factor;
-                        const auto roulette_weight =
-                            invocation.sample_light_roulette(
-                                unshadowed,
-                                bounce.light_terminate_sample);
-                        const auto surviving_unshadowed =
-                            unshadowed * roulette_weight;
-                        _trace->record_transport(
-                            bounce,
-                            {.light_shader = light_shader_factor,
-                             .unshadowed = sample.throughput *
-                                           surviving_unshadowed});
-                        $if(any(surviving_unshadowed != 0.0f)) {
-                            const auto shadow =
-                                surface.make_shadow_origin(
-                                    light.light.direction);
-                            const auto shadow_offset =
-                                light.light.position - shadow.position;
-                            const auto shadow_distance = sqrt(max(
-                                length_squared(shadow_offset),
-                                1.0e-20f));
-                            const auto shadow_direction =
-                                shadow_offset / shadow_distance;
-                            Var<luisa::compute::Ray> shadow_ray = make_ray(
-                                shadow.position,
-                                shadow_direction,
-                                0.0f,
-                                shadow_distance);
-                            const auto source_object = select(
-                                surface_ray::invalid_primitive,
-                                surface.cycles_object_index,
-                                shadow.skip_self);
-                            const auto source_primitive = select(
-                                surface_ray::invalid_primitive,
-                                surface.cycles_primitive_index,
-                                shadow.skip_self);
-                            const auto light_object =
-                                emitter.cycles_object_index;
-                            const auto light_primitive =
-                                emitter.cycles_primitive_index;
-                            const auto cast_shadow =
-                                (emitter.cycles_shader_flags &
-                                 cycles_shader_identity::cast_shadow) != 0u;
-                            const auto shadow_differential =
-                                cycles_ray_differential::for_surface_shadow(
-                                    sample.ray_dD,
-                                    surface.differential_radius,
-                                    evaluation.average_roughness_squared);
-                            const auto shadow_result = config.trace_shadow(
-                                shadow_ray,
-                                shadow_differential.position,
-                                shadow_differential.direction,
-                                source_object,
-                                source_primitive,
-                                light_object,
-                                light_primitive,
-                                invocation.parameters
-                                    .transparent_max_bounces,
-                                pack_shader_evaluation_state(
-                                    cycles_path_state::shadow_shader_state(
-                                        sample.path_depth,
-                                        sample.diffuse_depth,
-                                        sample.glossy_depth,
-                                        sample.transparent_depth,
-                                        sample.transmission_depth)));
-                            const auto transmittance =
-                                shadow_result->transmittance;
-                            _trace->record_shadow(
-                                bounce,
-                                {.origin = shadow_ray->origin(),
-                                 .direction = shadow_ray->direction(),
-                                 .minimum = shadow_ray->t_min(),
-                                 .maximum = shadow_ray->t_max(),
-                                 .cast_shadow = cast_shadow,
-                                 .source_object = source_object,
-                                 .source_primitive = source_primitive,
-                                 .skip_self = shadow.skip_self,
-                                 .light_object = light_object,
-                                 .light_primitive = light_primitive,
-                                 .first_hit =
-                                     shadow_result->first_hit != 0u,
-                                 .first_object =
-                                     shadow_result->first_object,
-                                 .first_primitive =
-                                     shadow_result->first_primitive,
-                                 .first_kind =
-                                     shadow_result->first_kind,
-                                 .first_distance =
-                                     shadow_result->first_distance,
-                                 .first_barycentric =
-                                     shadow_result->first_barycentric,
-                                 .transmittance = transmittance});
-                            $if(any(transmittance > 0.0f)) {
-                                const auto unclamped_contribution =
-                                    sample.throughput *
-                                    surviving_unshadowed * transmittance;
-                                _trace->record_contribution(
-                                    bounce, unclamped_contribution);
-                                const auto contribution =
-                                    invocation.clamp_contribution(
-                                        unclamped_contribution,
-                                        sample.path_depth);
-                                sample.accumulate_radiance(contribution);
-                                sample.accumulate_light_pass(
-                                    config.light_transport.split_nee_light(
-                                        contribution,
-                                        evaluation.f,
-                                        evaluation.diffuse_f,
-                                        evaluation.glossy_f,
-                                        sample.path_diffuse_weight,
-                                        sample.path_glossy_weight,
-                                        sample.path_depth));
-                            };
-                        };
+                        transport.accept(
+                            evaluation,
+                            weighted_bsdf,
+                            light_shader_factor,
+                            light.light.direction,
+                            light.light.position,
+                            false,
+                            emitter.cycles_object_index,
+                            emitter.cycles_primitive_index,
+                            emitter.cycles_shader_flags);
                     };
                 };
             }

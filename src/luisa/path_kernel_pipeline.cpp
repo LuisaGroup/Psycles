@@ -24,6 +24,8 @@ class PathKernelPipeline::Impl {
     std::shared_ptr<const DirectLightTraceRecorder>
         direct_light_trace;
     std::vector<std::unique_ptr<DirectLightingComponent>> direct_lighting;
+    std::unique_ptr<DirectLightTransportStage>
+        direct_light_transport;
     std::unique_ptr<SurfaceScatterStage> surface_scatter;
     std::unique_ptr<SubsurfaceTransportStage> subsurface_transport;
 
@@ -93,6 +95,11 @@ class PathKernelPipeline::Impl {
                 direct_lighting.emplace_back(
                     make_analytic_lighting_component(
                         direct_light_trace));
+            }
+            if (direct_lighting_plan.transport_stage_count() != 0u) {
+                direct_light_transport =
+                    make_direct_light_transport_stage(
+                        direct_light_trace);
             }
             if (config.has_subsurface) {
                 subsurface_transport =
@@ -216,14 +223,19 @@ void PathKernelPipeline::emit(PathSampleContext &sample) const noexcept {
                 .bounce = bounce,
                 .surface = surface,
                 .shading = shading};
-            if (sample.invocation.config.next_event_estimation) {
+            if (_impl->direct_light_transport) {
                 const auto has_evaluable_bsdf =
                     (shading.cycles_surface_runtime_flags &
                      cycles_closure::runtime_bsdf_has_eval) != 0u;
                 $if(has_evaluable_bsdf) {
+                    auto transport =
+                        DirectLightTransportState::empty();
                     for (const auto &component : _impl->direct_lighting) {
-                        component->emit(lighting);
+                        component->prepare(
+                            lighting, transport);
                     }
+                    _impl->direct_light_transport->emit(
+                        lighting, transport);
                 };
             }
             const auto scatter =

@@ -104,6 +104,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_kernel_curve_geometry.cpp
     src/luisa/path_kernel_curve_primitive.cpp
     src/luisa/path_kernel_direct_light_trace.cpp
+    src/luisa/path_kernel_direct_light_transport.cpp
     src/luisa/path_kernel_emissive_triangle.cpp
     src/luisa/path_kernel_environment_light.cpp
     src/luisa/path_kernel_forward_light.cpp
