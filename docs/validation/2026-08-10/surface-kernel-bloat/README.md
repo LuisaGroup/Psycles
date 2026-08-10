@@ -1416,6 +1416,74 @@ all-thread build and all 256 functional tests pass. The separately tracked
 source-file-size policy test was excluded because its three pre-existing
 violations are unrelated to this change.
 
+## Single closure-selection schedule
+
+The branch-local sampler previously recorded both the retention predicate and
+the complete closure-selection expression independently in its measure and
+inverse-CDF passes. For retained closure `i`, let `r_i` be the retention
+predicate and let the pure typed selection expression be
+`s_i = (w_i, n_i, ...)`. The categorical distribution is
+
+```text
+M = sum_i r_i * w_i
+p(i) = r_i * w_i / M
+```
+
+Computing a second syntactic copy of `s_i` cannot change this distribution; it
+only asks the compiler to rediscover that the two expression DAGs are equal
+across separate control-flow regions. The host/JIT stage now builds one
+dynamically sized, strongly typed schedule `{r_i, s_i}` in closure order.
+Measure construction, inverse-CDF selection, the selected normal, and the
+mixture-evaluation pass all consume that schedule. There is no device array,
+generic register file, runtime opcode, or fixed maximum closure count.
+
+The placement is intentional. Keeping each `s_i` assignment inside the first
+conditional and carrying it into the second pass introduced cross-CFG local
+storage; optimized `surface_sample` grew by 192 instructions. Since selection
+is pure and both original uses had the same `r_i`, recording it once before the
+conditional is equivalent and allows ordinary value numbering to share the
+DAG. It does compute one selection for a statically reachable closure whose
+runtime retention is false, rather than two selections when true and zero when
+false, so the change was gated on full-scene HIP throughput rather than accepted
+from IR size alone.
+
+On the unchanged Lone Monk export, relative to closure-domain population:
+
+| Metric | Repeated selection | Single selection schedule | Change |
+| --- | ---: | ---: | ---: |
+| raw dumped XIR bytes | 32,349,931 | 32,119,827 | -230,104 (-0.71%) |
+| optimized dumped XIR bytes | 7,232,917 | 7,170,350 | -62,567 (-0.87%) |
+| optimized XIR instruction lines | 69,681 | 69,153 | -528 (-0.76%) |
+| main path kernel instructions | 7,333 | 7,333 | unchanged |
+| `surface_prepare` instructions | 10,522 | 10,522 | unchanged |
+| `surface_evaluate_light` instructions | 13,002 | 13,002 | unchanged |
+| `surface_sample` instructions | 24,809 | 24,281 | -528 (-2.13%) |
+| `surface_closure_evaluation` instructions | 2,156 | 2,156 | unchanged |
+
+After separately warming both HIP shaders, three interleaved 960x540, 64 spp
+runs used the order old/new/new/old/old/new. Repeated selection took
+`{5.58890, 5.58291, 5.58949}` seconds (mean `5.58710`); the shared schedule
+took `{5.54481, 5.54167, 5.54428}` seconds (mean `5.54359`). This is a 0.779%
+render-time reduction, or `1.00785x` throughput speedup. The compiler-isolation
+1x1 output remains byte-identical in all fifteen linear passes. At 960x540,
+twelve of fifteen passes are byte-identical. Combined has luminance ratio
+`1.00000009`, RMSE `1.1898e-4`, relative RMSE `6.4962e-5`, mean absolute error
+`4.6580e-7`, and p99 pixel RMSE zero. A repeated baseline run has Combined RMSE
+`1.1310e-4` and relative RMSE `6.1751e-5`, placing the sparse indirect-event
+difference inside the same-binary HIP nondeterminism envelope.
+
+The AST regression instruments the sampling-operation boundary and requires
+exactly one selection recording for every conditional sampler recording. Its
+complete numeric fixture passes on fallback, HIP, and native-XIR Vulkan. I also
+inspected the full-resolution Combined triptych: geometry, silhouettes,
+materials, textures, lighting, and grass are unchanged, and the difference
+panel is black apart from isolated indirect-event pixels with no structured
+feature. A complete all-thread build and all 256 functional tests pass; the
+separately tracked source-size policy test remains excluded for the same three
+pre-existing violations documented above.
+
+![Lone Monk repeated/shared closure-selection schedule and linear difference](lone-monk-selection-schedule-triptych.png)
+
 ## Lone Monk cold Vulkan measurements
 
 Each row is one shader-cache-disabled process compiling and executing the full
@@ -1511,6 +1579,7 @@ for each specular family.
 | --- | ---: | ---: | ---: |
 | closure direct/shared typed-ABI numeric parity | pass | pass | pass |
 | five-definition closure-callable shape guard | pass | pass | pass |
+| one-record closure-selection schedule | pass | pass | pass |
 | texture direct/shared numeric parity | pass | pass | pass |
 | texture finite-bound/hash-dedup shape guards | pass | pass | pass |
 | color-transform direct/shared numeric parity | pass | pass | pass |

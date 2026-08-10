@@ -8,6 +8,8 @@
 
 #include <luisa/dsl/sugar.h>
 
+#include <vector>
+
 namespace psycles::luisa_backend {
 namespace {
 
@@ -755,33 +757,49 @@ void SurfaceClosureSamplingVisitor::visit(
     Expr<luisa::float3> shading_normal,
     const luisa::vector<SurfaceClosureExpression>
         &closures) noexcept {
+    struct ScheduledSelection {
+        Bool retained;
+        luisa::compute::Var<SurfaceClosureSelectionCall>
+            selection;
+    };
+
     SurfaceClosureSelectionMeasure measure{_point.back_facing};
+    // This is a host/JIT-stage AST schedule whose extent follows the scene's
+    // reachable closure list. A vector avoids imposing a fixed closure-count
+    // bound; revisit its host allocation only if profiling makes it material.
+    std::vector<ScheduledSelection> schedule;
+    schedule.reserve(closures.size());
     UInt retained_index = 0u;
     for (const auto &closure : closures) {
-        const auto keep = retains(closure, retained_index);
-        $if(keep) {
-            measure.add(_sampling.selection(closure));
+        const auto retained = retains(closure, retained_index);
+        const auto selection = _sampling.selection(closure);
+        $if(retained) {
+            measure.add(selection);
         };
-        retained_index += select(0u, 1u, keep);
+        schedule.emplace_back(ScheduledSelection{
+            .retained = retained,
+            .selection = selection});
+        retained_index += select(0u, 1u, retained);
     }
 
     SurfaceClosureCategoricalInversion inversion{
         _random_lobe, measure};
     SurfaceClosureSelectedSample selected;
     retained_index = 0u;
-    for (const auto &closure : closures) {
-        const auto keep = retains(closure, retained_index);
-        $if(keep) {
-            const auto selection =
-                _sampling.selection(closure);
-            const auto choice = inversion.consider(selection);
+    for (auto index = std::size_t{0u};
+         index < closures.size(); ++index) {
+        const auto &closure = closures[index];
+        const auto &scheduled = schedule[index];
+        $if(scheduled.retained) {
+            const auto choice = inversion.consider(
+                scheduled.selection);
             $if(choice.choose) {
                 const auto sample =
                     _sampling.conditional_sample(
                         shading_normal,
                         closure,
                         Expr<luisa::float3>{
-                            selection.glossy_normal.expression()},
+                            scheduled.selection.glossy_normal.expression()},
                         _random_direction,
                         Expr<float>{choice.rescaled.expression()});
                 selected.accept(
@@ -789,25 +807,29 @@ void SurfaceClosureSamplingVisitor::visit(
                     closure.weight,
                     closure.normal,
                     Expr<float>{choice.rescaled.expression()},
-                    selection,
+                    scheduled.selection,
                     sample);
             };
         };
-        retained_index += select(0u, 1u, keep);
+        retained_index += select(
+            0u, 1u, scheduled.retained);
     }
 
     _evaluation.set_outgoing(selected.direction());
     SurfaceClosureEvaluationAccumulator evaluation;
     retained_index = 0u;
-    for (const auto &closure : closures) {
-        const auto keep = retains(closure, retained_index);
-        $if(keep) {
+    for (auto index = std::size_t{0u};
+         index < closures.size(); ++index) {
+        const auto &closure = closures[index];
+        const auto &scheduled = schedule[index];
+        $if(scheduled.retained) {
             evaluation.add(_evaluation.evaluate(
                 shading_normal,
                 closure,
                 retained_index == selected.closure_index()));
         };
-        retained_index += select(0u, 1u, keep);
+        retained_index += select(
+            0u, 1u, scheduled.retained);
     }
     const auto mixture = evaluation.finish(true);
     const auto result = selected.finish(
