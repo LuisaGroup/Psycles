@@ -3,6 +3,7 @@
 #include "cycles_texture_sampling.h"
 #include "path_tracer_color_transforms.h"
 #include "path_tracer_internal.h"
+#include "path_tracer_normal_maps.h"
 #include "path_tracer_shader_tables.h"
 #include "path_tracer_texture_sampling.h"
 #include "path_tracer_vector_mapping.h"
@@ -69,6 +70,7 @@ private:
     const CallableTexture2DSamplingProvider *_texture_sampling_provider{};
     CallableSurfaceColorTransformProvider _color_transform_provider;
     CallableSurfaceVectorMappingProvider _vector_mapping_provider;
+    CallableSurfaceNormalMapProvider _normal_map_provider;
     CallableSurfaceShaderTableProvider<ScalarParameterBuffer>
         _shader_table_provider;
 
@@ -119,6 +121,11 @@ public:
     [[nodiscard]] const SurfaceVectorMappingProvider *
     surface_vector_mapping_provider() const noexcept override {
         return &_vector_mapping_provider;
+    }
+
+    [[nodiscard]] const SurfaceNormalMapProvider *
+    surface_normal_map_provider() const noexcept override {
+        return &_normal_map_provider;
     }
 
     [[nodiscard]] const SurfaceShaderTableProvider *
