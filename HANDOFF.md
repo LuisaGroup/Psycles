@@ -2,12 +2,24 @@
 
 ## Current continuation — 2026-08-10
 
-The current renderer implementation boundary advances from Psycles main with
-LuisaCompute `next@8c6951520` and Blender/Cycles 5.3 Alpha
+The current renderer implementation boundary advances from Psycles
+`main@2fcdbce` with LuisaCompute `next@9e42c7c0d` and Blender/Cycles 5.3 Alpha
 `82186b01ad2e`. The older published-boundary section below remains a
 historical record; do not reset to its July revisions.
 
 The current official complex-scene checkpoints are:
+
+- [Lone Monk five-way 1440x1080/256-spp gate](docs/validation/2026-08-10/lone-monk-five-way-1440x1080-256/README.md)
+  completes Cycles CPU/HIP and Psycles fallback/HIP/native-XIR Vulkan from one
+  immutable raw-graph export. Render-only times are `72.1837/19.3186 s` for
+  Cycles CPU/HIP and `142.7930/58.0613/226.6200 s` for Psycles
+  fallback/HIP/Vulkan. The like-for-like gaps are therefore `1.9782x`,
+  `3.0055x`, and `11.7306x`; Psycles is not faster than Cycles yet. HIP's
+  approximately threefold gap is stable across three paired runs. Combined
+  relative RMSE is `1.34--1.71%`, all values are finite, and the inspected
+  original-resolution triptychs show no backend-specific structured mismatch.
+  Commands, hashes, cold/warm setup times, per-pass reports, and triptychs are
+  retained in the checkpoint.
 
 - [Post-population surface-closure ABI](docs/validation/2026-08-10/surface-closure-point-abi/README.md)
   makes the physical closure dependency cut a strong DSL type and transports
@@ -15,8 +27,8 @@ The current official complex-scene checkpoints are:
   from 3,676 to 2,704 scratch bytes per thread (-26.4%); warm 960x540/64-spp
   throughput improves by a measured 4.2--4.6%. Fallback, HIP, and native Vulkan
   ABI/closure regressions pass, twelve of fifteen linear passes are exact, and
-  the original-resolution triptych has no structured difference. Do not infer
-  a Cycles speed lead until the pending matched 1080p matrix is complete.
+  the original-resolution triptych has no structured difference. The complete
+  matrix above establishes the remaining performance gap.
 
 - [Sparse XIR restructure analyses](docs/validation/2026-08-10/xir-restructure-sparse-analyses/README.md)
   reuses loop-boundary facts per CFG version, derives construct parents by an
@@ -454,11 +466,13 @@ these focused probes.
 
 ## Exact next work
 
-1. Diagnose the remaining diffuse/glossy indirect energy gap and stochastic
-   distribution difference from pass evidence and current Cycles semantics.
-   Do not infer the cause from the likely-open list and do not add a CPU
-   renderer/sampler. Any discovered defect gets a minimal Luisa-path
-   regression before its fix.
+1. Profile the current five-way performance boundary by backend. On HIP,
+   continue formal live-state/reachability/graph-scheduling reduction from the
+   measured 256-VGPR, 128-SGPR, 2,704-byte-scratch kernel. On Vulkan, separate
+   the 400,579-word SPIR-V/JIT cost from the 11.73x runtime gap and profile the
+   low-power, low-memory-activity execution. On fallback, separate the 22.05 s
+   JIT from the remaining 1.98x Embree render gap. Preserve image equivalence
+   and add a regression for each discovered root cause.
 2. Add a formally exact pixel/tile partition before increasing beyond this
    1080p gate if an 8-spp dispatch approaches a backend watchdog on a larger
    image. Preserve global pixel/sample indices and add partition and
@@ -477,11 +491,12 @@ these focused probes.
 ## Known limitations
 
 - The current 1440×1080/256 spp Lone Monk result is a real current-source
-  full-scene baseline, but Combined relative RMSE is 13.55% and indirect
-  energy remains low; it has not passed final quality acceptance.
-- Psycles render-only is currently about 1.371× slower than current Cycles
-  HIP on the same RX 9070 XT. Peak VRAM is measured and lower for Psycles,
-  but this does not offset the missing throughput or quality parity.
+  five-way baseline. Combined relative RMSE is `1.34--1.71%` across Psycles
+  backends and no structured visual mismatch remains in this scene, but this
+  does not establish complete closure/pass/feature parity.
+- Render-only fallback is `1.9782x` slower than Cycles CPU, HIP is `3.0055x`
+  slower than Cycles HIP, and Vulkan is `11.7306x` slower than Cycles HIP.
+  Psycles has not overtaken Cycles on a like-for-like backend.
 - The current sample partition bounds samples per dispatch, not total
   pixel work. Much larger images still need an exact tile partition for a
   backend-independent watchdog guarantee.
