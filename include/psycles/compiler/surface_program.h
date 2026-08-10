@@ -1146,6 +1146,11 @@ struct SurfaceValueDependencyPlan {
   std::vector<bool> physical;
   std::vector<bool> emission;
   std::vector<bool> preparation;
+  // Closure-tree liveness is distinct from value liveness: a value may be
+  // shared by physical and emission leaves even though each consumer must
+  // visit only its own closure domain.
+  std::vector<bool> physical_closures;
+  std::vector<bool> emission_closures;
 
   [[nodiscard]] bool compatible(const SurfaceProgram &program) const noexcept;
 };

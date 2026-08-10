@@ -4,7 +4,7 @@ Date: 2026-08-10
 
 ## Outcome
 
-This checkpoint removes seventeen independent sources of scene-dependent path-kernel
+This checkpoint removes eighteen independent sources of scene-dependent path-kernel
 growth without changing Blender graph values or Cycles closure semantics:
 
 1. emission code is recorded only for surface tags whose scene-unioned closure
@@ -57,7 +57,11 @@ growth without changing Blender graph values or Cycles closure semantics:
 17. every surface consumer evaluates the topology-closed transitive dependency
     schedule of only its scene-reachable closure families, instead of replaying
     every value node in that material topology for physical, emission, and
-    preparation requests alike.
+    preparation requests alike; and
+18. physical and emission consumers traverse only their own live closure-tree
+    domain and populate only the semantic Principled endpoints they consume,
+    instead of constructing cross-domain closure records and unused endpoint
+    algebra for a later XIR dead-code pass to erase.
 
 On the unchanged Lone Monk export, the complete cold Vulkan path module falls
 from 203,652 to 77,509 pre-restructure XIR instructions (61.9%). The main
@@ -1340,6 +1344,77 @@ noise. Deterministic module size is the compilation result. The 1x1 PPM and all
 fifteen linear PFM passes are byte-identical to the preceding checkpoint. Raw
 EXR containers differ only because their capture metadata carries the run time,
 as documented below.
+
+## Closure-domain liveness and endpoint population
+
+Value liveness alone does not bound closure population. Before this follow-up,
+an emission leaf was still visited by a physical query (and rejected only after
+its record had been constructed), while a physical leaf was visited by an
+emission query. A scene-specialized Principled leaf also constructed the
+clamp/normalization algebra for every endpoint before its feature-gated
+consumer discarded unused fields. XIR could eventually eliminate much of this
+work, but the unnecessary AST still increased frontend memory and compile cost,
+and some of it survived optimization.
+
+The compiler now derives two closure-domain masks alongside the physical and
+emission value masks. For consumer domain `d`, closure liveness is the unique
+bottom-up solution
+
+```text
+C_d(leaf) = leaf has a semantic result consumed by d
+C_d(add(a, b)) = C_d(a) or C_d(b)
+C_d(mix(a, b)) = C_d(a) or C_d(b)
+```
+
+Only nodes in `C_d` are traversed. This relation is deliberately distinct from
+the scene-unioned reachability plan `G`: when both `G(a)` and `G(b)` are true,
+the authored Mix factor remains live and weights every surviving domain child,
+even if only one of `C_d(a)` and `C_d(b)` is true. The factor may be bypassed
+only when the scene-unioned plan itself proves the other branch unreachable.
+This prevents the tempting but incorrect rewrite
+`Mix(Diffuse, Emission) -> Diffuse` for the physical domain.
+
+Endpoint population also receives its consumer's value mask separately from
+the evaluated-value schedule. This matters for fused preparation: graph values
+are still evaluated once using `physical union emission`, but physical and
+emission population each records only its own semantic fields. The host-stage
+predicate never enters a device record or changes a graph value; an inactive
+field is represented by the corresponding semantic identity/default solely so
+the unused closure member can remain strongly typed. There is no generic
+`float4` register protocol or runtime material interpreter.
+
+The focused regressions prove that physical and emission masks partition a
+mixed closure tree, both retain the Mix factor, a non-emissive Principled root
+cannot leak into the emission domain, and the existing transitive value masks
+remain topology-closed. The material/closure matrix then exercises fallback,
+HIP, and native-XIR Vulkan.
+
+On the same Lone Monk export, relative to the consumer-value scheduling
+checkpoint above:
+
+| Metric | Value scheduling only | + closure-domain population | Change |
+| --- | ---: | ---: | ---: |
+| raw dumped XIR bytes | 33,497,750 | 32,349,931 | -1,147,819 (-3.43%) |
+| optimized dumped XIR bytes | 7,389,794 | 7,232,917 | -156,877 (-2.12%) |
+| optimized XIR instruction lines | 71,003 | 69,681 | -1,322 (-1.86%) |
+| main path kernel instructions | 7,333 | 7,333 | unchanged |
+| `surface_prepare` instructions | 10,663 | 10,522 | -141 (-1.32%) |
+| `surface_evaluate_light` instructions | 13,335 | 13,002 | -333 (-2.50%) |
+| `surface_sample` instructions | 25,657 | 24,809 | -848 (-3.31%) |
+| `surface_closure_evaluation` instructions | 2,156 | 2,156 | unchanged |
+
+The focused empty-Principled fixture falls from 1,602 to 541 XIR instructions;
+diffuse-only falls from 3,502 to 3,227 and dielectric-only from 4,529 to 4,261.
+These complete-module counts include dispatch and typed closure infrastructure,
+so the result is not hidden behind a counter that omits shared definitions.
+
+One cold fallback shader-JIT sample changed from 22.5256 to 21.9511 seconds.
+As before, a single timing sample is not claimed as a speedup; the deterministic
+IR reductions are the compilation result. The 1x1 PPM and all fifteen linear
+PFM passes remain byte-identical to the preceding checkpoint. A complete
+all-thread build and all 256 functional tests pass. The separately tracked
+source-file-size policy test was excluded because its three pre-existing
+violations are unrelated to this change.
 
 ## Lone Monk cold Vulkan measurements
 

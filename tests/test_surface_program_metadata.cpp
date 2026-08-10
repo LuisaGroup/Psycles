@@ -367,6 +367,10 @@ void test_surface_closure_plan() {
                            ValueExpressionId id) noexcept {
         return id.valid() && id.value < mask.size() && mask[id.value];
     };
+    const auto closure_active = [](const std::vector<bool> &mask,
+                                   ClosureExpressionId id) noexcept {
+        return id.valid() && id.value < mask.size() && mask[id.value];
+    };
     const auto require_topology_closed = [&](const SurfaceProgram &program,
                                              const std::vector<bool> &mask,
                                              const std::string &domain) {
@@ -410,6 +414,13 @@ void test_surface_closure_plan() {
         *base_program, union_plan);
     require(base_dependencies.compatible(*base_program),
             "surface value dependency plan is incompatible with its program");
+    require(
+        closure_active(base_dependencies.physical_closures,
+                       base_program->root()) &&
+            std::none_of(base_dependencies.emission_closures.begin(),
+                         base_dependencies.emission_closures.end(),
+                         [](bool value) noexcept { return value; }),
+        "non-emissive Principled closure leaked across consumer domains");
     require_topology_closed(
         *base_program, base_dependencies.physical, "physical");
     require_topology_closed(
@@ -544,8 +555,10 @@ void test_surface_closure_plan() {
             "same-topology plans did not retain reachable Principled emission");
     const auto emission_dependencies =
         analyze_surface_value_dependencies(*base_program, emission_union);
-    require(active(emission_dependencies.emission,
-                   base_closure.emission_color) &&
+    require(closure_active(emission_dependencies.emission_closures,
+                           base_program->root()) &&
+                active(emission_dependencies.emission,
+                       base_closure.emission_color) &&
                 active(emission_dependencies.emission,
                        base_closure.emission_strength),
             "reachable Principled emission lost its authored value roots");
@@ -649,6 +662,80 @@ void test_surface_closure_plan() {
                        OutputRef{.node = mix, .socket = "Closure"});
         return graph;
     };
+
+    ShaderGraph domain_mix_graph;
+    const auto domain_diffuse = domain_mix_graph.add_node(
+        node_type::diffuse_bsdf, "Physical domain leaf");
+    const auto domain_emission = domain_mix_graph.add_node(
+        node_type::emission, "Emission domain leaf");
+    const auto domain_mix = domain_mix_graph.add_node(
+        node_type::mix_closure, "Consumer-domain mix");
+    require(
+        domain_mix_graph.set_input(
+            domain_emission, "Color", SocketValue::color({0.5f, 0.25f, 0.1f})) &&
+            domain_mix_graph.set_input(
+                domain_emission, "Strength", SocketValue::floating(2.0f)) &&
+            domain_mix_graph.set_input(
+                domain_mix, "Factor", SocketValue::floating(0.25f)) &&
+            domain_mix_graph.connect(
+                {.node = domain_diffuse, .socket = "Closure"},
+                domain_mix,
+                "A") &&
+            domain_mix_graph.connect(
+                {.node = domain_emission, .socket = "Closure"},
+                domain_mix,
+                "B"),
+        "failed to configure consumer-domain closure mix");
+    domain_mix_graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = domain_mix, .socket = "Closure"});
+    const auto [domain_mix_shader, domain_mix_program] =
+        compile(domain_mix_graph);
+    const auto domain_mix_binding = bind_surface_parameters(
+        *domain_mix_program, *domain_mix_shader);
+    require(domain_mix_binding.ok(),
+            "failed to bind consumer-domain closure mix");
+    const auto domain_mix_plan = analyze_surface_closure_plan(
+        *domain_mix_program, *domain_mix_binding.parameters);
+    const auto domain_dependencies = analyze_surface_value_dependencies(
+        *domain_mix_program, domain_mix_plan);
+    auto diffuse_id = ClosureExpressionId{};
+    auto emission_id = ClosureExpressionId{};
+    auto mix_id = ClosureExpressionId{};
+    for (auto index = std::size_t{0u};
+         index < domain_mix_program->closure_instructions().size(); ++index) {
+        const auto id = ClosureExpressionId{
+            static_cast<std::uint32_t>(index)};
+        switch (domain_mix_program->closure_instructions()[index].operation) {
+            case ClosureOperation::diffuse:
+                diffuse_id = id;
+                break;
+            case ClosureOperation::emission:
+                emission_id = id;
+                break;
+            case ClosureOperation::mix:
+                mix_id = id;
+                break;
+            default:
+                break;
+        }
+    }
+    require(
+        closure_active(domain_dependencies.physical_closures, mix_id) &&
+            closure_active(domain_dependencies.physical_closures, diffuse_id) &&
+            !closure_active(domain_dependencies.physical_closures, emission_id) &&
+            closure_active(domain_dependencies.emission_closures, mix_id) &&
+            !closure_active(domain_dependencies.emission_closures, diffuse_id) &&
+            closure_active(domain_dependencies.emission_closures, emission_id),
+        "physical/emission closure domains did not partition a mixed tree");
+    const auto &domain_mix_instruction =
+        domain_mix_program->closure_instructions()[mix_id.value];
+    require(active(domain_dependencies.physical,
+                   domain_mix_instruction.factor) &&
+                active(domain_dependencies.emission,
+                       domain_mix_instruction.factor),
+            "a single live Mix branch lost its consumer-domain factor");
+
     const auto [mix_zero_shader, mix_program] = compile(make_mix(0.0f));
     const auto mix_zero_binding =
         bind_surface_parameters(*mix_program, *mix_zero_shader);

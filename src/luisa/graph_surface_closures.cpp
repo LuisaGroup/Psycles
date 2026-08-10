@@ -4,12 +4,15 @@ namespace psycles::luisa_backend::detail {
 
 void GraphSurfaceImplementation::for_each_closure(
     const TracedValues &values,
+    const std::vector<bool> &closure_mask,
+    const std::vector<bool> &endpoint_mask,
     const ClosureVisitor &function) const noexcept {
     auto visit =
         [&](auto &&self,
             compiler::ClosureExpressionId id,
             Float mix_weight) noexcept -> void {
-        if (!id.valid() ||
+        if (!id.valid() || id.value >= closure_mask.size() ||
+            !closure_mask[id.value] ||
             !_closure_plan.entry(id).reachable) {
             return;
         }
@@ -29,29 +32,47 @@ void GraphSurfaceImplementation::for_each_closure(
                 const auto b_reachable =
                     closure.b.valid() &&
                     _closure_plan.entry(closure.b).reachable;
+                const auto a_active =
+                    a_reachable && closure.a.value < closure_mask.size() &&
+                    closure_mask[closure.a.value];
+                const auto b_active =
+                    b_reachable && closure.b.value < closure_mask.size() &&
+                    closure_mask[closure.b.value];
                 if (!a_reachable && !b_reachable) {
                     return;
                 }
                 if (a_reachable && !b_reachable) {
-                    self(self, closure.a, mix_weight);
+                    if (a_active) {
+                        self(self, closure.a, mix_weight);
+                    }
                     return;
                 }
                 if (!a_reachable && b_reachable) {
-                    self(self, closure.b, mix_weight);
+                    if (b_active) {
+                        self(self, closure.b, mix_weight);
+                    }
                     return;
                 }
+                // Both closure-tree branches are possible for at least one
+                // material sharing this topology. Even when only one branch
+                // belongs to the current consumer domain, its contribution
+                // still carries the authored Mix factor.
                 auto factor = clamp(
                     scalar(closure.factor, values),
                     0.0f,
                     1.0f);
-                self(
-                    self,
-                    closure.a,
-                    mix_weight * (1.0f - factor));
-                self(
-                    self,
-                    closure.b,
-                    mix_weight * factor);
+                if (a_active) {
+                    self(
+                        self,
+                        closure.a,
+                        mix_weight * (1.0f - factor));
+                }
+                if (b_active) {
+                    self(
+                        self,
+                        closure.b,
+                        mix_weight * factor);
+                }
                 return;
             }
             case compiler::ClosureOperation::translucent: {
@@ -77,153 +98,187 @@ void GraphSurfaceImplementation::for_each_closure(
             case compiler::ClosureOperation::diffuse:
             case compiler::ClosureOperation::principled:
             case compiler::ClosureOperation::glossy: {
-                auto color = vector(
-                    closure.color, values);
-                auto metallic =
+                const auto principled =
                     closure.operation ==
-                            compiler::ClosureOperation::principled
-                        ? clamp(
-                              scalar(
-                                  closure.metallic, values),
-                              0.0f,
-                              1.0f)
+                    compiler::ClosureOperation::principled;
+                // `active` is a host/JIT-stage predicate. Endpoint liveness
+                // is deliberately separate from the value-evaluation
+                // schedule: fused preparation computes the union of physical
+                // and emission values once, while each consumer populates
+                // only its own fields. Standalone closures retain their
+                // complete authored inputs.
+                const auto active = [&](compiler::ValueExpressionId id) noexcept {
+                    return !principled ||
+                           (id.valid() && id.value < endpoint_mask.size() &&
+                            endpoint_mask[id.value]);
+                };
+                auto color = active(closure.color)
+                                 ? vector(closure.color, values)
+                                 : make_float3(0.0f);
+                auto metallic =
+                    principled
+                        ? active(closure.metallic)
+                              ? clamp(
+                                    scalar(closure.metallic, values),
+                                    0.0f,
+                                    1.0f)
+                              : Float{0.0f}
                         : closure.operation ==
                                   compiler::ClosureOperation::glossy
                               ? Float{1.0f}
                               : Float{0.0f};
                 auto ior =
-                    closure.operation ==
-                            compiler::ClosureOperation::principled
-                        ? max(
-                              scalar(closure.ior, values),
-                              1.0e-5f)
+                    principled
+                        ? active(closure.ior)
+                              ? max(
+                                    scalar(closure.ior, values),
+                                    1.0e-5f)
+                              : Float{1.0f}
                         : Float{1.5f};
                 auto diffuse_roughness =
-                    closure.operation ==
-                            compiler::ClosureOperation::principled
-                        ? scalar(
-                              closure.diffuse_roughness,
-                              values)
+                    principled
+                        ? active(closure.diffuse_roughness)
+                              ? scalar(closure.diffuse_roughness, values)
+                              : Float{0.0f}
                         : scalar(
                               closure.roughness, values);
                 auto specular_ior_level =
-                    closure.operation ==
-                            compiler::ClosureOperation::principled
-                        ? max(
-                              scalar(
-                                  closure.specular_ior_level,
-                                  values),
-                              0.0f)
+                    principled
+                        ? active(closure.specular_ior_level)
+                              ? max(
+                                    scalar(
+                                        closure.specular_ior_level,
+                                        values),
+                                    0.0f)
+                              : Float{0.0f}
                         : Float{0.5f};
                 auto subsurface_weight =
-                    closure.operation ==
-                            compiler::ClosureOperation::principled
-                        ? clamp(
-                              scalar(
-                                  closure.subsurface_weight,
-                                  values),
-                              0.0f,
-                              1.0f)
+                    principled
+                        ? active(closure.subsurface_weight)
+                              ? clamp(
+                                    scalar(
+                                        closure.subsurface_weight,
+                                        values),
+                                    0.0f,
+                                    1.0f)
+                              : Float{0.0f}
                         : Float{0.0f};
                 auto subsurface_radius =
-                    closure.operation ==
-                            compiler::ClosureOperation::principled
-                        ? max(
-                              vector(
-                                  closure.subsurface_radius,
-                                  values),
-                              make_float3(0.0f))
+                    principled
+                        ? active(closure.subsurface_radius)
+                              ? max(
+                                    vector(
+                                        closure.subsurface_radius,
+                                        values),
+                                    make_float3(0.0f))
+                              : make_float3(0.0f)
                         : make_float3(0.0f);
                 auto subsurface_scale =
-                    closure.operation ==
-                            compiler::ClosureOperation::principled
-                        ? max(
-                              scalar(
-                                  closure.subsurface_scale,
-                                  values),
-                              0.0f)
+                    principled
+                        ? active(closure.subsurface_scale)
+                              ? max(
+                                    scalar(
+                                        closure.subsurface_scale,
+                                        values),
+                                    0.0f)
+                              : Float{0.0f}
                         : Float{0.0f};
                 auto subsurface_ior =
-                    closure.operation ==
-                            compiler::ClosureOperation::principled
-                        ? scalar(closure.subsurface_ior, values)
+                    principled
+                        ? active(closure.subsurface_ior)
+                              ? scalar(closure.subsurface_ior, values)
+                              : Float{1.4f}
                         : Float{1.4f};
                 auto subsurface_anisotropy =
-                    closure.operation ==
-                            compiler::ClosureOperation::principled
-                        ? scalar(
-                              closure.subsurface_anisotropy,
-                              values)
+                    principled
+                        ? active(closure.subsurface_anisotropy)
+                              ? scalar(
+                                    closure.subsurface_anisotropy,
+                                    values)
+                              : Float{0.0f}
                         : Float{0.0f};
                 auto transmission_weight =
-                    closure.operation ==
-                            compiler::ClosureOperation::principled
-                        ? scalar(
-                              closure.transmission_weight,
-                              values)
+                    principled
+                        ? active(closure.transmission_weight)
+                              ? scalar(
+                                    closure.transmission_weight,
+                                    values)
+                              : Float{0.0f}
                         : Float{0.0f};
                 auto specular_tint =
-                    closure.operation ==
-                            compiler::ClosureOperation::principled
-                        ? max(
-                              vector(
-                                  closure.specular_tint,
-                                  values),
-                              make_float3(0.0f))
+                    principled
+                        ? active(closure.specular_tint)
+                              ? max(
+                                    vector(
+                                        closure.specular_tint,
+                                        values),
+                                    make_float3(0.0f))
+                              : make_float3(1.0f)
                         : make_float3(1.0f);
                 auto alpha =
-                    closure.operation ==
-                            compiler::ClosureOperation::principled
-                        ? scalar(closure.alpha, values)
+                    principled
+                        ? active(closure.alpha)
+                              ? scalar(closure.alpha, values)
+                              : Float{1.0f}
                         : Float{1.0f};
                 auto thin_wall =
-                    closure.operation ==
-                            compiler::ClosureOperation::principled
-                        ? scalar(closure.thin_wall, values) != 0.0f
+                    principled
+                        ? active(closure.thin_wall)
+                              ? scalar(closure.thin_wall, values) != 0.0f
+                              : Bool{false}
                         : Bool{false};
                 auto sheen_weight =
-                    closure.operation ==
-                            compiler::ClosureOperation::principled
-                        ? scalar(closure.sheen_weight, values)
+                    principled
+                        ? active(closure.sheen_weight)
+                              ? scalar(closure.sheen_weight, values)
+                              : Float{0.0f}
                         : Float{0.0f};
                 auto sheen_roughness =
-                    closure.operation ==
-                            compiler::ClosureOperation::principled
-                        ? scalar(closure.sheen_roughness, values)
+                    principled
+                        ? active(closure.sheen_roughness)
+                              ? scalar(closure.sheen_roughness, values)
+                              : Float{0.5f}
                         : Float{0.5f};
                 auto sheen_tint =
-                    closure.operation ==
-                            compiler::ClosureOperation::principled
-                        ? vector(closure.sheen_tint, values)
+                    principled
+                        ? active(closure.sheen_tint)
+                              ? vector(closure.sheen_tint, values)
+                              : make_float3(1.0f)
                         : make_float3(1.0f);
                 auto coat_weight =
-                    closure.operation ==
-                            compiler::ClosureOperation::principled
-                        ? scalar(closure.coat_weight, values)
+                    principled
+                        ? active(closure.coat_weight)
+                              ? scalar(closure.coat_weight, values)
+                              : Float{0.0f}
                         : Float{0.0f};
                 auto coat_roughness =
-                    closure.operation ==
-                            compiler::ClosureOperation::principled
-                        ? scalar(closure.coat_roughness, values)
+                    principled
+                        ? active(closure.coat_roughness)
+                              ? scalar(closure.coat_roughness, values)
+                              : Float{0.03f}
                         : Float{0.03f};
                 auto coat_ior =
-                    closure.operation ==
-                            compiler::ClosureOperation::principled
-                        ? scalar(closure.coat_ior, values)
+                    principled
+                        ? active(closure.coat_ior)
+                              ? scalar(closure.coat_ior, values)
+                              : Float{1.5f}
                         : Float{1.5f};
                 auto coat_tint =
-                    closure.operation ==
-                            compiler::ClosureOperation::principled
-                        ? vector(closure.coat_tint, values)
+                    principled
+                        ? active(closure.coat_tint)
+                              ? vector(closure.coat_tint, values)
+                              : make_float3(1.0f)
                         : make_float3(1.0f);
                 auto coat_normal =
-                    closure.operation ==
-                            compiler::ClosureOperation::principled
-                        ? vector(closure.coat_normal, values)
+                    principled
+                        ? active(closure.coat_normal)
+                              ? vector(closure.coat_normal, values)
+                              : make_float3(0.0f)
                         : make_float3(0.0f);
                 auto emission =
-                    closure.operation ==
-                            compiler::ClosureOperation::principled
+                    principled &&
+                            active(closure.emission_color) &&
+                            active(closure.emission_strength)
                         ? vector(closure.emission_color, values) *
                               scalar(closure.emission_strength, values)
                         : make_float3(0.0f);
@@ -236,17 +291,19 @@ void GraphSurfaceImplementation::for_each_closure(
                                   .principled_features
                             : compiler::PrincipledClosureFeatureMask{},
                     .weight =
-                        closure.operation ==
-                                compiler::ClosureOperation::principled
+                        principled
                             ? make_float3(mix_weight)
                             : bsdf_allocated_weight(
                                   color * mix_weight),
                     .color = color,
-                    .normal = safe_normalize(
-                        vector(closure.normal, values),
-                        values.shading_normal),
-                    .roughness = scalar(
-                        closure.roughness, values),
+                    .normal = active(closure.normal)
+                                  ? safe_normalize(
+                                        vector(closure.normal, values),
+                                        values.shading_normal)
+                                  : values.shading_normal,
+                    .roughness = active(closure.roughness)
+                                     ? scalar(closure.roughness, values)
+                                     : Float{0.0f},
                     .diffuse_roughness =
                         diffuse_roughness,
                     .subsurface_weight =

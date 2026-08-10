@@ -27,7 +27,10 @@ namespace psycles::luisa_backend::detail {
     const PrincipledLayerComponent principled_layers{services, point};
     Float3 result = make_float3(0.0f);
     for_each_closure(
-        values, [&](const TracedClosure &closure) noexcept {
+        values,
+        _value_dependency_plan.emission_closures,
+        _value_dependency_plan.emission,
+        [&](const TracedClosure &closure) noexcept {
             if (closure.operation ==
                 compiler::ClosureOperation::emission) {
                 result += closure.weight;

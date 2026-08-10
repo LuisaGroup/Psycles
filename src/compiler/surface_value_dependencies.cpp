@@ -225,37 +225,40 @@ include_emission_leaf(ValueDependencyMask &dependencies,
 template <typename LeafFunction>
 [[nodiscard]] bool include_closure_subtree(
     const SurfaceProgram &program, const SurfaceClosurePlan &plan,
-    ValueDependencyMask &dependencies, ClosureExpressionId id,
-    LeafFunction &&include_leaf) noexcept {
+    ValueDependencyMask &dependencies, std::vector<bool> &closure_mask,
+    ClosureExpressionId id, LeafFunction &&include_leaf) noexcept {
   if (!id.valid() || id.value >= program.closure_instructions().size() ||
       !plan.entry(id).reachable) {
     return false;
   }
   const auto &closure = program.closure_instructions()[id.value];
+  auto included = false;
   switch (closure.operation) {
   case ClosureOperation::add: {
-    const auto a = include_closure_subtree(program, plan, dependencies,
-                                           closure.a, include_leaf);
-    const auto b = include_closure_subtree(program, plan, dependencies,
-                                           closure.b, include_leaf);
-    return a || b;
+    const auto a = include_closure_subtree(
+        program, plan, dependencies, closure_mask, closure.a, include_leaf);
+    const auto b = include_closure_subtree(
+        program, plan, dependencies, closure_mask, closure.b, include_leaf);
+    included = a || b;
+    break;
   }
   case ClosureOperation::mix: {
     const auto a_reachable =
         closure.a.valid() && plan.entry(closure.a).reachable;
     const auto b_reachable =
         closure.b.valid() && plan.entry(closure.b).reachable;
-    const auto a = include_closure_subtree(program, plan, dependencies,
-                                           closure.a, include_leaf);
-    const auto b = include_closure_subtree(program, plan, dependencies,
-                                           closure.b, include_leaf);
+    const auto a = include_closure_subtree(
+        program, plan, dependencies, closure_mask, closure.a, include_leaf);
+    const auto b = include_closure_subtree(
+        program, plan, dependencies, closure_mask, closure.b, include_leaf);
     // GraphSurface bypasses the factor entirely when the closure plan
     // proves one branch unreachable. If both survive, every contribution
     // below this node carries the exact runtime factor.
     if (a_reachable && b_reachable && (a || b)) {
       dependencies.include(closure.factor);
     }
-    return a || b;
+    included = a || b;
+    break;
   }
   case ClosureOperation::null_closure:
   case ClosureOperation::diffuse:
@@ -267,9 +270,11 @@ template <typename LeafFunction>
   case ClosureOperation::transparent:
   case ClosureOperation::subsurface:
   case ClosureOperation::refraction:
-    return include_leaf(dependencies, closure, plan.entry(id));
+    included = include_leaf(dependencies, closure, plan.entry(id));
+    break;
   }
-  return false;
+  closure_mask[id.value] = included;
+  return included;
 }
 
 [[nodiscard]] std::vector<bool> merge_masks(const std::vector<bool> &a,
@@ -286,8 +291,11 @@ template <typename LeafFunction>
 bool SurfaceValueDependencyPlan::compatible(
     const SurfaceProgram &program) const noexcept {
   const auto size = program.value_instructions().size();
+  const auto closure_size = program.closure_instructions().size();
   return physical.size() == size && emission.size() == size &&
-         preparation.size() == size;
+         preparation.size() == size &&
+         physical_closures.size() == closure_size &&
+         emission_closures.size() == closure_size;
 }
 
 SurfaceValueDependencyPlan analyze_surface_value_dependencies(
@@ -295,25 +303,36 @@ SurfaceValueDependencyPlan analyze_surface_value_dependencies(
     const SurfaceClosurePlan &closure_plan) noexcept {
   if (!closure_plan.compatible(program)) {
     const auto size = program.value_instructions().size();
+    const auto closure_size = program.closure_instructions().size();
     return {.physical = std::vector<bool>(size, true),
             .emission = std::vector<bool>(size, true),
-            .preparation = std::vector<bool>(size, true)};
+            .preparation = std::vector<bool>(size, true),
+            .physical_closures = std::vector<bool>(closure_size, true),
+            .emission_closures = std::vector<bool>(closure_size, true)};
   }
 
   ValueDependencyMask physical{program};
-  static_cast<void>(include_closure_subtree(
-      program, closure_plan, physical, program.root(), include_physical_leaf));
+  std::vector<bool> physical_closures(program.closure_instructions().size(),
+                                      false);
+  static_cast<void>(include_closure_subtree(program, closure_plan, physical,
+                                            physical_closures, program.root(),
+                                            include_physical_leaf));
   auto physical_mask = std::move(physical).finish();
 
   ValueDependencyMask emission{program};
-  static_cast<void>(include_closure_subtree(
-      program, closure_plan, emission, program.root(), include_emission_leaf));
+  std::vector<bool> emission_closures(program.closure_instructions().size(),
+                                      false);
+  static_cast<void>(include_closure_subtree(program, closure_plan, emission,
+                                            emission_closures, program.root(),
+                                            include_emission_leaf));
   auto emission_mask = std::move(emission).finish();
 
   auto preparation_mask = merge_masks(physical_mask, emission_mask);
   return {.physical = std::move(physical_mask),
           .emission = std::move(emission_mask),
-          .preparation = std::move(preparation_mask)};
+          .preparation = std::move(preparation_mask),
+          .physical_closures = std::move(physical_closures),
+          .emission_closures = std::move(emission_closures)};
 }
 
 } // namespace psycles::compiler
