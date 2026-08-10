@@ -4,7 +4,7 @@ Date: 2026-08-10
 
 ## Outcome
 
-This checkpoint removes ten independent sources of scene-dependent path-kernel
+This checkpoint removes eleven independent sources of scene-dependent path-kernel
 growth without changing Blender graph values or Cycles closure semantics:
 
 1. emission code is recorded only for surface tags whose scene-unioned closure
@@ -30,13 +30,18 @@ growth without changing Blender graph values or Cycles closure semantics:
 9. Normal Map evaluation is represented by the reachable members of the finite
    tangent-displaced/tangent-original/object/world family; and
 10. the post-height geometric stage of Bump nodes is represented by the
-    reachable world/object endpoint instead of being cloned at every Bump site.
+    reachable world/object endpoint instead of being cloned at every Bump site;
+    and
+11. Noise Texture specializations and color channels share one typed signed
+    Perlin definition per reachable coordinate dimension instead of expanding
+    the complete hash/gradient lattice at every internal noise site.
 
 On the unchanged Lone Monk export, the complete cold Vulkan path module falls
-from 203,652 to 113,336 pre-restructure XIR instructions (44.3%). The main
-kernel falls 42.3%, raw SPIR-V falls 46.6%, and native AST-to-SPIR-V time falls
-56.1%. The rendered PPM, all fifteen PFM passes, and capture-date-normalized EXR
-remain byte-identical.
+from 203,652 to 105,774 pre-restructure XIR instructions (48.1%). The main
+kernel falls 42.3%, raw SPIR-V falls 50.3%, and native AST-to-SPIR-V time falls
+59.9%. The 1x1 compiler-isolation PPM, all fifteen PFM passes, and
+capture-date-normalized EXR remain byte-identical. A separate 960x540 HIP
+render confirms no structured image change and statistically flat throughput.
 
 ## Formal reachability rule
 
@@ -620,6 +625,91 @@ timings in this single cold sample moved opposite to the smaller IR while the
 driver moved slightly down; the nearly flat end-to-end result is therefore not
 claimed as a compile-time speedup.
 
+## Shared signed-Perlin follow-up
+
+Lone Monk reaches nine compiled Noise Texture operations: six factor outputs
+and three color outputs. Their immutable configurations reduce to exactly three
+outer specializations: normalized 3D FBM factor, normalized 3D FBM color, and
+non-normalized 2D FBM factor. Those outer texture callables already bounded
+code by configuration, and their octave recurrences were already true device
+runtime loops. The remaining expansion was one level lower: every outer
+specialization, fractional-octave tail, and color channel independently
+recorded the complete coordinate correction, Perlin hash, gradient lattice,
+and interpolation body.
+
+Signed Perlin has a finite typed domain family:
+
+```text
+{1D, 2D, 3D, 4D}
+```
+
+Each endpoint now owns the exact existing Cycles-ordered implementation. The
+outer FBM/multifractal specialization still selects its recurrence and
+normalization at host recording time, and `detail` still controls a device
+loop. There is no device dimension opcode, generic vector payload, fixed-depth
+unroll, host noise evaluation, or texture pre-bake. The formal definition bound
+is
+
+```text
+signed_perlin_definitions(module)
+    <= |reachable coordinate dimensions|
+    <= 4
+```
+
+The regression records only 3D and requires exactly one definition, then
+records all dimensions and requires exactly four. It compares the canonical
+inline and callable paths on fallback, HIP, and native Vulkan across ordinary,
+negative, and precision-correction-range coordinates. Its Lone Monk-shaped
+fixture additionally requires exactly five runtime loops: one for 3D factor,
+three for the factor and two color channels of 3D color, and one for 2D factor.
+This explicitly guards against the depth unroll that this change is intended
+to avoid.
+
+| Focused fixture | Before | Shared signed Perlin | Change |
+| --- | ---: | ---: | ---: |
+| eight independent 3D signed-Perlin sites | 25,537 XIR | 3,281 XIR | -87.2% |
+| complete Lone Monk Noise family | 59,726 XIR | 13,832 XIR | -76.8% |
+
+The three outer definitions shrink from 3,080, 5,548, and 1,302 instructions
+to 470, 850, and 262. Lone Monk adds only the 524-instruction 3D and
+262-instruction 2D shared cores; 1D and 4D are absent. The aggregate Noise
+family therefore falls from 9,930 to 2,368 instructions. Relative to the
+shared Bump checkpoint:
+
+| Metric | + shared Bump geometry | + shared signed Perlin | Change |
+| --- | ---: | ---: | ---: |
+| XIR definitions | 35 | 37 | +2 reachable definitions |
+| total XIR instructions | 113,336 | 105,774 | -7,562 (-6.67%) |
+| main-kernel XIR instructions | 83,149 | 83,149 | unchanged |
+| `surface_emission` XIR instructions | 437 | 437 | unchanged |
+| `surface_evaluate_light` XIR instructions | 13,710 | 13,710 | unchanged |
+| raw SPIR-V words | 764,016 | 711,851 | -52,165 (-6.83%) |
+| optimized SPIR-V words | 695,109 | 648,450 | -46,659 (-6.71%) |
+| ordinary XIR inline | 192.33 ms | 192.84 ms | +0.27% |
+| SPIR-V XIR legalization | 4,264.56 ms | 3,944.06 ms | -7.52% |
+| native AST-to-SPIR-V | 10,311.39 ms | 9,423.90 ms | -8.61% |
+| driver compute-pipeline creation | 78,355.73 ms | 77,273.56 ms | -1.38% |
+| complete shader JIT | 88,760.5 ms | 86,789.6 ms | -2.22% |
+
+The 1x1 Vulkan output is byte-identical in PPM, every PFM pass, and normalized
+EXR. The HIP function boundary can change floating contraction: in a 960x540,
+64 spp A/B, 7 of 518,400 linear pixels differ (0.00135%), with RMS
+`3.87e-5`, maximum linear error `0.03919`, and PSNR `121.4 dB`. In display
+space only three pixels move by one 8-bit code. Twelve of fifteen PFM passes
+remain byte-identical; Combined, Diffuse Indirect, and Glossy Indirect contain
+the same seven changed pixels. Visual inspection of the 32-times linear
+difference finds isolated points and no structured material, geometry,
+lighting, or sampling change:
+
+![Lone Monk inline/shared signed-Perlin A/B and 32x linear difference](lone-monk-noise-callable-triptych.png)
+
+Three interleaved 960x540, 64 spp HIP measurements are
+`{6.09861, 6.07105, 6.07309}` seconds before and
+`{6.10941, 6.06766, 6.07861}` seconds after. Their means are 6.08092 and
+6.08523 seconds, a +0.07% difference within run-to-run noise. This boundary is
+therefore retained for its measured compilation reduction without claiming a
+render-throughput win or loss.
+
 ## Lone Monk cold Vulkan measurements
 
 Each row is one shader-cache-disabled process compiling and executing the full
@@ -627,7 +717,7 @@ scene path kernel at 1x1 and 1 spp. The tiny launch isolates shader construction
 it is not a rendering-throughput benchmark. Vulkan selected the RX 9070 XT via
 RADV and used native XIR-to-SPIR-V throughout; DXC was not loaded.
 
-The retained Bump run used:
+The retained signed-Perlin run used:
 
 ```sh
 PSYCLES_DISABLE_SHADER_CACHE=1 \
@@ -637,27 +727,27 @@ LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1 \
 LUISA_XIR_TRACE_PASSES=1 \
 build/bin/psycles_render_blender_scene \
   /var/tmp/psycles-lone-monk-transmission-dbdcb17/export \
-  /var/tmp/psycles-kernel-shape-bump-20260810/vk.ppm \
+  /var/tmp/psycles-kernel-shape-noise-core-20260810/vk.ppm \
   vk 1 1 1 1
 ```
 
 The complete trace and linear passes are under
-`/var/tmp/psycles-kernel-shape-bump-20260810/` on the measurement host.
+`/var/tmp/psycles-kernel-shape-noise-core-20260810/` on the measurement host.
 
-| Metric | Initial baseline | Emission pruning | Shared dielectric | + diffuse | + metallic | + texture sampling | + color transforms | + vector mapping | + shader tables | + Normal Map | + Bump | Initial to final |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| XIR definitions | 20 | 21 | 23 | 24 | 25 | 27 | 29 | 30 | 33 | 34 | 35 | +15 definitions |
-| total XIR instructions | 203,652 | 179,622 | 169,378 | 168,706 | 167,408 | 136,521 | 130,971 | 127,838 | 116,240 | 113,947 | 113,336 | -44.3% |
-| main-kernel XIR instructions | 144,135 | 127,331 | 120,200 | 119,736 | 118,754 | 98,253 | 94,959 | 92,649 | 84,794 | 83,580 | 83,149 | -42.3% |
-| `surface_emission` XIR instructions | 8,302 | 1,074 | 1,074 | 1,074 | 1,074 | 507 | 437 | 437 | 437 | 437 | 437 | -94.7% |
-| `surface_evaluate_light` XIR instructions | 36,930 | 36,930 | 33,251 | 33,019 | 32,495 | 22,270 | 20,003 | 19,145 | 15,093 | 13,939 | 13,710 | -62.9% |
-| raw SPIR-V words | 1,431,985 | 1,192,798 | 1,111,962 | 1,107,189 | 1,096,841 | 933,506 | 897,508 | 875,893 | 787,479 | 768,373 | 764,016 | -46.6% |
-| optimized SPIR-V words | 1,116,158 | 1,087,675 | 1,010,627 | 1,005,854 | 996,375 | 850,086 | 816,866 | 795,251 | 716,487 | 699,390 | 695,109 | -37.7% |
-| ordinary XIR inline | 348.30 ms | 301.09 ms | 274.17 ms | 280.65 ms | 284.00 ms | 243.92 ms | 221.83 ms | 229.64 ms | 208.81 ms | 188.26 ms | 192.33 ms | -44.8% |
-| SPIR-V XIR legalization | 10,045 ms | 6,607 ms | 6,296.58 ms | 6,339.37 ms | 6,502.61 ms | 5,107.07 ms | 4,962.88 ms | 5,260.00 ms | 4,385.93 ms | 4,147.07 ms | 4,264.56 ms | -57.5% |
-| native AST-to-SPIR-V | 23,492 ms | 17,184 ms | 16,077.31 ms | 15,952.92 ms | 16,180.90 ms | 12,559.43 ms | 12,134.65 ms | 12,481.60 ms | 10,510.54 ms | 10,032.04 ms | 10,311.39 ms | -56.1% |
-| driver compute-pipeline creation | 86,333 ms | 77,958 ms | 77,884.27 ms | 77,476.73 ms | 76,792.49 ms | 77,701.16 ms | 79,303.15 ms | 79,793.11 ms | 78,298.66 ms | 78,550.37 ms | 78,355.73 ms | -9.24% |
-| complete shader JIT | 109,979 ms | 95,269 ms | 94,077.8 ms | 93,552.1 ms | 93,093.7 ms | 90,365.8 ms | 91,539.7 ms | 92,379.1 ms | 88,904.5 ms | 88,679.4 ms | 88,760.5 ms | -19.3% |
+| Metric | Initial baseline | Emission pruning | Shared dielectric | + diffuse | + metallic | + texture sampling | + color transforms | + vector mapping | + shader tables | + Normal Map | + Bump | + signed Perlin | Initial to final |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| XIR definitions | 20 | 21 | 23 | 24 | 25 | 27 | 29 | 30 | 33 | 34 | 35 | 37 | +17 definitions |
+| total XIR instructions | 203,652 | 179,622 | 169,378 | 168,706 | 167,408 | 136,521 | 130,971 | 127,838 | 116,240 | 113,947 | 113,336 | 105,774 | -48.1% |
+| main-kernel XIR instructions | 144,135 | 127,331 | 120,200 | 119,736 | 118,754 | 98,253 | 94,959 | 92,649 | 84,794 | 83,580 | 83,149 | 83,149 | -42.3% |
+| `surface_emission` XIR instructions | 8,302 | 1,074 | 1,074 | 1,074 | 1,074 | 507 | 437 | 437 | 437 | 437 | 437 | 437 | -94.7% |
+| `surface_evaluate_light` XIR instructions | 36,930 | 36,930 | 33,251 | 33,019 | 32,495 | 22,270 | 20,003 | 19,145 | 15,093 | 13,939 | 13,710 | 13,710 | -62.9% |
+| raw SPIR-V words | 1,431,985 | 1,192,798 | 1,111,962 | 1,107,189 | 1,096,841 | 933,506 | 897,508 | 875,893 | 787,479 | 768,373 | 764,016 | 711,851 | -50.3% |
+| optimized SPIR-V words | 1,116,158 | 1,087,675 | 1,010,627 | 1,005,854 | 996,375 | 850,086 | 816,866 | 795,251 | 716,487 | 699,390 | 695,109 | 648,450 | -41.9% |
+| ordinary XIR inline | 348.30 ms | 301.09 ms | 274.17 ms | 280.65 ms | 284.00 ms | 243.92 ms | 221.83 ms | 229.64 ms | 208.81 ms | 188.26 ms | 192.33 ms | 192.84 ms | -44.6% |
+| SPIR-V XIR legalization | 10,045 ms | 6,607 ms | 6,296.58 ms | 6,339.37 ms | 6,502.61 ms | 5,107.07 ms | 4,962.88 ms | 5,260.00 ms | 4,385.93 ms | 4,147.07 ms | 4,264.56 ms | 3,944.06 ms | -60.7% |
+| native AST-to-SPIR-V | 23,492 ms | 17,184 ms | 16,077.31 ms | 15,952.92 ms | 16,180.90 ms | 12,559.43 ms | 12,134.65 ms | 12,481.60 ms | 10,510.54 ms | 10,032.04 ms | 10,311.39 ms | 9,423.90 ms | -59.9% |
+| driver compute-pipeline creation | 86,333 ms | 77,958 ms | 77,884.27 ms | 77,476.73 ms | 76,792.49 ms | 77,701.16 ms | 79,303.15 ms | 79,793.11 ms | 78,298.66 ms | 78,550.37 ms | 78,355.73 ms | 77,273.56 ms | -10.5% |
+| complete shader JIT | 109,979 ms | 95,269 ms | 94,077.8 ms | 93,552.1 ms | 93,093.7 ms | 90,365.8 ms | 91,539.7 ms | 92,379.1 ms | 88,904.5 ms | 88,679.4 ms | 88,760.5 ms | 86,789.6 ms | -21.1% |
 
 The final reachable setup definitions contain 247 instructions for ordinary
 dielectric GGX, 319 for preserve-energy dielectric GGX, 24 for diffuse, and 208
@@ -671,8 +761,9 @@ definition contains 35. The reachable sampled-linear ramp, sampled-constant
 ramp, and sampled RGB Curve definitions contain 72, 48, and 189 instructions.
 The only reachable Normal Map definition is the 75-instruction
 tangent-displaced endpoint. The only reachable Bump definition is the
-49-instruction world endpoint. Driver pipeline creation remains 88.3% of the final
-JIT wall time and is now the dominant Vulkan tail; further
+49-instruction world endpoint. The reachable signed-Perlin definitions contain
+524 instructions for 3D and 262 for 2D. Driver pipeline creation remains 89.0%
+of the final JIT wall time and is now the dominant Vulkan tail; further
 IR work should still reduce its input, but XIR passes are no longer the
 majority of the measured wall time.
 
@@ -687,12 +778,13 @@ EXR (capDate normalized):
 
 Raw EXR files intentionally carry their capture time in `capDate`, so their
 container hashes differ between runs. Rewriting only that metadata attribute to
-the same fixed value makes the retained shader-table, Normal Map, and Bump EXRs
-byte-identical.
+the same fixed value makes the retained shader-table, Normal Map, Bump, and
+signed-Perlin compiler-isolation EXRs byte-identical.
 
-Because this is a 1x1 compile-isolation run, it is not a visual parity gate and
-no triptych is claimed here. Full-resolution Cycles/Psycles triptychs remain a
-separate scene-quality requirement.
+The cold table itself remains a 1x1 compile-isolation measurement. The 960x540
+triptych above is a before/after refactor check, not a Cycles/Psycles scene
+parity gate; full-resolution Cycles/Psycles triptychs remain a separate
+scene-quality requirement.
 
 ## Regression matrix
 
@@ -722,12 +814,15 @@ for each specular family.
 | Normal Map used-only/bound/hash-dedup guards | pass | pass | pass |
 | Bump direct/shared numeric parity | pass | pass | pass |
 | Bump used-only/bound/hash-dedup guards | pass | pass | pass |
+| signed-Perlin direct/shared numeric parity | pass | pass | pass |
+| signed-Perlin used-only/bound/runtime-loop guards | pass | pass | pass |
 | surface metadata/reachability regressions | pass | shared host test | shared host test |
 
 A complete `cmake --build build -j$(nproc)` passed after the lazy used-only
-provider was finalized. The eighteen texture/color/mapping/table/Normal Map/Bump
-backend tests pass, as do the existing Normal Map semantic/tangent-space tests
-and the standalone `psycles_luisa_compile_tests` graph-construction suite.
+provider was finalized. The twenty-one texture/color/mapping/table/Normal
+Map/Bump/signed-Perlin backend tests pass, as do the existing Normal Map
+semantic/tangent-space tests and the standalone `psycles_luisa_compile_tests`
+graph-construction suite.
 
 The focused closure-plan fixture records 25,015 conservative instructions and
 5,345 scene-specialized instructions, a 78.6% reduction. The final Lone Monk
