@@ -112,6 +112,7 @@ struct PrimitiveCompletionRange {
 class UnifiedSceneTraversalComponent final : public SceneTraversalComponent {
 
 private:
+  ScenePrimitiveStagePlan _plan;
   std::shared_ptr<const CurvePrimitiveComponent> _curves;
   std::shared_ptr<const CurveRibbonComponent> _ribbons;
   std::shared_ptr<const PrimitiveMaterialComponent> _materials;
@@ -311,6 +312,9 @@ private:
     resolved->hit_type =
         static_cast<std::uint32_t>(luisa::compute::HitType::Miss);
     resolved->committed_ray_t = ray->t_max();
+    if (_plan.empty()) {
+      return resolved;
+    }
 
     // Cycles' triangle and curve intersections use the closed interval
     // [tmin, tmax]. Vulkan's built-in triangle intersection is specified on
@@ -419,49 +423,78 @@ private:
     // topological forced hit: resolve_completed_triangle still applies the
     // actual ray, visibility, exclusions, and Cycles Pluecker predicate. A
     // geometrically offset origin therefore rejects candidates normally.
-    const auto source_acceleration =
-        source_acceleration_identity(scene, source);
-    $if(source_acceleration.valid) {
-      const auto source_instance =
-          scene->instance_buffer->read(source_acceleration.instance);
-      const auto completion = primitive_completion_range(
-          scene, source_acceleration.instance,
-          source_acceleration.primitive);
-      $if((max(source_instance.coincident_count, 1u) > 1u) |
-          completion.valid) {
-        const auto group = resolve_completed_triangle(
-            scene, ray, visibility_mask, source, light,
-            source_acceleration.instance,
+    if (_plan.triangles) {
+      const auto source_acceleration =
+          source_acceleration_identity(scene, source);
+      $if(source_acceleration.valid) {
+        const auto source_instance =
+            scene->instance_buffer->read(source_acceleration.instance);
+        const auto completion = primitive_completion_range(
+            scene, source_acceleration.instance,
             source_acceleration.primitive);
-        const auto accepted =
-            group.valid &
-            closest.accepts(group.distance, group.object,
-                            group.cycles_primitive, group.type_order);
-        $if(accepted) {
-          closest.select(group.distance, group.object,
-                         group.cycles_primitive, group.type_order);
-          resolved->inst = group.instance;
-          resolved->prim = group.primitive;
-          resolved->bary = group.barycentric;
-          resolved->hit_type = static_cast<std::uint32_t>(
-              luisa::compute::HitType::Surface);
-          resolved->committed_ray_t = group.distance;
+        $if((max(source_instance.coincident_count, 1u) > 1u) |
+            completion.valid) {
+          const auto group = resolve_completed_triangle(
+              scene, ray, visibility_mask, source, light,
+              source_acceleration.instance,
+              source_acceleration.primitive);
+          const auto accepted =
+              group.valid &
+              closest.accepts(group.distance, group.object,
+                              group.cycles_primitive, group.type_order);
+          $if(accepted) {
+            closest.select(group.distance, group.object,
+                           group.cycles_primitive, group.type_order);
+            resolved->inst = group.instance;
+            resolved->prim = group.primitive;
+            resolved->bary = group.barycentric;
+            resolved->hit_type = static_cast<std::uint32_t>(
+                luisa::compute::HitType::Surface);
+            resolved->committed_ray_t = group.distance;
+          };
         };
       };
-    };
+    }
+
+    const auto trace_backend =
+        [&](const Var<luisa::compute::Ray> &candidate_ray,
+            bool commit_candidate) noexcept {
+          if (_plan.mixed()) {
+            return scene->accel
+                ->traverse(candidate_ray,
+                           {.visibility_mask = visibility_mask})
+                .on_surface_candidate(
+                    [&](luisa::compute::SurfaceCandidate &candidate) noexcept {
+                      handle_surface(candidate, commit_candidate);
+                    })
+                .on_procedural_candidate(
+                    [&](luisa::compute::ProceduralCandidate &candidate) noexcept {
+                      handle_procedural(candidate, commit_candidate);
+                    })
+                .trace();
+          }
+          if (_plan.triangles) {
+            return scene->accel
+                ->traverse(candidate_ray,
+                           {.visibility_mask = visibility_mask})
+                .on_surface_candidate(
+                    [&](luisa::compute::SurfaceCandidate &candidate) noexcept {
+                      handle_surface(candidate, commit_candidate);
+                    })
+                .trace();
+          }
+          return scene->accel
+              ->traverse(candidate_ray,
+                         {.visibility_mask = visibility_mask})
+              .on_procedural_candidate(
+                  [&](luisa::compute::ProceduralCandidate &candidate) noexcept {
+                    handle_procedural(candidate, commit_candidate);
+                  })
+              .trace();
+        };
 
     const auto backend_hit =
-        scene->accel->traverse(query_ray,
-                               {.visibility_mask = visibility_mask})
-            .on_surface_candidate(
-                [&](luisa::compute::SurfaceCandidate &candidate) noexcept {
-                  handle_surface(candidate, true);
-                })
-            .on_procedural_candidate(
-                [&](luisa::compute::ProceduralCandidate &candidate) noexcept {
-                  handle_procedural(candidate, true);
-                })
-            .trace();
+        trace_backend(query_ray, true);
 
     // Some ray-query implementations stop reporting candidates at exactly the
     // committed distance. Re-traverse only the segment through the backend's
@@ -476,29 +509,29 @@ private:
                        max(backend_hit->committed_ray_t,
                            resolved->committed_ray_t)));
       const auto ignored =
-          scene->accel
-              ->traverse(tie_ray, {.visibility_mask = visibility_mask})
-              .on_surface_candidate(
-                  [&](luisa::compute::SurfaceCandidate &candidate) noexcept {
-                    handle_surface(candidate, false);
-                  })
-              .on_procedural_candidate(
-                  [&](luisa::compute::ProceduralCandidate &candidate) noexcept {
-                    handle_procedural(candidate, false);
-                  })
-              .trace();
+          trace_backend(tie_ray, false);
       static_cast<void>(ignored);
     };
     return resolved;
   }
 
 public:
-  UnifiedSceneTraversalComponent()
-      : _curves{make_curve_primitive_component()},
-        _ribbons{make_curve_ribbon_component()},
-        _materials{make_primitive_material_component()},
+  explicit UnifiedSceneTraversalComponent(
+      ScenePrimitiveStagePlan plan)
+      : _plan{plan},
+        _curves{plan.curves
+                    ? make_curve_primitive_component()
+                    : nullptr},
+        _ribbons{plan.curves
+                     ? make_curve_ribbon_component()
+                     : nullptr},
+        _materials{plan.empty()
+                       ? nullptr
+                       : make_primitive_material_component()},
         _triangle_intersection{
-            make_cycles_triangle_intersection_component()} {}
+            plan.triangles
+                ? make_cycles_triangle_intersection_component()
+                : nullptr} {}
 
   Var<luisa::compute::CommittedHit>
   closest(const std::shared_ptr<LuisaSceneData> &scene,
@@ -522,8 +555,10 @@ public:
 } // namespace
 
 std::shared_ptr<const SceneTraversalComponent>
-make_scene_traversal_component() {
-  return std::make_shared<UnifiedSceneTraversalComponent>();
+make_scene_traversal_component(
+    ScenePrimitiveStagePlan plan) {
+  return std::make_shared<UnifiedSceneTraversalComponent>(
+      plan);
 }
 
 } // namespace psycles::luisa_backend::detail

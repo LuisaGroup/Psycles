@@ -11,9 +11,7 @@ namespace psycles::luisa_backend::detail {
 class PathKernelPipeline::Impl {
 
   public:
-    std::unique_ptr<PathBounceSetupStage>
-        bounce_setup{
-            make_path_bounce_setup_stage()};
+    std::unique_ptr<PathBounceSetupStage> bounce_setup;
     std::unique_ptr<ClosestEventStage> closest_event;
     std::unique_ptr<ForwardLightStage> forward_light;
     std::unique_ptr<PathVolumeSegmentStage>
@@ -21,15 +19,12 @@ class PathKernelPipeline::Impl {
     std::unique_ptr<BackgroundEventStage>
         background{
             make_background_event_stage()};
-    std::unique_ptr<SurfaceGeometryStage> surface_geometry{
-        make_surface_geometry_stage()};
-    std::unique_ptr<SurfaceShadingStage> surface_shading{
-        make_surface_shading_stage()};
+    std::unique_ptr<SurfaceGeometryStage> surface_geometry;
+    std::unique_ptr<SurfaceShadingStage> surface_shading;
     std::shared_ptr<const DirectLightTraceRecorder>
         direct_light_trace;
     std::vector<std::unique_ptr<DirectLightingComponent>> direct_lighting;
-    std::unique_ptr<SurfaceScatterStage> surface_scatter{
-        make_surface_scatter_stage()};
+    std::unique_ptr<SurfaceScatterStage> surface_scatter;
     std::unique_ptr<SubsurfaceTransportStage> subsurface_transport;
 
     explicit Impl(
@@ -44,11 +39,19 @@ class PathKernelPipeline::Impl {
                     ->environment_in_light_distribution,
                 config.scene
                     ->emissive_triangle_count,
-                config.scene->light_count);
+                config.scene->light_count,
+                config.scene->geometries.size(),
+                config.scene->curve_geometries.size());
+        const auto primitive_plan =
+            stage_plan.primitives;
+        bounce_setup =
+            make_path_bounce_setup_stage(
+                primitive_plan);
         closest_event =
             make_closest_event_stage(
                 stage_plan
-                    .analytic_light_endpoints);
+                    .analytic_light_endpoints,
+                primitive_plan);
         if (stage_plan.analytic_light_endpoints) {
             forward_light =
                 make_forward_light_stage();
@@ -58,28 +61,37 @@ class PathKernelPipeline::Impl {
                 make_path_volume_segment_stage(
                     config);
         }
-        const auto &direct_lighting_plan =
-            stage_plan.direct_lighting;
-        direct_lighting.reserve(
-            direct_lighting_plan.size());
-        if (direct_lighting_plan.environment) {
-            direct_lighting.emplace_back(
-                make_environment_lighting_component(
-                    direct_light_trace));
-        }
-        if (direct_lighting_plan.emissive_mesh) {
-            direct_lighting.emplace_back(
-                make_emissive_mesh_lighting_component(
-                    direct_light_trace));
-        }
-        if (direct_lighting_plan.analytic) {
-            direct_lighting.emplace_back(
-                make_analytic_lighting_component(
-                    direct_light_trace));
-        }
-        if (config.has_subsurface) {
-            subsurface_transport =
-                make_subsurface_transport_stage();
+        if (!primitive_plan.empty()) {
+            surface_geometry =
+                make_surface_geometry_stage(
+                    primitive_plan);
+            surface_shading =
+                make_surface_shading_stage();
+            surface_scatter =
+                make_surface_scatter_stage();
+            const auto &direct_lighting_plan =
+                stage_plan.direct_lighting;
+            direct_lighting.reserve(
+                direct_lighting_plan.size());
+            if (direct_lighting_plan.environment) {
+                direct_lighting.emplace_back(
+                    make_environment_lighting_component(
+                        direct_light_trace));
+            }
+            if (direct_lighting_plan.emissive_mesh) {
+                direct_lighting.emplace_back(
+                    make_emissive_mesh_lighting_component(
+                        direct_light_trace));
+            }
+            if (direct_lighting_plan.analytic) {
+                direct_lighting.emplace_back(
+                    make_analytic_lighting_component(
+                        direct_light_trace));
+            }
+            if (config.has_subsurface) {
+                subsurface_transport =
+                    make_subsurface_transport_stage();
+            }
         }
     }
 };
@@ -177,46 +189,52 @@ void PathKernelPipeline::emit(PathSampleContext &sample) const noexcept {
             $continue;
         };
 
-        auto surface =
-            _impl->surface_geometry->emit(
-                bounce,
-                surface_emission_sampling);
-        auto shading = _impl->surface_shading->emit(surface);
-        if (sample.invocation.config.use_light_tree) {
-            bounce.selected_light =
-                sample.invocation.config.light_tree.surface_sample(
-                    bounce.light_sample.z,
-                    surface.hit_position,
-                    surface.point.shading_normal,
-                    0.0f,
+        if (_impl->surface_geometry) {
+            auto surface =
+                _impl->surface_geometry->emit(
+                    bounce,
+                    surface_emission_sampling);
+            auto shading =
+                _impl->surface_shading->emit(surface);
+            if (sample.invocation.config.use_light_tree) {
+                bounce.selected_light =
+                    sample.invocation.config.light_tree.surface_sample(
+                        bounce.light_sample.z,
+                        surface.hit_position,
+                        surface.point.shading_normal,
+                        0.0f,
+                        (shading.cycles_surface_runtime_flags &
+                         cycles_closure::runtime_bsdf_has_transmission) != 0u);
+            }
+            DirectLightingContext lighting{
+                .bounce = bounce,
+                .surface = surface,
+                .shading = shading};
+            if (sample.invocation.config.next_event_estimation) {
+                const auto has_evaluable_bsdf =
                     (shading.cycles_surface_runtime_flags &
-                     cycles_closure::runtime_bsdf_has_transmission) != 0u);
-        }
-        DirectLightingContext lighting{
-            .bounce = bounce, .surface = surface, .shading = shading};
-        if (sample.invocation.config.next_event_estimation) {
-            const auto has_evaluable_bsdf =
-                (shading.cycles_surface_runtime_flags &
-                 cycles_closure::runtime_bsdf_has_eval) != 0u;
-            $if(has_evaluable_bsdf) {
-                for (const auto &component : _impl->direct_lighting) {
-                    component->emit(lighting);
-                }
-            };
-        }
-        const auto scatter = _impl->surface_scatter->emit(lighting);
-        if (_impl->subsurface_transport) {
-            $if(scatter.subsurface) {
-                const auto transported =
-                    _impl->subsurface_transport->emit(
-                        lighting, scatter.sample);
-                $if(transported) {
-                    $continue;
-                }
-                $else {
-                    $break;
+                     cycles_closure::runtime_bsdf_has_eval) != 0u;
+                $if(has_evaluable_bsdf) {
+                    for (const auto &component : _impl->direct_lighting) {
+                        component->emit(lighting);
+                    }
                 };
-            };
+            }
+            const auto scatter =
+                _impl->surface_scatter->emit(lighting);
+            if (_impl->subsurface_transport) {
+                $if(scatter.subsurface) {
+                    const auto transported =
+                        _impl->subsurface_transport->emit(
+                            lighting, scatter.sample);
+                    $if(transported) {
+                        $continue;
+                    }
+                    $else {
+                        $break;
+                    };
+                };
+            }
         }
     };
 }

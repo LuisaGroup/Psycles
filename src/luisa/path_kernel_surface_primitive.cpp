@@ -13,16 +13,26 @@ class CyclesSurfacePrimitiveGeometryComponent final
     : public SurfacePrimitiveGeometryComponent {
 
 private:
+  ScenePrimitiveStagePlan _plan;
   std::shared_ptr<const TriangleGeometryComponent> _triangles;
   std::shared_ptr<const CurveGeometryComponent> _curves;
   std::shared_ptr<const CyclesTriangleSurfaceComponent>
       _triangle_surface;
 
 public:
-  CyclesSurfacePrimitiveGeometryComponent()
-      : _triangles{make_triangle_geometry_component()},
-        _curves{make_curve_geometry_component()},
-        _triangle_surface{make_cycles_triangle_surface_component()} {}
+  explicit CyclesSurfacePrimitiveGeometryComponent(
+      ScenePrimitiveStagePlan plan)
+      : _plan{plan},
+        _triangles{plan.triangles
+                       ? make_triangle_geometry_component()
+                       : nullptr},
+        _curves{plan.curves
+                    ? make_curve_geometry_component()
+                    : nullptr},
+        _triangle_surface{
+            plan.triangles
+                ? make_cycles_triangle_surface_component()
+                : nullptr} {}
 
   SurfacePrimitiveGeometryContext
   emit(const std::shared_ptr<LuisaSceneData> &scene,
@@ -30,7 +40,12 @@ public:
        const Var<luisa::compute::Ray> &ray, Expr<float> ray_dP,
        Expr<float> ray_dD,
        const SafeNormalizeCallable &safe_normalize) const noexcept override {
-    const Bool is_curve = hit->is_procedural();
+    Bool is_curve = false;
+    if (_plan.curves) {
+      is_curve = _plan.triangles
+                     ? hit->is_procedural()
+                     : Bool{true};
+    }
     const auto object_to_world = scene->accel->instance_transform(hit->inst);
     const auto world_to_object = inverse(object_to_world);
     const auto normal_to_world = transpose(world_to_object);
@@ -108,7 +123,7 @@ public:
     UInt volume_sample_method = 0u;
     Bool volume_valid = false;
 
-    $if(is_curve) {
+    const auto emit_curve = [&] {
       const auto curve = _curves->emit(scene, hit->inst, hit->prim, ray,
                                        hit->committed_ray_t);
       const auto volume = curve.primitive.volume_stack_entry();
@@ -139,8 +154,8 @@ public:
       volume_instance_id = volume.instance_id;
       volume_sample_method = volume.sample_method;
       volume_valid = volume.valid;
-    }
-    $else {
+    };
+    const auto emit_triangle = [&] {
       const auto triangle = _triangles->emit(scene, hit->inst, hit->prim);
       const auto &primitive = triangle.primitive;
       const auto volume = primitive.volume_stack_entry();
@@ -232,6 +247,19 @@ public:
       volume_valid = volume.valid;
     };
 
+    if (_plan.mixed()) {
+      $if(is_curve) {
+        emit_curve();
+      }
+      $else {
+        emit_triangle();
+      };
+    } else if (_plan.curves) {
+      emit_curve();
+    } else {
+      emit_triangle();
+    }
+
     const auto normal_components_differ =
         (geometric_normal.x != geometric_normal.y) |
         (geometric_normal.x != geometric_normal.z);
@@ -264,7 +292,7 @@ public:
     Float3 undisplaced_object_dPdx = object_dPdx;
     Float3 undisplaced_object_dPdy = object_dPdy;
 
-    $if(!is_curve) {
+    const auto emit_triangle_differentials = [&] {
       const Float3 edge1 = wp1 - wp0;
       const Float3 edge2 = wp2 - wp0;
       const Float gram00 = dot(edge1, edge1);
@@ -360,6 +388,16 @@ public:
       undisplaced_tangent_sign =
           packed_undisplaced_tangent.w;
     };
+
+    if (_plan.triangles) {
+      if (_plan.curves) {
+        $if(!is_curve) {
+          emit_triangle_differentials();
+        };
+      } else {
+        emit_triangle_differentials();
+      }
+    }
 
     const auto transformed_object_hit_position =
         (world_to_object * make_float4(hit_position, 1.0f)).xyz();
@@ -482,8 +520,10 @@ public:
 } // namespace
 
 std::shared_ptr<const SurfacePrimitiveGeometryComponent>
-make_surface_primitive_geometry_component() {
-  return std::make_shared<CyclesSurfacePrimitiveGeometryComponent>();
+make_surface_primitive_geometry_component(
+    ScenePrimitiveStagePlan plan) {
+  return std::make_shared<CyclesSurfacePrimitiveGeometryComponent>(
+      plan);
 }
 
 } // namespace psycles::luisa_backend::detail

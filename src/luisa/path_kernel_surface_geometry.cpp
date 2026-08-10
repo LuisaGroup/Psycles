@@ -11,11 +11,15 @@ namespace {
 class SurfaceGeometryStageImpl final : public SurfaceGeometryStage {
 
 private:
+  ScenePrimitiveStagePlan _primitive_plan;
   std::shared_ptr<const SurfacePrimitiveGeometryComponent> _geometry;
 
 public:
-  SurfaceGeometryStageImpl()
-      : _geometry{make_surface_primitive_geometry_component()} {}
+  explicit SurfaceGeometryStageImpl(
+      ScenePrimitiveStagePlan primitive_plan)
+      : _primitive_plan{primitive_plan},
+        _geometry{make_surface_primitive_geometry_component(
+            primitive_plan)} {}
 
   SurfaceGeometryContext emit(PathBounceContext &bounce,
                               UInt emission_sampling) const noexcept override {
@@ -54,12 +58,23 @@ public:
     point.transmission_depth = transmission_depth;
 
     Float3 shadow_shading_normal = point.shading_normal;
-    $if((!primitive.is_curve) & (!bounce.subsurface_exit) &
-        primitive.triangle_smooth &
-        (primitive.instance.shadow_terminator_geometry_offset > 0.0f)) {
-      shadow_shading_normal =
-          invocation.surface_shading_normal(primitive.surface_tag, point);
+    const auto record_shadow_terminator = [&] {
+      $if((!bounce.subsurface_exit) &
+          primitive.triangle_smooth &
+          (primitive.instance.shadow_terminator_geometry_offset > 0.0f)) {
+        shadow_shading_normal =
+            invocation.surface_shading_normal(primitive.surface_tag, point);
+      };
     };
+    if (_primitive_plan.triangles) {
+      if (_primitive_plan.curves) {
+        $if(!primitive.is_curve) {
+          record_shadow_terminator();
+        };
+      } else {
+        record_shadow_terminator();
+      }
+    }
 
     UInt path_lobe_mask = surface_query.lobe_mask;
     const Bool previous_ray_was_diffuse =
@@ -111,6 +126,7 @@ public:
         filter_glossy_enabled & (blur_pdf < 1.0f));
 
     return {.bounce = bounce,
+            .primitive_plan = _primitive_plan,
             .emission_sampling = std::move(emission_sampling),
             .instance = std::move(primitive.instance),
             .p0 = std::move(primitive.p0),
@@ -150,7 +166,7 @@ public:
 
 Float3 SurfaceGeometryContext::make_ray_origin(Float3 direction) const noexcept {
   Float3 origin = hit_position;
-  $if(!is_curve) {
+  const auto resolve_triangle_origin = [&] {
     const Float3 object_direction =
         cycles_transform::direction(world_to_object, direction);
     const Float3 cycles_origin = select(
@@ -161,6 +177,15 @@ Float3 SurfaceGeometryContext::make_ray_origin(Float3 direction) const noexcept 
         hit_position, geometric_normal, cycles_origin, cycles_direction,
         p0, p1, p2);
   };
+  if (primitive_plan.triangles) {
+    if (primitive_plan.curves) {
+      $if(!is_curve) {
+        resolve_triangle_origin();
+      };
+    } else {
+      resolve_triangle_origin();
+    }
+  }
   return origin;
 }
 
@@ -168,7 +193,7 @@ surface_ray::ShadowOrigin
 SurfaceGeometryContext::make_shadow_origin(Float3 direction) const noexcept {
   Float3 position = hit_position;
   Bool skip_self = true;
-  $if(!is_curve) {
+  const auto resolve_triangle_origin = [&] {
     const auto triangle = surface_ray::surface_shadow_origin(
         hit_position, shadow_shading_normal, geometric_normal, direction,
         instance.shadow_terminator_geometry_offset, triangle_smooth,
@@ -177,11 +202,21 @@ SurfaceGeometryContext::make_shadow_origin(Float3 direction) const noexcept {
     position = triangle.position;
     skip_self = triangle.skip_self;
   };
+  if (primitive_plan.triangles) {
+    if (primitive_plan.curves) {
+      $if(!is_curve) {
+        resolve_triangle_origin();
+      };
+    } else {
+      resolve_triangle_origin();
+    }
+  }
   return {.position = std::move(position), .skip_self = std::move(skip_self)};
 }
 
-std::unique_ptr<SurfaceGeometryStage> make_surface_geometry_stage() {
-  return std::make_unique<SurfaceGeometryStageImpl>();
+std::unique_ptr<SurfaceGeometryStage> make_surface_geometry_stage(
+    ScenePrimitiveStagePlan plan) {
+  return std::make_unique<SurfaceGeometryStageImpl>(plan);
 }
 
 } // namespace psycles::luisa_backend::detail

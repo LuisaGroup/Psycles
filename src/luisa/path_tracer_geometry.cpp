@@ -23,7 +23,15 @@ using EvaluateShadowSurfaceCallable =
 make_evaluate_shadow_surface_callable(
     const std::shared_ptr<LuisaSceneData> &scene,
     const SafeNormalizeCallable &safe_normalize) noexcept {
-    const auto geometry = make_surface_primitive_geometry_component();
+    const auto primitive_plan =
+        make_scene_primitive_stage_plan(
+            scene->geometries.size(),
+            scene->curve_geometries.size());
+    const auto geometry =
+        primitive_plan.empty()
+            ? nullptr
+            : make_surface_primitive_geometry_component(
+                  primitive_plan);
     EvaluateShadowSurfaceCallable evaluate_shadow_surface =
         [scene, safe_normalize, geometry](
             Var<luisa::compute::Ray> candidate_ray,
@@ -31,6 +39,18 @@ make_evaluate_shadow_surface_callable(
             Float ray_dP,
             Float ray_dD,
             Var<ShaderEvaluationStateCall> shader_state_call) noexcept {
+            Var<ShadowSurfaceEvaluationCall> result;
+            if (!geometry) {
+                result->transmittance =
+                    make_float3(1.0f);
+                result->object =
+                    surface_ray::invalid_primitive;
+                result->primitive =
+                    surface_ray::invalid_primitive;
+                result->kind =
+                    surface_ray::invalid_primitive;
+                return result;
+            }
             const auto shader_state =
                 unpack_shader_evaluation_state(shader_state_call);
             BufferShaderServices services{
@@ -53,7 +73,6 @@ make_evaluate_shadow_surface_callable(
             auto point = std::move(primitive.point);
             point.ray_visibility = shadow_visibility;
             cycles_path_state::apply_shader_state(point, shader_state);
-            Var<ShadowSurfaceEvaluationCall> result;
             result->transmittance = clamp(
                 scene->surfaces.transparent_extinction(
                     primitive.surface_tag, services, point),
@@ -77,7 +96,11 @@ TraceShadowCallable make_trace_shadow_callable(
     const SafeNormalizeCallable &safe_normalize) noexcept {
     const auto evaluate_shadow_surface =
         make_evaluate_shadow_surface_callable(scene, safe_normalize);
-    const auto traversal = make_scene_traversal_component();
+    const auto traversal =
+        make_scene_traversal_component(
+            make_scene_primitive_stage_plan(
+                scene->geometries.size(),
+                scene->curve_geometries.size()));
     TraceShadowCallable trace_shadow =
         [scene, evaluate_shadow_surface, traversal](
             Var<luisa::compute::Ray> shadow_ray,

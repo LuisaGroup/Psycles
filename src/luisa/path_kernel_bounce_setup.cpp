@@ -12,10 +12,15 @@ class PathBounceSetupStageImpl final
     : public PathBounceSetupStage {
 
   private:
-    std::shared_ptr<const SceneTraversalComponent> _traversal{
-        make_scene_traversal_component()};
+    std::shared_ptr<const SceneTraversalComponent> _traversal;
 
   public:
+    explicit PathBounceSetupStageImpl(
+        ScenePrimitiveStagePlan plan)
+        : _traversal{
+              make_scene_traversal_component(
+                  plan)} {}
+
     PathBounceContext
     emit(PathSampleContext &sample,
          const UInt &path_step) const noexcept override {
@@ -155,9 +160,11 @@ class PathBounceSetupStageImpl final
 }// namespace
 
 std::unique_ptr<PathBounceSetupStage>
-make_path_bounce_setup_stage() {
+make_path_bounce_setup_stage(
+    ScenePrimitiveStagePlan plan) {
     return std::make_unique<
-        PathBounceSetupStageImpl>();
+        PathBounceSetupStageImpl>(
+            plan);
 }
 
 }// namespace psycles::luisa_backend::detail
