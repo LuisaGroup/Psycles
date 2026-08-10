@@ -228,7 +228,10 @@ void GraphSurfaceImplementation::for_each_physical_closure(
         physical_closures.emplace_back(closure);
     };
     for_each_closure(
-        values, [&](const TracedClosure &graph_closure) noexcept {
+        values,
+        _value_dependency_plan.physical_closures,
+        _value_dependency_plan.physical,
+        [&](const TracedClosure &graph_closure) noexcept {
             auto closure = graph_closure;
             closure.principled_lobe = PrincipledLobe::none;
             closure.setup_valid = true;

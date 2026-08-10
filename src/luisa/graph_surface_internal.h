@@ -494,6 +494,8 @@ public:
 
 private:
     void for_each_closure(const TracedValues &values,
+        const std::vector<bool> &closure_mask,
+        const std::vector<bool> &endpoint_mask,
         const ClosureVisitor &visitor) const noexcept;
     void for_each_physical_closure(const ShaderServices &services,
         const SurfacePoint &point,
