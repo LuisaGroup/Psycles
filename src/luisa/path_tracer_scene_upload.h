@@ -9,6 +9,11 @@ namespace psycles::luisa_backend::detail {
 
 struct CyclesPrimitiveCompletionPlan;
 
+[[nodiscard]] std::uint32_t encode_attribute_domain(
+    contract::MeshAttributeDomain domain) noexcept;
+
+[[nodiscard]] Vec3f from_luisa(luisa::float3 value) noexcept;
+
 struct PrimitiveCompletionUpload {
     luisa::vector<PrimitiveCompletionGpu> records;
     luisa::vector<luisa::uint> instances;

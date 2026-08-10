@@ -5,6 +5,19 @@ if(PSYCLES_BUILD_TESTS)
     add_test(NAME psycles.contracts COMMAND psycles_tests)
 
     add_executable(
+        psycles_graph_material_scene_tests
+        tests/test_graph_material_scene.cpp)
+    target_link_libraries(
+        psycles_graph_material_scene_tests
+        PRIVATE Psycles::core)
+    target_compile_features(
+        psycles_graph_material_scene_tests
+        PRIVATE cxx_std_20)
+    add_test(
+        NAME psycles.graph_material_scene
+        COMMAND psycles_graph_material_scene_tests)
+
+    add_executable(
         psycles_surface_program_metadata_tests
         tests/test_surface_program_metadata.cpp)
     target_link_libraries(

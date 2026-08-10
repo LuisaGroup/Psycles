@@ -7,6 +7,7 @@
 #include "path_tracer_image_decode.h"
 #include "path_tracer_instance_support.h"
 #include "path_tracer_light_sampling_scene.h"
+#include "path_tracer_bsdf_tables.h"
 #include "path_tracer_scene_geometry.h"
 #include "path_tracer_scene_upload.h"
 #include "shader_table_data.h"
@@ -19,34 +20,11 @@
 
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/contract/cycles_pointiness.h>
-#include <psycles/luisa/cycles_bsdf_tables.h>
 #include <psycles/luisa/cycles_nishita.h>
 
-#include "cycles_shader_tables_4_5_10.inl"
 namespace psycles::luisa_backend {
 
 using namespace detail;
-
-namespace {
-
-[[nodiscard]] constexpr std::uint32_t encode_attribute_domain(
-    contract::MeshAttributeDomain domain) noexcept {
-    switch (domain) {
-        case contract::MeshAttributeDomain::point:
-            return attribute_domain_point;
-        case contract::MeshAttributeDomain::corner:
-            return attribute_domain_corner;
-        case contract::MeshAttributeDomain::face:
-            return attribute_domain_face;
-    }
-    return attribute_domain_point;
-}
-
-[[nodiscard]] Vec3f from_luisa(luisa::float3 value) noexcept {
-    return {value.x, value.y, value.z};
-}
-
-}// namespace
 
 contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     const SceneSnapshot &snapshot) {
@@ -483,55 +461,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         data->device.create_buffer<luisa::uint>(
             volume_surface_flags.size());
 
-    using namespace cycles45_tables;
-    static_assert(
-        std::size(table_ggx_E) == ggx_e_size);
-    static_assert(
-        std::size(table_ggx_Eavg) == ggx_eavg_size);
-    static_assert(
-        std::size(table_ggx_glass_E) ==
-        ggx_glass_e_size);
-    static_assert(
-        std::size(table_ggx_glass_Eavg) ==
-        ggx_glass_eavg_size);
-    static_assert(
-        std::size(table_ggx_glass_inv_E) ==
-        ggx_glass_inv_e_size);
-    static_assert(
-        std::size(table_ggx_glass_inv_Eavg) ==
-        ggx_glass_inv_eavg_size);
-    static_assert(
-        std::size(table_sheen_ltc) == sheen_ltc_size);
-    static_assert(
-        std::size(table_ggx_gen_schlick_ior_s) ==
-        ggx_gen_schlick_ior_s_size);
-    static_assert(
-        std::size(table_ggx_gen_schlick_s) ==
-        ggx_gen_schlick_s_size);
-
-    luisa::vector<float> cycles_bsdf_values;
-    cycles_bsdf_values.reserve(total_size);
-    const auto append_cycles_table =
-        [&cycles_bsdf_values](const auto &table) noexcept {
-            for (const auto value : table) {
-                cycles_bsdf_values.emplace_back(value);
-            }
-        };
-    append_cycles_table(table_ggx_E);
-    append_cycles_table(table_ggx_Eavg);
-    append_cycles_table(table_ggx_glass_E);
-    append_cycles_table(table_ggx_glass_Eavg);
-    append_cycles_table(table_ggx_glass_inv_E);
-    append_cycles_table(table_ggx_glass_inv_Eavg);
-    append_cycles_table(table_sheen_ltc);
-    append_cycles_table(table_ggx_gen_schlick_ior_s);
-    append_cycles_table(table_ggx_gen_schlick_s);
-    if (cycles_bsdf_values.size() != total_size) {
-        diagnose(
-            result.diagnostics,
-            "Internal Cycles BSDF table layout mismatch.");
-        return result;
-    }
+    auto cycles_bsdf_values = make_cycles_bsdf_table_values();
     data->cycles_bsdf_table_buffer =
         data->device.create_buffer<float>(
             cycles_bsdf_values.size());

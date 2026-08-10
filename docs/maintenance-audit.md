@@ -404,6 +404,35 @@ grew from 14.506 s with 256 frames to 48.178 s with 307,200 frames. The logical
 capacity must not scale shader structure; generation, cache identity, and final
 compilation remain an explicit profiling target.
 
+## Source-size boundary closure
+
+The remaining three over-limit files were decomposed without adding a debt
+allowlist. The versioned Cycles BSDF payload and its exact contiguous device
+ABI assembly now live in `path_tracer_bsdf_tables.{h,cpp}`; scene orchestration
+no longer owns generated table symbols. Graph/material/scene contracts moved
+from the monolithic core-test driver into an independently linked test target,
+and the Normal Map Blender probe family moved into its own Python module. The
+former concentration points are now 1,995, 1,939, and 1,941 lines respectively.
+The source gate checks 548 first-party files and 165,137 lines with no file over
+the 2,000-line ceiling and no exemption.
+
+The all-thread build and complete CTest matrix pass all 265 contracts. A strict
+native-XIR Vulkan Lone Monk compile/render canary retained its four pre-split
+hashes. A separate HIP wavefront replay at 640x480x1 also retained the exact
+display, Combined, Normal, and Albedo bytes:
+
+- display: `16be3dbb588bdd6af6ff1ff008c42c6cd96da7cfb51415bda00072cb63d3df73`;
+- Combined: `f7c449e5da434ba8100fda06f4ae75fc4e1f79704de24780dfbb5486c85dc474`;
+- Normal: `0d8fa6771670ca441738a31c5b9c5af01d503e88f0ce1a5a1f81743f82103432`;
+- Albedo: `57e456f4242da17aff42f7160ca66497d5796d7de2de378f9ed56d44716f4ec0`.
+
+The 640x480 display was opened at native resolution after the comparison. Its
+grass distribution, building silhouette, windows, and material regions have no
+new structural displacement. The one-sample image is intentionally noisy and
+is a structural refactor check, not a new Cycles-parity quality claim. The
+commands, hashes, and before/after/difference triptych are recorded in
+[`validation/2026-08-11/source-size-boundaries`](validation/2026-08-11/source-size-boundaries/README.md).
+
 ## Target boundaries
 
 The path tracer is split by renderer semantics:
