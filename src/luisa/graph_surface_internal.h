@@ -10,6 +10,7 @@
 
 #include "graph_surface_value_expression.h"
 #include "surface_color_transforms.h"
+#include "surface_vector_mapping.h"
 
 #include <luisa/core/stl/vector.h>
 
@@ -349,13 +350,6 @@ template <typename Id, typename Values>
     Float2 random) noexcept;
 [[nodiscard]] Float3 sample_cosine_hemisphere(
     Float3 normal, Float2 random) noexcept;
-[[nodiscard]] Float3 rotate_euler(
-    Float3 value, Float3 rotation) noexcept;
-[[nodiscard]] Float3 rotate_euler_transposed(
-    Float3 value, Float3 rotation) noexcept;
-[[nodiscard]] Float3 safe_divide_components(
-    Float3 numerator, Float3 denominator) noexcept;
-
 class GraphSurfaceImplementation;
 
 struct ValueEvaluationContext {

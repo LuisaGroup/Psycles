@@ -467,6 +467,37 @@ public:
         Float3 hsl) const noexcept = 0;
 };
 
+// The Mapping node's vector type is immutable graph metadata, so production
+// integrations can select one strongly typed transform while recording the
+// shader instead of materializing a device-side mode switch.
+class SurfaceVectorMappingProvider {
+
+public:
+    virtual ~SurfaceVectorMappingProvider() noexcept = default;
+
+    [[nodiscard]] virtual Float3 map_point(
+        Float3 input,
+        Float3 location,
+        Float3 rotation,
+        Float3 scale) const noexcept = 0;
+
+    [[nodiscard]] virtual Float3 map_texture(
+        Float3 input,
+        Float3 location,
+        Float3 rotation,
+        Float3 scale) const noexcept = 0;
+
+    [[nodiscard]] virtual Float3 map_vector(
+        Float3 input,
+        Float3 rotation,
+        Float3 scale) const noexcept = 0;
+
+    [[nodiscard]] virtual Float3 map_normal(
+        Float3 input,
+        Float3 rotation,
+        Float3 scale) const noexcept = 0;
+};
+
 // Non-owning host-stage view of a canonical closure's Luisa expressions.
 // Copying this type only copies AST expression handles: it neither declares
 // device variables nor evaluates, serializes, or bakes material data. This is
@@ -726,6 +757,11 @@ public:
     // canonical inline GraphSurface path for standalone clients.
     [[nodiscard]] virtual const SurfaceColorTransformProvider *
     surface_color_transform_provider() const noexcept {
+        return nullptr;
+    }
+
+    [[nodiscard]] virtual const SurfaceVectorMappingProvider *
+    surface_vector_mapping_provider() const noexcept {
         return nullptr;
     }
 

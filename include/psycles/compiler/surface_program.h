@@ -49,6 +49,15 @@ enum class ParameterSource : std::uint8_t {
   property
 };
 
+// Static Mapping-node metadata. The numeric values are part of the compact
+// ValueInstruction encoding consumed by surface backends.
+enum class MappingVectorType : std::uint8_t {
+  point = 0u,
+  texture = 1u,
+  vector = 2u,
+  normal = 3u
+};
+
 struct ParameterDesc {
   ParameterId id;
   contract::NodeId node;

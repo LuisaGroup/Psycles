@@ -47,10 +47,12 @@ namespace operand = value_operand;
                 property_string(node, "VectorType", "POINT");
             const auto mode =
                 vector_type == "TEXTURE"
-                    ? 1u
+                    ? MappingVectorType::texture
                     : vector_type == "VECTOR"
-                          ? 2u
-                          : vector_type == "NORMAL" ? 3u : 0u;
+                          ? MappingVectorType::vector
+                          : vector_type == "NORMAL"
+                                ? MappingVectorType::normal
+                                : MappingVectorType::point;
             publish(
                 node.id,
                 "Vector",
@@ -63,7 +65,7 @@ namespace operand = value_operand;
                         {operand::mapping::location, *location},
                         {operand::mapping::rotation, *rotation},
                         {operand::mapping::scale, *scale}}),
-                    .static_u0 = mode,
+                    .static_u0 = static_cast<std::uint64_t>(mode),
                     .static_u1 = mapping_axes(node)}));
         }
         return true;
