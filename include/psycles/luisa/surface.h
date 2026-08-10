@@ -143,6 +143,46 @@ struct SurfacePoint {
     Bool back_facing;
 };
 
+// Exact shading-point projection consumed after a material graph has
+// populated its physical closures. Closure selection, directional sampling,
+// and evaluation cannot observe texture coordinates, attributes, geometry
+// derivatives, or material parameter storage. Keeping that boundary in the
+// type system prevents nested callable ABIs from accidentally carrying the
+// complete SurfacePoint and makes future dependency growth explicit.
+struct SurfaceClosurePoint {
+    Float3 geometric_normal;
+    Float3 shading_normal;
+    Float3 incoming;
+    UInt ray_visibility;
+    Bool use_bump_map_correction;
+    Bool back_facing;
+
+    explicit SurfaceClosurePoint(
+        const SurfacePoint &point) noexcept
+        : geometric_normal{point.geometric_normal},
+          shading_normal{point.shading_normal},
+          incoming{point.incoming},
+          ray_visibility{point.ray_visibility},
+          use_bump_map_correction{
+              point.use_bump_map_correction},
+          back_facing{point.back_facing} {}
+
+    SurfaceClosurePoint(
+        Float3 geometric_normal_value,
+        Float3 shading_normal_value,
+        Float3 incoming_value,
+        UInt ray_visibility_value,
+        Bool use_bump_map_correction_value,
+        Bool back_facing_value) noexcept
+        : geometric_normal{std::move(geometric_normal_value)},
+          shading_normal{std::move(shading_normal_value)},
+          incoming{std::move(incoming_value)},
+          ray_visibility{std::move(ray_visibility_value)},
+          use_bump_map_correction{
+              std::move(use_bump_map_correction_value)},
+          back_facing{std::move(back_facing_value)} {}
+};
+
 struct SurfaceQuery {
     UInt lobe_mask;
     UInt transport_mode;

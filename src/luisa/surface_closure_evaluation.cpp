@@ -59,7 +59,7 @@ make_surface_closure_evaluation_policy(
 
 SurfaceClosureEvaluationDirections
 make_surface_closure_evaluation_directions(
-    const SurfacePoint &point,
+    const SurfaceClosurePoint &point,
     Expr<luisa::float3> outgoing_expression) noexcept {
     const auto outgoing = detail::safe_normalize(
         Float3{outgoing_expression}, point.shading_normal);
@@ -72,7 +72,7 @@ make_surface_closure_evaluation_directions(
 luisa::compute::Var<SurfaceClosureEvaluationContributionCall>
 surface_closure_evaluation_contribution(
     const ShaderServices &services,
-    const SurfacePoint &point,
+    const SurfaceClosurePoint &point,
     Expr<luisa::float3> shading_normal_expression,
     const SurfaceClosureRecord &closure,
     Expr<luisa::float3> incoming_expression,
@@ -524,7 +524,7 @@ SurfaceEvaluation SurfaceClosureEvaluationAccumulator::finish(
 DirectSurfaceClosureEvaluationOperation::
     DirectSurfaceClosureEvaluationOperation(
         const ShaderServices &services,
-        const SurfacePoint &point,
+        const SurfaceClosurePoint &point,
         const SurfaceQuery &query,
         const SurfaceClosureEvaluationPolicy &policy) noexcept
     : _services{services},

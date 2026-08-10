@@ -109,7 +109,7 @@ inline constexpr std::uint32_t bssrdf = 1u << 6u;
 }// namespace surface_closure_sample_property
 
 [[nodiscard]] Float3 make_surface_closure_sampling_incoming(
-    const SurfacePoint &point) noexcept;
+    const SurfaceClosurePoint &point) noexcept;
 
 [[nodiscard]] SurfaceClosureSelectionInput
 make_surface_closure_selection_input(
@@ -121,7 +121,7 @@ make_surface_closure_selection_input(
 
 [[nodiscard]] SurfaceClosureSelectionContext
 make_surface_closure_selection_context(
-    const SurfacePoint &point,
+    const SurfaceClosurePoint &point,
     Expr<luisa::float3> incoming,
     const SurfaceQuery &query) noexcept;
 
@@ -135,7 +135,7 @@ surface_closure_selection(
 // projects to the same strong typed algebra used by branch-local callables.
 [[nodiscard]] luisa::compute::Var<SurfaceClosureSelectionCall>
 surface_closure_selection(
-    const SurfacePoint &point,
+    const SurfaceClosurePoint &point,
     const SurfaceClosureRecord &closure,
     Expr<luisa::float3> incoming,
     const SurfaceQuery &query) noexcept;
@@ -147,7 +147,7 @@ surface_closure_selection(
     SurfaceClosureConditionalSampleCall>
 surface_closure_conditional_sample(
     const ShaderServices &services,
-    const SurfacePoint &point,
+    const SurfaceClosurePoint &point,
     Expr<luisa::float3> shading_normal,
     const SurfaceClosureRecord &closure,
     Expr<luisa::float3> incoming,
@@ -270,7 +270,7 @@ class SurfaceClosureSelectedSample {
     [[nodiscard]] Expr<luisa::float3> direction() const noexcept;
 
     [[nodiscard]] SurfaceSampleTrace finish(
-        const SurfacePoint &point,
+        const SurfaceClosurePoint &point,
         const SurfaceClosureSelectionMeasure &measure,
         const SurfaceEvaluation &mixture_evaluation,
         bool trace_selection) const noexcept;
@@ -311,14 +311,14 @@ class DirectSurfaceClosureSamplingOperation final
 
   private:
     const ShaderServices &_services;
-    const SurfacePoint &_point;
+    SurfaceClosurePoint _point;
     const SurfaceQuery &_query;
     Float3 _incoming{make_float3(0.0f)};
 
   public:
     DirectSurfaceClosureSamplingOperation(
         const ShaderServices &services,
-        const SurfacePoint &point,
+        const SurfaceClosurePoint &point,
         const SurfaceQuery &query) noexcept;
 
     [[nodiscard]] luisa::compute::Var<
@@ -344,7 +344,7 @@ class SurfaceClosureSamplingVisitor final
     : public SurfaceClosureExpressionVisitor {
 
   private:
-    const SurfacePoint &_point;
+    SurfaceClosurePoint _point;
     const SurfaceClosureSamplingOperation &_sampling;
     SurfaceClosureEvaluationOperation &_evaluation;
     Expr<float> _random_lobe;
@@ -361,7 +361,7 @@ class SurfaceClosureSamplingVisitor final
   public:
     SurfaceClosureSamplingVisitor(
         std::size_t capacity,
-        const SurfacePoint &point,
+        const SurfaceClosurePoint &point,
         const SurfaceClosureSamplingOperation &sampling,
         SurfaceClosureEvaluationOperation &evaluation,
         Expr<float> random_lobe,

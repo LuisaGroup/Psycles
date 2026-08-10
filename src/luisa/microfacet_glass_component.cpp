@@ -181,7 +181,8 @@ glass_albedo_estimate(const ShaderServices &services,
 }// namespace
 
 MicrofacetGlassComponent::MicrofacetGlassComponent(
-    const ShaderServices &services, const SurfacePoint &point) noexcept
+    const ShaderServices &services,
+    const SurfaceClosurePoint &point) noexcept
     : _services{services}, _point{point} {}
 
 TracedClosure MicrofacetGlassComponent::setup(

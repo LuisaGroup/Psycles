@@ -215,12 +215,14 @@ void GraphSurfaceImplementation::for_each_physical_closure(
     Bool reflective_caustics,
     Bool refractive_caustics,
     const ClosureVisitor &function) const noexcept {
+    const SurfaceClosurePoint closure_point{point};
     const auto incoming =
         safe_normalize(point.incoming, point.shading_normal);
     const PrincipledLayerComponent principled_layers{services, point};
     const PrincipledBaseComponent principled_base{services, point};
     const PrincipledDiffuseComponent principled_diffuse{services};
-    const MicrofacetGlassComponent microfacet_glass{services, point};
+    const MicrofacetGlassComponent microfacet_glass{
+        services, closure_point};
     const BssrdfClosureComponent bssrdf_closure{point};
     const ThinSubsurfaceComponent thin_subsurface;
     luisa::vector<TracedClosure> physical_closures;
@@ -371,7 +373,9 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                         bssrdf.weight = select(subsurface_closure_weight, make_float3(0.0f),
                                                graph_closure.thin_wall);
                         bssrdf.normal = maybe_ensure_valid_specular_reflection(
-                            point, incoming, graph_closure.normal);
+                            closure_point,
+                            incoming,
+                            graph_closure.normal);
                         const auto bssrdf_setup = bssrdf_closure.setup(bssrdf);
                         emit(bssrdf_setup.bssrdf);
                         emit(bssrdf_setup.diffuse_fallback);
@@ -400,7 +404,7 @@ void GraphSurfaceImplementation::for_each_physical_closure(
             }
             case compiler::ClosureOperation::subsurface: {
                 closure.normal = maybe_ensure_valid_specular_reflection(
-                    point, incoming, graph_closure.normal);
+                    closure_point, incoming, graph_closure.normal);
                 const auto setup = bssrdf_closure.setup(closure);
                 emit(setup.bssrdf);
                 emit(setup.diffuse_fallback);
@@ -423,7 +427,7 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                 closure.allocation_weight = select(
                     0.0f, allocation_weight, allocated);
                 closure.normal = maybe_ensure_valid_specular_reflection(
-                    point, incoming, graph_closure.normal);
+                    closure_point, incoming, graph_closure.normal);
                 // Standalone Glossy stores authored Color in the Cycles
                 // closure weight. Its GGX Fresnel is constant one; MULTI_GGX
                 // only adds the tabulated energy-preservation correction.
@@ -498,7 +502,7 @@ void GraphSurfaceImplementation::for_each_physical_closure(
                 // Cycles currently applies the specular-reflection
                 // normal correction to translucent setup as well.
                 closure.normal = maybe_ensure_valid_specular_reflection(
-                    point, incoming, graph_closure.normal);
+                    closure_point, incoming, graph_closure.normal);
                 closure.albedo = closure.weight;
                 closure.sample_weight =
                     select(0.0f, closure.allocation_weight, allocated);

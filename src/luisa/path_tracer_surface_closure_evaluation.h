@@ -1,14 +1,15 @@
 #pragma once
 
 #include "path_tracer_internal.h"
+#include "path_tracer_surface_closure_point.h"
 
 #include <psycles/luisa/surface_closure_evaluation.h>
 
 namespace psycles::luisa_backend::detail {
 
 // Compact, immutable state shared by every per-closure callable invocation
-// of one surface evaluation. The SurfacePoint remains a separate callable
-// parameter so existing pack/unpack helpers preserve its exact ABI.
+// of one surface evaluation. SurfaceClosurePoint is the exact post-population
+// projection carried separately by the callable ABI.
 struct SurfaceClosureEvaluationQueryCall {
     luisa::float3 incoming{};
     luisa::float3 outgoing{};
@@ -49,7 +50,7 @@ using SurfaceClosureEvaluationCallable =
         Buffer<float>,
         BindlessArray,
         BindlessArray,
-        SurfacePointCall,
+        SurfaceClosurePointCall,
         SurfaceClosureEvaluationQueryCall,
         luisa::float3,
         bool,
@@ -74,8 +75,8 @@ class CallableSurfaceClosureEvaluationOperation final
     const BufferFloat &_cycles_bsdf_tables;
     const BindlessVar &_textures;
     const BindlessVar &_geometry_heap;
-    const Var<SurfacePointCall> &_point;
-    const SurfacePoint &_surface_point;
+    const Var<SurfaceClosurePointCall> &_point;
+    SurfaceClosurePoint _surface_point;
     Var<SurfaceClosureEvaluationQueryCall> _query;
     const SurfaceClosureEvaluationCallable &_callable;
 
@@ -86,8 +87,8 @@ class CallableSurfaceClosureEvaluationOperation final
         const BufferFloat &cycles_bsdf_tables,
         const BindlessVar &textures,
         const BindlessVar &geometry_heap,
-        const Var<SurfacePointCall> &packed_point,
-        const SurfacePoint &point,
+        const Var<SurfaceClosurePointCall> &packed_point,
+        const SurfaceClosurePoint &point,
         const SurfaceQuery &query,
         const SurfaceClosureEvaluationPolicy &policy,
         const SurfaceClosureEvaluationCallable &callable) noexcept;

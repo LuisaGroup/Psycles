@@ -36,7 +36,7 @@ template<typename Closure>
 }// namespace
 
 Float3 make_surface_closure_sampling_incoming(
-    const SurfacePoint &point) noexcept {
+    const SurfaceClosurePoint &point) noexcept {
     return detail::safe_normalize(
         point.incoming, point.shading_normal);
 }
@@ -80,7 +80,7 @@ make_surface_closure_selection_input(
 
 SurfaceClosureSelectionContext
 make_surface_closure_selection_context(
-    const SurfacePoint &point,
+    const SurfaceClosurePoint &point,
     Expr<luisa::float3> incoming,
     const SurfaceQuery &query) noexcept {
     return {
@@ -199,7 +199,7 @@ surface_closure_selection(
 
 luisa::compute::Var<SurfaceClosureSelectionCall>
 surface_closure_selection(
-    const SurfacePoint &point,
+    const SurfaceClosurePoint &point,
     const SurfaceClosureRecord &closure,
     Expr<luisa::float3> incoming,
     const SurfaceQuery &query) noexcept {
@@ -212,7 +212,7 @@ surface_closure_selection(
 luisa::compute::Var<SurfaceClosureConditionalSampleCall>
 surface_closure_conditional_sample(
     const ShaderServices &services,
-    const SurfacePoint &point,
+    const SurfaceClosurePoint &point,
     Expr<luisa::float3> shading_normal_expression,
     const SurfaceClosureRecord &closure,
     Expr<luisa::float3> incoming_expression,
@@ -513,7 +513,7 @@ SurfaceClosureSelectedSample::direction() const noexcept {
 }
 
 SurfaceSampleTrace SurfaceClosureSelectedSample::finish(
-    const SurfacePoint &point,
+    const SurfaceClosurePoint &point,
     const SurfaceClosureSelectionMeasure &measure,
     const SurfaceEvaluation &mixture_evaluation,
     bool trace_selection) const noexcept {
@@ -719,7 +719,7 @@ SurfaceSampleTrace SurfaceClosureSelectedSample::finish(
 DirectSurfaceClosureSamplingOperation::
     DirectSurfaceClosureSamplingOperation(
         const ShaderServices &services,
-        const SurfacePoint &point,
+        const SurfaceClosurePoint &point,
         const SurfaceQuery &query) noexcept
     : _services{services},
       _point{point},
@@ -757,7 +757,7 @@ DirectSurfaceClosureSamplingOperation::conditional_sample(
 
 SurfaceClosureSamplingVisitor::SurfaceClosureSamplingVisitor(
     std::size_t capacity,
-    const SurfacePoint &point,
+    const SurfaceClosurePoint &point,
     const SurfaceClosureSamplingOperation &sampling,
     SurfaceClosureEvaluationOperation &evaluation,
     Expr<float> random_lobe,

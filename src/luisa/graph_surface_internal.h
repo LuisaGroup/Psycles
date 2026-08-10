@@ -253,7 +253,7 @@ template <typename Id, typename Values>
     Float3 incoming,
     Float3 shading_normal) noexcept;
 [[nodiscard]] Float3 maybe_ensure_valid_specular_reflection(
-    const SurfacePoint &point,
+    const SurfaceClosurePoint &point,
     Float3 incoming,
     Float3 shading_normal) noexcept;
 [[nodiscard]] GgxEnergy ggx_energy(const ShaderServices &services,
@@ -277,7 +277,8 @@ template <typename Id, typename Values>
 // rejects bsdf_eval's competing PDF, while the closure selected through
 // bsdf_sample retains its original sampling PDF; EvaluationMode expresses
 // that distinction at the aggregate evaluator.
-[[nodiscard]] Float bump_shadowing_term(const SurfacePoint &point,
+[[nodiscard]] Float bump_shadowing_term(
+    const SurfaceClosurePoint &point,
     Float3 smooth_normal,
     const SurfaceClosureRecord &closure,
     Float3 direction,
@@ -334,7 +335,7 @@ template <typename Id, typename Values>
     Float3 glossy_normal,
     Float glossy_filter_roughness) noexcept;
 [[nodiscard]] MicrofacetReflectionSample sample_microfacet_reflection(
-    const SurfacePoint &point,
+    const SurfaceClosurePoint &point,
     Float3 smooth_normal,
     const SurfaceClosureRecord &closure,
     Float3 incoming,

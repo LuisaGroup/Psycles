@@ -15,7 +15,7 @@ make_surface_closure_evaluation_callable(
                BufferFloat cycles_bsdf_tables,
                BindlessVar textures,
                BindlessVar geometry_heap,
-               Var<SurfacePointCall> packed_point,
+               Var<SurfaceClosurePointCall> packed_point,
                Var<SurfaceClosureEvaluationQueryCall> packed_query,
                Float3 shading_normal,
                Bool selected_sample,
@@ -33,7 +33,7 @@ make_surface_closure_evaluation_callable(
             scene->attribute_range_slot,
             scene->nishita_texture_bindings,
             scene->shader_color_space};
-        const auto point = unpack_surface_point(packed_point);
+        const auto point = unpack_surface_closure_point(packed_point);
         const auto closure = unpack_surface_closure(
             Expr<luisa::float4x4>{block_0.expression()},
             Expr<luisa::float4x4>{block_1.expression()},
@@ -81,8 +81,8 @@ CallableSurfaceClosureEvaluationOperation::
         const BufferFloat &cycles_bsdf_tables,
         const BindlessVar &textures,
         const BindlessVar &geometry_heap,
-        const Var<SurfacePointCall> &packed_point,
-        const SurfacePoint &point,
+        const Var<SurfaceClosurePointCall> &packed_point,
+        const SurfaceClosurePoint &point,
         const SurfaceQuery &query,
         const SurfaceClosureEvaluationPolicy &policy,
         const SurfaceClosureEvaluationCallable &callable) noexcept

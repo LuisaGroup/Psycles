@@ -24,8 +24,8 @@ namespace {
 
 PrincipledBaseComponent::PrincipledBaseComponent(
     const ShaderServices &services, const SurfacePoint &point) noexcept
-    : _services{services}, _point{point}, _glass{services, point},
-      _thin_glass{services, point} {}
+    : _services{services}, _point{point}, _glass{services, _point},
+      _thin_glass{services, _point} {}
 
 PrincipledDielectricSetupParameters populate_principled_dielectric(
     const PrincipledDielectricSetupInput &input) noexcept {

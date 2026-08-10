@@ -54,7 +54,7 @@ using SurfaceClosureConditionalSampleCallable =
         Buffer<float>,
         BindlessArray,
         BindlessArray,
-        SurfacePointCall,
+        SurfaceClosurePointCall,
         SurfaceClosureSamplingQueryCall,
         luisa::float3,
         luisa::float3,
@@ -83,7 +83,7 @@ class CallableSurfaceClosureSamplingOperation final
     const BufferFloat &_cycles_bsdf_tables;
     const BindlessVar &_textures;
     const BindlessVar &_geometry_heap;
-    const Var<SurfacePointCall> &_point;
+    const Var<SurfaceClosurePointCall> &_point;
     SurfaceClosureSelectionContext _selection_context;
     Var<SurfaceClosureSamplingQueryCall> _query;
     const SurfaceClosureSamplingCallables &_callables;
@@ -95,8 +95,8 @@ class CallableSurfaceClosureSamplingOperation final
         const BufferFloat &cycles_bsdf_tables,
         const BindlessVar &textures,
         const BindlessVar &geometry_heap,
-        const Var<SurfacePointCall> &packed_point,
-        const SurfacePoint &point,
+        const Var<SurfaceClosurePointCall> &packed_point,
+        const SurfaceClosurePoint &point,
         const SurfaceQuery &query,
         const SurfaceClosureSamplingCallables &callables) noexcept;
 
@@ -126,7 +126,6 @@ class CallableSurfaceClosureSamplingOperation final
     const BindlessVar &textures,
     const BindlessVar &geometry_heap,
     Expr<std::uint32_t> surface_tag,
-    const Var<SurfacePointCall> &packed_point,
     const ShaderServices &services,
     const SurfacePoint &point,
     Expr<float> random_lobe,

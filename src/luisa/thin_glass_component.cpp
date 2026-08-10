@@ -69,7 +69,7 @@ struct ThinGlassFresnel {
 
 [[nodiscard]] TracedClosure setup_microfacet_reflection(
     const ShaderServices &services,
-    const SurfacePoint &point,
+    const SurfaceClosurePoint &point,
     const TracedClosure &prototype,
     Float3 weight,
     Float3 normal,
@@ -118,7 +118,7 @@ struct ThinGlassFresnel {
 
 ThinGlassComponent::ThinGlassComponent(
     const ShaderServices &services,
-    const SurfacePoint &point) noexcept
+    const SurfaceClosurePoint &point) noexcept
     : _services{services}, _point{point} {}
 
 ThinGlassSetupResult ThinGlassComponent::setup(

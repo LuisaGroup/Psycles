@@ -57,7 +57,7 @@ struct SurfaceClosureEvaluationDirections {
 
 [[nodiscard]] SurfaceClosureEvaluationDirections
 make_surface_closure_evaluation_directions(
-    const SurfacePoint &point,
+    const SurfaceClosurePoint &point,
     Expr<luisa::float3> outgoing) noexcept;
 
 [[nodiscard]] SurfaceClosureEvaluationPolicy
@@ -72,7 +72,7 @@ make_surface_closure_evaluation_policy(
     SurfaceClosureEvaluationContributionCall>
 surface_closure_evaluation_contribution(
     const ShaderServices &services,
-    const SurfacePoint &point,
+    const SurfaceClosurePoint &point,
     Expr<luisa::float3> shading_normal,
     const SurfaceClosureRecord &closure,
     Expr<luisa::float3> incoming,
@@ -138,7 +138,7 @@ class DirectSurfaceClosureEvaluationOperation final
 
   private:
     const ShaderServices &_services;
-    const SurfacePoint &_point;
+    SurfaceClosurePoint _point;
     const SurfaceQuery &_query;
     const SurfaceClosureEvaluationPolicy &_policy;
     Float3 _incoming{make_float3(0.0f)};
@@ -147,7 +147,7 @@ class DirectSurfaceClosureEvaluationOperation final
   public:
     DirectSurfaceClosureEvaluationOperation(
         const ShaderServices &services,
-        const SurfacePoint &point,
+        const SurfaceClosurePoint &point,
         const SurfaceQuery &query,
         const SurfaceClosureEvaluationPolicy &policy) noexcept;
 

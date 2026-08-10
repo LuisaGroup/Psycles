@@ -98,9 +98,10 @@ SurfaceEvaluation SurfaceClosureEvaluator::evaluate_impl(
     EvaluationMode mode,
     UInt light_shader_flags,
     UInt selected_closure_index) const noexcept {
+    const SurfaceClosurePoint closure_point{_point};
     const auto directions =
         make_surface_closure_evaluation_directions(
-            _point,
+            closure_point,
             Expr<luisa::float3>{
                 outgoing_expression.expression()});
     const auto policy = make_surface_closure_evaluation_policy(
@@ -117,7 +118,7 @@ SurfaceEvaluation SurfaceClosureEvaluator::evaluate_impl(
                 : Bool{false};
         accumulator.add(surface_closure_evaluation_contribution(
             services,
-            _point,
+            closure_point,
             Expr<luisa::float3>{
                 _shading_normal.expression()},
             closure,

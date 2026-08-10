@@ -15,13 +15,13 @@ struct ThinGlassSetupResult {
 // physical contract while retaining Thin Wall and all tints as device values.
 class ThinGlassComponent final {
 
-  private:
+private:
     const ShaderServices &_services;
-    const SurfacePoint &_point;
+    SurfaceClosurePoint _point;
 
-  public:
+public:
     ThinGlassComponent(const ShaderServices &services,
-                       const SurfacePoint &point) noexcept;
+                       const SurfaceClosurePoint &point) noexcept;
 
     [[nodiscard]] ThinGlassSetupResult setup(
         const TracedClosure &prototype,
