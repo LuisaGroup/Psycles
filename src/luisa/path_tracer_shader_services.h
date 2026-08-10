@@ -4,6 +4,7 @@
 #include "path_tracer_color_transforms.h"
 #include "path_tracer_internal.h"
 #include "path_tracer_texture_sampling.h"
+#include "path_tracer_vector_mapping.h"
 
 #include <psycles/luisa/cycles_nishita.h>
 
@@ -66,6 +67,7 @@ private:
     const SurfaceClosureSetupProvider *_surface_closure_setup_provider{};
     const CallableTexture2DSamplingProvider *_texture_sampling_provider{};
     CallableSurfaceColorTransformProvider _color_transform_provider;
+    CallableSurfaceVectorMappingProvider _vector_mapping_provider;
 
 public:
     explicit BufferShaderServices(
@@ -108,6 +110,11 @@ public:
     [[nodiscard]] const SurfaceColorTransformProvider *
     surface_color_transform_provider() const noexcept override {
         return &_color_transform_provider;
+    }
+
+    [[nodiscard]] const SurfaceVectorMappingProvider *
+    surface_vector_mapping_provider() const noexcept override {
+        return &_vector_mapping_provider;
     }
 
     [[nodiscard]] Float4 texture_2d(

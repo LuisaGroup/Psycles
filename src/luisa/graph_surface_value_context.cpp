@@ -392,19 +392,26 @@ public:
           instruction.operand(operand::mapping::rotation), result);
       auto scale = vector(
           instruction.operand(operand::mapping::scale), result);
-      Float3 mapped = input;
-      if (instruction.static_u0 == 1u) {
-        mapped = safe_divide_components(
-            rotate_euler_transposed(input - location, rotation), scale);
-      } else if (instruction.static_u0 == 3u) {
-        mapped = rotate_euler(safe_divide_components(input, scale), rotation);
-        auto mapped_length = length(mapped);
-        mapped /= select(1.0f, mapped_length, mapped_length != 0.0f);
-      } else {
-        mapped = rotate_euler(input * scale, rotation);
-        if (instruction.static_u0 == 0u) {
-          mapped += location;
-        }
+      Float3 mapped;
+      switch (static_cast<compiler::MappingVectorType>(
+          instruction.static_u0)) {
+      case compiler::MappingVectorType::point:
+        mapped = map_vector_point(
+            services, input, location, rotation, scale);
+        break;
+      case compiler::MappingVectorType::texture:
+        mapped = map_vector_texture(
+            services, input, location, rotation, scale);
+        break;
+      case compiler::MappingVectorType::normal:
+        mapped = map_vector_normal(services, input, rotation, scale);
+        break;
+      case compiler::MappingVectorType::vector:
+      default:
+        // Preserve the previous conservative behavior for malformed or newer
+        // encodings: ignore translation and apply the linear transform.
+        mapped = map_vector_direction(services, input, rotation, scale);
+        break;
       }
       value = make_float4(mapped, 0.0f);
       break;
