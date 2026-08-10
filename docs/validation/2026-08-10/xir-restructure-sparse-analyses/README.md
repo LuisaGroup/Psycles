@@ -1161,3 +1161,75 @@ The remaining 1.62-second pointer pass is no longer dominated by repeated
 immutable legality scans. Its next profile must separate actual instruction
 cloning, resolver insertion, use-list rewrites, and callable cleanup. Boundary
 verification and malformed-input validation remain intact.
+
+## Use-list call graph and sparse recursion SCCs
+
+The next Luisa checkpoint replaces the inline pass's per-start reachability
+search with one exact strongly connected component decomposition. More
+importantly, it no longer discovers call edges by scanning every instruction
+in every callable. A linked call has exactly one callee operand use, so
+enumerating each callable's use list and accepting only the exact callee
+operand is set-equivalent to a full instruction scan over owned calls:
+
+```text
+E = {(parent_function(c), f) |
+     u is in uses(f), user(u) = c,
+     c is CallInst, u = c.callee_operand, c.callee = f}
+```
+
+The operand-identity predicate is necessary: a function value used as an
+ordinary call argument is not a call-graph edge. `parent_function()` retains
+calls in disconnected but owned blocks, matching the inline pass's candidate
+domain. Removing an instruction unlinks its operands, so detached calls do not
+remain in the use lists.
+
+The implementation assigns dense function IDs, materializes forward and
+reverse CSR graphs, and runs iterative Kosaraju traversal. Each function is
+visited once in each direction and each edge is inspected once in each
+direction, giving `O(F + U + E)` time and `O(F + E)` auxiliary storage, where
+`U` is the number of function uses inspected. A multi-vertex SCC is recursive;
+a singleton SCC is recursive exactly when it has an explicit self edge. No
+recursion-stack depth depends on shader graph depth.
+
+Three regressions make these invariants observable. A two-function cycle must
+classify both vertices as recursive with exactly `2F` vertex and `2E` edge
+visits. A 128-function chain must inspect 128 function uses (127 internal calls
+plus the selected kernel call), recover 127 callable edges, and perform exactly
+256 vertex and 254 edge visits. A deliberately malformed ordinary argument use
+must be counted as a use but must not invent an edge or recursive SCC. The
+existing disconnected-owned-block recursion regression continues to pass.
+
+The matched cold Lone Monk run is under
+`/var/tmp/psycles-inline-use-scc-20260810/`, against
+`/var/tmp/psycles-inline-prevalidated-apply-20260810/`:
+
+| Boundary | Repeated reachability | Use-list sparse SCC | Change |
+| --- | ---: | ---: | ---: |
+| Production callable uses inspected | not reported | 995 | sparse domain |
+| Production graph vertices / edges | not reported | 57 / 881 | exact graph |
+| SCC vertex / edge visits | not reported | 114 / 1,762 | exactly `2F` / `2E` |
+| `inline-spirv-pointer-args` | 1,620.18 ms | 1,515.62 ms | -6.5% |
+| Ordinary selected-call inlining | 764.42 ms | 689.71 ms | -9.8% |
+| SPIR-V XIR legalization | 10,766.86 ms | 10,511.51 ms | -2.4% |
+| Native AST-to-SPIR-V | 24,038.64 ms | 23,696.24 ms | -1.4% |
+| Complete shader JIT | 24.2129 s | 23.8657 s | -1.4% |
+| Process wall time | 26.22 s | 25.86 s | -1.4% |
+| Peak RSS | 1,656,976 KiB | 1,658,696 KiB | within run noise |
+| Raw SPIR-V | 1,431,985 words | 1,431,985 words | identical size |
+| Optimized SPIR-V | 1,116,158 words | 1,116,158 words | identical size |
+
+The PPM and linear Combined hashes remain respectively
+`3ff6c5463ace13c0f26a735ac1af2bb96ab8a9ba1cb4398359cf2466f63a4d1b` and
+`4f93bceff43a46a086454e9a50745a497b39cd27e8a694f617a5c934fe3ed3eb`.
+The complete all-thread standard build passes, as do `unit_xir` 48/48, all 21
+SPIR-V tests, the pointer suite (21/21 tests, 188 assertions), the system-STL
+pass suite (358/358 tests, 2,101 assertions), and the RX 9070 XT native Vulkan
+route (92/92 tests, 2,096 assertions).
+
+A fresh 51,058-sample profile lost no samples. Recursion discovery no longer
+appears as an independent inline leaf. Selected-call inlining is now 1.86%
+inclusive, dominated by actual multi-block cloning (1.49%): metadata-aware
+instruction cloning is 0.71%, resolver hash-map insertion is 0.45%, and
+callable destruction is 0.27%. The full pointer legalizer has only 0.58%
+unattributed self time, so the next target is clone-time value resolution,
+not another speculative rewrite of its local preflight.
