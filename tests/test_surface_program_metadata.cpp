@@ -3,12 +3,14 @@
 #include <psycles/compiler/surface_program.h>
 #include <psycles/contract/scene.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -288,7 +290,8 @@ void test_cycles_surface_bssrdf_metadata() {
 [[nodiscard]] ShaderGraph make_closure_plan_principled(
     float alpha, float sheen, float coat, float metallic, float transmission,
     float subsurface, bool thin_wall, float subsurface_scale = 1.0f,
-    psycles::Vec3f emission_color = {}, float emission_strength = 1.0f) {
+    psycles::Vec3f emission_color = {}, float emission_strength = 1.0f,
+    float specular_ior_level = 0.5f) {
     ShaderGraph graph;
     const auto principled =
         graph.add_node(node_type::principled_bsdf, "Closure-plan Principled");
@@ -316,7 +319,7 @@ void test_cycles_surface_bssrdf_metadata() {
                             SocketValue::floating(emission_strength)) &&
             graph.set_input(principled, "IOR", SocketValue::floating(1.45f)) &&
             graph.set_input(principled, "SpecularIORLevel",
-                            SocketValue::floating(0.5f)),
+                            SocketValue::floating(specular_ior_level)),
         "failed to configure closure-plan Principled");
     graph.set_root(ShaderDomain::surface,
                    OutputRef{.node = principled, .socket = "Closure"});
@@ -350,6 +353,37 @@ void test_surface_closure_plan() {
         }
         throw std::runtime_error{"closure-plan graph has no Principled leaf"};
     };
+    const auto principled_instruction =
+        [](const SurfaceProgram &program) -> const ClosureInstruction & {
+        for (const auto &instruction : program.closure_instructions()) {
+            if (instruction.operation == ClosureOperation::principled) {
+                return instruction;
+            }
+        }
+        throw std::runtime_error{
+            "value-dependency graph has no Principled leaf"};
+    };
+    const auto active = [](const std::vector<bool> &mask,
+                           ValueExpressionId id) noexcept {
+        return id.valid() && id.value < mask.size() && mask[id.value];
+    };
+    const auto require_topology_closed = [&](const SurfaceProgram &program,
+                                             const std::vector<bool> &mask,
+                                             const std::string &domain) {
+        require(mask.size() == program.value_instructions().size(),
+                domain + " dependency mask has the wrong size");
+        for (auto index = std::size_t{0u}; index < mask.size(); ++index) {
+            if (!mask[index]) {
+                continue;
+            }
+            for (const auto operand :
+                 program.value_instructions()[index].operands) {
+                require(!operand.valid() || active(mask, operand),
+                        domain +
+                            " dependency mask is not transitively closed");
+            }
+        }
+    };
 
     const auto [base_shader, base_program] = compile(
         make_closure_plan_principled(1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, false));
@@ -371,6 +405,74 @@ void test_surface_closure_plan() {
                 feature(base, PrincipledClosureFeature::diffuse) &&
                 !feature(base, PrincipledClosureFeature::emission),
             "direct zero Principled sockets did not remove physical lobe code");
+
+    const auto base_dependencies = analyze_surface_value_dependencies(
+        *base_program, union_plan);
+    require(base_dependencies.compatible(*base_program),
+            "surface value dependency plan is incompatible with its program");
+    require_topology_closed(
+        *base_program, base_dependencies.physical, "physical");
+    require_topology_closed(
+        *base_program, base_dependencies.emission, "emission");
+    require_topology_closed(
+        *base_program, base_dependencies.preparation, "preparation");
+    const auto &base_closure = principled_instruction(*base_program);
+    require(
+        active(base_dependencies.physical, base_closure.color) &&
+            active(base_dependencies.physical, base_closure.normal) &&
+            active(base_dependencies.physical, base_closure.roughness) &&
+            active(base_dependencies.physical,
+                   base_closure.diffuse_roughness) &&
+            active(base_dependencies.physical,
+                   base_closure.subsurface_weight) &&
+            active(base_dependencies.physical, base_closure.ior) &&
+            active(base_dependencies.physical,
+                   base_closure.specular_ior_level) &&
+            active(base_dependencies.physical,
+                   base_closure.specular_tint),
+        "physical dependency plan lost a reachable dielectric/diffuse input");
+    require(
+        !active(base_dependencies.physical, base_closure.alpha) &&
+            !active(base_dependencies.physical, base_closure.sheen_weight) &&
+            !active(base_dependencies.physical, base_closure.coat_weight) &&
+            !active(base_dependencies.physical, base_closure.coat_tint) &&
+            !active(base_dependencies.physical, base_closure.metallic) &&
+            !active(base_dependencies.physical,
+                    base_closure.transmission_weight) &&
+            !active(base_dependencies.physical, base_closure.thin_wall) &&
+            !active(base_dependencies.physical,
+                    base_closure.emission_color) &&
+            !active(base_dependencies.physical,
+                    base_closure.emission_strength),
+        "physical dependency plan retained a proven-unreachable socket family");
+    require(
+        std::none_of(base_dependencies.emission.begin(),
+                     base_dependencies.emission.end(),
+                     [](bool value) noexcept { return value; }) &&
+            base_dependencies.preparation == base_dependencies.physical,
+        "non-emissive preparation retained an emission-only value schedule");
+
+    const auto [diffuse_shader, diffuse_program] = compile(
+        make_closure_plan_principled(
+            1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, false, 1.0f, {}, 1.0f,
+            0.0f));
+    const auto diffuse_binding =
+        bind_surface_parameters(*diffuse_program, *diffuse_shader);
+    require(diffuse_binding.ok(), "failed to bind diffuse-only closure plan");
+    const auto diffuse_plan = analyze_surface_closure_plan(
+        *diffuse_program, *diffuse_binding.parameters);
+    const auto &diffuse_entry =
+        principled_entry(*diffuse_program, diffuse_plan);
+    require(
+        feature(diffuse_entry, PrincipledClosureFeature::diffuse) &&
+            !feature(diffuse_entry, PrincipledClosureFeature::dielectric),
+        "diffuse-only regression graph did not isolate the diffuse family");
+    const auto diffuse_dependencies = analyze_surface_value_dependencies(
+        *diffuse_program, diffuse_plan);
+    const auto &diffuse_closure =
+        principled_instruction(*diffuse_program);
+    require(active(diffuse_dependencies.physical, diffuse_closure.normal),
+            "diffuse-only value schedule lost its authored normal");
 
     const auto [thin_shader, thin_program] = compile(
         make_closure_plan_principled(0.6f, 0.2f, 0.3f, 0.4f, 0.5f, 0.25f, true));
@@ -440,6 +542,13 @@ void test_surface_closure_plan() {
     require(feature(principled_entry(*base_program, emission_union),
                     PrincipledClosureFeature::emission),
             "same-topology plans did not retain reachable Principled emission");
+    const auto emission_dependencies =
+        analyze_surface_value_dependencies(*base_program, emission_union);
+    require(active(emission_dependencies.emission,
+                   base_closure.emission_color) &&
+                active(emission_dependencies.emission,
+                       base_closure.emission_strength),
+            "reachable Principled emission lost its authored value roots");
 
     ShaderGraph linked_graph;
     const auto zero =
@@ -463,6 +572,12 @@ void test_surface_closure_plan() {
         feature(principled_entry(*linked_program, linked_plan),
                 PrincipledClosureFeature::sheen),
         "linked numerical zero was incorrectly host-folded from closure plan");
+    const auto linked_dependencies =
+        analyze_surface_value_dependencies(*linked_program, linked_plan);
+    const auto &linked_closure = principled_instruction(*linked_program);
+    require(active(linked_dependencies.physical,
+                   linked_closure.sheen_weight),
+            "linked Sheen input was incorrectly removed from value schedule");
 
     ShaderGraph linked_emission_graph;
     const auto linked_zero_color = linked_emission_graph.add_node(

@@ -31,6 +31,9 @@ GraphSurfaceImplementation::GraphSurfaceImplementation(
             _closure_plan =
                 compiler::conservative_surface_closure_plan(*_program);
         }
+        _value_dependency_plan =
+            compiler::analyze_surface_value_dependencies(
+                *_program, _closure_plan);
         for (const auto &instruction : _program->value_instructions()) {
             _value_nodes.emplace_back(make_value_node(instruction));
             if (instruction.operation ==
@@ -210,7 +213,8 @@ GraphSurfaceImplementation::evaluate_traced(
     if (!_program) {
         return SurfaceEvaluation::zero();
     }
-    auto values = trace_values(services, point);
+    auto values = trace_surface_values(
+        services, point, &_value_dependency_plan.physical);
     return evaluate_traced(
         services,
         values,
@@ -231,7 +235,8 @@ GraphSurfaceImplementation::evaluate_light(
     if (!_program) {
         return SurfaceEvaluation::zero();
     }
-    auto values = trace_values(services, point);
+    auto values = trace_surface_values(
+        services, point, &_value_dependency_plan.physical);
     return evaluate_traced(services,
         values,
         point,
@@ -256,7 +261,8 @@ GraphSurfaceImplementation::closure_trace(
     if (!_program) {
         return result;
     }
-    auto values = trace_values(services, point);
+    auto values = trace_surface_values(
+        services, point, &_value_dependency_plan.physical);
     UInt closure_count = 0u;
     UInt runtime_flags = select(
         0u, cycles_closure::runtime_backfacing, point.back_facing);
@@ -358,7 +364,8 @@ GraphSurfaceImplementation::sample_trace(const ShaderServices &services,
     if (!_program) {
         return make_float3(0.0f);
     }
-    auto values = trace_values(services, point);
+    auto values = trace_surface_values(
+        services, point, &_value_dependency_plan.physical);
     Float3 result = make_float3(0.0f);
     for_each_physical_closure(
         services,

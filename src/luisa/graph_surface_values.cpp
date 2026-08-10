@@ -110,8 +110,18 @@ TracedValues GraphSurfaceImplementation::trace_values(
     const std::vector<bool> *active_mask) const noexcept {
     // Explicit masks denote isolated compiler domains (displacement or a
     // Bump offset sample) and must not recursively enter SetNormal.
-    if (active_mask != nullptr ||
-        !_program->surface_normal_root().valid()) {
+    if (active_mask != nullptr) {
+        return trace_value_stage(services, point, active_mask);
+    }
+
+    return trace_surface_values(services, point, nullptr);
+}
+
+TracedValues GraphSurfaceImplementation::trace_surface_values(
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    const std::vector<bool> *active_mask) const noexcept {
+    if (!_program->surface_normal_root().valid()) {
         return trace_value_stage(services, point, active_mask);
     }
 
@@ -128,7 +138,7 @@ TracedValues GraphSurfaceImplementation::trace_values(
     surface_point.shading_normal =
         bump_values.values[
             _program->surface_normal_root().value].vector();
-    return trace_value_stage(services, surface_point, nullptr);
+    return trace_value_stage(services, surface_point, active_mask);
 }
 
 }// namespace psycles::luisa_backend::detail

@@ -13,7 +13,8 @@ namespace psycles::luisa_backend::detail {
     if (!_program) {
         return make_float3(0.0f);
     }
-    const auto values = trace_values(services, point);
+    const auto values = trace_surface_values(
+        services, point, &_value_dependency_plan.emission);
     return emission_traced(
         services, point, values, reflective_caustics);
 }
@@ -59,7 +60,8 @@ namespace psycles::luisa_backend::detail {
     // schedule feeds both the authored emission root and the raw physical
     // closure reductions. No closure record is baked or stored in a weakly
     // typed device array.
-    const auto values = trace_values(services, point);
+    const auto values = trace_surface_values(
+        services, point, &_value_dependency_plan.preparation);
     result.emission = emission_traced(
         services,
         point,
