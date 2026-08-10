@@ -1,4 +1,6 @@
 #include "principled_base_component.h"
+#include "principled_metallic_component.h"
+#include "principled_specular_state.h"
 
 #include <psycles/luisa/cycles_bsdf_tables.h>
 #include <psycles/luisa/cycles_closure.h>
@@ -27,31 +29,22 @@ PrincipledBaseComponent::PrincipledBaseComponent(
 
 PrincipledDielectricSetupParameters populate_principled_dielectric(
     const PrincipledDielectricSetupInput &input) noexcept {
-    const auto incoming = safe_normalize(
-        input.incoming, input.surface_shading_normal);
-    const auto correction_enabled =
-        input.use_bump_map_correction &
-        !all(input.surface_geometric_normal == input.normal);
-    const auto glossy_normal = select(
-        input.normal,
-        ensure_valid_specular_reflection(
-            input.surface_geometric_normal,
-            incoming,
-            input.normal),
-        correction_enabled);
-    const auto incoming_cosine = clamp(
-        dot(glossy_normal, incoming), 0.0f, 1.0f);
-    const auto roughness = clamp(input.roughness, 0.0f, 1.0f);
-    const auto specular_tint = max(
-        input.specular_tint, make_float3(0.0f));
+    const auto specular = populate_principled_specular_state(
+        {.normal = input.normal,
+         .incoming = input.incoming,
+         .surface_shading_normal = input.surface_shading_normal,
+         .surface_geometric_normal = input.surface_geometric_normal,
+         .roughness = input.roughness,
+         .specular_tint = input.specular_tint,
+         .use_bump_map_correction = input.use_bump_map_correction});
     return {
         .lower_weight = input.lower_weight,
-        .glossy_normal = glossy_normal,
-        .incoming_cosine = incoming_cosine,
-        .roughness = roughness,
+        .glossy_normal = specular.glossy_normal,
+        .incoming_cosine = specular.incoming_cosine,
+        .roughness = specular.roughness,
         .ior = input.ior,
         .specular_ior_level = input.specular_ior_level,
-        .specular_tint = specular_tint,
+        .specular_tint = specular.specular_tint,
         .preserve_ggx_energy = input.preserve_ggx_energy};
 }
 
@@ -158,6 +151,7 @@ PrincipledBaseResult PrincipledBaseComponent::evaluate(
     const auto specular_tint = max(closure.specular_tint, make_float3(0.0f));
     const auto incoming_cosine = clamp(dot(glossy_normal, incoming), 0.0f, 1.0f);
     const auto roughness = clamp(closure.roughness, 0.0f, 1.0f);
+    const PrincipledMetallicComponent metallic_component{_services};
     auto lower_weight = closure.weight;
     std::optional<TracedClosure> metallic;
     std::optional<TracedClosure> transmission;
@@ -170,53 +164,47 @@ PrincipledBaseResult PrincipledBaseComponent::evaluate(
     // whenever the authored socket crosses the closure cutoff, independently
     // of whether reflective caustics permit allocating the physical closure.
     if (enabled(compiler::PrincipledClosureFeature::metallic)) {
-        const auto metallic_amount = clamp(closure.metallic, 0.0f, 1.0f);
-        const auto metallic_requested =
-            metallic_amount > cycles_closure::closure_weight_cutoff;
-        const auto metallic_pre_weight =
-            max(lower_weight * metallic_amount, make_float3(0.0f));
-        const auto metallic_allocation_weight = sample_weight(metallic_pre_weight);
-        const auto metallic_allocated =
-            metallic_requested & reflective_caustics &
-            (metallic_allocation_weight >= cycles_closure::closure_weight_cutoff);
-        const auto metallic_f0 = clamped_base_color;
-        const auto metallic_b =
-            fresnel_f82_b(metallic_f0, min(specular_tint, make_float3(1.0f)));
-        const auto metallic_fss =
-            lerp(metallic_f0, make_float3(1.0f), 1.0f / 21.0f) -
-            metallic_b * (1.0f / 126.0f);
-        const auto metallic_energy =
-            ggx_energy(_services, closure, incoming_cosine, metallic_fss);
-        const auto metallic_interpolation = cycles_table_3d(
-            _services, roughness, incoming_cosine, 0.5f,
-            UInt{cycles45_tables::ggx_gen_schlick_s_offset}, 16u, 16u, 16u);
-        const auto metallic_albedo_estimate =
-            lerp(metallic_f0, make_float3(1.0f), metallic_interpolation);
+        const auto metallic_amount = clamp(
+            closure.metallic, 0.0f, 1.0f);
+        const auto setup = metallic_component.setup(
+            {.lower_weight = lower_weight,
+             .color = closure.color,
+             .normal = closure.normal,
+             .incoming = _point.incoming,
+             .surface_shading_normal = _point.shading_normal,
+             .surface_geometric_normal = _point.geometric_normal,
+             .specular_tint = closure.specular_tint,
+             .roughness = closure.roughness,
+             .metallic = closure.metallic,
+             .use_bump_map_correction =
+                 _point.use_bump_map_correction,
+             .preserve_ggx_energy = closure.preserve_ggx_energy},
+            {.lower_weight = lower_weight,
+             .glossy_normal = glossy_normal,
+             .base_color = clamped_base_color,
+             .specular_tint = specular_tint,
+             .incoming_cosine = incoming_cosine,
+             .roughness = roughness,
+             .metallic = metallic_amount,
+             .preserve_ggx_energy = closure.preserve_ggx_energy},
+            reflective_caustics);
 
         auto physical = closure;
         physical.principled_lobe = PrincipledLobe::metallic;
-        physical.weight = select(make_float3(0.0f),
-                                 metallic_pre_weight * metallic_energy.darkening,
-                                 metallic_allocated);
-        physical.allocation_weight =
-            select(0.0f, metallic_allocation_weight, metallic_allocated);
-        physical.sample_weight = select(
-            0.0f,
-            metallic_allocation_weight * sample_weight(metallic_albedo_estimate) *
-                sample_weight(metallic_energy.darkening),
-            metallic_allocated);
+        physical.weight = setup.weight;
+        physical.allocation_weight = setup.allocation_weight;
+        physical.sample_weight = setup.sample_weight;
         physical.setup_valid = true;
-        physical.albedo = physical.weight * metallic_albedo_estimate;
+        physical.albedo = setup.albedo;
         physical.reflection_albedo = physical.albedo;
         physical.transmission_albedo = make_float3(0.0f);
-        physical.color = metallic_f0;
-        physical.normal = glossy_normal;
+        physical.color = setup.color;
+        physical.normal = setup.normal;
         physical.ior = 1.0f;
-        physical.specular_tint = metallic_b;
-        physical.evaluation_scale = metallic_energy.energy_scale;
+        physical.specular_tint = setup.specular_tint;
+        physical.evaluation_scale = setup.evaluation_scale;
         metallic.emplace(std::move(physical));
-        lower_weight = select(lower_weight, lower_weight * (1.0f - metallic_amount),
-                              metallic_requested);
+        lower_weight = setup.lower_weight;
     }
 
     // Thick Principled transmission is one generalized-Schlick glass

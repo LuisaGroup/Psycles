@@ -2,6 +2,7 @@
 
 #include "principled_base_component.h"
 #include "principled_diffuse_component.h"
+#include "principled_metallic_component.h"
 
 namespace psycles::luisa_backend::detail {
 namespace {
@@ -79,6 +80,52 @@ public:
     }
 };
 
+[[nodiscard]] PrincipledMetallicSetupCallable
+make_principled_metallic_setup_callable(
+    bool preserve_ggx_energy) noexcept {
+    PrincipledMetallicSetupCallable callable =
+        [preserve_ggx_energy](
+            BufferFloat cycles_bsdf_tables,
+            Var<PrincipledMetallicSetupInputCall> packed_input,
+            Bool reflective_caustics) noexcept {
+            const CyclesTableShaderServices services{
+                cycles_bsdf_tables};
+            const auto populated = populate_principled_metallic(
+                {.lower_weight = packed_input.lower_weight,
+                 .color = packed_input.color,
+                 .normal = packed_input.normal,
+                 .incoming = packed_input.incoming,
+                 .surface_shading_normal =
+                     packed_input.surface_shading_normal,
+                 .surface_geometric_normal =
+                     packed_input.surface_geometric_normal,
+                 .specular_tint = packed_input.specular_tint,
+                 .roughness = packed_input.roughness,
+                 .metallic = packed_input.metallic,
+                 .use_bump_map_correction =
+                     packed_input.use_bump_map_correction,
+                 .preserve_ggx_energy = preserve_ggx_energy});
+            const auto setup = setup_principled_metallic(
+                services, populated, reflective_caustics);
+            Var<PrincipledMetallicSetupCall> result;
+            result.weight = setup.weight;
+            result.albedo = setup.albedo;
+            result.normal = setup.normal;
+            result.color = setup.color;
+            result.specular_tint = setup.specular_tint;
+            result.evaluation_scale = setup.evaluation_scale;
+            result.lower_weight = setup.lower_weight;
+            result.allocation_weight = setup.allocation_weight;
+            result.sample_weight = setup.sample_weight;
+            return result;
+        };
+    callable.set_name(
+        preserve_ggx_energy
+            ? "principled_metallic_setup_energy"
+            : "principled_metallic_setup");
+    return callable;
+}
+
 [[nodiscard]] PrincipledDiffuseSetupCallable
 make_principled_diffuse_setup_callable() noexcept {
     PrincipledDiffuseSetupCallable callable = [](
@@ -155,6 +202,10 @@ make_principled_dielectric_setup_callable(
 SurfaceClosureSetupCallables
 make_surface_closure_setup_callables() noexcept {
     return {
+        .principled_metallic =
+            make_principled_metallic_setup_callable(false),
+        .principled_metallic_preserve_energy =
+            make_principled_metallic_setup_callable(true),
         .principled_diffuse =
             make_principled_diffuse_setup_callable(),
         .principled_dielectric =
@@ -169,6 +220,44 @@ CallableSurfaceClosureSetupProvider::
         const SurfaceClosureSetupCallables &callables) noexcept
     : _cycles_bsdf_tables{cycles_bsdf_tables},
       _callables{callables} {}
+
+PrincipledMetallicSetupResult
+CallableSurfaceClosureSetupProvider::principled_metallic(
+    const PrincipledMetallicSetupInput &input,
+    Expr<bool> reflective_caustics) const noexcept {
+    const auto &callable = input.preserve_ggx_energy
+                               ? _callables
+                                     .principled_metallic_preserve_energy
+                               : _callables.principled_metallic;
+    Var<PrincipledMetallicSetupInputCall> packed_input;
+    packed_input.lower_weight = input.lower_weight;
+    packed_input.color = input.color;
+    packed_input.normal = input.normal;
+    packed_input.incoming = input.incoming;
+    packed_input.surface_shading_normal =
+        input.surface_shading_normal;
+    packed_input.surface_geometric_normal =
+        input.surface_geometric_normal;
+    packed_input.specular_tint = input.specular_tint;
+    packed_input.roughness = input.roughness;
+    packed_input.metallic = input.metallic;
+    packed_input.use_bump_map_correction =
+        input.use_bump_map_correction;
+    const auto result = callable(
+        _cycles_bsdf_tables,
+        packed_input,
+        reflective_caustics);
+    return {
+        .weight = result.weight,
+        .allocation_weight = result.allocation_weight,
+        .sample_weight = result.sample_weight,
+        .albedo = result.albedo,
+        .normal = result.normal,
+        .color = result.color,
+        .specular_tint = result.specular_tint,
+        .evaluation_scale = result.evaluation_scale,
+        .lower_weight = result.lower_weight};
+}
 
 PrincipledDiffuseSetupResult
 CallableSurfaceClosureSetupProvider::principled_diffuse(
