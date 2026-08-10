@@ -9,6 +9,15 @@ historical record; do not reset to its July revisions.
 
 The current official complex-scene checkpoints are:
 
+- [Post-population surface-closure ABI](docs/validation/2026-08-10/surface-closure-point-abi/README.md)
+  makes the physical closure dependency cut a strong DSL type and transports
+  it through a 48-byte packed callable ABI. The full Lone Monk HIP kernel drops
+  from 3,676 to 2,704 scratch bytes per thread (-26.4%); warm 960x540/64-spp
+  throughput improves by a measured 4.2--4.6%. Fallback, HIP, and native Vulkan
+  ABI/closure regressions pass, twelve of fifteen linear passes are exact, and
+  the original-resolution triptych has no structured difference. Do not infer
+  a Cycles speed lead until the pending matched 1080p matrix is complete.
+
 - [Sparse XIR restructure analyses](docs/validation/2026-08-10/xir-restructure-sparse-analyses/README.md)
   reuses loop-boundary facts per CFG version, derives construct parents by an
   event walk over the sparse immediate-dominator tree, and audits post-merge

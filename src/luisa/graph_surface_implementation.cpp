@@ -159,9 +159,10 @@ GraphSurfaceImplementation::evaluate_traced(
     Expr<luisa::float3> outgoing_expression,
     const SurfaceQuery &query,
     const EvaluationContext &context) const noexcept {
+    const SurfaceClosurePoint closure_point{point};
     const auto directions =
         make_surface_closure_evaluation_directions(
-            point, outgoing_expression);
+            closure_point, outgoing_expression);
     const auto sampled_light =
         context.mode == EvaluationMode::sampled_light;
     const auto policy = make_surface_closure_evaluation_policy(
@@ -192,7 +193,7 @@ GraphSurfaceImplementation::evaluate_traced(
                 accumulator.add(
                     surface_closure_evaluation_contribution(
                         services,
-                        point,
+                        closure_point,
                         values.shading_normal,
                         physical,
                         directions.incoming,
@@ -305,16 +306,17 @@ GraphSurfaceImplementation::sample_with_trace(
     if (!_program) {
         return SurfaceSampleTrace::zero();
     }
+    const SurfaceClosurePoint closure_point{point};
     const auto policy =
         make_surface_closure_evaluation_policy(
             false, Expr<std::uint32_t>{0u});
     DirectSurfaceClosureEvaluationOperation evaluation{
-        services, point, query, policy};
+        services, closure_point, query, policy};
     DirectSurfaceClosureSamplingOperation sampling{
-        services, point, query};
+        services, closure_point, query};
     SurfaceClosureSamplingVisitor visitor{
         maximum_surface_closure_capacity,
-        point,
+        closure_point,
         sampling,
         evaluation,
         u_lobe_expression,

@@ -34,7 +34,7 @@ class PrincipledLayerComponent final {
 
 private:
     const ShaderServices &_services;
-    const SurfacePoint &_point;
+    SurfaceClosurePoint _point;
 
 public:
     PrincipledLayerComponent(

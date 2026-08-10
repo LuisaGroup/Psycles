@@ -87,7 +87,7 @@ make_surface_closure_sampling_callables(
             BufferFloat cycles_bsdf_tables,
             BindlessVar textures,
             BindlessVar geometry_heap,
-            Var<SurfacePointCall> packed_point,
+            Var<SurfaceClosurePointCall> packed_point,
             Var<SurfaceClosureSamplingQueryCall> packed_query,
             Float3 shading_normal,
             Float3 glossy_normal,
@@ -107,7 +107,7 @@ make_surface_closure_sampling_callables(
                 scene->attribute_range_slot,
                 scene->nishita_texture_bindings,
                 scene->shader_color_space};
-            const auto point = unpack_surface_point(packed_point);
+            const auto point = unpack_surface_closure_point(packed_point);
             const auto closure = unpack_surface_closure(
                 Expr<luisa::float4x4>{block_0.expression()},
                 Expr<luisa::float4x4>{block_1.expression()},
@@ -142,8 +142,8 @@ CallableSurfaceClosureSamplingOperation::
         const BufferFloat &cycles_bsdf_tables,
         const BindlessVar &textures,
         const BindlessVar &geometry_heap,
-        const Var<SurfacePointCall> &packed_point,
-        const SurfacePoint &point,
+        const Var<SurfaceClosurePointCall> &packed_point,
+        const SurfaceClosurePoint &point,
         const SurfaceQuery &query,
         const SurfaceClosureSamplingCallables &callables) noexcept
     : _scalar_parameters{scalar_parameters},
@@ -226,13 +226,15 @@ SurfaceSampleTrace sample_surface_closures(
     const BindlessVar &textures,
     const BindlessVar &geometry_heap,
     Expr<std::uint32_t> surface_tag,
-    const Var<SurfacePointCall> &packed_point,
     const ShaderServices &services,
     const SurfacePoint &point,
     Expr<float> random_lobe,
     Expr<luisa::float2> random_direction,
     const SurfaceQuery &query,
     bool trace_selection) noexcept {
+    const SurfaceClosurePoint closure_point{point};
+    const auto packed_closure_point =
+        pack_surface_closure_point(closure_point);
     const auto policy = make_surface_closure_evaluation_policy(
         false, Expr<std::uint32_t>{0u});
     CallableSurfaceClosureEvaluationOperation evaluation{
@@ -241,8 +243,8 @@ SurfaceSampleTrace sample_surface_closures(
         cycles_bsdf_tables,
         textures,
         geometry_heap,
-        packed_point,
-        point,
+        packed_closure_point,
+        closure_point,
         query,
         policy,
         evaluation_callable};
@@ -252,13 +254,13 @@ SurfaceSampleTrace sample_surface_closures(
         cycles_bsdf_tables,
         textures,
         geometry_heap,
-        packed_point,
-        point,
+        packed_closure_point,
+        closure_point,
         query,
         sampling_callables};
     SurfaceClosureSamplingVisitor visitor{
         scene.volume_metadata.closure_allocation_budget,
-        point,
+        closure_point,
         sampling,
         evaluation,
         random_lobe,

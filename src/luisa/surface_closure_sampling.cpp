@@ -14,6 +14,7 @@ SurfaceSampleTrace SurfaceClosureEvaluator::sample_impl(
     Float2 u_direction,
     const SurfaceQuery &query,
     bool trace_selection) const noexcept {
+    const SurfaceClosurePoint closure_point{_point};
     const auto incoming = detail::safe_normalize(
         _point.incoming, _point.shading_normal);
 
@@ -25,7 +26,7 @@ SurfaceSampleTrace SurfaceClosureEvaluator::sample_impl(
     UInt index = 0u;
     $while(index < _closures.count()) {
         measure.add(surface_closure_selection(
-            _point,
+            closure_point,
             _closures.entry(index),
             Expr<luisa::float3>{incoming.expression()},
             query));
@@ -41,7 +42,7 @@ SurfaceSampleTrace SurfaceClosureEvaluator::sample_impl(
     index = 0u;
     $while(index < _closures.count()) {
         const auto selection = surface_closure_selection(
-            _point,
+            closure_point,
             _closures.entry(index),
             Expr<luisa::float3>{incoming.expression()},
             query);
@@ -59,13 +60,13 @@ SurfaceSampleTrace SurfaceClosureEvaluator::sample_impl(
     $if(inversion.selected()) {
         const auto closure = _closures.entry(selected_index);
         const auto selection = surface_closure_selection(
-            _point,
+            closure_point,
             closure,
             Expr<luisa::float3>{incoming.expression()},
             query);
         const auto sample = surface_closure_conditional_sample(
             services,
-            _point,
+            closure_point,
             Expr<luisa::float3>{_shading_normal.expression()},
             closure,
             Expr<luisa::float3>{incoming.expression()},
@@ -91,7 +92,7 @@ SurfaceSampleTrace SurfaceClosureEvaluator::sample_impl(
         0u,
         UInt{selected.closure_index()});
     return selected.finish(
-        _point, measure, mixture, trace_selection);
+        closure_point, measure, mixture, trace_selection);
 }
 
 SurfaceSample SurfaceClosureEvaluator::sample(

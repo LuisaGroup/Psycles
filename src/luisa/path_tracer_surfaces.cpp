@@ -120,6 +120,9 @@ SurfaceCallables make_surface_callables(
                 .shader_flags = shader_flags};
             const auto point =
                 unpack_surface_point(packed_point);
+            const SurfaceClosurePoint closure_point{point};
+            const auto packed_closure_point =
+                pack_surface_closure_point(closure_point);
             const auto policy =
                 make_surface_closure_evaluation_policy(
                     true,
@@ -131,8 +134,8 @@ SurfaceCallables make_surface_callables(
                 cycles_bsdf_tables,
                 textures,
                 geometry_heap,
-                packed_point,
-                point,
+                packed_closure_point,
+                closure_point,
                 query.surface,
                 policy,
                 closure_evaluation};
@@ -267,7 +270,6 @@ SurfaceCallables make_surface_callables(
                 textures,
                 geometry_heap,
                 Expr<std::uint32_t>{surface_tag.expression()},
-                packed_point,
                 services,
                 point,
                 Expr<float>{u_lobe.expression()},
@@ -396,7 +398,6 @@ SurfaceCallables make_surface_callables(
                     geometry_heap,
                     Expr<std::uint32_t>{
                         surface_tag.expression()},
-                    packed_point,
                     services,
                     point,
                     Expr<float>{u_lobe.expression()},

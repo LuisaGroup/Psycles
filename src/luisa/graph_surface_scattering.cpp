@@ -160,7 +160,7 @@ template<typename Closure>
 }
 
 [[nodiscard]] Float3 maybe_ensure_valid_specular_reflection(
-    const SurfacePoint &point,
+    const SurfaceClosurePoint &point,
     Float3 incoming,
     Float3 shading_normal) noexcept {
     const auto correction_enabled =
@@ -233,7 +233,8 @@ template<typename Closure>
                cycles_closure::closure_weight_cutoff);
 }
 
-[[nodiscard]] Float bump_shadowing_term(const SurfacePoint &point,
+[[nodiscard]] Float bump_shadowing_term(
+    const SurfaceClosurePoint &point,
     Float3 smooth_normal,
     const SurfaceClosureRecord &closure,
     Float3 direction,
@@ -738,7 +739,7 @@ template<typename Closure>
 }
 
 [[nodiscard]] MicrofacetReflectionSample sample_microfacet_reflection(
-    const SurfacePoint &point,
+    const SurfaceClosurePoint &point,
     Float3 smooth_normal,
     const SurfaceClosureRecord &closure,
     Float3 incoming,

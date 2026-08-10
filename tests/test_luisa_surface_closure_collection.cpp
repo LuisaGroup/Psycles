@@ -193,7 +193,7 @@ class InlineSurfaceClosureEvaluationOperation final
 
 private:
     const ShaderServices &_services;
-    const SurfacePoint &_point;
+    SurfaceClosurePoint _point;
     const SurfaceQuery &_query;
     const SurfaceClosureEvaluationPolicy &_policy;
     Float3 _incoming{make_float3(0.0f)};
@@ -243,7 +243,7 @@ class InlineSurfaceClosureSamplingOperation final
 
 private:
     const ShaderServices &_services;
-    const SurfacePoint &_point;
+    SurfaceClosurePoint _point;
     const SurfaceQuery &_query;
     Float3 _incoming{make_float3(0.0f)};
     std::size_t *_selection_recordings{};
@@ -260,7 +260,7 @@ public:
           _point{point},
           _query{query},
           _incoming{make_surface_closure_sampling_incoming(
-              point)},
+              _point)},
           _selection_recordings{selection_recordings},
           _conditional_sample_recordings{
               conditional_sample_recordings} {}
@@ -1167,9 +1167,10 @@ int main(int argc, char **argv) {
                     query,
                     &selection_recordings,
                     &conditional_sample_recordings};
+            const SurfaceClosurePoint closure_point{point};
             SurfaceClosureSamplingVisitor visitor{
                 12u,
-                point,
+                closure_point,
                 sampling_operation,
                 evaluation_operation,
                 Expr<float>{u_lobe.expression()},

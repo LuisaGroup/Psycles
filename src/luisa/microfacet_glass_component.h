@@ -33,11 +33,11 @@ class MicrofacetGlassComponent final {
 
 private:
     const ShaderServices &_services;
-    const SurfacePoint &_point;
+    SurfaceClosurePoint _point;
 
 public:
     MicrofacetGlassComponent(const ShaderServices &services,
-                             const SurfacePoint &point) noexcept;
+                             const SurfaceClosurePoint &point) noexcept;
 
     [[nodiscard]] TracedClosure
     setup(const MicrofacetGlassSetup &parameters) const noexcept;

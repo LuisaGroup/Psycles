@@ -53,7 +53,7 @@ class PrincipledBaseComponent final {
 
 private:
     const ShaderServices &_services;
-    const SurfacePoint &_point;
+    SurfaceClosurePoint _point;
     MicrofacetGlassComponent _glass;
     ThinGlassComponent _thin_glass;
 

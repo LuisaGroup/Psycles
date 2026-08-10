@@ -9,6 +9,21 @@ multilayer OpenEXR output.
 ## Latest checkpoint
 
 The newest
+[post-population surface-closure ABI checkpoint](docs/validation/2026-08-10/surface-closure-point-abi/README.md)
+replaces the complete `SurfacePoint` argument of nested closure evaluation and
+sampling callables with an exact six-field semantic projection. Material graph
+population still receives all original coordinates, attributes, derivatives,
+and raw Cycles closure inputs. A 48-byte packed callable record and named flag
+bits are locked by fallback, HIP, and native XIR-to-SPIR-V Vulkan regressions.
+On the unchanged Lone Monk kernel, per-thread scratch falls 26.4% from 3,676 to
+2,704 bytes. Three warm 960x540/64-spp HIP samples have a 5.28907-second median,
+4.2--4.6% below the preceding checkpoint. Twelve of fifteen passes are
+byte-identical; Combined relative RMSE is `6.49595e-5`, p99 pixel RMSE is zero,
+and original-resolution triptychs show only isolated indirect-sample specks.
+The matched 1080p Cycles matrix is still pending, so this does not assert a
+Psycles-over-Cycles lead.
+
+The newest
 [sparse XIR restructure analyses checkpoint](docs/validation/2026-08-10/xir-restructure-sparse-analyses/README.md)
 value-numbers loop-boundary membership per immutable CFG, constructs the
 physical hierarchy with enter/merge events on the sparse immediate-dominator
