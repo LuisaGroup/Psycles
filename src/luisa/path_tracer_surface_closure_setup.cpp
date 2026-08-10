@@ -1,6 +1,7 @@
 #include "path_tracer_surface_closure_setup.h"
 
 #include "principled_base_component.h"
+#include "principled_diffuse_component.h"
 
 namespace psycles::luisa_backend::detail {
 namespace {
@@ -78,6 +79,27 @@ public:
     }
 };
 
+[[nodiscard]] PrincipledDiffuseSetupCallable
+make_principled_diffuse_setup_callable() noexcept {
+    PrincipledDiffuseSetupCallable callable = [](
+            Var<PrincipledDiffuseSetupInputCall>
+                packed_input) noexcept {
+        const auto setup = setup_principled_diffuse(
+            {.lower_weight = packed_input.lower_weight,
+             .color = packed_input.color,
+             .subsurface_weight =
+                 packed_input.subsurface_weight});
+        Var<PrincipledDiffuseSetupCall> result;
+        result.weight = setup.weight;
+        result.allocation_weight =
+            setup.allocation_weight;
+        result.sample_weight = setup.sample_weight;
+        return result;
+    };
+    callable.set_name("principled_diffuse_setup");
+    return callable;
+}
+
 [[nodiscard]] PrincipledDielectricSetupCallable
 make_principled_dielectric_setup_callable(
     bool preserve_ggx_energy) noexcept {
@@ -133,6 +155,8 @@ make_principled_dielectric_setup_callable(
 SurfaceClosureSetupCallables
 make_surface_closure_setup_callables() noexcept {
     return {
+        .principled_diffuse =
+            make_principled_diffuse_setup_callable(),
         .principled_dielectric =
             make_principled_dielectric_setup_callable(false),
         .principled_dielectric_preserve_energy =
@@ -145,6 +169,22 @@ CallableSurfaceClosureSetupProvider::
         const SurfaceClosureSetupCallables &callables) noexcept
     : _cycles_bsdf_tables{cycles_bsdf_tables},
       _callables{callables} {}
+
+PrincipledDiffuseSetupResult
+CallableSurfaceClosureSetupProvider::principled_diffuse(
+    const PrincipledDiffuseSetupInput &input) const noexcept {
+    Var<PrincipledDiffuseSetupInputCall> packed_input;
+    packed_input.lower_weight = input.lower_weight;
+    packed_input.color = input.color;
+    packed_input.subsurface_weight =
+        input.subsurface_weight;
+    const auto result = _callables.principled_diffuse(
+        packed_input);
+    return {
+        .weight = result.weight,
+        .allocation_weight = result.allocation_weight,
+        .sample_weight = result.sample_weight};
+}
 
 PrincipledDielectricSetupResult
 CallableSurfaceClosureSetupProvider::principled_dielectric(

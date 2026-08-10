@@ -16,7 +16,6 @@ struct PrincipledBaseResult {
     std::optional<TracedClosure> thin_glass_transparency;
     std::optional<TracedClosure> dielectric;
     Float3 base_weight;
-    Float3 diffuse_weight;
 };
 
 struct PrincipledDielectricSetupParameters {

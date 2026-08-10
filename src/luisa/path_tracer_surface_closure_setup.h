@@ -8,6 +8,18 @@
 
 namespace psycles::luisa_backend::detail {
 
+struct PrincipledDiffuseSetupCall {
+    luisa::float3 weight{};
+    float allocation_weight{};
+    float sample_weight{};
+};
+
+struct PrincipledDiffuseSetupInputCall {
+    luisa::float3 lower_weight{};
+    luisa::float3 color{};
+    float subsurface_weight{};
+};
+
 struct PrincipledDielectricSetupCall {
     luisa::float3 weight{};
     float allocation_weight{};
@@ -37,6 +49,18 @@ struct PrincipledDielectricSetupInputCall {
 
 LUISA_STRUCT(
     psycles::luisa_backend::detail::
+        PrincipledDiffuseSetupCall,
+    weight,
+    allocation_weight,
+    sample_weight) {};
+LUISA_STRUCT(
+    psycles::luisa_backend::detail::
+        PrincipledDiffuseSetupInputCall,
+    lower_weight,
+    color,
+    subsurface_weight) {};
+LUISA_STRUCT(
+    psycles::luisa_backend::detail::
         PrincipledDielectricSetupCall,
     weight,
     allocation_weight,
@@ -63,6 +87,9 @@ LUISA_STRUCT(
 
 namespace psycles::luisa_backend::detail {
 
+using PrincipledDiffuseSetupCallable =
+    luisa::compute::Callable<PrincipledDiffuseSetupCall(
+        PrincipledDiffuseSetupInputCall)>;
 using PrincipledDielectricSetupCallable =
     luisa::compute::Callable<PrincipledDielectricSetupCall(
         luisa::compute::Buffer<float>,
@@ -70,6 +97,8 @@ using PrincipledDielectricSetupCallable =
         bool)>;
 
 struct SurfaceClosureSetupCallables {
+    PrincipledDiffuseSetupCallable
+        principled_diffuse;
     PrincipledDielectricSetupCallable
         principled_dielectric;
     PrincipledDielectricSetupCallable
@@ -90,6 +119,10 @@ public:
     CallableSurfaceClosureSetupProvider(
         const luisa::compute::BufferFloat &cycles_bsdf_tables,
         const SurfaceClosureSetupCallables &callables) noexcept;
+
+    [[nodiscard]] PrincipledDiffuseSetupResult
+    principled_diffuse(
+        const PrincipledDiffuseSetupInput &input) const noexcept override;
 
     [[nodiscard]] PrincipledDielectricSetupResult
     principled_dielectric(

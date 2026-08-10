@@ -6,6 +6,7 @@
 #include <psycles/luisa/surface_closure_operations.h>
 
 #include "../src/luisa/path_tracer_shader_services.h"
+#include "../src/luisa/path_tracer_surface_closure_setup.h"
 
 #include <luisa/xir/instructions/if.h>
 #include <luisa/xir/instructions/loop.h>
@@ -126,15 +127,23 @@ private:
     const BufferFloat &_scalars;
     const BufferFloat3 &_vectors;
     Recordings *_recordings{};
+    const SurfaceClosureSetupProvider *_closure_setup{};
 
 public:
     BufferParameterShaderServices(
         const BufferFloat &scalars,
         const BufferFloat3 &vectors,
-        Recordings *recordings = nullptr) noexcept
+        Recordings *recordings = nullptr,
+        const SurfaceClosureSetupProvider *closure_setup = nullptr) noexcept
         : _scalars{scalars},
           _vectors{vectors},
-          _recordings{recordings} {}
+          _recordings{recordings},
+          _closure_setup{closure_setup} {}
+
+    [[nodiscard]] const SurfaceClosureSetupProvider *
+    surface_closure_setup_provider() const noexcept override {
+        return _closure_setup;
+    }
 
     [[nodiscard]] Float4 texture_2d(
         Expr<std::uint32_t>, Expr<luisa::float2>,
@@ -644,6 +653,148 @@ void write_preparation(
     return xir_shape(kernel);
 }
 
+[[nodiscard]] XirShape principled_family_xir_shape(
+    const ShaderCompiler &compiler,
+    PrincipledClosureFeatureMask features,
+    bool shared_dielectric_setup = false,
+    std::size_t topology_copies = 1u) {
+    const auto shader = compiler.compile(
+        make_closure_plan_shape_graph());
+    if (!shader.ok()) {
+        throw std::runtime_error{
+            "Principled-family XIR fixture failed graph validation"};
+    }
+    const auto lowered = compile_surface_program(*shader.program);
+    if (!lowered.ok()) {
+        throw std::runtime_error{
+            "Principled-family XIR fixture failed surface lowering"};
+    }
+    const auto root = lowered.program->root();
+    const auto closure_count =
+        lowered.program->closure_instructions().size();
+    if (!root.valid() || root.value >= closure_count ||
+        topology_copies == 0u) {
+        throw std::runtime_error{
+            "Principled-family XIR fixture has no closure root"};
+    }
+
+    SurfaceDispatch surfaces;
+    for (auto copy = std::size_t{0u};
+         copy < topology_copies;
+         ++copy) {
+        std::vector<SurfaceClosurePlanEntry> entries(
+            closure_count);
+        entries[root.value] = {
+            .reachable = true,
+            .principled_features = features};
+        static_cast<void>(surfaces.create<GraphSurface>(
+            lowered.program,
+            SurfaceClosurePlan{std::move(entries)}));
+    }
+    const auto closure_setup_callables =
+        psycles::luisa_backend::detail::
+            make_surface_closure_setup_callables();
+    Kernel1D kernel = [&](BufferFloat scalar_parameters,
+                          BufferFloat3 vector_parameters,
+                          BufferFloat4 output) noexcept {
+        psycles::luisa_backend::detail::
+            CallableSurfaceClosureSetupProvider closure_setup{
+            scalar_parameters,
+            closure_setup_callables};
+        BufferParameterShaderServices services{
+            scalar_parameters,
+            vector_parameters,
+            nullptr,
+            shared_dielectric_setup ? &closure_setup : nullptr};
+        const auto point = make_preparation_point();
+        write_preparation(
+            output,
+            surfaces.prepare(
+                dispatch_x() %
+                    static_cast<std::uint32_t>(topology_copies),
+                services,
+                point,
+                {.outgoing = point.incoming,
+                 .glossy_filter_roughness = 0.04f,
+                 .emission_reflective_caustics = true,
+                 .reflective_caustics = true,
+                 .refractive_caustics = true,
+                 .include_runtime_flags = true,
+                 .include_aov = true}));
+    };
+    return xir_shape(kernel);
+}
+
+void report_principled_family_xir_costs(
+    const ShaderCompiler &compiler) {
+    if (std::getenv("PSYCLES_REPORT_PRINCIPLED_FAMILIES") == nullptr) {
+        return;
+    }
+    const auto bit = [](PrincipledClosureFeature feature) noexcept {
+        return principled_closure_feature_bit(feature);
+    };
+    const auto diffuse = bit(PrincipledClosureFeature::diffuse);
+    const auto dielectric = bit(PrincipledClosureFeature::dielectric);
+    const auto metallic = bit(PrincipledClosureFeature::metallic);
+    const auto report = [&](const char *name,
+                            PrincipledClosureFeatureMask features) {
+        const auto shape = principled_family_xir_shape(
+            compiler, features);
+        std::cout << "Principled family XIR " << name
+                  << ": instructions=" << shape.instructions
+                  << ", loops=" << shape.loops << '\n';
+    };
+    report("none", 0u);
+    report("diffuse", diffuse);
+    report("dielectric", dielectric);
+    report("dielectric+diffuse", dielectric | diffuse);
+    report("metallic", metallic);
+    report("metallic+diffuse", metallic | diffuse);
+    report("metallic+dielectric", metallic | dielectric);
+    report("metallic+dielectric+diffuse",
+           metallic | dielectric | diffuse);
+    const auto shared = principled_family_xir_shape(
+        compiler, dielectric | diffuse, true);
+    std::cout << "Principled family XIR dielectric+diffuse+shared-setup"
+              << ": instructions=" << shared.instructions
+              << ", loops=" << shared.loops << '\n';
+    constexpr auto repeated_topology_count = std::size_t{4u};
+    const auto repeated_inline = principled_family_xir_shape(
+        compiler,
+        dielectric | diffuse,
+        false,
+        repeated_topology_count);
+    const auto repeated_shared = principled_family_xir_shape(
+        compiler,
+        dielectric | diffuse,
+        true,
+        repeated_topology_count);
+    std::cout << "Principled family XIR 4x dielectric+diffuse: inline="
+              << repeated_inline.instructions
+              << ", shared=" << repeated_shared.instructions
+              << ", loops=" << repeated_shared.loops << '\n';
+}
+
+[[nodiscard]] bool shared_principled_setup_reduces_xir(
+    const ShaderCompiler &compiler) {
+    const auto features =
+        principled_closure_feature_bit(
+            PrincipledClosureFeature::dielectric) |
+        principled_closure_feature_bit(
+            PrincipledClosureFeature::diffuse);
+    constexpr auto repeated_topology_count = std::size_t{4u};
+    const auto inline_shape = principled_family_xir_shape(
+        compiler, features, false, repeated_topology_count);
+    const auto shared_shape = principled_family_xir_shape(
+        compiler, features, true, repeated_topology_count);
+    // Compare complete AST-to-XIR modules, including the real typed callable
+    // definition, argument packing, and call result projection. This rejects
+    // an extraction whose fixed ABI/body cost is no smaller than the repeated
+    // inline physical setup it replaces.
+    return inline_shape.loops == shared_shape.loops &&
+           shared_shape.instructions < inline_shape.instructions;
+}
+
 [[nodiscard]] bool closure_plan_reduces_xir(
     const ShaderCompiler &compiler) {
     const auto conservative = closure_plan_xir_shape(
@@ -1038,6 +1189,11 @@ int main() {
     if (!closure_plan_refines_surface_capabilities(shader_compiler)) {
         return 8;
     }
+    report_principled_family_xir_costs(shader_compiler);
+    if (!shared_principled_setup_reduces_xir(
+            shader_compiler)) {
+        return 9;
+    }
 
     Kernel1D sampler_kernel = [](
                                   BufferFloat4 table,
@@ -1065,5 +1221,5 @@ int main() {
                 rng_hash,
                 dimension));
     };
-    return sampler_kernel.function() ? 0 : 8;
+    return sampler_kernel.function() ? 0 : 10;
 }

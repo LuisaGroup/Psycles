@@ -2,6 +2,7 @@
 #include "bssrdf_closure_component.h"
 #include "microfacet_glass_component.h"
 #include "principled_base_component.h"
+#include "principled_diffuse_component.h"
 #include "principled_layer_component.h"
 #include "thin_subsurface_component.h"
 
@@ -217,6 +218,7 @@ void GraphSurfaceImplementation::for_each_physical_closure(
         safe_normalize(point.incoming, point.shading_normal);
     const PrincipledLayerComponent principled_layers{services, point};
     const PrincipledBaseComponent principled_base{services, point};
+    const PrincipledDiffuseComponent principled_diffuse{services};
     const MicrofacetGlassComponent microfacet_glass{services, point};
     const BssrdfClosureComponent bssrdf_closure{point};
     const ThinSubsurfaceComponent thin_subsurface;
@@ -374,19 +376,18 @@ void GraphSurfaceImplementation::for_each_physical_closure(
 
                 if (has_principled_feature(graph_closure,
                                            compiler::PrincipledClosureFeature::diffuse)) {
+                    const auto setup = principled_diffuse.setup(
+                        {.lower_weight = base.base_weight,
+                         .color = graph_closure.color,
+                         .subsurface_weight =
+                             graph_closure.subsurface_weight});
                     auto diffuse = closure;
                     diffuse.operation = compiler::ClosureOperation::diffuse;
                     diffuse.principled_lobe = PrincipledLobe::none;
-                    diffuse.weight = base.diffuse_weight * (1.0f - subsurface_weight);
-                    diffuse.allocation_weight =
-                        sample_weight(max(diffuse.weight, make_float3(0.0f)));
-                    const auto diffuse_allocated =
-                        diffuse.allocation_weight >= cycles_closure::closure_weight_cutoff;
-                    diffuse.weight =
-                        select(make_float3(0.0f), diffuse.weight, diffuse_allocated);
-                    diffuse.sample_weight =
-                        select(0.0f, diffuse.allocation_weight, diffuse_allocated);
-                    diffuse.albedo = diffuse.weight;
+                    diffuse.weight = setup.weight;
+                    diffuse.allocation_weight = setup.allocation_weight;
+                    diffuse.sample_weight = setup.sample_weight;
+                    diffuse.albedo = setup.weight;
                     diffuse.roughness = graph_closure.diffuse_roughness;
                     diffuse.evaluation_scale = make_float3(1.0f);
                     emit(diffuse);
