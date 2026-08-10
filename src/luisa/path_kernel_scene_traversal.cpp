@@ -76,6 +76,7 @@ struct SourceAccelerationIdentity {
 struct CompletedTriangleHit {
   Bool valid;
   UInt instance;
+  UInt coincident_next;
   UInt primitive;
   UInt object;
   UInt cycles_primitive;
@@ -112,7 +113,7 @@ struct PrimitiveCompletionRange {
 class UnifiedSceneTraversalComponent final : public SceneTraversalComponent {
 
 private:
-  ScenePrimitiveStagePlan _plan;
+  SceneTraversalStagePlan _plan;
   std::shared_ptr<const CurvePrimitiveComponent> _curves;
   std::shared_ptr<const CurveRibbonComponent> _ribbons;
   std::shared_ptr<const PrimitiveMaterialComponent> _materials;
@@ -211,6 +212,51 @@ private:
   }
 
   [[nodiscard]] CompletedTriangleHit
+  resolve_triangle_instance(
+      const std::shared_ptr<LuisaSceneData> &scene,
+      const Var<luisa::compute::Ray> &ray,
+      Expr<std::uint32_t> visibility_mask,
+      const ScenePrimitiveIdentity &source,
+      const ScenePrimitiveIdentity &light,
+      Expr<std::uint32_t> instance_index,
+      Expr<std::uint32_t> local_primitive) const noexcept {
+    const auto instance =
+        scene->instance_buffer->read(instance_index);
+    const auto geometry =
+        scene->geometry_buffer->read(instance.geometry_index);
+    const auto triangle =
+        scene->heap->buffer<Triangle>(geometry.bindless_base)
+            .read(local_primitive);
+    const auto positions =
+        scene->heap->buffer<luisa::float3>(geometry.bindless_base + 9u);
+    const auto intersection = _triangle_intersection->intersect(
+        ray,
+        instance.cycles_world_to_object,
+        instance.cycles_transform_applied,
+        positions.read(triangle.i0),
+        positions.read(triangle.i1),
+        positions.read(triangle.i2));
+    const auto object =
+        _materials->cycles_object_index(instance_index, instance);
+    const auto primitive =
+        geometry.cycles_primitive_offset + local_primitive;
+    const auto excluded = source.matches(object, primitive) |
+                          light.matches(object, primitive);
+    const auto visible =
+        (instance.visibility_mask & visibility_mask) != 0u;
+    return {
+        .valid = intersection.valid & visible & !excluded,
+        .instance = UInt{instance_index},
+        .coincident_next = UInt{instance.coincident_next},
+        .primitive = UInt{local_primitive},
+        .object = UInt{object},
+        .cycles_primitive = UInt{primitive},
+        .type_order = UInt{geometry.primitive_kind},
+        .distance = Float{intersection.distance},
+        .barycentric = Float2{intersection.barycentric}};
+  }
+
+  [[nodiscard]] CompletedTriangleHit
   resolve_completed_triangle(
       const std::shared_ptr<LuisaSceneData> &scene,
       const Var<luisa::compute::Ray> &ray,
@@ -219,6 +265,11 @@ private:
       const ScenePrimitiveIdentity &light,
       Expr<std::uint32_t> seed_instance,
       Expr<std::uint32_t> local_primitive) const noexcept {
+    if (!_plan.triangle_completion) {
+      return resolve_triangle_instance(
+          scene, ray, visibility_mask, source, light,
+          seed_instance, local_primitive);
+    }
     CyclesClosestHitOrder group_closest;
     Bool group_has_hit = false;
     UInt group_instance = seed_instance;
@@ -242,60 +293,111 @@ private:
             scene->primitive_completion_instance_buffer->read(
                 completion_index);
       };
-      const auto alias = scene->instance_buffer->read(alias_index);
-      const auto geometry =
-          scene->geometry_buffer->read(alias.geometry_index);
-      const auto triangle =
-          scene->heap->buffer<Triangle>(geometry.bindless_base)
-              .read(local_primitive);
-      const auto positions =
-          scene->heap->buffer<luisa::float3>(geometry.bindless_base + 9u);
-      const auto intersection = _triangle_intersection->intersect(
-          ray,
-          alias.cycles_world_to_object,
-          alias.cycles_transform_applied,
-          positions.read(triangle.i0),
-          positions.read(triangle.i1),
-          positions.read(triangle.i2));
-      const auto object =
-          _materials->cycles_object_index(alias_index, alias);
-      const auto primitive =
-          geometry.cycles_primitive_offset + local_primitive;
-      const auto excluded = source.matches(object, primitive) |
-                            light.matches(object, primitive);
-      const auto visible =
-          (alias.visibility_mask & visibility_mask) != 0u;
+      const auto candidate = resolve_triangle_instance(
+          scene, ray, visibility_mask, source, light,
+          alias_index, local_primitive);
       const auto accepted =
-          intersection.valid & visible & !excluded &
-          group_closest.accepts(intersection.distance, object, primitive,
-                                geometry.primitive_kind);
+          candidate.valid &
+          group_closest.accepts(
+              candidate.distance,
+              candidate.object,
+              candidate.cycles_primitive,
+              candidate.type_order);
       $if(accepted) {
-        group_closest.select(intersection.distance, object, primitive,
-                             geometry.primitive_kind);
+        group_closest.select(
+            candidate.distance,
+            candidate.object,
+            candidate.cycles_primitive,
+            candidate.type_order);
         group_has_hit = true;
-        group_instance = alias_index;
-        group_object = object;
-        group_primitive = primitive;
-        group_type = geometry.primitive_kind;
-        group_distance = intersection.distance;
-        group_barycentric = intersection.barycentric;
+        group_instance = candidate.instance;
+        group_object = candidate.object;
+        group_primitive = candidate.cycles_primitive;
+        group_type = candidate.type_order;
+        group_distance = candidate.distance;
+        group_barycentric = candidate.barycentric;
       };
       $if(completion.valid) {
         completion_index += 1u;
       }
       $else {
-        alias_index = alias.coincident_next;
+        alias_index = candidate.coincident_next;
       };
       remaining -= 1u;
     };
     return {.valid = std::move(group_has_hit),
             .instance = std::move(group_instance),
+            .coincident_next = 0u,
             .primitive = UInt{local_primitive},
             .object = std::move(group_object),
             .cycles_primitive = std::move(group_primitive),
             .type_order = std::move(group_type),
             .distance = std::move(group_distance),
             .barycentric = std::move(group_barycentric)};
+  }
+
+  [[nodiscard]] TriangleResolverCallable
+  make_triangle_resolver(
+      const std::shared_ptr<LuisaSceneData> &scene) const noexcept {
+    TriangleResolverCallable resolver =
+        [this, scene](Var<luisa::compute::Ray> ray,
+                      Var<TriangleResolutionQueryCall> query) noexcept {
+          const auto resolved = resolve_completed_triangle(
+              scene,
+              ray,
+              query.visibility_mask,
+              {.object = query.source_object,
+               .primitive = query.source_primitive},
+              {.object = query.light_object,
+               .primitive = query.light_primitive},
+              query.seed_instance,
+              query.local_primitive);
+          Var<TriangleResolutionCall> result;
+          result.barycentric = resolved.barycentric;
+          result.distance = resolved.distance;
+          result.instance = resolved.instance;
+          result.primitive = resolved.primitive;
+          result.object = resolved.object;
+          result.cycles_primitive = resolved.cycles_primitive;
+          result.type_order = resolved.type_order;
+          result.valid = select(0u, 1u, resolved.valid);
+          return result;
+        };
+    resolver.set_name(
+        _plan.triangle_completion
+            ? "cycles_triangle_resolver_completion"
+            : "cycles_triangle_resolver_singleton");
+    return resolver;
+  }
+
+  [[nodiscard]] static CompletedTriangleHit
+  invoke_triangle_resolver(
+      const TriangleResolverCallable &resolver,
+      const Var<luisa::compute::Ray> &ray,
+      Expr<std::uint32_t> visibility_mask,
+      const ScenePrimitiveIdentity &source,
+      const ScenePrimitiveIdentity &light,
+      Expr<std::uint32_t> seed_instance,
+      Expr<std::uint32_t> local_primitive) noexcept {
+    Var<TriangleResolutionQueryCall> query;
+    query.visibility_mask = visibility_mask;
+    query.source_object = source.object;
+    query.source_primitive = source.primitive;
+    query.light_object = light.object;
+    query.light_primitive = light.primitive;
+    query.seed_instance = seed_instance;
+    query.local_primitive = local_primitive;
+    const auto resolved = resolver(ray, query);
+    return {
+        .valid = resolved.valid != 0u,
+        .instance = resolved.instance,
+        .coincident_next = 0u,
+        .primitive = resolved.primitive,
+        .object = resolved.object,
+        .cycles_primitive = resolved.cycles_primitive,
+        .type_order = resolved.type_order,
+        .distance = resolved.distance,
+        .barycentric = resolved.barycentric};
   }
 
   [[nodiscard]] Var<luisa::compute::CommittedHit>
@@ -312,9 +414,14 @@ private:
     resolved->hit_type =
         static_cast<std::uint32_t>(luisa::compute::HitType::Miss);
     resolved->committed_ray_t = ray->t_max();
-    if (_plan.empty()) {
+    if (_plan.primitives.empty()) {
       return resolved;
     }
+    const auto triangle_resolver =
+        _plan.primitives.triangles
+            ? std::make_unique<TriangleResolverCallable>(
+                  make_triangle_resolver(scene))
+            : nullptr;
 
     // Cycles' triangle and curve intersections use the closed interval
     // [tmin, tmax]. Vulkan's built-in triangle intersection is specified on
@@ -335,8 +442,8 @@ private:
           // Resolver handles a singleton, a whole-instance class, or a sparse
           // primitive completion list through the same Cycles predicate and
           // stable identity order.
-          const auto group = resolve_completed_triangle(
-              scene, ray, visibility_mask, source, light,
+          const auto group = invoke_triangle_resolver(
+              *triangle_resolver, ray, visibility_mask, source, light,
               hit->inst, hit->prim);
           const auto accepted =
               group.valid &
@@ -423,7 +530,7 @@ private:
     // topological forced hit: resolve_completed_triangle still applies the
     // actual ray, visibility, exclusions, and Cycles Pluecker predicate. A
     // geometrically offset origin therefore rejects candidates normally.
-    if (_plan.triangles) {
+    if (_plan.triangle_completion) {
       const auto source_acceleration =
           source_acceleration_identity(scene, source);
       $if(source_acceleration.valid) {
@@ -434,8 +541,8 @@ private:
             source_acceleration.primitive);
         $if((max(source_instance.coincident_count, 1u) > 1u) |
             completion.valid) {
-          const auto group = resolve_completed_triangle(
-              scene, ray, visibility_mask, source, light,
+          const auto group = invoke_triangle_resolver(
+              *triangle_resolver, ray, visibility_mask, source, light,
               source_acceleration.instance,
               source_acceleration.primitive);
           const auto accepted =
@@ -459,7 +566,7 @@ private:
     const auto trace_backend =
         [&](const Var<luisa::compute::Ray> &candidate_ray,
             bool commit_candidate) noexcept {
-          if (_plan.mixed()) {
+          if (_plan.primitives.mixed()) {
             return scene->accel
                 ->traverse(candidate_ray,
                            {.visibility_mask = visibility_mask})
@@ -473,7 +580,7 @@ private:
                     })
                 .trace();
           }
-          if (_plan.triangles) {
+          if (_plan.primitives.triangles) {
             return scene->accel
                 ->traverse(candidate_ray,
                            {.visibility_mask = visibility_mask})
@@ -517,19 +624,19 @@ private:
 
 public:
   explicit UnifiedSceneTraversalComponent(
-      ScenePrimitiveStagePlan plan)
+      SceneTraversalStagePlan plan)
       : _plan{plan},
-        _curves{plan.curves
+        _curves{plan.primitives.curves
                     ? make_curve_primitive_component()
                     : nullptr},
-        _ribbons{plan.curves
+        _ribbons{plan.primitives.curves
                      ? make_curve_ribbon_component()
                      : nullptr},
-        _materials{plan.empty()
+        _materials{plan.primitives.empty()
                        ? nullptr
                        : make_primitive_material_component()},
         _triangle_intersection{
-            plan.triangles
+            plan.primitives.triangles
                 ? make_cycles_triangle_intersection_component()
                 : nullptr} {}
 
@@ -556,9 +663,9 @@ public:
 
 std::shared_ptr<const SceneTraversalComponent>
 make_scene_traversal_component(
-    ScenePrimitiveStagePlan plan) {
+    SceneTraversalStagePlan plan) {
   return std::make_shared<UnifiedSceneTraversalComponent>(
-      plan);
+      plan.canonicalized());
 }
 
 } // namespace psycles::luisa_backend::detail
