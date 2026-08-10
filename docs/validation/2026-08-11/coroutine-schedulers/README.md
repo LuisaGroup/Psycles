@@ -247,6 +247,62 @@ The complete profile is
 `/var/tmp/psycles-coro-pass-domain-wavefront-xLxG929W/trace.log` on the
 measurement host.
 
+## Value-numbered coroutine dataflow
+
+Luisa `next@35c1ac2fc` removes the two remaining accidental quadratic
+analyses at the distill/split boundary. `perf` attributed essentially all of
+the former distill time to repeated `unordered_set<Value *>` construction and
+instruction transfer while revisiting predecessor states. Each scope now
+numbers its values and blocks once, summarizes each block once, and solves the
+induced sparse CFG with dense bit-vector worklists. For block `B`, the transfer
+functions are
+
+`K_out = K_in union K_B`,
+`T_out = T_in union T_B`, and
+`E_out = E_in union (E_B - K_in)`.
+
+`K` is a must-definition fact and meets with intersection; `T` and `E` are
+may facts and meet with union. The must solution is deliberately initialized
+to top for every non-entry block and to the empty boundary at the entry. This
+computes the greatest fixed point. An initially faster bottom-initialized
+prototype selected the wrong fixed point on loop back-edges, expanded the
+Lone Monk frame from 297 fields / 1,424 bytes to 554 fields / 2,528 bytes, and
+was rejected. `LUISA_CORO_VERIFY_DENSE_DATAFLOW=1` reruns the old pointer-set
+solver as an oracle and compares every scope fact and exit fact. The corrected
+solver passes that oracle on the complete Lone Monk coroutine and has a
+dedicated loop regression that distinguishes top from bottom initialization.
+
+Split no longer reruns the complete distill fixed point merely to validate its
+input. A sealed analysis certificate binds the source definition, ordered
+blocks and instructions, instruction kinds/types/names/operands and coroutine
+payloads, plus every semantic scope, edge, liveness, and frame result. Split
+checks the certificate in linear time and atomically rejects either caller
+mutation or a source edit after distillation. A regression changes a store
+operand without changing any block or instruction identity and proves that
+the stale certificate is rejected. The full canonical recomputation remains
+available under `LUISA_XIR_VERIFY_INTERMEDIATE=1`; the same flag enables the
+extra intermediate XIR verifier. Normal compilation verifies only the whole
+coroutine pass interval at its beginning and end.
+
+The unchanged strict native-XIR Vulkan 1x1/1 spp Lone Monk measurement is:
+
+| Coroutine phase | Before | After | Speedup |
+| --- | ---: | ---: | ---: |
+| CFG distillation | 2,528.185 ms | 331.869 ms | 7.6x |
+| coroutine splitting | 2,543.782 ms | 13.631 ms | 186.6x |
+| complete coroutine lowering | 7,250.052 ms | 2,495.317 ms | 2.9x |
+
+The result remains four callables with 297 frame fields / 1,424 bytes. Display,
+Combined, Normal, and Albedo hashes are exactly the four hashes recorded above;
+there is no shader-state or image change. The production run is under
+`/var/tmp/psycles-coro-dense-top-production`, and the pointer-oracle run is
+under `/var/tmp/psycles-coro-dense-top-oracle` on the measurement host.
+
+All 18 coroutine-labelled and all 50 XIR-labelled Luisa tests pass. The
+all-scheduler suite additionally passes 54 assertions in 11 tests on fallback,
+HIP, and strict native-XIR Vulkan, including optimized-away frontend tokens,
+sparse live tokens, and the entry-only empty-live-set case.
+
 ## Multi-sample renderer equivalence after the cut
 
 The actual Lone Monk renderer was also run through the new loop-header cut with
