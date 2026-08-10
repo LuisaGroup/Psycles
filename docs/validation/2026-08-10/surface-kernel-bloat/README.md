@@ -4,7 +4,7 @@ Date: 2026-08-10
 
 ## Outcome
 
-This checkpoint removes fourteen independent sources of scene-dependent path-kernel
+This checkpoint removes fifteen independent sources of scene-dependent path-kernel
 growth without changing Blender graph values or Cycles closure semantics:
 
 1. emission code is recorded only for surface tags whose scene-unioned closure
@@ -45,19 +45,24 @@ growth without changing Blender graph values or Cycles closure semantics:
 14. triangle and curve traversal, primitive resolution, material lookup, and
     differential geometry are recorded only for primitive populations present
     in the immutable uploaded scene. Device hit-kind dispatch remains only for
-    genuinely mixed triangle/curve acceleration structures.
+    genuinely mixed triangle/curve acceleration structures; and
+15. exact triangle source completion is recorded only when the immutable scene
+    contains a dense or sparse completion-source lookup, while primary,
+    tie-retraversal, source-completion, and shadow paths share one strongly
+    typed exact resolver callable.
 
 On the unchanged Lone Monk export, the complete cold Vulkan path module falls
-from 203,652 to 85,160 pre-restructure XIR instructions (58.2%). The main
-kernel falls 56.3%, raw SPIR-V falls 60.9%, optimized SPIR-V falls 54.1%, and
-native AST-to-SPIR-V time falls 67.8%. The latest primitive specialization by
-itself removes 10.1% of the main kernel and improves a same-period interleaved
-960x540, 64 spp HIP A/B by 2.94% (`1.0303x`). The 1x1 compiler-isolation PPM
-and all fifteen PFM passes remain byte-identical, while the high-resolution HIP
-difference remains inside unchanged-binary nondeterminism and has no structured
-image change. The current cold Vulkan driver sample is reported separately and
-is not presented as a JIT-time win because driver pipeline creation varied in
-the opposite direction.
+from 203,652 to 81,516 pre-restructure XIR instructions (60.0%). The main
+kernel falls 59.2%, raw SPIR-V falls 62.8%, optimized SPIR-V falls 56.5%, and
+native AST-to-SPIR-V time falls 69.1%. The primitive specialization by itself
+removes 10.1% of the preceding main kernel and improves a same-period
+interleaved 960x540, 64 spp HIP A/B by 2.94% (`1.0303x`). The subsequent exact
+resolver boundary removes another 6.58% of the main kernel and 5.17% of
+optimized SPIR-V without changing measured HIP throughput. The 1x1
+compiler-isolation PPM and all fifteen PFM passes remain byte-identical, while
+the high-resolution HIP difference remains inside unchanged-binary
+nondeterminism and has no structured image change. Cold Vulkan driver samples
+are reported separately because pipeline creation remains dominant and noisy.
 
 ## Formal reachability rule
 
@@ -962,6 +967,108 @@ structured feature:
 
 ![Lone Monk retained/pruned primitive stages and linear difference](lone-monk-primitive-capability-triptych.png)
 
+## Shared exact triangle completion resolver
+
+The primitive plan exposed a second, independent source of duplication inside
+the remaining triangle stage. The exact Cycles triangle resolver was recorded
+inside the first ray-query callback, the equal-distance tie retraversal, and
+the explicit source-completion path. Primary and shadow traversal then built
+separate copies of that structure. This was duplication of one semantic
+operation, not scene or material complexity.
+
+Scene upload already constructs the immutable dense/sparse completion-source
+lookup exactly when at least one triangle instance needs coincident or partial
+overlap support. Code generation now consumes that proof through the finite
+traversal plan:
+
+```text
+completion(scene) iff
+    triangles(scene) and
+    (dense_completion_sources(scene) != 0 or
+     sparse_completion_sources(scene) != 0)
+
+canonical(plan).triangle_completion =
+    plan.triangle_completion and plan.primitives.triangles
+```
+
+The second equation is an invariant of the plan domain: triangle completion is
+a refinement of triangle traversal and can never be enabled independently.
+The public factory and component boundary canonicalize the plan, so manually
+constructed plugin/test plans cannot record an unreachable completion body.
+
+Both the singleton and completion variants use the same typed query/result
+contract and the same exact Cycles Pluecker intersection, visibility mask,
+source/light identity exclusion, stable closest-hit order, object mapping, and
+barycentrics. The completion variant alone retains dense lookup, sparse binary
+search, coincident-instance walking, and source tie traversal. One callable is
+recorded per reachable variant and reused by every primary/shadow call site;
+there is no `float4` protocol, approximate hardware replacement, pre-bake, or
+changed self-intersection rule. Independently constructed, semantically equal
+resolver callables are required by regression to hash-deduplicate to one
+custom definition.
+
+The focused traversal lattice now measures:
+
+| Traversal population | XIR instructions | resolver definitions |
+| --- | ---: | ---: |
+| empty | 119 | 0 |
+| triangles, singleton resolver | 2,412 | 1 |
+| triangles, completion resolver | 3,170 | 1 |
+| curves | 5,009 | 0 |
+| mixed, singleton resolver | 6,780 | 1 |
+| mixed, completion resolver | 7,538 | 1 |
+
+The former triangle fixture recorded 5,975 instructions. A singleton triangle
+scene is now 59.6% smaller than that retained completion body, while a scene
+that genuinely needs completion remains exact and is 46.9% smaller through
+callable sharing. The manually constructed curve-plus-completion plan records
+exactly the same 5,009 instructions and zero callables as the canonical curve
+plan.
+
+Lone Monk genuinely has completion sources, so only structural sharing—not
+singleton pruning—applies to the full scene. Relative to an immediately
+adjacent build of the primitive-capability checkpoint:
+
+| Metric | Retained resolver bodies | Shared exact resolver | Change |
+| --- | ---: | ---: | ---: |
+| XIR definitions | 35 | 36 | +1 shared definition |
+| total pre-restructure XIR instructions | 85,160 | 81,516 | -3,644 (-4.28%) |
+| main-kernel pre-restructure XIR instructions | 62,974 | 58,830 | -4,144 (-6.58%) |
+| resolver XIR instructions | 0 | 500 | +1 bounded definition |
+| `surface_evaluate_light` XIR instructions | 13,710 | 13,710 | unchanged |
+| raw SPIR-V words | 559,906 | 532,983 | -26,923 (-4.81%) |
+| optimized SPIR-V words | 511,858 | 485,379 | -26,479 (-5.17%) |
+| structured XIR optimization | 1,011.51 ms | 991.49 ms | -1.98% |
+| ordinary XIR inline | 188.94 ms | 184.78 ms | -2.20% |
+| SPIR-V XIR legalization | 3,213.17 ms | 3,018.41 ms | -6.06% |
+| native AST-to-SPIR-V | 7,663.77 ms | 7,262.50 ms | -5.24% |
+| driver compute-pipeline creation | 56,426.83 ms | 54,906.37 ms | -2.69% sample |
+| complete shader JIT | 64,179.8 ms | 62,256.3 ms | -3.00% sample |
+
+Definition-level XIR accounting and normalized dumps independently show that
+the reduction is confined to the main body plus the new resolver definition:
+normalized total instructions fall from 60,756 to 58,335 and normalized main
+instructions from 42,845 to 40,069. Native XIR-to-SPIR-V was required and no
+DXC module was loaded. The 1x1 PPM and all fifteen PFM pass files are
+byte-identical to the primitive checkpoint.
+
+A controlled same-period HIP A/B used separate retained/shared executables and
+the fixed order retained/shared/shared/retained/retained/shared. At 960x540 and
+64 spp, retained runs took `{6.09355, 6.08352, 6.07911}` seconds (mean
+`6.085393`) and shared runs took `{6.08373, 6.08008, 6.09101}` seconds (mean
+`6.084940`). The 0.007% difference (`1.00007x`) is throughput-neutral.
+
+Nine of fifteen high-resolution PFM passes are byte-identical. Combined has
+luminance ratio `0.99999991`, RMSE `1.1955e-4`, relative RMSE `6.5275e-5`,
+mean absolute error `4.8765e-7`, and p99 pixel RMSE zero. The nonzero values are
+confined to sparse indirect-light events and remain inside the measured HIP
+same-binary nondeterminism envelope. I inspected the full-resolution triptych:
+geometry, silhouettes, grass, materials, textures, lighting, and noise
+distribution have no visible structural change; the linear difference panel
+is black except for isolated subpixel events:
+
+![Lone Monk retained/shared exact triangle resolver and linear difference](lone-monk-triangle-resolver-triptych.png)
+
 ## Lone Monk cold Vulkan measurements
 
 Each row is one shader-cache-disabled process compiling and executing the full
@@ -1073,19 +1180,22 @@ for each specular family.
 | signed-Perlin used-only/bound/runtime-loop guards | pass | pass | pass |
 | direct-light component capability plan | pass | pass | pass |
 | analytic endpoint zero/nonzero scene plan | pass | pass | pass |
-| primitive population lattice and device-visible plan | pass | pass | pass |
+| primitive population and triangle-completion subset plan | pass | pass | pass |
 | traversal callback absence and XIR shape bound | pass | pass | pass |
+| exact resolver numeric parity/callback shape/hash dedup | pass | pass | pass |
 | environment/mesh/analytic/no-light full path fixtures | pass | pass | pass |
 | surface metadata/reachability regressions | pass | shared host test | shared host test |
 
-A complete `cmake --build build -j$(nproc)` passed after the capability plan
-was finalized. Twelve dedicated device runs cover scene traversal, the central
-scene-stage plan, curve paths, and forward area-light paths on fallback, HIP,
-and native-XIR Vulkan. The population fixture covers empty, triangles-only,
-curves-only, and mixed scenes, while the existing full-path fixture continues
-to pass environment, emissive mesh, analytic area light, no-light, and
-non-evaluable-BSDF scenes on all three backends. The light-tree scene tests also
-pass on all three backends.
+A complete `cmake --build build -j$(nproc)` passed after the resolver boundary
+was finalized. Fifteen dedicated device runs cover scene traversal, the central
+scene-stage plan, light-tree sampling, curve paths, and forward area-light
+paths on fallback, HIP, and native-XIR Vulkan. The population fixture covers
+empty, singleton triangles, completion triangles, curves, and both mixed
+variants. It also proves that an invalid curve-plus-completion plan
+canonicalizes to the exact curve-only XIR shape and that independently
+constructed equal resolver callables deduplicate. The existing full-path
+fixture continues to pass environment, emissive mesh, analytic area light,
+no-light, and non-evaluable-BSDF scenes on all three backends.
 
 The focused closure-plan fixture records 25,015 conservative instructions and
 5,345 scene-specialized instructions, a 78.6% reduction. The final Lone Monk
@@ -1093,18 +1203,28 @@ run and all focused regressions used the same production implementation.
 
 ## Remaining hotspot
 
-The next structural target is the remaining 62,974-instruction main kernel.
-The triangle-only traversal leak is now removed, so the next source-attributed
-audit must separate exact triangle source completion, the two reachable NEE
-components, and graph evaluation before choosing another boundary. In
-particular, source completion and tie traversal may be specialized only from
-scene metadata that formally proves those paths unreachable; a device zero-trip
-loop is not such a proof. The shared Bump endpoint bounds its post-height
-geometry, but each topology still schedules its height dependency at three
-differential points. Graph-value operators and that dependency scheduling also
-warrant measurement because the already-deduplicated 24 topologies contain
-1,438 unique values. Any extraction must preserve a typed semantic contract and
-pass a complete-module negative-boundary A/B like the ones above. Separately,
-Vulkan driver pipeline creation warrants driver-level profiling against
-optimized SPIR-V shape; blindly adding more XIR passes would not address its
+The next structural target is the remaining 58,830-instruction main kernel.
+Primitive-kind leakage is removed, and exact source completion is now both
+host-pruned when unreachable and shared when required. In the normalized full
+dump, the main body contains 40,069 instructions,
+`surface_evaluate_light` 10,178, closure evaluation 1,619, and conditional
+closure sampling 1,502. These are the next measured boundaries; no new split
+should be chosen merely from C++ file size.
+
+The shader graph already executes reachable values in topological order once
+per surface operation, and the scene's 35 source materials are represented by
+24 deduplicated graph topologies containing 1,438 unique values. The remaining
+graph problem is therefore repeated semantic replay across operations and
+topologies—not a missing topological walk. The shared Bump endpoint bounds its
+post-height geometry, but each topology still schedules the height dependency
+at three differential points. `surface_prepare` and `surface_sample` are also
+large before optimization but substantially inline and simplify, so the next
+audit must distinguish retained post-optimization code from temporary AST
+volume. A future graph/value-numbering or compact evaluator boundary must
+preserve typed socket semantics, request only reachable closures, and pass the
+same complete-module negative-boundary and Cycles-output gates.
+
+Separately, Vulkan driver pipeline creation still dominates the cold path.
+Driver-level profiling must correlate optimized SPIR-V control flow, register
+pressure, and pipeline time; blindly adding XIR passes would not address its
 measured share.

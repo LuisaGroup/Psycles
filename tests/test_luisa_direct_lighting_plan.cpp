@@ -16,6 +16,7 @@ namespace {
 
 using namespace luisa::compute;
 using psycles::luisa_backend::detail::DirectLightingStagePlan;
+using psycles::luisa_backend::detail::SceneTraversalStagePlan;
 using psycles::luisa_backend::detail::make_direct_lighting_stage_plan;
 using psycles::luisa_backend::detail::make_path_kernel_scene_stage_plan;
 
@@ -26,6 +27,8 @@ struct PlanCase {
     std::uint32_t analytic_lights{};
     std::size_t triangle_geometries{};
     std::size_t curve_geometries{};
+    std::size_t completion_sources_dense{};
+    std::size_t completion_sources_sparse{};
 };
 
 inline constexpr auto environment_bit = std::uint32_t{1u} << 0u;
@@ -34,6 +37,7 @@ inline constexpr auto analytic_nee_bit = std::uint32_t{1u} << 2u;
 inline constexpr auto analytic_endpoint_bit = std::uint32_t{1u} << 3u;
 inline constexpr auto triangle_primitive_bit = std::uint32_t{1u} << 4u;
 inline constexpr auto curve_primitive_bit = std::uint32_t{1u} << 5u;
+inline constexpr auto triangle_completion_bit = std::uint32_t{1u} << 6u;
 inline constexpr auto direct_lighting_bits =
     environment_bit |
     emissive_mesh_bit |
@@ -54,16 +58,22 @@ scene_stage_mask(const PlanCase &test) noexcept {
         test.emissive_meshes,
         test.analytic_lights,
         test.triangle_geometries,
-        test.curve_geometries);
+        test.curve_geometries,
+        test.completion_sources_dense,
+        test.completion_sources_sparse);
+    const auto traversal = plan.traversal;
     return plan_mask(plan.direct_lighting) |
            (plan.analytic_light_endpoints
                 ? analytic_endpoint_bit
                 : 0u) |
-           (plan.primitives.triangles
+           (traversal.primitives.triangles
                 ? triangle_primitive_bit
                 : 0u) |
-           (plan.primitives.curves
+           (traversal.primitives.curves
                 ? curve_primitive_bit
+                : 0u) |
+           (traversal.triangle_completion
+                ? triangle_completion_bit
                 : 0u);
 }
 
@@ -88,7 +98,13 @@ constexpr auto cases =
                PlanCase{.triangle_geometries = 1u},
                PlanCase{.curve_geometries = 1u},
                PlanCase{.triangle_geometries = 5u,
-                        .curve_geometries = 8u}};
+                        .curve_geometries = 8u},
+               PlanCase{.triangle_geometries = 1u,
+                        .completion_sources_dense = 4u},
+               PlanCase{.triangle_geometries = 1u,
+                        .completion_sources_sparse = 3u},
+               PlanCase{.curve_geometries = 1u,
+                        .completion_sources_dense = 4u}};
 
 [[nodiscard]] constexpr std::uint32_t
 expected_mask(const PlanCase &test) noexcept {
@@ -111,6 +127,11 @@ expected_mask(const PlanCase &test) noexcept {
                 : 0u) |
            (test.curve_geometries != 0u
                 ? curve_primitive_bit
+                : 0u) |
+           (test.triangle_geometries != 0u &&
+                    (test.completion_sources_dense != 0u ||
+                     test.completion_sources_sparse != 0u)
+                ? triangle_completion_bit
                 : 0u);
 }
 
@@ -121,25 +142,48 @@ static_assert(
 static_assert(make_direct_lighting_stage_plan(false, true, 7u, 9u).size() == 0u,
               "disabled NEE must record no direct-light component");
 static_assert(
-    make_path_kernel_scene_stage_plan(false, false, 0u, 1u, 0u, 0u)
+    make_path_kernel_scene_stage_plan(
+        false, false, 0u, 1u, 0u, 0u, 0u, 0u)
         .analytic_light_endpoints,
     "forward analytic-light endpoints do not depend on NEE");
 static_assert(
-    !make_path_kernel_scene_stage_plan(true, true, 7u, 0u, 0u, 0u)
+    !make_path_kernel_scene_stage_plan(
+         true, true, 7u, 0u, 0u, 0u, 0u, 0u)
          .analytic_light_endpoints,
     "a zero analytic population must prune endpoint intersection and shading");
 static_assert(
-    make_path_kernel_scene_stage_plan(false, false, 0u, 0u, 3u, 0u)
-            .primitives.triangles &&
-        !make_path_kernel_scene_stage_plan(false, false, 0u, 0u, 3u, 0u)
-             .primitives.curves,
+    make_path_kernel_scene_stage_plan(
+        false, false, 0u, 0u, 3u, 0u, 0u, 0u)
+            .traversal.primitives.triangles &&
+        !make_path_kernel_scene_stage_plan(
+             false, false, 0u, 0u, 3u, 0u, 0u, 0u)
+             .traversal.primitives.curves,
     "triangle-only scenes must not record curve stages");
 static_assert(
-    make_path_kernel_scene_stage_plan(false, false, 0u, 0u, 0u, 2u)
-            .primitives.curves &&
-        !make_path_kernel_scene_stage_plan(false, false, 0u, 0u, 0u, 2u)
-             .primitives.triangles,
+    make_path_kernel_scene_stage_plan(
+        false, false, 0u, 0u, 0u, 2u, 0u, 0u)
+            .traversal.primitives.curves &&
+        !make_path_kernel_scene_stage_plan(
+             false, false, 0u, 0u, 0u, 2u, 0u, 0u)
+             .traversal.primitives.triangles,
     "curve-only scenes must not record triangle stages");
+static_assert(
+    make_path_kernel_scene_stage_plan(
+        false, false, 0u, 0u, 2u, 0u, 1u, 0u)
+        .traversal.triangle_completion,
+    "a dense completion source must retain exact completion");
+static_assert(
+    !make_path_kernel_scene_stage_plan(
+         false, false, 0u, 0u, 0u, 2u, 1u, 0u)
+         .traversal.triangle_completion,
+    "curve-only scenes cannot reach triangle completion");
+static_assert(
+    !SceneTraversalStagePlan{
+         .primitives = {.curves = true},
+         .triangle_completion = true}
+         .canonicalized()
+         .triangle_completion,
+    "manually constructed traversal plans must preserve completion subset");
 
 }// namespace
 

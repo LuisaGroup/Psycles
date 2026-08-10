@@ -41,12 +41,18 @@ class PathKernelPipeline::Impl {
                     ->emissive_triangle_count,
                 config.scene->light_count,
                 config.scene->geometries.size(),
-                config.scene->curve_geometries.size());
+                config.scene->curve_geometries.size(),
+                config.scene
+                    ->cycles_completion_source_dense_count,
+                config.scene
+                    ->cycles_completion_source_sparse_count);
+        const auto traversal_plan =
+            stage_plan.traversal;
         const auto primitive_plan =
-            stage_plan.primitives;
+            traversal_plan.primitives;
         bounce_setup =
             make_path_bounce_setup_stage(
-                primitive_plan);
+                traversal_plan);
         closest_event =
             make_closest_event_stage(
                 stage_plan

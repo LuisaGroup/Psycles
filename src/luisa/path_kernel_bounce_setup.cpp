@@ -16,7 +16,7 @@ class PathBounceSetupStageImpl final
 
   public:
     explicit PathBounceSetupStageImpl(
-        ScenePrimitiveStagePlan plan)
+        SceneTraversalStagePlan plan)
         : _traversal{
               make_scene_traversal_component(
                   plan)} {}
@@ -161,7 +161,7 @@ class PathBounceSetupStageImpl final
 
 std::unique_ptr<PathBounceSetupStage>
 make_path_bounce_setup_stage(
-    ScenePrimitiveStagePlan plan) {
+    SceneTraversalStagePlan plan) {
     return std::make_unique<
         PathBounceSetupStageImpl>(
             plan);

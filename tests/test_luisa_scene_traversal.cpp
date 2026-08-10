@@ -75,13 +75,14 @@ inline constexpr std::size_t record_count = 26u;
 
 struct TraversalXirShape {
   std::size_t instructions{};
+  std::size_t callable_definitions{};
   std::size_t triangle_candidate_reads{};
   std::size_t procedural_candidate_reads{};
 };
 
 [[nodiscard]] TraversalXirShape traversal_xir_shape(
     const std::shared_ptr<LuisaSceneData> &scene,
-    ScenePrimitiveStagePlan plan) {
+    SceneTraversalStagePlan plan) {
   const auto traversal = make_scene_traversal_component(plan);
   Kernel1D shape = [scene, traversal](BufferUInt output) noexcept {
     const auto ray = make_ray(
@@ -90,9 +91,11 @@ struct TraversalXirShape {
         scene, ray, 0xffu, ScenePrimitiveIdentity::invalid());
     output.write(0u, hit->inst);
   };
+  TraversalXirShape result;
+  result.callable_definitions =
+      shape.function()->function().custom_callables().size();
   auto module = luisa::compute::xir::ast_to_xir_translate(
       shape.function()->function(), {});
-  TraversalXirShape result;
   for (auto *function : module->function_list()) {
     if (const auto *definition = function->definition()) {
       definition->traverse_instructions(
@@ -119,6 +122,24 @@ struct TraversalXirShape {
     }
   }
   return result;
+}
+
+[[nodiscard]] bool triangle_resolver_hash_deduplicates(
+    const std::shared_ptr<LuisaSceneData> &scene) {
+  const auto plan = SceneTraversalStagePlan{
+      .primitives = {.triangles = true},
+      .triangle_completion = true};
+  const auto first = make_scene_traversal_component(plan);
+  const auto second = make_scene_traversal_component(plan);
+  Kernel1D shape = [scene, first, second](BufferUInt output) noexcept {
+    const auto ray = make_ray(
+        make_float3(0.0f), make_float3(0.0f, 0.0f, 1.0f), 0.0f, 10.0f);
+    const auto source = ScenePrimitiveIdentity::invalid();
+    const auto first_hit = first->closest(scene, ray, 0xffu, source);
+    const auto second_hit = second->closest(scene, ray, 0xffu, source);
+    output.write(0u, first_hit->inst + second_hit->inst);
+  };
+  return shape.function()->function().custom_callables().size() == 1u;
 }
 
 } // namespace
@@ -601,39 +622,80 @@ int main(int argc, char **argv) {
 
   const auto empty_shape = traversal_xir_shape(scene, {});
   const auto triangle_shape = traversal_xir_shape(
-      scene, {.triangles = true});
+      scene, {.primitives = {.triangles = true}});
+  const auto triangle_completion_shape = traversal_xir_shape(
+      scene, {.primitives = {.triangles = true},
+              .triangle_completion = true});
   const auto curve_shape = traversal_xir_shape(
-      scene, {.curves = true});
+      scene, {.primitives = {.curves = true}});
   const auto mixed_shape = traversal_xir_shape(
-      scene, {.triangles = true, .curves = true});
+      scene,
+      {.primitives = {.triangles = true, .curves = true}});
+  const auto mixed_completion_shape = traversal_xir_shape(
+      scene,
+      {.primitives = {.triangles = true, .curves = true},
+       .triangle_completion = true});
+  const auto invalid_curve_completion_shape = traversal_xir_shape(
+      scene,
+      {.primitives = {.curves = true},
+       .triangle_completion = true});
   const auto report_shapes =
       std::getenv("PSYCLES_REPORT_SHADER_SHAPES") != nullptr;
   if (report_shapes) {
     std::cerr << "scene traversal XIR: empty=" << empty_shape.instructions
               << ", triangles=" << triangle_shape.instructions
+              << ", triangle-completion="
+              << triangle_completion_shape.instructions
               << ", curves=" << curve_shape.instructions
-              << ", mixed=" << mixed_shape.instructions << '\n';
+              << ", mixed=" << mixed_shape.instructions
+              << ", mixed-completion="
+              << mixed_completion_shape.instructions << '\n';
   }
   if (empty_shape.triangle_candidate_reads != 0u ||
       empty_shape.procedural_candidate_reads != 0u ||
+      empty_shape.callable_definitions != 0u ||
       triangle_shape.triangle_candidate_reads == 0u ||
       triangle_shape.procedural_candidate_reads != 0u ||
+      triangle_shape.callable_definitions != 1u ||
+      triangle_completion_shape.triangle_candidate_reads == 0u ||
+      triangle_completion_shape.procedural_candidate_reads != 0u ||
+      triangle_completion_shape.callable_definitions != 1u ||
       curve_shape.triangle_candidate_reads != 0u ||
       curve_shape.procedural_candidate_reads == 0u ||
+      curve_shape.callable_definitions != 0u ||
       mixed_shape.triangle_candidate_reads == 0u ||
       mixed_shape.procedural_candidate_reads == 0u ||
+      mixed_shape.callable_definitions != 1u ||
+      mixed_completion_shape.triangle_candidate_reads == 0u ||
+      mixed_completion_shape.procedural_candidate_reads == 0u ||
+      mixed_completion_shape.callable_definitions != 1u ||
+      invalid_curve_completion_shape.instructions !=
+          curve_shape.instructions ||
+      invalid_curve_completion_shape.triangle_candidate_reads != 0u ||
+      invalid_curve_completion_shape.procedural_candidate_reads == 0u ||
+      invalid_curve_completion_shape.callable_definitions != 0u ||
       !(empty_shape.instructions < triangle_shape.instructions &&
         empty_shape.instructions < curve_shape.instructions &&
+        triangle_shape.instructions <
+            triangle_completion_shape.instructions &&
         triangle_shape.instructions < mixed_shape.instructions &&
-        curve_shape.instructions < mixed_shape.instructions)) {
+        curve_shape.instructions < mixed_shape.instructions &&
+        mixed_shape.instructions <
+            mixed_completion_shape.instructions)) {
     std::cerr << "FAILED: primitive capability did not bound scene-traversal "
                  "XIR\n";
+    return EXIT_FAILURE;
+  }
+  if (!triangle_resolver_hash_deduplicates(scene)) {
+    std::cerr << "FAILED: independently constructed exact triangle "
+                 "resolvers did not deduplicate by complete callable hash\n";
     return EXIT_FAILURE;
   }
 
   auto output = device.create_buffer<luisa::float4>(record_count);
   const auto traversal = make_scene_traversal_component(
-      {.triangles = true, .curves = true});
+      {.primitives = {.triangles = true, .curves = true},
+       .triangle_completion = true});
   const auto curve_primitive = make_curve_primitive_component();
   const auto curve_geometry = make_curve_geometry_component();
   Kernel1D evaluate = [scene, traversal, curve_primitive,

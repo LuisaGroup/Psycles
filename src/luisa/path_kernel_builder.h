@@ -88,7 +88,7 @@ struct PathKernelSceneStagePlan {
     // proves that neither the software intersection loop nor forward-light
     // shading can be reached.
     bool analytic_light_endpoints{};
-    ScenePrimitiveStagePlan primitives{};
+    SceneTraversalStagePlan traversal{};
     DirectLightingStagePlan direct_lighting{};
 };
 
@@ -117,14 +117,18 @@ make_path_kernel_scene_stage_plan(
     std::uint32_t emissive_triangle_count,
     std::uint32_t analytic_light_count,
     std::size_t triangle_geometry_count,
-    std::size_t curve_geometry_count) noexcept {
+    std::size_t curve_geometry_count,
+    std::size_t completion_source_dense_count,
+    std::size_t completion_source_sparse_count) noexcept {
     return {
         .analytic_light_endpoints =
             analytic_light_count != 0u,
-        .primitives =
-            make_scene_primitive_stage_plan(
+        .traversal =
+            make_scene_traversal_stage_plan(
                 triangle_geometry_count,
-                curve_geometry_count),
+                curve_geometry_count,
+                completion_source_dense_count,
+                completion_source_sparse_count),
         .direct_lighting =
             make_direct_lighting_stage_plan(
                 next_event_estimation,
@@ -556,7 +560,7 @@ class SubsurfaceTransportStage {
 
 [[nodiscard]] std::unique_ptr<PathBounceSetupStage>
 make_path_bounce_setup_stage(
-    ScenePrimitiveStagePlan plan);
+    SceneTraversalStagePlan plan);
 [[nodiscard]] std::unique_ptr<ClosestEventStage>
 make_closest_event_stage(
     bool analytic_light_endpoints,
