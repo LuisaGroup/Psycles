@@ -388,6 +388,81 @@ compile-time improvement is claimed for this checkpoint. The result is retained
 for its bounded structural shape and exact semantic parity; repeated controlled
 driver measurements remain separate from this compile-isolation check.
 
+## Shared shader-table evaluation follow-up
+
+The source Lone Monk scene contains 18 Color Ramp nodes and 27 RGB Curves
+nodes. After material-instance normalization and topology deduplication, 16
+Color Ramp operations and 14 RGB Curve operations remain reachable in the 24
+recorded surface topologies. Their 257-entry payloads were already runtime
+tables, so authored table length did not unroll into shader structure. The
+remaining duplication was the lookup, interpolation, and curve-extrapolation
+body emitted independently at every graph site and in every surface operation
+that traversed that topology.
+
+Table representation and interpolation policy are immutable graph metadata.
+They form the finite typed endpoint family
+
+```text
+Color Ramp = {sampled, control} x {linear, constant}
+RGB Curves = {sampled, control}
+```
+
+The canonical implementations now consume a host-polymorphic table reader.
+That virtual dispatch happens only while Luisa records the AST: production
+buffer services select a typed callable reader, while standalone GraphSurface
+clients retain the exact service-backed inline implementation. There is no
+device virtual dispatch, weak `float4` register file, generic device opcode,
+host material evaluation, or Cycles/Blender pre-bake. The scalar table payload
+and descriptor remain runtime scene data.
+
+Production `ShaderServices` expose a lazy `SurfaceShaderTableProvider`. It
+creates a strongly typed callable only when the corresponding immutable
+endpoint is reached, giving the formal bound
+
+```text
+shader_table_definitions(module)
+    <= |reachable Color Ramp endpoints|
+       + |reachable RGB Curve endpoints|
+    <= 4 + 2
+```
+
+The regression requires a sampled-linear-only kernel to contain exactly one
+definition, all six endpoints to contain exactly six, and independently
+constructed providers to deduplicate by complete callable AST hash. It compares
+the canonical direct and shared paths over sampled/control tables, both ramp
+interpolation modes, curve extrapolation on/off, factors outside `[0, 1]`, and
+curve inputs below/inside/above the authored range on fallback, HIP, and native
+Vulkan. The focused graph-site result is:
+
+| Focused fixture | Inline XIR | Shared XIR | Change |
+| --- | ---: | ---: | ---: |
+| eight sampled-linear Color Ramp sites | 2,120 | 447 | -78.9% |
+
+Lone Monk reaches only sampled-linear Color Ramp, sampled-constant Color Ramp,
+and sampled RGB Curve. Their definitions contain 72, 48, and 189 instructions;
+the three legacy control-table endpoints are absent. Relative to the shared
+vector-mapping checkpoint:
+
+| Metric | + shared vector mapping | + shared shader tables | Change |
+| --- | ---: | ---: | ---: |
+| XIR definitions | 30 | 33 | +3 reachable definitions |
+| total XIR instructions | 127,838 | 116,240 | -11,598 (-9.07%) |
+| main-kernel XIR instructions | 92,649 | 84,794 | -7,855 (-8.48%) |
+| `surface_emission` XIR instructions | 437 | 437 | unchanged |
+| `surface_evaluate_light` XIR instructions | 19,145 | 15,093 | -4,052 (-21.2%) |
+| raw SPIR-V words | 875,893 | 787,479 | -88,414 (-10.1%) |
+| optimized SPIR-V words | 795,251 | 716,487 | -78,764 (-9.90%) |
+| ordinary XIR inline | 229.64 ms | 208.81 ms | -9.07% |
+| SPIR-V XIR legalization | 5,260.00 ms | 4,385.93 ms | -16.6% |
+| native AST-to-SPIR-V | 12,481.60 ms | 10,510.54 ms | -15.8% |
+| driver compute-pipeline creation | 79,793.11 ms | 78,298.66 ms | -1.87% |
+| complete shader JIT | 92,379.1 ms | 88,904.5 ms | -3.76% |
+
+Unlike the preceding single-sample checkpoints, every measured compilation
+boundary improved in this cold run. The deterministic structural reduction and
+exact output parity are the primary result; the one driver timing sample is
+still reported as measured rather than treated as a stable throughput claim.
+
 ## Lone Monk cold Vulkan measurements
 
 Each row is one shader-cache-disabled process compiling and executing the full
@@ -395,7 +470,7 @@ scene path kernel at 1x1 and 1 spp. The tiny launch isolates shader construction
 it is not a rendering-throughput benchmark. Vulkan selected the RX 9070 XT via
 RADV and used native XIR-to-SPIR-V throughout; DXC was not loaded.
 
-The retained vector-mapping run used:
+The retained shader-table run used:
 
 ```sh
 PSYCLES_DISABLE_SHADER_CACHE=1 \
@@ -405,27 +480,27 @@ LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1 \
 LUISA_XIR_TRACE_PASSES=1 \
 build/bin/psycles_render_blender_scene \
   /var/tmp/psycles-lone-monk-transmission-dbdcb17/export \
-  /var/tmp/psycles-kernel-shape-mapping-20260810/vk.ppm \
+  /var/tmp/psycles-kernel-shape-tables-20260810/vk.ppm \
   vk 1 1 1 1
 ```
 
 The complete trace and linear passes are under
-`/var/tmp/psycles-kernel-shape-mapping-20260810/` on the measurement host.
+`/var/tmp/psycles-kernel-shape-tables-20260810/` on the measurement host.
 
-| Metric | Initial baseline | Emission pruning | Shared dielectric | + diffuse | + metallic | + texture sampling | + color transforms | + vector mapping | Initial to final |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| XIR definitions | 20 | 21 | 23 | 24 | 25 | 27 | 29 | 30 | +10 definitions |
-| total XIR instructions | 203,652 | 179,622 | 169,378 | 168,706 | 167,408 | 136,521 | 130,971 | 127,838 | -37.2% |
-| main-kernel XIR instructions | 144,135 | 127,331 | 120,200 | 119,736 | 118,754 | 98,253 | 94,959 | 92,649 | -35.7% |
-| `surface_emission` XIR instructions | 8,302 | 1,074 | 1,074 | 1,074 | 1,074 | 507 | 437 | 437 | -94.7% |
-| `surface_evaluate_light` XIR instructions | 36,930 | 36,930 | 33,251 | 33,019 | 32,495 | 22,270 | 20,003 | 19,145 | -48.2% |
-| raw SPIR-V words | 1,431,985 | 1,192,798 | 1,111,962 | 1,107,189 | 1,096,841 | 933,506 | 897,508 | 875,893 | -38.8% |
-| optimized SPIR-V words | 1,116,158 | 1,087,675 | 1,010,627 | 1,005,854 | 996,375 | 850,086 | 816,866 | 795,251 | -28.8% |
-| ordinary XIR inline | 348.30 ms | 301.09 ms | 274.17 ms | 280.65 ms | 284.00 ms | 243.92 ms | 221.83 ms | 229.64 ms | -34.1% |
-| SPIR-V XIR legalization | 10,045 ms | 6,607 ms | 6,296.58 ms | 6,339.37 ms | 6,502.61 ms | 5,107.07 ms | 4,962.88 ms | 5,260.00 ms | -47.6% |
-| native AST-to-SPIR-V | 23,492 ms | 17,184 ms | 16,077.31 ms | 15,952.92 ms | 16,180.90 ms | 12,559.43 ms | 12,134.65 ms | 12,481.60 ms | -46.9% |
-| driver compute-pipeline creation | 86,333 ms | 77,958 ms | 77,884.27 ms | 77,476.73 ms | 76,792.49 ms | 77,701.16 ms | 79,303.15 ms | 79,793.11 ms | -7.58% |
-| complete shader JIT | 109,979 ms | 95,269 ms | 94,077.8 ms | 93,552.1 ms | 93,093.7 ms | 90,365.8 ms | 91,539.7 ms | 92,379.1 ms | -16.0% |
+| Metric | Initial baseline | Emission pruning | Shared dielectric | + diffuse | + metallic | + texture sampling | + color transforms | + vector mapping | + shader tables | Initial to final |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| XIR definitions | 20 | 21 | 23 | 24 | 25 | 27 | 29 | 30 | 33 | +13 definitions |
+| total XIR instructions | 203,652 | 179,622 | 169,378 | 168,706 | 167,408 | 136,521 | 130,971 | 127,838 | 116,240 | -42.9% |
+| main-kernel XIR instructions | 144,135 | 127,331 | 120,200 | 119,736 | 118,754 | 98,253 | 94,959 | 92,649 | 84,794 | -41.2% |
+| `surface_emission` XIR instructions | 8,302 | 1,074 | 1,074 | 1,074 | 1,074 | 507 | 437 | 437 | 437 | -94.7% |
+| `surface_evaluate_light` XIR instructions | 36,930 | 36,930 | 33,251 | 33,019 | 32,495 | 22,270 | 20,003 | 19,145 | 15,093 | -59.1% |
+| raw SPIR-V words | 1,431,985 | 1,192,798 | 1,111,962 | 1,107,189 | 1,096,841 | 933,506 | 897,508 | 875,893 | 787,479 | -45.0% |
+| optimized SPIR-V words | 1,116,158 | 1,087,675 | 1,010,627 | 1,005,854 | 996,375 | 850,086 | 816,866 | 795,251 | 716,487 | -35.8% |
+| ordinary XIR inline | 348.30 ms | 301.09 ms | 274.17 ms | 280.65 ms | 284.00 ms | 243.92 ms | 221.83 ms | 229.64 ms | 208.81 ms | -40.1% |
+| SPIR-V XIR legalization | 10,045 ms | 6,607 ms | 6,296.58 ms | 6,339.37 ms | 6,502.61 ms | 5,107.07 ms | 4,962.88 ms | 5,260.00 ms | 4,385.93 ms | -56.3% |
+| native AST-to-SPIR-V | 23,492 ms | 17,184 ms | 16,077.31 ms | 15,952.92 ms | 16,180.90 ms | 12,559.43 ms | 12,134.65 ms | 12,481.60 ms | 10,510.54 ms | -55.3% |
+| driver compute-pipeline creation | 86,333 ms | 77,958 ms | 77,884.27 ms | 77,476.73 ms | 76,792.49 ms | 77,701.16 ms | 79,303.15 ms | 79,793.11 ms | 78,298.66 ms | -9.31% |
+| complete shader JIT | 109,979 ms | 95,269 ms | 94,077.8 ms | 93,552.1 ms | 93,093.7 ms | 90,365.8 ms | 91,539.7 ms | 92,379.1 ms | 88,904.5 ms | -19.2% |
 
 The final reachable setup definitions contain 247 instructions for ordinary
 dielectric GGX, 319 for preserve-energy dielectric GGX, 24 for diffuse, and 208
@@ -435,8 +510,10 @@ repeated physical setup in the 19 reachable dielectric, 18 reachable diffuse,
 and 3 reachable metallic topology occurrences, plus texture sampling at 45
 reachable Image Texture nodes. The reachable RGB-to-HSV and HSV-to-RGB
 definitions contain 38 and 43 instructions, and the reachable POINT Mapping
-definition contains 35. Driver pipeline creation remains 86.4% of the final
-JIT wall time and is now the dominant Vulkan tail; further
+definition contains 35. The reachable sampled-linear ramp, sampled-constant
+ramp, and sampled RGB Curve definitions contain 72, 48, and 189 instructions.
+Driver pipeline creation remains 88.1% of the final JIT wall time and is now the
+dominant Vulkan tail; further
 IR work should still reduce its input, but XIR passes are no longer the
 majority of the measured wall time.
 
@@ -473,11 +550,14 @@ for each specular family.
 | color-transform used-only/bound/hash-dedup guards | pass | pass | pass |
 | vector-mapping direct/shared numeric parity | pass | pass | pass |
 | vector-mapping used-only/bound/hash-dedup guards | pass | pass | pass |
+| shader-table direct/shared numeric parity | pass | pass | pass |
+| shader-table used-only/bound/hash-dedup guards | pass | pass | pass |
 | surface metadata/reachability regressions | pass | shared host test | shared host test |
 
 A complete `cmake --build build -j$(nproc)` passed after the lazy used-only
-provider was finalized. The nine texture/color/mapping backend tests pass, as
-does the standalone `psycles_luisa_compile_tests` graph-construction suite.
+provider was finalized. The twelve texture/color/mapping/table backend tests
+pass, as does the standalone `psycles_luisa_compile_tests` graph-construction
+suite.
 
 The focused closure-plan fixture records 25,015 conservative instructions and
 5,345 scene-specialized instructions, a 78.6% reduction. The final Lone Monk
@@ -485,7 +565,7 @@ run and all focused regressions used the same production implementation.
 
 ## Remaining hotspot
 
-The next structural target is a fresh audit of the remaining 92,649-instruction
+The next structural target is a fresh audit of the remaining 84,794-instruction
 main kernel and repeated surface-operation bodies. Graph-value operators and
 normal/bump evaluation now warrant measurement because the already-deduplicated
 24 topologies still contain 1,438 unique values. Any extraction must preserve a

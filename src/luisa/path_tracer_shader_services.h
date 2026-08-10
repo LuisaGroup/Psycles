@@ -3,6 +3,7 @@
 #include "cycles_texture_sampling.h"
 #include "path_tracer_color_transforms.h"
 #include "path_tracer_internal.h"
+#include "path_tracer_shader_tables.h"
 #include "path_tracer_texture_sampling.h"
 #include "path_tracer_vector_mapping.h"
 
@@ -68,6 +69,8 @@ private:
     const CallableTexture2DSamplingProvider *_texture_sampling_provider{};
     CallableSurfaceColorTransformProvider _color_transform_provider;
     CallableSurfaceVectorMappingProvider _vector_mapping_provider;
+    CallableSurfaceShaderTableProvider<ScalarParameterBuffer>
+        _shader_table_provider;
 
 public:
     explicit BufferShaderServices(
@@ -100,7 +103,8 @@ public:
           _surface_closure_setup_provider{
               surface_closure_setup_provider},
           _texture_sampling_provider{
-              texture_sampling_provider} {}
+              texture_sampling_provider},
+          _shader_table_provider{scalar_parameters} {}
 
     [[nodiscard]] const SurfaceClosureSetupProvider *
     surface_closure_setup_provider() const noexcept override {
@@ -115,6 +119,11 @@ public:
     [[nodiscard]] const SurfaceVectorMappingProvider *
     surface_vector_mapping_provider() const noexcept override {
         return &_vector_mapping_provider;
+    }
+
+    [[nodiscard]] const SurfaceShaderTableProvider *
+    surface_shader_table_provider() const noexcept override {
+        return &_shader_table_provider;
     }
 
     [[nodiscard]] Float4 texture_2d(

@@ -498,6 +498,51 @@ public:
         Float3 scale) const noexcept = 0;
 };
 
+struct SurfaceShaderTableView {
+    UInt offset;
+    UInt count;
+    UInt width;
+};
+
+// Color Ramp and RGB Curves use runtime table descriptors, so authored table
+// cardinality remains data rather than shader structure. Their representation
+// and interpolation policies are immutable graph metadata selected here at the
+// host stage; implementations never receive a weak device opcode.
+class SurfaceShaderTableProvider {
+
+public:
+    virtual ~SurfaceShaderTableProvider() noexcept = default;
+
+    [[nodiscard]] virtual Float4 color_ramp_sampled_linear(
+        const SurfaceShaderTableView &table,
+        Float factor) const noexcept = 0;
+
+    [[nodiscard]] virtual Float4 color_ramp_sampled_constant(
+        const SurfaceShaderTableView &table,
+        Float factor) const noexcept = 0;
+
+    [[nodiscard]] virtual Float4 color_ramp_control_linear(
+        const SurfaceShaderTableView &table,
+        Float factor) const noexcept = 0;
+
+    [[nodiscard]] virtual Float4 color_ramp_control_constant(
+        const SurfaceShaderTableView &table,
+        Float factor) const noexcept = 0;
+
+    [[nodiscard]] virtual Float3 rgb_curve_sampled(
+        const SurfaceShaderTableView &table,
+        Float3 input,
+        Float factor,
+        Float min_x,
+        Float max_x,
+        Float extrapolate) const noexcept = 0;
+
+    [[nodiscard]] virtual Float3 rgb_curve_control(
+        const SurfaceShaderTableView &table,
+        Float3 input,
+        Float factor) const noexcept = 0;
+};
+
 // Non-owning host-stage view of a canonical closure's Luisa expressions.
 // Copying this type only copies AST expression handles: it neither declares
 // device variables nor evaluates, serializes, or bakes material data. This is
@@ -762,6 +807,11 @@ public:
 
     [[nodiscard]] virtual const SurfaceVectorMappingProvider *
     surface_vector_mapping_provider() const noexcept {
+        return nullptr;
+    }
+
+    [[nodiscard]] virtual const SurfaceShaderTableProvider *
+    surface_shader_table_provider() const noexcept {
         return nullptr;
     }
 
