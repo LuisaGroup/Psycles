@@ -2,8 +2,6 @@
 
 #include "path_tracer_shader_services.h"
 
-#include <psycles/luisa/surface_closure_blocks.h>
-
 namespace psycles::luisa_backend::detail {
 
 SurfaceClosureEvaluationCallable
@@ -21,8 +19,7 @@ make_surface_closure_evaluation_callable(
                Bool selected_sample,
                luisa::compute::Float4x4 block_0,
                luisa::compute::Float4x4 block_1,
-               luisa::compute::Float4x4 block_2,
-               luisa::compute::Float4x4 block_3) noexcept {
+               luisa::compute::Float4x4 block_2) noexcept {
         BufferShaderServices services{
             scalar_parameters,
             vector_parameters,
@@ -34,11 +31,10 @@ make_surface_closure_evaluation_callable(
             scene->nishita_texture_bindings,
             scene->shader_color_space};
         const auto point = unpack_surface_closure_point(packed_point);
-        const auto closure = unpack_surface_closure(
+        const auto closure = unpack_surface_closure_physical(
             Expr<luisa::float4x4>{block_0.expression()},
             Expr<luisa::float4x4>{block_1.expression()},
-            Expr<luisa::float4x4>{block_2.expression()},
-            Expr<luisa::float4x4>{block_3.expression()});
+            Expr<luisa::float4x4>{block_2.expression()});
         const auto query = SurfaceQuery{
             .lobe_mask = packed_query.lobe_mask,
             .transport_mode = packed_query.transport_mode,
@@ -126,7 +122,7 @@ CallableSurfaceClosureEvaluationOperation::evaluate(
     Expr<luisa::float3> shading_normal,
     const SurfaceClosureExpression &closure,
     Expr<bool> selected_sample) const noexcept {
-    const auto blocks = pack_surface_closure(
+    const auto blocks = pack_surface_closure_physical(
         closure.reference());
     return _callable(
         _scalar_parameters,
@@ -140,8 +136,7 @@ CallableSurfaceClosureEvaluationOperation::evaluate(
         selected_sample,
         blocks.block_0,
         blocks.block_1,
-        blocks.block_2,
-        blocks.block_3);
+        blocks.block_2);
 }
 
 }// namespace psycles::luisa_backend::detail

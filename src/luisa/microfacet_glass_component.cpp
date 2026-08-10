@@ -24,13 +24,13 @@ struct GlassGeometry {
 };
 
 [[nodiscard]] Bool is_refraction(
-    const SurfaceClosureRecord &closure) noexcept {
+    const SurfaceClosurePhysicalRecord &closure) noexcept {
     return closure.kind == static_cast<std::uint32_t>(
                                SurfaceClosureKind::refraction);
 }
 
 [[nodiscard]] GlassFresnel glass_fresnel(
-    const SurfaceClosureRecord &closure,
+    const SurfaceClosurePhysicalRecord &closure,
     Float cosine_half_incoming) noexcept {
     // Cycles' negative generalized-Schlick exponent is a model tag: the
     // physical dielectric curve determines an interpolation coordinate
@@ -57,7 +57,7 @@ struct GlassGeometry {
 }
 
 [[nodiscard]] GlassFresnel masked_fresnel(
-    const SurfaceClosureRecord &closure,
+    const SurfaceClosurePhysicalRecord &closure,
     Float cosine_half_incoming,
     Bool reflection_allowed,
     Bool transmission_allowed) noexcept {
@@ -77,7 +77,7 @@ reflection_probability(const GlassFresnel &fresnel) noexcept {
 }
 
 [[nodiscard]] GlassGeometry glass_geometry(
-    const SurfaceClosureRecord &closure,
+    const SurfaceClosurePhysicalRecord &closure,
     Float3 incoming,
     Float3 outgoing,
     Float3 normal) noexcept {
@@ -249,7 +249,7 @@ TracedClosure MicrofacetGlassComponent::setup(
 }
 
 Float3 MicrofacetGlassComponent::intensity(
-    const SurfaceClosureRecord &closure,
+    const SurfaceClosurePhysicalRecord &closure,
     Float3 incoming, Float3 outgoing,
     Float3 glossy_normal, Float glossy_filter_roughness) const noexcept {
     static_cast<void>(_services);
@@ -290,7 +290,7 @@ Float3 MicrofacetGlassComponent::intensity(
 }
 
 Float MicrofacetGlassComponent::pdf(
-    const SurfaceClosureRecord &closure,
+    const SurfaceClosurePhysicalRecord &closure,
     Float3 incoming, Float3 outgoing,
     Float3 glossy_normal, Bool reflection_allowed, Bool transmission_allowed,
     Float glossy_filter_roughness) const noexcept {
@@ -332,7 +332,7 @@ Float MicrofacetGlassComponent::pdf(
 }
 
 GlassSample MicrofacetGlassComponent::sample(
-    const SurfaceClosureRecord &closure,
+    const SurfaceClosurePhysicalRecord &closure,
     Float3 incoming, Float3 glossy_normal,
     Float2 random_direction, Float random_lobe, Bool reflection_allowed,
     Bool transmission_allowed, Float glossy_filter_roughness) const noexcept {

@@ -12,13 +12,13 @@ namespace psycles::luisa_backend {
 namespace {
 
 [[nodiscard]] Bool has_kind(
-    const SurfaceClosureRecord &closure,
+    const SurfaceClosurePhysicalRecord &closure,
     SurfaceClosureKind kind) noexcept {
     return closure.kind == static_cast<std::uint32_t>(kind);
 }
 
 [[nodiscard]] Bool has_lobe(
-    const SurfaceClosureRecord &closure,
+    const SurfaceClosurePhysicalRecord &closure,
     SurfaceClosureLobe lobe) noexcept {
     return closure.lobe == static_cast<std::uint32_t>(lobe);
 }
@@ -74,7 +74,7 @@ surface_closure_evaluation_contribution(
     const ShaderServices &services,
     const SurfaceClosurePoint &point,
     Expr<luisa::float3> shading_normal_expression,
-    const SurfaceClosureRecord &closure,
+    const SurfaceClosurePhysicalRecord &closure,
     Expr<luisa::float3> incoming_expression,
     Expr<luisa::float3> outgoing_expression,
     const SurfaceQuery &query,

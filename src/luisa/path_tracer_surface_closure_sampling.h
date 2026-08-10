@@ -62,7 +62,6 @@ using SurfaceClosureConditionalSampleCallable =
         float,
         luisa::float4x4,
         luisa::float4x4,
-        luisa::float4x4,
         luisa::float4x4)>;
 
 struct SurfaceClosureSamplingCallables {

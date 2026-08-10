@@ -2,8 +2,6 @@
 
 #include "path_tracer_shader_services.h"
 
-#include <psycles/luisa/surface_closure_blocks.h>
-
 #include <utility>
 
 namespace psycles::luisa_backend::detail {
@@ -95,8 +93,7 @@ make_surface_closure_sampling_callables(
             Float rescaled_lobe,
             luisa::compute::Float4x4 block_0,
             luisa::compute::Float4x4 block_1,
-            luisa::compute::Float4x4 block_2,
-            luisa::compute::Float4x4 block_3) noexcept {
+            luisa::compute::Float4x4 block_2) noexcept {
             BufferShaderServices services{
                 scalar_parameters,
                 vector_parameters,
@@ -108,11 +105,10 @@ make_surface_closure_sampling_callables(
                 scene->nishita_texture_bindings,
                 scene->shader_color_space};
             const auto point = unpack_surface_closure_point(packed_point);
-            const auto closure = unpack_surface_closure(
+            const auto closure = unpack_surface_closure_physical(
                 Expr<luisa::float4x4>{block_0.expression()},
                 Expr<luisa::float4x4>{block_1.expression()},
-                Expr<luisa::float4x4>{block_2.expression()},
-                Expr<luisa::float4x4>{block_3.expression()});
+                Expr<luisa::float4x4>{block_2.expression()});
             return surface_closure_conditional_sample(
                 services,
                 point,
@@ -197,7 +193,8 @@ CallableSurfaceClosureSamplingOperation::conditional_sample(
     Expr<luisa::float3> glossy_normal,
     Expr<luisa::float2> random_direction,
     Expr<float> rescaled_lobe) const noexcept {
-    const auto blocks = pack_surface_closure(closure.reference());
+    const auto blocks =
+        pack_surface_closure_physical(closure.reference());
     return _callables.conditional_sample(
         _scalar_parameters,
         _vector_parameters,
@@ -212,8 +209,7 @@ CallableSurfaceClosureSamplingOperation::conditional_sample(
         rescaled_lobe,
         blocks.block_0,
         blocks.block_1,
-        blocks.block_2,
-        blocks.block_3);
+        blocks.block_2);
 }
 
 SurfaceSampleTrace sample_surface_closures(

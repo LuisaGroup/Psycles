@@ -1,0 +1,23 @@
+{
+  "device": "AMD Radeon RX 9070 XT",
+  "backend": "hip",
+  "scene": "Lone Monk",
+  "extent": [
+    960,
+    540
+  ],
+  "samples": 1,
+  "kernel": "kernel_main",
+  "main_dispatch_threads": 518400,
+  "main_dispatch_duration_ns": 90007622,
+  "private_scratch_bytes_per_thread": 2704,
+  "architectural_vgpr_count": 256,
+  "sgpr_count": 128,
+  "amdgpu_code_bytes_before_link": 1172040,
+  "hip_code_object_bytes": 1598288,
+  "hip_cache_entry_bytes": 1599941,
+  "cold_codegen_seconds": 3.6351942,
+  "cold_bitcode_link_seconds": 9.178453076,
+  "profiler": "rocprofv3 1.1.0 / ROCm 7.2.4",
+  "raw_database": "/var/tmp/psycles-physical-abi-profile-20260810.Wwvn4G/rocprof/archlinux/229223_results.db"
+}

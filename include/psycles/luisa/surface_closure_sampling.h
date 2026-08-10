@@ -113,7 +113,7 @@ inline constexpr std::uint32_t bssrdf = 1u << 6u;
 
 [[nodiscard]] SurfaceClosureSelectionInput
 make_surface_closure_selection_input(
-    const SurfaceClosureRecord &closure) noexcept;
+    const SurfaceClosurePhysicalRecord &closure) noexcept;
 
 [[nodiscard]] SurfaceClosureSelectionInput
 make_surface_closure_selection_input(
@@ -131,12 +131,12 @@ surface_closure_selection(
     const SurfaceClosureSelectionContext &context,
     const SurfaceClosureSelectionInput &closure) noexcept;
 
-// Convenience overload for storage-form regression paths. It immediately
-// projects to the same strong typed algebra used by branch-local callables.
+// Convenience overload for regression paths. Full storage records narrow to
+// this physical type at the call boundary, before selection can observe them.
 [[nodiscard]] luisa::compute::Var<SurfaceClosureSelectionCall>
 surface_closure_selection(
     const SurfaceClosurePoint &point,
-    const SurfaceClosureRecord &closure,
+    const SurfaceClosurePhysicalRecord &closure,
     Expr<luisa::float3> incoming,
     const SurfaceQuery &query) noexcept;
 
@@ -149,7 +149,7 @@ surface_closure_conditional_sample(
     const ShaderServices &services,
     const SurfaceClosurePoint &point,
     Expr<luisa::float3> shading_normal,
-    const SurfaceClosureRecord &closure,
+    const SurfaceClosurePhysicalRecord &closure,
     Expr<luisa::float3> incoming,
     Expr<luisa::float3> glossy_normal,
     Expr<luisa::float2> random_direction,

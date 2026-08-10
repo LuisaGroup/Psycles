@@ -1,0 +1,80 @@
+{
+  "scene": "Lone Monk",
+  "export": "/var/tmp/psycles-lone-monk-transmission-dbdcb17/export",
+  "materials": 37,
+  "geometries": 348,
+  "instances": 87534,
+  "extent": [
+    1440,
+    1080
+  ],
+  "samples": 256,
+  "samples_per_dispatch": 8,
+  "cycles_baseline": {
+    "cpu_render_seconds": 72.18372201400052,
+    "cpu_wall_seconds": 72.63185281400001,
+    "hip_render_seconds": 19.31863641900054,
+    "hip_wall_seconds": 19.785885174000214
+  },
+  "psycles": {
+    "fallback": {
+      "scene_seconds": 1.60551,
+      "jit_seconds": 21.6276,
+      "render_seconds": 141.46,
+      "wall_seconds": 165.74,
+      "slowdown_vs_cycles_cpu": 1.959721611093466,
+      "render_delta_vs_previous_percent": -0.9335191500983941,
+      "sha256": "7efa35850202c75f611df1d245a56dc7f9132442bf853374c91b7bf1dbb80436"
+    },
+    "hip": {
+      "scene_seconds": 4.237,
+      "jit_seconds": 0.145125,
+      "render_seconds": 58.1842,
+      "wall_seconds": 63.65,
+      "slowdown_vs_cycles_hip": 3.011817125083106,
+      "render_delta_vs_previous_percent": 0.2116728354342623,
+      "sha256": "0ee5da4f14a7e9241586cc66ac0d43aa8a22171a290af95ea86a44308a1dcefe"
+    },
+    "vk": {
+      "scene_seconds": 1.68014,
+      "jit_seconds": 62.981,
+      "render_seconds": 226.529,
+      "wall_seconds": 292.32,
+      "slowdown_vs_cycles_hip": 11.725931120956393,
+      "render_delta_vs_previous_percent": -0.04015532609655814,
+      "spirv_words_before_optimization": 433327,
+      "spirv_words_after_optimization": 397350,
+      "previous_spirv_words_after_optimization": 400579,
+      "optimized_word_delta_percent": -0.8060831945758462,
+      "sha256": "dd4b288e2d00ced1e373f6e3e891303f632d91aaf71a6f38705a2462789407d2"
+    }
+  },
+  "hip_warm_960x540_64spp": {
+    "render_seconds": [
+      5.27549,
+      5.28167,
+      5.29281
+    ],
+    "median_seconds": 5.28167,
+    "previous_median_seconds": 5.28907,
+    "delta_percent": -0.13991117531058084
+  },
+  "combined_quality": {
+    "fallback_vs_cycles_cpu": {
+      "relative_rmse": 0.013365595001772158,
+      "luminance_mean_ratio": 1.000463474045544,
+      "invalid_pixels": 0
+    },
+    "hip_vs_cycles_hip": {
+      "relative_rmse": 0.01711899491715376,
+      "luminance_mean_ratio": 1.0011608706118704,
+      "invalid_pixels": 0
+    },
+    "vk_vs_cycles_hip": {
+      "relative_rmse": 0.016657956886941702,
+      "luminance_mean_ratio": 1.0010566387877253,
+      "invalid_pixels": 0
+    }
+  },
+  "temporary_artifact_root": "/var/tmp/psycles-physical-abi-five-way-20260810.pxXZax"
+}

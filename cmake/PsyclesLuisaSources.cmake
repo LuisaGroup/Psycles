@@ -7,6 +7,7 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/bssrdf_closure_component.cpp
     src/luisa/subsurface_exit_closure_component.cpp
     src/luisa/surface_closure_blocks.cpp
+    src/luisa/surface_closure_physical_blocks.cpp
     src/luisa/surface_closure_visitor.cpp
     src/luisa/surface_closure_operations.cpp
     src/luisa/surface_closure_evaluation.cpp

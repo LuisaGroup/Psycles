@@ -43,14 +43,14 @@ public:
     setup(const MicrofacetGlassSetup &parameters) const noexcept;
 
     [[nodiscard]] Float3 intensity(
-        const SurfaceClosureRecord &closure,
+        const SurfaceClosurePhysicalRecord &closure,
         Float3 incoming,
         Float3 outgoing,
         Float3 glossy_normal,
         Float glossy_filter_roughness) const noexcept;
 
     [[nodiscard]] Float pdf(
-        const SurfaceClosureRecord &closure,
+        const SurfaceClosurePhysicalRecord &closure,
         Float3 incoming,
         Float3 outgoing,
         Float3 glossy_normal,
@@ -59,7 +59,7 @@ public:
         Float glossy_filter_roughness) const noexcept;
 
     [[nodiscard]] GlassSample
-    sample(const SurfaceClosureRecord &closure,
+    sample(const SurfaceClosurePhysicalRecord &closure,
         Float3 incoming,
         Float3 glossy_normal,
         Float2 random_direction,

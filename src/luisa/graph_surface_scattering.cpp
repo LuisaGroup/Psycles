@@ -22,7 +22,7 @@ template<typename Closure>
 }
 
 [[nodiscard]] SurfaceClosureIdentityExpression closure_identity(
-    const SurfaceClosureRecord &closure) noexcept {
+    const SurfaceClosurePhysicalRecord &closure) noexcept {
     return {
         .kind = Expr<std::uint32_t>{closure.kind.expression()},
         .lobe = Expr<std::uint32_t>{closure.lobe.expression()},
@@ -217,12 +217,12 @@ template<typename Closure>
 }
 
 [[nodiscard]] Float closure_sample_weight(
-    const SurfaceClosureRecord &closure) noexcept {
+    const SurfaceClosurePhysicalRecord &closure) noexcept {
     return closure.sample_weight;
 }
 
 [[nodiscard]] Bool closure_allocated(
-    const SurfaceClosureRecord &closure) noexcept {
+    const SurfaceClosurePhysicalRecord &closure) noexcept {
     return closure_allocated(closure_identity(closure));
 }
 
@@ -236,7 +236,7 @@ template<typename Closure>
 [[nodiscard]] Float bump_shadowing_term(
     const SurfaceClosurePoint &point,
     Float3 smooth_normal,
-    const SurfaceClosureRecord &closure,
+    const SurfaceClosurePhysicalRecord &closure,
     Float3 direction,
     Bool is_evaluation) noexcept {
     // Cycles classifies Sheen, Lambert/Oren-Nayar, and Translucent in the
@@ -300,7 +300,7 @@ template<typename Closure>
 }
 
 [[nodiscard]] UInt cycles_runtime_flags(
-    const SurfaceClosureRecord &closure,
+    const SurfaceClosurePhysicalRecord &closure,
     Float glossy_filter_roughness) noexcept {
     return cycles_runtime_flags(
         closure_identity(closure),
@@ -384,7 +384,7 @@ template<typename Closure>
 }
 
 [[nodiscard]] UInt cycles_closure_type(
-    const SurfaceClosureRecord &closure) noexcept {
+    const SurfaceClosurePhysicalRecord &closure) noexcept {
     return cycles_closure_type(closure_identity(closure));
 }
 
@@ -491,7 +491,7 @@ template<typename Closure>
 }
 
 [[nodiscard]] Float3 diffuse_intensity(
-    const SurfaceClosureRecord &closure,
+    const SurfaceClosurePhysicalRecord &closure,
     Float3 incoming,
     Float3 outgoing) noexcept {
     auto nl = max(dot(closure.normal, outgoing), 0.0f);
@@ -524,7 +524,7 @@ template<typename Closure>
 }
 
 [[nodiscard]] Float microfacet_distribution(
-    const SurfaceClosureRecord &closure,
+    const SurfaceClosurePhysicalRecord &closure,
     Float n_dot_h,
     Float alpha) noexcept {
     const auto alpha2 = alpha * alpha;
@@ -547,7 +547,7 @@ template<typename Closure>
 }
 
 [[nodiscard]] Float microfacet_lambda(
-    const SurfaceClosureRecord &closure,
+    const SurfaceClosurePhysicalRecord &closure,
     Float n_dot_v,
     Float alpha) noexcept {
     const auto cosine2 = n_dot_v * n_dot_v;
@@ -565,7 +565,7 @@ template<typename Closure>
 }
 
 [[nodiscard]] Float microfacet_alpha(
-    const SurfaceClosureRecord &closure,
+    const SurfaceClosurePhysicalRecord &closure,
     Float glossy_filter_roughness) noexcept {
     // Cycles applies bsdf_microfacet_blur after closure setup. Keep the
     // original closure roughness for sample weights, layering, and
@@ -577,7 +577,7 @@ template<typename Closure>
 }
 
 [[nodiscard]] Bool microfacet_is_singular(
-    const SurfaceClosureRecord &closure,
+    const SurfaceClosurePhysicalRecord &closure,
     Float glossy_filter_roughness) noexcept {
     const auto alpha = microfacet_alpha(
         closure, glossy_filter_roughness);
@@ -586,7 +586,7 @@ template<typename Closure>
 }
 
 [[nodiscard]] Float cycles_bsdf_specular_roughness_squared(
-    const SurfaceClosureRecord &closure,
+    const SurfaceClosurePhysicalRecord &closure,
     Float glossy_filter_roughness) noexcept {
     const auto is_diffuse =
         closure.kind == static_cast<std::uint32_t>(
@@ -638,7 +638,7 @@ template<typename Closure>
 }
 
 [[nodiscard]] Float3 specular_f0(
-    const SurfaceClosureRecord &closure) noexcept {
+    const SurfaceClosurePhysicalRecord &closure) noexcept {
     auto dielectric =
         (closure.ior - 1.0f) / max(closure.ior + 1.0f, 1.0e-20f);
     dielectric *= dielectric;
@@ -648,7 +648,7 @@ template<typename Closure>
 }
 
 [[nodiscard]] Float3 microfacet_reflection_fresnel(
-    const SurfaceClosureRecord &closure,
+    const SurfaceClosurePhysicalRecord &closure,
     Float cosine) noexcept {
     const auto f0 = specular_f0(closure);
     const auto generic =
@@ -682,7 +682,7 @@ template<typename Closure>
 
 [[nodiscard]] Float3 microfacet_intensity(
     const ShaderServices &services,
-    const SurfaceClosureRecord &closure,
+    const SurfaceClosurePhysicalRecord &closure,
     Float3 incoming,
     Float3 outgoing,
     Float3 glossy_normal,
@@ -714,7 +714,7 @@ template<typename Closure>
 }
 
 [[nodiscard]] Float microfacet_pdf(
-    const SurfaceClosureRecord &closure,
+    const SurfaceClosurePhysicalRecord &closure,
     Float3 incoming,
     Float3 outgoing,
     Float3 glossy_normal,
@@ -741,7 +741,7 @@ template<typename Closure>
 [[nodiscard]] MicrofacetReflectionSample sample_microfacet_reflection(
     const SurfaceClosurePoint &point,
     Float3 smooth_normal,
-    const SurfaceClosureRecord &closure,
+    const SurfaceClosurePhysicalRecord &closure,
     Float3 incoming,
     Float2 random,
     Float3 glossy_normal,
@@ -782,7 +782,7 @@ template<typename Closure>
 }
 
 [[nodiscard]] Float sheen_intensity(
-    const SurfaceClosureRecord &closure,
+    const SurfaceClosurePhysicalRecord &closure,
     Float3 incoming,
     Float3 outgoing) noexcept {
     const auto basis =
@@ -805,7 +805,7 @@ template<typename Closure>
 }
 
 [[nodiscard]] Float3 sample_sheen(
-    const SurfaceClosureRecord &closure,
+    const SurfaceClosurePhysicalRecord &closure,
     Float3 incoming,
     Float2 random) noexcept {
     const auto basis =
