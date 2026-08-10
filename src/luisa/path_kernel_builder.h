@@ -81,6 +81,15 @@ struct DirectLightingStagePlan {
     }
 };
 
+struct PathKernelSceneStagePlan {
+    // Analytic lamps are transparent path endpoints in Cycles, independently
+    // of whether next-event estimation is enabled. A zero uploaded population
+    // proves that neither the software intersection loop nor forward-light
+    // shading can be reached.
+    bool analytic_light_endpoints{};
+    DirectLightingStagePlan direct_lighting{};
+};
+
 [[nodiscard]] constexpr DirectLightingStagePlan
 make_direct_lighting_stage_plan(
     bool next_event_estimation,
@@ -97,6 +106,23 @@ make_direct_lighting_stage_plan(
         .analytic =
             next_event_estimation &&
             analytic_light_count != 0u};
+}
+
+[[nodiscard]] constexpr PathKernelSceneStagePlan
+make_path_kernel_scene_stage_plan(
+    bool next_event_estimation,
+    bool environment_in_distribution,
+    std::uint32_t emissive_triangle_count,
+    std::uint32_t analytic_light_count) noexcept {
+    return {
+        .analytic_light_endpoints =
+            analytic_light_count != 0u,
+        .direct_lighting =
+            make_direct_lighting_stage_plan(
+                next_event_estimation,
+                environment_in_distribution,
+                emissive_triangle_count,
+                analytic_light_count)};
 }
 
 struct PathKernelInvocation {
@@ -521,7 +547,8 @@ class SubsurfaceTransportStage {
 [[nodiscard]] std::unique_ptr<PathBounceSetupStage>
 make_path_bounce_setup_stage();
 [[nodiscard]] std::unique_ptr<ClosestEventStage>
-make_closest_event_stage();
+make_closest_event_stage(
+    bool analytic_light_endpoints);
 [[nodiscard]] std::unique_ptr<ForwardLightStage>
 make_forward_light_stage();
 [[nodiscard]] std::unique_ptr<PathVolumeSegmentStage>

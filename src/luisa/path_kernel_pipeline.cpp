@@ -14,11 +14,8 @@ class PathKernelPipeline::Impl {
     std::unique_ptr<PathBounceSetupStage>
         bounce_setup{
             make_path_bounce_setup_stage()};
-    std::unique_ptr<ClosestEventStage> closest_event{
-        make_closest_event_stage()};
-    std::unique_ptr<ForwardLightStage>
-        forward_light{
-            make_forward_light_stage()};
+    std::unique_ptr<ClosestEventStage> closest_event;
+    std::unique_ptr<ForwardLightStage> forward_light;
     std::unique_ptr<PathVolumeSegmentStage>
         volume_segment;
     std::unique_ptr<BackgroundEventStage>
@@ -40,19 +37,29 @@ class PathKernelPipeline::Impl {
         : direct_light_trace{
               make_direct_light_trace_recorder(
                   config.path_trace_enabled)} {
-        if (config.volume_state) {
-            volume_segment =
-                make_path_volume_segment_stage(
-                    config);
-        }
-        const auto direct_lighting_plan =
-            make_direct_lighting_stage_plan(
+        const auto stage_plan =
+            make_path_kernel_scene_stage_plan(
                 config.next_event_estimation,
                 config.scene
                     ->environment_in_light_distribution,
                 config.scene
                     ->emissive_triangle_count,
                 config.scene->light_count);
+        closest_event =
+            make_closest_event_stage(
+                stage_plan
+                    .analytic_light_endpoints);
+        if (stage_plan.analytic_light_endpoints) {
+            forward_light =
+                make_forward_light_stage();
+        }
+        if (config.volume_state) {
+            volume_segment =
+                make_path_volume_segment_stage(
+                    config);
+        }
+        const auto &direct_lighting_plan =
+            stage_plan.direct_lighting;
         direct_lighting.reserve(
             direct_lighting_plan.size());
         if (direct_lighting_plan.environment) {
@@ -137,21 +144,30 @@ void PathKernelPipeline::emit(PathSampleContext &sample) const noexcept {
             }
             $if(search_events &
                 !path_terminated) {
-                $if(event.analytic_light) {
-                    path_terminated =
-                        _impl->forward_light->emit(
-                            event);
-                    previous_analytic_light =
-                        event.light_index;
-                }
-                $else {
+                if (_impl->forward_light) {
+                    $if(event.analytic_light) {
+                        path_terminated =
+                            _impl->forward_light->emit(
+                                event);
+                        previous_analytic_light =
+                            event.light_index;
+                    }
+                    $else {
+                        search_events = false;
+                        $if(event.background) {
+                            _impl->background->emit(
+                                event);
+                            path_terminated = true;
+                        };
+                    };
+                } else {
                     search_events = false;
                     $if(event.background) {
                         _impl->background->emit(
                             event);
                         path_terminated = true;
                     };
-                };
+                }
             };
         };
         $if(path_terminated) {
