@@ -5,7 +5,7 @@ same rendering semantics when lowered as a direct megakernel, a compacting
 wavefront coroutine, or a persistent-worker coroutine. It is a scheduler
 equivalence check, not a new Cycles differential. All three runs use the same
 37-material Lone Monk export, Luisa fallback, 640x480, fixed sample 0, and one
-sample per pixel. LuisaCompute is `next@7219678a8`.
+sample per pixel. LuisaCompute is `next@cc3a23f44`.
 
 The renderer CLI now accepts `-` for the optional sample-chunk JSON argument,
 so selecting argument 17's scheduler does not force the render into pixel-probe
@@ -51,7 +51,45 @@ configuration remains 32,768 workers, block size 128, fetch size 16, shared
 SoA, and global-memory extension. The 48.178-second wavefront session time is
 not accepted as an inherent image-size cost: the same scene at 16x16 used 256
 frames and created its session in 14.506 seconds. The capacity-dependent
-generation/cache/compilation path remains a profiling target.
+generation/cache/compilation path was subsequently removed from Luisa's
+wavefront shader identity and is retained above as the pre-fix baseline.
+
+## Runtime-capacity and backend follow-up
+
+Luisa `next@9b3b9ba87` changed the wavefront frame storage to a runtime-capacity
+SoA layout. Field offsets now obey one linear ABI formula and the pool capacity
+is a dispatch argument rather than shader-AST state. A cold 16x16 wavefront run
+with capacity 256 was followed immediately by a 640x480 run with capacity
+307,200. The second run reused the same capacity-independent shader cache:
+
+| Backend / scheduler | Resolution | Session/JIT (s) | Render (s) | Wall (s) |
+| --- | ---: | ---: | ---: | ---: |
+| fallback / wavefront, cold | 16x16 | 48.672 | 0.021 | 50.55 |
+| fallback / wavefront, cache reuse | 640x480 | 14.781 | 0.446 | 17.18 |
+| fallback / megakernel | 640x480 | 0.089 | 0.156 | 2.19 |
+| HIP / wavefront, cold | 640x480 | 42.847 | 0.187 | 48.12 |
+
+The 640x480 fallback wavefront and megakernel outputs remain byte-identical for
+the display PPM and all three PFM passes listed above; exact-channel OpenEXR
+comparison also passes. HIP completed the same real-scene wavefront schedule
+after Luisa `next@d1e0ad6a8` fixed workgroup-memory ordering at HIP block
+barriers.
+
+Strict Vulkan (`LUISA_VULKAN_USE_XIR=1` and
+`LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`) originally failed while
+restructuring the large surface continuation: a three-phase cycle grew the CFG
+from 44 to 423 blocks and exhausted the 64-round safety budget. The root was a
+generated selector whose distinct empty proxies both ended in the same
+`Break(M)` effect. Luisa `next@cc3a23f44` now compares the exact terminal
+effect `(Branch|Break|Continue, target)` after quotienting empty forwarding
+chains. The continuation reaches a fixed point after two rounds at 67 blocks
+and 7,198 instructions, and native SPIR-V is emitted without loading DXC.
+
+The subsequent RADV pipeline compilation is not yet accepted as a completed
+Vulkan scene result: the dump-enabled diagnostic process reached approximately
+88.6 GB resident memory and was stopped before shader creation. This is now a
+separate kernel/SPIR-V size investigation; it must not be hidden by falling
+back to DXC or by weakening the XIR correctness gate.
 
 ## Visual inspection
 
