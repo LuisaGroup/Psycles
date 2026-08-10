@@ -6,7 +6,7 @@ wavefront coroutine, or a persistent-worker coroutine. It is a scheduler
 equivalence check, not a new Cycles differential. All three runs use the same
 37-material Lone Monk export, Luisa fallback, 640x480, fixed sample 0, and one
 sample per pixel. The follow-up backend and coroutine checks are current through
-LuisaCompute `next@59282acb7`.
+LuisaCompute `next@f4043aee7`.
 
 The renderer CLI now accepts `-` for the optional sample-chunk JSON argument,
 so selecting argument 17's scheduler does not force the render into pixel-probe
@@ -171,8 +171,81 @@ before the live sample-loop-header and nested bounce-loop suspends. It verifies
 that dead token 1 has no node/callable, live tokens 2 and 3 are not renumbered,
 both loop back-edges resume correctly, and four samples produce the exact
 accumulation under state-machine, wavefront, and persistent scheduling. The
-complete test reports 50 passing assertions in 10 tests on fallback, HIP, and
+complete test reports 54 passing assertions in 11 tests on fallback, HIP, and
 strict native Vulkan XIR-to-SPIR-V.
+
+## Coroutine CFG pass domain
+
+The first strict-Vulkan profile showed a second, independent source of compile
+cost before physical shader compilation. AST-to-XIR places the source
+coroutine `C`, its ordinary shader-graph dependencies `H`, and later generated
+continuations `K` in one module. The old coroutine pipeline applied
+destructure, scalar cleanup, reg2mem, and restructure to the whole module. That
+made the coroutine front end process `H` even though no helper participates in
+the state machine.
+
+The lowering domain is now explicit:
+
+- pre-distill CFG passes operate on `{C}`;
+- split/materialization derives `K` from the optimized live scopes of `C`;
+- post-materialization CFG passes operate on `{K}`;
+- ordinary dependencies `H` retain their structured XIR definitions.
+
+This is also the required relation for an optimized-away suspend. Let
+`T_front` be the candidate tokens assigned while recording `C`, and let
+`T_live` be the tokens whose suspend instructions remain reachable after CFG
+optimization. Lowering obeys
+
+`T_live subset-or-equal T_front`, and
+`K = {entry} union {continuation(t) | t in T_live}`.
+
+A token in `T_front - T_live` therefore has neither a graph node nor a lowered
+callable. Surviving tokens keep their original values and may be sparse; each
+scheduler maps that external token identity onto its own dense queue/storage
+index. The degenerate `T_live = empty` case still materializes exactly the
+token-zero entry callable. No lookup into `H`, fabricated dead continuation,
+or dense token renumbering is involved.
+
+`LUISA_CORO_VERIFY_PASS_DOMAIN=1` enables a structural oracle that snapshots
+the body block and ordered block/instruction identities of every function in
+`H`, then checks them after each coroutine phase. The regression contains a
+structured switch/loop helper and proves that the new path preserves it. A
+diagnostic rebuild with the former whole-module normalization fails exactly at
+`continuation normalization`, so the test distinguishes the old and new pass
+domains rather than merely checking rendered values.
+
+On the unchanged 37-material Lone Monk wavefront compile, the source-coroutine
+interval and its formerly module-wide pre-distill pass changed as follows:
+
+| Host compile boundary | Before | After | Change |
+| --- | ---: | ---: | ---: |
+| pre-distill pass pipeline | 171.85 ms | 5.37 ms | -96.9% |
+| source coroutine to four lowered continuations | about 14.60 s | about 7.26 s | about 2.0x |
+
+The remaining roughly seven seconds are no longer hidden inside material
+helper CFG normalization. They are in coroutine split/materialization,
+continuation normalization, final verification, and XIR-to-AST handoff, which
+can now be profiled independently on a much smaller domain.
+
+A cache-disabled strict native Vulkan run completed at 1x1/1 spp. Its physical
+path shaders contained 8,625, 16,566, 39,051, and 488,499 SPIR-V words for
+generate, `path_sample`, `path_bounce`, and `surface_shading`. Shader JIT was
+73.839 s, but 51.547 s of that was a genuinely cold RADV pipeline creation for
+`surface_shading`; it is not coroutine-front-end time. Peak RSS was 6,668,204
+KiB during that driver compile. The wavefront and separately compiled
+megakernel PPM plus Combined/Normal/Albedo PFM files are byte-identical; their
+shared hashes are:
+
+| Output | SHA-256 |
+| --- | --- |
+| display PPM | `3ff6c5463ace13c0f26a735ac1af2bb96ab8a9ba1cb4398359cf2466f63a4d1b` |
+| Combined PFM | `4f93bceff43a46a086454e9a50745a497b39cd27e8a694f617a5c934fe3ed3eb` |
+| Normal PFM | `acf82e26ab479853be41ff9b3cc348b740cbb77f37671db0d1864efa09052bd0` |
+| Albedo PFM | `8e79df2a612628d23badc4d3dcb8ca2e0d8428bcc10ee77edfe44a5cf562f` |
+
+The complete profile is
+`/var/tmp/psycles-coro-pass-domain-wavefront-xLxG929W/trace.log` on the
+measurement host.
 
 ## Multi-sample renderer equivalence after the cut
 
