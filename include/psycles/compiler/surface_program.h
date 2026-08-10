@@ -1131,6 +1131,29 @@ public:
   void merge(const SurfaceClosurePlan &other) noexcept;
 };
 
+// Topology-closed value schedules for the distinct surface consumers.  A
+// mask contains an expression and all of its transitive operands, so walking
+// the topologically ordered SurfaceProgram once evaluates every selected
+// value exactly once.  The domains remain separate because evaluating a
+// closure's disabled Coat texture while asking only for emission is both
+// unnecessary runtime work and duplicated shader AST.
+//
+// These masks are derived exclusively from SurfaceClosurePlan reachability
+// and immutable closure topology. Linked sockets therefore remain
+// conservative device expressions; no material value is sampled, baked, or
+// moved across the host/device boundary.
+struct SurfaceValueDependencyPlan {
+  std::vector<bool> physical;
+  std::vector<bool> emission;
+  std::vector<bool> preparation;
+
+  [[nodiscard]] bool compatible(const SurfaceProgram &program) const noexcept;
+};
+
+[[nodiscard]] SurfaceValueDependencyPlan analyze_surface_value_dependencies(
+    const SurfaceProgram &program,
+    const SurfaceClosurePlan &closure_plan) noexcept;
+
 // Conservative topology-only plan used by standalone GraphSurface clients
 // which do not provide the scene's complete set of parameter bindings.
 [[nodiscard]] SurfaceClosurePlan conservative_surface_closure_plan(

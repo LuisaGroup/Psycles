@@ -4,7 +4,7 @@ Date: 2026-08-10
 
 ## Outcome
 
-This checkpoint removes sixteen independent sources of scene-dependent path-kernel
+This checkpoint removes seventeen independent sources of scene-dependent path-kernel
 growth without changing Blender graph values or Cycles closure semantics:
 
 1. emission code is recorded only for surface tags whose scene-unioned closure
@@ -52,7 +52,12 @@ growth without changing Blender graph values or Cycles closure semantics:
     typed exact resolver callable; and
 16. exact compact-range shader-attribute resolution is recorded once as a
     strongly typed callable and reused across graph topologies and surface
-    operations instead of being expanded at every attribute-valued node site.
+    operations instead of being expanded at every attribute-valued node site;
+    and
+17. every surface consumer evaluates the topology-closed transitive dependency
+    schedule of only its scene-reachable closure families, instead of replaying
+    every value node in that material topology for physical, emission, and
+    preparation requests alike.
 
 On the unchanged Lone Monk export, the complete cold Vulkan path module falls
 from 203,652 to 77,509 pre-restructure XIR instructions (61.9%). The main
@@ -1274,6 +1279,68 @@ few isolated pixels and contain no structured feature:
 
 ![Lone Monk per-kind/shared NEE transport and linear difference](lone-monk-nee-transport-triptych.png)
 
+## Consumer-specific shader-graph value scheduling
+
+`SurfaceProgram` already stores value expressions in topological order and
+therefore does not recompute common input nodes inside one graph evaluation.
+The remaining error was in the selected domain: every surface operation walked
+the complete topology even when the scene-unioned closure plan had formally
+proved whole Principled families unreachable. For example, an emission query
+could still record texture work used only by disabled scattering lobes.
+
+The compiler now constructs three value masks: `physical`, `emission`, and
+their union `preparation`. For a selected closure consumer `d`, let `R_d` be
+the exact value roots used by closure leaves reachable in the scene-unioned
+`SurfaceClosurePlan`, and let `operand(v)` be the immutable operands of value
+instruction `v`. The emitted schedule is the least fixed point
+
+```text
+L_d = mu L . R_d union { operand(v) | v in L }
+```
+
+Walking the existing topological instruction list while selecting `L_d`
+therefore has two invariants: every referenced operand precedes and belongs to
+the schedule, and every selected value is evaluated exactly once. Mix factors
+are roots only when both closure branches remain reachable; if one branch was
+proved absent, GraphSurface's existing branch bypass also bypasses the factor.
+The analysis is conservative for every linked socket. Only finite direct
+parameters may remove a closure family, and plans are unioned across all
+materials sharing a topology before the mask is built. No graph value is host
+evaluated, baked, serialized into a weak register array, or moved out of the
+Luisa DSL.
+
+Principled dependencies are expressed per semantic family rather than inferred
+from incidental implementation syntax. The regression matrix checks transitive
+closure, emission/physical separation, reachable emission roots, linked-zero
+conservatism, and a diffuse-only graph whose dielectric family is absent but
+whose authored normal must remain live. It also retains the Cycles rule that a
+sub-cutoff Subsurface Weight still reduces diffuse allocation even when no
+BSSRDF record is emitted.
+
+On the unchanged 37-material, 24-topology Lone Monk export, the dumped fallback
+module changes as follows. These are textual post-XIR-optimization counts; they
+are kept separate from the earlier pre-restructure instrumentation above.
+
+| Metric | Complete value replay | Consumer dependency schedule | Change |
+| --- | ---: | ---: | ---: |
+| raw dumped XIR bytes | 34,703,196 | 33,497,750 | -1,205,446 (-3.47%) |
+| optimized dumped XIR bytes | 7,471,604 | 7,389,794 | -81,810 (-1.10%) |
+| optimized XIR instruction lines | 71,775 | 71,003 | -772 (-1.08%) |
+| main path kernel instructions | 7,333 | 7,333 | unchanged |
+| `surface_prepare` instructions | 10,663 | 10,663 | unchanged |
+| `surface_evaluate_light` instructions | 13,683 | 13,335 | -348 (-2.54%) |
+| `surface_sample` instructions | 26,005 | 25,657 | -348 (-1.34%) |
+| `surface_closure_evaluation` instructions | 2,955 | 2,879 | -76 (-2.57%) |
+
+The unchanged main kernel confirms that this checkpoint removes material-value
+replay rather than unrolling or changing the dynamic bounce loop. One cold
+fallback sample completed shader JIT in 22.5256 seconds; that is not claimed as
+a timing improvement because it is indistinguishable from prior single-sample
+noise. Deterministic module size is the compilation result. The 1x1 PPM and all
+fifteen linear PFM passes are byte-identical to the preceding checkpoint. Raw
+EXR containers differ only because their capture metadata carries the run time,
+as documented below.
+
 ## Lone Monk cold Vulkan measurements
 
 Each row is one shader-cache-disabled process compiling and executing the full
@@ -1422,18 +1489,19 @@ emitter kind. The complete module is now 73,573 pre-restructure instructions;
 measured boundaries; no new split should be
 chosen merely from C++ file size.
 
-The shader graph already executes reachable values in topological order once
-per surface operation, and the scene's 35 source materials are represented by
-24 deduplicated graph topologies containing 1,438 unique values. The remaining
-graph problem is therefore repeated semantic replay across operations and
-topologies—not a missing topological walk. The shared Bump endpoint bounds its
+The shader graph now executes only the consumer-reachable transitive value
+schedule in topological order once per surface operation, and the scene's 35
+source materials are represented by 24 deduplicated graph topologies containing
+1,438 unique values. The remaining graph problem is therefore repeated semantic
+replay across operations and topologies—not a missing topological walk or
+per-operation dead-node schedule. The shared Bump endpoint bounds its
 post-height geometry, but each topology still schedules the height dependency
 at three differential points. `surface_prepare` and `surface_sample` are also
 large before optimization but substantially inline and simplify, so the next
 audit must distinguish retained post-optimization code from temporary AST
-volume. A future graph/value-numbering or compact evaluator boundary must
-preserve typed socket semantics, request only reachable closures, and pass the
-same complete-module negative-boundary and Cycles-output gates.
+volume. A future cross-topology populate/evaluate boundary or compact evaluator
+must preserve typed socket semantics, request only reachable closures, and pass
+the same complete-module negative-boundary and Cycles-output gates.
 
 Separately, Vulkan driver pipeline creation still dominates the cold path.
 Driver-level profiling must correlate optimized SPIR-V control flow, register

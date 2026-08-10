@@ -53,6 +53,7 @@ add_library(psycles_core
     src/compiler/surface_program_lower_context.cpp
     src/compiler/surface_program_lower_textures.cpp
     src/compiler/surface_program_lower_values.cpp
+    src/compiler/surface_value_dependencies.cpp
     src/contract/cycles_pointiness.cpp
     src/contract/scene.cpp
     src/contract/shader_graph.cpp

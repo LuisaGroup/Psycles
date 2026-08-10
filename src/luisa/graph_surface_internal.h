@@ -423,6 +423,7 @@ private:
 
     std::shared_ptr<const compiler::SurfaceProgram> _program;
     compiler::SurfaceClosurePlan _closure_plan;
+    compiler::SurfaceValueDependencyPlan _value_dependency_plan;
     SurfaceCapabilities _capabilities;
     std::vector<std::unique_ptr<ValueNode>> _value_nodes;
     std::vector<bool> _displacement_dependency_mask;
@@ -433,6 +434,14 @@ private:
     // SetNormal stage. Cycles compiles bump and surface as consecutive SVM
     // regions; this primitive keeps authored Bump nodes pure.
     [[nodiscard]] TracedValues trace_value_stage(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        const std::vector<bool> *active_mask) const noexcept;
+
+    // Evaluate one consumer-specific surface domain while retaining Cycles'
+    // automatic bump ordering. The dependency plan is topology-closed, so
+    // every selected value is still emitted exactly once in program order.
+    [[nodiscard]] TracedValues trace_surface_values(
         const ShaderServices &services,
         const SurfacePoint &point,
         const std::vector<bool> *active_mask) const noexcept;

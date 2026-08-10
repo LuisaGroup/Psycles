@@ -175,7 +175,8 @@ SurfaceClosureCollection GraphSurfaceImplementation::collect_closures(
         collector.finish();
         return {.shading_normal = point.shading_normal};
     }
-    const auto values = trace_values(services, point);
+    const auto values = trace_surface_values(
+        services, point, &_value_dependency_plan.physical);
     return collect_traced_closures(
         services,
         point,

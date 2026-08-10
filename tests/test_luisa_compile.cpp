@@ -121,6 +121,23 @@ public:
         [[nodiscard]] std::size_t total() const noexcept {
             return scalar + vector + uint64;
         }
+
+        [[nodiscard]] Recordings repeated(std::size_t count) const noexcept {
+            return {.scalar = scalar * count,
+                    .vector = vector * count,
+                    .uint64 = uint64 * count};
+        }
+
+        friend Recordings operator+(Recordings a,
+                                    const Recordings &b) noexcept {
+            a.scalar += b.scalar;
+            a.vector += b.vector;
+            a.uint64 += b.uint64;
+            return a;
+        }
+
+        friend bool operator==(const Recordings &,
+                               const Recordings &) noexcept = default;
     };
 
 private:
@@ -209,6 +226,46 @@ public:
         return make_float3(0.0f);
     }
 };
+
+[[nodiscard]] BufferParameterShaderServices::Recordings
+parameter_recordings(const SurfaceProgram &program,
+                     const std::vector<bool> &mask) {
+    BufferParameterShaderServices::Recordings result;
+    const auto &instructions = program.value_instructions();
+    for (auto index = std::size_t{0u}; index < instructions.size(); ++index) {
+        const auto &instruction = instructions[index];
+        if (!mask[index] ||
+            instruction.operation != ValueOperation::parameter) {
+            continue;
+        }
+        switch (instruction.result_type) {
+            case SocketType::boolean:
+            case SocketType::integer:
+            case SocketType::floating:
+                ++result.scalar;
+                break;
+            case SocketType::unsigned_integer:
+                ++result.uint64;
+                break;
+            case SocketType::float2:
+            case SocketType::float3:
+            case SocketType::color:
+            case SocketType::spectrum:
+            case SocketType::point:
+            case SocketType::vector:
+            case SocketType::normal:
+                ++result.vector;
+                break;
+            case SocketType::transform:
+            case SocketType::string:
+            case SocketType::closure:
+            case SocketType::volume_closure:
+                throw std::runtime_error{
+                    "surface schedule contains an unsupported parameter type"};
+        }
+    }
+    return result;
+}
 
 class CompileProbeSurface final : public Surface {
 
@@ -993,11 +1050,18 @@ void report_principled_family_xir_costs(
 
     const auto split_shape = xir_shape(split);
     const auto fused_shape = xir_shape(fused);
+    const auto dependency_plan = analyze_surface_value_dependencies(
+        *lowered.program, conservative_surface_closure_plan(*lowered.program));
+    const auto expected_split =
+        parameter_recordings(*lowered.program, dependency_plan.emission) +
+        parameter_recordings(*lowered.program, dependency_plan.physical)
+            .repeated(2u);
+    const auto expected_fused = parameter_recordings(
+        *lowered.program, dependency_plan.preparation);
     const auto exact_single_schedule =
         fused_recordings.total() > 0u &&
-        split_recordings.scalar == 3u * fused_recordings.scalar &&
-        split_recordings.vector == 3u * fused_recordings.vector &&
-        split_recordings.uint64 == 3u * fused_recordings.uint64;
+        split_recordings == expected_split &&
+        fused_recordings == expected_fused;
     const auto smaller_xir =
         fused_shape.instructions < split_shape.instructions;
     if (std::getenv("PSYCLES_REPORT_GRAPH_FUSION") != nullptr) {
