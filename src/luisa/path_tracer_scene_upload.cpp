@@ -77,6 +77,23 @@ void provide_inert_storage(SceneTableUploadInput input) {
 
 }// namespace
 
+std::uint32_t encode_attribute_domain(
+    contract::MeshAttributeDomain domain) noexcept {
+    switch (domain) {
+        case contract::MeshAttributeDomain::point:
+            return attribute_domain_point;
+        case contract::MeshAttributeDomain::corner:
+            return attribute_domain_corner;
+        case contract::MeshAttributeDomain::face:
+            return attribute_domain_face;
+    }
+    return attribute_domain_point;
+}
+
+Vec3f from_luisa(luisa::float3 value) noexcept {
+    return {value.x, value.y, value.z};
+}
+
 CyclesCompletionSourceLookup
 make_cycles_completion_source_lookup(std::span<const InstanceGpu> instances) {
     CyclesCompletionSourceLookup result;
