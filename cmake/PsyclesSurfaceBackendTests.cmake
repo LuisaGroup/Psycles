@@ -157,6 +157,15 @@ psycles_add_luisa_backend_test(
     LIBRARIES Psycles::luisa)
 
 psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_direct_lighting_plan_tests
+    SOURCE tests/test_luisa_direct_lighting_plan.cpp
+    TEST_STEM luisa_direct_lighting_plan
+    LIBRARIES Psycles::luisa_runtime)
+target_include_directories(
+    psycles_luisa_direct_lighting_plan_tests
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
+
+psycles_add_luisa_backend_test(
     TARGET psycles_luisa_principled_thin_wall_tests
     SOURCE tests/test_luisa_principled_thin_wall.cpp
     TEST_STEM luisa_principled_thin_wall

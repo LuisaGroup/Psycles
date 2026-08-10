@@ -45,15 +45,31 @@ class PathKernelPipeline::Impl {
                 make_path_volume_segment_stage(
                     config);
         }
-        direct_lighting.emplace_back(
-            make_environment_lighting_component(
-                direct_light_trace));
-        direct_lighting.emplace_back(
-            make_emissive_mesh_lighting_component(
-                direct_light_trace));
-        direct_lighting.emplace_back(
-            make_analytic_lighting_component(
-                direct_light_trace));
+        const auto direct_lighting_plan =
+            make_direct_lighting_stage_plan(
+                config.next_event_estimation,
+                config.scene
+                    ->environment_in_light_distribution,
+                config.scene
+                    ->emissive_triangle_count,
+                config.scene->light_count);
+        direct_lighting.reserve(
+            direct_lighting_plan.size());
+        if (direct_lighting_plan.environment) {
+            direct_lighting.emplace_back(
+                make_environment_lighting_component(
+                    direct_light_trace));
+        }
+        if (direct_lighting_plan.emissive_mesh) {
+            direct_lighting.emplace_back(
+                make_emissive_mesh_lighting_component(
+                    direct_light_trace));
+        }
+        if (direct_lighting_plan.analytic) {
+            direct_lighting.emplace_back(
+                make_analytic_lighting_component(
+                    direct_light_trace));
+        }
         if (config.has_subsurface) {
             subsurface_transport =
                 make_subsurface_transport_stage();
