@@ -8,13 +8,54 @@
 #include <string_view>
 
 #include <luisa/luisa-compute.h>
+#include <luisa/xir/instructions/loop.h>
+#include <luisa/xir/translators/ast2xir.h>
 
 namespace {
 
 using namespace luisa::compute;
 using namespace psycles::luisa_backend;
 
-inline constexpr std::size_t record_count = 28u;
+inline constexpr std::size_t record_count = 29u;
+
+struct XirShape {
+    std::size_t instructions{};
+    std::size_t loops{};
+
+    bool operator==(const XirShape &) const noexcept = default;
+};
+
+[[nodiscard]] XirShape volume_stack_any_shape(
+    std::size_t storage_size) {
+    Kernel1D kernel = [storage_size](BufferUInt output) noexcept {
+        VolumeStack stack{storage_size};
+        const auto found = stack.any(
+            [](const VolumeStackEntry &entry) noexcept {
+                return entry.shader == 17u;
+            });
+        output.write(0u, select(0u, 1u, found));
+    };
+    auto module = luisa::compute::xir::ast_to_xir_translate(
+        kernel.function()->function(), {});
+    XirShape shape;
+    for (auto *function : module->function_list()) {
+        if (auto *definition = function->definition()) {
+            definition->traverse_instructions(
+                [&](const luisa::compute::xir::Instruction
+                        *instruction) noexcept {
+                    ++shape.instructions;
+                    shape.loops +=
+                        instruction->isa<
+                            luisa::compute::xir::LoopInst>() ||
+                                instruction->isa<
+                                    luisa::compute::xir::SimpleLoopInst>()
+                            ? 1u
+                            : 0u;
+                });
+        }
+    }
+    return shape;
+}
 
 [[nodiscard]] bool approximately_equal(
     float actual,
@@ -48,6 +89,29 @@ int main(int argc, char **argv) {
     const auto backend =
         std::string_view{
             argc > 1 ? argv[1] : "fallback"};
+    const auto minimum_shape =
+        volume_stack_any_shape(2u);
+    const auto maximum_shape = volume_stack_any_shape(
+        maximum_volume_stack_size);
+    if (std::getenv("PSYCLES_REPORT_VOLUME_STACK_SHAPE") != nullptr) {
+        std::cout
+            << "VolumeStack::any XIR: minimum={instructions="
+            << minimum_shape.instructions
+            << ", loops=" << minimum_shape.loops
+            << "}, maximum={instructions="
+            << maximum_shape.instructions
+            << ", loops=" << maximum_shape.loops << "}\n";
+    }
+    if (minimum_shape != maximum_shape ||
+        minimum_shape.loops != 1u) {
+        std::cerr
+            << "VolumeStack::any capacity-dependent unroll: minimum={"
+            << minimum_shape.instructions << ", "
+            << minimum_shape.loops << "}, maximum={"
+            << maximum_shape.instructions << ", "
+            << maximum_shape.loops << "}\n";
+        return EXIT_FAILURE;
+    }
     Context context{argv[0]};
     auto device = context.create_device(backend);
     auto stream = device.create_stream();
@@ -487,6 +551,20 @@ int main(int argc, char **argv) {
                             .sample_method),
                     as_float(
                         sampling_copy.count())));
+            records.write(
+                28u,
+                make_float4(
+                    flag(sampling_copy.any(
+                        [](const VolumeStackEntry &entry) noexcept {
+                            return (entry.sample_method &
+                                    volume_sample_distance) != 0u;
+                        })),
+                    flag(sampling_copy.any(
+                        [](const VolumeStackEntry &entry) noexcept {
+                            return entry.shader == 999u;
+                        })),
+                    0.0f,
+                    0.0f));
         };
 
     auto shader = device.compile(evaluate);
@@ -533,7 +611,8 @@ int main(int argc, char **argv) {
         luisa::float4{0.0f, 1.0f, 0.0f, 0.0f},
         luisa::float4{0.0f, 0.0f, 0.0f, 0.0f},
         luisa::float4{1.0f, 2.0f, 3.0f, 3.0f},
-        luisa::float4{3.0f, 2.0f, 3.0f, 2.0f}};
+        luisa::float4{3.0f, 2.0f, 3.0f, 2.0f},
+        luisa::float4{1.0f, 0.0f, 0.0f, 0.0f}};
     for (auto index = std::size_t{0u};
          index < expected.size();
          ++index) {
