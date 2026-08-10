@@ -1,4 +1,5 @@
 #include "graph_surface_internal.h"
+#include "surface_bump.h"
 #include "surface_normal_map.h"
 
 #include <luisa/dsl/sugar.h>
@@ -201,87 +202,41 @@ public:
         const auto height_y =
             scalar(
                 instruction.operand(operand::bump::height), values_y);
-        auto dPdx = point.dPdx;
-        auto dPdy = point.dPdy;
-        if (use_object_space) {
-            // The stored columns form the object-to-world normal matrix.
-            // Its inverse maps an arbitrary world normal back to object
-            // space, including under non-uniform instance transforms.
-            const auto column_x = point.normal_to_world_x;
-            const auto column_y = point.normal_to_world_y;
-            const auto column_z = point.normal_to_world_z;
-            const auto transform_determinant = dot(
-                column_x, cross(column_y, column_z));
-            const auto inverse_determinant =
-                1.0f / select(
-                    1.0f,
-                    transform_determinant,
-                    abs(transform_determinant) > 1.0e-20f);
-            normal_in = safe_normalize(
-                make_float3(
-                    dot(normal_in, cross(column_y, column_z)),
-                    dot(normal_in, cross(column_z, column_x)),
-                    dot(normal_in, cross(column_x, column_y))) *
-                    inverse_determinant,
-                point.object_shading_normal);
-            dPdx = point.object_dPdx;
-            dPdy = point.object_dPdy;
-        }
-        const auto rx =
-            cross(dPdy, normal_in);
-        const auto ry =
-            cross(normal_in, dPdx);
-        const auto determinant =
-            dot(dPdx, rx);
-        const auto surface_gradient =
-            (height_x - height_center) * rx +
-            (height_y - height_center) * ry;
         auto distance =
             scalar(
                 instruction.operand(operand::bump::distance), result);
         if ((instruction.static_u0 & 1u) != 0u) {
             distance = -distance;
         }
-        const auto determinant_sign =
-            select(
-                -1.0f,
-                1.0f,
-                determinant >= 0.0f);
-        const auto perturbed_vector =
-            filter_width * abs(determinant) *
-                normal_in -
-            distance * determinant_sign *
-                surface_gradient;
-        const auto perturbed_valid =
-            length_squared(perturbed_vector) >
-            0.0f;
-        const auto perturbed =
-            safe_normalize(
-                perturbed_vector,
-                make_float3(0.0f));
         const auto strength =
             max(
                 scalar(
                     instruction.operand(operand::bump::strength), result),
                 0.0f);
-        const auto blended =
-            safe_normalize(
-                strength * perturbed +
-                    (1.0f - strength) *
-                        normal_in,
-                make_float3(0.0f));
-        auto normal_out =
-            select(
-                normal_in,
-                blended,
-                perturbed_valid);
-        if (use_object_space) {
-            normal_out = safe_normalize(
-                point.normal_to_world_x * normal_out.x +
-                    point.normal_to_world_y * normal_out.y +
-                    point.normal_to_world_z * normal_out.z,
-                point.shading_normal);
-        }
+        const auto bump_input = SurfaceBumpInput{
+            .normal = normal_in,
+            .filter_width = filter_width,
+            .dPdx = use_object_space
+                        ? point.object_dPdx
+                        : point.dPdx,
+            .dPdy = use_object_space
+                        ? point.object_dPdy
+                        : point.dPdy,
+            .height_center = height_center,
+            .height_x = height_x,
+            .height_y = height_y,
+            .distance = distance,
+            .strength = strength,
+            .normal_to_world_x = point.normal_to_world_x,
+            .normal_to_world_y = point.normal_to_world_y,
+            .normal_to_world_z = point.normal_to_world_z,
+            .object_shading_normal = point.object_shading_normal,
+            .shading_normal = point.shading_normal};
+        const auto normal_out = use_object_space
+                                    ? bump_object(
+                                          services, bump_input)
+                                    : bump_world(
+                                          services, bump_input);
         return SurfaceValueExpression::from_vector(
             Expr<luisa::float3>{normal_out.expression()});
     }

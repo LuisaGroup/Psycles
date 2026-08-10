@@ -170,20 +170,6 @@ namespace psycles::luisa_backend::detail {
     return lerp(data0, data1, t);
 }
 
-[[nodiscard]] Float3 safe_normalize(
-    Float3 value,
-    Float3 fallback) noexcept {
-    auto valid = dot(value, value) > 1.0e-20f;
-    auto selected = select(fallback, value, valid);
-    auto fallback_valid =
-        dot(selected, selected) > 1.0e-20f;
-    selected = select(
-        make_float3(0.0f, 0.0f, 1.0f),
-        selected,
-        fallback_valid);
-    return normalize(selected);
-}
-
 [[nodiscard]] Float3 rgb_to_hsv(
     const ShaderServices &services,
     Float3 rgb) noexcept {

@@ -1,28 +1,16 @@
 #include "surface_normal_map.h"
 
+#include "surface_math.h"
+
 #include <luisa/dsl/sugar.h>
 
 namespace psycles::luisa_backend::detail {
 namespace {
 
-[[nodiscard]] Float3 normal_map_safe_normalize(
-    Float3 value,
-    Float3 fallback) noexcept {
-    const auto valid = dot(value, value) > 1.0e-20f;
-    auto selected = select(fallback, value, valid);
-    const auto fallback_valid =
-        dot(selected, selected) > 1.0e-20f;
-    selected = select(
-        make_float3(0.0f, 0.0f, 1.0f),
-        selected,
-        fallback_valid);
-    return normalize(selected);
-}
-
 [[nodiscard]] Float3 transform_object_normal(
     const SurfaceNormalMapInput &input,
     Float3 object_normal) noexcept {
-    return normal_map_safe_normalize(
+    return safe_normalize(
         input.normal_to_world_x * object_normal.x +
             input.normal_to_world_y * object_normal.y +
             input.normal_to_world_z * object_normal.z,
@@ -36,7 +24,7 @@ namespace {
     const auto object_bitangent =
         input.tangent_sign *
         cross(object_base, input.object_tangent);
-    const auto object_normal = normal_map_safe_normalize(
+    const auto object_normal = safe_normalize(
         input.object_tangent * mapped.x +
             object_bitangent * mapped.y +
             object_base * mapped.z,
@@ -65,7 +53,7 @@ namespace {
         world, -world, input.back_facing);
     const auto nonnegative_strength =
         max(input.strength, 0.0f);
-    return normal_map_safe_normalize(
+    return safe_normalize(
         input.shading_normal +
             (world - input.shading_normal) *
                 nonnegative_strength,
@@ -83,7 +71,7 @@ Float3 normal_map_tangent_displaced_inline(
         1.0f +
         (mapped.z - 1.0f) *
             clamp(input.strength, 0.0f, 1.0f);
-    const auto object_base = normal_map_safe_normalize(
+    const auto object_base = safe_normalize(
         input.object_shading_normal,
         make_float3(0.0f));
     const auto world = tangent_world_normal(
@@ -96,7 +84,7 @@ Float3 normal_map_tangent_displaced_inline(
 
 Float3 normal_map_tangent_original_inline(
     const SurfaceNormalMapInput &input) noexcept {
-    auto object_base = normal_map_safe_normalize(
+    auto object_base = safe_normalize(
         input.object_shading_normal,
         make_float3(0.0f));
     object_base = select(
@@ -114,7 +102,7 @@ Float3 normal_map_tangent_original_inline(
     };
     auto world = tangent_world_normal(
         input, mapped, object_base);
-    const auto linearly_blended = normal_map_safe_normalize(
+    const auto linearly_blended = safe_normalize(
         input.shading_normal +
             (world - input.shading_normal) *
                 max(input.strength, 0.0f),
@@ -140,7 +128,7 @@ Float3 normal_map_world_inline(
     const SurfaceNormalMapInput &input) noexcept {
     return blend_world_normal(
         input,
-        normal_map_safe_normalize(
+        safe_normalize(
             input.mapped,
             input.shading_normal));
 }

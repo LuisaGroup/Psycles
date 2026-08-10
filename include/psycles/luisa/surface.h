@@ -539,6 +539,39 @@ public:
         const SurfaceNormalMapInput &input) const noexcept = 0;
 };
 
+// Bump height dependencies are evaluated by the owning graph at the center
+// and two differential points. This expression view begins only after those
+// topology-specific evaluations and describes the finite geometric perturbation
+// stage shared by all Bump nodes.
+struct SurfaceBumpInput {
+    Float3 normal;
+    Float filter_width;
+    Float3 dPdx;
+    Float3 dPdy;
+    Float height_center;
+    Float height_x;
+    Float height_y;
+    Float distance;
+    Float strength;
+    Float3 normal_to_world_x;
+    Float3 normal_to_world_y;
+    Float3 normal_to_world_z;
+    Float3 object_shading_normal;
+    Float3 shading_normal;
+};
+
+class SurfaceBumpProvider {
+
+public:
+    virtual ~SurfaceBumpProvider() noexcept = default;
+
+    [[nodiscard]] virtual Float3 evaluate_world(
+        const SurfaceBumpInput &input) const noexcept = 0;
+
+    [[nodiscard]] virtual Float3 evaluate_object(
+        const SurfaceBumpInput &input) const noexcept = 0;
+};
+
 struct SurfaceShaderTableView {
     UInt offset;
     UInt count;
@@ -853,6 +886,11 @@ public:
 
     [[nodiscard]] virtual const SurfaceNormalMapProvider *
     surface_normal_map_provider() const noexcept {
+        return nullptr;
+    }
+
+    [[nodiscard]] virtual const SurfaceBumpProvider *
+    surface_bump_provider() const noexcept {
         return nullptr;
     }
 
