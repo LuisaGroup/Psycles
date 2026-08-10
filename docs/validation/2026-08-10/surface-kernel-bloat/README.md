@@ -4,7 +4,7 @@ Date: 2026-08-10
 
 ## Outcome
 
-This checkpoint removes twelve independent sources of scene-dependent path-kernel
+This checkpoint removes thirteen independent sources of scene-dependent path-kernel
 growth without changing Blender graph values or Cycles closure semantics:
 
 1. emission code is recorded only for surface tags whose scene-unioned closure
@@ -37,16 +37,19 @@ growth without changing Blender graph values or Cycles closure semantics:
     the complete hash/gradient lattice at every internal noise site; and
 12. the direct-light stage vector contains only emitter classes proven present
     in the scene distribution instead of recording all three implementations
-    behind device-side kind tests.
+    behind device-side kind tests; and
+13. analytic-lamp closest-event intersection and forward shading are recorded
+    only when the uploaded scene contains at least one analytic lamp, instead
+    of relying on a zero-trip device loop to erase its already-recorded body.
 
 On the unchanged Lone Monk export, the complete cold Vulkan path module falls
-from 203,652 to 94,904 pre-restructure XIR instructions (53.4%). The main
-kernel falls 49.9%, raw SPIR-V falls 55.5%, and native AST-to-SPIR-V time falls
-63.6%. Complete cold JIT time falls 43.5%. The 1x1 compiler-isolation PPM, all
+from 203,652 to 92,229 pre-restructure XIR instructions (54.7%). The main
+kernel falls 51.4%, raw SPIR-V falls 56.7%, and native AST-to-SPIR-V time falls
+65.2%. Complete cold JIT time falls 45.3%. The 1x1 compiler-isolation PPM, all
 fifteen PFM passes, and
 capture-date-normalized EXR remain byte-identical. A separate 960x540 HIP
-render confirms no structured image change and a 0.85% throughput improvement
-in this three-run sample.
+render confirms no structured image change. The latest same-period interleaved
+HIP A/B is throughput-neutral within 0.13%.
 
 ## Formal reachability rule
 
@@ -783,6 +786,80 @@ material, texture, lighting, or sampling change:
 
 ![Lone Monk before/after direct-light capability pruning and linear difference](lone-monk-direct-light-capability-triptych.png)
 
+## Host-specialized analytic-light endpoint plan
+
+The direct-light audit exposed the same staging error in the closest-event
+path. Analytic lamps are transparent Cycles path endpoints, so they remain
+independent of NEE. Nevertheless, a scene with no analytic lamps cannot reach
+either their software area/point/spot intersection or their forward-emission
+shading. The previous device loop used `scene->light_count` as its upper bound,
+but Luisa records the loop body before that runtime bound is evaluated. A zero
+trip count therefore preserved the complete intersection AST and its forward
+shader even though the generated device could never execute either one.
+
+The central host-stage scene plan now obeys
+
+```text
+analytic_endpoint_stages(scene) =
+    analytic_light_count > 0
+        ? {closest_intersection, forward_shading}
+        : empty
+```
+
+This is an exact reachability proof over the uploaded population. A positive
+count remains conservative: visibility, MIS flags, light type, and individual
+weights are still resolved by the unchanged device implementation. The plan
+does not turn lamp parameters into constants and does not alter the
+environment or emissive-mesh paths.
+
+Lone Monk has zero analytic lamps. Relative to the direct-light component
+checkpoint, endpoint pruning also makes the now-unreferenced
+`surface_emission` callable disappear:
+
+| Metric | Direct-light component plan | + analytic endpoint plan | Change |
+| --- | ---: | ---: | ---: |
+| XIR definitions | 36 | 35 | -1 unreachable definition |
+| total XIR instructions | 94,904 | 92,229 | -2,675 (-2.82%) |
+| main-kernel XIR instructions | 72,281 | 70,043 | -2,238 (-3.10%) |
+| `surface_evaluate_light` XIR instructions | 13,710 | 13,710 | unchanged |
+| raw SPIR-V words | 636,775 | 619,582 | -17,193 (-2.70%) |
+| optimized SPIR-V words | 577,927 | 568,660 | -9,267 (-1.60%) |
+| structured XIR optimization | 1,044.18 ms | 1,018.04 ms | -2.50% |
+| ordinary XIR inline | 190.84 ms | 197.99 ms | +3.75% |
+| SPIR-V XIR legalization | 3,600.70 ms | 3,433.42 ms | -4.65% |
+| native AST-to-SPIR-V | 8,562.10 ms | 8,183.65 ms | -4.42% |
+| driver compute-pipeline creation | 53,446.77 ms | 51,845.50 ms | -3.00% |
+| complete shader JIT | 62,099.1 ms | 60,120.4 ms | -3.19% |
+
+The ordinary-inline timing is retained as measured and not hidden by the
+smaller downstream numbers. The cold native-Vulkan run, complete pass trace,
+and outputs are under
+`/var/tmp/psycles-analytic-endpoint-capability-20260810/`. Native
+XIR-to-SPIR-V was required and the log contains no DXC load. The 1x1 PPM, all
+fifteen PFM passes, and EXR pixels are exactly equal to the direct-light
+checkpoint.
+
+The initial cross-period HIP comparison appeared 3.6% slower, so a controlled
+same-period A/B was run with two separately compiled executables and cached
+code objects in the order retained/pruned/pruned/retained/retained/pruned. At
+960x540 and 64 spp the retained endpoint body took
+`{6.28885, 6.24463, 6.24139}` seconds (mean `6.25829`), while the pruned body
+took `{6.24286, 6.26092, 6.24673}` seconds (mean `6.25017`). The observed
+0.13% improvement (`1.0013x`) is treated as throughput-neutral rather than a
+render-speed claim.
+
+Retained-versus-pruned Combined differs at 17 of 518,400 pixels above `1e-6`
+(0.00328%), with RMSE `4.0153e-5`, relative RMSE `2.1924e-5`, and maximum
+linear error `0.03919`. Nine of fifteen PFM passes are byte-identical; the
+additional bit-level changes in Glossy Color and Normal remain below `1e-6`.
+Unchanged-binary HIP repeats already span Combined RMSE from `1.0489e-5` to
+`1.1285e-4`, so the A/B lies inside the measured nondeterministic envelope.
+The full-resolution triptych was inspected: silhouettes, grass, materials,
+textures, and lighting are visually identical, while the difference panel is
+black apart from isolated subpixel points and has no structured feature:
+
+![Lone Monk retained/pruned analytic endpoints and linear difference](lone-monk-analytic-endpoint-capability-triptych.png)
+
 ## Lone Monk cold Vulkan measurements
 
 Each row is one shader-cache-disabled process compiling and executing the full
@@ -835,8 +912,8 @@ ramp, and sampled RGB Curve definitions contain 72, 48, and 189 instructions.
 The only reachable Normal Map definition is the 75-instruction
 tangent-displaced endpoint. The only reachable Bump definition is the
 49-instruction world endpoint. The reachable signed-Perlin definitions contain
-524 instructions for 3D and 262 for 2D. After direct-light capability pruning,
-driver pipeline creation remains 86.1% of the current JIT wall time and is the
+524 instructions for 3D and 262 for 2D. After both emitter-capability plans,
+driver pipeline creation remains 86.2% of the current JIT wall time and is the
 dominant Vulkan tail; further
 IR work should still reduce its input, but XIR passes are no longer the
 majority of the measured wall time.
@@ -891,6 +968,7 @@ for each specular family.
 | signed-Perlin direct/shared numeric parity | pass | pass | pass |
 | signed-Perlin used-only/bound/runtime-loop guards | pass | pass | pass |
 | direct-light component capability plan | pass | pass | pass |
+| analytic endpoint zero/nonzero scene plan | pass | pass | pass |
 | environment/mesh/analytic/no-light full path fixtures | pass | pass | pass |
 | surface metadata/reachability regressions | pass | shared host test | shared host test |
 
@@ -907,7 +985,7 @@ run and all focused regressions used the same production implementation.
 
 ## Remaining hotspot
 
-The next structural target is the remaining 72,281-instruction main kernel.
+The next structural target is the remaining 70,043-instruction main kernel.
 The source-attributed raw-XIR audit identifies scene traversal/primitive
 material resolution and the two reachable NEE components as the next large
 regions. They must first be split into capability-controlled semantic stages;
