@@ -4,6 +4,7 @@
 #include "path_tracer_surface_closure_point.h"
 
 #include <psycles/luisa/surface_closure_evaluation.h>
+#include <psycles/luisa/surface_closure_physical_blocks.h>
 
 namespace psycles::luisa_backend::detail {
 
@@ -54,7 +55,6 @@ using SurfaceClosureEvaluationCallable =
         SurfaceClosureEvaluationQueryCall,
         luisa::float3,
         bool,
-        luisa::float4x4,
         luisa::float4x4,
         luisa::float4x4,
         luisa::float4x4)>;

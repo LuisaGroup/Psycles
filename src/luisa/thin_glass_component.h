@@ -36,19 +36,19 @@ public:
         Bool refractive_caustics) const noexcept;
 
     [[nodiscard]] Float3 intensity(
-        const SurfaceClosureRecord &closure,
+        const SurfaceClosurePhysicalRecord &closure,
         Float3 incoming,
         Float3 outgoing,
         Float glossy_filter_roughness) const noexcept;
 
     [[nodiscard]] Float pdf(
-        const SurfaceClosureRecord &closure,
+        const SurfaceClosurePhysicalRecord &closure,
         Float3 incoming,
         Float3 outgoing,
         Float glossy_filter_roughness) const noexcept;
 
     [[nodiscard]] MicrofacetReflectionSample sample(
-        const SurfaceClosureRecord &closure,
+        const SurfaceClosurePhysicalRecord &closure,
         Float3 incoming,
         Float2 random_direction,
         Float glossy_filter_roughness) const noexcept;

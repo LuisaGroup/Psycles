@@ -74,7 +74,7 @@ surface_closure_evaluation_contribution(
     const ShaderServices &services,
     const SurfaceClosurePoint &point,
     Expr<luisa::float3> shading_normal,
-    const SurfaceClosureRecord &closure,
+    const SurfaceClosurePhysicalRecord &closure,
     Expr<luisa::float3> incoming,
     Expr<luisa::float3> outgoing,
     const SurfaceQuery &query,

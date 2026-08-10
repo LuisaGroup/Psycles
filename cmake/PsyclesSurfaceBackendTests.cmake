@@ -79,6 +79,12 @@ target_include_directories(
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
 
 psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_surface_closure_physical_tests
+    SOURCE tests/test_luisa_surface_closure_physical.cpp
+    TEST_STEM luisa_surface_closure_physical
+    LIBRARIES Psycles::luisa_runtime)
+
+psycles_add_luisa_backend_test(
     TARGET psycles_luisa_standalone_caustics_tests
     SOURCE tests/test_luisa_standalone_caustics.cpp
     TEST_STEM luisa_standalone_caustics

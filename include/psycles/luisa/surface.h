@@ -316,6 +316,44 @@ enum class SurfaceBssrdfMethod : std::uint32_t {
 inline constexpr std::uint32_t
     maximum_surface_closure_capacity = 64u;
 
+// Exact post-population dependency cut for physical closure operations.
+// Surface preparation owns the three AOV albedos, while adjusted Principled
+// IOR is resolved during setup. Evaluation, categorical selection, conditional
+// sampling, and subsurface transport cannot observe those four setup-only
+// fields. Keeping this as a distinct type makes that non-observability a C++
+// invariant: adding a physical dependency requires extending this record and
+// its packed callable ABI deliberately.
+struct SurfaceClosurePhysicalRecord {
+    UInt kind;
+    UInt lobe;
+    Float3 weight;
+    Float allocation_weight;
+    Float sample_weight;
+    Bool setup_valid;
+    Float3 color;
+    Float3 normal;
+    Float roughness;
+    Float diffuse_roughness;
+    Float metallic;
+    Float ior;
+    Float3 specular_tint;
+    Float sheen_transform_a;
+    Float sheen_transform_b;
+    Float3 evaluation_scale;
+    Float3 fresnel_f0;
+    Float3 fresnel_f90;
+    Float3 reflection_tint;
+    Float3 transmission_tint;
+    Bool preserve_ggx_energy;
+    Bool beckmann;
+    UInt bssrdf_method;
+    Float3 bssrdf_radius;
+    Float3 bssrdf_albedo;
+    Float bssrdf_ior;
+    Float bssrdf_roughness;
+    Float bssrdf_anisotropy;
+};
+
 // Canonical device-expression record emitted after Cycles-compatible closure
 // allocation and setup. Fields which do not belong to a closure family are
 // explicitly zeroed by the producer. This makes the record safe to retain in
@@ -356,6 +394,41 @@ struct SurfaceClosureRecord {
     Float bssrdf_ior;
     Float bssrdf_roughness;
     Float bssrdf_anisotropy;
+
+    // Intentional implicit narrowing for physical consumers. Their signatures
+    // accept SurfaceClosurePhysicalRecord, so setup/AOV fields are absent from
+    // the implementation type rather than merely ignored by convention.
+    [[nodiscard]] operator SurfaceClosurePhysicalRecord() const noexcept {
+        return {
+            .kind = kind,
+            .lobe = lobe,
+            .weight = weight,
+            .allocation_weight = allocation_weight,
+            .sample_weight = sample_weight,
+            .setup_valid = setup_valid,
+            .color = color,
+            .normal = normal,
+            .roughness = roughness,
+            .diffuse_roughness = diffuse_roughness,
+            .metallic = metallic,
+            .ior = ior,
+            .specular_tint = specular_tint,
+            .sheen_transform_a = sheen_transform_a,
+            .sheen_transform_b = sheen_transform_b,
+            .evaluation_scale = evaluation_scale,
+            .fresnel_f0 = fresnel_f0,
+            .fresnel_f90 = fresnel_f90,
+            .reflection_tint = reflection_tint,
+            .transmission_tint = transmission_tint,
+            .preserve_ggx_energy = preserve_ggx_energy,
+            .beckmann = beckmann,
+            .bssrdf_method = bssrdf_method,
+            .bssrdf_radius = bssrdf_radius,
+            .bssrdf_albedo = bssrdf_albedo,
+            .bssrdf_ior = bssrdf_ior,
+            .bssrdf_roughness = bssrdf_roughness,
+            .bssrdf_anisotropy = bssrdf_anisotropy};
+    }
 
     [[nodiscard]] static SurfaceClosureRecord zero() noexcept {
         return {

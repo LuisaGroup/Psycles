@@ -43,7 +43,7 @@ Float3 make_surface_closure_sampling_incoming(
 
 SurfaceClosureSelectionInput
 make_surface_closure_selection_input(
-    const SurfaceClosureRecord &closure) noexcept {
+    const SurfaceClosurePhysicalRecord &closure) noexcept {
     return {
         .kind = Expr<std::uint32_t>{closure.kind.expression()},
         .lobe = Expr<std::uint32_t>{closure.lobe.expression()},
@@ -200,7 +200,7 @@ surface_closure_selection(
 luisa::compute::Var<SurfaceClosureSelectionCall>
 surface_closure_selection(
     const SurfaceClosurePoint &point,
-    const SurfaceClosureRecord &closure,
+    const SurfaceClosurePhysicalRecord &closure,
     Expr<luisa::float3> incoming,
     const SurfaceQuery &query) noexcept {
     return surface_closure_selection(
@@ -214,7 +214,7 @@ surface_closure_conditional_sample(
     const ShaderServices &services,
     const SurfaceClosurePoint &point,
     Expr<luisa::float3> shading_normal_expression,
-    const SurfaceClosureRecord &closure,
+    const SurfaceClosurePhysicalRecord &closure,
     Expr<luisa::float3> incoming_expression,
     Expr<luisa::float3> glossy_normal_expression,
     Expr<luisa::float2> random_direction_expression,
