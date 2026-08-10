@@ -310,6 +310,16 @@ void emit_path_program(
                                         filter_table,
                                         parameters);
     $for(sample_offset, samples) {
+        // The sample loop is also a scheduling cycle. Cut it at its canonical
+        // state boundary, before any per-sample path state is populated. This
+        // makes one scheduler activation correspond to one sample: the entry
+        // continuation only initializes the pixel invocation, while a loop
+        // back-edge targets this token instead of carrying the complete path
+        // frame through a physical shader loop. The host branch keeps the
+        // megakernel byte-for-byte free of coroutine control flow.
+        if (is_coro) {
+            $suspend("path_sample");
+        }
         auto sample = begin_path_sample(invocation, sample_offset);
         pipeline.emit(sample, is_coro);
         accumulate_path_sample(sample);
