@@ -620,14 +620,14 @@ inline void hash_mix(UInt &a, UInt &b, UInt &c) noexcept {
     return lerp(lower, upper, s);
 }
 
-[[nodiscard]] inline Float signed_noise(Float p) noexcept {
+[[nodiscard]] inline Float signed_noise_inline(Float p) noexcept {
     auto correction = select(
         0.0f, 0.5f, abs(p) >= 1000000.0f);
     return 0.25f *
            perlin(fmod(p, 100000.0f) + correction);
 }
 
-[[nodiscard]] inline Float signed_noise(Float2 p) noexcept {
+[[nodiscard]] inline Float signed_noise_inline(Float2 p) noexcept {
     auto correction = make_float2(
         select(0.0f, 0.5f, abs(p.x) >= 1000000.0f),
         select(0.0f, 0.5f, abs(p.y) >= 1000000.0f));
@@ -637,7 +637,7 @@ inline void hash_mix(UInt &a, UInt &b, UInt &c) noexcept {
                correction);
 }
 
-[[nodiscard]] inline Float signed_noise(Float3 p) noexcept {
+[[nodiscard]] inline Float signed_noise_inline(Float3 p) noexcept {
     auto correction = make_float3(
         select(0.0f, 0.5f, abs(p.x) >= 1000000.0f),
         select(0.0f, 0.5f, abs(p.y) >= 1000000.0f),
@@ -648,7 +648,7 @@ inline void hash_mix(UInt &a, UInt &b, UInt &c) noexcept {
                correction);
 }
 
-[[nodiscard]] inline Float signed_noise(Float4 p) noexcept {
+[[nodiscard]] inline Float signed_noise_inline(Float4 p) noexcept {
     auto correction = make_float4(
         select(0.0f, 0.5f, abs(p.x) >= 1000000.0f),
         select(0.0f, 0.5f, abs(p.y) >= 1000000.0f),
@@ -658,6 +658,80 @@ inline void hash_mix(UInt &a, UInt &b, UInt &c) noexcept {
            perlin(
                fmod(p, make_float4(100000.0f)) +
                correction);
+}
+
+// Perlin evaluation is the substantial common subexpression shared by Noise
+// Texture specializations and by the factor/color channels within one
+// specialization. Keep one strongly typed definition per coordinate
+// dimension. The outer fractal recurrence remains a runtime device loop and
+// its immutable Noise configuration remains specialized at host recording
+// time; no device opcode or weak register protocol is introduced here.
+[[nodiscard]] inline const auto &
+signed_noise_1d_callable() noexcept {
+    static auto callable = []() noexcept {
+        luisa::compute::Callable result{
+            [](Float p) noexcept {
+                return signed_noise_inline(p);
+            }};
+        result.set_name("cycles_signed_noise_1d");
+        return result;
+    }();
+    return callable;
+}
+
+[[nodiscard]] inline const auto &
+signed_noise_2d_callable() noexcept {
+    static auto callable = []() noexcept {
+        luisa::compute::Callable result{
+            [](Float2 p) noexcept {
+                return signed_noise_inline(p);
+            }};
+        result.set_name("cycles_signed_noise_2d");
+        return result;
+    }();
+    return callable;
+}
+
+[[nodiscard]] inline const auto &
+signed_noise_3d_callable() noexcept {
+    static auto callable = []() noexcept {
+        luisa::compute::Callable result{
+            [](Float3 p) noexcept {
+                return signed_noise_inline(p);
+            }};
+        result.set_name("cycles_signed_noise_3d");
+        return result;
+    }();
+    return callable;
+}
+
+[[nodiscard]] inline const auto &
+signed_noise_4d_callable() noexcept {
+    static auto callable = []() noexcept {
+        luisa::compute::Callable result{
+            [](Float4 p) noexcept {
+                return signed_noise_inline(p);
+            }};
+        result.set_name("cycles_signed_noise_4d");
+        return result;
+    }();
+    return callable;
+}
+
+[[nodiscard]] inline Float signed_noise(Float p) noexcept {
+    return signed_noise_1d_callable()(p);
+}
+
+[[nodiscard]] inline Float signed_noise(Float2 p) noexcept {
+    return signed_noise_2d_callable()(p);
+}
+
+[[nodiscard]] inline Float signed_noise(Float3 p) noexcept {
+    return signed_noise_3d_callable()(p);
+}
+
+[[nodiscard]] inline Float signed_noise(Float4 p) noexcept {
+    return signed_noise_4d_callable()(p);
 }
 
 template<typename P>
