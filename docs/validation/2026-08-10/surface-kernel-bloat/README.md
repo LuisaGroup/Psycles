@@ -1116,7 +1116,7 @@ shared:  Theta(A) + Theta(L)
 ```
 
 Runtime work per actual lookup is intentionally unchanged; only shader-AST
-ownership changes. The production module records one 470-instruction callable
+ownership changes. The production module records one 177-instruction callable
 for the scene's slot pair. Equal independently constructed callables must merge
 by complete semantic hash, while changing either captured slot must produce a
 distinct definition.
@@ -1141,7 +1141,7 @@ triangle-resolver checkpoint:
 | XIR definitions | 36 | 37 | +1 shared definition |
 | total pre-restructure XIR instructions | 81,516 | 77,509 | -4,007 (-4.92%) |
 | main-kernel pre-restructure XIR instructions | 58,830 | 56,070 | -2,760 (-4.69%) |
-| attribute-resolver XIR instructions | 0 | 470 | +1 bounded definition |
+| attribute-resolver XIR instructions | 0 | 177 | +1 bounded definition |
 | `surface_evaluate_light` XIR instructions | 13,710 | 12,286 | -1,424 (-10.39%) |
 | raw SPIR-V words | 532,983 | 457,402 | -75,581 (-14.18%) |
 | optimized SPIR-V words | 485,379 | 414,089 | -71,290 (-14.69%) |
