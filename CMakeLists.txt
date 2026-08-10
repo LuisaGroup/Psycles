@@ -273,7 +273,7 @@ if(PSYCLES_ENABLE_LUISA)
                 tests/test_luisa_compile.cpp)
             target_link_libraries(
                 psycles_luisa_compile_tests
-                PRIVATE Psycles::luisa)
+                PRIVATE Psycles::luisa_runtime)
             target_compile_features(
                 psycles_luisa_compile_tests
                 PRIVATE cxx_std_20)

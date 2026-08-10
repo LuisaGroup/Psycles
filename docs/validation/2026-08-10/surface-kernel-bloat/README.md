@@ -4,19 +4,21 @@ Date: 2026-08-10
 
 ## Outcome
 
-This checkpoint removes two independent sources of scene-dependent path-kernel
+This checkpoint removes three independent sources of scene-dependent path-kernel
 growth without changing Blender graph values or Cycles closure semantics:
 
 1. emission code is recorded only for surface tags whose scene-unioned closure
    plan may emit; and
 2. repeated Principled dielectric physical setup is represented by two shared,
    strongly typed Luisa callables instead of being cloned into every material
-   topology and every surface operation.
+   topology and every surface operation; and
+3. the smaller but more frequent Principled diffuse allocation/setup is
+   represented by one additional typed callable.
 
 On the unchanged Lone Monk export, the complete cold Vulkan path module falls
-from 203,652 to 169,378 pre-restructure XIR instructions (16.8%). The main
-kernel falls 16.6%, raw SPIR-V falls 22.3%, and native AST-to-SPIR-V time falls
-31.6%. The rendered PPM and Combined PFM hashes remain bit-identical.
+from 203,652 to 168,706 pre-restructure XIR instructions (17.2%). The main
+kernel falls 16.9%, raw SPIR-V falls 22.7%, and native AST-to-SPIR-V time falls
+32.1%. The rendered PPM and Combined PFM hashes remain bit-identical.
 
 ## Formal reachability rule
 
@@ -95,6 +97,54 @@ evaluation. The retained architecture lets standalone graph evaluation reuse
 values already populated for sibling Principled lobes, while the path tracer
 fuses populate and setup inside the cross-topology callable.
 
+## Shared diffuse setup follow-up
+
+The next family was selected by total scene cost rather than by the size of one
+closure body. The focused single-topology marginal costs are approximately 544
+XIR instructions for diffuse after dielectric and 1,221 for metallic after
+dielectric. Lone Monk, however, contains 18 reachable diffuse occurrences and
+only 3 metallic occurrences. Diffuse therefore has the larger repeated cost.
+
+`PrincipledDiffuseComponent` now exposes one canonical transfer function. Its
+input is the original typed `{lower_weight, color, subsurface_weight}` socket
+state. The shared callable performs the color clamp, lower-layer product,
+subsurface attenuation, Cycles allocation cutoff, and sample-weight setup. It
+returns only the three fields that are not already present in the authored
+closure record. No closure array, material value, or weakly typed register
+block crosses this boundary.
+
+The regression includes the fixed callable definition and ABI packing in its
+module count. This deliberately records the negative boundary as well as the
+amortized one:
+
+| Focused fixture | Inline XIR | Shared XIR | Result |
+| --- | ---: | ---: | --- |
+| one dielectric+diffuse topology | 5,355 | 6,050 | shared is not amortized |
+| four independent topology branches | 16,834 | 14,547 | shared is 13.6% smaller |
+
+Thus the optimization is justified by cross-topology reuse, not by hiding the
+callable body from the counter. On the full scene the new callable contains 24
+instructions and produces the following post-optimization change relative to
+the dielectric-only checkpoint:
+
+| Metric | Shared dielectric | Shared dielectric + diffuse | Change |
+| --- | ---: | ---: | ---: |
+| XIR definitions | 23 | 24 | +1 shared definition |
+| total XIR instructions | 169,378 | 168,706 | -672 (-0.40%) |
+| main-kernel XIR instructions | 120,200 | 119,736 | -464 (-0.39%) |
+| `surface_evaluate_light` XIR instructions | 33,251 | 33,019 | -232 (-0.70%) |
+| raw SPIR-V words | 1,111,962 | 1,107,189 | -4,773 (-0.43%) |
+| optimized SPIR-V words | 1,010,627 | 1,005,854 | -4,773 (-0.47%) |
+| ordinary XIR inline | 274.17 ms | 280.65 ms | +2.4% |
+| SPIR-V XIR legalization | 6,296.58 ms | 6,339.37 ms | +0.7% |
+| native AST-to-SPIR-V | 16,077.31 ms | 15,952.92 ms | -0.8% |
+| driver compute-pipeline creation | 77,884.27 ms | 77,476.73 ms | -0.5% |
+| complete shader JIT | 94,077.8 ms | 93,552.1 ms | -0.6% |
+
+The two small frontend-pass regressions are reported rather than rounded away;
+the downstream module, SPIR-V, driver time, and end-to-end JIT all improve.
+The one-pixel PPM and Combined PFM retain the exact fingerprints below.
+
 ## Lone Monk cold Vulkan measurements
 
 Each row is one shader-cache-disabled process compiling and executing the full
@@ -117,9 +167,10 @@ RADV and used native XIR-to-SPIR-V throughout; DXC was not loaded.
 | driver compute-pipeline creation | 86,333 ms | 77,958 ms | 77,884.27 ms | -9.8% |
 | complete shader JIT | 109,979 ms | 95,269 ms | 94,077.8 ms | -14.5% |
 
-The final two named setup definitions contain 247 instructions for ordinary
-GGX and 319 for preserve-energy GGX. Their small fixed cost replaces repeated
-physical setup in the 19 reachable dielectric topology occurrences. Driver
+The final setup definitions contain 247 instructions for ordinary GGX, 319 for
+preserve-energy GGX, and 24 for diffuse. Their small fixed cost replaces
+repeated physical setup in the 19 reachable dielectric and 18 reachable
+diffuse topology occurrences. Driver
 pipeline creation remains 82.8% of the final JIT wall time and is now the
 dominant Vulkan tail; further IR work should still reduce its input, but XIR
 passes are no longer the majority of the measured wall time.
@@ -140,26 +191,27 @@ separate scene-quality requirement.
 `psycles_luisa_principled_setup_callable_tests` records both the canonical
 direct implementation and the shared-callable implementation. Six device
 cases cover ordinary allocation, below-cutoff weight, unit IOR, adjusted IOR
-below one, disabled reflective caustics, and bump-normal correction. Both GGX
-energy modes compare every returned field. The AST guard also requires exactly
-two custom callable definitions.
+below one, disabled reflective caustics, bump-normal correction, diffuse color
+clamping, and full subsurface attenuation. Both GGX energy modes and diffuse
+compare every returned field. The AST guard requires exactly three custom
+callable definitions: one diffuse and two dielectric specializations.
 
 | Check | fallback | HIP | Vulkan native XIR/SPIR-V |
 | --- | ---: | ---: | ---: |
 | direct/shared typed-ABI numeric parity | pass | pass | pass |
-| two-specialization callable-shape guard | pass | pass | pass |
+| three-definition callable-shape guard | pass | pass | pass |
 | surface metadata/reachability regressions | pass | shared host test | shared host test |
 
-The focused closure-plan fixture records 24,994 conservative instructions and
-5,324 scene-specialized instructions, a 78.7% reduction. The final Lone Monk
+The focused closure-plan fixture records 25,015 conservative instructions and
+5,345 scene-specialized instructions, a 78.6% reduction. The final Lone Monk
 run and all focused regressions used the same production implementation.
 
 ## Remaining hotspot
 
-The next structural target is the remaining repeated physical closure setup in
-the large surface-operation definitions, selected by occurrence count and XIR
-cost rather than closure name alone. Any extraction must preserve the same
-typed populate/setup contract and pass a negative boundary A/B like the one
-above. Separately, Vulkan driver pipeline creation now warrants driver-level
+The next structural target is the remaining metallic physical closure setup,
+followed by a fresh audit of scene-dependent host unrolling. Any extraction
+must preserve the same typed populate/setup contract and pass a negative
+boundary A/B like the one above. Separately, Vulkan driver pipeline creation
+now warrants driver-level
 profiling against optimized SPIR-V shape; blindly adding more XIR passes would
 not address its measured share.

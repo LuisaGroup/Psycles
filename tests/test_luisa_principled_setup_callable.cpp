@@ -1,5 +1,6 @@
 #include "path_tracer_surface_closure_setup.h"
 #include "principled_base_component.h"
+#include "principled_diffuse_component.h"
 
 #include <psycles/luisa/cycles_bsdf_tables.h>
 
@@ -90,7 +91,15 @@ public:
 
 constexpr std::uint32_t case_count = 6u;
 constexpr std::uint32_t records_per_result = 6u;
-constexpr std::uint32_t records_per_case = 4u * records_per_result;
+constexpr std::uint32_t dielectric_record_count =
+    4u * records_per_result;
+constexpr std::uint32_t diffuse_records_per_result = 2u;
+constexpr std::uint32_t diffuse_direct_offset =
+    dielectric_record_count;
+constexpr std::uint32_t diffuse_callable_offset =
+    diffuse_direct_offset + diffuse_records_per_result;
+constexpr std::uint32_t records_per_case =
+    diffuse_callable_offset + diffuse_records_per_result;
 
 void write_result(
     const BufferFloat4 &output,
@@ -105,6 +114,18 @@ void write_result(
     output->write(
         base + 4u, make_float4(result.evaluation_scale, 0.0f));
     output->write(base + 5u, make_float4(result.lower_weight, 0.0f));
+}
+
+void write_diffuse_result(
+    const BufferFloat4 &output,
+    UInt base,
+    const PrincipledDiffuseSetupResult &result) noexcept {
+    output->write(
+        base,
+        make_float4(result.weight, result.allocation_weight));
+    output->write(
+        base + 1u,
+        make_float4(result.sample_weight, 0.0f, 0.0f, 0.0f));
 }
 
 [[nodiscard]] bool finite(luisa::float4 value) noexcept {
@@ -186,14 +207,31 @@ int main(int argc, char **argv) {
         };
         evaluate(false, 0u, records_per_result);
         evaluate(true, 2u * records_per_result, 3u * records_per_result);
+        const auto diffuse_input = PrincipledDiffuseSetupInput{
+            .lower_weight = lower_weight,
+            .color = select(
+                make_float3(0.81f, 0.37f, 0.12f),
+                make_float3(-0.25f, 0.63f, 1.20f),
+                case_index == 5u),
+            .subsurface_weight = select(
+                0.28f, 1.0f, case_index == 2u)};
+        write_diffuse_result(
+            output,
+            base + diffuse_direct_offset,
+            setup_principled_diffuse(diffuse_input));
+        write_diffuse_result(
+            output,
+            base + diffuse_callable_offset,
+            callable_provider.principled_diffuse(diffuse_input));
     };
 
-    // One callable per immutable energy-preservation specialization must be
-    // shared by every invocation in the kernel. This is an AST-shape guard;
-    // the device comparison below guards the typed ABI and numerical result.
-    if (compare.function()->function().custom_callables().size() != 2u) {
-        std::cerr << "Principled setup callable reuse regression: expected 2 "
-                     "specializations, got "
+    // Diffuse has one canonical body. Dielectric has one callable per
+    // immutable energy-preservation specialization. Each must be shared by
+    // every invocation in the kernel. This is an AST-shape guard; the device
+    // comparison below guards each typed ABI and numerical result.
+    if (compare.function()->function().custom_callables().size() != 3u) {
+        std::cerr << "Principled setup callable reuse regression: expected 3 "
+                     "definitions, got "
                   << compare.function()->function().custom_callables().size()
                   << '\n';
         return EXIT_FAILURE;
@@ -217,8 +255,9 @@ int main(int argc, char **argv) {
 
     const auto compare_pair = [&](std::uint32_t case_index,
                                   std::uint32_t direct_offset,
-                                  std::uint32_t callable_offset) noexcept {
-        for (auto record = 0u; record < records_per_result; ++record) {
+                                  std::uint32_t callable_offset,
+                                  std::uint32_t record_count) noexcept {
+        for (auto record = 0u; record < record_count; ++record) {
             const auto direct = actual[
                 case_index * records_per_case + direct_offset + record];
             const auto shared = actual[
@@ -238,10 +277,16 @@ int main(int argc, char **argv) {
         return true;
     };
     for (auto case_index = 0u; case_index < case_count; ++case_index) {
-        if (!compare_pair(case_index, 0u, records_per_result) ||
+        if (!compare_pair(
+                case_index, 0u, records_per_result, records_per_result) ||
             !compare_pair(case_index,
                           2u * records_per_result,
-                          3u * records_per_result)) {
+                          3u * records_per_result,
+                          records_per_result) ||
+            !compare_pair(case_index,
+                          diffuse_direct_offset,
+                          diffuse_callable_offset,
+                          diffuse_records_per_result)) {
             return EXIT_FAILURE;
         }
     }

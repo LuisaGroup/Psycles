@@ -328,8 +328,7 @@ PrincipledBaseResult PrincipledBaseComponent::evaluate(
             .thin_glass_transmission = std::move(thin_glass_transmission),
             .thin_glass_transparency = std::move(thin_glass_transparency),
             .dielectric = std::move(dielectric),
-            .base_weight = lower_weight,
-            .diffuse_weight = max(lower_weight * base_color, make_float3(0.0f))};
+            .base_weight = lower_weight};
 }
 
 }// namespace psycles::luisa_backend::detail

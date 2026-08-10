@@ -357,10 +357,22 @@ struct SurfaceClosureRecord {
     }
 };
 
-// Typed multistage boundary for physical closure setup shared across
+// Typed multistage boundaries for physical closure setup shared across
 // material topologies. Inputs remain Luisa expressions produced by the
 // authored shader graph; the host Boolean is immutable topology metadata.
 // No material value is evaluated or serialized on the host.
+struct PrincipledDiffuseSetupInput {
+    Float3 lower_weight;
+    Float3 color;
+    Float subsurface_weight;
+};
+
+struct PrincipledDiffuseSetupResult {
+    Float3 weight;
+    Float allocation_weight;
+    Float sample_weight;
+};
+
 struct PrincipledDielectricSetupInput {
     Float3 lower_weight;
     Float3 normal;
@@ -391,6 +403,10 @@ class SurfaceClosureSetupProvider {
 
 public:
     virtual ~SurfaceClosureSetupProvider() noexcept = default;
+
+    [[nodiscard]] virtual PrincipledDiffuseSetupResult
+    principled_diffuse(
+        const PrincipledDiffuseSetupInput &input) const noexcept = 0;
 
     [[nodiscard]] virtual PrincipledDielectricSetupResult
     principled_dielectric(
