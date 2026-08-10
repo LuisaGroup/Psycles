@@ -381,6 +381,29 @@ by 15.73%. The formal reachability rule, control measurement, and regressions
 are in
 [`validation/2026-08-09/reachable-subsurface-specialization`](validation/2026-08-09/reachable-subsurface-specialization/README.md).
 
+## GPU coroutine schedule baseline
+
+The path program now has one host-side construction route with an explicit
+`is_coro` boundary. The same program can execute directly as the megakernel
+baseline or suspend at the surface-shading and path-bounce boundaries under
+Luisa's wavefront and persistent schedulers. Fallback is deliberately allowed
+to exercise both schedulers; it is not rewritten into a scalar special case.
+
+On the 37-material Lone Monk export, fallback megakernel, wavefront, and
+persistent output is byte-identical for the display image and linear Combined,
+Normal, and Albedo passes at 640x480x1. Multilayer EXR pixel comparison also
+passes exactly; only capture-time metadata differs. All three panels were
+opened and inspected at original resolution. The CLI sentinel fix, scheduler
+configuration, timings, exact hashes, and triptych are recorded in
+[`validation/2026-08-11/coroutine-schedulers`](validation/2026-08-11/coroutine-schedulers/README.md).
+
+The result establishes schedule equivalence, not scheduler performance parity.
+Fallback render-only time was 0.160 s for megakernel, 0.435 s for wavefront,
+and 0.221 s for persistent. More importantly, wavefront session creation/JIT
+grew from 14.506 s with 256 frames to 48.178 s with 307,200 frames. The logical
+capacity must not scale shader structure; generation, cache identity, and final
+compilation remain an explicit profiling target.
+
 ## Target boundaries
 
 The path tracer is split by renderer semantics:

@@ -27,21 +27,7 @@ namespace psycles::luisa_backend::detail {
 
 class DirectLightTraceRecorder;
 
-using RenderKernel = Kernel1D<Buffer<luisa::float4>,
-                              Buffer<luisa::float4>,
-                              Buffer<luisa::float4>,
-                              Buffer<luisa::float4>,
-                              Buffer<luisa::uint>,
-                              Buffer<luisa::float4>,
-                              Buffer<luisa::uint>,
-                              Buffer<luisa::float4>,
-                              std::uint32_t,
-                              std::uint32_t,
-                              Buffer<luisa::float4>,
-                              Buffer<float>,
-                              RenderKernelParameters>;
-
-using RenderCoroutine = luisa::compute::Coroutine<void(
+using RenderKernelSignature = void(
     Buffer<luisa::float4>,
     Buffer<luisa::float4>,
     Buffer<luisa::float4>,
@@ -54,7 +40,24 @@ using RenderCoroutine = luisa::compute::Coroutine<void(
     std::uint32_t,
     Buffer<luisa::float4>,
     Buffer<float>,
-    RenderKernelParameters)>;
+    RenderKernelParameters);
+
+template<typename Signature>
+struct RenderProgramTypes;
+
+template<typename... Args>
+struct RenderProgramTypes<void(Args...)> {
+    using Kernel = Kernel1D<Args...>;
+    using CompiledShader = Shader1D<Args...>;
+    using Coroutine = luisa::compute::Coroutine<void(Args...)>;
+};
+
+using RenderKernel =
+    RenderProgramTypes<RenderKernelSignature>::Kernel;
+using RenderCompiledShader =
+    RenderProgramTypes<RenderKernelSignature>::CompiledShader;
+using RenderCoroutine =
+    RenderProgramTypes<RenderKernelSignature>::Coroutine;
 
 // All data in this object exists on the host while Luisa records the kernel
 // AST. Components may use ordinary C++ dispatch over it; the device still sees
