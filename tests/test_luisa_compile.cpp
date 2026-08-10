@@ -4,6 +4,7 @@
 #include <psycles/luisa/cycles_sampler.h>
 #include <psycles/luisa/graph_surface.h>
 #include <psycles/luisa/surface_closure_operations.h>
+#include <psycles/luisa/surface_closure_sampling.h>
 
 #include "../src/luisa/path_tracer_shader_services.h"
 #include "../src/luisa/path_tracer_surface_closure_setup.h"
@@ -475,6 +476,7 @@ public:
 struct XirShape {
     std::size_t instructions{};
     std::size_t loops{};
+    std::size_t conditionals{};
 
     auto operator<=>(const XirShape &) const noexcept = default;
 };
@@ -498,10 +500,64 @@ template<typename... Args>
                                     luisa::compute::xir::SimpleLoopInst>()
                             ? 1u
                             : 0u;
+                    shape.conditionals +=
+                        instruction->isa<
+                            luisa::compute::xir::IfInst>()
+                            ? 1u
+                            : 0u;
                 });
         }
     }
     return shape;
+}
+
+[[nodiscard]] bool predicated_categorical_is_branchless() {
+    Kernel1D kernel = [](BufferFloat4 output) noexcept {
+        const auto make_selection = [](
+                                        float weight,
+                                        std::uint32_t flags) noexcept {
+            luisa::compute::Var<
+                SurfaceClosureSelectionCall> selection;
+            selection.weight = weight;
+            selection.glossy_normal =
+                make_float3(0.0f, 0.0f, 1.0f);
+            selection.runtime_flags = flags;
+            selection.closure_type = flags;
+            selection.closure_sample_weight = weight;
+            return selection;
+        };
+        const auto first = make_selection(0.25f, 1u);
+        const auto second = make_selection(0.75f, 2u);
+        const auto retained_first =
+            (dispatch_x() & 1u) != 0u;
+        const auto retained_second =
+            (dispatch_x() & 2u) != 0u;
+        SurfaceClosureSelectionMeasure measure{false};
+        measure.add(first, retained_first);
+        measure.add(second, retained_second);
+        SurfaceClosureCategoricalInversion inversion{0.625f, measure};
+        const auto first_choice = inversion.consider(
+            first, retained_first);
+        const auto second_choice = inversion.consider(
+            second, retained_second);
+        output.write(
+            0u,
+            make_float4(
+                measure.total_weight(),
+                cast<float>(measure.retained_count()),
+                select(0.0f, first_choice.rescaled,
+                    first_choice.choose),
+                select(0.0f, second_choice.rescaled,
+                    second_choice.choose)));
+    };
+    const auto shape = xir_shape(kernel);
+    if (shape.conditionals != 0u) {
+        std::cerr
+            << "predicated categorical primitive introduced "
+            << shape.conditionals
+            << " structured conditional(s)\n";
+    }
+    return shape.conditionals == 0u;
 }
 
 [[nodiscard]] XirShape ramp_xir_shape(
@@ -1299,6 +1355,9 @@ int main() {
             shader_compiler)) {
         return 10;
     }
+    if (!predicated_categorical_is_branchless()) {
+        return 11;
+    }
 
     Kernel1D sampler_kernel = [](
                                   BufferFloat4 table,
@@ -1326,5 +1385,5 @@ int main() {
                 rng_hash,
                 dimension));
     };
-    return sampler_kernel.function() ? 0 : 11;
+    return sampler_kernel.function() ? 0 : 12;
 }

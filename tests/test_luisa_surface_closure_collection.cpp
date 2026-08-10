@@ -41,6 +41,11 @@ constexpr auto storage_records_per_slot = 14u;
 constexpr auto evaluator_records_per_slot = 10u;
 constexpr auto scattering_records_per_slot = 6u;
 constexpr auto sampling_records_per_slot = 8u;
+constexpr auto categorical_mask_count = 16u;
+constexpr auto categorical_random_count = 4u;
+constexpr auto categorical_invocation_count =
+    categorical_mask_count * categorical_random_count;
+constexpr auto categorical_records_per_invocation = 2u;
 
 struct CollectedClosureTrace {
     UInt count;
@@ -1228,6 +1233,98 @@ int main(int argc, char **argv) {
                     query));
         };
 
+    // Every subset of four authored closures is compared below with the
+    // compact retained sequence. In particular, inactive entries carry
+    // nonzero weights/flags and one retained entry has zero mass. This pins
+    // the formal identity between predication and sequence compaction rather
+    // than merely exercising one material-specific closure layout.
+    Kernel1D predicated_categorical =
+        [&](BufferFloat4 output) noexcept {
+            const auto invocation = dispatch_x();
+            const auto retained_mask =
+                invocation % categorical_mask_count;
+            const auto random_bucket =
+                invocation / categorical_mask_count;
+            const auto random_lobe =
+                (cast<float>(random_bucket) + 0.5f) /
+                static_cast<float>(categorical_random_count);
+            const auto make_selection = [](
+                                            float weight,
+                                            std::uint32_t runtime_flags,
+                                            std::uint32_t closure_type) noexcept {
+                luisa::compute::Var<
+                    SurfaceClosureSelectionCall> selection;
+                selection.weight = weight;
+                selection.glossy_normal =
+                    make_float3(0.0f, 0.0f, 1.0f);
+                selection.runtime_flags = runtime_flags;
+                selection.closure_type = closure_type;
+                selection.closure_sample_weight = weight;
+                return selection;
+            };
+            const auto first = make_selection(0.2f, 1u, 11u);
+            const auto zero_mass = make_selection(0.0f, 4u, 12u);
+            const auto third = make_selection(0.5f, 16u, 13u);
+            const auto fourth = make_selection(0.3f, 64u, 14u);
+            const auto retained_first =
+                (retained_mask & 1u) != 0u;
+            const auto retained_zero_mass =
+                (retained_mask & 2u) != 0u;
+            const auto retained_third =
+                (retained_mask & 4u) != 0u;
+            const auto retained_fourth =
+                (retained_mask & 8u) != 0u;
+
+            SurfaceClosureSelectionMeasure measure{false};
+            measure.add(first, retained_first);
+            measure.add(zero_mass, retained_zero_mass);
+            measure.add(third, retained_third);
+            measure.add(fourth, retained_fourth);
+
+            SurfaceClosureCategoricalInversion inversion{
+                Expr<float>{random_lobe.expression()}, measure};
+            Float selected_index = -1.0f;
+            Float selected_rescaled = 0.0f;
+            Bool selected = false;
+            const auto consider = [&]<typename Retained>(
+                                      const auto &selection,
+                                      Retained retained,
+                                      std::uint32_t index) noexcept {
+                const auto choice = inversion.consider(
+                    selection, Expr<bool>{retained.expression()});
+                selected_index = select(
+                    selected_index,
+                    static_cast<float>(index),
+                    choice.choose);
+                selected_rescaled = select(
+                    selected_rescaled,
+                    choice.rescaled,
+                    choice.choose);
+                selected |= choice.choose;
+            };
+            consider(first, retained_first, 0u);
+            consider(zero_mass, retained_zero_mass, 1u);
+            consider(third, retained_third, 2u);
+            consider(fourth, retained_fourth, 3u);
+
+            const auto base = invocation *
+                              categorical_records_per_invocation;
+            output.write(
+                base,
+                make_float4(
+                    measure.total_weight(),
+                    cast<float>(measure.retained_count()),
+                    cast<float>(measure.runtime_flags()),
+                    select(0.0f, 1.0f, selected)));
+            output.write(
+                base + 1u,
+                make_float4(
+                    selected_index,
+                    selected_rescaled,
+                    random_lobe,
+                    cast<float>(retained_mask)));
+        };
+
     Context context{argv[0]};
     auto device = context.create_device(backend);
     auto stream = device.create_stream();
@@ -1264,6 +1361,10 @@ int main(int argc, char **argv) {
     auto legacy_sampling_buffer =
         device.create_buffer<luisa::float4>(
             invocation_count * sampling_records_per_slot);
+    auto categorical_buffer =
+        device.create_buffer<luisa::float4>(
+            categorical_invocation_count *
+            categorical_records_per_invocation);
     auto collect_kernel = device.compile(collect);
     auto legacy_kernel = device.compile(legacy);
     auto retain_kernel = device.compile(retain);
@@ -1291,6 +1392,8 @@ int main(int argc, char **argv) {
     }
     auto legacy_sampling_kernel =
         device.compile(sample_legacy);
+    auto predicated_categorical_kernel =
+        device.compile(predicated_categorical);
     std::array<luisa::float4, invocation_count * records_per_slot> collected{};
     std::array<luisa::float4, invocation_count * 3u> old{};
     std::array<luisa::float4, invocation_count * 3u> retained{};
@@ -1315,6 +1418,10 @@ int main(int argc, char **argv) {
     std::array<luisa::float4,
         invocation_count * sampling_records_per_slot>
         legacy_sampling{};
+    std::array<luisa::float4,
+        categorical_invocation_count *
+            categorical_records_per_invocation>
+        categorical{};
     stream << parameter_buffer.copy_from(luisa::span{parameters})
            << collect_kernel(parameter_buffer, collected_buffer)
                   .dispatch(invocation_count)
@@ -1363,7 +1470,89 @@ int main(int argc, char **argv) {
                   .dispatch(invocation_count)
            << legacy_sampling_buffer.copy_to(
                   luisa::span{legacy_sampling})
+           << predicated_categorical_kernel(
+                  categorical_buffer)
+                  .dispatch(categorical_invocation_count)
+           << categorical_buffer.copy_to(
+                  luisa::span{categorical})
            << synchronize();
+
+    constexpr std::array categorical_weights{
+        0.2f, 0.0f, 0.5f, 0.3f};
+    constexpr std::array<std::uint32_t, 4u>
+        categorical_flags{1u, 4u, 16u, 64u};
+    for (auto invocation = 0u;
+         invocation < categorical_invocation_count;
+         ++invocation) {
+        const auto retained_mask =
+            invocation % categorical_mask_count;
+        const auto random_bucket =
+            invocation / categorical_mask_count;
+        const auto random_lobe =
+            (static_cast<float>(random_bucket) + 0.5f) /
+            static_cast<float>(categorical_random_count);
+        auto total_weight = 0.0f;
+        auto retained_count = 0u;
+        auto runtime_flags = 0u;
+        for (auto index = 0u;
+             index < categorical_weights.size();
+             ++index) {
+            if ((retained_mask & (1u << index)) == 0u) {
+                continue;
+            }
+            total_weight += categorical_weights[index];
+            runtime_flags |= categorical_flags[index];
+            ++retained_count;
+        }
+        auto selected_index = -1.0f;
+        auto selected_rescaled = 0.0f;
+        auto accumulated = 0.0f;
+        const auto target = random_lobe * total_weight;
+        for (auto index = 0u;
+             index < categorical_weights.size();
+             ++index) {
+            if ((retained_mask & (1u << index)) == 0u) {
+                continue;
+            }
+            const auto weight = categorical_weights[index];
+            const auto next = accumulated + weight;
+            if (selected_index < 0.0f &&
+                weight > 0.0f && target < next) {
+                selected_index = static_cast<float>(index);
+                selected_rescaled =
+                    retained_count > 1u
+                        ? (target - accumulated) / weight
+                        : random_lobe;
+            }
+            accumulated = next;
+        }
+        const auto base = invocation *
+                          categorical_records_per_invocation;
+        const auto actual_measure = categorical[base];
+        const auto actual_choice = categorical[base + 1u];
+        const auto expected_selected =
+            selected_index >= 0.0f ? 1.0f : 0.0f;
+        if (!approximately_equal(
+                actual_measure,
+                luisa::float4{
+                    total_weight,
+                    static_cast<float>(retained_count),
+                    static_cast<float>(runtime_flags),
+                    expected_selected}) ||
+            !approximately_equal(
+                actual_choice,
+                luisa::float4{
+                    selected_index,
+                    selected_rescaled,
+                    random_lobe,
+                    static_cast<float>(retained_mask)})) {
+            std::cerr
+                << "predicated categorical compaction failed on "
+                << backend << " at mask " << retained_mask
+                << ", random bucket " << random_bucket << '\n';
+            return EXIT_FAILURE;
+        }
+    }
 
     constexpr std::array layered_kinds{
         SurfaceClosureKind::transparent, SurfaceClosureKind::principled,
