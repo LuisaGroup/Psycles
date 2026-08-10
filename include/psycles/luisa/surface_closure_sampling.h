@@ -270,6 +270,10 @@ class SurfaceClosureSamplingOperation {
   public:
     virtual ~SurfaceClosureSamplingOperation() noexcept = default;
 
+    // Pure device expression: recording a selection must not mutate
+    // device-visible state. The sampling visitor schedules this expression
+    // once per reachable closure and reuses it across measure construction
+    // and categorical inversion.
     [[nodiscard]] virtual luisa::compute::Var<
         SurfaceClosureSelectionCall>
     selection(
@@ -320,8 +324,9 @@ class DirectSurfaceClosureSamplingOperation final
 };
 
 // Three-pass branch-local implementation of the formal product measure:
-// construct p(i), invert it and execute one p(w_i | i), then evaluate the
-// complete retained mixture at the chosen direction.
+// schedule p(i) once, construct and invert the measure, execute one
+// p(w_i | i), then evaluate the complete retained mixture at the chosen
+// direction.
 class SurfaceClosureSamplingVisitor final
     : public SurfaceClosureExpressionVisitor {
 

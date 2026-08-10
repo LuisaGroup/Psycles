@@ -241,23 +241,33 @@ private:
     const SurfacePoint &_point;
     const SurfaceQuery &_query;
     Float3 _incoming{make_float3(0.0f)};
+    std::size_t *_selection_recordings{};
+    std::size_t *_conditional_sample_recordings{};
 
 public:
     InlineSurfaceClosureSamplingOperation(
         const ShaderServices &services,
         const SurfacePoint &point,
-        const SurfaceQuery &query) noexcept
+        const SurfaceQuery &query,
+        std::size_t *selection_recordings = nullptr,
+        std::size_t *conditional_sample_recordings = nullptr) noexcept
         : _services{services},
           _point{point},
           _query{query},
           _incoming{make_surface_closure_sampling_incoming(
-              point)} {}
+              point)},
+          _selection_recordings{selection_recordings},
+          _conditional_sample_recordings{
+              conditional_sample_recordings} {}
 
     [[nodiscard]] luisa::compute::Var<
         SurfaceClosureSelectionCall>
     selection(
         const SurfaceClosureExpression &closure)
         const noexcept override {
+        if (_selection_recordings != nullptr) {
+            ++*_selection_recordings;
+        }
         return surface_closure_selection(
             _point,
             closure.reference(),
@@ -273,6 +283,9 @@ public:
         Expr<luisa::float3> glossy_normal,
         Expr<luisa::float2> random_direction,
         Expr<float> rescaled_lobe) const noexcept override {
+        if (_conditional_sample_recordings != nullptr) {
+            ++*_conditional_sample_recordings;
+        }
         return surface_closure_conditional_sample(
             _services,
             _point,
@@ -1097,6 +1110,8 @@ int main(int argc, char **argv) {
                         .shader_flags = shader_flags}));
         };
 
+    auto selection_recordings = std::size_t{};
+    auto conditional_sample_recordings = std::size_t{};
     Kernel1D sample_shared =
         [&](BufferFloat4 parameter_buffer,
             BufferFloat4 output) noexcept {
@@ -1142,7 +1157,11 @@ int main(int argc, char **argv) {
                     policy};
             InlineSurfaceClosureSamplingOperation
                 sampling_operation{
-                    services, point, query};
+                    services,
+                    point,
+                    query,
+                    &selection_recordings,
+                    &conditional_sample_recordings};
             SurfaceClosureSamplingVisitor visitor{
                 12u,
                 point,
@@ -1259,6 +1278,17 @@ int main(int argc, char **argv) {
         device.compile(scatter_legacy);
     auto shared_sampling_kernel =
         device.compile(sample_shared);
+    if (selection_recordings == 0u ||
+        selection_recordings !=
+            conditional_sample_recordings) {
+        std::cerr
+            << "surface closure selection was not scheduled exactly once "
+               "per conditional sampler: selection="
+            << selection_recordings
+            << ", conditional="
+            << conditional_sample_recordings << '\n';
+        return EXIT_FAILURE;
+    }
     auto legacy_sampling_kernel =
         device.compile(sample_legacy);
     std::array<luisa::float4, invocation_count * records_per_slot> collected{};
