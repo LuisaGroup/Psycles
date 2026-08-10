@@ -365,7 +365,7 @@ reduce_closures(
 
 SurfaceClosureIdentityCallable
 make_surface_closure_identity_callable() noexcept {
-    return [](
+    SurfaceClosureIdentityCallable callable = [](
                UInt kind,
                UInt lobe,
                UInt bssrdf_method,
@@ -395,11 +395,13 @@ make_surface_closure_identity_callable() noexcept {
                 std::move(glossy_filter_roughness)),
             detail::cycles_closure_type(closure));
     };
+    callable.set_name("surface_closure_identity");
+    return callable;
 }
 
 SurfaceClosureAovCallable
 make_surface_closure_aov_callable() noexcept {
-    return [](
+    SurfaceClosureAovCallable callable = [](
                Float3 incoming,
                Float3 shading_normal,
                Float3 geometric_normal,
@@ -432,6 +434,8 @@ make_surface_closure_aov_callable() noexcept {
             Expr<bool>{use_bump_map_correction.expression()},
             closure);
     };
+    callable.set_name("surface_closure_aov");
+    return callable;
 }
 
 luisa::compute::Var<SurfaceAovContributionCall>

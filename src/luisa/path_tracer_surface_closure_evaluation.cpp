@@ -9,7 +9,7 @@ namespace psycles::luisa_backend::detail {
 SurfaceClosureEvaluationCallable
 make_surface_closure_evaluation_callable(
     const std::shared_ptr<LuisaSceneData> &scene) noexcept {
-    return [scene](
+    SurfaceClosureEvaluationCallable callable = [scene](
                BufferFloat scalar_parameters,
                BufferFloat3 vector_parameters,
                BufferFloat cycles_bsdf_tables,
@@ -70,6 +70,8 @@ make_surface_closure_evaluation_callable(
             policy,
             Expr<bool>{selected_sample.expression()});
     };
+    callable.set_name("surface_closure_evaluation");
+    return callable;
 }
 
 CallableSurfaceClosureEvaluationOperation::

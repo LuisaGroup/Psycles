@@ -25,6 +25,122 @@ PrincipledBaseComponent::PrincipledBaseComponent(
     : _services{services}, _point{point}, _glass{services, point},
       _thin_glass{services, point} {}
 
+PrincipledDielectricSetupParameters populate_principled_dielectric(
+    const PrincipledDielectricSetupInput &input) noexcept {
+    const auto incoming = safe_normalize(
+        input.incoming, input.surface_shading_normal);
+    const auto correction_enabled =
+        input.use_bump_map_correction &
+        !all(input.surface_geometric_normal == input.normal);
+    const auto glossy_normal = select(
+        input.normal,
+        ensure_valid_specular_reflection(
+            input.surface_geometric_normal,
+            incoming,
+            input.normal),
+        correction_enabled);
+    const auto incoming_cosine = clamp(
+        dot(glossy_normal, incoming), 0.0f, 1.0f);
+    const auto roughness = clamp(input.roughness, 0.0f, 1.0f);
+    const auto specular_tint = max(
+        input.specular_tint, make_float3(0.0f));
+    return {
+        .lower_weight = input.lower_weight,
+        .glossy_normal = glossy_normal,
+        .incoming_cosine = incoming_cosine,
+        .roughness = roughness,
+        .ior = input.ior,
+        .specular_ior_level = input.specular_ior_level,
+        .specular_tint = specular_tint,
+        .preserve_ggx_energy = input.preserve_ggx_energy};
+}
+
+PrincipledDielectricSetupResult setup_principled_dielectric(
+    const ShaderServices &services,
+    const PrincipledDielectricSetupParameters &parameters,
+    Bool reflective_caustics) noexcept {
+    const auto adjusted = adjusted_ior(
+        parameters.ior, parameters.specular_ior_level);
+    const auto dielectric_f0 = clamp(
+        make_float3(adjusted.f0) * parameters.specular_tint,
+        make_float3(0.0f),
+        make_float3(1.0f));
+    const auto real_f0 = f0_from_ior(adjusted.eta);
+    const auto real_fss = fresnel_dielectric_fss(adjusted.eta);
+    const auto fss_interpolation = clamp(
+        (real_fss - real_f0) / (1.0f - real_f0),
+        0.0f,
+        1.0f);
+    const auto dielectric_fss = lerp(
+        dielectric_f0,
+        make_float3(1.0f),
+        fss_interpolation);
+    const auto dielectric_energy = ggx_energy(
+        services,
+        parameters.roughness,
+        parameters.preserve_ggx_energy,
+        parameters.incoming_cosine,
+        dielectric_fss);
+    const auto dielectric_z = sqrt(abs(
+        (adjusted.eta - 1.0f) /
+        (adjusted.eta + 1.0f)));
+    const auto dielectric_interpolation = cycles_table_3d(
+        services,
+        parameters.roughness,
+        parameters.incoming_cosine,
+        dielectric_z,
+        UInt{cycles45_tables::ggx_gen_schlick_ior_s_offset},
+        16u,
+        16u,
+        16u);
+    const auto dielectric_albedo_estimate = lerp(
+        dielectric_f0,
+        make_float3(1.0f),
+        dielectric_interpolation);
+    const auto dielectric_requested = adjusted.eta != 1.0f;
+    const auto dielectric_pre_weight = select(
+        make_float3(0.0f),
+        parameters.lower_weight,
+        dielectric_requested);
+    const auto dielectric_allocated_weight = max(
+        dielectric_pre_weight,
+        make_float3(0.0f));
+    const auto dielectric_allocation_weight =
+        sample_weight(dielectric_allocated_weight);
+    const auto dielectric_allocated =
+        dielectric_requested & reflective_caustics &
+        (dielectric_allocation_weight >=
+         cycles_closure::closure_weight_cutoff);
+    const auto weight = select(
+        make_float3(0.0f),
+        dielectric_allocated_weight * dielectric_energy.darkening,
+        dielectric_allocated);
+    const auto allocation_weight = select(
+        0.0f,
+        dielectric_allocation_weight,
+        dielectric_allocated);
+    const auto sample_weight_value = select(
+        0.0f,
+        dielectric_allocation_weight *
+            sample_weight(dielectric_albedo_estimate) *
+            sample_weight(dielectric_energy.darkening),
+        dielectric_allocated);
+    const auto albedo = weight * dielectric_albedo_estimate;
+    return {
+        .weight = weight,
+        .allocation_weight = allocation_weight,
+        .sample_weight = sample_weight_value,
+        .albedo = albedo,
+        .normal = parameters.glossy_normal,
+        .color = dielectric_f0,
+        .ior = adjusted.eta,
+        .evaluation_scale = dielectric_energy.energy_scale,
+        .lower_weight = attenuate_lower_layer(
+            parameters.lower_weight,
+            albedo,
+            dielectric_allocated)};
+}
+
 PrincipledBaseResult PrincipledBaseComponent::evaluate(
     const TracedClosure &closure,
     compiler::PrincipledClosureFeatureMask features, Bool reflective_caustics,
@@ -156,59 +272,53 @@ PrincipledBaseResult PrincipledBaseComponent::evaluate(
     // adjusted eta. Its albedo attenuates diffuse only when the closure was
     // actually allocated; a disabled caustic branch cannot consume energy.
     if (enabled(compiler::PrincipledClosureFeature::dielectric)) {
-        const auto adjusted = adjusted_ior(closure);
-        const auto dielectric_f0 = clamp(make_float3(adjusted.f0) * specular_tint,
-                                         make_float3(0.0f), make_float3(1.0f));
-        const auto real_f0 = f0_from_ior(adjusted.eta);
-        const auto real_fss = fresnel_dielectric_fss(adjusted.eta);
-        const auto fss_interpolation =
-            clamp((real_fss - real_f0) / (1.0f - real_f0), 0.0f, 1.0f);
-        const auto dielectric_fss =
-            lerp(dielectric_f0, make_float3(1.0f), fss_interpolation);
-        const auto dielectric_energy =
-            ggx_energy(_services, closure, incoming_cosine, dielectric_fss);
-        const auto dielectric_z =
-            sqrt(abs((adjusted.eta - 1.0f) / (adjusted.eta + 1.0f)));
-        const auto dielectric_interpolation = cycles_table_3d(
-            _services, roughness, incoming_cosine, dielectric_z,
-            UInt{cycles45_tables::ggx_gen_schlick_ior_s_offset}, 16u, 16u, 16u);
-        const auto dielectric_albedo_estimate =
-            lerp(dielectric_f0, make_float3(1.0f), dielectric_interpolation);
-        const auto dielectric_requested = adjusted.eta != 1.0f;
-        const auto dielectric_pre_weight =
-            select(make_float3(0.0f), lower_weight, dielectric_requested);
-        const auto dielectric_allocated_weight =
-            max(dielectric_pre_weight, make_float3(0.0f));
-        const auto dielectric_allocation_weight =
-            sample_weight(dielectric_allocated_weight);
-        const auto dielectric_allocated =
-            dielectric_requested & reflective_caustics &
-            (dielectric_allocation_weight >= cycles_closure::closure_weight_cutoff);
+        const auto input = PrincipledDielectricSetupInput{
+            .lower_weight = lower_weight,
+            .normal = closure.normal,
+            .incoming = _point.incoming,
+            .surface_shading_normal = _point.shading_normal,
+            .surface_geometric_normal = _point.geometric_normal,
+            .roughness = closure.roughness,
+            .ior = closure.ior,
+            .specular_ior_level = closure.specular_ior_level,
+            .specular_tint = closure.specular_tint,
+            .use_bump_map_correction =
+                _point.use_bump_map_correction,
+            .preserve_ggx_energy = closure.preserve_ggx_energy};
+        const auto *provider =
+            _services.surface_closure_setup_provider();
+        const auto setup = provider != nullptr
+                               ? provider->principled_dielectric(
+                                     input,
+                                     reflective_caustics)
+                               : setup_principled_dielectric(
+                                     _services,
+                                     {.lower_weight = lower_weight,
+                                      .glossy_normal = glossy_normal,
+                                      .incoming_cosine = incoming_cosine,
+                                      .roughness = roughness,
+                                      .ior = closure.ior,
+                                      .specular_ior_level =
+                                          closure.specular_ior_level,
+                                      .specular_tint = specular_tint,
+                                      .preserve_ggx_energy =
+                                          closure.preserve_ggx_energy},
+                                     reflective_caustics);
 
         auto physical = closure;
         physical.principled_lobe = PrincipledLobe::dielectric;
-        physical.weight =
-            select(make_float3(0.0f),
-                   dielectric_allocated_weight * dielectric_energy.darkening,
-                   dielectric_allocated);
-        physical.allocation_weight =
-            select(0.0f, dielectric_allocation_weight, dielectric_allocated);
-        physical.sample_weight =
-            select(0.0f,
-                   dielectric_allocation_weight *
-                       sample_weight(dielectric_albedo_estimate) *
-                       sample_weight(dielectric_energy.darkening),
-                   dielectric_allocated);
+        physical.weight = setup.weight;
+        physical.allocation_weight = setup.allocation_weight;
+        physical.sample_weight = setup.sample_weight;
         physical.setup_valid = true;
-        physical.albedo = physical.weight * dielectric_albedo_estimate;
+        physical.albedo = setup.albedo;
         physical.reflection_albedo = physical.albedo;
         physical.transmission_albedo = make_float3(0.0f);
-        physical.color = dielectric_f0;
-        physical.normal = glossy_normal;
-        physical.ior = adjusted.eta;
-        physical.evaluation_scale = dielectric_energy.energy_scale;
-        lower_weight = attenuate_lower_layer(lower_weight, physical.albedo,
-                                             dielectric_allocated);
+        physical.color = setup.color;
+        physical.normal = setup.normal;
+        physical.ior = setup.ior;
+        physical.evaluation_scale = setup.evaluation_scale;
+        lower_weight = setup.lower_weight;
         dielectric.emplace(std::move(physical));
     }
 

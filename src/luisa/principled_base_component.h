@@ -19,6 +19,34 @@ struct PrincipledBaseResult {
     Float3 diffuse_weight;
 };
 
+struct PrincipledDielectricSetupParameters {
+    Float3 lower_weight;
+    Float3 glossy_normal;
+    Float incoming_cosine;
+    Float roughness;
+    Float ior;
+    Float specular_ior_level;
+    Float3 specular_tint;
+    bool preserve_ggx_energy{};
+};
+
+// Populate the physical dielectric inputs from authored socket expressions
+// and shading-point state. Path-tracer callables keep this stage shared across
+// material topologies; GraphSurface can reuse values already populated for
+// the sibling Principled lobes.
+[[nodiscard]] PrincipledDielectricSetupParameters
+populate_principled_dielectric(
+    const PrincipledDielectricSetupInput &input) noexcept;
+
+// Canonical inline implementation behind both the standalone GraphSurface
+// path and the path tracer's shared typed callable. Keeping one transfer
+// function makes the two staging strategies semantically identical.
+[[nodiscard]] PrincipledDielectricSetupResult
+setup_principled_dielectric(
+    const ShaderServices &services,
+    const PrincipledDielectricSetupParameters &parameters,
+    Bool reflective_caustics) noexcept;
+
 // Records Cycles' ordered Principled base closure family. The component is a
 // host-stage abstraction only: authored sockets, closure allocation, Fresnel
 // tables, and layer attenuation remain Luisa device expressions.

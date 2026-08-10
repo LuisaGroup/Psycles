@@ -1081,6 +1081,7 @@ enum class PrincipledClosureFeature : std::uint32_t {
   thick_subsurface = 1u << 7u,
   thin_subsurface = 1u << 8u,
   diffuse = 1u << 9u,
+  emission = 1u << 10u,
 };
 
 using PrincipledClosureFeatureMask = std::uint32_t;

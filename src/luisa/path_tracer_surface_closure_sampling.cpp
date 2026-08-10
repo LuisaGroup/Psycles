@@ -78,6 +78,7 @@ make_surface_closure_sampling_callables(
             return surface_closure_selection(
                 context, closure);
         };
+    selection.set_name("surface_closure_selection");
 
     SurfaceClosureConditionalSampleCallable conditional_sample =
         [scene](
@@ -127,6 +128,8 @@ make_surface_closure_sampling_callables(
                 Expr<float>{rescaled_lobe.expression()},
                 unpack_sampling_query(packed_query));
         };
+    conditional_sample.set_name(
+        "surface_closure_conditional_sample");
     return {
         .selection = std::move(selection),
         .conditional_sample = std::move(conditional_sample)};

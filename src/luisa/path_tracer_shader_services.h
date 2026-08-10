@@ -60,6 +60,7 @@ private:
     std::uint32_t _attribute_range_slot{};
     const std::vector<NishitaTextureBinding> &_nishita_textures;
     const contract::ShaderColorSpace &_shader_color_space;
+    const SurfaceClosureSetupProvider *_surface_closure_setup_provider{};
 
 public:
     explicit BufferShaderServices(
@@ -73,7 +74,9 @@ public:
         const std::vector<NishitaTextureBinding>
             &nishita_textures,
         const contract::ShaderColorSpace
-            &shader_color_space) noexcept
+            &shader_color_space,
+        const SurfaceClosureSetupProvider
+            *surface_closure_setup_provider = nullptr) noexcept
         : _scalar_parameters{scalar_parameters},
           _vector_parameters{vector_parameters},
           _cycles_bsdf_tables{cycles_bsdf_tables},
@@ -84,7 +87,14 @@ public:
           _attribute_range_slot{
               attribute_range_slot},
           _nishita_textures{nishita_textures},
-          _shader_color_space{shader_color_space} {}
+          _shader_color_space{shader_color_space},
+          _surface_closure_setup_provider{
+              surface_closure_setup_provider} {}
+
+    [[nodiscard]] const SurfaceClosureSetupProvider *
+    surface_closure_setup_provider() const noexcept override {
+        return _surface_closure_setup_provider;
+    }
 
     [[nodiscard]] Float4 texture_2d(
         Expr<std::uint32_t> handle,

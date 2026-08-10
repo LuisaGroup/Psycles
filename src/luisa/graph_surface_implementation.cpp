@@ -76,26 +76,47 @@ GraphSurfaceImplementation::GraphSurfaceImplementation(
                     cycles_voronoi::decode_configuration(instruction));
             }
         }
-        for (const auto &closure : _program->closure_instructions()) {
+        const auto has_principled_feature = [](
+                                                const compiler::SurfaceClosurePlanEntry &entry,
+                                                compiler::PrincipledClosureFeature feature) noexcept {
+            return (entry.principled_features &
+                    compiler::principled_closure_feature_bit(feature)) != 0u;
+        };
+        const auto &closures = _program->closure_instructions();
+        for (std::size_t index = 0u; index < closures.size(); ++index) {
+            const auto id = compiler::ClosureExpressionId{
+                static_cast<std::uint32_t>(index)};
+            const auto &entry = _closure_plan.entry(id);
+            if (!entry.reachable) {
+                continue;
+            }
+            const auto operation = closures[index].operation;
+            const auto principled =
+                operation == compiler::ClosureOperation::principled;
             _capabilities.may_emit |=
-                closure.operation ==
-                    compiler::ClosureOperation::emission ||
-                closure.operation ==
-                    compiler::ClosureOperation::principled;
+                operation == compiler::ClosureOperation::emission ||
+                (principled && has_principled_feature(
+                                   entry,
+                                   compiler::PrincipledClosureFeature::emission));
             _capabilities.may_be_transparent |=
-                closure.operation ==
-                    compiler::ClosureOperation::transparent ||
-                closure.operation ==
-                    compiler::ClosureOperation::principled;
+                operation == compiler::ClosureOperation::transparent ||
+                (principled && has_principled_feature(
+                                   entry,
+                                   compiler::PrincipledClosureFeature::alpha));
             _capabilities.may_have_subsurface |=
-                closure.operation ==
-                    compiler::ClosureOperation::principled ||
-                closure.operation ==
-                    compiler::ClosureOperation::subsurface;
+                operation == compiler::ClosureOperation::subsurface ||
+                (principled &&
+                 (has_principled_feature(
+                      entry,
+                      compiler::PrincipledClosureFeature::thick_subsurface) ||
+                  has_principled_feature(
+                      entry,
+                      compiler::PrincipledClosureFeature::thin_subsurface)));
         }
         _capabilities.emission_is_constant =
+            !_capabilities.may_emit ||
             _program->emission_evaluation() !=
-            compiler::EmissionEvaluationMode::deferred;
+                compiler::EmissionEvaluationMode::deferred;
         _capabilities.may_have_volume = _program->volume_root().valid();
         if (_program->displacement_root().valid()) {
             _displacement_dependency_mask = value_dependency_mask(
