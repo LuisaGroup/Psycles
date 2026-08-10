@@ -1233,3 +1233,89 @@ instruction cloning is 0.71%, resolver hash-map insertion is 0.45%, and
 callable destruction is 0.27%. The full pointer legalizer has only 0.58%
 unattributed self time, so the next target is clone-time value resolution,
 not another speculative rewrite of its local preflight.
+
+## Versioned dense inline clone layouts
+
+The following Luisa checkpoint removes the per-call node-based value and
+block maps from the prevalidated selected-call path. For an immutable callee
+definition, let its local value domain be
+
+```text
+L(f) = arguments(f) union owned_blocks(f) union owned_instructions(f).
+```
+
+The pass constructs one bijection `N: L(f) -> [0, |L(f)|)` per callee version.
+The lookup table is open-addressed at at most one-half load: one exact key
+vector owns each `Value *` once, while a power-of-two `uint32_t` slot array
+stores `N(value) + 1` and reserves zero as the empty sentinel. Collisions use
+linear probing with exact pointer equality, so hash collisions cannot merge
+values. Construction rejects a duplicate key, an overflowing table size, or a
+definition whose measured value count changed after preflight.
+
+Each application stores only two dense arrays indexed by `N`: the resolved
+`Value *` and an explicit mapped byte. The byte is required to preserve the
+original partial-map semantics even if a mapping's value is null. Formally,
+
+```text
+M(x) is defined  iff  mapped[N(x)] != 0
+M(x)              =  resolved[N(x)]
+```
+
+is an isomorphism from the former hash map to the dense state. `emplace`
+retains first-writer-wins behavior. `resolve` still returns globals unchanged,
+returns null for an unresolved block, creates and memoizes a typed undefined
+for another unresolved local, and uses the original node map for a value
+outside `L(f)`. That last total fallback preserves behavior on malformed
+cross-function local references; valid production IR records zero fallbacks.
+
+The same immutable layout stores the callee's reverse-postorder blocks and a
+dense reachability bit. Multi-block cloning therefore no longer rebuilds a
+reachable-block set or a second `old block -> new block` map for each call:
+new blocks are entered directly into the value resolver, and entry/Phi target
+resolution uses the same `N`. This is exact set membership, including the
+existing disconnected-owned-block shells.
+
+The prior version frontier remains the safety boundary. A layout is created
+only for a prepared callee that has not previously been mutated as a caller.
+Once a function enters the monotone mutated set, later uses of it as a callee
+take the complete generic validation and resolver path; a stale dense ID is
+never consulted.
+
+Regressions require one 67-value layout to serve all 32 calls to a shared
+single-block function, one seven-value layout to preserve multi-block RPO and
+block metadata, and exactly one dense application before the existing nested
+callee mutation forces generic revalidation. A malformed unowned typed value
+must take exactly one fallback and emerge as a verifier-valid undefined value.
+
+Two non-profiled cold Lone Monk runs are under
+`/var/tmp/psycles-inline-dense-resolver-20260810/` and
+`/var/tmp/psycles-inline-dense-resolver-r2-20260810/`, against
+`/var/tmp/psycles-inline-use-scc-20260810/`:
+
+| Boundary | Node maps | Dense layouts | Change |
+| --- | ---: | ---: | ---: |
+| Layout functions / local values | per call / not reported | 3 / 403,864 | shared across 7 calls |
+| Valid-production resolver fallbacks | not applicable | 0 | exact dense domain |
+| `inline-spirv-pointer-args` | 1,515.62 ms | 1,362.63--1,380.19 ms | -9.0% to -10.1% |
+| Ordinary `inline` (not yet targeted) | 689.71 ms | 688.41--708.58 ms | run noise |
+| SPIR-V XIR legalization | 10,511.51 ms | 10,230.47--10,744.33 ms | CPU-run variance |
+| Native AST-to-SPIR-V | 23,696.24 ms | 23,725.32--24,188.34 ms | later-stage variance |
+| Complete shader JIT | 23.8657 s | 23.8969--24.3567 s | later-stage variance |
+| Process wall time | 25.86 s | 25.91--26.35 s | effectively unchanged |
+| Peak RSS | 1,658,696 KiB | 1,657,408--1,658,500 KiB | effectively unchanged |
+| Raw SPIR-V | 1,431,985 words | 1,431,985 words | identical size |
+| Optimized SPIR-V | 1,116,158 words | 1,116,158 words | identical size |
+
+The PPM and linear Combined hashes remain respectively
+`3ff6c5463ace13c0f26a735ac1af2bb96ab8a9ba1cb4398359cf2466f63a4d1b` and
+`4f93bceff43a46a086454e9a50745a497b39cd27e8a694f617a5c934fe3ed3eb`.
+
+The post-change profile is under
+`/var/tmp/psycles-inline-dense-resolver-perf-20260810/`; all 103,201 cycle
+samples were retained. The selected-call subtree falls from 1.86% to 1.30%
+inclusive. Actual multi-block cloning is 0.83%, removed callable destruction
+is 0.26%, and the one-time layout lookup/construction path is 0.21%. Dense
+resolver insertion is only 0.01% and node-map insertion is absent from this
+subtree. The next local opportunity is to use the same versioned layout in the
+ordinary inline pass; beyond that, instruction/User construction rather than
+value resolution is the clone-time limit.
