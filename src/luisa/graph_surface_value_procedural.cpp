@@ -1,4 +1,5 @@
 #include "graph_surface_internal.h"
+#include "surface_shader_table_evaluation.h"
 
 #include <psycles/luisa/cycles_noise.h>
 #include <luisa/dsl/sugar.h>
@@ -10,47 +11,27 @@ namespace {
 
 namespace operand = compiler::value_operand;
 
-// Variable-length node tables are material data. Keeping both the element
-// count and payload address in the runtime parameter block prevents Luisa and
-// backend compilers from specializing/unrolling the graph by authored table
-// cardinality. Official Cycles-style sampled tables use direct indexed reads;
-// the loop is only for the legacy control-point representation.
-class RuntimeShaderTable {
+inline constexpr std::uint64_t color_ramp_constant_bit = 1u;
+inline constexpr std::uint64_t color_ramp_sampled_bit = 2u;
+inline constexpr std::uint64_t rgb_curve_sampled_bit = 1u;
 
-private:
-    const ShaderServices &_services;
-    UInt _offset;
-    UInt _count;
-    UInt _width;
-
-public:
-    RuntimeShaderTable(
-        const ShaderServices &services,
-        const SurfacePoint &point,
-        compiler::ParameterId parameter) noexcept
-        : _services{services} {
-        auto descriptor = services
-                              .parameter_float3(
-                                  point.parameter_block,
-                                  parameter.value)
-                              .template bitcast<luisa::uint3>();
-        _offset = descriptor.x;
-        _count = descriptor.y;
-        _width = descriptor.z;
-    }
-
-    [[nodiscard]] UInt count() const noexcept {
-        return _count;
-    }
-
-    [[nodiscard]] Float read(
-        Expr<std::uint32_t> element,
-        std::uint32_t component) const noexcept {
-        return _services.parameter_float(
-            0u,
-            _offset + element * _width + component);
-    }
-};
+// Variable-length node tables are material data. The descriptor keeps payload
+// cardinality out of shader structure; sampled and legacy representations are
+// selected from immutable instruction metadata while recording the graph.
+[[nodiscard]] SurfaceShaderTableView shader_table_view(
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    compiler::ParameterId parameter) noexcept {
+    const auto descriptor = services
+                                .parameter_float3(
+                                    point.parameter_block,
+                                    parameter.value)
+                                .template bitcast<luisa::uint3>();
+    return {
+        .offset = descriptor.x,
+        .count = descriptor.y,
+        .width = descriptor.z};
+}
 
 [[nodiscard]] bool supports_procedural_value(
     compiler::ValueOperation operation) noexcept {
@@ -392,224 +373,71 @@ public:
                     break;
                 }
                 case compiler::ValueOperation::color_ramp: {
-                    auto factor = scalar(
+                    const auto factor = scalar(
                         instruction.operand(operand::color_ramp::factor),
                         result);
-                    Float3 color = make_float3(0.0f);
-                    Float alpha = 1.0f;
-                    RuntimeShaderTable table{
-                        services, point, instruction.parameter};
-                    auto count = table.count();
-                    if ((instruction.static_u0 & 2u) != 0u) {
-                        $if (count >= 2u) {
-                            auto last = count - 1u;
-                            auto scaled =
-                                clamp(factor, 0.0f, 1.0f) *
-                                cast<float>(last);
-                            auto index = min(cast<uint>(scaled), last);
-                            auto t = scaled - cast<float>(index);
-                            auto sampled = make_float4(
-                                table.read(index, 0u),
-                                table.read(index, 1u),
-                                table.read(index, 2u),
-                                table.read(index, 3u));
-                            if ((instruction.static_u0 & 1u) == 0u) {
-                                auto next_index = min(index + 1u, last);
-                                auto next = make_float4(
-                                    table.read(next_index, 0u),
-                                    table.read(next_index, 1u),
-                                    table.read(next_index, 2u),
-                                    table.read(next_index, 3u));
-                                sampled = select(
-                                    sampled,
-                                    lerp(sampled, next, t),
-                                    t > 0.0f);
-                            }
-                            color = sampled.xyz();
-                            alpha = sampled.w;
-                        };
+                    const auto table = shader_table_view(
+                        services, point, instruction.parameter);
+                    const auto sampled =
+                        (instruction.static_u0 &
+                         color_ramp_sampled_bit) != 0u;
+                    const auto constant =
+                        (instruction.static_u0 &
+                         color_ramp_constant_bit) != 0u;
+                    Float4 ramp;
+                    if (sampled && constant) {
+                        ramp = color_ramp_sampled_constant(
+                            services, table, factor);
+                    } else if (sampled) {
+                        ramp = color_ramp_sampled_linear(
+                            services, table, factor);
+                    } else if (constant) {
+                        ramp = color_ramp_control_constant(
+                            services, table, factor);
                     } else {
-                        $if (count != 0u) {
-                            color = make_float3(
-                                table.read(0u, 1u),
-                                table.read(0u, 2u),
-                                table.read(0u, 3u));
-                            alpha = table.read(0u, 4u);
-                            UInt element = 1u;
-                            $while (element < count) {
-                                auto previous = element - 1u;
-                                auto p0 = table.read(previous, 0u);
-                                auto p1 = table.read(element, 0u);
-                                auto t = clamp(
-                                    (factor - p0) /
-                                        max(p1 - p0, 1.0e-20f),
-                                    0.0f,
-                                    1.0f);
-                                if ((instruction.static_u0 & 1u) != 0u) {
-                                    t = 0.0f;
-                                }
-                                auto c0 = make_float3(
-                                    table.read(previous, 1u),
-                                    table.read(previous, 2u),
-                                    table.read(previous, 3u));
-                                auto c1 = make_float3(
-                                    table.read(element, 1u),
-                                    table.read(element, 2u),
-                                    table.read(element, 3u));
-                                auto a0 = table.read(previous, 4u);
-                                auto a1 = table.read(element, 4u);
-                                auto use = factor >= p0;
-                                color = select(
-                                    color, lerp(c0, c1, t), use);
-                                alpha = select(
-                                    alpha, lerp(a0, a1, t), use);
-                                element += 1u;
-                            };
-                            auto last = count - 1u;
-                            auto use_last =
-                                factor >= table.read(last, 0u);
-                            color = select(
-                                color,
-                                make_float3(
-                                    table.read(last, 1u),
-                                    table.read(last, 2u),
-                                    table.read(last, 3u)),
-                                use_last);
-                            alpha = select(
-                                alpha,
-                                table.read(last, 4u),
-                                use_last);
-                        };
+                        ramp = color_ramp_control_linear(
+                            services, table, factor);
                     }
                     value =
                         instruction.static_u1 != 0u
-                            ? make_float4(alpha)
-                            : make_float4(color, alpha);
+                            ? make_float4(ramp.w)
+                            : ramp;
                     break;
                 }
                 case compiler::ValueOperation::rgb_curve: {
-                    auto input = vector(
+                    const auto input = vector(
                         instruction.operand(operand::rgb_curve::color),
                         result);
-                    auto factor = scalar(
+                    const auto factor = scalar(
                         instruction.operand(operand::rgb_curve::factor),
                         result);
-                    Float3 mapped = input;
-                    RuntimeShaderTable table{
-                        services, point, instruction.parameter};
-                    auto count = table.count();
-                    if ((instruction.static_u0 & 1u) != 0u) {
-                        $if (count >= 2u) {
-                            const auto component =
-                                [&](Expr<std::uint32_t> index,
-                                    std::uint32_t channel) {
-                                    return table.read(index, channel);
-                                };
-                            const auto lookup =
-                                [&](Float coordinate,
-                                    std::uint32_t channel) {
-                                    auto last = count - 1u;
-                                    auto scaled =
-                                        clamp(
-                                            coordinate,
-                                            0.0f,
-                                            1.0f) *
-                                        cast<float>(last);
-                                    auto index = min(
-                                        cast<uint>(scaled), last);
-                                    auto t =
-                                        scaled - cast<float>(index);
-                                    auto sampled = component(index, channel);
-                                    auto next = component(
-                                        min(index + 1u, last), channel);
-                                    sampled = select(
-                                        sampled,
-                                        lerp(sampled, next, t),
-                                        t > 0.0f);
-                                    $if (scalar(
-                                             instruction.operand(
-                                                 operand::rgb_curve::extrapolate),
-                                             result) != 0.0f) {
-                                        auto first = component(0u, channel);
-                                        auto second = component(1u, channel);
-                                        auto final_value = component(
-                                            last, channel);
-                                        auto previous = component(
-                                            last - 1u, channel);
-                                        auto below =
-                                            first +
-                                            (first - second) *
-                                                (-coordinate) *
-                                                cast<float>(last);
-                                        auto above =
-                                            final_value +
-                                            (final_value - previous) *
-                                                (coordinate - 1.0f) *
-                                                cast<float>(last);
-                                        sampled = select(
-                                            sampled,
-                                            below,
-                                            coordinate < 0.0f);
-                                        sampled = select(
-                                            sampled,
-                                            above,
-                                            coordinate > 1.0f);
-                                    };
-                                    return sampled;
-                                };
-                            const auto range =
-                                scalar(
-                                    instruction.operand(
-                                        operand::rgb_curve::max_x),
-                                    result) -
-                                scalar(
-                                    instruction.operand(
-                                        operand::rgb_curve::min_x),
-                                    result);
-                            auto relative =
-                                (input -
-                                 scalar(
-                                     instruction.operand(
-                                         operand::rgb_curve::min_x),
-                                     result)) /
-                                range;
-                            mapped = make_float3(
-                                lookup(relative.x, 0u),
-                                lookup(relative.y, 1u),
-                                lookup(relative.z, 2u));
-                        };
+                    const auto table = shader_table_view(
+                        services, point, instruction.parameter);
+                    Float3 mapped;
+                    if ((instruction.static_u0 &
+                         rgb_curve_sampled_bit) != 0u) {
+                        mapped = rgb_curve_sampled(
+                            services,
+                            table,
+                            input,
+                            factor,
+                            scalar(
+                                instruction.operand(
+                                    operand::rgb_curve::min_x),
+                                result),
+                            scalar(
+                                instruction.operand(
+                                    operand::rgb_curve::max_x),
+                                result),
+                            scalar(
+                                instruction.operand(
+                                    operand::rgb_curve::extrapolate),
+                                result));
                     } else {
-                        $if (count >= 2u) {
-                            mapped = make_float3(0.0f);
-                            UInt element = 1u;
-                            $while (element < count) {
-                                auto previous = element - 1u;
-                                auto x0 = table.read(previous, 0u);
-                                auto x1 = table.read(element, 0u);
-                                auto t = clamp(
-                                    (input - x0) /
-                                        max(x1 - x0, 1.0e-20f),
-                                    make_float3(0.0f),
-                                    make_float3(1.0f));
-                                auto y0 = make_float3(
-                                    table.read(previous, 1u),
-                                    table.read(previous, 2u),
-                                    table.read(previous, 3u));
-                                auto y1 = make_float3(
-                                    table.read(element, 1u),
-                                    table.read(element, 2u),
-                                    table.read(element, 3u));
-                                mapped = select(
-                                    mapped,
-                                    lerp(y0, y1, t),
-                                    input >= x0);
-                                element += 1u;
-                            };
-                        };
+                        mapped = rgb_curve_control(
+                            services, table, input, factor);
                     }
-                    value = make_float4(
-                        lerp(input, mapped, factor),
-                        1.0f);
+                    value = make_float4(mapped, 1.0f);
                     break;
                 }
                 case compiler::ValueOperation::separate_r:
