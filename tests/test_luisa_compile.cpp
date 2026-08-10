@@ -656,7 +656,7 @@ void write_preparation(
 [[nodiscard]] XirShape principled_family_xir_shape(
     const ShaderCompiler &compiler,
     PrincipledClosureFeatureMask features,
-    bool shared_dielectric_setup = false,
+    bool shared_closure_setup = false,
     std::size_t topology_copies = 1u) {
     const auto shader = compiler.compile(
         make_closure_plan_shape_graph());
@@ -705,7 +705,7 @@ void write_preparation(
             scalar_parameters,
             vector_parameters,
             nullptr,
-            shared_dielectric_setup ? &closure_setup : nullptr};
+            shared_closure_setup ? &closure_setup : nullptr};
         const auto point = make_preparation_point();
         write_preparation(
             output,
@@ -773,6 +773,27 @@ void report_principled_family_xir_costs(
               << repeated_inline.instructions
               << ", shared=" << repeated_shared.instructions
               << ", loops=" << repeated_shared.loops << '\n';
+    const auto metallic_inline = principled_family_xir_shape(
+        compiler, metallic | dielectric, false);
+    const auto metallic_shared = principled_family_xir_shape(
+        compiler, metallic | dielectric, true);
+    const auto repeated_metallic_inline = principled_family_xir_shape(
+        compiler,
+        metallic | dielectric,
+        false,
+        repeated_topology_count);
+    const auto repeated_metallic_shared = principled_family_xir_shape(
+        compiler,
+        metallic | dielectric,
+        true,
+        repeated_topology_count);
+    std::cout << "Principled family XIR metallic+dielectric: inline="
+              << metallic_inline.instructions
+              << ", shared=" << metallic_shared.instructions << '\n';
+    std::cout << "Principled family XIR 4x metallic+dielectric: inline="
+              << repeated_metallic_inline.instructions
+              << ", shared=" << repeated_metallic_shared.instructions
+              << ", loops=" << repeated_metallic_shared.loops << '\n';
 }
 
 [[nodiscard]] bool shared_principled_setup_reduces_xir(
@@ -791,6 +812,22 @@ void report_principled_family_xir_costs(
     // definition, argument packing, and call result projection. This rejects
     // an extraction whose fixed ABI/body cost is no smaller than the repeated
     // inline physical setup it replaces.
+    return inline_shape.loops == shared_shape.loops &&
+           shared_shape.instructions < inline_shape.instructions;
+}
+
+[[nodiscard]] bool shared_principled_metallic_reduces_xir(
+    const ShaderCompiler &compiler) {
+    const auto features =
+        principled_closure_feature_bit(
+            PrincipledClosureFeature::metallic) |
+        principled_closure_feature_bit(
+            PrincipledClosureFeature::dielectric);
+    constexpr auto repeated_topology_count = std::size_t{4u};
+    const auto inline_shape = principled_family_xir_shape(
+        compiler, features, false, repeated_topology_count);
+    const auto shared_shape = principled_family_xir_shape(
+        compiler, features, true, repeated_topology_count);
     return inline_shape.loops == shared_shape.loops &&
            shared_shape.instructions < inline_shape.instructions;
 }
@@ -1194,6 +1231,10 @@ int main() {
             shader_compiler)) {
         return 9;
     }
+    if (!shared_principled_metallic_reduces_xir(
+            shader_compiler)) {
+        return 10;
+    }
 
     Kernel1D sampler_kernel = [](
                                   BufferFloat4 table,
@@ -1221,5 +1262,5 @@ int main() {
                 rng_hash,
                 dimension));
     };
-    return sampler_kernel.function() ? 0 : 10;
+    return sampler_kernel.function() ? 0 : 11;
 }

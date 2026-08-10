@@ -1,6 +1,7 @@
 #include "path_tracer_surface_closure_setup.h"
 #include "principled_base_component.h"
 #include "principled_diffuse_component.h"
+#include "principled_metallic_component.h"
 
 #include <psycles/luisa/cycles_bsdf_tables.h>
 
@@ -98,8 +99,17 @@ constexpr std::uint32_t diffuse_direct_offset =
     dielectric_record_count;
 constexpr std::uint32_t diffuse_callable_offset =
     diffuse_direct_offset + diffuse_records_per_result;
-constexpr std::uint32_t records_per_case =
+constexpr std::uint32_t metallic_records_per_result = 7u;
+constexpr std::uint32_t metallic_direct_offset =
     diffuse_callable_offset + diffuse_records_per_result;
+constexpr std::uint32_t metallic_callable_offset =
+    metallic_direct_offset + metallic_records_per_result;
+constexpr std::uint32_t metallic_energy_direct_offset =
+    metallic_callable_offset + metallic_records_per_result;
+constexpr std::uint32_t metallic_energy_callable_offset =
+    metallic_energy_direct_offset + metallic_records_per_result;
+constexpr std::uint32_t records_per_case =
+    metallic_energy_callable_offset + metallic_records_per_result;
 
 void write_result(
     const BufferFloat4 &output,
@@ -126,6 +136,26 @@ void write_diffuse_result(
     output->write(
         base + 1u,
         make_float4(result.sample_weight, 0.0f, 0.0f, 0.0f));
+}
+
+void write_metallic_result(
+    const BufferFloat4 &output,
+    UInt base,
+    const PrincipledMetallicSetupResult &result) noexcept {
+    output->write(
+        base,
+        make_float4(result.weight, result.allocation_weight));
+    output->write(
+        base + 1u,
+        make_float4(result.albedo, result.sample_weight));
+    output->write(base + 2u, make_float4(result.normal, 0.0f));
+    output->write(base + 3u, make_float4(result.color, 0.0f));
+    output->write(
+        base + 4u, make_float4(result.specular_tint, 0.0f));
+    output->write(
+        base + 5u, make_float4(result.evaluation_scale, 0.0f));
+    output->write(
+        base + 6u, make_float4(result.lower_weight, 0.0f));
 }
 
 [[nodiscard]] bool finite(luisa::float4 value) noexcept {
@@ -223,14 +253,54 @@ int main(int argc, char **argv) {
             output,
             base + diffuse_callable_offset,
             callable_provider.principled_diffuse(diffuse_input));
+        const auto evaluate_metallic =
+            [&](bool preserve_ggx_energy,
+                std::uint32_t direct_offset,
+                std::uint32_t callable_offset) noexcept {
+                const auto input = PrincipledMetallicSetupInput{
+                    .lower_weight = lower_weight,
+                    .color = diffuse_input.color,
+                    .normal = glossy_normal,
+                    .incoming = incoming,
+                    .surface_shading_normal =
+                        make_float3(0.0f, 0.0f, 1.0f),
+                    .surface_geometric_normal =
+                        make_float3(0.0f, 0.0f, 1.0f),
+                    .specular_tint = specular_tint,
+                    .roughness = roughness,
+                    .metallic = select(
+                        0.68f, 8.0e-6f, case_index == 1u),
+                    .use_bump_map_correction = case_index == 5u,
+                    .preserve_ggx_energy = preserve_ggx_energy};
+                write_metallic_result(
+                    output,
+                    base + direct_offset,
+                    setup_principled_metallic(
+                        direct_services,
+                        populate_principled_metallic(input),
+                        reflective_caustics));
+                write_metallic_result(
+                    output,
+                    base + callable_offset,
+                    callable_provider.principled_metallic(
+                        input, reflective_caustics));
+            };
+        evaluate_metallic(
+            false,
+            metallic_direct_offset,
+            metallic_callable_offset);
+        evaluate_metallic(
+            true,
+            metallic_energy_direct_offset,
+            metallic_energy_callable_offset);
     };
 
-    // Diffuse has one canonical body. Dielectric has one callable per
-    // immutable energy-preservation specialization. Each must be shared by
-    // every invocation in the kernel. This is an AST-shape guard; the device
-    // comparison below guards each typed ABI and numerical result.
-    if (compare.function()->function().custom_callables().size() != 3u) {
-        std::cerr << "Principled setup callable reuse regression: expected 3 "
+    // Diffuse has one canonical body. Metallic and dielectric each have one
+    // callable per immutable energy-preservation specialization. Each must
+    // be shared by every invocation in the kernel. This is an AST-shape
+    // guard; the device comparison below checks the typed ABIs and results.
+    if (compare.function()->function().custom_callables().size() != 5u) {
+        std::cerr << "Principled setup callable reuse regression: expected 5 "
                      "definitions, got "
                   << compare.function()->function().custom_callables().size()
                   << '\n';
@@ -286,7 +356,15 @@ int main(int argc, char **argv) {
             !compare_pair(case_index,
                           diffuse_direct_offset,
                           diffuse_callable_offset,
-                          diffuse_records_per_result)) {
+                          diffuse_records_per_result) ||
+            !compare_pair(case_index,
+                          metallic_direct_offset,
+                          metallic_callable_offset,
+                          metallic_records_per_result) ||
+            !compare_pair(case_index,
+                          metallic_energy_direct_offset,
+                          metallic_energy_callable_offset,
+                          metallic_records_per_result)) {
             return EXIT_FAILURE;
         }
     }

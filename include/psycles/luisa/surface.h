@@ -361,6 +361,32 @@ struct SurfaceClosureRecord {
 // material topologies. Inputs remain Luisa expressions produced by the
 // authored shader graph; the host Boolean is immutable topology metadata.
 // No material value is evaluated or serialized on the host.
+struct PrincipledMetallicSetupInput {
+    Float3 lower_weight;
+    Float3 color;
+    Float3 normal;
+    Float3 incoming;
+    Float3 surface_shading_normal;
+    Float3 surface_geometric_normal;
+    Float3 specular_tint;
+    Float roughness;
+    Float metallic;
+    Bool use_bump_map_correction;
+    bool preserve_ggx_energy{};
+};
+
+struct PrincipledMetallicSetupResult {
+    Float3 weight;
+    Float allocation_weight;
+    Float sample_weight;
+    Float3 albedo;
+    Float3 normal;
+    Float3 color;
+    Float3 specular_tint;
+    Float3 evaluation_scale;
+    Float3 lower_weight;
+};
+
 struct PrincipledDiffuseSetupInput {
     Float3 lower_weight;
     Float3 color;
@@ -403,6 +429,11 @@ class SurfaceClosureSetupProvider {
 
 public:
     virtual ~SurfaceClosureSetupProvider() noexcept = default;
+
+    [[nodiscard]] virtual PrincipledMetallicSetupResult
+    principled_metallic(
+        const PrincipledMetallicSetupInput &input,
+        Expr<bool> reflective_caustics) const noexcept = 0;
 
     [[nodiscard]] virtual PrincipledDiffuseSetupResult
     principled_diffuse(
