@@ -445,6 +445,28 @@ public:
         Expr<bool> reflective_caustics) const noexcept = 0;
 };
 
+// Host-stage semantic boundary for pure color-space transforms shared across
+// independently lowered shader graphs. Implementations receive and return
+// typed Luisa expressions; no device-side opcode, weak register protocol, or
+// host-evaluated material value crosses this interface.
+class SurfaceColorTransformProvider {
+
+public:
+    virtual ~SurfaceColorTransformProvider() noexcept = default;
+
+    [[nodiscard]] virtual Float3 rgb_to_hsv(
+        Float3 rgb) const noexcept = 0;
+
+    [[nodiscard]] virtual Float3 hsv_to_rgb(
+        Float3 hsv) const noexcept = 0;
+
+    [[nodiscard]] virtual Float3 rgb_to_hsl(
+        Float3 rgb) const noexcept = 0;
+
+    [[nodiscard]] virtual Float3 hsl_to_rgb(
+        Float3 hsl) const noexcept = 0;
+};
+
 // Non-owning host-stage view of a canonical closure's Luisa expressions.
 // Copying this type only copies AST expression handles: it neither declares
 // device variables nor evaluates, serializes, or bakes material data. This is
@@ -696,6 +718,14 @@ public:
     // Standalone GraphSurface clients keep the exact inline implementation.
     [[nodiscard]] virtual const SurfaceClosureSetupProvider *
     surface_closure_setup_provider() const noexcept {
+        return nullptr;
+    }
+
+    // Production integrations may share the finite family of pure color
+    // transforms across material topologies. A null provider preserves the
+    // canonical inline GraphSurface path for standalone clients.
+    [[nodiscard]] virtual const SurfaceColorTransformProvider *
+    surface_color_transform_provider() const noexcept {
         return nullptr;
     }
 

@@ -101,7 +101,7 @@ public:
       // intentionally not clamped.
       auto color = vector(
           instruction.operand(operand::hue_saturation::color), result);
-      auto adjusted = rgb_to_hsv(color);
+      auto adjusted = rgb_to_hsv(services, color);
       adjusted.x = fract(
           adjusted.x +
           scalar(instruction.operand(operand::hue_saturation::hue), result) +
@@ -117,7 +117,7 @@ public:
               1.0f);
       adjusted.z *= scalar(
           instruction.operand(operand::hue_saturation::value), result);
-      adjusted = hsv_to_rgb(adjusted);
+      adjusted = hsv_to_rgb(services, adjusted);
       auto factor = scalar(
           instruction.operand(operand::hue_saturation::factor), result);
       value = make_float4(max(lerp(color, adjusted, factor), make_float3(0.0f)),

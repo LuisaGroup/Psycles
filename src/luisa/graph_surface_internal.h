@@ -9,6 +9,7 @@
 #include <psycles/luisa/surface.h>
 
 #include "graph_surface_value_expression.h"
+#include "surface_color_transforms.h"
 
 #include <luisa/core/stl/vector.h>
 
@@ -216,14 +217,22 @@ template <typename Id, typename Values>
     std::uint32_t z_size) noexcept;
 [[nodiscard]] Float3 safe_normalize(
     Float3 value, Float3 fallback) noexcept;
-[[nodiscard]] Float3 rgb_to_hsv(Float3 rgb) noexcept;
-[[nodiscard]] Float3 hsv_to_rgb(Float3 hsv) noexcept;
-[[nodiscard]] Float3 rgb_to_hsl(Float3 rgb) noexcept;
-[[nodiscard]] Float3 hsl_to_rgb(Float3 hsl) noexcept;
+[[nodiscard]] Float3 rgb_to_hsv(
+    const ShaderServices &services, Float3 rgb) noexcept;
+[[nodiscard]] Float3 hsv_to_rgb(
+    const ShaderServices &services, Float3 hsv) noexcept;
+[[nodiscard]] Float3 rgb_to_hsl(
+    const ShaderServices &services, Float3 rgb) noexcept;
+[[nodiscard]] Float3 hsl_to_rgb(
+    const ShaderServices &services, Float3 hsl) noexcept;
 [[nodiscard]] Float3 separate_color(
-    Float3 color, std::uint64_t mode) noexcept;
+    const ShaderServices &services,
+    Float3 color,
+    std::uint64_t mode) noexcept;
 [[nodiscard]] Float3 combine_color(
-    Float3 channels, std::uint64_t mode) noexcept;
+    const ShaderServices &services,
+    Float3 channels,
+    std::uint64_t mode) noexcept;
 
 [[nodiscard]] Float fresnel_dielectric_cos(
     Float cosine, Float eta) noexcept;
