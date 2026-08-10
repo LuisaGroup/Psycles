@@ -1319,3 +1319,87 @@ resolver insertion is only 0.01% and node-map insertion is absent from this
 subtree. The next local opportunity is to use the same versioned layout in the
 ordinary inline pass; beyond that, instruction/User construction rather than
 value resolution is the clone-time limit.
+
+## Ordinary inline version state and invariant caller barriers
+
+The ordinary inline pass now uses the same exact local numbering without
+extending a layout across a function-definition version. Immediately before
+processing the call sites of a leaf callee `f`, the pass constructs one
+summary `S(f, v)` for its current definition version `v`. The dense clone
+layout is built lazily only after one call passes all call-specific checks,
+and every other call to that unchanged callee shares it. If inlining an
+earlier leaf mutates a function that is later used as a callee, that later
+leaf is summarized and numbered only in the following fixed-point step, after
+the mutation. No stale local value number can cross the version boundary.
+
+The remaining repeated caller scan had a stronger invariant. Define the two
+barrier predicates used by the pass as `B0(f)` (autodiff scopes forbidden) and
+`B1(f)` (autodiff scopes allowed). A successful inline transition only removes
+the call, splits or moves existing caller instructions, and inserts a clone of
+a callee already proven to contain none of the classified barriers. Thus, for
+either policy `p`,
+
+```text
+Bp(caller after inline) = Bp(caller before inline) OR Bp(callee)
+                        = Bp(caller before inline).
+```
+
+This permits one exact `(B0, B1)` scan per caller for the complete pass
+invocation, even while that caller grows. It does not permit caching any other
+caller summary. A caller that already contains a barrier remains blocked for
+multi-block inlining; single-block inlining can remove calls but inserts only
+barrier-free instructions, so it also preserves the predicate.
+
+The regressions make both lifetime rules observable. Three calls to one
+32-operation single-block callee require one 35-value layout and three dense
+applications. In an `inner -> middle -> kernel` chain, `middle` is summarized
+and numbered only after `inner` has been inserted into it, requiring two
+current-version summaries and two layouts. Finally, three multi-block calls
+into a caller with exactly 72 initial instructions require one caller scan and
+two cache hits, although each successful call mutates the caller before the
+next query. All three end in verifier-valid IR with zero dense resolver
+fallbacks.
+
+The production kernel reports eight current-version summaries covering
+497,460 instructions, eight layouts covering 500,671 local values, and 13
+dense applications with zero valid-IR fallbacks. Six of those applications
+are multi-block calls: their caller barrier work is exactly one scan of
+683,297 instructions plus five cache hits. The two matched cold runs are under
+`/var/tmp/psycles-inline-caller-barrier-r1-20260810/` and
+`/var/tmp/psycles-inline-caller-barrier-r2-20260810/`, compared with the two
+ordinary-dense runs immediately before the invariant cache:
+
+| Boundary | Versioned ordinary layouts | + caller barrier invariant | Change |
+| --- | ---: | ---: | ---: |
+| Ordinary `inline` | 543.01--555.69 ms | 341.02--344.72 ms | -36.5% to -38.6% |
+| SPIR-V XIR legalization | 10.033--10.085 s | 9.769--9.794 s | -2.4% to -3.1% |
+| Native AST-to-SPIR-V | 23.229--23.321 s | 22.867--22.912 s | -1.4% to -1.9% |
+| Complete shader JIT | 23.398--23.490 s | 23.035--23.078 s | -1.4% to -1.9% |
+| Process wall time | 25.36--25.43 s | 25.02--25.06 s | -1.2% to -1.6% |
+| Peak RSS | 1,657,720--1,657,992 KiB | 1,657,584--1,659,036 KiB | effectively unchanged |
+| Raw SPIR-V | 1,431,985 words | 1,431,985 words | identical size |
+| Optimized SPIR-V | 1,116,158 words | 1,116,158 words | identical size |
+
+Both PPMs and linear Combined outputs are byte-identical, with SHA-256
+respectively
+`3ff6c5463ace13c0f26a735ac1af2bb96ab8a9ba1cb4398359cf2466f63a4d1b`
+and
+`4f93bceff43a46a086454e9a50745a497b39cd27e8a694f617a5c934fe3ed3eb`.
+A no-loss 881,000-sample full-process profile records the complete cached
+caller-barrier query at 0.03% self and multi-block cloning at 0.05% self; the
+former repeated whole-caller scan no longer appears as an independent
+hotspot. That profile includes a cache-cold RADV compile and is used only for
+hotspot attribution, not wall-time comparison.
+
+The complete all-thread Luisa build passes. `unit_xir` passes 48/48 tests,
+all 21 SPIR-V tests pass, the focused pointer suite passes 21/21 tests with
+188 assertions, and the system-STL XIR pass suite passes 362/362 tests with
+2,210 assertions. The RX 9070 XT native Vulkan route passes 92/92 tests with
+2,096 assertions. The Psycles production target and both matched renders also
+use system STL.
+
+These host-pass changes deliberately leave the generated kernel size
+unchanged. The next work therefore measures AST/XIR function and instruction
+counts, callable/closure reachability and graph-topology reuse, and runtime
+bounce-loop structure independently of pass time; a faster traversal is not
+evidence that renderer kernel bloat has been fixed.
