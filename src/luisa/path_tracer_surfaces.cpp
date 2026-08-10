@@ -3,6 +3,7 @@
 #include "path_tracer_shader_services.h"
 #include "path_tracer_surface_closure_evaluation.h"
 #include "path_tracer_surface_closure_sampling.h"
+#include "path_tracer_surface_closure_setup.h"
 
 #include <psycles/luisa/surface_closure_operations.h>
 
@@ -18,8 +19,10 @@ SurfaceCallables make_surface_callables(
         make_surface_closure_evaluation_callable(scene);
     const auto closure_sampling =
         make_surface_closure_sampling_callables(scene);
+    const auto closure_setup =
+        make_surface_closure_setup_callables();
     SurfacePreparationCallable preparation =
-        [scene](
+        [scene, closure_setup](
             BufferFloat scalar_parameters,
             BufferFloat3 vector_parameters,
             BufferFloat cycles_bsdf_tables,
@@ -28,6 +31,9 @@ SurfaceCallables make_surface_callables(
             UInt surface_tag,
             Var<SurfacePointCall> packed_point,
             Var<SurfacePreparationQueryCall> packed_query) noexcept {
+            CallableSurfaceClosureSetupProvider setup_provider{
+                cycles_bsdf_tables,
+                closure_setup};
             BufferShaderServices services{
                 scalar_parameters,
                 vector_parameters,
@@ -37,7 +43,8 @@ SurfaceCallables make_surface_callables(
                 scene->attribute_binding_slot,
                 scene->attribute_range_slot,
                 scene->nishita_texture_bindings,
-                scene->shader_color_space};
+                scene->shader_color_space,
+                &setup_provider};
             return pack_surface_preparation(
                 scene->surfaces.prepare(
                     surface_tag,
@@ -45,8 +52,9 @@ SurfaceCallables make_surface_callables(
                     unpack_surface_point(packed_point),
                     unpack_surface_preparation_query(packed_query)));
         };
+    preparation.set_name("surface_prepare");
     SurfaceEvaluateLightCallable evaluate_light =
-        [scene, closure_evaluation](
+        [scene, closure_evaluation, closure_setup](
             BufferFloat scalar_parameters,
             BufferFloat3 vector_parameters,
             BufferFloat cycles_bsdf_tables,
@@ -61,6 +69,9 @@ SurfaceCallables make_surface_callables(
             Bool reflective_caustics,
             Bool refractive_caustics,
             UInt shader_flags) noexcept {
+            CallableSurfaceClosureSetupProvider setup_provider{
+                cycles_bsdf_tables,
+                closure_setup};
             BufferShaderServices services{
                 scalar_parameters,
                 vector_parameters,
@@ -70,7 +81,8 @@ SurfaceCallables make_surface_callables(
                 scene->attribute_binding_slot,
                 scene->attribute_range_slot,
                 scene->nishita_texture_bindings,
-                scene->shader_color_space};
+                scene->shader_color_space,
+                &setup_provider};
             auto query = SurfaceLightQuery{
                 .surface = {
                     .lobe_mask = lobe_mask,
@@ -113,6 +125,7 @@ SurfaceCallables make_surface_callables(
                 visitor));
             return pack_surface_evaluation(visitor.result());
         };
+    evaluate_light.set_name("surface_evaluate_light");
     SurfaceEmissionCallable emission =
         [scene](
             BufferFloat scalar_parameters,
@@ -141,6 +154,7 @@ SurfaceCallables make_surface_callables(
                 outgoing,
                 reflective_caustics);
         };
+    emission.set_name("surface_emission");
     SurfaceConstantEmissionCallable constant_emission =
         [scene](
             BufferFloat scalar_parameters,
@@ -155,8 +169,12 @@ SurfaceCallables make_surface_callables(
                 services,
                 parameter_block);
         };
+    constant_emission.set_name("surface_constant_emission");
     SurfaceSampleCallable sample =
-        [scene, closure_sampling, closure_evaluation](
+        [scene,
+         closure_sampling,
+         closure_evaluation,
+         closure_setup](
             BufferFloat scalar_parameters,
             BufferFloat3 vector_parameters,
             BufferFloat cycles_bsdf_tables,
@@ -171,6 +189,9 @@ SurfaceCallables make_surface_callables(
             Float glossy_filter_roughness,
             Bool reflective_caustics,
             Bool refractive_caustics) noexcept {
+            CallableSurfaceClosureSetupProvider setup_provider{
+                cycles_bsdf_tables,
+                closure_setup};
             BufferShaderServices services{
                 scalar_parameters,
                 vector_parameters,
@@ -180,7 +201,8 @@ SurfaceCallables make_surface_callables(
                 scene->attribute_binding_slot,
                 scene->attribute_range_slot,
                 scene->nishita_texture_bindings,
-                scene->shader_color_space};
+                scene->shader_color_space,
+                &setup_provider};
             auto query = SurfaceQuery{
                 .lobe_mask = lobe_mask,
                 .transport_mode = transport_mode,
@@ -209,8 +231,9 @@ SurfaceCallables make_surface_callables(
                 false)
                                            .sample);
         };
+    sample.set_name("surface_sample");
     SurfaceClosureTraceCallable closure_trace =
-        [scene, closure_identity](
+        [scene, closure_identity, closure_setup](
             BufferFloat scalar_parameters,
             BufferFloat3 vector_parameters,
             BufferFloat cycles_bsdf_tables,
@@ -221,6 +244,9 @@ SurfaceCallables make_surface_callables(
             UInt requested_index,
             Bool reflective_caustics,
             Bool refractive_caustics) noexcept {
+            CallableSurfaceClosureSetupProvider setup_provider{
+                cycles_bsdf_tables,
+                closure_setup};
             BufferShaderServices services{
                 scalar_parameters,
                 vector_parameters,
@@ -230,7 +256,8 @@ SurfaceCallables make_surface_callables(
                 scene->attribute_binding_slot,
                 scene->attribute_range_slot,
                 scene->nishita_texture_bindings,
-                scene->shader_color_space};
+                scene->shader_color_space,
+                &setup_provider};
             const auto point =
                 unpack_surface_point(packed_point);
             SurfaceClosureTraceVisitor visitor{
@@ -247,8 +274,12 @@ SurfaceCallables make_surface_callables(
                 visitor));
             return pack_surface_closure_trace(visitor.result());
         };
+    closure_trace.set_name("surface_closure_trace");
     SurfaceSampleTraceCallable sample_trace =
-        [scene, closure_sampling, closure_evaluation](
+        [scene,
+         closure_sampling,
+         closure_evaluation,
+         closure_setup](
             BufferFloat scalar_parameters,
             BufferFloat3 vector_parameters,
             BufferFloat cycles_bsdf_tables,
@@ -263,6 +294,9 @@ SurfaceCallables make_surface_callables(
             Float glossy_filter_roughness,
             Bool reflective_caustics,
             Bool refractive_caustics) noexcept {
+            CallableSurfaceClosureSetupProvider setup_provider{
+                cycles_bsdf_tables,
+                closure_setup};
             BufferShaderServices services{
                 scalar_parameters,
                 vector_parameters,
@@ -272,7 +306,8 @@ SurfaceCallables make_surface_callables(
                 scene->attribute_binding_slot,
                 scene->attribute_range_slot,
                 scene->nishita_texture_bindings,
-                scene->shader_color_space};
+                scene->shader_color_space,
+                &setup_provider};
             auto query = SurfaceQuery{
                 .lobe_mask = lobe_mask,
                 .transport_mode = transport_mode,
@@ -303,8 +338,9 @@ SurfaceCallables make_surface_callables(
                     query,
                     true));
         };
+    sample_trace.set_name("surface_sample_trace");
     SurfaceBssrdfNormalCallable bssrdf_normal =
-        [scene](
+        [scene, closure_setup](
             BufferFloat scalar_parameters,
             BufferFloat3 vector_parameters,
             BufferFloat cycles_bsdf_tables,
@@ -314,6 +350,9 @@ SurfaceCallables make_surface_callables(
             Var<SurfacePointCall> packed_point,
             Bool reflective_caustics,
             Bool refractive_caustics) noexcept {
+            CallableSurfaceClosureSetupProvider setup_provider{
+                cycles_bsdf_tables,
+                closure_setup};
             BufferShaderServices services{
                 scalar_parameters,
                 vector_parameters,
@@ -323,7 +362,8 @@ SurfaceCallables make_surface_callables(
                 scene->attribute_binding_slot,
                 scene->attribute_range_slot,
                 scene->nishita_texture_bindings,
-                scene->shader_color_space};
+                scene->shader_color_space,
+                &setup_provider};
             const auto point =
                 unpack_surface_point(packed_point);
             SurfaceBssrdfNormalVisitor visitor{
@@ -338,6 +378,7 @@ SurfaceCallables make_surface_callables(
                 visitor));
             return Float3{visitor.result()};
         };
+    bssrdf_normal.set_name("surface_bssrdf_normal");
     SurfaceShadingNormalCallable shading_normal =
         [scene](
             BufferFloat scalar_parameters,
@@ -362,6 +403,7 @@ SurfaceCallables make_surface_callables(
                 services,
                 unpack_surface_point(packed_point));
         };
+    shading_normal.set_name("surface_shading_normal");
     return {
         std::move(preparation),
         std::move(evaluate_light),

@@ -207,19 +207,27 @@ private:
     bool _transparent{};
     std::size_t *_transparent_recordings{};
     std::size_t *_subsurface_recordings{};
+    bool _emissive{};
+    std::size_t *_emission_recordings{};
 
 public:
     CompileProbeSurface(
         bool transparent,
         std::size_t *transparent_recordings,
-        std::size_t *subsurface_recordings) noexcept
+        std::size_t *subsurface_recordings,
+        bool emissive = false,
+        std::size_t *emission_recordings = nullptr) noexcept
         : _transparent{transparent},
           _transparent_recordings{transparent_recordings},
-          _subsurface_recordings{subsurface_recordings} {}
+          _subsurface_recordings{subsurface_recordings},
+          _emissive{emissive},
+          _emission_recordings{emission_recordings} {}
 
     [[nodiscard]] SurfaceCapabilities capabilities()
         const noexcept override {
-        return {.may_be_transparent = _transparent};
+        return {
+            .may_emit = _emissive,
+            .may_be_transparent = _transparent};
     }
 
     [[nodiscard]] SurfaceClosureCollection collect_closures(
@@ -275,6 +283,17 @@ public:
             ++*_transparent_recordings;
         }
         return make_float3(_transparent ? 0.5f : 0.0f);
+    }
+
+    [[nodiscard]] Float3 emission(
+        const ShaderServices &,
+        const SurfacePoint &,
+        Expr<luisa::float3>,
+        Expr<bool>) const noexcept override {
+        if (_emission_recordings != nullptr) {
+            ++*_emission_recordings;
+        }
+        return make_float3(_emissive ? 1.0f : 0.0f);
     }
 };
 
@@ -647,6 +666,42 @@ void write_preparation(
            conservative.instructions;
 }
 
+[[nodiscard]] bool closure_plan_refines_surface_capabilities(
+    const ShaderCompiler &compiler) {
+    const auto shader = compiler.compile(
+        make_closure_plan_shape_graph());
+    if (!shader.ok()) {
+        throw std::runtime_error{
+            "closure-plan capability fixture failed graph validation"};
+    }
+    const auto lowered = compile_surface_program(*shader.program);
+    if (!lowered.ok()) {
+        throw std::runtime_error{
+            "closure-plan capability fixture failed surface lowering"};
+    }
+    const auto binding = bind_surface_parameters(
+        *lowered.program, *shader.program);
+    if (!binding.ok()) {
+        throw std::runtime_error{
+            "closure-plan capability fixture failed parameter binding"};
+    }
+    const GraphSurface conservative{lowered.program};
+    const GraphSurface specialized{
+        lowered.program,
+        analyze_surface_closure_plan(
+            *lowered.program,
+            *binding.parameters)};
+    const auto conservative_caps = conservative.capabilities();
+    const auto specialized_caps = specialized.capabilities();
+    return conservative_caps.may_emit &&
+           conservative_caps.may_be_transparent &&
+           conservative_caps.may_have_subsurface &&
+           !specialized_caps.may_emit &&
+           specialized_caps.emission_is_constant &&
+           !specialized_caps.may_be_transparent &&
+           !specialized_caps.may_have_subsurface;
+}
+
 [[nodiscard]] bool preparation_graph_is_fused(
     const ShaderCompiler &compiler) {
     const auto shader = compiler.compile(make_preparation_graph());
@@ -851,6 +906,15 @@ int main() {
     static_cast<void>(
         subsurface_surfaces.create<CompileProbeSurface>(
             false, nullptr, &subsurface_recordings));
+    std::size_t nonemissive_recordings = 0u;
+    std::size_t emissive_recordings = 0u;
+    SurfaceDispatch emission_surfaces;
+    static_cast<void>(
+        emission_surfaces.create<CompileProbeSurface>(
+            false, nullptr, nullptr, false, &nonemissive_recordings));
+    static_cast<void>(
+        emission_surfaces.create<CompileProbeSurface>(
+            false, nullptr, nullptr, true, &emissive_recordings));
     const luisa::vector<luisa::uint> surface_bssrdf_bump_tags{1u};
 
     Kernel1D kernel = [&]() noexcept {
@@ -929,6 +993,12 @@ int main() {
                 dispatch_x() % 2u,
                 services,
                 point);
+        const auto emission = emission_surfaces.emission(
+            dispatch_x() % 2u,
+            services,
+            point,
+            point.incoming,
+            true);
         CompileProbeCollector subsurface_collector;
         const auto subsurface =
             subsurface_surfaces.collect_bssrdf_bump_closures(
@@ -941,13 +1011,16 @@ int main() {
                 subsurface_collector);
         device_assert(evaluation.pdf >= 0.0f);
         device_assert(all(transparent >= 0.0f));
+        device_assert(all(emission >= 0.0f));
         device_assert(all(subsurface.shading_normal == point.shading_normal));
     };
     if (!kernel.function() ||
         opaque_transparency_recordings != 0u ||
         transparent_transparency_recordings != 1u ||
         opaque_subsurface_recordings != 0u ||
-        subsurface_recordings != 1u) {
+        subsurface_recordings != 1u ||
+        nonemissive_recordings != 0u ||
+        emissive_recordings != 1u) {
         return 3;
     }
     if (!attribute_lookup_cfg_is_bounded()) {
@@ -961,6 +1034,9 @@ int main() {
     }
     if (!closure_plan_reduces_xir(shader_compiler)) {
         return 7;
+    }
+    if (!closure_plan_refines_surface_capabilities(shader_compiler)) {
+        return 8;
     }
 
     Kernel1D sampler_kernel = [](

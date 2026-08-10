@@ -287,7 +287,8 @@ void test_cycles_surface_bssrdf_metadata() {
 
 [[nodiscard]] ShaderGraph make_closure_plan_principled(
     float alpha, float sheen, float coat, float metallic, float transmission,
-    float subsurface, bool thin_wall, float subsurface_scale = 1.0f) {
+    float subsurface, bool thin_wall, float subsurface_scale = 1.0f,
+    psycles::Vec3f emission_color = {}, float emission_strength = 1.0f) {
     ShaderGraph graph;
     const auto principled =
         graph.add_node(node_type::principled_bsdf, "Closure-plan Principled");
@@ -309,6 +310,10 @@ void test_cycles_surface_bssrdf_metadata() {
                             SocketValue::floating(subsurface_scale)) &&
             graph.set_input(principled, "ThinWall",
                             SocketValue::boolean(thin_wall)) &&
+            graph.set_input(principled, "EmissionColor",
+                            SocketValue::color(emission_color)) &&
+            graph.set_input(principled, "EmissionStrength",
+                            SocketValue::floating(emission_strength)) &&
             graph.set_input(principled, "IOR", SocketValue::floating(1.45f)) &&
             graph.set_input(principled, "SpecularIORLevel",
                             SocketValue::floating(0.5f)),
@@ -363,7 +368,8 @@ void test_surface_closure_plan() {
                 feature(base, PrincipledClosureFeature::dielectric) &&
                 !feature(base, PrincipledClosureFeature::thick_subsurface) &&
                 !feature(base, PrincipledClosureFeature::thin_subsurface) &&
-                feature(base, PrincipledClosureFeature::diffuse),
+                feature(base, PrincipledClosureFeature::diffuse) &&
+                !feature(base, PrincipledClosureFeature::emission),
             "direct zero Principled sockets did not remove physical lobe code");
 
     const auto [thin_shader, thin_program] = compile(
@@ -387,7 +393,8 @@ void test_surface_closure_plan() {
             feature(combined, PrincipledClosureFeature::dielectric) &&
             !feature(combined, PrincipledClosureFeature::thick_subsurface) &&
             feature(combined, PrincipledClosureFeature::thin_subsurface) &&
-            feature(combined, PrincipledClosureFeature::diffuse),
+            feature(combined, PrincipledClosureFeature::diffuse) &&
+            !feature(combined, PrincipledClosureFeature::emission),
         "same-topology parameter union lost reachable thin Principled lobes");
 
     const auto [thick_shader, thick_program] = compile(
@@ -406,6 +413,33 @@ void test_surface_closure_plan() {
                 feature(both, PrincipledClosureFeature::thick_subsurface) &&
                 feature(both, PrincipledClosureFeature::thin_subsurface),
             "same topology did not union mutually exclusive thick/thin lobes");
+
+    const auto [emitting_shader, emitting_program] = compile(
+        make_closure_plan_principled(
+            1.0f,
+            0.0f,
+            0.0f,
+            0.0f,
+            0.0f,
+            0.0f,
+            false,
+            1.0f,
+            psycles::Vec3f{0.25f, 0.5f, 1.0f},
+            2.0f));
+    require(emitting_program->structure_signature() ==
+                base_program->structure_signature(),
+            "Principled emission literals changed reusable topology");
+    const auto emitting_binding =
+        bind_surface_parameters(*base_program, *emitting_shader);
+    require(emitting_binding.ok(),
+            "failed to bind emitting closure plan");
+    auto emission_union = analyze_surface_closure_plan(
+        *base_program, *base_binding.parameters);
+    emission_union.merge(analyze_surface_closure_plan(
+        *base_program, *emitting_binding.parameters));
+    require(feature(principled_entry(*base_program, emission_union),
+                    PrincipledClosureFeature::emission),
+            "same-topology plans did not retain reachable Principled emission");
 
     ShaderGraph linked_graph;
     const auto zero =
@@ -429,6 +463,46 @@ void test_surface_closure_plan() {
         feature(principled_entry(*linked_program, linked_plan),
                 PrincipledClosureFeature::sheen),
         "linked numerical zero was incorrectly host-folded from closure plan");
+
+    ShaderGraph linked_emission_graph;
+    const auto linked_zero_color = linked_emission_graph.add_node(
+        node_type::constant_color, "Linked zero emission color");
+    const auto linked_emission_principled = linked_emission_graph.add_node(
+        node_type::principled_bsdf, "Linked emission closure-plan Principled");
+    require(
+        linked_emission_graph.set_input(
+            linked_zero_color,
+            "Color",
+            SocketValue::color({0.0f, 0.0f, 0.0f})) &&
+            linked_emission_graph.set_input(
+                linked_emission_principled,
+                "EmissionStrength",
+                SocketValue::floating(1.0f)) &&
+            linked_emission_graph.connect(
+                {.node = linked_zero_color, .socket = "Color"},
+                linked_emission_principled,
+                "EmissionColor"),
+        "failed to configure linked emission closure plan");
+    linked_emission_graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{
+            .node = linked_emission_principled,
+            .socket = "Closure"});
+    const auto [linked_emission_shader, linked_emission_program] =
+        compile(linked_emission_graph);
+    const auto linked_emission_binding = bind_surface_parameters(
+        *linked_emission_program, *linked_emission_shader);
+    require(linked_emission_binding.ok(),
+            "failed to bind linked emission closure plan");
+    require(
+        feature(
+            principled_entry(
+                *linked_emission_program,
+                analyze_surface_closure_plan(
+                    *linked_emission_program,
+                    *linked_emission_binding.parameters)),
+            PrincipledClosureFeature::emission),
+        "linked numerical zero was incorrectly removed from emission plan");
 
     const auto [thin_zero_scale_shader, thin_zero_scale_program] =
         compile(make_closure_plan_principled(1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.25f,

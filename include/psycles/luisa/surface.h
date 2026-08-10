@@ -357,6 +357,47 @@ struct SurfaceClosureRecord {
     }
 };
 
+// Typed multistage boundary for physical closure setup shared across
+// material topologies. Inputs remain Luisa expressions produced by the
+// authored shader graph; the host Boolean is immutable topology metadata.
+// No material value is evaluated or serialized on the host.
+struct PrincipledDielectricSetupInput {
+    Float3 lower_weight;
+    Float3 normal;
+    Float3 incoming;
+    Float3 surface_shading_normal;
+    Float3 surface_geometric_normal;
+    Float roughness;
+    Float ior;
+    Float specular_ior_level;
+    Float3 specular_tint;
+    Bool use_bump_map_correction;
+    bool preserve_ggx_energy{};
+};
+
+struct PrincipledDielectricSetupResult {
+    Float3 weight;
+    Float allocation_weight;
+    Float sample_weight;
+    Float3 albedo;
+    Float3 normal;
+    Float3 color;
+    Float ior;
+    Float3 evaluation_scale;
+    Float3 lower_weight;
+};
+
+class SurfaceClosureSetupProvider {
+
+public:
+    virtual ~SurfaceClosureSetupProvider() noexcept = default;
+
+    [[nodiscard]] virtual PrincipledDielectricSetupResult
+    principled_dielectric(
+        const PrincipledDielectricSetupInput &input,
+        Expr<bool> reflective_caustics) const noexcept = 0;
+};
+
 // Non-owning host-stage view of a canonical closure's Luisa expressions.
 // Copying this type only copies AST expression handles: it neither declares
 // device variables nor evaluates, serializes, or bakes material data. This is
@@ -603,6 +644,13 @@ class ShaderServices : public SurfaceParameterServices {
 
 public:
     ~ShaderServices() noexcept override = default;
+
+    // Path-tracer integrations may provide shared typed setup callables.
+    // Standalone GraphSurface clients keep the exact inline implementation.
+    [[nodiscard]] virtual const SurfaceClosureSetupProvider *
+    surface_closure_setup_provider() const noexcept {
+        return nullptr;
+    }
 
     [[nodiscard]] virtual Float4 texture_2d(
         Expr<std::uint32_t> handle,
@@ -976,13 +1024,31 @@ public:
         Expr<luisa::float3> wo,
         Expr<bool> reflective_caustics) const noexcept {
         Float3 result = make_float3(0.0f);
-        _surfaces.dispatch(tag, [&](const Surface *surface) noexcept {
-            result = surface->emission(
-                services,
-                point,
-                wo,
-                reflective_caustics);
-        });
+        luisa::vector<luisa::uint> emissive_tags;
+        emissive_tags.reserve(_surfaces.size());
+        for (auto index = std::size_t{0u};
+             index < _surfaces.size();
+             ++index) {
+            if (_surfaces.impl(index)
+                    ->capabilities()
+                    .may_emit) {
+                emissive_tags.emplace_back(
+                    static_cast<luisa::uint>(index));
+            }
+        }
+        if (!emissive_tags.empty()) {
+            _surfaces.dispatch_group_with_default(
+                tag,
+                emissive_tags,
+                [&](const Surface *surface) noexcept {
+                    result = surface->emission(
+                        services,
+                        point,
+                        wo,
+                        reflective_caustics);
+                },
+                []() noexcept {});
+        }
         return result;
     }
 

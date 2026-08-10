@@ -282,6 +282,37 @@ namespace {
         return result;
     }
 
+    // Principled emission is multiplied by the closure's lower layer
+    // weight. Alpha above proved the only host-visible zero lower weight;
+    // sheen and coat remain device expressions and may only attenuate it.
+    // A direct zero in either multiplicand proves the emission unreachable.
+    // Linked and non-finite inputs deliberately remain conservative.
+    const auto *emission_color = direct_color(
+        program,
+        parameters,
+        closure.emission_color,
+        closure.source_node);
+    const auto *emission_strength = direct_float(
+        program,
+        parameters,
+        closure.emission_strength,
+        closure.source_node);
+    const auto color_proven_zero =
+        emission_color != nullptr &&
+        std::isfinite(emission_color->x) &&
+        std::isfinite(emission_color->y) &&
+        std::isfinite(emission_color->z) &&
+        emission_color->x == 0.0f &&
+        emission_color->y == 0.0f &&
+        emission_color->z == 0.0f;
+    const auto strength_proven_zero =
+        emission_strength != nullptr &&
+        std::isfinite(*emission_strength) &&
+        *emission_strength == 0.0f;
+    if (!color_proven_zero && !strength_proven_zero) {
+        result |= feature(PrincipledClosureFeature::emission);
+    }
+
     const auto *sheen_weight = direct_float(
         program, parameters, closure.sheen_weight, closure.source_node);
     const auto *sheen_tint = direct_color(

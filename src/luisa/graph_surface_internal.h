@@ -232,6 +232,8 @@ template <typename Id, typename Values>
 [[nodiscard]] Float fresnel_dielectric_fss(Float eta) noexcept;
 [[nodiscard]] AdjustedIor adjusted_ior(
     const TracedClosure &closure) noexcept;
+[[nodiscard]] AdjustedIor adjusted_ior(
+    Float ior, Float specular_ior_level) noexcept;
 [[nodiscard]] Float3 generalized_dielectric_fresnel(
     Float cosine, Float eta, Float3 f0) noexcept;
 [[nodiscard]] Float3 fresnel_f82_b(Float3 f0, Float3 tint) noexcept;
@@ -247,6 +249,11 @@ template <typename Id, typename Values>
     Float3 shading_normal) noexcept;
 [[nodiscard]] GgxEnergy ggx_energy(const ShaderServices &services,
     const TracedClosure &closure,
+    Float incoming_cosine,
+    Float3 fss) noexcept;
+[[nodiscard]] GgxEnergy ggx_energy(const ShaderServices &services,
+    Float roughness,
+    bool preserve_ggx_energy,
     Float incoming_cosine,
     Float3 fss) noexcept;
 [[nodiscard]] Float closure_sample_weight(

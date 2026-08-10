@@ -72,19 +72,24 @@ template<typename Closure>
 }
 
 [[nodiscard]] AdjustedIor adjusted_ior(
-    const TracedClosure &closure) noexcept {
-    auto original_eta = max(closure.ior, 1.0e-5f);
+    Float ior, Float specular_ior_level) noexcept {
+    auto original_eta = max(ior, 1.0e-5f);
     auto original_f0 = f0_from_ior(original_eta);
     auto adjusted_f0 =
-        original_f0 * (2.0f * max(closure.specular_ior_level, 0.0f));
+        original_f0 * (2.0f * max(specular_ior_level, 0.0f));
     auto eta_from_adjusted = ior_from_f0(adjusted_f0);
     eta_from_adjusted = select(eta_from_adjusted,
         1.0f / max(eta_from_adjusted, 1.0e-20f),
         original_eta < 1.0f);
-    auto should_adjust = closure.specular_ior_level != 0.5f;
+    auto should_adjust = specular_ior_level != 0.5f;
     return {
         .eta = select(original_eta, eta_from_adjusted, should_adjust),
         .f0 = select(original_f0, adjusted_f0, should_adjust)};
+}
+
+[[nodiscard]] AdjustedIor adjusted_ior(
+    const TracedClosure &closure) noexcept {
+    return adjusted_ior(closure.ior, closure.specular_ior_level);
 }
 
 [[nodiscard]] Float3 generalized_dielectric_fresnel(
@@ -168,15 +173,16 @@ template<typename Closure>
 }
 
 [[nodiscard]] GgxEnergy ggx_energy(const ShaderServices &services,
-    const TracedClosure &closure,
+    Float roughness,
+    bool preserve_ggx_energy,
     Float incoming_cosine,
     Float3 fss) noexcept {
-    if (!closure.preserve_ggx_energy) {
+    if (!preserve_ggx_energy) {
         return {.darkening = make_float3(1.0f),
             .energy_scale = make_float3(1.0f)};
     }
 
-    auto roughness = clamp(closure.roughness, 0.0f, 1.0f);
+    roughness = clamp(roughness, 0.0f, 1.0f);
     auto energy = max(cycles_table_2d(services,
                           roughness,
                           incoming_cosine,
@@ -197,6 +203,17 @@ template<typename Closure>
         (make_float3(1.0f) + fms * missing_factor) / energy_scale;
     return {.darkening = darkening,
         .energy_scale = make_float3(energy_scale)};
+}
+
+[[nodiscard]] GgxEnergy ggx_energy(const ShaderServices &services,
+    const TracedClosure &closure,
+    Float incoming_cosine,
+    Float3 fss) noexcept {
+    return ggx_energy(services,
+        closure.roughness,
+        closure.preserve_ggx_energy,
+        incoming_cosine,
+        fss);
 }
 
 [[nodiscard]] Float closure_sample_weight(

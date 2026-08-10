@@ -31,7 +31,10 @@ namespace psycles::luisa_backend::detail {
                 compiler::ClosureOperation::emission) {
                 result += closure.weight;
             } else if (closure.operation ==
-                       compiler::ClosureOperation::principled) {
+                           compiler::ClosureOperation::principled &&
+                       (closure.principled_features &
+                        compiler::principled_closure_feature_bit(
+                            compiler::PrincipledClosureFeature::emission)) != 0u) {
                 result += principled_layers
                               .evaluate_emission(
                                   closure,
