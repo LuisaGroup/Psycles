@@ -1,4 +1,5 @@
 #include "graph_surface_internal.h"
+#include "surface_normal_map.h"
 
 #include <luisa/dsl/sugar.h>
 
@@ -62,17 +63,23 @@ public:
                 named_tangent.value.w;
             tangent_attribute_found = named_tangent.found;
         }
-        const auto transform_object_normal =
-            [&](Float3 object_normal) noexcept {
-                return safe_normalize(
-                    point.normal_to_world_x *
-                            object_normal.x +
-                        point.normal_to_world_y *
-                            object_normal.y +
-                        point.normal_to_world_z *
-                            object_normal.z,
-                    point.shading_normal);
-            };
+        SurfaceNormalMapInput input{
+            .mapped = mapped,
+            .strength = strength,
+            .object_tangent = object_tangent,
+            .tangent_sign = tangent_sign,
+            .tangent_attribute_found = tangent_attribute_found,
+            .object_shading_normal = point.object_shading_normal,
+            .undisplaced_object_shading_normal =
+                point.undisplaced_object_shading_normal,
+            .triangle_smooth = point.triangle_smooth,
+            .normal_to_world_x = point.normal_to_world_x,
+            .normal_to_world_y = point.normal_to_world_y,
+            .normal_to_world_z = point.normal_to_world_z,
+            .shading_normal = point.shading_normal,
+            .back_facing = point.back_facing,
+            .geometry_index = point.geometry_index,
+            .is_curve = point.is_curve};
         Float3 world;
         if (space ==
             compiler::NormalMapSpace::tangent) {
@@ -83,72 +90,11 @@ public:
             // the tangent frame. ORIGINAL deliberately keeps the raw saved
             // attribute for smooth triangles because its strength is blended
             // in world space afterwards.
-            auto object_base = safe_normalize(
-                point.object_shading_normal,
-                make_float3(0.0f));
-            Bool linear_interpolate_strength = false;
-            if (!displaced_base) {
-                // ATTR_STD_NORMAL_UNDISPLACED is used only for smooth
-                // triangles. Cycles deliberately retains current Ng for a
-                // flat triangle even when the tangent frame is ORIGINAL.
-                object_base = select(
-                    object_base,
-                    point.undisplaced_object_shading_normal,
-                    point.triangle_smooth);
-                linear_interpolate_strength =
-                    point.triangle_smooth;
-            }
-            const auto object_base_length_squared =
-                length_squared(object_base);
-            const auto object_base_available =
-                object_base_length_squared >
-                1.0e-20f;
-            $if(!linear_interpolate_strength) {
-                mapped.x *= strength;
-                mapped.y *= strength;
-                mapped.z =
-                    1.0f +
-                    (mapped.z - 1.0f) *
-                        clamp(strength, 0.0f, 1.0f);
-            };
-            const auto object_bitangent =
-                tangent_sign *
-                cross(object_base, object_tangent);
-            const auto object_normal =
-                safe_normalize(
-                    object_tangent * mapped.x +
-                        object_bitangent * mapped.y +
-                        object_base * mapped.z,
-                    make_float3(0.0f));
-            world =
-                transform_object_normal(
-                    object_normal);
-            world = select(
-                world, -world, point.back_facing);
-            const auto linearly_blended =
-                safe_normalize(
-                    point.shading_normal +
-                        (world - point.shading_normal) *
-                            max(strength, 0.0f),
-                    point.shading_normal);
-            world = select(
-                world,
-                linearly_blended,
-                linear_interpolate_strength);
-            const auto tangent_available =
-                (point.geometry_index != ~0u) &
-                !point.is_curve &
-                tangent_attribute_found &
-                object_base_available &
-                (length_squared(
-                     object_tangent) >
-                 1.0e-20f) &
-                (abs(tangent_sign) >
-                 1.0e-20f);
-            world = select(
-                point.shading_normal,
-                world,
-                tangent_available);
+            world = displaced_base
+                        ? normal_map_tangent_displaced(
+                              services, input)
+                        : normal_map_tangent_original(
+                              services, input);
         } else {
             if (space ==
                     compiler::NormalMapSpace::
@@ -159,6 +105,7 @@ public:
                 mapped.y = -mapped.y;
                 mapped.z = -mapped.z;
             }
+            input.mapped = mapped;
             world =
                 space ==
                             compiler::NormalMapSpace::
@@ -166,20 +113,8 @@ public:
                         space ==
                             compiler::NormalMapSpace::
                                 blender_object ?
-                    transform_object_normal(mapped) :
-                    safe_normalize(
-                        mapped,
-                        point.shading_normal);
-            world = select(
-                world, -world, point.back_facing);
-            const auto nonnegative_strength =
-                max(strength, 0.0f);
-            world = safe_normalize(
-                point.shading_normal +
-                    (world -
-                     point.shading_normal) *
-                        nonnegative_strength,
-                point.shading_normal);
+                    normal_map_object(services, input) :
+                    normal_map_world(services, input);
         }
         return SurfaceValueExpression::from_vector(
             Expr<luisa::float3>{world.expression()});

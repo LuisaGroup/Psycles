@@ -498,6 +498,47 @@ public:
         Float3 scale) const noexcept = 0;
 };
 
+// Host-stage expression view for the finite Normal Map evaluation family.
+// Immutable graph metadata selects one strongly typed endpoint before shader
+// recording. This record gives those values semantic names; production
+// providers project only the fields required by the selected endpoint into its
+// narrow callable ABI, never a weak device-side register protocol.
+struct SurfaceNormalMapInput {
+    Float3 mapped;
+    Float strength;
+    Float3 object_tangent;
+    Float tangent_sign;
+    Bool tangent_attribute_found;
+    Float3 object_shading_normal;
+    Float3 undisplaced_object_shading_normal;
+    Bool triangle_smooth;
+    Float3 normal_to_world_x;
+    Float3 normal_to_world_y;
+    Float3 normal_to_world_z;
+    Float3 shading_normal;
+    Bool back_facing;
+    UInt geometry_index;
+    Bool is_curve;
+};
+
+class SurfaceNormalMapProvider {
+
+public:
+    virtual ~SurfaceNormalMapProvider() noexcept = default;
+
+    [[nodiscard]] virtual Float3 evaluate_tangent_displaced(
+        const SurfaceNormalMapInput &input) const noexcept = 0;
+
+    [[nodiscard]] virtual Float3 evaluate_tangent_original(
+        const SurfaceNormalMapInput &input) const noexcept = 0;
+
+    [[nodiscard]] virtual Float3 evaluate_object(
+        const SurfaceNormalMapInput &input) const noexcept = 0;
+
+    [[nodiscard]] virtual Float3 evaluate_world(
+        const SurfaceNormalMapInput &input) const noexcept = 0;
+};
+
 struct SurfaceShaderTableView {
     UInt offset;
     UInt count;
@@ -807,6 +848,11 @@ public:
 
     [[nodiscard]] virtual const SurfaceVectorMappingProvider *
     surface_vector_mapping_provider() const noexcept {
+        return nullptr;
+    }
+
+    [[nodiscard]] virtual const SurfaceNormalMapProvider *
+    surface_normal_map_provider() const noexcept {
         return nullptr;
     }
 
