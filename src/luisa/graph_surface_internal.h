@@ -10,6 +10,7 @@
 
 #include "graph_surface_value_expression.h"
 #include "surface_color_transforms.h"
+#include "surface_math.h"
 #include "surface_vector_mapping.h"
 
 #include <luisa/core/stl/vector.h>
@@ -216,8 +217,6 @@ template <typename Id, typename Values>
     std::uint32_t x_size,
     std::uint32_t y_size,
     std::uint32_t z_size) noexcept;
-[[nodiscard]] Float3 safe_normalize(
-    Float3 value, Float3 fallback) noexcept;
 [[nodiscard]] Float3 rgb_to_hsv(
     const ShaderServices &services, Float3 rgb) noexcept;
 [[nodiscard]] Float3 hsv_to_rgb(

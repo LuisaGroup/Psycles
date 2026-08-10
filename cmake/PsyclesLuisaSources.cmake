@@ -24,7 +24,9 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/thin_subsurface_component.cpp
     src/luisa/graph_surface_scattering.cpp
     src/luisa/graph_surface_state.cpp
+    src/luisa/surface_bump.cpp
     src/luisa/surface_color_transforms.cpp
+    src/luisa/surface_math.cpp
     src/luisa/surface_normal_map.cpp
     src/luisa/surface_shader_table_evaluation.cpp
     src/luisa/surface_vector_mapping.cpp
@@ -85,6 +87,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/adapter/blender_scene_json.cpp
     src/luisa/path_tracer.cpp
     src/luisa/path_tracer_camera.cpp
+    src/luisa/path_tracer_bump.cpp
     src/luisa/path_tracer_color_transforms.cpp
     src/luisa/path_tracer_normal_maps.cpp
     src/luisa/path_tracer_shader_tables.cpp

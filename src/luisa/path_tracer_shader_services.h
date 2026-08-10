@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cycles_texture_sampling.h"
+#include "path_tracer_bump.h"
 #include "path_tracer_color_transforms.h"
 #include "path_tracer_internal.h"
 #include "path_tracer_normal_maps.h"
@@ -68,6 +69,7 @@ private:
     const contract::ShaderColorSpace &_shader_color_space;
     const SurfaceClosureSetupProvider *_surface_closure_setup_provider{};
     const CallableTexture2DSamplingProvider *_texture_sampling_provider{};
+    CallableSurfaceBumpProvider _bump_provider;
     CallableSurfaceColorTransformProvider _color_transform_provider;
     CallableSurfaceVectorMappingProvider _vector_mapping_provider;
     CallableSurfaceNormalMapProvider _normal_map_provider;
@@ -111,6 +113,11 @@ public:
     [[nodiscard]] const SurfaceClosureSetupProvider *
     surface_closure_setup_provider() const noexcept override {
         return _surface_closure_setup_provider;
+    }
+
+    [[nodiscard]] const SurfaceBumpProvider *
+    surface_bump_provider() const noexcept override {
+        return &_bump_provider;
     }
 
     [[nodiscard]] const SurfaceColorTransformProvider *
