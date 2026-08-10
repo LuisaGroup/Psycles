@@ -1,0 +1,260 @@
+{
+  "commands": {
+    "cycles_cpu": {
+      "command": [
+        "/home/mike/Projects/blender-install-psycles-trace/blender",
+        "/home/mike/Downloads/lone-monk_cycles_and_exposure-node_demo.blend",
+        "--background",
+        "--python-exit-code",
+        "1",
+        "--python",
+        "/home/mike/Projects/Psycles/tools/render_cycles_golden.py",
+        "--",
+        "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/cycles/cpu.exr",
+        "1440",
+        "1080",
+        "256",
+        "--cycles-device",
+        "CPU",
+        "--device-name",
+        ""
+      ],
+      "log": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/logs/cycles-cpu.log",
+      "returncode": 0,
+      "wall_seconds": 72.63185281400001
+    },
+    "cycles_hip": {
+      "command": [
+        "/home/mike/Projects/blender-install-psycles-trace/blender",
+        "/home/mike/Downloads/lone-monk_cycles_and_exposure-node_demo.blend",
+        "--background",
+        "--python-exit-code",
+        "1",
+        "--python",
+        "/home/mike/Projects/Psycles/tools/render_cycles_golden.py",
+        "--",
+        "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/cycles/hip.exr",
+        "1440",
+        "1080",
+        "256",
+        "--cycles-device",
+        "HIP",
+        "--device-name",
+        "Radeon RX 9070 XT"
+      ],
+      "log": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/logs/cycles-hip.log",
+      "returncode": 0,
+      "wall_seconds": 19.785885174000214
+    },
+    "export": {
+      "reused": true
+    },
+    "psycles_fallback": {
+      "command": [
+        "/home/mike/Projects/Psycles/build/bin/psycles_render_blender_scene",
+        "/var/tmp/psycles-lone-monk-transmission-dbdcb17/export",
+        "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/psycles/fallback.ppm",
+        "fallback",
+        "1440",
+        "1080",
+        "256",
+        "8"
+      ],
+      "log": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/logs/psycles-fallback.log",
+      "returncode": 0,
+      "wall_seconds": 167.57409849600026
+    },
+    "psycles_hip": {
+      "command": [
+        "/home/mike/Projects/Psycles/build/bin/psycles_render_blender_scene",
+        "/var/tmp/psycles-lone-monk-transmission-dbdcb17/export",
+        "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/psycles/hip.ppm",
+        "hip",
+        "1440",
+        "1080",
+        "256",
+        "8"
+      ],
+      "log": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/logs/psycles-hip.log",
+      "returncode": 0,
+      "wall_seconds": 63.484046401999876
+    },
+    "psycles_vk": {
+      "command": [
+        "/home/mike/Projects/Psycles/build/bin/psycles_render_blender_scene",
+        "/var/tmp/psycles-lone-monk-transmission-dbdcb17/export",
+        "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/psycles/vk.ppm",
+        "vk",
+        "1440",
+        "1080",
+        "256",
+        "8"
+      ],
+      "log": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/logs/psycles-vk.log",
+      "returncode": 0,
+      "wall_seconds": 287.88864279100017
+    }
+  },
+  "comparisons": {
+    "cycles-cpu-vs-cycles-hip": {
+      "actual": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/cycles/cpu.exr",
+      "process_wall_seconds": 11.106263173000116,
+      "reference": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/cycles/hip.exr",
+      "report": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/comparisons/cycles-cpu-vs-cycles-hip/report.json"
+    },
+    "psycles-fallback-vs-cycles-cpu": {
+      "actual": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/psycles/fallback.exr",
+      "process_wall_seconds": 11.132726836999609,
+      "reference": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/cycles/cpu.exr",
+      "report": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/comparisons/psycles-fallback-vs-cycles-cpu/report.json"
+    },
+    "psycles-fallback-vs-cycles-hip": {
+      "actual": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/psycles/fallback.exr",
+      "process_wall_seconds": 11.061676547000388,
+      "reference": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/cycles/hip.exr",
+      "report": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/comparisons/psycles-fallback-vs-cycles-hip/report.json"
+    },
+    "psycles-hip-vs-cycles-cpu": {
+      "actual": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/psycles/hip.exr",
+      "process_wall_seconds": 11.101146781000352,
+      "reference": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/cycles/cpu.exr",
+      "report": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/comparisons/psycles-hip-vs-cycles-cpu/report.json"
+    },
+    "psycles-hip-vs-cycles-hip": {
+      "actual": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/psycles/hip.exr",
+      "process_wall_seconds": 11.059401625999271,
+      "reference": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/cycles/hip.exr",
+      "report": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/comparisons/psycles-hip-vs-cycles-hip/report.json"
+    },
+    "psycles-vk-vs-cycles-cpu": {
+      "actual": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/psycles/vk.exr",
+      "process_wall_seconds": 11.10194606100049,
+      "reference": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/cycles/cpu.exr",
+      "report": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/comparisons/psycles-vk-vs-cycles-cpu/report.json"
+    },
+    "psycles-vk-vs-cycles-hip": {
+      "actual": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/psycles/vk.exr",
+      "process_wall_seconds": 11.605901408000136,
+      "reference": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/cycles/hip.exr",
+      "report": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/comparisons/psycles-vk-vs-cycles-hip/report.json"
+    }
+  },
+  "compiler_tmp": "/var/tmp/psycles-compiler-tmp",
+  "matrix": {
+    "cycles": [
+      "cpu",
+      "hip"
+    ],
+    "psycles": [
+      "fallback",
+      "hip",
+      "vk"
+    ]
+  },
+  "relative_performance": {
+    "cycles_cpu": {
+      "slowdown_vs_cycles_hip": 3.7364812116348625,
+      "speedup_over_cycles_hip": 0.26763148089334543
+    },
+    "fallback": {
+      "slowdown_vs_cycles_cpu": 1.9781883784311418,
+      "slowdown_vs_cycles_hip": 7.391463709082397,
+      "speedup_over_cycles_cpu": 0.5055130294482258,
+      "speedup_over_cycles_hip": 0.13529120068211004
+    },
+    "hip": {
+      "slowdown_vs_cycles_cpu": 0.8043544774365974,
+      "slowdown_vs_cycles_hip": 3.0054553924362244,
+      "speedup_over_cycles_cpu": 1.243232962644662,
+      "speedup_over_cycles_hip": 0.33272827888801215
+    },
+    "vk": {
+      "slowdown_vs_cycles_cpu": 3.139488982793732,
+      "slowdown_vs_cycles_hip": 11.730641598343425,
+      "speedup_over_cycles_cpu": 0.3185231754214126,
+      "speedup_over_cycles_hip": 0.0852468291368835
+    }
+  },
+  "renderers": {
+    "cycles": {
+      "cpu": {
+        "device": [
+          {
+            "id": "CPU",
+            "name": "AMD Ryzen 9 9950X3D 16-Core Processor",
+            "type": "CPU"
+          }
+        ],
+        "metadata": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/cycles/cpu.json",
+        "metadata_sha256": "30e5786e345632b469cab225745af6a39c524c9dcf8948fd029589db2e1f6ad4",
+        "output": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/cycles/cpu.exr",
+        "process_wall_seconds": 72.63185281400001,
+        "render_seconds": 72.18372201400052,
+        "sha256": "90a850bb304d02dd530406dab06ed9d962579e4a38cab8a68a3e62643e8f2948"
+      },
+      "hip": {
+        "device": [
+          {
+            "id": "HIP_AMD Radeon RX 9070 XT_0000:03:00",
+            "name": "AMD Radeon RX 9070 XT",
+            "type": "HIP"
+          }
+        ],
+        "metadata": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/cycles/hip.json",
+        "metadata_sha256": "d40df70a0947d8d85924f9c16f48138127afcf51f9b75c60c68b6c0f17483fd6",
+        "output": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/cycles/hip.exr",
+        "process_wall_seconds": 19.785885174000214,
+        "render_seconds": 19.31863641900054,
+        "sha256": "a2fbe600fb4f317413c0b3c9ee148e20ee79e01c71a8de91b35abd360fd9a2e4"
+      }
+    },
+    "psycles": {
+      "fallback": {
+        "output": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/psycles/fallback.exr",
+        "process_wall_seconds": 167.57409849600026,
+        "render_seconds": 142.793,
+        "scene_compile_seconds": 1.69251,
+        "sha256": "49f9e21b3c13015432bd5c14e400db73067e7d1662884b2516a5109a76cbe9fb",
+        "shader_jit_seconds": 22.0529
+      },
+      "hip": {
+        "output": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/psycles/hip.exr",
+        "process_wall_seconds": 63.484046401999876,
+        "render_seconds": 58.0613,
+        "scene_compile_seconds": 4.21357,
+        "sha256": "80104227abb286f493efe1fcf98024a3f7c180f8feca3b0376f83b7e06cd8425",
+        "shader_jit_seconds": 0.146041
+      },
+      "vk": {
+        "output": "/var/tmp/psycles-lone-monk-speed-current-2fcdbce-1440x1080-256-all/psycles/vk.exr",
+        "process_wall_seconds": 287.88864279100017,
+        "render_seconds": 226.62,
+        "scene_compile_seconds": 1.68661,
+        "sha256": "b959187c0581536e3e3af5bcdfde947e6052c2bf9090d771704feecd5de74fee",
+        "shader_jit_seconds": 58.4686
+      }
+    }
+  },
+  "resume": {
+    "existing_manifest": false,
+    "requested": false,
+    "reused_stages": []
+  },
+  "scene": {
+    "blend": "/home/mike/Downloads/lone-monk_cycles_and_exposure-node_demo.blend",
+    "bundle": "/var/tmp/psycles-lone-monk-transmission-dbdcb17/export",
+    "geometry_bin_sha256": "c3ede8d3788d1cfe37414f1a15c5e17aa5f202dbd7fee5bed00e2ec789a85f4f",
+    "scene_json_sha256": "52df2652c0325d010d8cf890bdf5aa46145546591cfa1b091fc67c7a3bf2c164",
+    "sha256": "4250d4205d8d01cefd98c15e81021d6dead540b2923797378bf7b32e96e8b8f7"
+  },
+  "schema": "psycles.scene-benchmark.v1",
+  "settings": {
+    "cycles_gpu_device": "HIP",
+    "cycles_gpu_device_name": "Radeon RX 9070 XT",
+    "height": 1080,
+    "max_samples_per_dispatch": 8,
+    "samples": 256,
+    "width": 1440
+  },
+  "status": "complete"
+}

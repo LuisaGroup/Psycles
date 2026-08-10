@@ -9,6 +9,19 @@ multilayer OpenEXR output.
 ## Latest checkpoint
 
 The newest
+[Lone Monk five-way 1440x1080/256-spp checkpoint](docs/validation/2026-08-10/lone-monk-five-way-1440x1080-256/README.md)
+runs Cycles CPU/HIP and Psycles fallback/HIP/native-XIR Vulkan from the same
+raw-graph scene export. On the Ryzen 9 9950X3D, fallback renders in
+`142.7930 s` versus Cycles CPU's `72.1837 s`, a `1.9782x` gap. On the RX 9070
+XT, Psycles HIP renders in `58.0613 s` versus Cycles HIP's `19.3186 s`, a
+stable `3.0055x` gap; Vulkan takes `226.6200 s`, or `11.7306x` Cycles HIP.
+Psycles is not faster than Cycles yet. Combined relative RMSE is `1.34%` for
+fallback versus Cycles CPU, `1.71%` for HIP versus Cycles HIP, and `1.67%`
+for Vulkan versus Cycles HIP. All original-resolution Combined triptychs were
+inspected and show no backend-specific structured mismatch. The checkpoint
+retains exact commands, output hashes, full per-pass reports, and triptychs.
+
+The preceding
 [post-population surface-closure ABI checkpoint](docs/validation/2026-08-10/surface-closure-point-abi/README.md)
 replaces the complete `SurfacePoint` argument of nested closure evaluation and
 sampling callables with an exact six-field semantic projection. Material graph
@@ -20,8 +33,8 @@ On the unchanged Lone Monk kernel, per-thread scratch falls 26.4% from 3,676 to
 4.2--4.6% below the preceding checkpoint. Twelve of fifteen passes are
 byte-identical; Combined relative RMSE is `6.49595e-5`, p99 pixel RMSE is zero,
 and original-resolution triptychs show only isolated indirect-sample specks.
-The matched 1080p Cycles matrix is still pending, so this does not assert a
-Psycles-over-Cycles lead.
+The matched five-way matrix above establishes the current performance gap;
+the local ABI gain does not imply a Psycles-over-Cycles lead.
 
 The newest
 [sparse XIR restructure analyses checkpoint](docs/validation/2026-08-10/xir-restructure-sparse-analyses/README.md)
@@ -865,8 +878,27 @@ diagnostics as a guard against accidental format changes.
 
 ## GPU timings
 
-The current Lone Monk row is the primary same-physical-device,
-1080p-or-higher measurement:
+The current primary measurement is the complete Lone Monk five-way gate at
+1440x1080/256 spp:
+
+| Renderer/backend | Render-only | Process wall | Relative result |
+|---|---:|---:|---:|
+| Cycles CPU | `72.1837 s` | `72.6319 s` | CPU reference |
+| Cycles HIP | `19.3186 s` | `19.7859 s` | GPU reference |
+| Psycles fallback | `142.7930 s` | `167.5741 s` | `1.9782x` slower than Cycles CPU |
+| Psycles HIP | `58.0613 s` | `63.4840 s` | `3.0055x` slower than Cycles HIP |
+| Psycles Vulkan | `226.6200 s` | `287.8886 s` | `11.7306x` slower than Cycles HIP |
+
+The HIP comparison was repeated three times and stayed between `2.9985x` and
+`3.0196x` slower. Psycles HIP is `1.2432x` faster than Cycles CPU, but none of
+the like-for-like backend comparisons beats Cycles. Fallback's process wall
+includes a `22.0529 s` cold JIT; Vulkan includes a `58.4686 s` cold native
+XIR-to-SPIR-V/driver JIT; HIP used a warm cache (`0.1460 s`). Full commands,
+hashes, numerical reports, and original-resolution triptychs are in the
+[five-way checkpoint](docs/validation/2026-08-10/lone-monk-five-way-1440x1080-256/README.md).
+
+The following 2026-07-29 row is retained as a historical checkpoint and is no
+longer the primary current-head result:
 
 | Measurement | Cycles 5.3 Alpha HIP | Psycles Vulkan |
 |---|---:|---:|
@@ -951,13 +983,15 @@ triptychs are in the
 
 ## Known limitations and next gate
 
-- Diagnose the remaining diffuse/glossy indirect energy deficit and sampler /
-  stochastic-distribution differences using Cycles alone as the oracle. Do
-  not add a CPU reference sampler or renderer.
-- The accepted current-source 1440×1080/256 spp result still has Combined
-  relative RMSE `13.55%`, diffuse indirect mean energy 8.63% low, glossy
-  indirect 6.07% low, and render throughput below Cycles. It is a production
-  validation boundary, not final 1:1 acceptance.
+- The current Lone Monk Combined result has no large structured mismatch and
+  reaches `1.34--1.71%` relative RMSE across Psycles backends, but this does
+  not prove every closure, pass, volume, or stochastic distribution complete.
+  Cycles remains the sole oracle; do not add a CPU reference renderer.
+- Performance remains below the like-for-like Cycles paths: fallback is
+  `1.9782x` slower than Cycles CPU, HIP is `3.0055x` slower than Cycles HIP,
+  and Vulkan is `11.7306x` slower than Cycles HIP. HIP still uses 256 VGPR,
+  128 SGPR, and 2,704 scratch bytes per thread. Vulkan additionally has a
+  400,579-word optimized SPIR-V module and a 58.47-second cold JIT.
 - The bounded sample count limits per-dispatch work for this gate. Extremely
   large images may also need a formally exact pixel/tile partition so one
   8-spp dispatch remains below device watchdog limits.
