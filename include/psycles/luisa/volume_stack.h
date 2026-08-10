@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 
 #include <luisa/core/basic_types.h>
 #include <luisa/dsl/local.h>
@@ -42,6 +43,10 @@ struct VolumeStackEntry {
 // storage_size includes the mandatory SHADER_NONE terminator, so at most
 // storage_size - 1 media can be active.
 class VolumeStack {
+
+  public:
+    using EntryPredicate = std::function<
+        luisa::compute::Bool(const VolumeStackEntry &)>;
 
   private:
     std::size_t _storage_size;
@@ -90,6 +95,11 @@ class VolumeStack {
     sample_method() const noexcept;
     [[nodiscard]] VolumeStackEntry entry(
         luisa::compute::UInt index) const noexcept;
+    // Device-side existential reduction over active entries. The host stack
+    // capacity affects local-storage size only; it must never clone the
+    // predicate body once per possible entry into the shader AST.
+    [[nodiscard]] luisa::compute::Bool any(
+        const EntryPredicate &predicate) const noexcept;
 
     void clear() noexcept;
     void initialize_background(

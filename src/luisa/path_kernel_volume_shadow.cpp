@@ -54,24 +54,12 @@ class VolumeShadowComponentImpl final
     [[nodiscard]] Bool _stack_is_heterogeneous(
         const VolumeStack &stack)
         const noexcept {
-        Bool heterogeneous = false;
-        for (std::size_t index = 0u;
-             index <
-             stack.maximum_entries();
-             ++index) {
-            const auto device_index =
-                static_cast<std::uint32_t>(
-                    index);
-            $if(device_index < stack.count()) {
-                const auto entry =
-                    stack.entry(device_index);
-                heterogeneous |=
-                    (_surface_flags(entry) &
-                     volume_surface_flag_heterogeneous) !=
-                    0u;
-            };
-        }
-        return heterogeneous;
+        return stack.any(
+            [this](const VolumeStackEntry &entry) noexcept {
+                return (_surface_flags(entry) &
+                        volume_surface_flag_heterogeneous) !=
+                       0u;
+            });
     }
 
   public:

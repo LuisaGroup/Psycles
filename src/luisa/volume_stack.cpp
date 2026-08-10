@@ -108,6 +108,17 @@ VolumeStackEntry VolumeStack::entry(
         .valid = valid & value.valid};
 }
 
+Bool VolumeStack::any(
+    const EntryPredicate &predicate) const noexcept {
+    Bool result = false;
+    UInt index = 0u;
+    $while((index < _count) & !result) {
+        result |= predicate(_read(index));
+        index += 1u;
+    };
+    return result;
+}
+
 UInt VolumeStack::sample_method() const noexcept {
     UInt method = volume_sample_none;
     UInt index = 0u;
