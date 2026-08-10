@@ -1484,6 +1484,115 @@ pre-existing violations documented above.
 
 ![Lone Monk repeated/shared closure-selection schedule and linear difference](lone-monk-selection-schedule-triptych.png)
 
+## Predicated categorical selection
+
+The next sampler audit isolated the remaining control-flow growth in the two
+categorical passes. For authored closure `i`, let `r_i` be its runtime
+retention predicate, `w_i` its nonnegative selection mass, and `f_i` its
+runtime flags. The retained sequence and the statically scheduled sequence
+with effective mass
+
+```text
+m_i = select(0, w_i, r_i)
+W   = sum_i m_i
+N   = sum_i select(0, 1, r_i)
+F   = OR_i select(0, f_i, r_i)
+```
+
+define exactly the same finite measure. Removing an inactive entry from the
+sequence or retaining it with zero effective mass leaves every inverse-CDF
+prefix unchanged. The implementation therefore computes `W`, `N`, and `F`
+with SSA selects, performs one branchless inverse-CDF walk, and records the
+unique authored program index and rescaled lobe coordinate. Conditional BSDF
+sampling then has one predicate per authored program. The retained closure
+index stored in the result is the retained-prefix count captured before the
+corresponding predicate is accumulated, so Cycles' closure-index convention is
+unchanged. Setup-invalid retained closures still contribute to `N` and zero to
+`W`, as before.
+
+Two alternatives were measured and rejected:
+
+- Extracting one pure-return callable per material topology did not share code
+  after specialization. Twenty-three operation-distinct sample definitions
+  survived hash deduplication; their 20,308 instructions plus a 528-instruction
+  dispatcher exceeded the original 20,024-instruction definition, and final
+  SPIR-V grew from 411,169 to 415,834 words.
+- Replacing the selected-program predicates with an inner device switch did
+  shrink `surface_sample` to 17,278 instructions and final SPIR-V to 395,017
+  words. Under the outer material switch, however, RADV pipeline creation grew
+  from 54.361 to 82.504 seconds and peak RSS from 6.44 to 12.00 GB. A smaller
+  module is not sufficient when its nested control-flow shape is pathological
+  for the target driver.
+
+The accepted predicate fusion keeps the existing outer material dispatch and
+does not introduce an inner switch:
+
+| Metric | Single selection schedule | Predicated categorical | Change |
+| --- | ---: | ---: | ---: |
+| optimized `surface_sample` instructions | 20,024 | 18,234 | -1,790 (-8.94%) |
+| `surface_sample` Phi instructions | 3,784 | 2,196 | -1,588 (-41.97%) |
+| `surface_sample` structured conditions | 145 | 97 | -48 (-33.10%) |
+| final SPIR-V words | 411,169 | 399,487 | -11,682 (-2.84%) |
+| SPIR-V labels | 1,588 | 1,444 | -144 (-9.07%) |
+| SPIR-V Phi instructions | 7,230 | 5,662 | -1,568 (-21.69%) |
+| SPIR-V conditional branches | 474 | 426 | -48 (-10.13%) |
+| SPIR-V switches | 8 | 8 | unchanged |
+| SPIR-V function calls | 1,183 | 1,183 | unchanged |
+
+The controlled Vulkan cold comparison disables both Psycles/Luisa shader
+serialization and Mesa's driver cache:
+
+```sh
+PSYCLES_DISABLE_SHADER_CACHE=1 \
+MESA_SHADER_CACHE_DISABLE=true \
+LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1 \
+LUISA_VULKAN_PROFILE_COMPILATION=1 \
+build/bin/psycles_render_blender_scene \
+  /var/tmp/psycles-lone-monk-transmission-dbdcb17/export \
+  output.ppm vk 1 1 1 1
+```
+
+`PSYCLES_DISABLE_SHADER_CACHE` alone does not disable Mesa's disk cache; a
+repeated driver compile can otherwise collapse to milliseconds and is not a
+cold measurement. Native AST-to-SPIR-V changed from 7.078 to 6.838 seconds,
+while RADV pipeline creation changed from 54.361 to 54.568 seconds and complete
+JIT from 61.557 to 61.524 seconds. Peak RSS changed from 6,436,444 to 6,419,112
+KiB. The driver sample dominates and moved by only 0.38%, so this single pair is
+reported as compile-time neutral rather than a speedup claim.
+
+For render throughput, a bracketed candidate/baseline/candidate run used the
+same Lone Monk export at 960x540, 64 fixed spp, and 8 samples per dispatch. The
+baseline samples were `{5.59420, 5.58128, 5.58888}` seconds, with median
+`5.58888`. Candidate samples before the baseline were
+`{5.47712, 5.50318, 5.50794}` and after it were
+`{5.54643, 5.53563, 5.57704}`. All six candidate samples have median
+`5.521785`, a 1.20% reduction; using only the conservative post-baseline group
+gives a 0.76% reduction. The conclusion is therefore a small positive
+0.8--1.2% HIP render improvement, not a Cycles/Psycles speedup claim.
+
+The numeric regression enumerates all 16 retention subsets of four authored
+closures at four random-lobe coordinates. Inactive entries deliberately carry
+nonzero weights and flags, and one retained entry has zero mass. Total weight,
+retained count, flags, selected authored index, and exact rescaled coordinate
+are compared with the compact retained sequence on fallback, HIP, and native
+XIR-to-SPIR-V Vulkan. A separate AST-to-XIR guard requires the predicated
+measure/inversion primitive to contain zero structured `if` instructions. All
+four tests pass.
+
+At 960x540, twelve of fifteen linear passes are exact between the preceding and
+predicated HIP binaries. Combined RMSE is `1.12820e-4`, relative RMSE is
+`6.15997e-5`, luminance ratio is `1.0`, and p99 pixel RMSE is zero. Only sparse
+indirect events differ, within the same-binary HIP repeat envelope already
+measured above. I inspected the triptych at original resolution: geometry,
+silhouettes, materials, textures, lighting, and grass are unchanged, with no
+structured feature in the difference panel. The complete per-pass report is
+[`predicated-selection-report.json`](predicated-selection-report.json).
+The complete all-thread build and all 256 functional tests pass; the separately
+tracked source-size policy test remains excluded for the same three pre-existing
+violations documented above.
+
+![Lone Monk previous/predicated categorical sampling and linear difference](predicated-selection-triptychs/combined.png)
+
 ## Lone Monk cold Vulkan measurements
 
 Each row is one shader-cache-disabled process compiling and executing the full
@@ -1580,6 +1689,7 @@ for each specular family.
 | closure direct/shared typed-ABI numeric parity | pass | pass | pass |
 | five-definition closure-callable shape guard | pass | pass | pass |
 | one-record closure-selection schedule | pass | pass | pass |
+| predicated categorical compaction and zero-`if` guard | pass | pass | pass |
 | texture direct/shared numeric parity | pass | pass | pass |
 | texture finite-bound/hash-dedup shape guards | pass | pass | pass |
 | color-transform direct/shared numeric parity | pass | pass | pass |

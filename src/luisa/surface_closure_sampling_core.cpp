@@ -392,9 +392,18 @@ SurfaceClosureSelectionMeasure::SurfaceClosureSelectionMeasure(
 void SurfaceClosureSelectionMeasure::add(
     const luisa::compute::Var<
         SurfaceClosureSelectionCall> &selection) noexcept {
-    _total_weight += selection.weight;
-    _runtime_flags |= selection.runtime_flags;
-    _retained_count += 1u;
+    add(selection, true);
+}
+
+void SurfaceClosureSelectionMeasure::add(
+    const luisa::compute::Var<
+        SurfaceClosureSelectionCall> &selection,
+    Expr<bool> retained) noexcept {
+    const Bool active{retained};
+    _total_weight += select(0.0f, selection.weight, active);
+    _runtime_flags |= select(
+        0u, selection.runtime_flags, active);
+    _retained_count += select(0u, 1u, active);
 }
 
 Expr<float> SurfaceClosureSelectionMeasure::total_weight()
@@ -425,14 +434,24 @@ SurfaceClosureCategoricalChoice
 SurfaceClosureCategoricalInversion::consider(
     const luisa::compute::Var<
         SurfaceClosureSelectionCall> &selection) noexcept {
-    const auto next = _accumulated + selection.weight;
+    return consider(selection, true);
+}
+
+SurfaceClosureCategoricalChoice
+SurfaceClosureCategoricalInversion::consider(
+    const luisa::compute::Var<
+        SurfaceClosureSelectionCall> &selection,
+    Expr<bool> retained) noexcept {
+    const auto weight = select(
+        0.0f, selection.weight, Bool{retained});
+    const auto next = _accumulated + weight;
     const auto choose =
-        !_selected & (selection.weight > 0.0f) &
+        !_selected & (weight > 0.0f) &
         (_target < next);
     const auto rescaled = select(
         _random_lobe,
         (_target - _accumulated) /
-            max(selection.weight, 1.0e-20f),
+            max(weight, 1.0e-20f),
         _retained_count > 1u);
     _selected |= choose;
     _accumulated = next;
@@ -759,6 +778,7 @@ void SurfaceClosureSamplingVisitor::visit(
         &closures) noexcept {
     struct ScheduledSelection {
         Bool retained;
+        UInt retained_index;
         luisa::compute::Var<SurfaceClosureSelectionCall>
             selection;
     };
@@ -773,11 +793,10 @@ void SurfaceClosureSamplingVisitor::visit(
     for (const auto &closure : closures) {
         const auto retained = retains(closure, retained_index);
         const auto selection = _sampling.selection(closure);
-        $if(retained) {
-            measure.add(selection);
-        };
+        measure.add(selection, retained);
         schedule.emplace_back(ScheduledSelection{
             .retained = retained,
+            .retained_index = retained_index,
             .selection = selection});
         retained_index += select(0u, 1u, retained);
     }
@@ -785,34 +804,53 @@ void SurfaceClosureSamplingVisitor::visit(
     SurfaceClosureCategoricalInversion inversion{
         _random_lobe, measure};
     SurfaceClosureSelectedSample selected;
-    retained_index = 0u;
+    UInt selected_program_index = ~std::uint32_t{0u};
+    Float selected_rescaled = 0.0f;
     for (auto index = std::size_t{0u};
          index < closures.size(); ++index) {
-        const auto &closure = closures[index];
         const auto &scheduled = schedule[index];
-        $if(scheduled.retained) {
-            const auto choice = inversion.consider(
-                scheduled.selection);
-            $if(choice.choose) {
-                const auto sample =
-                    _sampling.conditional_sample(
-                        shading_normal,
-                        closure,
-                        Expr<luisa::float3>{
-                            scheduled.selection.glossy_normal.expression()},
-                        _random_direction,
-                        Expr<float>{choice.rescaled.expression()});
-                selected.accept(
-                    Expr<std::uint32_t>{retained_index.expression()},
-                    closure.weight,
-                    closure.normal,
-                    Expr<float>{choice.rescaled.expression()},
-                    scheduled.selection,
-                    sample);
-            };
+        const auto choice = inversion.consider(
+            scheduled.selection,
+            scheduled.retained);
+        selected_program_index = select(
+            selected_program_index,
+            static_cast<std::uint32_t>(index),
+            choice.choose);
+        selected_rescaled = select(
+            selected_rescaled,
+            choice.rescaled,
+            choice.choose);
+    }
+
+    // Categorical inversion selects at most one authored closure. Test that
+    // single program index directly: the previous nested retained/choice
+    // diamonds created two merge layers per candidate. A nested device switch
+    // looks smaller in SPIR-V but is pathologically expensive for current RADV
+    // when it sits below the scene's material switch, so keep this as one
+    // explicit predicate layer until backend switch lowering is fixed.
+    for (auto index = std::size_t{0u};
+         index < closures.size(); ++index) {
+        $if(selected_program_index ==
+            static_cast<std::uint32_t>(index)) {
+            const auto &closure = closures[index];
+            const auto &scheduled = schedule[index];
+            const auto sample =
+                _sampling.conditional_sample(
+                    shading_normal,
+                    closure,
+                    Expr<luisa::float3>{
+                        scheduled.selection.glossy_normal.expression()},
+                    _random_direction,
+                    Expr<float>{selected_rescaled.expression()});
+            selected.accept(
+                Expr<std::uint32_t>{
+                    scheduled.retained_index.expression()},
+                closure.weight,
+                closure.normal,
+                Expr<float>{selected_rescaled.expression()},
+                scheduled.selection,
+                sample);
         };
-        retained_index += select(
-            0u, 1u, scheduled.retained);
     }
 
     _evaluation.set_outgoing(selected.direction());

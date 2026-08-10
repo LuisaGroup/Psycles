@@ -174,6 +174,14 @@ class SurfaceClosureSelectionMeasure {
         const luisa::compute::Var<
             SurfaceClosureSelectionCall> &selection) noexcept;
 
+    // Predicated form for statically scheduled closure lists. Keeping the
+    // retention predicate in SSA avoids one control-flow merge per closure
+    // while preserving Cycles' exact retained-prefix measure.
+    void add(
+        const luisa::compute::Var<
+            SurfaceClosureSelectionCall> &selection,
+        Expr<bool> retained) noexcept;
+
     [[nodiscard]] Expr<float> total_weight() const noexcept;
     [[nodiscard]] Expr<std::uint32_t> runtime_flags() const noexcept;
     [[nodiscard]] Expr<std::uint32_t> retained_count() const noexcept;
@@ -204,6 +212,11 @@ class SurfaceClosureCategoricalInversion {
     [[nodiscard]] SurfaceClosureCategoricalChoice consider(
         const luisa::compute::Var<
             SurfaceClosureSelectionCall> &selection) noexcept;
+
+    [[nodiscard]] SurfaceClosureCategoricalChoice consider(
+        const luisa::compute::Var<
+            SurfaceClosureSelectionCall> &selection,
+        Expr<bool> retained) noexcept;
 
     [[nodiscard]] Expr<bool> selected() const noexcept;
 };
