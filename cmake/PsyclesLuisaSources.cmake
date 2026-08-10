@@ -24,6 +24,7 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/thin_subsurface_component.cpp
     src/luisa/graph_surface_scattering.cpp
     src/luisa/graph_surface_state.cpp
+    src/luisa/surface_color_transforms.cpp
     src/luisa/graph_surface_value_expression.cpp
     src/luisa/graph_surface_values.cpp
     src/luisa/graph_surface_value_context.cpp
@@ -81,6 +82,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/adapter/blender_scene_json.cpp
     src/luisa/path_tracer.cpp
     src/luisa/path_tracer_camera.cpp
+    src/luisa/path_tracer_color_transforms.cpp
     src/luisa/path_tracer_common.cpp
     src/luisa/path_tracer_curve_scene.cpp
     src/luisa/path_tracer_environment.cpp

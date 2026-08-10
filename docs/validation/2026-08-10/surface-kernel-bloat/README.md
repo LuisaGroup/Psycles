@@ -1,10 +1,10 @@
-# Surface-operation reachability and shared physical setup
+# Surface-operation reachability and shared shader primitives
 
 Date: 2026-08-10
 
 ## Outcome
 
-This checkpoint removes five independent sources of scene-dependent path-kernel
+This checkpoint removes six independent sources of scene-dependent path-kernel
 growth without changing Blender graph values or Cycles closure semantics:
 
 1. emission code is recorded only for surface tags whose scene-unioned closure
@@ -18,12 +18,15 @@ growth without changing Blender graph values or Cycles closure semantics:
    are represented by two energy-policy-specialized typed callables; and
 5. Cycles image interpolation is represented by the reachable members of a
    finite set of typed interpolation/extension callables instead of being
-   expanded once per Image Texture node and surface operation.
+   expanded once per Image Texture node and surface operation; and
+6. RGB/HSV/HSL conversion is represented by the reachable members of a finite
+   typed transform family instead of being expanded once per color node and
+   surface operation.
 
 On the unchanged Lone Monk export, the complete cold Vulkan path module falls
-from 203,652 to 136,521 pre-restructure XIR instructions (33.0%). The main
-kernel falls 31.8%, raw SPIR-V falls 34.8%, and native AST-to-SPIR-V time falls
-46.5%. The rendered PPM and Combined PFM hashes remain bit-identical.
+from 203,652 to 130,971 pre-restructure XIR instructions (35.7%). The main
+kernel falls 34.1%, raw SPIR-V falls 37.3%, and native AST-to-SPIR-V time falls
+48.3%. The rendered PPM and Combined PFM hashes remain bit-identical.
 
 ## Formal reachability rule
 
@@ -256,6 +259,68 @@ The single driver timing regression is retained as measured and is within the
 noise of one cold pipeline build; it is not presented as an improvement. The
 structural reductions and exact output hashes are deterministic.
 
+## Shared color-transform follow-up
+
+Lone Monk contains 32 reachable Hue/Saturation nodes, in addition to any HSV
+blend and Separate/Combine Color operations selected by static graph metadata.
+Previously every use expanded the full RGB-to-HSV and HSV-to-RGB algebra into
+each surface operation that traversed the topology.
+
+Color conversion is a closed family of four pure typed functions:
+
+```text
+{RGB -> HSV, HSV -> RGB, RGB -> HSL, HSL -> RGB}
+```
+
+`ShaderServices` now exposes an optional host-stage
+`SurfaceColorTransformProvider`. Standalone GraphSurface clients evaluate the
+canonical inline functions. Production buffer services expose typed callables
+recorded from those same functions. The graph still evaluates its original
+typed values in topological order; no generic value register, device opcode,
+host color evaluation, or material pre-bake is introduced.
+
+The formal module bound is
+
+```text
+color_transform_definitions(module)
+    <= |reachable transform endpoints|
+    <= 4
+```
+
+Constructing the provider does not attach all four definitions. The regression
+requires a kernel using only RGB-to-HSV to contain exactly one definition, all
+four endpoints to contain exactly four, and two independently constructed
+providers using RGB-to-HSV to collapse to one definition by complete callable
+AST hash. The focused Hue/Saturation-shaped roundtrip gives:
+
+| Focused fixture | Inline XIR | Shared XIR | Change |
+| --- | ---: | ---: | ---: |
+| eight RGB-to-HSV-to-RGB sites | 3,169 | 524 | -83.5% |
+
+Only RGB-to-HSV and HSV-to-RGB are reachable in Lone Monk. Their definitions
+contain 38 and 43 instructions; the HSL endpoints are absent. Relative to the
+shared-texture checkpoint:
+
+| Metric | + shared texture sampling | + shared color transforms | Change |
+| --- | ---: | ---: | ---: |
+| XIR definitions | 27 | 29 | +2 reachable definitions |
+| total XIR instructions | 136,521 | 130,971 | -5,550 (-4.07%) |
+| main-kernel XIR instructions | 98,253 | 94,959 | -3,294 (-3.35%) |
+| `surface_emission` XIR instructions | 507 | 437 | -70 (-13.8%) |
+| `surface_evaluate_light` XIR instructions | 22,270 | 20,003 | -2,267 (-10.2%) |
+| raw SPIR-V words | 933,506 | 897,508 | -35,998 (-3.86%) |
+| optimized SPIR-V words | 850,086 | 816,866 | -33,220 (-3.91%) |
+| ordinary XIR inline | 243.92 ms | 221.83 ms | -9.06% |
+| SPIR-V XIR legalization | 5,107.07 ms | 4,962.88 ms | -2.82% |
+| native AST-to-SPIR-V | 12,559.43 ms | 12,134.65 ms | -3.38% |
+| driver compute-pipeline creation | 77,701.16 ms | 79,303.15 ms | +2.06% |
+| complete shader JIT | 90,365.8 ms | 91,539.7 ms | +1.30% |
+
+The structural counts and frontend reductions are deterministic. The single
+driver timing sample regressed enough to make end-to-end JIT slower despite the
+smaller optimized SPIR-V; it is reported as measured and is not claimed as a
+runtime win. Driver pipeline creation remains the dominant, noisy tail.
+
 ## Lone Monk cold Vulkan measurements
 
 Each row is one shader-cache-disabled process compiling and executing the full
@@ -263,20 +328,37 @@ scene path kernel at 1x1 and 1 spp. The tiny launch isolates shader construction
 it is not a rendering-throughput benchmark. Vulkan selected the RX 9070 XT via
 RADV and used native XIR-to-SPIR-V throughout; DXC was not loaded.
 
-| Metric | Initial baseline | Emission pruning | Shared dielectric | + diffuse | + metallic | + texture sampling | Initial to final |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| XIR definitions | 20 | 21 | 23 | 24 | 25 | 27 | +7 definitions |
-| total XIR instructions | 203,652 | 179,622 | 169,378 | 168,706 | 167,408 | 136,521 | -33.0% |
-| main-kernel XIR instructions | 144,135 | 127,331 | 120,200 | 119,736 | 118,754 | 98,253 | -31.8% |
-| `surface_emission` XIR instructions | 8,302 | 1,074 | 1,074 | 1,074 | 1,074 | 507 | -93.9% |
-| `surface_evaluate_light` XIR instructions | 36,930 | 36,930 | 33,251 | 33,019 | 32,495 | 22,270 | -39.7% |
-| raw SPIR-V words | 1,431,985 | 1,192,798 | 1,111,962 | 1,107,189 | 1,096,841 | 933,506 | -34.8% |
-| optimized SPIR-V words | 1,116,158 | 1,087,675 | 1,010,627 | 1,005,854 | 996,375 | 850,086 | -23.8% |
-| ordinary XIR inline | 348.30 ms | 301.09 ms | 274.17 ms | 280.65 ms | 284.00 ms | 243.92 ms | -30.0% |
-| SPIR-V XIR legalization | 10,045 ms | 6,607 ms | 6,296.58 ms | 6,339.37 ms | 6,502.61 ms | 5,107.07 ms | -49.2% |
-| native AST-to-SPIR-V | 23,492 ms | 17,184 ms | 16,077.31 ms | 15,952.92 ms | 16,180.90 ms | 12,559.43 ms | -46.5% |
-| driver compute-pipeline creation | 86,333 ms | 77,958 ms | 77,884.27 ms | 77,476.73 ms | 76,792.49 ms | 77,701.16 ms | -10.0% |
-| complete shader JIT | 109,979 ms | 95,269 ms | 94,077.8 ms | 93,552.1 ms | 93,093.7 ms | 90,365.8 ms | -17.8% |
+The retained color-transform run used:
+
+```sh
+PSYCLES_DISABLE_SHADER_CACHE=1 \
+LUISA_LOG_LEVEL=verbose \
+LUISA_VULKAN_PROFILE_COMPILATION=1 \
+LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1 \
+LUISA_XIR_TRACE_PASSES=1 \
+build/bin/psycles_render_blender_scene \
+  /var/tmp/psycles-lone-monk-transmission-dbdcb17/export \
+  /var/tmp/psycles-kernel-shape-color-20260810/vk.ppm \
+  vk 1 1 1 1
+```
+
+The complete trace and linear passes are under
+`/var/tmp/psycles-kernel-shape-color-20260810/` on the measurement host.
+
+| Metric | Initial baseline | Emission pruning | Shared dielectric | + diffuse | + metallic | + texture sampling | + color transforms | Initial to final |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| XIR definitions | 20 | 21 | 23 | 24 | 25 | 27 | 29 | +9 definitions |
+| total XIR instructions | 203,652 | 179,622 | 169,378 | 168,706 | 167,408 | 136,521 | 130,971 | -35.7% |
+| main-kernel XIR instructions | 144,135 | 127,331 | 120,200 | 119,736 | 118,754 | 98,253 | 94,959 | -34.1% |
+| `surface_emission` XIR instructions | 8,302 | 1,074 | 1,074 | 1,074 | 1,074 | 507 | 437 | -94.7% |
+| `surface_evaluate_light` XIR instructions | 36,930 | 36,930 | 33,251 | 33,019 | 32,495 | 22,270 | 20,003 | -45.8% |
+| raw SPIR-V words | 1,431,985 | 1,192,798 | 1,111,962 | 1,107,189 | 1,096,841 | 933,506 | 897,508 | -37.3% |
+| optimized SPIR-V words | 1,116,158 | 1,087,675 | 1,010,627 | 1,005,854 | 996,375 | 850,086 | 816,866 | -26.8% |
+| ordinary XIR inline | 348.30 ms | 301.09 ms | 274.17 ms | 280.65 ms | 284.00 ms | 243.92 ms | 221.83 ms | -36.3% |
+| SPIR-V XIR legalization | 10,045 ms | 6,607 ms | 6,296.58 ms | 6,339.37 ms | 6,502.61 ms | 5,107.07 ms | 4,962.88 ms | -50.6% |
+| native AST-to-SPIR-V | 23,492 ms | 17,184 ms | 16,077.31 ms | 15,952.92 ms | 16,180.90 ms | 12,559.43 ms | 12,134.65 ms | -48.3% |
+| driver compute-pipeline creation | 86,333 ms | 77,958 ms | 77,884.27 ms | 77,476.73 ms | 76,792.49 ms | 77,701.16 ms | 79,303.15 ms | -8.14% |
+| complete shader JIT | 109,979 ms | 95,269 ms | 94,077.8 ms | 93,552.1 ms | 93,093.7 ms | 90,365.8 ms | 91,539.7 ms | -16.8% |
 
 The final reachable setup definitions contain 247 instructions for ordinary
 dielectric GGX, 319 for preserve-energy dielectric GGX, 24 for diffuse, and 208
@@ -284,10 +366,11 @@ for ordinary metallic GGX. The reachable linear/clip and linear/repeat texture
 samplers contain 195 and 211 instructions. Their small fixed cost replaces
 repeated physical setup in the 19 reachable dielectric, 18 reachable diffuse,
 and 3 reachable metallic topology occurrences, plus texture sampling at 45
-reachable Image Texture nodes. Driver pipeline creation remains 86.0% of the
-final JIT wall time and is now the dominant Vulkan tail; further IR work should
-still reduce its input, but XIR passes are no longer the majority of the
-measured wall time.
+reachable Image Texture nodes. The reachable RGB-to-HSV and HSV-to-RGB
+definitions contain 38 and 43 instructions. Driver pipeline creation remains
+86.6% of the final JIT wall time and is now the dominant Vulkan tail; further
+IR work should still reduce its input, but XIR passes are no longer the
+majority of the measured wall time.
 
 The exact output fingerprints for all retained checkpoints are:
 
@@ -318,7 +401,13 @@ for each specular family.
 | five-definition closure-callable shape guard | pass | pass | pass |
 | texture direct/shared numeric parity | pass | pass | pass |
 | texture finite-bound/hash-dedup shape guards | pass | pass | pass |
+| color-transform direct/shared numeric parity | pass | pass | pass |
+| color-transform used-only/bound/hash-dedup guards | pass | pass | pass |
 | surface metadata/reachability regressions | pass | shared host test | shared host test |
+
+A complete `cmake --build build -j$(nproc)` passed after the lazy used-only
+provider was finalized. The six texture/color backend tests pass, as does the
+standalone `psycles_luisa_compile_tests` graph-construction suite.
 
 The focused closure-plan fixture records 25,015 conservative instructions and
 5,345 scene-specialized instructions, a 78.6% reduction. The final Lone Monk
@@ -326,7 +415,7 @@ run and all focused regressions used the same production implementation.
 
 ## Remaining hotspot
 
-The next structural target is a fresh audit of the remaining 98,253-instruction
+The next structural target is a fresh audit of the remaining 94,959-instruction
 main kernel and repeated surface-operation bodies. Graph-value operators and
 normal/bump evaluation now warrant measurement because the already-deduplicated
 24 topologies still contain 1,438 unique values. Any extraction must preserve a

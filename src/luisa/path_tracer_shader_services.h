@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cycles_texture_sampling.h"
+#include "path_tracer_color_transforms.h"
 #include "path_tracer_internal.h"
 #include "path_tracer_texture_sampling.h"
 
@@ -64,6 +65,7 @@ private:
     const contract::ShaderColorSpace &_shader_color_space;
     const SurfaceClosureSetupProvider *_surface_closure_setup_provider{};
     const CallableTexture2DSamplingProvider *_texture_sampling_provider{};
+    CallableSurfaceColorTransformProvider _color_transform_provider;
 
 public:
     explicit BufferShaderServices(
@@ -101,6 +103,11 @@ public:
     [[nodiscard]] const SurfaceClosureSetupProvider *
     surface_closure_setup_provider() const noexcept override {
         return _surface_closure_setup_provider;
+    }
+
+    [[nodiscard]] const SurfaceColorTransformProvider *
+    surface_color_transform_provider() const noexcept override {
+        return &_color_transform_provider;
     }
 
     [[nodiscard]] Float4 texture_2d(

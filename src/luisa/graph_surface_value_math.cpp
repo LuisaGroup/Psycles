@@ -1025,10 +1025,10 @@ public:
                             break;
                         }
                         case compiler::BlendOperation::hue: {
-                            auto hsv_b = rgb_to_hsv(b);
-                            auto hsv = rgb_to_hsv(a);
+                            auto hsv_b = rgb_to_hsv(services, b);
+                            auto hsv = rgb_to_hsv(services, a);
                             hsv.x = hsv_b.x;
-                            auto recolored = hsv_to_rgb(hsv);
+                            auto recolored = hsv_to_rgb(services, hsv);
                             mixed = select(
                                 a,
                                 lerp(a, recolored, t),
@@ -1036,22 +1036,22 @@ public:
                             break;
                         }
                         case compiler::BlendOperation::saturation: {
-                            auto hsv = rgb_to_hsv(a);
-                            auto hsv_b = rgb_to_hsv(b);
+                            auto hsv = rgb_to_hsv(services, a);
+                            auto hsv_b = rgb_to_hsv(services, b);
                             auto has_saturation = hsv.y != 0.0f;
                             hsv.y = lerp(hsv.y, hsv_b.y, t);
                             mixed = select(
                                 a,
-                                hsv_to_rgb(hsv),
+                                hsv_to_rgb(services, hsv),
                                 has_saturation);
                             break;
                         }
                         case compiler::BlendOperation::color: {
-                            auto hsv_b = rgb_to_hsv(b);
-                            auto hsv = rgb_to_hsv(a);
+                            auto hsv_b = rgb_to_hsv(services, b);
+                            auto hsv = rgb_to_hsv(services, a);
                             hsv.x = hsv_b.x;
                             hsv.y = hsv_b.y;
-                            auto recolored = hsv_to_rgb(hsv);
+                            auto recolored = hsv_to_rgb(services, hsv);
                             mixed = select(
                                 a,
                                 lerp(a, recolored, t),
@@ -1059,10 +1059,10 @@ public:
                             break;
                         }
                         case compiler::BlendOperation::value: {
-                        auto hsv = rgb_to_hsv(a);
-                        auto hsv_b = rgb_to_hsv(b);
-                        hsv.z = lerp(hsv.z, hsv_b.z, t);
-                        mixed = hsv_to_rgb(hsv);
+                            auto hsv = rgb_to_hsv(services, a);
+                            auto hsv_b = rgb_to_hsv(services, b);
+                            hsv.z = lerp(hsv.z, hsv_b.z, t);
+                            mixed = hsv_to_rgb(services, hsv);
                             break;
                         }
                     }

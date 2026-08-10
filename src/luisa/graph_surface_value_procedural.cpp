@@ -615,6 +615,7 @@ public:
                 case compiler::ValueOperation::separate_r:
                     value = make_float4(
                         separate_color(
+                            services,
                             vector(
                                 instruction.operand(
                                     operand::separate_color::color),
@@ -625,6 +626,7 @@ public:
                 case compiler::ValueOperation::separate_g:
                     value = make_float4(
                         separate_color(
+                            services,
                             vector(
                                 instruction.operand(
                                     operand::separate_color::color),
@@ -635,6 +637,7 @@ public:
                 case compiler::ValueOperation::separate_b:
                     value = make_float4(
                         separate_color(
+                            services,
                             vector(
                                 instruction.operand(
                                     operand::separate_color::color),
@@ -655,6 +658,7 @@ public:
                             result));
                     value = make_float4(
                         combine_color(
+                            services,
                             channels,
                             instruction.static_u0),
                         1.0f);
