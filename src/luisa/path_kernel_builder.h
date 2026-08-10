@@ -13,6 +13,8 @@
 #include <psycles/luisa/volume_guiding.h>
 #include <psycles/sampling/light_distribution.h>
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 
 namespace psycles::luisa_backend::detail {
@@ -59,6 +61,43 @@ struct PathKernelConfig {
     EnvironmentCallables environment;
     TraceShadowCallable trace_shadow;
 };
+
+// A zero scene population is an exact proof that the corresponding emitter
+// kind can never be returned by either the flat distribution or the light
+// tree. Keep this as a host-stage plan: recording a device-side kind check for
+// a provably absent emitter still retains the complete component AST and makes
+// kernel size depend on unsupported alternatives rather than scene
+// capabilities. Positive populations remain conservative because individual
+// zero-weight emitters are intentionally not inferred from aggregate counts.
+struct DirectLightingStagePlan {
+    bool environment{};
+    bool emissive_mesh{};
+    bool analytic{};
+
+    [[nodiscard]] constexpr std::size_t size() const noexcept {
+        return static_cast<std::size_t>(environment) +
+               static_cast<std::size_t>(emissive_mesh) +
+               static_cast<std::size_t>(analytic);
+    }
+};
+
+[[nodiscard]] constexpr DirectLightingStagePlan
+make_direct_lighting_stage_plan(
+    bool next_event_estimation,
+    bool environment_in_distribution,
+    std::uint32_t emissive_triangle_count,
+    std::uint32_t analytic_light_count) noexcept {
+    return {
+        .environment =
+            next_event_estimation &&
+            environment_in_distribution,
+        .emissive_mesh =
+            next_event_estimation &&
+            emissive_triangle_count != 0u,
+        .analytic =
+            next_event_estimation &&
+            analytic_light_count != 0u};
+}
 
 struct PathKernelInvocation {
     const PathKernelConfig &config;
