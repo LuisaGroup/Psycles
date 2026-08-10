@@ -18,6 +18,11 @@
 #include <cstdint>
 #include <memory>
 
+namespace luisa::compute {
+template<typename T>
+class Coroutine;
+}// namespace luisa::compute
+
 namespace psycles::luisa_backend::detail {
 
 class DirectLightTraceRecorder;
@@ -35,6 +40,21 @@ using RenderKernel = Kernel1D<Buffer<luisa::float4>,
                               Buffer<luisa::float4>,
                               Buffer<float>,
                               RenderKernelParameters>;
+
+using RenderCoroutine = luisa::compute::Coroutine<void(
+    Buffer<luisa::float4>,
+    Buffer<luisa::float4>,
+    Buffer<luisa::float4>,
+    Buffer<luisa::float4>,
+    Buffer<luisa::uint>,
+    Buffer<luisa::float4>,
+    Buffer<luisa::uint>,
+    Buffer<luisa::float4>,
+    std::uint32_t,
+    std::uint32_t,
+    Buffer<luisa::float4>,
+    Buffer<float>,
+    RenderKernelParameters)>;
 
 // All data in this object exists on the host while Luisa records the kernel
 // AST. Components may use ordinary C++ dispatch over it; the device still sees
@@ -659,10 +679,16 @@ class PathKernelPipeline {
     PathKernelPipeline(const PathKernelPipeline &) = delete;
     PathKernelPipeline &operator=(const PathKernelPipeline &) = delete;
 
-    void emit(PathSampleContext &sample) const noexcept;
+    // `is_coro` is a host-side AST-construction choice. It must never be a
+    // device Bool: the megakernel contains neither dynamic scheduler branches
+    // nor coroutine instructions, while the coroutine records suspension at
+    // the same semantic path-event boundaries.
+    void emit(PathSampleContext &sample, bool is_coro) const noexcept;
 };
 
 [[nodiscard]] RenderKernel
 build_path_kernel(const PathKernelConfig &config) noexcept;
+[[nodiscard]] RenderCoroutine
+build_path_coroutine(const PathKernelConfig &config);
 
 } // namespace psycles::luisa_backend::detail

@@ -6,6 +6,8 @@
 #include <utility>
 #include <vector>
 
+#include <luisa/dsl/coro_func.h>
+
 namespace psycles::luisa_backend::detail {
 
 class PathKernelPipeline::Impl {
@@ -121,8 +123,18 @@ PathKernelPipeline::PathKernelPipeline(PathKernelPipeline &&) noexcept =
 PathKernelPipeline &
 PathKernelPipeline::operator=(PathKernelPipeline &&) noexcept = default;
 
-void PathKernelPipeline::emit(PathSampleContext &sample) const noexcept {
+void PathKernelPipeline::emit(
+    PathSampleContext &sample,
+    bool is_coro) const noexcept {
     $for(path_step, sample.invocation.parameters.max_path_steps) {
+        // This ordinary C++ branch executes while recording the Luisa AST.
+        // The suspension is therefore absent from the megakernel rather than
+        // guarded by a device-side predicate. At this boundary only canonical
+        // per-path state is live; no hit shading or closure temporaries have
+        // been populated yet.
+        if (is_coro) {
+            $suspend("path_bounce");
+        }
         auto bounce =
             _impl->bounce_setup->emit(
                 sample, path_step);
@@ -203,6 +215,13 @@ void PathKernelPipeline::emit(PathSampleContext &sample) const noexcept {
         };
 
         if (_impl->surface_geometry) {
+            // Traversal and volume resolution have selected an exact surface
+            // hit, but surface geometry and closure population have not begun.
+            // Suspending here keeps those large, short-lived values out of the
+            // coroutine frame while separating traversal from shading.
+            if (is_coro) {
+                $suspend("surface_shading");
+            }
             auto surface =
                 _impl->surface_geometry->emit(
                     bounce,
@@ -257,6 +276,49 @@ void PathKernelPipeline::emit(PathSampleContext &sample) const noexcept {
     };
 }
 
+namespace {
+
+void emit_path_program(
+    const PathKernelConfig &config,
+    const PathKernelPipeline &pipeline,
+    bool is_coro,
+    const BufferFloat4 &combined,
+    const BufferFloat4 &normal,
+    const BufferFloat4 &albedo,
+    const BufferFloat4 &light_passes,
+    const BufferUInt &sample_count,
+    const BufferFloat4 &volume_guiding_raw,
+    const BufferUInt &volume_guiding_denoised,
+    const BufferFloat4 &path_trace,
+    const UInt &sample_first,
+    const UInt &samples,
+    const BufferFloat4 &sobol_table,
+    const BufferFloat &filter_table,
+    const Var<RenderKernelParameters> &parameters) noexcept {
+    auto invocation = begin_path_kernel(config,
+                                        combined,
+                                        normal,
+                                        albedo,
+                                        light_passes,
+                                        sample_count,
+                                        volume_guiding_raw,
+                                        volume_guiding_denoised,
+                                        path_trace,
+                                        sample_first,
+                                        samples,
+                                        sobol_table,
+                                        filter_table,
+                                        parameters);
+    $for(sample_offset, samples) {
+        auto sample = begin_path_sample(invocation, sample_offset);
+        pipeline.emit(sample, is_coro);
+        accumulate_path_sample(sample);
+    };
+    invocation.write_film();
+}
+
+}// namespace
+
 RenderKernel build_path_kernel(const PathKernelConfig &config) noexcept {
     PathKernelPipeline pipeline{
         config};
@@ -274,28 +336,61 @@ RenderKernel build_path_kernel(const PathKernelConfig &config) noexcept {
                              BufferFloat4 sobol_table,
                              BufferFloat filter_table,
                              Var<RenderKernelParameters> parameters) noexcept {
-            auto invocation = begin_path_kernel(config,
-                                                combined,
-                                                normal,
-                                                albedo,
-                                                light_passes,
-                                                sample_count,
-                                                volume_guiding_raw,
-                                                volume_guiding_denoised,
-                                                path_trace,
-                                                sample_first,
-                                                samples,
-                                                sobol_table,
-                                                filter_table,
-                                                parameters);
-            $for(sample_offset, samples) {
-                auto sample = begin_path_sample(invocation, sample_offset);
-                pipeline.emit(sample);
-                accumulate_path_sample(sample);
-            };
-            invocation.write_film();
+            emit_path_program(config,
+                              pipeline,
+                              false,
+                              combined,
+                              normal,
+                              albedo,
+                              light_passes,
+                              sample_count,
+                              volume_guiding_raw,
+                              volume_guiding_denoised,
+                              path_trace,
+                              sample_first,
+                              samples,
+                              sobol_table,
+                              filter_table,
+                              parameters);
         };
     return kernel;
+}
+
+RenderCoroutine build_path_coroutine(
+    const PathKernelConfig &config) {
+    PathKernelPipeline pipeline{
+        config};
+    return RenderCoroutine{
+        [&config, &pipeline](BufferFloat4 combined,
+                             BufferFloat4 normal,
+                             BufferFloat4 albedo,
+                             BufferFloat4 light_passes,
+                             BufferUInt sample_count,
+                             BufferFloat4 volume_guiding_raw,
+                             BufferUInt volume_guiding_denoised,
+                             BufferFloat4 path_trace,
+                             UInt sample_first,
+                             UInt samples,
+                             BufferFloat4 sobol_table,
+                             BufferFloat filter_table,
+                             Var<RenderKernelParameters> parameters) noexcept {
+            emit_path_program(config,
+                              pipeline,
+                              true,
+                              combined,
+                              normal,
+                              albedo,
+                              light_passes,
+                              sample_count,
+                              volume_guiding_raw,
+                              volume_guiding_denoised,
+                              path_trace,
+                              sample_first,
+                              samples,
+                              sobol_table,
+                              filter_table,
+                              parameters);
+        }};
 }
 
 } // namespace psycles::luisa_backend::detail
