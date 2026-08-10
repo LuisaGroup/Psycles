@@ -1175,6 +1175,105 @@ with no structured feature:
 
 ![Lone Monk inline/shared exact attribute lookup and linear difference](lone-monk-attribute-callable-triptych.png)
 
+## Single NEE shadow-transport continuation
+
+The next main-kernel audit separated emitter-specific proposal generation from
+the transport continuation which follows every accepted proposal. Environment,
+emissive-triangle, and analytic-light components previously each recorded their
+own copy of light roulette, shadow-origin construction, finite/distant shadow
+ray construction, transparent shadow traversal, contribution clamping, film
+accumulation, and direct/indirect pass splitting. Lone Monk reaches all three
+components, so this common continuation was present three times in the fused
+kernel.
+
+This is a sum-type scheduling problem rather than an opportunity for local
+common-subexpression elimination. Let `E` be the set of emitter kinds retained
+by the host scene plan, `P_e` the proposal program for kind `e`, and `T` the
+common shadow transport. The selected light carries exactly one kind, so the
+semantic program is
+
+```text
+kind in E
+candidate = P_kind(path, surface, light sample)
+result = candidate ? T(path, surface, candidate) : no contribution
+```
+
+The old AST recorded
+
+```text
+sum(e in E) (size(P_e) + size(T))
+```
+
+whereas the new multistage pipeline records
+
+```text
+sum(e in E) size(P_e) + size(T) + O(|E| * candidate fields)
+```
+
+Each proposal now writes a typed `DirectLightTransportState` containing only
+the physical values consumed by `T`: weighted BSDF, light shader, direction,
+finite target/distant tag, emitter identity and shader flags, the BSDF pass
+projection, and differential roughness. This state is a set of Luisa DSL SSA
+variables; it is not a packed device structure, weak `float4` register file,
+SVM, extra kernel, or shader-callable boundary. The environment, mesh, and
+analytic C++ components remain separately extensible proposal stages, while a
+single `DirectLightTransportStage` records the continuation after their
+mutually exclusive kind branches. A scene with no reachable proposal kind
+records neither state nor continuation.
+
+The finite branch still recomputes the direction and distance from Cycles'
+exact shadow origin to the sampled target. The distant branch keeps the sampled
+direction and `ray_maximum`. Source/light identities, skip-self policy,
+transparent-shadow state, roulette random dimension, clamping, pass splitting,
+and trace-event order are unchanged. The stage-plan regression exposes the
+one-continuation invariant on both the host and device and checks that every
+non-empty subset of the three proposal kinds has exactly one continuation.
+
+On the complete Lone Monk module:
+
+| Metric | Per-kind transport copies | Single continuation | Change |
+| --- | ---: | ---: | ---: |
+| XIR definitions | 37 | 35 | -2 unreachable small callables |
+| total pre-restructure XIR instructions | 77,509 | 73,573 | -3,936 (-5.08%) |
+| main-kernel pre-restructure XIR instructions | 56,070 | 52,162 | -3,908 (-6.97%) |
+| main-kernel blocks | 1,520 | 1,351 | -169 (-11.1%) |
+| main-kernel raw conditionals | 468 | 417 | -51 (-10.9%) |
+| `surface_evaluate_light` XIR instructions | 12,286 | 12,286 | unchanged |
+| raw SPIR-V words | 457,402 | 425,048 | -32,354 (-7.07%) |
+| optimized SPIR-V words | 414,089 | 384,970 | -29,119 (-7.03%) |
+| native AST-to-SPIR-V | 6,871.43 ms | 6,580.99 ms | -4.23% |
+| driver compute-pipeline creation | 56,654.80 ms | 54,396.66 ms | -3.99% sample |
+| complete shader JIT | 63.6099 s | 61.0597 s | -4.01% sample |
+
+The cold samples used separate binaries, disabled shader caches, a 1x1 launch,
+native XIR-to-SPIR-V, and no DXC module. The two driver rows are single samples;
+the deterministic IR and SPIR-V size reductions are the primary compilation
+result.
+
+After separately warming both HIP shaders, three interleaved 960x540, 64 spp
+runs used the order old/new/new/old/old/new. The per-kind version took
+`{5.83548, 5.82756, 5.85190}` seconds (mean `5.838313`), while the shared
+continuation took `{5.50119, 5.47463, 5.57433}` seconds (mean `5.516717`). This
+is a 5.51% render-time reduction, or `1.0583x` throughput speedup, in addition
+to the compilation-size improvement.
+
+The production area-light fixture exercises analytic area lights, the Light
+Tree route, emissive triangles, the environment, a zero-weight distribution,
+and a non-evaluable BSDF. Its complete pixel and direct-light trace oracles pass
+on fallback, HIP, and Vulkan native XIR/SPIR-V. At 960x540, nine of fifteen
+linear passes are byte-identical. Normal, Glossy Color, and Glossy Direct differ
+only at isolated floating-rounding values. Combined has luminance ratio `1.0`, RMSE
+`1.1267e-4`, relative RMSE `6.1517e-5`, mean absolute error `4.0567e-7`, and
+p99 pixel RMSE zero. The remaining differences are isolated indirect events;
+same-binary repeated HIP runs also differ sparsely at those events.
+
+I inspected the full-resolution Combined and Diffuse Indirect triptychs. The
+geometry, grass, silhouettes, textures, materials, lighting, and noise pattern
+are visually unchanged; the linear difference panels are black apart from a
+few isolated pixels and contain no structured feature:
+
+![Lone Monk per-kind/shared NEE transport and linear difference](lone-monk-nee-transport-triptych.png)
+
 ## Lone Monk cold Vulkan measurements
 
 Each row is one shader-cache-disabled process compiling and executing the full
@@ -1284,7 +1383,7 @@ for each specular family.
 | Bump used-only/bound/hash-dedup guards | pass | pass | pass |
 | signed-Perlin direct/shared numeric parity | pass | pass | pass |
 | signed-Perlin used-only/bound/runtime-loop guards | pass | pass | pass |
-| direct-light component capability plan | pass | pass | pass |
+| direct-light capability and one-continuation plan | pass | pass | pass |
 | analytic endpoint zero/nonzero scene plan | pass | pass | pass |
 | primitive population and triangle-completion subset plan | pass | pass | pass |
 | traversal callback absence and XIR shape bound | pass | pass | pass |
@@ -1294,8 +1393,10 @@ for each specular family.
 | environment/mesh/analytic/no-light full path fixtures | pass | pass | pass |
 | surface metadata/reachability regressions | pass | shared host test | shared host test |
 
-A complete `cmake --build build -j$(nproc)` passed after the shared-attribute
-boundary was finalized. Twenty-one device runs cover the new and existing
+A complete `cmake --build build -j$(nproc)` passed after the single-continuation
+boundary was finalized. The six targeted continuation-plan and full area-light
+tests pass on fallback, HIP, and native-XIR Vulkan. The preceding twenty-one
+device runs cover the new and existing
 attribute contracts, scene traversal, the central scene-stage plan, light-tree
 sampling, curve paths, and forward area-light paths on fallback, HIP, and
 native-XIR Vulkan. The population fixture covers empty, singleton triangles,
@@ -1312,11 +1413,13 @@ run and all focused regressions used the same production implementation.
 
 ## Remaining hotspot
 
-The next structural target is the remaining 56,070-instruction main kernel.
+The next structural target is the remaining 52,162-instruction main kernel.
 Primitive-kind leakage is removed, exact source completion is host-pruned or
-shared as required, and the compact attribute resolver is no longer cloned by
-graph sites. `surface_evaluate_light` is now 12,286 pre-restructure
-instructions. These are the next measured boundaries; no new split should be
+shared as required, the compact attribute resolver is no longer cloned by
+graph sites, and NEE shadow transport is recorded once rather than once per
+emitter kind. The complete module is now 73,573 pre-restructure instructions;
+`surface_evaluate_light` remains 12,286 instructions. These are the next
+measured boundaries; no new split should be
 chosen merely from C++ file size.
 
 The shader graph already executes reachable values in topological order once

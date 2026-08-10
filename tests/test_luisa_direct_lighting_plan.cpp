@@ -38,6 +38,7 @@ inline constexpr auto analytic_endpoint_bit = std::uint32_t{1u} << 3u;
 inline constexpr auto triangle_primitive_bit = std::uint32_t{1u} << 4u;
 inline constexpr auto curve_primitive_bit = std::uint32_t{1u} << 5u;
 inline constexpr auto triangle_completion_bit = std::uint32_t{1u} << 6u;
+inline constexpr auto direct_transport_bit = std::uint32_t{1u} << 7u;
 inline constexpr auto direct_lighting_bits =
     environment_bit |
     emissive_mesh_bit |
@@ -47,7 +48,10 @@ inline constexpr auto direct_lighting_bits =
 plan_mask(DirectLightingStagePlan plan) noexcept {
     return (plan.environment ? environment_bit : 0u) |
            (plan.emissive_mesh ? emissive_mesh_bit : 0u) |
-           (plan.analytic ? analytic_nee_bit : 0u);
+           (plan.analytic ? analytic_nee_bit : 0u) |
+           (plan.transport_stage_count() != 0u
+                ? direct_transport_bit
+                : 0u);
 }
 
 [[nodiscard]] constexpr std::uint32_t
@@ -119,6 +123,9 @@ expected_mask(const PlanCase &test) noexcept {
                        : 0u)
             : 0u;
     return direct |
+           (direct != 0u
+                ? direct_transport_bit
+                : 0u) |
            (test.analytic_lights != 0u
                 ? analytic_endpoint_bit
                 : 0u) |
@@ -137,10 +144,18 @@ expected_mask(const PlanCase &test) noexcept {
 
 static_assert(
     plan_mask(make_direct_lighting_stage_plan(true, true, 7u, 0u)) ==
-        (environment_bit | emissive_mesh_bit),
+        (environment_bit | emissive_mesh_bit | direct_transport_bit),
     "an absent analytic-light population must not reach the path kernel");
 static_assert(make_direct_lighting_stage_plan(false, true, 7u, 9u).size() == 0u,
               "disabled NEE must record no direct-light component");
+static_assert(
+    make_direct_lighting_stage_plan(true, true, 7u, 9u)
+            .transport_stage_count() == 1u,
+    "all reachable emitter kinds must share one transport continuation");
+static_assert(
+    make_direct_lighting_stage_plan(false, true, 7u, 9u)
+            .transport_stage_count() == 0u,
+    "an empty proposal plan must not record a transport continuation");
 static_assert(
     make_path_kernel_scene_stage_plan(
         false, false, 0u, 1u, 0u, 0u, 0u, 0u)

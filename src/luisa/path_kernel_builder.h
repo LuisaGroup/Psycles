@@ -80,6 +80,15 @@ struct DirectLightingStagePlan {
                static_cast<std::size_t>(emissive_mesh) +
                static_cast<std::size_t>(analytic);
     }
+
+    // Proposal generation is specialized per reachable emitter kind, but
+    // every accepted proposal has the same shadow-transport continuation.
+    // The continuation is therefore recorded exactly once whenever at least
+    // one proposal stage exists, independently of the number of kinds.
+    [[nodiscard]] constexpr std::size_t
+    transport_stage_count() const noexcept {
+        return size() == 0u ? 0u : 1u;
+    }
 };
 
 struct PathKernelSceneStagePlan {
@@ -469,6 +478,38 @@ struct DirectLightingContext {
     SurfaceShadingState &shading;
 };
 
+// Canonical continuation state produced by one emitter-specific NEE proposal
+// stage and consumed by the single common shadow-transport stage. These are
+// typed Luisa DSL variables, not a packed device ABI or a weak float-register
+// protocol. The light-distribution kind is a disjoint sum, so at most one
+// proposal component can accept the state for a path bounce.
+struct DirectLightTransportState {
+    Float3 weighted_bsdf;
+    Float3 light_shader;
+    Float3 direction;
+    Float3 target_position;
+    Float3 bsdf;
+    Float3 diffuse_bsdf;
+    Float3 glossy_bsdf;
+    UInt light_object;
+    UInt light_primitive;
+    UInt shader_flags;
+    Float average_roughness_squared;
+    Bool distant;
+    Bool valid;
+
+    [[nodiscard]] static DirectLightTransportState empty() noexcept;
+    void accept(const SurfaceEvaluation &evaluation,
+                Float3 proposal_weighted_bsdf,
+                Float3 proposal_light_shader,
+                Float3 proposal_direction,
+                Float3 proposal_target_position,
+                Bool proposal_distant,
+                UInt proposal_light_object,
+                UInt proposal_light_primitive,
+                UInt proposal_shader_flags) noexcept;
+};
+
 class PathBounceSetupStage {
 
   public:
@@ -532,7 +573,18 @@ class DirectLightingComponent {
 
   public:
     virtual ~DirectLightingComponent() noexcept = default;
-    virtual void emit(DirectLightingContext &context) const noexcept = 0;
+    virtual void prepare(
+        DirectLightingContext &context,
+        DirectLightTransportState &transport) const noexcept = 0;
+};
+
+class DirectLightTransportStage {
+
+  public:
+    virtual ~DirectLightTransportStage() noexcept = default;
+    virtual void emit(
+        DirectLightingContext &context,
+        const DirectLightTransportState &transport) const noexcept = 0;
 };
 
 class SurfaceScatterStage {
@@ -584,6 +636,9 @@ make_emissive_mesh_lighting_component(
     std::shared_ptr<const DirectLightTraceRecorder> trace);
 [[nodiscard]] std::unique_ptr<DirectLightingComponent>
 make_analytic_lighting_component(
+    std::shared_ptr<const DirectLightTraceRecorder> trace);
+[[nodiscard]] std::unique_ptr<DirectLightTransportStage>
+make_direct_light_transport_stage(
     std::shared_ptr<const DirectLightTraceRecorder> trace);
 [[nodiscard]] std::unique_ptr<SurfaceScatterStage> make_surface_scatter_stage();
 [[nodiscard]] std::unique_ptr<SubsurfaceTransportStage>
