@@ -976,6 +976,71 @@ The final production runs are under
 `/var/tmp/psycles-coro-inline-type-tag-final-tAOtDL`; scheduler logs are under
 `/var/tmp/luisa-coro-inline-type-tag-matrix-gNiyeQ`.
 
+## Kernel-rooted SPIR-V pointer legalization
+
+The largest surface continuation exposed a semantic-domain bug after
+coroutine splitting. Inlining a reference wrapper could make one callable
+unreachable from every kernel while an orphaned block still physically owned
+a function operand referring to it. Whole-module resource-origin analysis then
+treated that dead edge as an unresolved incoming edge. The proof of a unique
+read-only resource origin failed, so pointer legalization specialized and
+inlined 117 resource-helper calls that were not required by executable code.
+
+Luisa `next@f2c5689d5` now defines pointer legalization over the exact
+kernel-rooted SPIR-V structural call graph. If `R` is the least set containing
+all kernel definitions and closed under function operands in each definition's
+codegen structural closure, then argument usage, read-only resource origins,
+and pointer-call planning operate only on `R`. Function operands in physically
+owned but structurally unreachable blocks cannot contribute data-flow edges.
+After each successful inline mutation batch, unreachable callable definitions
+are physically removed so later fixed-point iterations, whole-module passes,
+and SPIR-V emission observe the same domain.
+
+This composes with the suspend-token invariant rather than weakening it. For
+front-end suspend tokens `T_front` and optimized live tokens `T_live`, the
+coroutine roots are still
+
+`{entry} union {continuation(t) | t in T_live}`.
+
+A suspend in `T_front - T_live` therefore creates neither a graph node nor a
+lowered callable, and cannot re-enter `R` through an orphan physical use.
+Surviving sparse token values and the entry-only `T_live = empty` case remain
+unchanged.
+
+The cache-disabled strict native-XIR Vulkan Lone Monk wavefront canary measured
+the material-heavy fourth continuation as follows:
+
+| Surface continuation metric | Before | Kernel-rooted domain | Change |
+| --- | ---: | ---: | ---: |
+| planned pointer calls | 124 | 7 | -94.4% |
+| pointer-argument legalization | 2,680.78 ms | 1,390.40 ms | 1.93x faster |
+| complete XIR legalization | 4,423.50 ms | 2,891.63 ms | 1.53x faster |
+| inline-summary instruction scans | 1,407,757 | 379,413 | -73.1% |
+| optimized SPIR-V size | 488,499 words | 403,486 words | -17.4% |
+| AST-to-SPIR-V | 8,598.243 ms | 6,670.555 ms | 1.29x faster |
+
+The new regression constructs a live kernel-to-wrapper-to-resource-helper
+chain plus an orphan block whose callable reaches the same helper through an
+unresolved resource formal. It requires exactly the two live reference
+wrappers to be specialized, requires the orphan callable to be pruned, keeps
+the uniquely rooted helper outlined, and validates the emitted SPIR-V. The
+focused suite passes 207 assertions in 22 tests. All 72 SPIR-V/XIR/coroutine
+tests pass. The full standalone Luisa suite passes 116/117; only the existing
+EASTL `fixed_vector` allocation/move test fails.
+
+The production output remained byte-identical across the change:
+
+| Output | SHA-256 |
+| --- | --- |
+| display PPM | `3ff6c5463ace13c0f26a735ac1af2bb96ab8a9ba1cb4398359cf2466f63a4d1b` |
+| Combined PFM | `4f93bceff43a46a086454e9a50745a497b39cd27e8a694f617a5c934fe3ed3eb` |
+| Normal PFM | `acf82e26ab479853be41ff9b3cc348b740cbb77f37671db0d1864efa09052bd0` |
+| Albedo PFM | `8e79df2a612628d23badc4d3dd3dcb8ca2e0d8428bcc10ee77edfe44a5cf562f` |
+
+The final trace and outputs are under
+`/var/tmp/psycles-pointer-domain-fused-5ahU8s`; the before trace is
+`/var/tmp/psycles-vk-shape-W5Wg9h/wavefront.log`.
+
 ## Multi-sample renderer equivalence after the cut
 
 The actual Lone Monk renderer was also run through the new loop-header cut with
