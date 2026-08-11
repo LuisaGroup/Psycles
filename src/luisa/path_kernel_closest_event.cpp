@@ -55,8 +55,12 @@ class ClosestEventStageImpl final
         auto &path_flags = sample.path_flags;
 
         Bool light_hit = false;
+        // Unified traversal defines committed_ray_t for every result: the
+        // exact selected distance for a hit and ray.t_max() for a miss.
+        // Keeping a second distance in PathBounceContext would duplicate the
+        // same value across the surface suspension.
         Float event_distance =
-            bounce.closest_surface_distance;
+            bounce.hit->committed_ray_t;
         UInt light_hit_index =
             surface_ray::invalid_primitive;
         Float3 light_hit_position =
@@ -236,9 +240,6 @@ class ClosestEventStageImpl final
             (!light_hit) &
             bounce.hit->miss();
         Bool surface_may_emit = false;
-        UInt surface_emission_sampling =
-            static_cast<std::uint32_t>(
-                contract::EmissionSampling::none);
         if (!_primitive_plan.empty()) {
             const auto resolve_curve = [&] {
                 const auto primitive =
@@ -248,9 +249,6 @@ class ClosestEventStageImpl final
                         bounce.hit->prim);
                 surface_may_emit =
                     primitive.may_emit;
-                surface_emission_sampling =
-                    primitive
-                        .triangle_emission_sampling;
             };
             const auto resolve_triangle = [&] {
                 const auto primitive =
@@ -260,9 +258,6 @@ class ClosestEventStageImpl final
                         bounce.hit->prim);
                 surface_may_emit =
                     primitive.may_emit;
-                surface_emission_sampling =
-                    primitive
-                        .triangle_emission_sampling;
             };
             $if(surface) {
                 if (_primitive_plan.mixed()) {
@@ -292,9 +287,7 @@ class ClosestEventStageImpl final
             std::move(light_hit_pdf),
             std::move(
                 light_hit_evaluation_factor),
-            std::move(surface_may_emit),
-            std::move(
-                surface_emission_sampling)};
+            std::move(surface_may_emit)};
     }
 };
 

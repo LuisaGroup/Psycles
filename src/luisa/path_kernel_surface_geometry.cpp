@@ -21,8 +21,8 @@ public:
         _geometry{make_surface_primitive_geometry_component(
             primitive_plan)} {}
 
-  SurfaceGeometryContext emit(PathBounceContext &bounce,
-                              UInt emission_sampling) const noexcept override {
+  SurfaceGeometryContext
+  emit(PathBounceContext &bounce) const noexcept override {
     auto &sample = bounce.sample;
     auto &invocation = sample.invocation;
     const auto &config = invocation.config;
@@ -127,7 +127,7 @@ public:
 
     return {.bounce = bounce,
             .primitive_plan = _primitive_plan,
-            .emission_sampling = std::move(emission_sampling),
+            .emission_sampling = std::move(primitive.emission_sampling),
             .instance = std::move(primitive.instance),
             .p0 = std::move(primitive.p0),
             .p1 = std::move(primitive.p1),

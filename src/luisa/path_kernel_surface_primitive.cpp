@@ -105,6 +105,9 @@ public:
     Bool back_facing = false;
     Bool cycles_transform_applied = false;
     Bool triangle_smooth = false;
+    UInt emission_sampling =
+        static_cast<std::uint32_t>(
+            contract::EmissionSampling::none);
     Float curve_intercept = 0.0f;
     Float curve_length = 0.0f;
     Float curve_thickness = 0.0f;
@@ -146,6 +149,8 @@ public:
       cycles_surface_shader = curve.primitive.cycles_surface_shader;
       cycles_object_index = curve.primitive.cycles_object_index;
       cycles_primitive_index = curve.primitive.cycles_primitive_index;
+      emission_sampling =
+          curve.primitive.triangle_emission_sampling;
       surface_has_volume = curve.primitive.has_volume;
       volume_object = volume.object;
       volume_shader = volume.shader;
@@ -237,6 +242,7 @@ public:
       cycles_surface_shader = primitive.cycles_surface_shader;
       cycles_object_index = primitive.cycles_object_index;
       cycles_primitive_index = primitive.cycles_primitive_index;
+      emission_sampling = primitive.triangle_emission_sampling;
       surface_has_volume = primitive.has_volume;
       volume_object = volume.object;
       volume_shader = volume.shader;
@@ -500,6 +506,7 @@ public:
             .cycles_transform_applied =
                 std::move(cycles_transform_applied),
             .triangle_smooth = std::move(triangle_smooth),
+            .emission_sampling = std::move(emission_sampling),
             .surface_tag = std::move(surface_tag),
             .cycles_surface_shader = std::move(cycles_surface_shader),
             .cycles_object_index = std::move(cycles_object_index),

@@ -67,6 +67,8 @@ class PathBounceSetupStageImpl final
                         cycles_rng_offset,
                         tabulated_sobol::
                             terminate_dimension));
+        terminate_sample.set_name(
+            "path_bounce_terminate_sample");
         const auto light_sample =
             cycles_sampler::sample_3d(
                 sobol_table,
@@ -79,6 +81,8 @@ class PathBounceSetupStageImpl final
                         cycles_rng_offset,
                         tabulated_sobol::
                             light_dimension));
+        light_sample.set_name(
+            "path_bounce_light_sample");
         Var<LightDistributionGpu> selected_light;
         if (config.use_light_tree) {
             selected_light.cumulative = 0.0f;
@@ -92,6 +96,8 @@ class PathBounceSetupStageImpl final
             selected_light = config.light_distribution_sample(
                 light_sample.z);
         }
+        selected_light.set_name(
+            "path_bounce_selected_light");
         const auto light_terminate_sample =
             cycles_sampler::sample_1d(
                 sobol_table,
@@ -104,16 +110,18 @@ class PathBounceSetupStageImpl final
                         cycles_rng_offset,
                         tabulated_sobol::
                             light_terminate_dimension));
+        light_terminate_sample.set_name(
+            "path_bounce_light_terminate_sample");
         const Bool subsurface_exit = pending_subsurface_exit;
+        subsurface_exit.set_name(
+            "path_bounce_subsurface_exit");
         Var<luisa::compute::CommittedHit> hit;
-        Float closest_surface_distance =
-            ray->t_max();
+        hit.set_name("path_bounce_hit");
         $if(subsurface_exit) {
             // The local BSSRDF traversal has already selected the exact
             // intersection. Preserve it directly, as Cycles does between
             // INTERSECT_SUBSURFACE and SHADE_SURFACE.
             hit = pending_subsurface_hit;
-            closest_surface_distance = hit->committed_ray_t;
             pending_subsurface_exit = false;
         }
         $else {
@@ -124,9 +132,6 @@ class PathBounceSetupStageImpl final
                 scene, ray, ray_visibility,
                 {.object = ray_source_object,
                  .primitive = ray_source_primitive});
-            $if(!hit->miss()) {
-                closest_surface_distance = hit->committed_ray_t;
-            };
         };
 
         return {
@@ -137,8 +142,6 @@ class PathBounceSetupStageImpl final
             std::move(selected_light),
             std::move(light_terminate_sample),
             std::move(hit),
-            std::move(
-                closest_surface_distance),
             std::move(subsurface_exit)};
     }
 };

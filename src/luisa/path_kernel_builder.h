@@ -444,7 +444,6 @@ struct PathBounceContext {
     Var<LightDistributionGpu> selected_light;
     Float light_terminate_sample;
     Var<luisa::compute::CommittedHit> hit;
-    Float closest_surface_distance;
     Bool subsurface_exit;
 };
 
@@ -467,7 +466,6 @@ struct ClosestPathEvent {
     // same predicate: EmissionSampling::NONE remains visibly emissive but has
     // no competing light-sampling PDF.
     Bool surface_may_emit;
-    UInt surface_emission_sampling;
 };
 
 struct VolumeSegmentEvent {
@@ -604,8 +602,7 @@ class SurfaceGeometryStage {
   public:
     virtual ~SurfaceGeometryStage() noexcept = default;
     [[nodiscard]] virtual SurfaceGeometryContext
-    emit(PathBounceContext &bounce,
-         UInt emission_sampling) const noexcept = 0;
+    emit(PathBounceContext &bounce) const noexcept = 0;
 };
 
 class SurfaceShadingStage {

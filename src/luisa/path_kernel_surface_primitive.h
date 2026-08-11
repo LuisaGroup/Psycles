@@ -26,6 +26,7 @@ struct SurfacePrimitiveGeometryContext {
   Bool is_curve;
   Bool cycles_transform_applied;
   Bool triangle_smooth;
+  UInt emission_sampling;
   UInt surface_tag;
   UInt cycles_surface_shader;
   UInt cycles_object_index;
