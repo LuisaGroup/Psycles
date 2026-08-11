@@ -1,0 +1,141 @@
+{
+  "actual_label": "HIP wavefront transient",
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.DiffCol.R",
+    "ViewLayer.DiffCol.G",
+    "ViewLayer.DiffCol.B",
+    "ViewLayer.DiffDir.R",
+    "ViewLayer.DiffDir.G",
+    "ViewLayer.DiffDir.B",
+    "ViewLayer.DiffInd.R",
+    "ViewLayer.DiffInd.G",
+    "ViewLayer.DiffInd.B",
+    "ViewLayer.Emit.R",
+    "ViewLayer.Emit.G",
+    "ViewLayer.Emit.B",
+    "ViewLayer.Env.R",
+    "ViewLayer.Env.G",
+    "ViewLayer.Env.B",
+    "ViewLayer.GlossCol.R",
+    "ViewLayer.GlossCol.G",
+    "ViewLayer.GlossCol.B",
+    "ViewLayer.GlossDir.R",
+    "ViewLayer.GlossDir.G",
+    "ViewLayer.GlossDir.B",
+    "ViewLayer.GlossInd.R",
+    "ViewLayer.GlossInd.G",
+    "ViewLayer.GlossInd.B",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.TransCol.R",
+    "ViewLayer.TransCol.G",
+    "ViewLayer.TransCol.B",
+    "ViewLayer.TransDir.R",
+    "ViewLayer.TransDir.G",
+    "ViewLayer.TransDir.B",
+    "ViewLayer.TransInd.R",
+    "ViewLayer.TransInd.G",
+    "ViewLayer.TransInd.B",
+    "ViewLayer.VolumeDir.R",
+    "ViewLayer.VolumeDir.G",
+    "ViewLayer.VolumeDir.B",
+    "ViewLayer.VolumeInd.R",
+    "ViewLayer.VolumeInd.G",
+    "ViewLayer.VolumeInd.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        1.0000033378601074,
+        1.0000015497207642,
+        1.0000009536743164
+      ],
+      "cycles": "/var/tmp/psycles-coro-xir2ast-hip-640-mega-z1kQeEDG/lone-monk-640-hip-megakernel.exr",
+      "cycles_channel_mean": [
+        0.6355136632919312,
+        0.46834081411361694,
+        0.3910142779350281
+      ],
+      "cycles_luminance_mean": 0.4983086585998535,
+      "cycles_rms": 2.4804811477661133,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0000020334363926,
+      "maximum_absolute_error": 0.6620703935623169,
+      "mean_absolute_error": 1.079522348845785e-06,
+      "orientation_rmse": {
+        "flip_x": 2.87225604057312,
+        "flip_xy": 3.2914412021636963,
+        "flip_y": 3.257957696914673,
+        "identity": 0.0007361177122220397
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-coro-xir2ast-hip-640-UiyPZDmi/lone-monk-640-hip-wavefront.exr",
+      "psycles_channel_mean": [
+        0.6355158090591431,
+        0.46834152936935425,
+        0.3910146653652191
+      ],
+      "psycles_luminance_mean": 0.4983096718788147,
+      "psycles_rms": 2.48048172594416,
+      "relative_rmse": 0.00029676408259944934,
+      "rmse": 0.0007361177122220397,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    },
+    "DiffInd": {
+      "channel_mean_ratio": [
+        1.000048041343689,
+        1.0000327825546265,
+        1.00002920627594
+      ],
+      "cycles": "/var/tmp/psycles-coro-xir2ast-hip-640-mega-z1kQeEDG/lone-monk-640-hip-megakernel.exr",
+      "cycles_channel_mean": [
+        0.23947128653526306,
+        0.16137312352657318,
+        0.10986077785491943
+      ],
+      "cycles_luminance_mean": 0.1742577701807022,
+      "cycles_rms": 2.0677103996276855,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0000371122845853,
+      "maximum_absolute_error": 3.5405378341674805,
+      "mean_absolute_error": 6.670565198874101e-06,
+      "orientation_rmse": {
+        "flip_x": 2.8988075256347656,
+        "flip_xy": 2.9052488803863525,
+        "flip_y": 2.910890817642212,
+        "identity": 0.004184564109891653
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-coro-xir2ast-hip-640-UiyPZDmi/lone-monk-640-hip-wavefront.exr",
+      "psycles_channel_mean": [
+        0.2394828051328659,
+        0.161378413438797,
+        0.10986398160457611
+      ],
+      "psycles_luminance_mean": 0.17426423728466034,
+      "psycles_rms": 2.067736711155203,
+      "relative_rmse": 0.0020237670181690484,
+      "rmse": 0.004184564109891653,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    }
+  },
+  "reference_label": "HIP megakernel",
+  "schema": "psycles.cycles-differential.v1"
+}

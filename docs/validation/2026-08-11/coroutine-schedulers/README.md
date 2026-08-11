@@ -6,7 +6,7 @@ wavefront coroutine, or a persistent-worker coroutine. It is a scheduler
 equivalence check, not a new Cycles differential. All three runs use the same
 37-material Lone Monk export, Luisa fallback, 640x480, fixed sample 0, and one
 sample per pixel. The follow-up backend and coroutine checks are current through
-LuisaCompute `next@f4043aee7`.
+LuisaCompute `next@e9f2db822`.
 
 The renderer CLI now accepts `-` for the optional sample-chunk JSON argument,
 so selecting argument 17's scheduler does not force the render into pixel-probe
@@ -249,7 +249,7 @@ shared hashes are:
 | display PPM | `3ff6c5463ace13c0f26a735ac1af2bb96ab8a9ba1cb4398359cf2466f63a4d1b` |
 | Combined PFM | `4f93bceff43a46a086454e9a50745a497b39cd27e8a694f617a5c934fe3ed3eb` |
 | Normal PFM | `acf82e26ab479853be41ff9b3cc348b740cbb77f37671db0d1864efa09052bd0` |
-| Albedo PFM | `8e79df2a612628d23badc4d3dcb8ca2e0d8428bcc10ee77edfe44a5cf562f` |
+| Albedo PFM | `8e79df2a612628d23badc4d3dd3dcb8ca2e0d8428bcc10ee77edfe44a5cf562f` |
 
 The complete profile is
 `/var/tmp/psycles-coro-pass-domain-wavefront-xLxG929W/trace.log` on the
@@ -312,6 +312,105 @@ on fallback, HIP, and strict native-XIR Vulkan, including optimized-away
 frontend tokens, sparse live tokens, the entry-only empty-live-set case, and a
 root coroutine with no front-end suspend at all. This checkpoint uses Luisa
 `next@b8c13d424`.
+
+## Incremental XIR-to-AST continuation reconstruction
+
+The next profile isolated the remaining XIR-to-AST continuation handoff. Each
+continuation previously constructed an independent translation context, so
+ordinary immutable XIR callables shared by several continuation roots were
+verified and rebuilt repeatedly. Luisa `next@b3cb6f746` translates the roots
+as one same-module batch. Per-root expression, CFG, active-block, and loop
+state remains isolated; only completed ordinary callable builders are cached
+by their exact `FunctionDefinition *` identity. A regression constructs two
+distinct continuation roots with one shared helper and proves that the roots
+remain distinct while both ASTs point to the same helper builder.
+
+The larger cost was inside each structured root. At every `if`, loop, and
+switch arm, XIR-to-AST copied the complete value-to-expression map before
+descending into the arm. If `M_s` is the map at checkpoint `s`, this performs
+
+`W_snapshot = sum_s |M_s|`.
+
+Bindings are monotone on one structured CFG path: translation inserts a value
+at most once and never rebinds it. Luisa `next@26d938ab1` therefore records
+successful insertions in order. A checkpoint stores only the log length, and
+restoration erases the branch-local suffix in reverse order. For the bindings
+`Delta M_s` first created inside arm `s`, the work is now
+
+`W_rollback = sum_s |Delta M_s|`.
+
+Nested checkpoints compose because each suffix is removed before its parent
+suffix. Callable translation moves both the map and its log into an isolated
+frame and restores them together. The unit regression compares functions with
+4 and 256 dominating bindings: both have two checkpoints and exactly the same
+nonzero rollback work, so retained prefix size cannot silently re-enter the
+algorithmic cost.
+
+This batching happens only after coroutine graph construction. Its root list
+is exactly the entry plus the materialized `T_live` continuations; a suspend
+in `T_front - T_live` still has no graph node, no definition in the batch, and
+no lowered callable. The optimized-away-suspend corner case is therefore not
+reintroduced by the shared translation cache.
+
+The unchanged 37-material Lone Monk strict-Vulkan canary produced the
+following host measurements. The incremental column is the median of three
+runs (`533.948`, `549.517`, and `537.558` ms for XIR-to-AST; `1,828.470`,
+`1,902.245`, and `1,881.809` ms total):
+
+| Coroutine boundary | Provenance baseline | Shared context | Incremental median | Baseline / incremental |
+| --- | ---: | ---: | ---: | ---: |
+| XIR-to-AST continuation translation | 1,221.279 ms | 1,163.069 ms | 537.558 ms | 2.27x |
+| complete coroutine lowering | 2,528.732 ms | 2,469.524 ms | 1,881.809 ms | 1.34x |
+
+The measured translation contains 59 distinct function translations, 1,146
+cache hits, 341,775 successful value bindings, 1,061 structured checkpoints,
+201,904 branch-local rollback erasures, and a peak map size of 40,152. The
+same four continuations and 297-field / 1,424-byte frame are produced.
+
+`LUISA_XIR2AST_VERIFY_VALUE_MAP_CHECKPOINTS=1`, added in
+Luisa `next@e9f2db822`, is an explicit diagnostic oracle. It also retains the
+former full snapshot at every checkpoint and compares every retained key and
+expression pointer after incremental rollback. The complete Lone Monk
+translation passed all 1,061 comparisons. As expected for a diagnostic mode,
+XIR-to-AST took 1,455.556 ms because it deliberately runs both mechanisms.
+The strict native-XIR Vulkan output retained the display, Combined, Normal,
+and corrected 64-digit Albedo hashes above; DXC was not loaded.
+
+The production path was also checked at 640x480 and one fixed sample on HIP.
+Megakernel and repeated wavefront output are byte-identical for display,
+Combined, Normal, Albedo, and all EXR channels. Their primary hashes are:
+
+| Output | SHA-256 |
+| --- | --- |
+| display PPM | `16be3dbb588bdd6af6ff1ff008c42c6cd96da7cfb51415bda00072cb63d3df73` |
+| Combined PFM | `f7c449e5da434ba8100fda06f4ae75fc4e1f79704de24780dfbb5486c85dc474` |
+| Normal PFM | `0d8fa6771670ca441738a31c5b9c5af01d503e88f0ce1a5a1f81743f82103432` |
+| Albedo PFM | `57e456f4242da17aff42f7160ca66497d5796d7de2de378f9ed56d44716f4ec0` |
+
+One earlier wavefront process differed at exactly one of 307,200 pixels in
+`DiffInd` (Combined RMSE `0.0007361`, relative RMSE `0.0002968`); the next two
+processes were byte-identical to megakernel. The full-map oracle and exact
+repeats distinguish this isolated HIP execution nondeterminism from a
+structured XIR-to-AST mapping change. It is recorded rather than hidden, but
+there is no repeated or spatially structured rendering difference. The
+[exact-repeat report](xir2ast-checkpoints/report.json) and
+[one-pixel observation](xir2ast-checkpoints/transient-report.json) retain the
+per-pass metrics.
+
+The exact-repeat triptych was opened at its original 1936x550 resolution.
+Building silhouette, roof and windows, grass, material regions, and individual
+one-sample fireflies coincide. The difference panel is black, agreeing with
+RMSE, mean absolute error, and maximum error all equal to zero.
+
+![HIP megakernel, incremental-XIR2AST wavefront, and exact difference](xir2ast-checkpoints/combined.png)
+
+The production profiles are under
+`/var/tmp/psycles-coro-xir2ast-rollback-R3UePOQQ`,
+`/var/tmp/psycles-coro-xir2ast-rollback-2-CFPXc1wX`, and
+`/var/tmp/psycles-coro-xir2ast-rollback-3-3grjImWu`; the full-map oracle is
+under `/var/tmp/psycles-coro-xir2ast-oracle-m0tEmzcV`. The exact 640x480 HIP
+pair is under `/var/tmp/psycles-coro-xir2ast-hip-640-mega-z1kQeEDG` and
+`/var/tmp/psycles-coro-xir2ast-hip-640-repeat-i2FBXwRq`.
 
 ## Multi-sample renderer equivalence after the cut
 
