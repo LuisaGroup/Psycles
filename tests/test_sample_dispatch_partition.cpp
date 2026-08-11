@@ -1,6 +1,7 @@
 #include "../src/luisa/sample_dispatch_partition.h"
 #include "../src/luisa/path_tracer_backend_policy.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstdlib>
@@ -20,6 +21,8 @@ using psycles::luisa_backend::detail::
     PixelRowDispatchBatch;
 using psycles::luisa_backend::detail::
     PixelRowDispatchPartition;
+using psycles::luisa_backend::detail::
+    PixelSampleDispatchPlan;
 using psycles::luisa_backend::detail::
     backend_max_pixel_samples_per_dispatch;
 using psycles::luisa_backend::detail::
@@ -163,6 +166,10 @@ int main() {
     require(
         !PixelRowDispatchPartition::make(1u, 1u, 0u, 1u),
         "zero-sample pixel partition was accepted");
+    require(
+        !PixelRowDispatchPartition::make(
+             4096u, 1u, 64u, 131072u),
+        "a complete row exceeding the work bound was accepted");
     const auto metal_rows = collect_rows(
         320u, 180u, 8u, 131072u);
     require(
@@ -185,6 +192,70 @@ int main() {
     require(
         next_row == 180u && covered_pixels == 320u * 180u,
         "pixel row partition did not cover the full frame");
+
+    require(
+        !PixelSampleDispatchPlan::make(0u, 1u) &&
+            !PixelSampleDispatchPlan::make(1u, 0u),
+        "an empty pixel/sample product was accepted");
+    require(
+        !PixelSampleDispatchPlan::make(
+             std::numeric_limits<std::uint32_t>::max(),
+             2u),
+        "an overflowing pixel/sample product was accepted");
+    constexpr std::array pixel_counts{1u, 2u, 17u, 320u};
+    constexpr std::array sample_counts{1u, 4u, 8u, 64u};
+    for (const auto pixels : pixel_counts) {
+        for (const auto samples : sample_counts) {
+            const auto plan = PixelSampleDispatchPlan::make(
+                pixels, samples);
+            require(
+                plan.has_value(),
+                "a bounded pixel/sample product was rejected");
+            std::vector<bool> visited(plan->work_count, false);
+            constexpr auto sample_first = 37u;
+            for (auto sample_offset = 0u;
+                 sample_offset < samples;
+                 ++sample_offset) {
+                for (auto pixel = 0u; pixel < pixels; ++pixel) {
+                    const auto work = plan->encode(
+                        pixel, sample_offset);
+                    require(
+                        work.has_value() &&
+                            *work < visited.size() &&
+                            !visited[*work],
+                        "pixel/sample encoding is not injective");
+                    visited[*work] = true;
+                    const auto decoded = plan->decode(*work);
+                    require(
+                        decoded.has_value() &&
+                            decoded->pixel == pixel &&
+                            decoded->sample_offset == sample_offset &&
+                            sample_first + decoded->sample_offset ==
+                                sample_first + sample_offset,
+                        "pixel/sample inverse or global sample index changed");
+                }
+            }
+            require(
+                std::all_of(
+                    visited.begin(), visited.end(),
+                    [](bool value) noexcept { return value; }),
+                "pixel/sample product has an uncovered work item");
+            for (auto work = 0u; work < plan->work_count; ++work) {
+                const auto decoded = plan->decode(work);
+                require(
+                    decoded.has_value() &&
+                        plan->encode(
+                            decoded->pixel,
+                            decoded->sample_offset) == work,
+                    "pixel/sample decode is not a left inverse");
+            }
+            require(
+                !plan->decode(plan->work_count) &&
+                    !plan->encode(pixels, 0u) &&
+                    !plan->encode(0u, samples),
+                "out-of-domain pixel/sample coordinates were accepted");
+        }
+    }
 
     require(
         !SampleDispatchPartition::make(0u, 1u, 0u)
