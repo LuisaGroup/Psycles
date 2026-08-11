@@ -1925,3 +1925,67 @@ Three 640x480/64 spp HIP wavefront render-only observations are `3.37956 s`,
 than the single 304-byte observation and effectively tied with the earlier
 336-byte range; the frame reduction is established, but no statistically
 significant runtime claim is made.
+
+## Boolean bit lanes and fixed-prefix-aware frame layout
+
+LuisaCompute `next` now models a Boolean frame value as a logical bit resource
+rather than a one-byte physical field. The existing continuation/transition
+interference graph is colored at bit granularity: interfering Boolean values
+receive distinct `(word, bit)` identities, noninterfering lifetimes may reuse a
+lane, and every group of 32 lanes occupies one physical `uint`. Split XIR
+extracts a loaded lane with `word & mask != 0` and groups all stores to the same
+word into one read-modify-write.
+
+Whole-word storage requires a corresponding physical transfer relation. For
+transition `e` and packed word `w`, let `D(e,w)` be the lanes defined by the
+source continuation and `L(e,w)` the lanes live after the transition. If
+`D(e,w)` is non-empty while `L(e,w) - D(e,w)` is also non-empty, the source
+continuation must load the old word even when none of those dormant lanes is a
+logical input to its computation. Materialization now derives exactly this
+closure. A regression keeps one Boolean dormant across a continuation that
+defines another lane; state-machine, compacting wavefront, and persistent
+schedulers must all preserve both bits.
+
+Packing the six production Booleans reduces the physical user fields from 69
+to 64, but initially left the complete frame at 296 B. The remaining bytes
+were an ABI-order issue: seven fixed scheduler `uint` fields end at byte 28,
+while the first user field was an eight-byte-aligned `float2`. Alignment-first
+ordering inserted four bytes before that field and four bytes at the structure
+tail. Physical slot order is semantically irrelevant modulo a bijective remap,
+so the distiller now scores slot permutations against the actual fixed-prefix
+offset. Its candidate list scheduler minimizes immediate ABI padding and then
+prefers higher alignment; the permutation is accepted only if the exact final
+structure size is strictly smaller. On Lone Monk it places one scalar at byte
+28 and the `float2` at byte 32, eliminating both padding regions without
+decomposing the `float2` or adding a field.
+
+| Metric | 296 B SSA-ABI checkpoint | Bit lanes + ABI order | Change |
+| --- | ---: | ---: | ---: |
+| logical frame values | 69 | 69 | unchanged |
+| Boolean logical values | 6 | 6 | unchanged |
+| physical user fields | 69 | 64 | -5 |
+| physical fields including scheduler state | 76 | 71 | -5 |
+| complete frame | 296 B | 288 B | -8 B (-2.7%) |
+
+The cache-disabled 64x64/1 spp HIP canary retains Combined SHA-256
+`9d37dc0ad91750654f166e2285eefe6652ea5f7cb906f592adf9cfa3385e3e07`
+and display SHA-256
+`b4f198ebedd7621e41bd51d66f495c9f1c734141e48ccad866671d983555a58e`.
+The frame dump reports 69 logical values, 64 physical user slots, 71 complete
+fields, and 288 B. Focused distill and split suites pass 46 tests / 366
+assertions and 37 / 376; all-scheduler suites pass 15 / 76 on fallback, HIP,
+and native XIR-to-SPIR-V Vulkan. HIP SoA passes 8 / 98, the standalone Luisa
+tree builds completely, and all 53 `unit_xir` executables pass.
+
+Before ABI reordering, the packed 296 B version measured `3.34982 s`,
+`3.35374 s`, and `3.34963 s` at 640x480/64 spp (median `3.34982 s`). The final
+288 B version measured `3.36529 s`, `3.34961 s`, and `3.34935 s` (median
+`3.34961 s`). The approximately 0.8% median improvement from the preceding
+unpacked 296 B checkpoint (`3.37738 s`) is consistent with reducing SoA field
+traffic, but remains small enough to treat conservatively; the final eight-byte
+layout reduction is performance-neutral within measurement noise.
+
+The exact canary is under `/var/tmp/psycles-frame-abi-order-4K7zko`. Packed
+296 B timing artifacts are under
+`/var/tmp/psycles-frame-bitpack-timing-{1,2,3}-*`, and final 288 B timing
+artifacts are under `/var/tmp/psycles-frame288-timing-{1,2,3}-*`.
