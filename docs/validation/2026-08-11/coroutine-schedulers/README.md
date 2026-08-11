@@ -1777,3 +1777,70 @@ The real Lone Monk display PPM, all 15 linear PFM files, and the 46-channel EXR
 are byte/exact-channel identical to the preceding compiler checkpoint under
 `/var/tmp/psycles-coro-sccp-gvn-x003j8`. The current artifacts are retained
 under `/var/tmp/psycles-coro-direct-film-24VuuO`.
+
+## Reference-effect lifetime contraction
+
+LuisaCompute `next@a6145e556` removes the remaining false frame lifetimes at
+ordinary reference calls and outlined ray-query callback pipelines. The
+optimization is an interprocedural dataflow summary rather than a list of
+renderer callables. For each reference formal, the existing field-sensitive
+pointer analysis computes two facts:
+
+- `LIVE(entry)` is the May set whose incoming value can be observed before a
+  definite overwrite;
+- the intersection of `KILL(return)` over all reachable normal returns is the
+  Must set definitely written before return.
+
+At an ordinary call, all May reads are modeled before all Must definitions.
+This ordering is deliberately independent of signature order and remains
+sound when two reference formals alias the same object or overlapping
+projections. Unsupported and nested reference effects stay opaque and
+therefore conservative.
+
+An outlined ray-query callback may execute zero or more times and either the
+surface or procedural handler may run. A captured reference therefore joins
+the handlers' May-read effects, but callback writes are never pipeline Must
+definitions: the zero-candidate execution performs no callback write. This
+distinction proves that write-only callback scratch begins a new lifetime at
+the query while preserving accumulators and rejecting any post-query read
+that would depend on a candidate having executed.
+
+On the unchanged 37-material Lone Monk coroutine, the 74 allocation
+lifetimes previously rejected by the opaque pipeline rule form two groups of
+37 write-only callback captures. The formal effect model contracts all of
+them:
+
+| Metric | Opaque ray-query pipeline | Reference-effect model | Change |
+| --- | ---: | ---: | ---: |
+| contracted local allocations | 8,027 / 8,101 | 8,101 / 8,101 | +74 |
+| logical frame values | 168 | 74 | -94 |
+| complete frame | 175 fields / 672 B | 81 fields / 336 B | -336 B (-50.0%) |
+| maximum transition live set | 168 | 74 | -94 |
+
+The new maximum remains the `path_bounce -> surface_shading` transition. Its
+74 logical values occupy 308 bytes; the seven scheduler-reserved `uint`
+fields and final structure alignment produce the complete 336-byte frame.
+Because all 74 values are simultaneously live on that edge, physical slot
+coloring alone cannot reduce it further.
+
+The focused effect regressions cover a write-only ordinary call,
+read-before-write, a conditional non-Must write, aliased reference formals,
+a write-only ray-query capture, a callback read, and the zero-candidate
+pipeline case. The focused allocation suite passes 23 tests / 161 assertions,
+and all 53 `unit_xir` executables pass after a full parallel rebuild of the
+standalone Luisa test tree. The existing pointer-usage suite passes 10 tests /
+87 assertions; HIP coroutine-SoA and ray-query suites pass 8 / 86 and 6 / 196.
+
+A fresh 64x64, one-sample HIP megakernel/wavefront pair is byte-identical for
+the display PPM and every one of the 15 linear PFM passes. At 640x480 and 64
+spp, two cached wavefront render-only observations are `3.35593 s` and
+`3.35717 s`, versus `3.39891 s` with the 672-byte frame: a 1.27% improvement.
+The matched per-sample megakernel remains `2.47695 s`, so wavefront is still
+about 35.5% slower. The frame traffic was real but is not the dominant
+remaining HIP cost; ray traversal and continuation kernel work must be
+profiled separately from further frame-state reduction.
+
+The compiler/frame log is `/var/tmp/psycles-frame-rq-summary.log`, the exact
+64x64 pair is under `/var/tmp/psycles-frame336-{mega,wave}-64`, and the two
+640x480 timing logs are `/var/tmp/psycles-frame336-wave-640-{a,b}.log` on the
+measurement host.
