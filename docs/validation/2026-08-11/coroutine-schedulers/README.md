@@ -6,7 +6,7 @@ wavefront coroutine, or a persistent-worker coroutine. It is a scheduler
 equivalence check, not a new Cycles differential. All three runs use the same
 37-material Lone Monk export, Luisa fallback, 640x480, fixed sample 0, and one
 sample per pixel. The follow-up backend and coroutine checks are current through
-LuisaCompute `next@d589aef8a`.
+LuisaCompute `next@f4ae17f8a`.
 
 The renderer CLI now accepts `-` for the optional sample-chunk JSON argument,
 so selecting argument 17's scheduler does not force the render into pixel-probe
@@ -788,6 +788,81 @@ with only the pre-existing EASTL `fixed_vector` allocation test failing. The
 strict production outputs are under
 `/var/tmp/psycles-coro-transaction-strict-W7Uboo`, and the explicit diagnostic
 output is under `/var/tmp/psycles-coro-transaction-diagnostic-nvX0Ib`.
+
+## Dense transient translator state
+
+The next phase-separated profile showed two independent node-map costs at the
+translation boundaries. XIR-to-AST inserted 341,775 short-lived value bindings
+and rolled back 201,904 branch-local bindings. AST-to-XIR represented every
+function-local `Variable -> Value *` relation with a node-based hash table even
+though `Variable::operator==` is exactly UID equality.
+
+Luisa `next@e40215df0` changes only the XIR-to-AST binding container. No
+iterator or element address survives insertion or rollback, so node stability
+is unobservable. The replacement uses the verifier's contiguous dense pointer
+map: pointer hashes select a candidate bucket and exact pointer equality still
+decides identity. Callable recursion continues to move a complete binding
+frame aside, and structured branches still restore exactly the insertion-log
+suffix. The existing full-map checkpoint oracle and the shared-constant
+caller/callee round trip therefore exercise the same scope semantics.
+
+Luisa `next@f4ae17f8a` removes the remaining AST-to-XIR variable hash entirely.
+For a builder `B`, `FunctionBuilder` assigns variable UIDs monotonically and
+`Variable(a) = Variable(b)` exactly when `uid(a) = uid(b)`. Translation already
+owns one `Current` frame per function, so the exact binding relation is the
+partial vector
+
+`binding_B[uid(v)] = translated value of v`.
+
+Null slots are intentional builtin-variable holes; builtins take their
+separate special-register path. Recursive caller and callee frames may reuse
+the same UID without aliasing. A new regression creates six builtin holes in a
+kernel, local values after those holes, and a callable whose independent UID
+domain overlaps the kernel. It verifies all six exact special registers, the
+call edge, and the resulting module.
+
+Neither optimization changes the coroutine root domain. Translation still
+receives
+
+`R = {entry} union {continuation(t) | t in T_live}`.
+
+A suspend removed with dead control flow remains in
+`T_front - T_live`: it has no graph node and no lowered callable for either
+translator to discover. Sparse surviving token values and the entry-only
+`T_live = empty` case therefore retain their established scheduler mapping.
+
+On the unchanged 37-material, 1x1/1 spp strict native-XIR Vulkan canary, three
+cache-disabled production runs after both changes measured:
+
+| Coroutine phase | Verified transaction | Dense translator state | Speedup |
+| --- | ---: | ---: | ---: |
+| AST-to-XIR translation | 78.364 ms sampled | 42.865 ms median | 1.83x |
+| input verification | 79.433 ms | 74.045 ms | 1.07x |
+| CFG distillation | 8.913 ms | 9.083 ms | 0.98x |
+| output verification | 82.639 ms | 80.232 ms | 1.03x |
+| XIR-to-AST continuation translation | 87.149 ms | 55.006 ms | 1.58x |
+| complete coroutine lowering | 387.938 ms | 309.873 ms | 1.25x |
+
+The complete observations were `310.187`, `309.263`, and `309.873` ms. The
+AST-to-XIR observations were `42.865`, `42.880`, and `42.768` ms; XIR-to-AST
+was `55.546`, `54.863`, and `55.006` ms. Relative to the original
+`1,881.809` ms checkpoint, formal lowering work is now about 6.07x faster. A
+post-container `perf` capture reduced `_expr` from 18.52% to 3.03% of the
+XIR-to-AST window and removed the value-map hash-table symbol from that window;
+the remaining cost is primarily AST node construction and
+`FunctionBuilder::local`, so a second value-number layer was not added.
+
+All runs retained 59 translated functions, 1,146 callable-cache hits, four
+continuations, 297 frame fields, and a 1,424-byte frame. The three display,
+Combined, Normal, and Albedo files are byte-identical to each other and retain
+the four hashes above. DXC was absent. The AST/XIR translator regression passes
+116 assertions in 26 tests, and the all-scheduler suite passes 65 assertions in
+12 tests independently on fallback, HIP, and strict native-XIR Vulkan.
+
+The isolated dense value-map output is under
+`/var/tmp/psycles-coro-value-map-gxjnFS`, its profile is under
+`/var/tmp/psycles-coro-value-map-perf-uAQ33J`, and the three final production
+runs are under `/var/tmp/psycles-coro-variable-bindings-9qpiRm`.
 
 ## Multi-sample renderer equivalence after the cut
 
