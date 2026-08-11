@@ -6,7 +6,7 @@ wavefront coroutine, or a persistent-worker coroutine. It is a scheduler
 equivalence check, not a new Cycles differential. All three runs use the same
 37-material Lone Monk export, Luisa fallback, 640x480, fixed sample 0, and one
 sample per pixel. The follow-up backend and coroutine checks are current through
-LuisaCompute `next@440aec427`.
+LuisaCompute `next@bd24d9d08`.
 
 The renderer CLI now accepts `-` for the optional sample-chunk JSON argument,
 so selecting argument 17's scheduler does not force the render into pixel-probe
@@ -1584,3 +1584,124 @@ cases, the focused pass executable reports 132 assertions in 20 tests. A full
 parallel build passes all 120 standalone Luisa tests and all 265 Psycles tests.
 The measured outputs and frame dump are under
 `/var/tmp/psycles-coro-nonreplayable-final-sG0xTk`.
+
+## Guarded lifetime contraction and coroutine scalar cleanup
+
+LuisaCompute `next@bd24d9d08` contains this compiler checkpoint.
+
+The next frame reduction does not introduce a new IR declaration or move a
+source-language variable by syntactic scope. It operates on the existing XIR
+allocation, use/def, aggregate-mask, and augmented coroutine-CFG relations.
+This matters for loops: moving a lifetime start across a block boundary may
+change how many times it executes, so ordinary dominance is necessary but not
+sufficient.
+
+For each proposed cross-block lifetime start, the compiler first solves a
+greatest-fixed-point Must-initialization problem. Exact static subaggregate
+coverage uses the same access-tree atoms as frame liveness, while dynamic GEP
+versions are killed whenever their defining instruction re-executes. If that
+path-insensitive proof rejects a conditionally initialized local, a bounded
+guarded solver tracks a disjunction of value-numbered Boolean predicate cubes.
+Predicate hash matches are confirmed structurally, dynamic instruction leaves
+kill dependent predicates on re-execution, and every bound widens only by
+forgetting predicates and intersecting Must facts. Resource reads, special
+registers, partial/escaping pointers, and unproved correlation remain
+conservative barriers.
+
+A second independent rule delays an alloca together with its unique first
+definition. It requires exactly one full-root store, only projections/loads as
+the remaining uses, domination of all observations, and availability of the
+store's SSA operand at the destination. With no other write version, moving
+that pair cannot change the value observed by a load. This is the optimization
+that removes most of the newly dead pre-surface state; it is not a test-shaped
+list of material or renderer cases.
+
+On the unchanged 37-material Lone Monk coroutine:
+
+| Metric | Prior formal contraction | Guarded Must + first definition | Change |
+| --- | ---: | ---: | ---: |
+| complete frame | 232 fields / 896 B | 221 fields / 864 B | -11 fields / -32 B |
+| logical frame values | 225 | 214 | -11 |
+| contracted allocation lifetimes | previous pass | 8,149 | production result |
+| delayed unique first definitions | 0 | 7,071 | newly proved |
+| rejected prior-lifetime observations | n/a | 74 | retained conservatively |
+
+The remaining maximum transition is still the surface-side hourglass neck: all
+214 surviving logical values are simultaneously live there, so physical slot
+coloring has no additional reuse opportunity at that edge. Further reduction
+must shorten the state crossing that transition or write film contributions
+earlier; changing only the coloring heuristic cannot reduce this frame.
+
+### SCCP/GVN placement audit
+
+SCCP and GVN were audited against coroutine semantics before being restored to
+the production pipeline. Ordinary CFG traversal ends at `CoroSuspend`, so both
+passes now use uniquely token-matched `suspend -> resume` edges. SCCP starts
+only the entry component; a dead suspend arm therefore also makes its matching
+continuation non-executable. GVN may merge equivalent work within a resume
+scope, but rejects any leader replacement whose path may cross a suspend,
+because that replacement would turn recomputation into frame liveness.
+
+The retained placement is:
+
+```text
+algebraic simplify -> constant fold -> SCCP -> simplify CFG
+...
+aggregate projection -> rematerialization -> SROA -> DCE -> GVN -> DCE
+-> allocation lifetime contraction -> coroutine distillation
+```
+
+The placement was A/B tested on the complete generated path program:
+
+| GVN placement | Replacements | Cross-suspend rejects | Final dense atoms | Rematerialization work |
+| --- | ---: | ---: | ---: | ---: |
+| before rematerialization | 615 | 116 | 31,476 | 99,210 block evaluations |
+| after SROA/DCE (retained) | 266 | 407 | 31,261 | 99,210 block evaluations |
+
+Early GVN did not reduce the rematerialization solver and left 215 additional
+atoms/replayable values for distillation. The retained late pass took 4.14 ms;
+SCCP took 1.64 ms and found no additional production constant in this scene.
+Neither pass changed the 864-byte frame, but late GVN reduces generated work
+without lengthening a coroutine live range.
+
+### Commands and results
+
+The cache-disabled frame measurement used the common renderer command at the
+top of this document with `fallback`, `1 1 1 1`, and `wavefront`, plus:
+
+```text
+PSYCLES_DISABLE_SHADER_CACHE=1 \
+LUISA_CORO_PROFILE_COMPILATION=1 \
+LUISA_CORO_DUMP_FRAME_LAYOUT=1 \
+psycles_render_blender_scene <bundle> <output.ppm> fallback ... wavefront
+```
+
+The exact compiler gates were:
+
+```text
+cmake --build build-luisa-tests --parallel "$(nproc)"
+ctest --test-dir build-luisa-tests -L unit_xir --output-on-failure -j "$(nproc)"
+ctest --test-dir build-luisa-tests -L unit --output-on-failure -j "$(nproc)"
+cmake --build build --target psycles_render_blender_scene --parallel "$(nproc)"
+```
+
+All 53 XIR/coroutine tests and all 121 configured Luisa unit tests pass. The
+focused allocation test reports 16 tests / 117 assertions; continuation SCCP
+reports 10 / 41; the general XIR pass executable reports 366 / 2,257. The
+aggregate frame regression explicitly proves both sides of rematerialization:
+an observed stable constant does not occupy a frame field, while two
+independently dynamic observed components occupy exactly two four-byte fields.
+
+The final 1x1 wavefront render is byte-identical to the pre-SCCP/GVN guarded
+baseline for the display PPM and all 15 linear PFM passes (Combined, Normal,
+Albedo, all direct/indirect/color light passes, Emission, Environment, and
+volume passes). The baseline is under
+`/var/tmp/psycles-coro-guarded-RtTOPQ`; the final scalar-pass run is under
+`/var/tmp/psycles-coro-sccp-gvn-x003j8`.
+
+A separate 64x64 megakernel/wavefront pairing produced a byte-identical display
+PPM. Linear PFM comparison found only floating atomic-order noise; Combined's
+maximum relative difference was `4.55e-4`, with the other passes smaller and no
+structured image difference. Nearest-neighbour visual inspection of the PPM
+pair was therefore exactly identical rather than merely similar. The current
+64x64 output set is under `/var/tmp/psycles-coro-first-def-64-o0q5hN`.
