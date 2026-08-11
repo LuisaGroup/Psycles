@@ -921,6 +921,61 @@ EASTL `fixed_vector` move/allocation test failing. The three production runs
 are under `/var/tmp/psycles-coro-verifier-facts-K2XVac`; scheduler logs are
 under `/var/tmp/luisa-coro-verifier-facts-matrix-9Hb8ro`.
 
+## Immutable type tags at the verifier boundary
+
+The post-instruction-facts profile showed that the remaining verifier cost was
+not another graph algorithm: repeated `Type::tag()` and tag-only predicates
+were crossing the `libluisa-ast` shared-library boundary. Luisa types are
+globally interned, and their primary discriminator obeys the stronger lifetime
+invariant
+
+`published(type) => tag(type) was initialized and never changes`.
+
+Luisa `02fabefb7` therefore stores the discriminator in the public `Type` base
+representation and inlines every predicate that depends only on that
+discriminator. The registry initializes the field before inserting a type into
+the intern table; unpublished, partially decoded types are never observable.
+Compile-time assertions pin the contiguous scalar, arithmetic, floating-point,
+and resource tag ranges used by the predicates. They also require
+
+`sizeof(Type) = sizeof(Type::Tag)` and
+`alignof(Type) = alignof(Type::Tag)`.
+
+The private implementation places its 32-bit `size` beside the 32-bit base tag
+before the 64-bit hash. This fills the first aligned word instead of introducing
+padding merely because the previously empty base became non-empty. A regression
+constructs all 26 registered type tags and verifies the exact tag, the
+scalar/arithmetic/basic/resource partitions, and a one-hot exact-predicate
+match. Missing a registry assignment would expose the default tag and fail this
+test.
+
+Three cache-disabled strict native-XIR Vulkan runs of the same 37-material
+1x1/1 spp Lone Monk canary measured:
+
+| Coroutine phase | Instruction facts | Inline type tags | Speedup |
+| --- | ---: | ---: | ---: |
+| AST-to-XIR translation | 41.367 ms | 41.897 ms | 0.99x |
+| input verification | 54.438 ms | 40.366 ms | 1.35x |
+| CFG distillation | 9.235 ms | 9.125 ms | 1.01x |
+| output verification | 59.010 ms | 44.056 ms | 1.34x |
+| XIR-to-AST continuation translation | 55.135 ms | 55.976 ms | 0.98x |
+| complete coroutine lowering | 268.156 ms | 240.378 ms | 1.12x |
+
+The complete observations were `276.896`, `240.378`, and `235.663` ms. Relative
+to the original `1,881.809` ms checkpoint, complete coroutine lowering is now
+about 7.83x faster. All runs retained 59 translated functions, 1,146 callable
+cache hits, four continuations, 297 frame fields, a 1,424-byte frame, and the
+535,992-to-488,499-word surface SPIR-V result. DXC was absent. Display,
+Combined, Normal, and Albedo remained bit-identical to the preceding checkpoint.
+
+The fallback, HIP, and strict native-XIR Vulkan scheduler matrices each pass 65
+assertions in 12 tests, including optimized-away, sparse, all-dead, and empty
+suspend-token domains. Psycles passes 265/265. Standalone Luisa passes 116/117,
+with only the pre-existing EASTL `fixed_vector` move/allocation test failing.
+The final production runs are under
+`/var/tmp/psycles-coro-inline-type-tag-final-tAOtDL`; scheduler logs are under
+`/var/tmp/luisa-coro-inline-type-tag-matrix-gNiyeQ`.
+
 ## Multi-sample renderer equivalence after the cut
 
 The actual Lone Monk renderer was also run through the new loop-header cut with
