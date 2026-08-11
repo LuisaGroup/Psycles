@@ -1239,3 +1239,62 @@ While rebasing, two unrelated upstream regressions were also fixed and pushed:
 `next@05e204978` restores the already validated EASTL `fixed_vector` ownership
 gitlink, and `next@8765a3dbd` extends the stable SPIR-V target-feature ABI test
 for the new untyped-pointer bit.
+
+## Bounded coroutine-frame ABI decomposition
+
+The Rust implementation also recursively represented aggregate frame state as
+primitive access-tree leaves. A direct translation is not suitable here: the
+earlier fixed-point scalarization experiment showed that reducing frame bytes
+can still lose overall by expanding the source value domain and generated IR.
+Luisa `next@0f8bb03e6` therefore separates the two concerns. Dataflow atoms and
+their live ranges remain unchanged, while a bounded ABI planner may partition
+one aggregate atom only at the final frame-layout boundary.
+
+For an atom `A`, the planner recursively compares two representations: the
+whole type, with cost `sizeof(A)`, and the concatenation of planned children,
+with cost equal to the sum of their represented sizes. It selects children
+only for a strict size reduction and a total of at most 32 fields. A packed
+child whose decomposition has equal payload remains one field; thus, for
+example, `struct { float2; float; }` becomes two fields rather than three
+scalars, while `float2` remains whole. Local-memory atoms alone are eligible;
+ordinary SSA values retain their existing ABI.
+
+Every scope and transition relation expands an atom to its complete contiguous
+field range. No child can acquire a live range different from its parent atom.
+The split validator additionally requires paths of one storage root to be a
+non-overlapping partition: lexicographically sorted paths may contain neither
+duplicates nor adjacent prefix/descendant pairs. The adjacent check is
+necessary and sufficient after sorting, so validation remains `O(n log n)`.
+
+On the unchanged Lone Monk source coroutine:
+
+| Metric | Access-path baseline | Bounded ABI plan | Change |
+| --- | ---: | ---: | ---: |
+| dataflow atoms | 32,953 | 32,953 | unchanged |
+| logical/physical frame values | 291 | 313 | +22 |
+| decomposed atoms | 0 | 5 | +5 |
+| nominal aggregate padding removed | 0 B | 20 B | -20 B |
+| complete frame, including seven reserved fields | 1,424 B | 1,408 B | -16 B |
+| XIR-to-AST value bindings | 339,485 | 339,577 | +0.027% |
+| complete coroutine lowering | 245.074 ms | 243.973 ms | within run noise |
+
+The five selected atoms expand to 27 packed fields. This small increase does
+not alter the 515-word dense solver domain and is several orders of magnitude
+below the rejected source-wide scalarization growth. The independently enabled
+dense-dataflow oracle matched all production sparse relations. New regressions
+cover minimal packed decomposition, retention of a no-padding aggregate,
+retention when the field budget would be exceeded, and split/materialization
+of the resulting ABI. The complete standalone Luisa suite passes 118/118 and
+Psycles passes 265/265.
+
+The fallback 1x1/1 spp Lone Monk canary remains byte-identical:
+
+| Output | SHA-256 |
+| --- | --- |
+| display PPM | `3ff6c5463ace13c0f26a735ac1af2bb96ab8a9ba1cb4398359cf2466f63a4d1b` |
+| Combined PFM | `4f93bceff43a46a086454e9a50745a497b39cd27e8a694f617a5c934fe3ed3eb` |
+| Normal PFM | `acf82e26ab479853be41ff9b3cc348b740cbb77f37671db0d1864efa09052bd0` |
+| Albedo PFM | `8e79df2a612628d23badc4d3dd3dcb8ca2e0d8428bcc10ee77edfe44a5cf562f` |
+
+The cache-disabled measurement, frame dump, exact outputs, and oracle run are
+under `/var/tmp/psycles-coro-abi-DajbAa`.
