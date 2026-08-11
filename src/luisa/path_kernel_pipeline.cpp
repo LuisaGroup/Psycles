@@ -165,9 +165,15 @@ void PathKernelPipeline::emit(
             surface_emission_sampling =
                 event.surface_emission_sampling;
             if (_impl->volume_segment) {
-                const auto volume =
-                    _impl->volume_segment->emit(
-                        event);
+                VolumeSegmentEvent volume{
+                    .scattered = false,
+                    .terminated = false};
+                $outline_with_name(
+                    "path_volume_segment") {
+                    volume =
+                        _impl->volume_segment->emit(
+                            event);
+                };
                 path_terminated =
                     path_terminated |
                     volume.terminated;
