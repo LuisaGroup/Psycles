@@ -166,13 +166,21 @@ materialization operate only on `T_live`. Therefore:
 - if `T_live` is empty, the coroutine still has exactly the token-zero entry
   callable.
 
+Coroutine ownership is independent of both sets. AST-to-XIR now returns the
+exact XIR function associated with the root AST builder, and the lowering
+pipeline carries that provenance across optimization. It no longer searches
+the translated module for a callable that happens to contain a suspend. This
+also defines the stronger degenerate case `T_front = empty`: the root remains
+a valid entry-only coroutine even though no suspend marker has ever existed.
+
 The regression places an auto-numbered suspend in constant-dead control flow
 before the live sample-loop-header and nested bounce-loop suspends. It verifies
 that dead token 1 has no node/callable, live tokens 2 and 3 are not renumbered,
 both loop back-edges resume correctly, and four samples produce the exact
 accumulation under state-machine, wavefront, and persistent scheduling. The
-complete test reports 54 passing assertions in 11 tests on fallback, HIP, and
-strict native Vulkan XIR-to-SPIR-V.
+same matrix also executes the zero-front-end-token case. It reports 61 passing
+assertions in 12 tests on fallback, HIP, and strict native Vulkan
+XIR-to-SPIR-V.
 
 ## Coroutine CFG pass domain
 
@@ -298,10 +306,12 @@ there is no shader-state or image change. The production run is under
 `/var/tmp/psycles-coro-dense-top-production`, and the pointer-oracle run is
 under `/var/tmp/psycles-coro-dense-top-oracle` on the measurement host.
 
-All 18 coroutine-labelled and all 50 XIR-labelled Luisa tests pass. The
-all-scheduler suite additionally passes 54 assertions in 11 tests on fallback,
-HIP, and strict native-XIR Vulkan, including optimized-away frontend tokens,
-sparse live tokens, and the entry-only empty-live-set case.
+All 53 focused XIR/coroutine CTest executables pass after the provenance API
+change. The all-scheduler suite additionally passes 61 assertions in 12 tests
+on fallback, HIP, and strict native-XIR Vulkan, including optimized-away
+frontend tokens, sparse live tokens, the entry-only empty-live-set case, and a
+root coroutine with no front-end suspend at all. This checkpoint uses Luisa
+`next@b8c13d424`.
 
 ## Multi-sample renderer equivalence after the cut
 
