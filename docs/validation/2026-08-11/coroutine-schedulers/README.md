@@ -6,7 +6,7 @@ wavefront coroutine, or a persistent-worker coroutine. It is a scheduler
 equivalence check, not a new Cycles differential. All three runs use the same
 37-material Lone Monk export, Luisa fallback, 640x480, fixed sample 0, and one
 sample per pixel. The follow-up backend and coroutine checks are current through
-LuisaCompute `next@f4ae17f8a`.
+LuisaCompute `next@8765a3dbd`.
 
 The renderer CLI now accepts `-` for the optional sample-chunk JSON argument,
 so selecting argument 17's scheduler does not force the render into pixel-probe
@@ -1139,3 +1139,103 @@ The source `.blend` enables Cycles adaptive sampling and denoising, while these
 Psycles rows intentionally use fixed one-sample, un-denoised output. Therefore
 this image must not be used as a Cycles quality gate; the established high-spp
 five-way validation remains the Cycles-alignment evidence.
+
+## Access-path frame analysis and snapshot projection
+
+The next frame-reduction step was derived from the earlier Rust coroutine
+implementation in `/home/mike/Projects/LuisaCompute-coroutine`, specifically
+its `AccessTree`, recursive frame-leaf construction, and `defer_load` transform.
+The transferable invariant is not “scalarize every aggregate.” It is:
+
+- liveness identities are `(storage root, statically known access path)`;
+- distinct identities may be separated only when their byte ranges are
+  disjoint;
+- a projected load must remain at the original aggregate-load position, so an
+  intervening store cannot change the observed snapshot;
+- dynamic indices, overlapping observations, atomics, and reference escape
+  collapse conservatively to the whole storage root.
+
+A controlled fixed-point SROA experiment demonstrated why source-wide
+scalarization is the wrong implementation. It reduced the raw frame from 1,424
+to 1,328 bytes, but increased the dense value domain from 35,830 to 41,482
+atoms and increased complete lowering from about 247 to 297 ms. That experiment
+was reverted. The production implementation instead keeps source aggregates
+intact and refines only the coroutine dataflow domain and frame ABI.
+
+Luisa `next@817325f71` now gives each ordinary SSA value one atom and constructs
+disjoint atoms for static local-memory observations. Merely computing a GEP
+uses its index operands; it does not read the pointee. Stores are mapped to
+overlapping observation atoms, and split/materialization spill and reload the
+exact static path. The certificate schema covers the access paths and all
+index-based scope/edge relations, while legacy root lists remain diagnostic
+views rather than the authoritative state.
+
+The new snapshot-projection pass rewrites
+`extract(load(local), static-path)` into a projected `load(gep(...))` at the
+original load position. It visits every function-owned block, not only blocks
+reachable from the entry: a raw `CoroSuspend` deliberately disconnects resume
+roots from the ordinary CFG. Identical unannotated projections of one snapshot
+are value-numbered; metadata ownership, dynamic access, and escaped storage are
+conservative barriers. The production pipeline applies one pass before
+one-level SROA and one bounded cleanup pass afterwards; it never runs recursive
+or fixed-point SROA.
+
+On the unchanged 37-material Lone Monk source coroutine:
+
+| Metric | Root-only baseline | Access paths + defer-load | Change |
+| --- | ---: | ---: | ---: |
+| dense atoms | 35,826 | 32,953 | -8.0% |
+| dense 64-bit words | 560 | 515 | -8.0% |
+| rejected replay values | 26,476 | 23,838 | -10.0% |
+| XIR-to-AST value bindings | 341,665 | 339,485 | -0.64% |
+| complete coroutine lowering | 249--258 ms | 245.074 ms | within run noise, slightly lower |
+
+The first projection pass handled 546 aggregate loads and 612 extracts. The
+post-SROA pass handled another 106 loads and 367 extracts, after which DCE
+removed 1,243 instructions. The production sparse-dataflow oracle independently
+recomputed every scope and transition relation on the full scene and matched
+the dense solver.
+
+### Complete-definition relation for partial stores
+
+Formal review rejected one initially attractive 1,312-byte frame result. The
+first access mapper treated any overlapping store as a must-definition. That is
+unsound for an enclosing atom `A` and descendant store path `P`: writing
+`pair.x` does not define the bytes of `pair.y`.
+
+The corrected relation is directional:
+
+- `P` is a prefix of `A`: the store covers the atom and may kill its incoming
+  value;
+- `A` is a strict prefix of `P`: the store is partial, touches the atom, and
+  preserves an incoming dependence for the unwritten bytes;
+- neither path prefixes the other: the ranges are disjoint.
+
+This relation is represented explicitly by `MemoryAccess::covers_atom` and is
+used by both split atoms and whole-root fallback. Two regressions cover a
+descendant store inside a statically split enclosing atom and a dynamic-index
+store inside an unsplit aggregate. Both require the aggregate to be reloaded,
+updated, and stored across the next suspension. Thus the final scene frame is
+291 logical/physical values, 298 fields including the seven reserved fields,
+and 1,424 bytes. The nine values restored by the sound rule are one 24-byte
+structure and eight 12-byte arrays; their earlier omission was invalid
+optimization, not useful compression.
+
+The final fallback 1x1/1 spp canary passes the dense-versus-sparse oracle and
+retains the established exact hashes:
+
+| Output | SHA-256 |
+| --- | --- |
+| display PPM | `3ff6c5463ace13c0f26a735ac1af2bb96ab8a9ba1cb4398359cf2466f63a4d1b` |
+| Combined PFM | `4f93bceff43a46a086454e9a50745a497b39cd27e8a694f617a5c934fe3ed3eb` |
+| Normal PFM | `acf82e26ab479853be41ff9b3cc348b740cbb77f37671db0d1864efa09052bd0` |
+| Albedo PFM | `8e79df2a612628d23badc4d3dd3dcb8ca2e0d8428bcc10ee77edfe44a5cf562f` |
+
+The timed non-oracle run is under
+`/var/tmp/psycles-coro-access-timing-WgowGQ`; the independently checked oracle
+run and exact outputs are under `/var/tmp/psycles-coro-access-final-Np7m7v`.
+The full standalone Luisa suite passes 118/118 tests and Psycles passes 265/265.
+While rebasing, two unrelated upstream regressions were also fixed and pushed:
+`next@05e204978` restores the already validated EASTL `fixed_vector` ownership
+gitlink, and `next@8765a3dbd` extends the stable SPIR-V target-feature ABI test
+for the new untyped-pointer bit.
