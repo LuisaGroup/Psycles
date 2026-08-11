@@ -374,6 +374,8 @@ bool LuisaRenderSession::render_samples(
                     .sobol_table = _sobol_table.view(),
                     .filter_table = _pixel_filter_table.view(),
                     .parameters = parameters,
+                    .width = _window.width,
+                    .height = rows->row_count,
                     .pixel_count = rows->pixel_count});
             _stream << synchronize();
         }

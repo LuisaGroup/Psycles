@@ -8,10 +8,13 @@ int main() {
     using psycles::luisa_backend::LuisaPathScheduler;
     using psycles::luisa_backend::LuisaPathTracerOptions;
     using psycles::luisa_backend::luisa_path_scheduler_name;
+    using psycles::luisa_backend::
+        luisa_path_scheduler_uses_per_sample_dispatch;
     using psycles::luisa_backend::parse_luisa_path_scheduler;
 
     constexpr std::array schedulers{
         LuisaPathScheduler::megakernel,
+        LuisaPathScheduler::megakernel_per_sample,
         LuisaPathScheduler::wavefront,
         LuisaPathScheduler::persistent};
     for (const auto scheduler : schedulers) {
@@ -28,6 +31,18 @@ int main() {
              .empty()) {
         return EXIT_FAILURE;
     }
+    static_assert(
+        !luisa_path_scheduler_uses_per_sample_dispatch(
+            LuisaPathScheduler::megakernel));
+    static_assert(
+        luisa_path_scheduler_uses_per_sample_dispatch(
+            LuisaPathScheduler::megakernel_per_sample));
+    static_assert(
+        luisa_path_scheduler_uses_per_sample_dispatch(
+            LuisaPathScheduler::wavefront));
+    static_assert(
+        luisa_path_scheduler_uses_per_sample_dispatch(
+            LuisaPathScheduler::persistent));
 
     // Defaults reproduce the path-tracing experiment in GPU Coroutines:
     // wavefront 2^24; persistent 2^15, block 128, fetch 16, SoA + GME.
@@ -40,5 +55,6 @@ int main() {
     static_assert(options.persistent_fetch_size == 16u);
     static_assert(options.persistent_shared_memory_soa);
     static_assert(options.persistent_global_memory_extension);
+    static_assert(options.max_samples_per_dispatch == 64u);
     return EXIT_SUCCESS;
 }

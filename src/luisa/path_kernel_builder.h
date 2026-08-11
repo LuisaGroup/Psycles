@@ -47,15 +47,21 @@ struct RenderProgramTypes;
 
 template<typename... Args>
 struct RenderProgramTypes<void(Args...)> {
-    using Kernel = Kernel1D<Args...>;
-    using CompiledShader = Shader1D<Args...>;
+    using SerialKernel = Kernel1D<Args...>;
+    using SerialCompiledShader = Shader1D<Args...>;
+    using SampleKernel = luisa::compute::Kernel3D<Args...>;
+    using SampleCompiledShader = luisa::compute::Shader3D<Args...>;
     using Coroutine = luisa::compute::Coroutine<void(Args...)>;
 };
 
-using RenderKernel =
-    RenderProgramTypes<RenderKernelSignature>::Kernel;
-using RenderCompiledShader =
-    RenderProgramTypes<RenderKernelSignature>::CompiledShader;
+using RenderSerialKernel =
+    RenderProgramTypes<RenderKernelSignature>::SerialKernel;
+using RenderSerialCompiledShader =
+    RenderProgramTypes<RenderKernelSignature>::SerialCompiledShader;
+using RenderSampleKernel =
+    RenderProgramTypes<RenderKernelSignature>::SampleKernel;
+using RenderSampleCompiledShader =
+    RenderProgramTypes<RenderKernelSignature>::SampleCompiledShader;
 using RenderCoroutine =
     RenderProgramTypes<RenderKernelSignature>::Coroutine;
 
@@ -169,8 +175,17 @@ make_path_kernel_scene_stage_plan(
                 analytic_light_count)};
 }
 
+// Host AST-construction state, never a device-side branch. Serial film
+// accumulation has one writer per pixel; per-sample 3D dispatch follows
+// Cycles GPU and atomically contributes each sample to the shared film.
+enum class PathFilmAccumulation : std::uint8_t {
+    serial,
+    atomic,
+};
+
 struct PathKernelInvocation {
     const PathKernelConfig &config;
+    PathFilmAccumulation film_accumulation;
     const BufferFloat4 &combined;
     const BufferFloat4 &normal;
     const BufferFloat4 &albedo;
@@ -180,7 +195,6 @@ struct PathKernelInvocation {
     const BufferUInt &volume_guiding_denoised;
     const BufferFloat4 &path_trace;
     const UInt &sample_first;
-    const UInt &samples;
     const BufferFloat4 &sobol_table;
     const BufferFloat &filter_table;
     const Var<RenderKernelParameters> &parameters;
@@ -283,6 +297,8 @@ struct PathKernelInvocation {
 
 [[nodiscard]] PathKernelInvocation
 begin_path_kernel(const PathKernelConfig &config,
+                  PathFilmAccumulation film_accumulation,
+                  UInt pixel,
                   const BufferFloat4 &combined,
                   const BufferFloat4 &normal,
                   const BufferFloat4 &albedo,
@@ -292,7 +308,6 @@ begin_path_kernel(const PathKernelConfig &config,
                   const BufferUInt &volume_guiding_denoised,
                   const BufferFloat4 &path_trace,
                   const UInt &sample_first,
-                  const UInt &samples,
                   const BufferFloat4 &sobol_table,
                   const BufferFloat &filter_table,
                   const Var<RenderKernelParameters> &parameters) noexcept;
@@ -689,8 +704,10 @@ class PathKernelPipeline {
     void emit(PathSampleContext &sample, bool is_coro) const noexcept;
 };
 
-[[nodiscard]] RenderKernel
-build_path_kernel(const PathKernelConfig &config) noexcept;
+[[nodiscard]] RenderSerialKernel
+build_path_serial_kernel(const PathKernelConfig &config) noexcept;
+[[nodiscard]] RenderSampleKernel
+build_path_sample_kernel(const PathKernelConfig &config) noexcept;
 [[nodiscard]] RenderCoroutine
 build_path_coroutine(const PathKernelConfig &config);
 

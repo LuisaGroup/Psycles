@@ -1,6 +1,7 @@
 #include "path_kernel_executor.h"
 
 #include "path_kernel_builder.h"
+#include "sample_dispatch_partition.h"
 
 #include <utility>
 
@@ -44,8 +45,7 @@ template<typename Program>
                dispatch.samples,
                dispatch.sobol_table,
                dispatch.filter_table,
-               dispatch.parameters)
-        .dispatch(dispatch.pixel_count);
+               dispatch.parameters);
 }
 
 }// namespace
@@ -63,14 +63,14 @@ public:
 
 namespace {
 
-class MegakernelExecutor final : public PathKernelExecutorImpl {
+class SerialMegakernelExecutor final : public PathKernelExecutorImpl {
 
 private:
-    RenderCompiledShader _shader;
+    RenderSerialCompiledShader _shader;
 
 public:
-    explicit MegakernelExecutor(
-        RenderCompiledShader shader) noexcept
+    explicit SerialMegakernelExecutor(
+        RenderSerialCompiledShader shader) noexcept
         : _shader{std::move(shader)} {}
 
     [[nodiscard]] LuisaPathScheduler
@@ -81,7 +81,34 @@ public:
     void dispatch(
         luisa::compute::Stream &stream,
         const PathKernelDispatch &dispatch) noexcept override {
-        stream << bind_path_program(_shader, dispatch);
+        stream << bind_path_program(_shader, dispatch)
+                      .dispatch(dispatch.pixel_count);
+    }
+};
+
+class SampleMegakernelExecutor final : public PathKernelExecutorImpl {
+
+private:
+    RenderSampleCompiledShader _shader;
+
+public:
+    explicit SampleMegakernelExecutor(
+        RenderSampleCompiledShader shader) noexcept
+        : _shader{std::move(shader)} {}
+
+    [[nodiscard]] LuisaPathScheduler
+    scheduler() const noexcept override {
+        return LuisaPathScheduler::megakernel_per_sample;
+    }
+
+    void dispatch(
+        luisa::compute::Stream &stream,
+        const PathKernelDispatch &dispatch) noexcept override {
+        stream << bind_path_program(_shader, dispatch)
+                      .dispatch(
+                          dispatch.width,
+                          dispatch.height,
+                          dispatch.samples);
     }
 };
 
@@ -107,7 +134,11 @@ public:
         luisa::compute::Stream &stream,
         const PathKernelDispatch &dispatch) noexcept override {
         auto command =
-            bind_path_program(*_scheduler, dispatch);
+            bind_path_program(*_scheduler, dispatch)
+                .dispatch(
+                    dispatch.width,
+                    dispatch.height,
+                    dispatch.samples);
         command(stream);
     }
 };
@@ -144,6 +175,27 @@ void PathKernelExecutor::dispatch(
                  "Invalid path-kernel executor.");
     LUISA_ASSERT(dispatch.pixel_count != 0u,
                  "A path-kernel dispatch must contain pixels.");
+    LUISA_ASSERT(dispatch.width != 0u && dispatch.height != 0u,
+                 "A path-kernel dispatch must have a nonempty 2D shape.");
+    LUISA_ASSERT(dispatch.samples != 0u,
+                 "A path-kernel dispatch must contain samples.");
+    LUISA_ASSERT(
+        static_cast<std::uint64_t>(dispatch.width) *
+                static_cast<std::uint64_t>(dispatch.height) ==
+            dispatch.pixel_count,
+        "Path-kernel shape {} x {} does not cover {} pixels.",
+        dispatch.width,
+        dispatch.height,
+        dispatch.pixel_count);
+    LUISA_ASSERT(
+        PixelSampleDispatchPlan::make(
+            dispatch.pixel_count,
+            dispatch.samples)
+            .has_value(),
+        "Path-kernel pixel/sample product {} x {} exceeds the "
+        "32-bit logical dispatch domain.",
+        dispatch.pixel_count,
+        dispatch.samples);
     _impl->dispatch(stream, dispatch);
 }
 
@@ -153,11 +205,19 @@ PathKernelExecutor build_path_kernel_executor(
     const PathKernelExecutorConfig &config) {
     switch (config.scheduler) {
         case LuisaPathScheduler::megakernel: {
-            auto kernel = build_path_kernel(path);
+            auto kernel = build_path_serial_kernel(path);
             auto shader = device.compile(
                 kernel, config.shader_option);
             return PathKernelExecutor{
-                std::make_unique<MegakernelExecutor>(
+                std::make_unique<SerialMegakernelExecutor>(
+                    std::move(shader))};
+        }
+        case LuisaPathScheduler::megakernel_per_sample: {
+            auto kernel = build_path_sample_kernel(path);
+            auto shader = device.compile(
+                kernel, config.shader_option);
+            return PathKernelExecutor{
+                std::make_unique<SampleMegakernelExecutor>(
                     std::move(shader))};
         }
         case LuisaPathScheduler::wavefront: {

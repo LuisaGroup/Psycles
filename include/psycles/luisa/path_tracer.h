@@ -20,6 +20,7 @@ namespace psycles::luisa_backend {
 
 enum class LuisaPathScheduler : std::uint8_t {
     megakernel,
+    megakernel_per_sample,
     wavefront,
     persistent,
 };
@@ -30,6 +31,8 @@ luisa_path_scheduler_name(
     switch (scheduler) {
         case LuisaPathScheduler::megakernel:
             return "megakernel";
+        case LuisaPathScheduler::megakernel_per_sample:
+            return "megakernel-per-sample";
         case LuisaPathScheduler::wavefront:
             return "wavefront";
         case LuisaPathScheduler::persistent:
@@ -44,6 +47,9 @@ parse_luisa_path_scheduler(
     if (name == "megakernel") {
         return LuisaPathScheduler::megakernel;
     }
+    if (name == "megakernel-per-sample") {
+        return LuisaPathScheduler::megakernel_per_sample;
+    }
     if (name == "wavefront") {
         return LuisaPathScheduler::wavefront;
     }
@@ -51,6 +57,15 @@ parse_luisa_path_scheduler(
         return LuisaPathScheduler::persistent;
     }
     return std::nullopt;
+}
+
+// The serial megakernel gives one invocation exclusive ownership of a pixel
+// and loops over its sample batch. Every other mode launches the Cartesian
+// product of pixels and samples and therefore requires race-free film writes.
+[[nodiscard]] constexpr bool
+luisa_path_scheduler_uses_per_sample_dispatch(
+    LuisaPathScheduler scheduler) noexcept {
+    return scheduler != LuisaPathScheduler::megakernel;
 }
 
 struct LuisaPathTrace {
@@ -102,10 +117,13 @@ struct LuisaPathTracerOptions {
     std::uint32_t persistent_fetch_size{16u};
     bool persistent_shared_memory_soa{true};
     bool persistent_global_memory_extension{true};
-    // Each batch is submitted and synchronized independently. Keeping this
-    // finite bounds GPU progress and error-detection latency without changing
-    // the device sampler's global sample indices. Zero is invalid.
-    std::uint32_t max_samples_per_dispatch{4u};
+    // Each batch is submitted and synchronized independently. Per-sample
+    // schedulers launch this as dispatch.z; the serial megakernel uses the
+    // same runtime value as its loop bound. It is never part of shader AST or
+    // cache identity. Setting it to one is the deterministic diagnostic path:
+    // each pixel has only one atomic contributor between stream barriers, so
+    // exact hashes remain meaningful. Zero is invalid.
+    std::uint32_t max_samples_per_dispatch{64u};
     // Upper bound on pixel/sample work submitted in one kernel dispatch.
     // Backends without a practical watchdog use the unbounded default;
     // Metal and Vulkan apply a conservative device-safe cap.
