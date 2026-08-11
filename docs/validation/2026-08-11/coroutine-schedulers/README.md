@@ -6,7 +6,7 @@ wavefront coroutine, or a persistent-worker coroutine. It is a scheduler
 equivalence check, not a new Cycles differential. All three runs use the same
 37-material Lone Monk export, Luisa fallback, 640x480, fixed sample 0, and one
 sample per pixel. The follow-up backend and coroutine checks are current through
-LuisaCompute `next@8179c7d37`.
+LuisaCompute `next@b2860dea5`.
 
 The renderer CLI now accepts `-` for the optional sample-chunk JSON argument,
 so selecting argument 17's scheduler does not force the render into pixel-probe
@@ -1884,3 +1884,44 @@ assertions) pass. A 640x480/64 spp render-only observation was `3.38931 s`,
 versus `3.35593-3.35717 s` for the 336-byte checkpoint. Thus the additional
 frame reduction is currently performance-neutral within roughly 1%; it is not
 yet evidence of a HIP speedup.
+
+## Complete SSA aggregate frame ABI decomposition
+
+LuisaCompute `next@b2860dea5` extends the padding-removal ABI from local
+allocation atoms to complete non-lvalue SSA aggregates. Let `v : T` be live
+across a suspension and let the planner produce static paths `P = {p_i}`. The
+transformation is admitted only when the paths are pairwise disjoint, their
+primitive-leaf masks cover all of `T`, their count is bounded, and
+`sum(size(T|p_i)) < size(T)`. The source transition stores
+`extract(v, p_i)`; the continuation starts from an undefined aggregate and
+inserts every loaded leaf. Since every observable primitive leaf is inserted
+exactly once, the reconstructed value is observationally equal to `v`; ABI
+padding is not an XIR value and need not be transported.
+
+The production Lone Monk frame had exactly one profitable SSA aggregate: a
+16-byte `float3` carrying 12 bytes of value. Splitting it into three scalar
+fields changes the real frame as follows:
+
+| Metric | Prior checkpoint | SSA aggregate ABI | Change |
+| --- | ---: | ---: | ---: |
+| logical frame values | 67 | 69 | +2 |
+| physical frame fields including scheduler state | 74 | 76 | +2 |
+| nominal aggregate payload | 16 B | 12 B | -4 B |
+| complete frame | 304 B | 296 B | -8 B (-2.6%) |
+
+The larger complete saving follows from removing the aggregate's 16-byte
+alignment requirement from the frame. The focused analysis test proves the
+three-path partition, the split test observes exactly three `EXTRACT` and
+three `INSERT` instructions, and the runtime regression executes a dynamic
+buffer-read `float3` through state-machine, wavefront, and persistent
+schedulers on fallback and HIP. Its complete test frame is 40 B rather than
+the 48 B required by a whole `float3` payload. The full standalone build and
+all 53 `unit_xir` executables pass.
+
+The cache-disabled Lone Monk 64x64/1 spp HIP canary retains Combined SHA-256
+`9d37dc0ad91750654f166e2285eefe6652ea5f7cb906f592adf9cfa3385e3e07`.
+Three 640x480/64 spp HIP wavefront render-only observations are `3.37956 s`,
+`3.37738 s`, and `3.35326 s` (median `3.37738 s`). This is about 0.35% faster
+than the single 304-byte observation and effectively tied with the earlier
+336-byte range; the frame reduction is established, but no statistically
+significant runtime claim is made.
