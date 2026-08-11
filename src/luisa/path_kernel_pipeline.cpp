@@ -153,17 +153,12 @@ void PathKernelPipeline::emit(
         Bool search_events = !bounce.subsurface_exit;
         Bool path_terminated = false;
         Bool volume_scattered = false;
-        UInt surface_emission_sampling =
-            static_cast<std::uint32_t>(
-                contract::EmissionSampling::none);
         $while(search_events &
                !path_terminated) {
             auto event =
                 _impl->closest_event->emit(
                     bounce,
                     previous_analytic_light);
-            surface_emission_sampling =
-                event.surface_emission_sampling;
             if (_impl->volume_segment) {
                 VolumeSegmentEvent volume{
                     .scattered = false,
@@ -229,9 +224,7 @@ void PathKernelPipeline::emit(
                 $suspend("surface_shading");
             }
             auto surface =
-                _impl->surface_geometry->emit(
-                    bounce,
-                    surface_emission_sampling);
+                _impl->surface_geometry->emit(bounce);
             auto shading =
                 _impl->surface_shading->emit(surface);
             if (sample.invocation.config.use_light_tree) {

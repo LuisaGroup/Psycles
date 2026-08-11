@@ -2036,3 +2036,63 @@ small enough to classify as performance-neutral rather than claim a speedup.
 The frame dump, exact canary, and logs are under
 `/var/tmp/psycles-frame-bsdf-late-pC2mk2`; timing artifacts are under
 `/var/tmp/psycles-frame280-timing-{1,2,3}-*`.
+
+## Surface emission-policy continuation placement
+
+LuisaCompute `next@34c3c4bb9` extends the opt-in frame-layout dump with the
+scope and transition memberships of every logical frame value. The diagnostic
+reports `external`, `touched`, `live-in`, and `live-out` scope sets together
+with `live` and `store` edge sets; it does not run unless
+`LUISA_CORO_DUMP_FRAME_LAYOUT=1`. This turns otherwise anonymous split fields
+into an auditable provenance relation and identified all 16 definitions made
+by the `path_bounce` continuation which crossed into `surface_shading`.
+
+The audit first found that the source-level `closest_surface_distance` was
+identically `CommittedHit::committed_ray_t`: unified traversal initializes the
+latter to `ray.t_max()` for a miss and writes the selected distance for every
+surface, curve, or stored BSSRDF hit. Removing the duplicate source value
+reduced the raw XIR by seven atoms and three scope blocks, but did not change
+the frame. Existing GVN and lifetime contraction had already proved the
+identity. This is recorded explicitly to avoid attributing a false frame win
+to a source cleanup and confirms that the compiler optimization is effective
+for this case.
+
+The remaining `surface_emission_sampling` value did have a real cross-suspend
+lifetime. Its two related facts have different use regions:
+
+- `surface_may_emit` is required before volume roulette and must remain in the
+  closest-event region;
+- the exact sampling policy is first read only by surface forward-hit MIS,
+  after the surface suspension.
+
+Surface geometry already resolves the same immutable hit, instance, primitive,
+and effective material after resumption, and that existing resolution already
+produces `triangle_emission_sampling`. The policy is now taken from that result
+instead of being carried from the earlier closest-event resolution. No buffer
+read, material lookup, or policy computation is duplicated. Equivalence
+follows because both resolutions are pure functions of the same immutable
+scene buffers and committed-hit identity within one render dispatch.
+
+| Metric | Delayed BSDF definition | Delayed emission policy | Change |
+| --- | ---: | ---: | ---: |
+| logical frame values | 66 | 65 | -1 |
+| `path_bounce` touched values | 16 | 15 | -1 |
+| physical user slots | 61 | 60 | -1 |
+| physical fields including scheduler state | 68 | 67 | -1 |
+| complete frame | 280 B | 272 B | -8 B (-2.9%) |
+
+The XIR distillation suite passes 46 tests / 366 assertions. Primitive-policy
+tests and the full Combined, Normal, Albedo, all-light-pass, volume-pass,
+sample-count, and path-trace regression pass on fallback and HIP. The Lone
+Monk 64x64/1 spp HIP canary is again byte-identical for the display PPM and all
+15 linear PFM files, retaining Combined SHA-256
+`9d37dc0ad91750654f166e2285eefe6652ea5f7cb906f592adf9cfa3385e3e07`
+and display SHA-256
+`b4f198ebedd7621e41bd51d66f495c9f1c734141e48ccad866671d983555a58e`.
+
+Three cached 640x480/64 spp HIP wavefront observations are `3.35977 s`,
+`3.34311 s`, and `3.35018 s` (median `3.35018 s`). This is within about 0.3%
+of both the 280-byte and 288-byte medians, so runtime remains statistically
+neutral. Frame dump, exact outputs, and test logs are under
+`/var/tmp/psycles-frame-emission-policy-tzpkca`; timing artifacts are under
+`/var/tmp/psycles-frame272-timing-{1,2,3}-*`.
