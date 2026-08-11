@@ -109,6 +109,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_kernel_emissive_triangle.cpp
     src/luisa/path_kernel_environment_light.cpp
     src/luisa/path_kernel_executor.cpp
+    src/luisa/path_kernel_film.cpp
     src/luisa/path_kernel_forward_light.cpp
     src/luisa/path_kernel_heterogeneous_volume.cpp
     src/luisa/path_kernel_nee_analytic.cpp

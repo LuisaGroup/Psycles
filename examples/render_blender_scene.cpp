@@ -218,13 +218,13 @@ int main(int argc, char **argv) {
             << "usage: psycles_render_blender_scene "
                "<export-directory> <output.ppm> "
                "[backend=fallback] [width] [height] [samples] "
-               "[max-samples-per-dispatch=4] "
+               "[max-samples-per-dispatch=64] "
                "[path-trace.json|-] [trace-x] [trace-y] "
                "[trace-sample=0] [sample-first=0] "
                "[sample-count=samples-sample-first] "
                "[sample-chunk-pixel.json|-] "
                "[probe-chunk-size=1] [probe-full-frame=0] "
-               "[scheduler=megakernel|wavefront|persistent]\n";
+               "[scheduler=megakernel|megakernel-per-sample|wavefront|persistent]\n";
         return EXIT_FAILURE;
     }
     const auto bundle = std::filesystem::path{argv[1]};
@@ -250,7 +250,7 @@ int main(int argc, char **argv) {
     auto width = imported.width;
     auto height = imported.height;
     auto samples = imported.samples;
-    auto max_samples_per_dispatch = std::uint32_t{4u};
+    auto max_samples_per_dispatch = std::uint32_t{64u};
     if (argc > 4) {
         auto value = parse_unsigned<std::uint32_t>(argv[4]);
         if (!value || *value == 0u) {
@@ -376,7 +376,8 @@ int main(int argc, char **argv) {
         if (!parsed) {
             std::cerr
                 << "error: invalid path scheduler '" << argv[17]
-                << "' (expected megakernel, wavefront, or persistent)\n";
+                << "' (expected megakernel, megakernel-per-sample, "
+                   "wavefront, or persistent)\n";
             return EXIT_FAILURE;
         }
         scheduler = *parsed;

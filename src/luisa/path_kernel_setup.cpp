@@ -9,6 +9,8 @@ namespace psycles::luisa_backend::detail {
 
 PathKernelInvocation
 begin_path_kernel(const PathKernelConfig &config,
+                  PathFilmAccumulation film_accumulation,
+                  UInt pixel,
                   const BufferFloat4 &combined,
                   const BufferFloat4 &normal,
                   const BufferFloat4 &albedo,
@@ -18,51 +20,60 @@ begin_path_kernel(const PathKernelConfig &config,
                   const BufferUInt &volume_guiding_denoised,
                   const BufferFloat4 &path_trace,
                   const UInt &sample_first,
-                  const UInt &samples,
                   const BufferFloat4 &sobol_table,
                   const BufferFloat &filter_table,
                   const Var<RenderKernelParameters> &parameters) noexcept {
-    UInt pixel = dispatch_x();
+    const auto atomic_film =
+        film_accumulation == PathFilmAccumulation::atomic;
+    const auto film_value = [atomic_film](
+                                const BufferFloat4 &buffer,
+                                const UInt &index) noexcept {
+        return atomic_film
+                   ? make_float4(0.0f)
+                   : buffer.read(index);
+    };
     UInt local_x = pixel % parameters.window_width;
     UInt local_y = pixel / parameters.window_width;
     UInt full_x = local_x + parameters.window_x;
     UInt full_y = local_y + parameters.window_y;
-    Float4 combined_sum = combined.read(pixel);
-    Float4 normal_sum = normal.read(pixel);
-    Float4 albedo_sum = albedo.read(pixel);
+    Float4 combined_sum = film_value(combined, pixel);
+    Float4 normal_sum = film_value(normal, pixel);
+    Float4 albedo_sum = film_value(albedo, pixel);
     UInt light_pass_base = pixel * light_pass_buffer_count;
-    Float4 diffuse_direct_sum = light_passes.read(
+    Float4 diffuse_direct_sum = film_value(light_passes,
         light_pass_base + light_pass_index(LightPassBuffer::diffuse_direct));
-    Float4 diffuse_indirect_sum = light_passes.read(
+    Float4 diffuse_indirect_sum = film_value(light_passes,
         light_pass_base + light_pass_index(LightPassBuffer::diffuse_indirect));
-    Float4 glossy_direct_sum = light_passes.read(
+    Float4 glossy_direct_sum = film_value(light_passes,
         light_pass_base + light_pass_index(LightPassBuffer::glossy_direct));
-    Float4 glossy_indirect_sum = light_passes.read(
+    Float4 glossy_indirect_sum = film_value(light_passes,
         light_pass_base + light_pass_index(LightPassBuffer::glossy_indirect));
-    Float4 transmission_direct_sum = light_passes.read(
+    Float4 transmission_direct_sum = film_value(light_passes,
         light_pass_base +
         light_pass_index(LightPassBuffer::transmission_direct));
-    Float4 transmission_indirect_sum = light_passes.read(
+    Float4 transmission_indirect_sum = film_value(light_passes,
         light_pass_base +
         light_pass_index(LightPassBuffer::transmission_indirect));
-    Float4 volume_direct_sum = light_passes.read(
+    Float4 volume_direct_sum = film_value(light_passes,
         light_pass_base +
         light_pass_index(
             LightPassBuffer::volume_direct));
-    Float4 volume_indirect_sum = light_passes.read(
+    Float4 volume_indirect_sum = film_value(light_passes,
         light_pass_base +
         light_pass_index(
             LightPassBuffer::volume_indirect));
-    Float4 emission_sum = light_passes.read(
+    Float4 emission_sum = film_value(light_passes,
         light_pass_base + light_pass_index(LightPassBuffer::emission));
-    Float4 environment_sum = light_passes.read(
+    Float4 environment_sum = film_value(light_passes,
         light_pass_base + light_pass_index(LightPassBuffer::environment));
-    Float4 glossy_color_sum = light_passes.read(
+    Float4 glossy_color_sum = film_value(light_passes,
         light_pass_base + light_pass_index(LightPassBuffer::glossy_color));
-    Float4 transmission_color_sum = light_passes.read(
+    Float4 transmission_color_sum = film_value(light_passes,
         light_pass_base +
         light_pass_index(LightPassBuffer::transmission_color));
-    UInt completed = sample_count.read(pixel);
+    UInt completed = atomic_film
+                         ? 0u
+                         : sample_count.read(pixel);
     UInt volume_guiding_raw_base = 0u;
     Float4 volume_guiding_scatter_sum =
         make_float4(0.0f);
@@ -79,17 +90,17 @@ begin_path_kernel(const PathKernelConfig &config,
             pixel *
             volume_guiding::raw_pixel_stride;
         volume_guiding_scatter_sum =
-            volume_guiding_raw.read(
+            film_value(volume_guiding_raw,
                 volume_guiding_raw_base +
                 volume_guiding::
                     raw_scatter_slot);
         volume_guiding_transmit_sum =
-            volume_guiding_raw.read(
+            film_value(volume_guiding_raw,
                 volume_guiding_raw_base +
                 volume_guiding::
                     raw_transmit_slot);
         volume_guiding_optical_depth_sum =
-            volume_guiding_raw.read(
+            film_value(volume_guiding_raw,
                 volume_guiding_raw_base +
                 volume_guiding::
                     optical_depth_slot);
@@ -121,6 +132,7 @@ begin_path_kernel(const PathKernelConfig &config,
         .reflective_caustics = true,
         .refractive_caustics = true};
     return {config,
+            film_accumulation,
             combined,
             normal,
             albedo,
@@ -130,7 +142,6 @@ begin_path_kernel(const PathKernelConfig &config,
             volume_guiding_denoised,
             path_trace,
             sample_first,
-            samples,
             sobol_table,
             filter_table,
             parameters,
@@ -199,16 +210,24 @@ Float PathKernelInvocation::sample_light_roulette(
 Float PathKernelInvocation::
 volume_guiding_majorant_optical_depth()
     const noexcept {
-    // Unlike the denoised RGBE radiance guide, Cycles reads this raw running
-    // statistic for every sample. Deriving it here preserves equivalence
-    // between one fused multi-sample dispatch and several smaller dispatches.
+    // Cycles GPU reads this raw running statistic from the shared render
+    // buffer. A per-sample invocation must do the same: its local field holds
+    // only the contribution that will later be atomically added, not the
+    // history. The serial pixel owner instead carries the history locally so
+    // later iterations of its sample loop observe earlier samples exactly.
+    auto history = volume_guiding_optical_depth_sum;
+    if (film_accumulation == PathFilmAccumulation::atomic) {
+        history = volume_guiding_raw.read(
+            volume_guiding_raw_base +
+            volume_guiding::optical_depth_slot);
+    }
     return select(
         std::numeric_limits<float>::max(),
-        volume_guiding_optical_depth_sum.x /
+        history.x /
             max(
-                volume_guiding_optical_depth_sum.y,
+                history.y,
                 1.0f),
-        volume_guiding_optical_depth_sum.y >
+        history.y >
             0.0f);
 }
 
@@ -901,168 +920,6 @@ PathSampleContext::analytic_light_shader(Var<LightGpu> light,
             light.surface_tag, light_point, incoming);
     };
     return result;
-}
-
-void accumulate_path_sample(PathSampleContext &sample) noexcept {
-    auto &invocation = sample.invocation;
-    auto &radiance = sample.radiance;
-    auto &sample_transparency =
-        sample.sample_transparency;
-    auto &sample_normal = sample.sample_normal;
-    auto &sample_albedo = sample.sample_albedo;
-    auto &sample_glossy_color = sample.sample_glossy_color;
-    auto &sample_transmission_color = sample.sample_transmission_color;
-    auto &sample_diffuse_direct = sample.sample_diffuse_direct;
-    auto &sample_diffuse_indirect = sample.sample_diffuse_indirect;
-    auto &sample_glossy_direct = sample.sample_glossy_direct;
-    auto &sample_glossy_indirect = sample.sample_glossy_indirect;
-    auto &sample_transmission_direct = sample.sample_transmission_direct;
-    auto &sample_transmission_indirect = sample.sample_transmission_indirect;
-    auto &sample_volume_direct = sample.sample_volume_direct;
-    auto &sample_volume_indirect = sample.sample_volume_indirect;
-    auto &sample_emission = sample.sample_emission;
-    auto &sample_environment = sample.sample_environment;
-    auto &volume_guiding_scatter =
-        sample.volume_guiding_scatter;
-    auto &volume_guiding_transmit =
-        sample.volume_guiding_transmit;
-    auto &combined_sum = invocation.combined_sum;
-    auto &normal_sum = invocation.normal_sum;
-    auto &albedo_sum = invocation.albedo_sum;
-    auto &glossy_color_sum = invocation.glossy_color_sum;
-    auto &transmission_color_sum = invocation.transmission_color_sum;
-    auto &diffuse_direct_sum = invocation.diffuse_direct_sum;
-    auto &diffuse_indirect_sum = invocation.diffuse_indirect_sum;
-    auto &glossy_direct_sum = invocation.glossy_direct_sum;
-    auto &glossy_indirect_sum = invocation.glossy_indirect_sum;
-    auto &transmission_direct_sum = invocation.transmission_direct_sum;
-    auto &transmission_indirect_sum = invocation.transmission_indirect_sum;
-    auto &volume_direct_sum = invocation.volume_direct_sum;
-    auto &volume_indirect_sum = invocation.volume_indirect_sum;
-    auto &emission_sum = invocation.emission_sum;
-    auto &environment_sum = invocation.environment_sum;
-    auto &volume_guiding_scatter_sum =
-        invocation.volume_guiding_scatter_sum;
-    auto &volume_guiding_transmit_sum =
-        invocation.volume_guiding_transmit_sum;
-    auto &volume_guiding_optical_depth_sum =
-        invocation
-            .volume_guiding_optical_depth_sum;
-    auto &completed = invocation.completed;
-    radiance = select(
-        radiance, make_float3(0.0f), any(luisa::compute::dsl::isnan(radiance)));
-    combined_sum +=
-        make_float4(
-            radiance,
-            sample_transparency);
-    normal_sum += make_float4(sample_normal, 1.0f);
-    albedo_sum += make_float4(sample_albedo, 1.0f);
-    glossy_color_sum += make_float4(sample_glossy_color, 1.0f);
-    transmission_color_sum += make_float4(sample_transmission_color, 1.0f);
-    diffuse_direct_sum += make_float4(sample_diffuse_direct, 1.0f);
-    diffuse_indirect_sum += make_float4(sample_diffuse_indirect, 1.0f);
-    glossy_direct_sum += make_float4(sample_glossy_direct, 1.0f);
-    glossy_indirect_sum += make_float4(sample_glossy_indirect, 1.0f);
-    transmission_direct_sum += make_float4(sample_transmission_direct, 1.0f);
-    transmission_indirect_sum +=
-        make_float4(sample_transmission_indirect, 1.0f);
-    volume_direct_sum +=
-        make_float4(sample_volume_direct, 1.0f);
-    volume_indirect_sum +=
-        make_float4(sample_volume_indirect, 1.0f);
-    emission_sum += make_float4(sample_emission, 1.0f);
-    environment_sum += make_float4(sample_environment, 1.0f);
-    if (invocation.config.volume_state) {
-        volume_guiding_scatter_sum +=
-            make_float4(
-                volume_guiding_scatter,
-                0.0f);
-        volume_guiding_transmit_sum +=
-            make_float4(
-                volume_guiding_transmit,
-                0.0f);
-        const auto primary_volume_transmit =
-            (sample.path_flags &
-             cycles_path_state::
-                 flag_volume_primary_transmit) !=
-            0u;
-        volume_guiding_optical_depth_sum +=
-            select(
-                make_float4(0.0f),
-                make_float4(
-                    sample.optical_depth,
-                    1.0f,
-                    0.0f,
-                    0.0f),
-                primary_volume_transmit);
-    }
-    completed += 1u;
-}
-
-void PathKernelInvocation::write_film() noexcept {
-    combined.write(pixel, combined_sum);
-    normal.write(pixel, normal_sum);
-    albedo.write(pixel, albedo_sum);
-    light_passes.write(light_pass_base +
-                           light_pass_index(LightPassBuffer::diffuse_direct),
-                       diffuse_direct_sum);
-    light_passes.write(light_pass_base +
-                           light_pass_index(LightPassBuffer::diffuse_indirect),
-                       diffuse_indirect_sum);
-    light_passes.write(light_pass_base +
-                           light_pass_index(LightPassBuffer::glossy_direct),
-                       glossy_direct_sum);
-    light_passes.write(light_pass_base +
-                           light_pass_index(LightPassBuffer::glossy_indirect),
-                       glossy_indirect_sum);
-    light_passes.write(
-        light_pass_base +
-            light_pass_index(LightPassBuffer::transmission_direct),
-        transmission_direct_sum);
-    light_passes.write(
-        light_pass_base +
-            light_pass_index(LightPassBuffer::transmission_indirect),
-        transmission_indirect_sum);
-    light_passes.write(
-        light_pass_base +
-            light_pass_index(
-                LightPassBuffer::volume_direct),
-        volume_direct_sum);
-    light_passes.write(
-        light_pass_base +
-            light_pass_index(
-                LightPassBuffer::volume_indirect),
-        volume_indirect_sum);
-    light_passes.write(light_pass_base +
-                           light_pass_index(LightPassBuffer::emission),
-                       emission_sum);
-    light_passes.write(light_pass_base +
-                           light_pass_index(LightPassBuffer::environment),
-                       environment_sum);
-    light_passes.write(light_pass_base +
-                           light_pass_index(LightPassBuffer::glossy_color),
-                       glossy_color_sum);
-    light_passes.write(
-        light_pass_base + light_pass_index(LightPassBuffer::transmission_color),
-        transmission_color_sum);
-    if (config.volume_state) {
-        volume_guiding_raw.write(
-            volume_guiding_raw_base +
-                volume_guiding::
-                    raw_scatter_slot,
-            volume_guiding_scatter_sum);
-        volume_guiding_raw.write(
-            volume_guiding_raw_base +
-                volume_guiding::
-                    raw_transmit_slot,
-            volume_guiding_transmit_sum);
-        volume_guiding_raw.write(
-            volume_guiding_raw_base +
-                volume_guiding::
-                    optical_depth_slot,
-            volume_guiding_optical_depth_sum);
-    }
-    sample_count.write(pixel, completed);
 }
 
 } // namespace psycles::luisa_backend::detail

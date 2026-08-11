@@ -278,10 +278,56 @@ void PathKernelPipeline::emit(
 
 namespace {
 
-void emit_path_program(
+[[nodiscard]] PathKernelInvocation make_path_invocation(
+    const PathKernelConfig &config,
+    PathFilmAccumulation film_accumulation,
+    UInt pixel,
+    const BufferFloat4 &combined,
+    const BufferFloat4 &normal,
+    const BufferFloat4 &albedo,
+    const BufferFloat4 &light_passes,
+    const BufferUInt &sample_count,
+    const BufferFloat4 &volume_guiding_raw,
+    const BufferUInt &volume_guiding_denoised,
+    const BufferFloat4 &path_trace,
+    const UInt &sample_first,
+    const BufferFloat4 &sobol_table,
+    const BufferFloat &filter_table,
+    const Var<RenderKernelParameters> &parameters) noexcept {
+    return begin_path_kernel(config,
+                             film_accumulation,
+                             std::move(pixel),
+                             combined,
+                             normal,
+                             albedo,
+                             light_passes,
+                             sample_count,
+                             volume_guiding_raw,
+                             volume_guiding_denoised,
+                             path_trace,
+                             sample_first,
+                             sobol_table,
+                             filter_table,
+                             parameters);
+}
+
+// The one authoritative host path-tracing wrapper. Sample-loop organization
+// and dispatch.z mapping live in its callers; sampler initialization, path
+// stages, and film contribution stay identical for every execution policy.
+void emit_path_sample(
+    const PathKernelPipeline &pipeline,
+    PathKernelInvocation &invocation,
+    const UInt &sub_spp_index,
+    bool is_coro) noexcept {
+    auto sample = begin_path_sample(
+        invocation, sub_spp_index);
+    pipeline.emit(sample, is_coro);
+    accumulate_path_sample(sample);
+}
+
+void emit_serial_path_program(
     const PathKernelConfig &config,
     const PathKernelPipeline &pipeline,
-    bool is_coro,
     const BufferFloat4 &combined,
     const BufferFloat4 &normal,
     const BufferFloat4 &albedo,
@@ -295,44 +341,80 @@ void emit_path_program(
     const BufferFloat4 &sobol_table,
     const BufferFloat &filter_table,
     const Var<RenderKernelParameters> &parameters) noexcept {
-    auto invocation = begin_path_kernel(config,
-                                        combined,
-                                        normal,
-                                        albedo,
-                                        light_passes,
-                                        sample_count,
-                                        volume_guiding_raw,
-                                        volume_guiding_denoised,
-                                        path_trace,
-                                        sample_first,
-                                        samples,
-                                        sobol_table,
-                                        filter_table,
-                                        parameters);
-    $for(sample_offset, samples) {
-        // The sample loop is also a scheduling cycle. Cut it at its canonical
-        // state boundary, before any per-sample path state is populated. This
-        // makes one scheduler activation correspond to one sample: the entry
-        // continuation only initializes the pixel invocation, while a loop
-        // back-edge targets this token instead of carrying the complete path
-        // frame through a physical shader loop. The host branch keeps the
-        // megakernel byte-for-byte free of coroutine control flow.
-        if (is_coro) {
-            $suspend("path_sample");
-        }
-        auto sample = begin_path_sample(invocation, sample_offset);
-        pipeline.emit(sample, is_coro);
-        accumulate_path_sample(sample);
+    auto invocation = make_path_invocation(
+        config,
+        PathFilmAccumulation::serial,
+        dispatch_x(),
+        combined,
+        normal,
+        albedo,
+        light_passes,
+        sample_count,
+        volume_guiding_raw,
+        volume_guiding_denoised,
+        path_trace,
+        sample_first,
+        sobol_table,
+        filter_table,
+        parameters);
+    $for(sub_spp_index, samples) {
+        emit_path_sample(
+            pipeline, invocation, sub_spp_index, false);
     };
+    invocation.write_film();
+}
+
+void emit_per_sample_path_program(
+    const PathKernelConfig &config,
+    const PathKernelPipeline &pipeline,
+    bool is_coro,
+    const BufferFloat4 &combined,
+    const BufferFloat4 &normal,
+    const BufferFloat4 &albedo,
+    const BufferFloat4 &light_passes,
+    const BufferUInt &sample_count,
+    const BufferFloat4 &volume_guiding_raw,
+    const BufferUInt &volume_guiding_denoised,
+    const BufferFloat4 &path_trace,
+    const UInt &sample_first,
+    const BufferFloat4 &sobol_table,
+    const BufferFloat &filter_table,
+    const Var<RenderKernelParameters> &parameters) noexcept {
+    const auto pixel =
+        luisa::compute::dispatch_y() *
+            luisa::compute::dispatch_size().x +
+        dispatch_x();
+    auto invocation = make_path_invocation(
+        config,
+        PathFilmAccumulation::atomic,
+        pixel,
+        combined,
+        normal,
+        albedo,
+        light_passes,
+        sample_count,
+        volume_guiding_raw,
+        volume_guiding_denoised,
+        path_trace,
+        sample_first,
+        sobol_table,
+        filter_table,
+        parameters);
+    emit_path_sample(
+        pipeline,
+        invocation,
+        luisa::compute::dispatch_z(),
+        is_coro);
     invocation.write_film();
 }
 
 }// namespace
 
-RenderKernel build_path_kernel(const PathKernelConfig &config) noexcept {
+RenderSerialKernel build_path_serial_kernel(
+    const PathKernelConfig &config) noexcept {
     PathKernelPipeline pipeline{
         config};
-    RenderKernel kernel =
+    RenderSerialKernel kernel =
         [&config, &pipeline](BufferFloat4 combined,
                              BufferFloat4 normal,
                              BufferFloat4 albedo,
@@ -346,22 +428,65 @@ RenderKernel build_path_kernel(const PathKernelConfig &config) noexcept {
                              BufferFloat4 sobol_table,
                              BufferFloat filter_table,
                              Var<RenderKernelParameters> parameters) noexcept {
-            emit_path_program(config,
-                              pipeline,
-                              false,
-                              combined,
-                              normal,
-                              albedo,
-                              light_passes,
-                              sample_count,
-                              volume_guiding_raw,
-                              volume_guiding_denoised,
-                              path_trace,
-                              sample_first,
-                              samples,
-                              sobol_table,
-                              filter_table,
-                              parameters);
+            emit_serial_path_program(
+                config,
+                pipeline,
+                combined,
+                normal,
+                albedo,
+                light_passes,
+                sample_count,
+                volume_guiding_raw,
+                volume_guiding_denoised,
+                path_trace,
+                sample_first,
+                samples,
+                sobol_table,
+                filter_table,
+                parameters);
+        };
+    return kernel;
+}
+
+RenderSampleKernel build_path_sample_kernel(
+    const PathKernelConfig &config) noexcept {
+    PathKernelPipeline pipeline{
+        config};
+    RenderSampleKernel kernel =
+        [&config, &pipeline](BufferFloat4 combined,
+                             BufferFloat4 normal,
+                             BufferFloat4 albedo,
+                             BufferFloat4 light_passes,
+                             BufferUInt sample_count,
+                             BufferFloat4 volume_guiding_raw,
+                             BufferUInt volume_guiding_denoised,
+                             BufferFloat4 path_trace,
+                             UInt sample_first,
+                             UInt,
+                             BufferFloat4 sobol_table,
+                             BufferFloat filter_table,
+                             Var<RenderKernelParameters> parameters) noexcept {
+            // Keep one sample plane per block. This avoids placing multiple
+            // writers for the same pixel in a block and is a clean topology
+            // baseline for the coroutine schedulers, whose worker layout is
+            // controlled by their own host configurations.
+            set_block_size(8u, 8u, 1u);
+            emit_per_sample_path_program(
+                config,
+                pipeline,
+                false,
+                combined,
+                normal,
+                albedo,
+                light_passes,
+                sample_count,
+                volume_guiding_raw,
+                volume_guiding_denoised,
+                path_trace,
+                sample_first,
+                sobol_table,
+                filter_table,
+                parameters);
         };
     return kernel;
 }
@@ -384,22 +509,23 @@ RenderCoroutine build_path_coroutine(
                              BufferFloat4 sobol_table,
                              BufferFloat filter_table,
                              Var<RenderKernelParameters> parameters) noexcept {
-            emit_path_program(config,
-                              pipeline,
-                              true,
-                              combined,
-                              normal,
-                              albedo,
-                              light_passes,
-                              sample_count,
-                              volume_guiding_raw,
-                              volume_guiding_denoised,
-                              path_trace,
-                              sample_first,
-                              samples,
-                              sobol_table,
-                              filter_table,
-                              parameters);
+            static_cast<void>(samples);
+            emit_per_sample_path_program(
+                config,
+                pipeline,
+                true,
+                combined,
+                normal,
+                albedo,
+                light_passes,
+                sample_count,
+                volume_guiding_raw,
+                volume_guiding_denoised,
+                path_trace,
+                sample_first,
+                sobol_table,
+                filter_table,
+                parameters);
         }};
 }
 

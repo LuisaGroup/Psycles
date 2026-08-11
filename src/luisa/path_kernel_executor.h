@@ -47,6 +47,11 @@ struct PathKernelDispatch {
     luisa::compute::BufferView<luisa::float4> sobol_table;
     luisa::compute::BufferView<float> filter_table;
     RenderKernelParameters parameters{};
+    // Logical launch shape for a contiguous row band. Per-sample execution
+    // uses (width, height, samples), with samples mapped exclusively through
+    // dispatch.z; the serial megakernel dispatches pixel_count invocations.
+    std::uint32_t width{};
+    std::uint32_t height{};
     std::uint32_t pixel_count{};
 };
 

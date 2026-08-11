@@ -11,6 +11,7 @@ namespace {
     const LuisaPathTracerOptions &options) noexcept {
     switch (options.scheduler) {
         case LuisaPathScheduler::megakernel:
+        case LuisaPathScheduler::megakernel_per_sample:
             return true;
         case LuisaPathScheduler::wavefront:
             return options.wavefront_frame_capacity != 0u;
