@@ -451,7 +451,17 @@ int main(int argc, char **argv) {
         psycles::luisa_backend::LuisaPathScheduler::megakernel,
         sample_count,
         false);
+    // The serial film path is the deterministic diagnostic oracle. Splitting
+    // the same ordered sample range across host dispatches must remain
+    // bit-exact for every pass; this catches accidental changes to exact-hash
+    // validation without imposing bit identity on floating-point atomics.
     const auto deterministic = render(
+        context,
+        backend,
+        psycles::luisa_backend::LuisaPathScheduler::megakernel,
+        sample_count,
+        true);
+    const auto single_plane = render(
         context,
         backend,
         psycles::luisa_backend::
@@ -484,13 +494,19 @@ int main(int argc, char **argv) {
         psycles::luisa_backend::LuisaPathScheduler::persistent,
         sample_count,
         false);
-    if (!reference || !deterministic || !per_sample || !chunked ||
+    if (!reference || !deterministic || !single_plane || !per_sample ||
+        !chunked ||
         !wavefront || !persistent || !validate_reference(*reference) ||
         !compare_outputs(
             *reference,
             *deterministic,
             true,
-            "deterministic per-sample dispatch") ||
+            "deterministic serial chunking") ||
+        !compare_outputs(
+            *reference,
+            *single_plane,
+            false,
+            "single-plane atomic dispatch") ||
         !compare_outputs(
             *reference,
             *per_sample,

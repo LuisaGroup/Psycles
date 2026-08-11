@@ -42,7 +42,6 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         auto &light_terminate_sample = bounce.light_terminate_sample;
         auto &bsdf_sample = bounce.bsdf_sample;
         auto &throughput = sample.throughput;
-        auto &sample_emission = sample.sample_emission;
         auto &path_depth = sample.path_depth;
         auto &previous_delta = sample.previous_delta;
         auto &previous_bsdf_pdf = sample.previous_bsdf_pdf;
@@ -62,10 +61,6 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         auto &diffuse_depth = sample.diffuse_depth;
         auto &glossy_depth = sample.glossy_depth;
         auto &transmission_depth = sample.transmission_depth;
-        auto &sample_albedo = sample.sample_albedo;
-        auto &sample_glossy_color = sample.sample_glossy_color;
-        auto &sample_transmission_color = sample.sample_transmission_color;
-        auto &sample_normal = sample.sample_normal;
         auto &primary_recorded = sample.primary_recorded;
         const auto &forward_light_weight =
             config.light_transport.forward_light_weight;
@@ -184,9 +179,11 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
             (path_flags &
              cycles_path_state::flag_any_pass) ==
             0u;
-        sample_emission += select(make_float3(0.0f),
-                                  emission_contribution,
-                                  directly_visible_emission);
+        sample.accumulate_light_pass(
+            LightPassBuffer::emission,
+            select(make_float3(0.0f),
+                   emission_contribution,
+                   directly_visible_emission));
         sample.accumulate_scattered_light(
             select(emission_contribution,
                    make_float3(0.0f),
@@ -237,10 +234,14 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
             // A BSSRDF exit skips them along with duplicate roulette.
             $if(path_depth == 0u) {
                 const auto &aov = preparation.aov;
-                sample_albedo += throughput * aov.albedo;
-                sample_glossy_color += throughput * aov.glossy_albedo;
-                sample_transmission_color +=
-                    throughput * aov.transmission_albedo;
+                sample.accumulate_albedo_pass(
+                    throughput * aov.albedo);
+                sample.accumulate_light_pass(
+                    LightPassBuffer::glossy_color,
+                    throughput * aov.glossy_albedo);
+                sample.accumulate_light_pass(
+                    LightPassBuffer::transmission_color,
+                    throughput * aov.transmission_albedo);
                 auto surface_alpha = clamp(
                     make_float3(1.0f) - aov.transparency,
                     make_float3(0.0f),
@@ -253,7 +254,11 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                     ((kernel_parameters.pass_alpha_threshold == 0.0f) |
                      (average_alpha >=
                       kernel_parameters.pass_alpha_threshold));
-                sample_normal = select(sample_normal, aov.normal, writes_normal);
+                sample.accumulate_normal_pass(
+                    select(
+                        make_float3(0.0f),
+                        aov.normal,
+                        writes_normal));
                 primary_recorded = primary_recorded | writes_normal;
                 path_flags |= select(
                     0u,

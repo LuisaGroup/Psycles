@@ -89,8 +89,6 @@ class PathVolumeSegmentStageImpl final
         auto &stack = *sample.volume.stack;
         auto &ray = sample.ray;
         auto &throughput = sample.throughput;
-        auto &sample_emission =
-            sample.sample_emission;
         auto &path_flags = sample.path_flags;
         auto &path_depth = sample.path_depth;
         auto &diffuse_depth =
@@ -563,11 +561,12 @@ class PathVolumeSegmentStageImpl final
             (path_flags &
              cycles_path_state::
                  flag_any_pass) == 0u;
-        sample_emission +=
+        sample.accumulate_light_pass(
+            LightPassBuffer::emission,
             select(
                 make_float3(0.0f),
                 emission,
-                directly_visible);
+                directly_visible));
         sample.accumulate_scattered_light(
             select(
                 emission,

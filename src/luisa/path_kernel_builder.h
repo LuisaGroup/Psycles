@@ -401,6 +401,15 @@ struct PathSampleContext {
                              Float3 value) const noexcept;
     void
     accumulate_light_pass(Var<LightPassContributionCall> contribution) noexcept;
+    // These are host-specialized film operations. Serial construction updates
+    // the per-pixel local accumulators; per-sample construction emits direct
+    // atomic pass writes at the contribution point. No device-side scheduler
+    // or accumulation-mode branch is generated.
+    void accumulate_light_pass(
+        LightPassBuffer pass,
+        Float3 contribution) noexcept;
+    void accumulate_normal_pass(Float3 contribution) noexcept;
+    void accumulate_albedo_pass(Float3 contribution) noexcept;
     void accumulate_scattered_light(
         Float3 contribution) noexcept;
     void accumulate_radiance(
