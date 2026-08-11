@@ -1469,3 +1469,118 @@ checkpoint:
 The final frame dump, timing log, and exact outputs are under
 `/var/tmp/psycles-coro-phased-final-WUSaua`; the rejected all-candidate solver
 measurement is under `/var/tmp/psycles-coro-phased-X4vnyqeO`.
+
+## Exact non-replayable state versioning
+
+The next frame-reduction experiment returned to the Rust prototype in
+`/home/mike/Projects/LuisaCompute-coroutine`. Its useful reductions are
+aggregate-load deferral, replayable-value analysis, and moving local storage
+closer to its use scope. The last operation cannot be copied literally: the
+Rust source itself records a loop-carried counterexample, and storage motion
+also changes how many times an initializer executes. Luisa `next@b63629f0d`
+therefore implements value versioning rather than allocation sinking.
+
+For a non-replayable local, the transformation is legal only when all of the
+following relations are proved over the augmented coroutine CFG:
+
+- the pointer neither escapes nor receives a partial or annotated access;
+- every load has one exact reaching store value;
+- at least one accepted store-to-load relation crosses a valid
+  `suspend(token) -> resume(token)` edge;
+- a store reexecuted after a loop backedge starts a new dynamic version and is
+  not mistaken for state that survived the preceding suspension; and
+- a projected aggregate remains in addressable storage, allowing the existing
+  access-path analysis to spill only the observed leaf.
+
+The reaching lattice now carries the product state
+`UNIQUE(value, crossed_suspend)`. Meeting the same SSA value ORs the crossed
+bit, meeting distinct values yields `CONFLICT`, and every store resets the bit.
+The single-static-store fast path answers the same question with a two-state
+graph search that excludes re-entry into the store block: on re-entry the store
+executes before its dominated load and resets the version. The multi-store
+fixed point indexes only the candidate's stores and loads per block, sorted by
+their instruction positions; it no longer rescans the complete IR on every
+block evaluation.
+
+Rewrites are also transactional across locals. A reaching value may itself be
+a load that another accepted local will eliminate. Direct equations form a
+dependency graph and are rewritten in topological order; a cycle rejects the
+complete batch before IR mutation. This fixes a real dangling-value failure
+found by the broad experiment, rather than relying on candidate discovery
+order.
+
+Finally, aggregate-load deferral now precedes local-state promotion in the
+pre-distill pipeline. This is a semantic granularity constraint: promoting a
+non-replayable `float3` before exposing its `x` and `y` projections would force
+the entire vector into the frame. The existing aggregate-vector frame
+regression caught that ordering error. With projection first, it retains two
+four-byte fields rather than one sixteen-byte vector field.
+
+### Rejected broad experiment and AST DAG fix
+
+A deliberately broad prototype promoted 4,460 non-replayable locals and
+removed 7,097 loads. It reduced the source solver domain from 32,239 to 7,805
+atoms, but exposed two independent correctness and scalability problems:
+
+1. candidate-by-candidate substitution could detach a producer load while a
+   later replacement still pointed to it; the topological transaction above
+   fixes this formally; and
+2. the AST ownership/callable scans recursively visited expression
+   occurrences. Shared DAG nodes therefore expanded as trees, and `perf`
+   attributed 99.9% of the stalled compile to
+   `FunctionBuilder::_duplicate_if_necessary`.
+
+Luisa `next@9758cf468` gives those value-set analyses a visited-expression
+worklist, making them `O(V + E)` without changing the public occurrence-based
+traversal contract. Its backend-free regression constructs a 40-node shared
+DAG whose occurrence-expanded tree has `2^40` leaves. After that independent
+fix, the broad local-removal experiment reached the actual duplication stage
+but consumed 109.7 GiB in 68 seconds: eliminating nearly every local also
+removed the builder's intentional materialization barriers and created an
+enormous expression DAG. That strategy was terminated and rejected. The final
+pass versions only state whose lifetime actually crosses a suspension.
+
+### Lone Monk result
+
+The cache-disabled fallback 1x1/1 spp wavefront canary used the unchanged
+37-material Lone Monk export:
+
+| Metric | Phased replayable baseline | Exact state versioning | Change |
+| --- | ---: | ---: | ---: |
+| source allocations | 4,985 | 4,985 | unchanged |
+| promoted allocations | 145 replayable | 145 replayable + 12 non-replayable | +12 exact versions |
+| replaced loads | 157 | 226 | -69 memory loads |
+| sparse multi-store candidates | 0 | 275 | 115,013 block evaluations |
+| dataflow atoms | 32,239 | 32,122 | -117 (-0.36%) |
+| logical payload values | 311 | 305 | -6 |
+| complete frame | 318 fields / 1,408 B | 312 fields / 1,392 B | -6 fields / -16 B |
+| XIR-to-AST value bindings | 338,751 | 338,534 | -217 |
+| pre-distill optimization | 9.568 ms | 12.515 ms | +2.947 ms proof cost |
+| complete coroutine lowering | 249.587 ms | 250.102 ms | within run noise |
+| fallback shader JIT | 21.593 s | 21.462 s | within run noise |
+| peak resident memory | 2,295,040 KiB | 2,295,144 KiB | unchanged in practice |
+
+The maximum transition live set is the surface edge and falls from 311 to 305
+values; its store set falls from 57 to 53. Physical coloring still equals the
+logical maximum because that edge contains every surviving slot, so further
+coloring changes cannot reduce the current frame. The next useful work is
+selective recomputation/code motion for values that are merely passed through
+that edge, plus representation changes such as bounded Boolean packing.
+
+The cache-disabled fallback megakernel and wavefront artifacts are
+byte-identical:
+
+| Output | SHA-256 shared by both schedulers |
+| --- | --- |
+| display PPM | `3ff6c5463ace13c0f26a735ac1af2bb96ab8a9ba1cb4398359cf2466f63a4d1b` |
+| Combined PFM | `4f93bceff43a46a086454e9a50745a497b39cd27e8a694f617a5c934fe3ed3eb` |
+| Normal PFM | `acf82e26ab479853be41ff9b3cc348b740cbb77f37671db0d1864efa09052bd0` |
+| Albedo PFM | `8e79df2a612628d23badc4d3dd3dcb8ca2e0d8428bcc10ee77edfe44a5cf562f` |
+
+New regressions cover a forwarded clock value without replay, scope-local
+impure state, a loop-reexecuted store, two non-replayable phases, projected
+aggregate retention, and an inter-local copy chain. Together with the earlier
+cases, the focused pass executable reports 132 assertions in 20 tests. A full
+parallel build passes all 120 standalone Luisa tests and all 265 Psycles tests.
+The measured outputs and frame dump are under
+`/var/tmp/psycles-coro-nonreplayable-final-sG0xTk`.
