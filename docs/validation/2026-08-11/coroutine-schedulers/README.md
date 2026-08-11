@@ -1298,3 +1298,87 @@ The fallback 1x1/1 spp Lone Monk canary remains byte-identical:
 
 The cache-disabled measurement, frame dump, exact outputs, and oracle run are
 under `/var/tmp/psycles-coro-abi-DajbAa`.
+
+## Coroutine-semantic immutable-local rematerialization
+
+The next reduction step follows the Rust implementation's separation between
+`replayable_values`, `demote_locals`, and continuation materialization. The
+important observation on Lone Monk was that every surviving frame value was a
+local allocation, so increasing the ordinary-SSA replay budget could not reduce
+the frame. Some of those allocations nevertheless held immutable snapshots of
+pure expressions. Keeping them in memory hid their reconstructibility from the
+existing replay analysis.
+
+Luisa `next@4508a8399` promotes exactly that class of local state. The proof is
+performed over a coroutine-semantic CFG, not the ordinary disconnected CFG:
+
+- each valid suspend token contributes an edge from its unique
+  `CoroSuspend` terminator to the block containing its unique `CoroResume`;
+- blocks receive dense reverse-postorder IDs, predecessor sets remain sparse,
+  and Cooper-Harvey-Kennedy immediate dominators are solved to a fixed point;
+- one local is accepted only if it has exactly one whole-object store, no
+  partial writes or pointer escape, and every load is dominated by that store;
+- the stored value must be a bounded-cost replayable DAG rooted in constants,
+  stable arguments, or scheduler-preserved dispatch identity;
+- a GEP load is converted to `extract(stored_value, indices...)` only if that
+  complete projected expression fits the result type's replay budget; and
+- analysis validates every load projection before changing IR, so accepting or
+  rejecting one allocation is atomic.
+
+The shared coroutine transfer index continues to preserve every possible
+resume for diagnostic reachability on malformed input, while must analyses
+require nonzero, nonterminal, unique, complete token pairs. Duplicate tokens,
+unmatched tokens, entry-block resumes, multiple resumes in one block, and
+unterminated owned blocks are conservative no-ops.
+
+On the unchanged 37-material Lone Monk coroutine, the pass found 145 immutable
+allocations and replaced 157 loads. Their aggregate nominal storage was 1,117
+bytes. Only two initializer operations had to be replayed; all other promoted
+initializers were zero-cost replay roots. The following DCE removed 292
+instructions and one now-unreachable structural shell.
+
+| Metric | Bounded-ABI baseline | Immutable-local promotion | Change |
+| --- | ---: | ---: | ---: |
+| dense dataflow atoms | 32,953 | 32,239 | -714 (-2.17%) |
+| dense 64-bit words | 515 | 504 | -11 |
+| scope block memberships | 237 | 232 | -5 |
+| fixed-point block evaluations | 1,516 | 1,454 | -62 |
+| transition edges | 8 | 7 | -1 constant-dead edge |
+| rejected replay values | 23,838 | 23,493 | -345 |
+| logical/physical payload slots | 313 | 311 | -2 |
+| complete frame fields including reserved fields | 320 | 318 | -2 |
+| complete frame bytes | 1,408 | 1,408 | unchanged by final alignment |
+| XIR-to-AST value bindings | 339,577 | 338,751 | -826 |
+| pre-distill optimization | 6.139 ms | 9.229 ms | +3.090 ms |
+| complete coroutine lowering | 243.973 ms | 246.470 ms | within run noise |
+
+The extra pre-distill time is the new proof and rewrite itself (2.33 ms) plus
+its cleanup DCE (0.79 ms). It buys a smaller downstream domain and two fewer
+frame transactions; it is not presented as a host-compile speedup at this
+scene size. A cache-disabled fallback JIT was 21.423 seconds versus the prior
+21.824-second observation, also within run noise.
+
+`LUISA_CORO_VERIFY_DENSE_DATAFLOW=1` independently recomputed every scope and
+transition relation on the transformed full scene and matched the production
+dense solver; the oracle CFG-distill interval was 2,384.444 ms. The paired
+fallback megakernel and wavefront render was byte-identical in every recorded
+linear pass:
+
+| Output | SHA-256 shared by megakernel and wavefront |
+| --- | --- |
+| display PPM | `3ff6c5463ace13c0f26a735ac1af2bb96ab8a9ba1cb4398359cf2466f63a4d1b` |
+| Combined PFM | `4f93bceff43a46a086454e9a50745a497b39cd27e8a694f617a5c934fe3ed3eb` |
+| Normal PFM | `3d236e5cf63e426e46e269135e0e8600954eb62fdf11ef7b8cb8545751321241` |
+| Albedo PFM | `8e79df2a612628d23badc4d3dd3dcb8ca2e0d8428bcc10ee77edfe44a5cf562f` |
+
+This paired run used the current integration worktree and is a scheduler
+equivalence canary, not a replacement Cycles golden. The display, Combined,
+and Albedo hashes also remain identical to the preceding checkpoints. The
+complete logs and outputs are under
+`/var/tmp/psycles-coro-rematerialize-KDSmGIDF`.
+
+Eleven dedicated regressions cover cross-suspend dominance, a conditional
+non-dominating store, same-block instruction order, mutable and impure state,
+aggregate projection, projected replay profitability, loop convergence,
+unmatched and duplicate tokens, and unterminated input. Standalone Luisa passes
+119/119 tests and Psycles passes 265/265.
