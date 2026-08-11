@@ -6,7 +6,7 @@ wavefront coroutine, or a persistent-worker coroutine. It is a scheduler
 equivalence check, not a new Cycles differential. All three runs use the same
 37-material Lone Monk export, Luisa fallback, 640x480, fixed sample 0, and one
 sample per pixel. The follow-up backend and coroutine checks are current through
-LuisaCompute `next@74cde8c2a`.
+LuisaCompute `next@ae0a91e9c`.
 
 The renderer CLI now accepts `-` for the optional sample-chunk JSON argument,
 so selecting argument 17's scheduler does not force the render into pixel-probe
@@ -537,6 +537,111 @@ not execute XIR or the verifier.
 The three production runs are under
 `/var/tmp/psycles-coro-use-owner-kWg5Wa`; the exact strict-Vulkan output is
 under `/var/tmp/psycles-coro-use-owner-strict-zDkJMn`.
+
+## One value-number domain for all coroutine liveness
+
+The post-owner profile moved the dominant distillation cost to repeated
+materialization of the same `Value *` relations. Block summaries first built
+node-based pointer sets, each scope converted those sets into a private bit
+domain, and inter-scope liveness converted the results back into fresh pointer
+sets on every fixed-point iteration. Output ordering then hashed and sorted the
+same values again.
+
+Luisa `next@ae0a91e9c` assigns one exact value number to every possible frame
+value in the optimized source coroutine. The domain covers the complete raw
+function block list, not ordinary entry-root CFG traversal: a `coro.resume`
+root is deliberately disconnected from the entry in raw CFG and may contain
+values that only the logical coroutine graph can reach. Pointer hashes only
+locate a number; exact pointer equality remains the lookup predicate.
+
+Every block summary, scope fixed point, transition relation, and backward
+liveness equation now uses that same bit coordinate system. For a block `B`,
+the existing formal transfer is unchanged:
+
+`K_out = K_in union K_B`,
+
+`T_out = T_in union T_B`, and
+
+`E_out = E_in union (E_B - K_in)`.
+
+`K` remains a forward must fact initialized to top outside the entry boundary;
+`T` and `E` remain forward may facts. Across distilled scopes, live-at-entry is
+the least fixed point
+
+`L_s = E_s union union_(edge s->t) (L_t - K_edge)`.
+
+The implementation uses a reverse-dependency worklist for this equation and
+materializes public pointer/name vectors exactly once after convergence. If
+`V` is the value domain and `W = ceil(|V| / 64)`, fixed-point set operations
+are contiguous `O(W)` word operations. There is no per-value node allocation
+inside the production solvers.
+
+Distilled scopes are intentionally not assumed to partition blocks. A bypass
+path and a resumed path may share a downstream merge, so membership is the
+relation `(scope, local block index)`. The established first-root owner remains
+the canonical target only where a cross-scope edge requires one. A dedicated
+regression constructs this overlap and also places an SSA value exclusively in
+the disconnected resume root.
+
+This analysis consumes scopes after reachable suspend discovery. It cannot
+resurrect a token in `T_front - T_live`: an optimized-away suspend still has no
+scope node and no lowered callable. Sparse surviving tokens and the
+`T_live = empty` entry-only coroutine retain the same graph contract.
+
+On the 37-material Lone Monk source coroutine, the measured domain has 35,830
+values (560 64-bit words), four scopes, 237 `(scope, block)` memberships, and
+eight transitions. The two intra-scope fixed points performed 1,516 block
+evaluations; backward inter-scope liveness converged in ten scope evaluations.
+
+Three strict native-XIR Vulkan production runs compare as follows. Both columns
+are medians without sampling overhead:
+
+| Coroutine boundary | Explicit-owner checkpoint | Shared value domain | Speedup |
+| --- | ---: | ---: | ---: |
+| input verification | 81.803 ms | 78.212 ms | 1.05x |
+| CFG distillation | 327.070 ms | 18.015 ms | 18.16x |
+| output verification | 82.478 ms | 82.383 ms | 1.00x |
+| XIR-to-AST continuation translation | 192.445 ms | 170.537 ms | 1.13x |
+| complete coroutine lowering | 910.924 ms | 524.369 ms | 1.74x |
+
+The complete lowering observations were `533.990`, `524.264`, and `524.369`
+ms. Relative to the earlier `1,881.809` ms median, the accumulated formal
+optimizations are now 3.59x faster. The result remains four callables with 297
+frame fields / 1,424 bytes. Strict Vulkan did not load DXC, and display,
+Combined, Normal, and Albedo retained the four exact hashes above.
+
+`LUISA_CORO_VERIFY_DENSE_DATAFLOW=1` still runs the former pointer solver as an
+oracle. It now compares every per-scope external/touched/exit set and every
+inter-scope live-in/live-out/edge-store set. The complete Lone Monk oracle run
+passed, as did 170 assertions in 25 focused distillation tests in both normal
+and oracle modes. The broader validation remains 56/56 focused XIR/coroutine
+tests, 61 assertions in 12 all-scheduler tests on fallback, HIP, and strict
+native-XIR Vulkan, and 265/265 Psycles tests. Standalone Luisa remains 116/117
+only because of the independently repeatable EASTL `fixed_vector` test.
+
+The 640x480 HIP wavefront render was repeated three times. The first reproduced
+the already documented one-pixel `DiffInd` execution nondeterminism at
+`(367, 306)` (Combined RMS `0.000736118`); Normal and Albedo were exact. The
+next two processes matched the megakernel display and all linear passes
+byte-for-byte, and exact-channel `idiff` reported `PASS` across all 46 EXR
+channels. Their shared primary hashes are the four HIP hashes recorded in the
+incremental XIR-to-AST section above.
+
+The exact repeat triptych was opened at its original 1920x516 resolution.
+Building silhouette, roof, windows, statues, foreground steps, grass, and the
+individual one-sample fireflies coincide. The absolute-difference panel is
+black, consistent with the byte-identical files.
+
+![HIP megakernel, shared-domain wavefront, and absolute difference](global-value-domain-hip-640.png)
+
+The three strict production runs are under
+`/var/tmp/psycles-coro-global-value-domain-NrJavG`; the complete pointer-oracle
+run is under `/var/tmp/psycles-coro-global-value-domain-oracle-L8ii2a`, the
+instrumented metric run is under
+`/var/tmp/psycles-coro-global-value-domain-metrics-iBxLRX`, the HIP repeats are
+under `/var/tmp/psycles-coro-global-value-domain-hip-640-5nw5nM`, and the next
+hotspot profile is under
+`/var/tmp/psycles-coro-global-value-domain-perf-P9m0HU`.
 
 ## Multi-sample renderer equivalence after the cut
 
