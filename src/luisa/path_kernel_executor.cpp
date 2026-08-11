@@ -257,18 +257,6 @@ PathKernelExecutor build_path_kernel_executor(
                 config.persistent_fetch_size != 0u,
                 "Persistent fetch size must be positive.");
             auto coroutine = build_path_coroutine(path);
-            LUISA_INFO(
-                "Psycles persistent path coroutine: subroutines={} "
-                "frame_fields={} frame_bytes={} workers={} block={} "
-                "fetch={} shared_soa={} global_extension={}.",
-                coroutine.subroutine_count(),
-                coroutine.frame().frame_field_count(),
-                coroutine.frame().frame_type()->size(),
-                config.persistent_worker_count,
-                config.persistent_block_size,
-                config.persistent_fetch_size,
-                config.persistent_shared_memory_soa,
-                config.persistent_global_memory_extension);
             luisa::compute::coro::PersistentThreadsCoroSchedulerConfig
                 scheduler_config;
             scheduler_config.thread_count =
@@ -286,6 +274,23 @@ PathKernelExecutor build_path_kernel_executor(
             auto scheduler =
                 std::make_unique<RenderSchedulers::Persistent>(
                     device, coroutine, scheduler_config);
+            LUISA_INFO(
+                "Psycles persistent path coroutine: subroutines={} "
+                "frame_fields={} frame_bytes={} workers={} "
+                "requested_block={} selected_block={} static_shared_bytes={} "
+                "fetch={} shared_soa={} global_extension={} "
+                "global_frames={}.",
+                coroutine.subroutine_count(),
+                coroutine.frame().frame_field_count(),
+                coroutine.frame().frame_type()->size(),
+                scheduler->config().thread_count,
+                config.persistent_block_size,
+                scheduler->config().block_size,
+                scheduler->static_shared_memory_size_bytes(),
+                scheduler->config().fetch_size,
+                scheduler->config().shared_memory_soa,
+                scheduler->config().global_memory_ext,
+                scheduler->config().global_memory_frames);
             return PathKernelExecutor{
                 std::make_unique<CoroutineExecutor>(
                     config.scheduler,
