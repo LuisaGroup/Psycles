@@ -6,7 +6,7 @@ wavefront coroutine, or a persistent-worker coroutine. It is a scheduler
 equivalence check, not a new Cycles differential. All three runs use the same
 37-material Lone Monk export, Luisa fallback, 640x480, fixed sample 0, and one
 sample per pixel. The follow-up backend and coroutine checks are current through
-LuisaCompute `next@8765a3dbd`.
+LuisaCompute `next@440aec427`.
 
 The renderer CLI now accepts `-` for the optional sample-chunk JSON argument,
 so selecting argument 17's scheduler does not force the render into pixel-probe
@@ -1382,3 +1382,90 @@ non-dominating store, same-block instruction order, mutable and impure state,
 aggregate projection, projected replay profitability, loop convergence,
 unmatched and duplicate tokens, and unterminated input. Standalone Luisa passes
 119/119 tests and Psycles passes 265/265.
+
+## Coroutine-semantic phased local rematerialization
+
+The Rust coroutine prototype in `/home/mike/Projects/LuisaCompute-coroutine`
+was reviewed again before generalizing the immutable-local pass. Its useful
+separation is between `demote_locals`, aggregate `defer_load`, replayability,
+and frame materialization. C++ already implements the latter two ideas through
+access-path snapshot projection and bounded pure-expression replay. The Rust
+`DemoteLocals` scope-tree placement itself is not transplanted: its source
+documents a loop counterexample in which moving a local into a nested loop or
+conditional resets loop-carried state. A production transform needs an SCC- and
+execution-frequency proof before changing allocation placement.
+
+Luisa `next@281ce2848` instead generalizes local rematerialization without
+moving storage. For each unescaped local with only unannotated whole-object
+stores, it solves the exact reaching value over the coroutine-semantic CFG,
+including every proven suspend-token-to-resume-token edge. The finite lattice
+is
+
+```text
+PENDING < UNDEFINED, UNIQUE(value), CONFLICT
+meet(UNIQUE(a), UNIQUE(b)) = UNIQUE(a) iff a == b, otherwise CONFLICT
+```
+
+Entry contributes `UNDEFINED`; sparse predecessor and successor lists drive a
+forward worklist to a fixed point. Loop back-edges therefore participate in the
+same meet as entry paths. A load is replaced only when its program point has one
+exact `UNIQUE(value)`, that value is a bounded replayable DAG, and the complete
+aggregate projection fits the replay budget. All load projections and their
+combined cost are validated before mutation, so promotion is atomic. Partial
+stores, escaping pointers, annotations, undefined paths, and distinct branch or
+loop values are conservative barriers.
+
+This accepts two important non-ad-hoc cases: sequential phases may store a new
+pure value after an earlier load, and distinct branches may store the same SSA
+value before joining. It rejects branches with different values and an entry
+definition conflicting with a loop-backedge definition. The original
+single-store dominance proof remains an O(1)-per-candidate fast path. A first
+implementation ran the general fixed point for all candidates and increased
+Lone Monk pre-distill time to 56.586 ms despite finding no multi-store
+candidate; that performance regression was rejected rather than committed.
+
+The final cache-disabled fallback 1x1/1 spp Lone Monk run measured:
+
+| Metric | Immutable-local checkpoint | Phased solver | Change |
+| --- | ---: | ---: | ---: |
+| source allocations | 4,985 | 4,985 | unchanged |
+| promoted single-store allocations | 145 | 145 | unchanged |
+| dataflow-solved multi-store allocations | 0 | 0 | no eligible scene state |
+| replaced loads | 157 | 157 | unchanged |
+| pre-distill optimization | 9.229 ms | 9.568 ms | +0.339 ms, run noise |
+| complete coroutine lowering | 246.470 ms | 249.587 ms | within run noise |
+| dense dataflow atoms | 32,239 | 32,239 | unchanged |
+| XIR-to-AST value bindings | 338,751 | 338,751 | unchanged |
+| complete frame | 318 fields / 1,408 B | 318 fields / 1,408 B | unchanged |
+| fallback shader JIT | 21.423 s | 21.593 s | within run noise |
+| peak resident memory | 2,298,228 KiB | 2,295,040 KiB | within run noise |
+
+The zero multi-store count is an informative negative result: Lone Monk's
+remaining frame consists of mutable or non-replayable path state, so broader
+reaching-store replay cannot shrink it. The next reduction must shorten those
+live ranges through formally safe code motion/recomputation or change their
+representation; increasing replay budgets would not address the observed
+state.
+
+Five new regressions cover sequential phases, a same-value branch join, a
+distinct-value conflict, an entry/backedge loop conflict, and a partial-store
+barrier. Together with the prior cases, the focused executable passes 87
+assertions in 15 tests. The latest standalone Luisa suite passes 119/119 and
+Psycles passes 265/265 after a full parallel rebuild. Upstream async-copy code
+also exposed Linux's global `ulong` alias; `next@440aec427` qualifies every new
+site as `luisa::ulong`, with the complete suite serving as the portability
+regression.
+
+The final four Lone Monk artifacts remain byte-identical to the immutable-local
+checkpoint:
+
+| Output | SHA-256 |
+| --- | --- |
+| display PPM | `3ff6c5463ace13c0f26a735ac1af2bb96ab8a9ba1cb4398359cf2466f63a4d1b` |
+| Combined PFM | `4f93bceff43a46a086454e9a50745a497b39cd27e8a694f617a5c934fe3ed3eb` |
+| Normal PFM | `3d236e5cf63e426e46e269135e0e8600954eb62fdf11ef7b8cb8545751321241` |
+| Albedo PFM | `8e79df2a612628d23badc4d3dd3dcb8ca2e0d8428bcc10ee77edfe44a5cf562f` |
+
+The final frame dump, timing log, and exact outputs are under
+`/var/tmp/psycles-coro-phased-final-WUSaua`; the rejected all-candidate solver
+measurement is under `/var/tmp/psycles-coro-phased-X4vnyqeO`.
