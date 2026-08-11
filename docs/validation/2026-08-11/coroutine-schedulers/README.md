@@ -1989,3 +1989,50 @@ The exact canary is under `/var/tmp/psycles-frame-abi-order-4K7zko`. Packed
 296 B timing artifacts are under
 `/var/tmp/psycles-frame-bitpack-timing-{1,2,3}-*`, and final 288 B timing
 artifacts are under `/var/tmp/psycles-frame288-timing-{1,2,3}-*`.
+
+## Surface-continuation first-definition sinking
+
+The widest production transition remained `path_bounce -> surface_shading`.
+Its three-component BSDF random tuple was defined in bounce setup even though
+neither traversal nor volume transport reads it; its only consumers are the
+surface trace recorder and surface scatter stage after the second suspension.
+This is a first-definition placement issue rather than a frame-packing issue.
+
+Formally, let `r = sample_3d(table, size, sample, hash, dimension(offset,
+surface_bsdf))`. The expression is pure, every use of `r` is dominated by the
+surface continuation, and there is no use on a path from the old definition to
+that continuation. In addition, every path reaching the surface continuation
+has the same `offset` as it had in bounce setup: the volume event which advances
+the offset also sets `volume_scattered`, and the pipeline continues to the next
+bounce before surface shading. It is therefore semantics-preserving to move
+the definition to the nearest common dominator of the trace and scatter uses.
+Paths which terminate on a background, light, volume event, or surface
+roulette now also avoid computing an unused tuple.
+
+On the unchanged 37-material Lone Monk program this removes exactly the three
+float components from the maximum transition:
+
+| Metric | Packed/layout checkpoint | Delayed BSDF definition | Change |
+| --- | ---: | ---: | ---: |
+| logical frame values | 69 | 66 | -3 |
+| physical user slots | 64 | 61 | -3 |
+| physical fields including scheduler state | 71 | 68 | -3 |
+| complete frame | 288 B | 280 B | -8 B (-2.8%) |
+| `path_bounce -> surface_shading` live set | 69 | 66 | -3 |
+
+The full Combined, Normal, Albedo, all light passes, volume passes, sample
+count, and deterministic path-trace regression passes on fallback and HIP.
+A 64x64/1 spp HIP wavefront canary is byte-identical to the 288-byte
+checkpoint for the display PPM and every one of the 15 linear PFM files.
+Combined SHA-256 remains
+`9d37dc0ad91750654f166e2285eefe6652ea5f7cb906f592adf9cfa3385e3e07`
+and display SHA-256 remains
+`b4f198ebedd7621e41bd51d66f495c9f1c734141e48ccad866671d983555a58e`.
+
+Three cached 640x480/64 spp HIP wavefront render-only observations are
+`3.34441 s`, `3.33875 s`, and `3.33282 s` (median `3.33875 s`). The preceding
+288-byte median was `3.34961 s`, so the observed change is about 0.32%; this is
+small enough to classify as performance-neutral rather than claim a speedup.
+The frame dump, exact canary, and logs are under
+`/var/tmp/psycles-frame-bsdf-late-pC2mk2`; timing artifacts are under
+`/var/tmp/psycles-frame280-timing-{1,2,3}-*`.

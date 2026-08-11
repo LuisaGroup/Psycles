@@ -443,7 +443,6 @@ struct PathBounceContext {
     Float3 light_sample;
     Var<LightDistributionGpu> selected_light;
     Float light_terminate_sample;
-    Float3 bsdf_sample;
     Var<luisa::compute::CommittedHit> hit;
     Float closest_surface_distance;
     Bool subsurface_exit;
@@ -517,6 +516,7 @@ struct SurfaceGeometryContext {
 
 struct SurfaceShadingState {
     UInt cycles_surface_runtime_flags;
+    Float3 bsdf_sample;
 };
 
 struct DirectLightingContext {
