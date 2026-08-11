@@ -6,7 +6,7 @@ wavefront coroutine, or a persistent-worker coroutine. It is a scheduler
 equivalence check, not a new Cycles differential. All three runs use the same
 37-material Lone Monk export, Luisa fallback, 640x480, fixed sample 0, and one
 sample per pixel. The follow-up backend and coroutine checks are current through
-LuisaCompute `next@bd24d9d08`.
+LuisaCompute `next@8179c7d37`.
 
 The renderer CLI now accepts `-` for the optional sample-chunk JSON argument,
 so selecting argument 17's scheduler does not force the render into pixel-probe
@@ -1844,3 +1844,43 @@ The compiler/frame log is `/var/tmp/psycles-frame-rq-summary.log`, the exact
 64x64 pair is under `/var/tmp/psycles-frame336-{mega,wave}-64`, and the two
 640x480 timing logs are `/var/tmp/psycles-frame336-wave-640-{a,b}.log` on the
 measurement host.
+
+## Diagnostic-metadata rematerialization and HIP boundary guard
+
+LuisaCompute `next@8179c7d37` makes the rematerialization proof independent of
+purely diagnostic XIR metadata. `NAME`, `LOCATION`, and `COMMENT` annotate the
+presentation of an instruction but do not change the value it computes;
+therefore they no longer disqualify a stable argument copy from exact replay.
+Structural metadata remains a fail-closed barrier. In particular,
+`REG2MEM_SPILL` still prevents the transformation because it records a
+compiler contract rather than a diagnostic label. Dedicated regressions prove
+both sides of this classification.
+
+On the unchanged Lone Monk program, argument replay removes seven logical
+values from the maximum transition. The complete SoA frame changes as follows:
+
+| Metric | Reference-effect checkpoint | Diagnostic metadata admitted | Change |
+| --- | ---: | ---: | ---: |
+| logical frame values | 74 | 67 | -7 |
+| physical frame fields | 81 | 74 | -7 |
+| complete frame | 336 B | 304 B | -32 B (-9.5%) |
+| reduction from the original film-staged frame | 50.0% | 54.8% | +4.8 percentage points |
+
+An optimized-HIP canary exposed a separate interaction that the XIR unit tests
+could not model: unrestricted LLVM inlining of a generated surface callable
+made aggregate argument leaves long-lived inside the coroutine continuation
+and produced incorrect output, while LLVM O0 and the same megakernel remained
+correct. The current HIP pipeline preserves a real function boundary for a
+generated callable above a structural instruction budget and bumps the shader
+cache code-generation revision. This is a conservative correctness guard, not
+a claim that a numerical threshold is the final compiler model; aggregate-leaf
+materialization and large-callable scheduling remain active follow-up work.
+
+The cache-disabled 64x64/1 spp HIP wavefront canary has Combined SHA-256
+`9d37dc0ad91750654f166e2285eefe6652ea5f7cb906f592adf9cfa3385e3e07`.
+The full standalone Luisa build, all 53 `unit_xir` executables, the focused HIP
+pipeline tests, all 13 HIP scheduler tests, and the HIP SoA suite (8 tests / 86
+assertions) pass. A 640x480/64 spp render-only observation was `3.38931 s`,
+versus `3.35593-3.35717 s` for the 336-byte checkpoint. Thus the additional
+frame reduction is currently performance-neutral within roughly 1%; it is not
+yet evidence of a HIP speedup.
