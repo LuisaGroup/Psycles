@@ -24,7 +24,7 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
         auto &path_surface_query = surface.path_surface_query;
         auto &cycles_surface_runtime_flags =
             context.shading.cycles_surface_runtime_flags;
-        auto &bsdf_sample = bounce.bsdf_sample;
+        auto &bsdf_sample = context.shading.bsdf_sample;
         const auto &path_step = bounce.path_step;
         auto &hit = bounce.hit;
         auto &throughput = sample.throughput;

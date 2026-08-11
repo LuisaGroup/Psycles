@@ -104,19 +104,6 @@ class PathBounceSetupStageImpl final
                         cycles_rng_offset,
                         tabulated_sobol::
                             light_terminate_dimension));
-        const auto bsdf_sample =
-            cycles_sampler::sample_3d(
-                sobol_table,
-                kernel_parameters
-                    .sobol_sequence_size,
-                sample_index,
-                rng_hash,
-                cycles_sampler::
-                    path_state_dimension(
-                        cycles_rng_offset,
-                        tabulated_sobol::
-                            surface_bsdf_dimension));
-
         const Bool subsurface_exit = pending_subsurface_exit;
         Var<luisa::compute::CommittedHit> hit;
         Float closest_surface_distance =
@@ -149,7 +136,6 @@ class PathBounceSetupStageImpl final
             std::move(light_sample),
             std::move(selected_light),
             std::move(light_terminate_sample),
-            std::move(bsdf_sample),
             std::move(hit),
             std::move(
                 closest_surface_distance),

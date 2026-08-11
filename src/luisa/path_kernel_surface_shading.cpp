@@ -2,6 +2,8 @@
 #include "path_kernel_emissive_triangle.h"
 #include "subsurface_exit_closure_component.h"
 
+#include <psycles/luisa/cycles_sampler.h>
+
 #include <utility>
 
 namespace psycles::luisa_backend::detail {
@@ -40,7 +42,6 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         auto &terminate_sample = bounce.terminate_sample;
         auto &light_sample = bounce.light_sample;
         auto &light_terminate_sample = bounce.light_terminate_sample;
-        auto &bsdf_sample = bounce.bsdf_sample;
         auto &throughput = sample.throughput;
         auto &path_depth = sample.path_depth;
         auto &previous_delta = sample.previous_delta;
@@ -275,6 +276,20 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                 SubsurfaceExitClosureComponent{}.runtime_flags(point),
                 bounce.subsurface_exit);
         }
+        // This random tuple has no use in traversal or volume transport.
+        // Materialize it only after the surface continuation resumes, at the
+        // nearest common dominator of its trace and scatter uses. Paths which
+        // reach this point have not advanced the bounce RNG offset: volume
+        // scattering advances it and continues before surface shading.
+        const auto bsdf_sample =
+            cycles_sampler::sample_3d(
+                invocation.sobol_table,
+                kernel_parameters.sobol_sequence_size,
+                sample.sample_index,
+                sample.rng_hash,
+                cycles_sampler::path_state_dimension(
+                    cycles_rng_offset,
+                    tabulated_sobol::surface_bsdf_dimension));
         if (path_trace_enabled) {
             auto closure_summary = trace_surface_closure(
                 surface_tag,
@@ -389,7 +404,8 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
             }
         }
 
-        return {std::move(cycles_surface_runtime_flags)};
+        return {std::move(cycles_surface_runtime_flags),
+                std::move(bsdf_sample)};
     }
 };
 
