@@ -6,7 +6,7 @@ wavefront coroutine, or a persistent-worker coroutine. It is a scheduler
 equivalence check, not a new Cycles differential. All three runs use the same
 37-material Lone Monk export, Luisa fallback, 640x480, fixed sample 0, and one
 sample per pixel. The follow-up backend and coroutine checks are current through
-LuisaCompute `next@ae0a91e9c`.
+LuisaCompute `next@d589aef8a`.
 
 The renderer CLI now accepts `-` for the optional sample-chunk JSON argument,
 so selecting argument 17's scheduler does not force the render into pixel-probe
@@ -713,6 +713,81 @@ pre-existing EASTL `fixed_vector` allocation test.
 The strict output and full log are under
 `/var/tmp/psycles-coro-batch-verify-t57YxF`; the three timing runs are under
 `/var/tmp/psycles-coro-batch-verify-median-PZQSaI`.
+
+## One enclosing verification transaction
+
+The continuation-batch change removed repeated verification inside XIR-to-AST,
+but a subsequent profile found the same generic verifier at the boundary of
+each composed CFG pass. Standalone pass calls need those boundaries; the
+coroutine pipeline, however, already owns a complete module input boundary and
+a complete module output boundary. Rechecking the whole use-def/CFG domain at
+every internal function pass was redundant.
+
+Luisa `next@d589aef8a` expresses that composition with a non-forgeable
+`XIRPassVerificationTransaction`, rather than a public skip boolean. Let `M` be
+the exact module and let `P(M)` mean that the generic XIR verifier accepts the
+entire module. The transaction protocol is:
+
+1. `begin_xir_pass_verification_transaction(M)` first proves `P(M)` and only
+   then returns the witness `V_M`.
+2. A composed pass on `f` may elide only its generic boundary verifier, and
+   only while `parent_module(f) = M` and `V_M` remains open. Every
+   transform-specific precondition remains active.
+3. The final continuation batch calls `verify_output` exactly once with the
+   stronger XIR-to-AST requirements, then translates the immutable verified
+   output. A transaction that is abandoned, reused after closure, or applied
+   to a different module is rejected.
+
+The same rule applies to the module overload of `restructure_cfg`; composing
+it requires disposable in-place mutation. Transactional shadow/replay mode
+continues to own its standalone verification because its commit proof depends
+on the candidate-output verifier. `LUISA_XIR_VERIFY_INTERMEDIATE=1` deliberately
+passes no witness to internal passes, restoring their standalone boundaries as
+an explicit diagnostic oracle.
+
+This protocol does not equate front-end suspend candidates with lowered
+callables. Optimization still runs before CFG distillation, so the materialized
+root domain remains
+
+`R = {entry} union {continuation(t) | t in T_live}`.
+
+In particular, a suspend in optimized-away control flow is in
+`T_front - T_live` and has no graph node or callable. Surviving token values may
+be sparse, and `T_live = empty` still produces only the token-zero entry. The
+verification transaction proves the integrity of this optimized result; it
+does not fabricate a continuation for a dead front-end token.
+
+On the unchanged 37-material, 1x1/1 spp strict native-XIR Vulkan canary, three
+production runs reported two enclosing boundaries, zero nested pass boundaries,
+one whole-module XIR-to-AST verification, and zero per-function XIR-to-AST
+verifications. No DXC module was loaded:
+
+| Coroutine lowering | Batch-only boundary | Enclosing transaction | Speedup |
+| --- | ---: | ---: | ---: |
+| complete median | 441.566 ms | 387.938 ms | 1.14x |
+| source destructuring median | 4.5 ms before composition | 0.034 ms | about 132x |
+| CFG distillation median | 18.0 ms before composition | 8.913 ms | about 2.0x |
+| continuation destructuring median | 15.2 ms before composition | 4.032 ms | about 3.8x |
+| irreducible lowering median | 11.0 ms before composition | 0.054 ms | about 204x |
+| continuation restructuring median | 39.2 ms before composition | 17.070 ms | about 2.3x |
+
+The complete observations were `382.370`, `387.938`, and `401.263` ms. The
+remaining output verifier and XIR-to-AST translation medians were `82.639` and
+`87.149` ms respectively. Relative to the original `1,881.809` ms median, the
+accumulated formal lowering optimizations are now about 4.85x faster. With the
+diagnostic environment flag enabled, the same scene reported 18 nested pass
+boundaries and `575.368` ms total, confirming that the production reduction is
+specifically the removal of redundant generic verification.
+
+All three production outputs retained the exact display, Combined, Normal, and
+Albedo hashes recorded above. The all-scheduler regression reports 65 passing
+assertions in 12 tests on fallback, HIP, and strict native-XIR Vulkan. It covers
+the sparse-live-token, all-dead-token, and no-front-end-token cases on every
+scheduler. Psycles passes 265/265; the standalone Luisa suite passes 116/117,
+with only the pre-existing EASTL `fixed_vector` allocation test failing. The
+strict production outputs are under
+`/var/tmp/psycles-coro-transaction-strict-W7Uboo`, and the explicit diagnostic
+output is under `/var/tmp/psycles-coro-transaction-diagnostic-nvX0Ib`.
 
 ## Multi-sample renderer equivalence after the cut
 
