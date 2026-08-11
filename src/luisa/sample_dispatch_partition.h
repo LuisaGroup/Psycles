@@ -20,6 +20,74 @@ struct PixelRowDispatchBatch {
     std::uint32_t pixel_count{};
 };
 
+struct PixelSampleDispatchIndex {
+    std::uint32_t pixel{};
+    std::uint32_t sample_offset{};
+};
+
+// A sample-major flattening of the Cartesian product
+//
+//   [0, pixel_count) x [0, sample_count).
+//
+// The bijection is
+//
+//   work = sample_offset * pixel_count + pixel,
+//
+// with inverse pixel = work % pixel_count and
+// sample_offset = work / pixel_count. Adjacent work items therefore visit
+// distinct pixels before advancing to the next sample plane, which avoids
+// concentrating same-pixel film atomics in one hardware wave. The checked
+// host plan is also the single source of truth for the device mapping.
+struct PixelSampleDispatchPlan {
+    std::uint32_t pixel_count{};
+    std::uint32_t sample_count{};
+    std::uint32_t work_count{};
+
+    [[nodiscard]] static constexpr std::optional<
+        PixelSampleDispatchPlan>
+    make(
+        std::uint32_t pixels,
+        std::uint32_t samples) noexcept {
+        if (pixels == 0u || samples == 0u) {
+            return std::nullopt;
+        }
+        const auto work =
+            static_cast<std::uint64_t>(pixels) *
+            static_cast<std::uint64_t>(samples);
+        if (work > static_cast<std::uint64_t>(
+                       std::numeric_limits<std::uint32_t>::max())) {
+            return std::nullopt;
+        }
+        return PixelSampleDispatchPlan{
+            .pixel_count = pixels,
+            .sample_count = samples,
+            .work_count = static_cast<std::uint32_t>(work)};
+    }
+
+    [[nodiscard]] constexpr std::optional<
+        PixelSampleDispatchIndex>
+    decode(std::uint32_t work) const noexcept {
+        if (pixel_count == 0u || sample_count == 0u ||
+            work >= work_count) {
+            return std::nullopt;
+        }
+        return PixelSampleDispatchIndex{
+            .pixel = work % pixel_count,
+            .sample_offset = work / pixel_count};
+    }
+
+    [[nodiscard]] constexpr std::optional<std::uint32_t>
+    encode(
+        std::uint32_t pixel,
+        std::uint32_t sample_offset) const noexcept {
+        if (pixel >= pixel_count ||
+            sample_offset >= sample_count) {
+            return std::nullopt;
+        }
+        return sample_offset * pixel_count + pixel;
+    }
+};
+
 // Splits a rectangular dispatch into complete, contiguous row bands while
 // bounding width * rows * samples. Complete rows keep film coordinates and
 // buffer views contiguous, so tiling does not alter sample identities.
@@ -62,6 +130,13 @@ public:
         const auto work_per_row =
             static_cast<std::uint64_t>(width) *
             static_cast<std::uint64_t>(samples);
+        // This partition preserves complete rows. If even one row exceeds
+        // the work bound, silently forcing one row would violate the class
+        // contract; a future two-dimensional tiler may handle that shape.
+        if (work_per_row >
+            static_cast<std::uint64_t>(max_pixel_samples)) {
+            return std::nullopt;
+        }
         const auto bounded_rows = std::max<std::uint64_t>(
             1u,
             static_cast<std::uint64_t>(max_pixel_samples) /
