@@ -6,7 +6,7 @@ wavefront coroutine, or a persistent-worker coroutine. It is a scheduler
 equivalence check, not a new Cycles differential. All three runs use the same
 37-material Lone Monk export, Luisa fallback, 640x480, fixed sample 0, and one
 sample per pixel. The follow-up backend and coroutine checks are current through
-LuisaCompute `next@655b4def1`.
+LuisaCompute `next@74cde8c2a`.
 
 The renderer CLI now accepts `-` for the optional sample-chunk JSON argument,
 so selecting argument 17's scheduler does not force the render into pixel-probe
@@ -476,6 +476,67 @@ under `/var/tmp/psycles-coro-verifier-dense-perf-DwZ0iC`, the three production
 runs are under `/var/tmp/psycles-coro-verifier-dense-aiiY2k`, and the exact
 strict-Vulkan output is under
 `/var/tmp/psycles-coro-verifier-dense-strict-0uAoS1`.
+
+## Explicit intrusive use-list ownership
+
+The next profile showed that exact use-list membership remained the largest
+sampled verifier cost. Even the contiguous table above was representing a
+relation that the intrusive list already owns structurally. Luisa
+`next@74cde8c2a` makes that relation explicit instead of reconstructing it at
+each verification boundary.
+
+For every `Use` node `u`, define its logical owner as `u.value()` and its
+physical owner as the `UseList` that currently links it. The validity condition
+is now the exact invariant
+
+`physical_owner(u) = logical_owner(u).use_list()`.
+
+`UseList::push_front` assigns the physical owner in the same non-throwing
+transition that links the node, and `Use::remove_self` clears it in the same
+transition that unlinks the node. Membership is therefore
+
+`u != null and u.list_owner == list and u.is_linked()`,
+
+which is an O(1) identity predicate with no traversal, hash, collision
+assumption, or verifier-local cache. Logical and physical ownership remain
+independent so the verifier still detects both a detached non-null operand and
+a `Use` deliberately linked into the wrong value's list. The high-fanout
+regression performs both corruptions, restores the node through the public
+lifecycle, and asserts zero membership-traversal steps.
+
+The representation adds one pointer (eight bytes on this host) to each live
+`Use`. In exchange, every verifier invocation removes its temporary per-use
+owner-map entries and buckets; this is a deliberate persistent-versus-transient
+layout tradeoff, not an unmeasured peak-RSS claim.
+
+On the unchanged 37-material strict native-XIR Vulkan canary, three production
+runs produced the following medians relative to the dense-index checkpoint:
+
+| Coroutine boundary | Dense indices | Explicit owner | Speedup |
+| --- | ---: | ---: | ---: |
+| input verification | 129.875 ms | 81.803 ms | 1.59x |
+| output verification | 131.460 ms | 82.478 ms | 1.59x |
+| XIR-to-AST continuation translation | 340.697 ms | 192.445 ms | 1.77x |
+| complete coroutine lowering | 1,170.828 ms | 910.924 ms | 1.29x |
+
+The three complete lowering observations were `910.924`, `916.479`, and
+`834.472` ms. Relative to the pre-incremental-map median of `1,881.809` ms,
+the combined verifier and XIR-to-AST work is now about 2.07x faster. The strict
+Vulkan render completed without loading DXC and retained the exact display,
+Combined, Normal, and Albedo hashes recorded above.
+
+The standalone XIR/coroutine selection passes 56/56 tests. The all-scheduler
+suite passes 61 assertions in 12 tests on fallback, HIP, and strict native-XIR
+Vulkan; this includes an optimized-away front-end suspend with no lowered
+callable, sparse surviving tokens, `T_live = empty`, and a source coroutine
+with no suspend at all. Psycles passes 265/265 tests. The broader standalone
+Luisa suite again passes 116/117; its sole failure is the independently
+repeatable, pre-existing EASTL `fixed_vector` move-allocation test, which does
+not execute XIR or the verifier.
+
+The three production runs are under
+`/var/tmp/psycles-coro-use-owner-kWg5Wa`; the exact strict-Vulkan output is
+under `/var/tmp/psycles-coro-use-owner-strict-zDkJMn`.
 
 ## Multi-sample renderer equivalence after the cut
 
