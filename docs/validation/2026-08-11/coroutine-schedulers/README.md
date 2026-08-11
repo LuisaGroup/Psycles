@@ -6,7 +6,7 @@ wavefront coroutine, or a persistent-worker coroutine. It is a scheduler
 equivalence check, not a new Cycles differential. All three runs use the same
 37-material Lone Monk export, Luisa fallback, 640x480, fixed sample 0, and one
 sample per pixel. The follow-up backend and coroutine checks are current through
-LuisaCompute `next@e9f2db822`.
+LuisaCompute `next@655b4def1`.
 
 The renderer CLI now accepts `-` for the optional sample-chunk JSON argument,
 so selecting argument 17's scheduler does not force the render into pixel-probe
@@ -411,6 +411,71 @@ The production profiles are under
 under `/var/tmp/psycles-coro-xir2ast-oracle-m0tEmzcV`. The exact 640x480 HIP
 pair is under `/var/tmp/psycles-coro-xir2ast-hip-640-mega-z1kQeEDG` and
 `/var/tmp/psycles-coro-xir2ast-hip-640-repeat-i2FBXwRq`.
+
+## Dense verifier pointer indices
+
+The next host profile showed that verifier time was no longer dominated by
+the sparse immediate-dominator algorithm. Psycles deliberately builds Luisa
+with the system STL, so each entry in the verifier's short-lived
+`std::unordered_map` and `std::unordered_set` pointer relations required a
+separate node allocation. The relations include exact use-list ownership,
+instruction location, block ownership, sanitized CFG adjacency, reachable
+blocks, merge ownership, and the block-to-dominator index.
+
+These relations have a narrower formal contract than a general node map:
+
+- their keys are immutable object pointers and the tables live for exactly one
+  verification boundary;
+- no iterator, reference, or element address survives an insertion;
+- lookup correctness is exact pointer equality, including after a hash
+  collision;
+- iteration order is not observable in either acceptance or diagnostics.
+
+Luisa `next@655b4def1` therefore uses one verifier-private, contiguous
+open-addressed table for these relations regardless of whether the surrounding
+build uses system STL or EASTL. Raw pointer bits are passed through the table's
+wyhash finalizer, but hashes only choose candidate buckets: equality remains
+the correctness predicate, so this optimization makes no collision-probability
+assumption. The verifier's accepted language, entry/exit placement, and error
+messages are unchanged. A compile-time regression requires random-access
+iteration over the contiguous value store; the public high-fanout test still
+proves linear use-list scanning and deliberately moves a `Use` into the wrong
+owner's intrusive list to prove exact rejection.
+
+The same strict native-XIR Vulkan Lone Monk canary was sampled with
+`perf record` before and after the container change. Both observations include
+identical profiler overhead and the complete 37-material coroutine:
+
+| Coroutine boundary | Before | Dense indices | Speedup |
+| --- | ---: | ---: | ---: |
+| input verification | 302.369 ms | 127.713 ms | 2.37x |
+| output verification | 331.983 ms | 132.681 ms | 2.50x |
+| XIR-to-AST continuation translation | 579.770 ms | 318.126 ms | 1.82x |
+| complete coroutine lowering | 1,933.064 ms | 1,143.385 ms | 1.69x |
+
+XIR-to-AST also improves because continuation translation verifies cached
+ordinary callables through the same verifier implementation. Three production
+runs, without sampling overhead, completed lowering in `1,337.740`,
+`1,170.828`, and `1,137.696` ms; the median is `1,170.828` ms. CFG distillation
+remained approximately 318--334 ms, so the result is not a hidden removal of a
+pass or verifier boundary.
+
+The strict Vulkan display, Combined, Normal, and Albedo files are byte-identical
+to the pre-change files and retain the four hashes above. The all-scheduler
+suite passes 61 assertions in 12 tests independently on fallback, HIP, and
+strict native-XIR Vulkan, including the dead-front-end-token and empty-live-set
+cases. The standalone Luisa XIR/coroutine selection passes 56/56 tests, and the
+Psycles system-STL suite passes 265/265 tests. The broader standalone Luisa
+suite passes 116/117 tests; the independently repeatable exception is the
+pre-existing EASTL `fixed_vector` move-allocation test, which does not execute
+XIR or the verifier.
+
+The pre-change profile is under
+`/var/tmp/psycles-coro-perf-post-nVTA4U`; the matched dense-index profile is
+under `/var/tmp/psycles-coro-verifier-dense-perf-DwZ0iC`, the three production
+runs are under `/var/tmp/psycles-coro-verifier-dense-aiiY2k`, and the exact
+strict-Vulkan output is under
+`/var/tmp/psycles-coro-verifier-dense-strict-0uAoS1`.
 
 ## Multi-sample renderer equivalence after the cut
 
