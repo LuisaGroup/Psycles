@@ -1041,6 +1041,68 @@ The final trace and outputs are under
 `/var/tmp/psycles-pointer-domain-fused-5ahU8s`; the before trace is
 `/var/tmp/psycles-vk-shape-W5Wg9h/wavefront.log`.
 
+## Sparse semantic call-site index
+
+The kernel-rooted domain fix removed dead calls from the analysis, but the
+pointer legalizer still rediscovered the same live calls independently for
+read-only resource origins, specialization planning, and recursion detection.
+Luisa `next@a3ed7741c` now records call sites while argument usage is already
+walking each exact structural closure. The resulting index is filtered by the
+same semantic function domain and is consumed as one immutable analysis
+snapshot. A snapshot is discarded after every IR mutation, so it cannot retain
+stale `CallInst` pointers across an inline iteration.
+
+The completeness requirement is explicit: the indexed origin solver is sound
+only for the complete call-site set produced with its matching usage map. Its
+standalone module overload remains conservative and builds that complete set
+itself. Regressions cover a 128-call resource chain and the live-chain-plus-
+orphan case. The latter contains only the three executable calls in its index,
+proves exactly three resource origins, and cannot assign an origin to the
+orphan formal.
+
+On the same cache-disabled strict native-XIR Vulkan Lone Monk canary:
+
+| Metric | Kernel-rooted scan | Sparse index | Change |
+| --- | ---: | ---: | ---: |
+| pointer-argument legalization | 1,390.40 ms | 673.65 ms | 2.06x faster |
+| complete XIR legalization | 2,891.63 ms | 2,149.555 ms | 1.35x faster |
+| AST-to-SPIR-V | 6,670.555 ms | 5,865.034 ms | 1.14x faster |
+| total JIT | 7.45041 s | 6.62611 s | 1.12x faster |
+| optimized SPIR-V | 403,486 words | 403,486 words | unchanged |
+
+The call index contained 4,755 cumulative sites across four fixed-point
+snapshots and still planned only seven pointer calls. The four output hashes
+listed above remained identical. The focused pointer suite passes 343
+assertions in 22 tests, all 72 related SPIR-V/XIR/coroutine tests pass, and
+Psycles passes 265/265.
+
+## EASTL fixed-vector move ownership
+
+The formerly tolerated standalone failure was a real ownership defect rather
+than a flaky test. In the Luisa EASTL fork, the overflow move constructor asked
+whether the newly initialized destination had already overflowed, making its
+heap-transfer branch unreachable. The overflow-to-overflow assignment then
+overwrote the destination pointer triplet without transferring or releasing
+its old allocation. Reconstructing the still-live source object with placement
+new also bypassed its object lifetime.
+
+EASTL `0bdb517c8` and Luisa `next@fadc1c6f1` establish the invariant that each
+`fixed_vector` either points at its own inline buffer or uniquely owns a
+complete `(begin, end, capacity)` heap triplet allocated by a compatible
+overflow allocator. Compatible heap storage is transferred or swapped as a
+whole. Incompatible storage takes the element-wise path: the destination first
+releases its old storage, moved-from source elements are destroyed, and the
+source releases its allocation and returns to its own inline buffer. No live
+object is overwritten with placement new. The fixed-container
+`max_size() == nodeCount` contract is restored as well.
+
+Three tagged-allocator regressions pin allocator propagation, reject an
+incompatible explicit-constructor steal, and reject an incompatible
+non-propagating move-assignment steal. The allocator/lifetime suite passes
+2,995 assertions in 47 tests under both the normal build and ASan+UBSan with
+leak detection. The complete standalone Luisa suite now passes 117/117; the
+previous 116/117 exception is resolved.
+
 ## Multi-sample renderer equivalence after the cut
 
 The actual Lone Monk renderer was also run through the new loop-header cut with
