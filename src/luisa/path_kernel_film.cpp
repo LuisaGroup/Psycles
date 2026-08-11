@@ -13,10 +13,18 @@ void atomic_add_float4(const BufferFloat4 &buffer,
     destination.w.fetch_add(value.w);
 }
 
-// Enumerate the complete linear contribution of one path sample. The first
-// argument passed to `emit` is the serial per-pixel accumulator corresponding
-// to the buffer slot. Keeping the mapping in one place prevents the serial and
-// per-sample paths from silently disagreeing about film-pass routing.
+void atomic_add_float3(const BufferFloat4 &buffer,
+                       const UInt &index,
+                       const Float3 &value) noexcept {
+    auto destination = buffer.atomic(index);
+    destination.x.fetch_add(value.x);
+    destination.y.fetch_add(value.y);
+    destination.z.fetch_add(value.z);
+}
+
+// Enumerate the ordered local contribution of one serial path sample. The
+// per-sample specialization writes each already-clamped contribution directly
+// when it is produced, avoiding a path-lifetime film staging record.
 template<typename Emit>
 void emit_path_sample_film_contributions(
     PathSampleContext &sample,
@@ -137,36 +145,286 @@ void emit_path_sample_film_contributions(
 
 }// namespace
 
+void PathSampleContext::accumulate_light_pass(
+    LightPassBuffer pass,
+    Float3 contribution) noexcept {
+    auto &invocation = this->invocation;
+    if (invocation.film_accumulation ==
+        PathFilmAccumulation::atomic) {
+        atomic_add_float3(
+            invocation.light_passes,
+            invocation.light_pass_base +
+                light_pass_index(pass),
+            contribution);
+        return;
+    }
+    switch (pass) {
+        case LightPassBuffer::diffuse_direct:
+            sample_diffuse_direct += contribution;
+            break;
+        case LightPassBuffer::diffuse_indirect:
+            sample_diffuse_indirect += contribution;
+            break;
+        case LightPassBuffer::glossy_direct:
+            sample_glossy_direct += contribution;
+            break;
+        case LightPassBuffer::glossy_indirect:
+            sample_glossy_indirect += contribution;
+            break;
+        case LightPassBuffer::transmission_direct:
+            sample_transmission_direct += contribution;
+            break;
+        case LightPassBuffer::transmission_indirect:
+            sample_transmission_indirect += contribution;
+            break;
+        case LightPassBuffer::volume_direct:
+            sample_volume_direct += contribution;
+            break;
+        case LightPassBuffer::volume_indirect:
+            sample_volume_indirect += contribution;
+            break;
+        case LightPassBuffer::emission:
+            sample_emission += contribution;
+            break;
+        case LightPassBuffer::environment:
+            sample_environment += contribution;
+            break;
+        case LightPassBuffer::glossy_color:
+            sample_glossy_color += contribution;
+            break;
+        case LightPassBuffer::transmission_color:
+            sample_transmission_color += contribution;
+            break;
+    }
+}
+
+void PathSampleContext::accumulate_light_pass(
+    Var<LightPassContributionCall> contribution) noexcept {
+    accumulate_light_pass(
+        LightPassBuffer::diffuse_direct,
+        contribution.diffuse_direct);
+    accumulate_light_pass(
+        LightPassBuffer::diffuse_indirect,
+        contribution.diffuse_indirect);
+    accumulate_light_pass(
+        LightPassBuffer::glossy_direct,
+        contribution.glossy_direct);
+    accumulate_light_pass(
+        LightPassBuffer::glossy_indirect,
+        contribution.glossy_indirect);
+    accumulate_light_pass(
+        LightPassBuffer::transmission_direct,
+        contribution.transmission_direct);
+    accumulate_light_pass(
+        LightPassBuffer::transmission_indirect,
+        contribution.transmission_indirect);
+}
+
+void PathSampleContext::accumulate_normal_pass(
+    Float3 contribution) noexcept {
+    auto &invocation = this->invocation;
+    if (invocation.film_accumulation ==
+        PathFilmAccumulation::atomic) {
+        atomic_add_float3(
+            invocation.normal,
+            invocation.pixel,
+            contribution);
+        return;
+    }
+    sample_normal += contribution;
+}
+
+void PathSampleContext::accumulate_albedo_pass(
+    Float3 contribution) noexcept {
+    auto &invocation = this->invocation;
+    if (invocation.film_accumulation ==
+        PathFilmAccumulation::atomic) {
+        atomic_add_float3(
+            invocation.albedo,
+            invocation.pixel,
+            contribution);
+        return;
+    }
+    sample_albedo += contribution;
+}
+
+void PathSampleContext::accumulate_scattered_light(
+    Float3 contribution) noexcept {
+    const auto surface_pass =
+        (path_flags &
+         cycles_path_state::flag_surface_pass) != 0u;
+    const auto volume_pass =
+        (path_flags &
+         cycles_path_state::flag_volume_pass) != 0u;
+    $if(surface_pass) {
+        accumulate_light_pass(
+            invocation.config.light_transport
+                .split_scattered_light(
+                    contribution,
+                    path_diffuse_weight,
+                    path_glossy_weight,
+                    path_depth == 1u));
+    };
+    $if(volume_pass) {
+        accumulate_light_pass(
+            LightPassBuffer::volume_direct,
+            select(
+                make_float3(0.0f),
+                contribution,
+                path_depth == 1u));
+        accumulate_light_pass(
+            LightPassBuffer::volume_indirect,
+            select(
+                contribution,
+                make_float3(0.0f),
+                path_depth == 1u));
+    };
+}
+
+void PathSampleContext::accumulate_radiance(
+    Float3 contribution,
+    Bool primary_volume_scatter_override) noexcept {
+    auto &invocation = this->invocation;
+    const auto atomic_film =
+        invocation.film_accumulation ==
+        PathFilmAccumulation::atomic;
+    if (atomic_film) {
+        atomic_add_float3(
+            invocation.combined,
+            invocation.pixel,
+            contribution);
+    } else {
+        radiance += contribution;
+    }
+    if (!invocation.config.volume_state) {
+        return;
+    }
+
+    // This is the exact priority used by
+    // film_write_volume_scattering_guiding_pass(): primary transmission wins
+    // over volume-scatter visibility. A primary volume NEE shadow path is the
+    // one exception; Cycles clears PRIMARY_TRANSMIT and injects VOLUME_SCATTER
+    // into the copied shadow state before writing Combined.
+    const auto primary_volume_direct =
+        primary_volume_scatter_override &
+        (path_depth == 0u);
+    const auto primary_transmit =
+        ((path_flags &
+          cycles_path_state::
+              flag_volume_primary_transmit) !=
+         0u) &
+        !primary_volume_direct;
+    const auto volume_scatter =
+        !primary_transmit &
+        (primary_volume_direct |
+         ((cycles_path_visibility &
+           cycles_path_state::
+               visibility_volume_scatter) !=
+          0u));
+    if (atomic_film) {
+        $if(primary_transmit) {
+            atomic_add_float3(
+                invocation.volume_guiding_raw,
+                invocation.volume_guiding_raw_base +
+                    volume_guiding::raw_transmit_slot,
+                contribution);
+        };
+        $if(volume_scatter) {
+            atomic_add_float3(
+                invocation.volume_guiding_raw,
+                invocation.volume_guiding_raw_base +
+                    volume_guiding::raw_scatter_slot,
+                contribution);
+        };
+    } else {
+        volume_guiding_transmit +=
+            select(
+                make_float3(0.0f),
+                contribution,
+                primary_transmit);
+        volume_guiding_scatter +=
+            select(
+                make_float3(0.0f),
+                contribution,
+                volume_scatter);
+    }
+}
+
+void PathSampleContext::accumulate_transparency(
+    Float transparency) noexcept {
+    auto &invocation = this->invocation;
+    const auto atomic_film =
+        invocation.film_accumulation ==
+        PathFilmAccumulation::atomic;
+    if (atomic_film) {
+        invocation.combined
+            .atomic(invocation.pixel)
+            .w.fetch_add(transparency);
+    } else {
+        sample_transparency += transparency;
+    }
+    if (!invocation.config.volume_state) {
+        return;
+    }
+    const auto primary_transmit =
+        (path_flags &
+         cycles_path_state::
+             flag_volume_primary_transmit) !=
+        0u;
+    if (atomic_film) {
+        $if(primary_transmit) {
+            atomic_add_float3(
+                invocation.volume_guiding_raw,
+                invocation.volume_guiding_raw_base +
+                    volume_guiding::raw_transmit_slot,
+                make_float3(transparency));
+        };
+    } else {
+        volume_guiding_transmit +=
+            select(
+                make_float3(0.0f),
+                make_float3(transparency),
+                primary_transmit);
+    }
+}
+
 void accumulate_path_sample(PathSampleContext &sample) noexcept {
     auto &invocation = sample.invocation;
-    auto &radiance = sample.radiance;
-    radiance = select(
-        radiance,
-        make_float3(0.0f),
-        any(luisa::compute::dsl::isnan(radiance)));
 
     if (invocation.film_accumulation ==
         PathFilmAccumulation::atomic) {
-        // A per-sample dispatch instance contributes exactly one sample.
-        // Applying the atomic film reduction here is equivalent to first
-        // adding the contribution to a zero-valued local film and flushing
-        // that local film immediately afterwards. The direct form avoids
-        // keeping those identity-initialized pass accumulators live across
-        // every coroutine suspension.
-        emit_path_sample_film_contributions(
-            sample,
-            [](auto &,
-               const BufferFloat4 &buffer,
-               const UInt &index,
-               const Float4 &value) noexcept {
+        // Optical depth is path-terminal state in Cycles, not an additive
+        // per-event film contribution. Keep this one scalar live and write it
+        // exactly once when the path terminates.
+        if (invocation.config.volume_state) {
+            const auto primary_volume_transmit =
+                (sample.path_flags &
+                 cycles_path_state::
+                     flag_volume_primary_transmit) !=
+                0u;
+            $if(primary_volume_transmit) {
                 atomic_add_float4(
-                    buffer, index, value);
-            });
+                    invocation.volume_guiding_raw,
+                    invocation.volume_guiding_raw_base +
+                        volume_guiding::optical_depth_slot,
+                    make_float4(
+                        sample.optical_depth,
+                        1.0f,
+                        0.0f,
+                        0.0f));
+            };
+        }
         invocation.sample_count
             .atomic(invocation.pixel)
             .fetch_add(1u);
         return;
     }
+
+    auto &radiance = sample.radiance;
+    radiance = select(
+        radiance,
+        make_float3(0.0f),
+        any(luisa::compute::dsl::isnan(radiance)));
 
     emit_path_sample_film_contributions(
         sample,

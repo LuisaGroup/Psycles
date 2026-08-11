@@ -1705,3 +1705,75 @@ maximum relative difference was `4.55e-4`, with the other passes smaller and no
 structured image difference. Nearest-neighbour visual inspection of the PPM
 pair was therefore exactly identical rather than merely similar. The current
 64x64 output set is under `/var/tmp/psycles-coro-first-def-64-o0q5hN`.
+
+## Contribution-point film reduction
+
+The per-`(pixel, sample)` specialization no longer keeps a complete local film
+record alive until path termination. This is a renderer-level lifetime change,
+not a frame-layout heuristic. The serial megakernel is unchanged: it owns one
+pixel, reduces each sample locally in program order, and writes the film once.
+The per-sample megakernel and both coroutine schedulers instead atomically add
+each already-clamped contribution when that contribution is produced.
+
+The model follows Cycles' GPU film contract in
+`intern/cycles/kernel/film/light_passes.h`: light clamping is performed per
+contribution specifically so that GPU paths can write directly to the render
+buffer without per-thread storage. For a pixel, let `C(p, s, k)` be the finite,
+clamped contribution from event `k` of sample `s`. The old atomic path first
+formed the left fold over `k` and then atomically added one value per sample;
+the new path atomically adds every `C(p, s, k)`. Over real arithmetic these are
+the same finite sum. IEEE-754 execution may choose a different addition order,
+so atomic schedulers retain the existing bounded-tolerance image contract.
+The serial single-batch and host-chunked paths retain a separate bit-exact
+diagnostic contract.
+
+This transformation is restricted to additive state: Combined RGB and alpha,
+Normal, Albedo, all 12 light passes, and volume-guiding scatter/transmit.
+Normal and Albedo still have at most one non-zero contribution per path by the
+single-pass state machine. Volume optical depth is path-terminal state in
+Cycles (`intern/cycles/kernel/integrator/state_flow.h`), so its one scalar stays
+live and is written exactly once at path termination. Sample count is likewise
+incremented once. `PathFilmAccumulation` remains a host construction property;
+there is no device-side scheduler or film-mode branch in either generated AST.
+
+On the unchanged 37-material Lone Monk production coroutine:
+
+| Metric | Guarded-lifetime compiler | Direct atomic film | Change |
+| --- | ---: | ---: | ---: |
+| complete frame | 221 fields / 864 B | 175 fields / 672 B | -46 fields / -192 B (-22.2%) |
+| logical frame values | 214 | 168 | -46 (-21.5%) |
+| maximum transition live set | 214 | 168 | -46 |
+| maximum transition | surface-side neck | surface-side neck | unchanged location |
+
+The current transition sets are 147 values from entry to `path_bounce`, 168
+from `path_bounce` to `surface_shading`, and 147 on the back edge. All 168
+logical values are simultaneously live on the maximum edge, so slot coloring
+still has no hidden reuse opportunity there. Further reduction must shorten
+the physical path/volume state crossing that neck, rematerialize selected
+values, or move the suspension boundary; changing packing alone cannot remove
+the remaining live values.
+
+The cache-disabled measurement used:
+
+```text
+PSYCLES_DISABLE_SHADER_CACHE=1 \
+LUISA_CORO_PROFILE_COMPILATION=1 \
+LUISA_CORO_DUMP_FRAME_LAYOUT=1 \
+build/bin/psycles_render_blender_scene \
+  /var/tmp/psycles-lone-monk-transmission-dbdcb17/export \
+  <output.ppm> fallback 1 1 1 1 - 0 0 0 0 1 - 1 0 wavefront
+```
+
+The new film regression compares every Combined, Normal, Albedo, light,
+volume-guiding, and sample-count value. Serial single-batch versus serial host
+chunking is bit-exact; atomic per-sample, chunked, wavefront, and persistent
+paths use a numerical film tolerance while their global sample index and full
+RNG/path trace remain bit-exact. The focused fallback test, scheduler/partition
+tests, and the same full film test on the RX 9070 XT HIP backend pass. The HIP
+fixture reports 176 fields / 672 B for both wavefront and persistent; its extra
+field is fixture-specific metadata and does not change the byte layout.
+
+The real Lone Monk display PPM, all 15 linear PFM files, and the 46-channel EXR
+are byte/exact-channel identical to the preceding compiler checkpoint under
+`/var/tmp/psycles-coro-sccp-gvn-x003j8`. The current artifacts are retained
+under `/var/tmp/psycles-coro-direct-film-24VuuO`.

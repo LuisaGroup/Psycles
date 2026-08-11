@@ -35,8 +35,6 @@ class ForwardLightStageImpl final
         auto &path_flags = sample.path_flags;
         auto &transparent_depth =
             sample.transparent_depth;
-        auto &sample_emission =
-            sample.sample_emission;
         const auto &forward_light_weight =
             config.light_transport
                 .forward_light_weight;
@@ -93,11 +91,12 @@ class ForwardLightStageImpl final
             (path_flags &
              cycles_path_state::flag_any_pass) ==
             0u;
-        sample_emission +=
+        sample.accumulate_light_pass(
+            LightPassBuffer::emission,
             select(
                 make_float3(0.0f),
                 contribution,
-                directly_visible);
+                directly_visible));
         sample.accumulate_scattered_light(
             select(
                 contribution,

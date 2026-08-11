@@ -45,8 +45,6 @@ class BackgroundEventStageImpl final
             sample.glossy_depth;
         auto &transmission_depth =
             sample.transmission_depth;
-        auto &sample_environment =
-            sample.sample_environment;
         auto &ray_events = sample.ray_events;
         const auto &forward_light_weight =
             config.light_transport
@@ -146,11 +144,12 @@ class BackgroundEventStageImpl final
             (path_flags &
              cycles_path_state::flag_any_pass) ==
             0u;
-        sample_environment +=
+        sample.accumulate_light_pass(
+            LightPassBuffer::environment,
             select(
                 make_float3(0.0f),
                 environment_contribution,
-                directly_visible);
+                directly_visible));
         sample.accumulate_scattered_light(
             select(
                 environment_contribution,

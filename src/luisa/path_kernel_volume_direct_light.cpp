@@ -1025,11 +1025,12 @@ class PathVolumeDirectLightingComponent final
                     (sample.path_flags &
                      cycles_path_state::
                          flag_any_pass) == 0u;
-                sample.sample_volume_direct +=
+                sample.accumulate_light_pass(
+                    LightPassBuffer::volume_direct,
                     select(
                         make_float3(0.0f),
                         contribution,
-                        primary_volume);
+                        primary_volume));
                 sample.accumulate_scattered_light(
                     select(
                         contribution,
