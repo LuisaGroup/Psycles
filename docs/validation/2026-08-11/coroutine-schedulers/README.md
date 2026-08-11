@@ -643,6 +643,77 @@ under `/var/tmp/psycles-coro-global-value-domain-hip-640-5nw5nM`, and the next
 hotspot profile is under
 `/var/tmp/psycles-coro-global-value-domain-perf-P9m0HU`.
 
+## One verified boundary for a continuation batch
+
+The shared-domain profile showed that XIR-to-AST translated 59 roots/helpers
+but also invoked the function verifier repeatedly after the coroutine pipeline
+had already verified the complete output module. Luisa `next@3fdf821c0` makes
+the verification responsibility explicit. The safe standalone API retains
+independent per-function verification. A continuation batch may instead ask
+for one synchronous whole-module verification before translating any root.
+
+Formally, let `M` be the immutable output module, `R` the materialized
+continuation roots, and `D(R)` their recursively reached ordinary callable
+dependencies. Batch translation first proves the full XIR-to-AST precondition
+`P(M)`, including no phi nodes and canonical break/continue targets. It then
+creates an internal, non-escaping capability `V_M`. Verification may be elided
+for a translated function `f` exactly when
+
+`f in R union D(R)` and `parent_module(f) = M`.
+
+Every root is checked for non-null callable type and exact module identity
+before `V_M` is created, and every dynamically discovered helper repeats the
+module-identity check before using it. A caller cannot supply a bare
+"already verified" flag or capability. Thus the batch changes the proof from
+`P(f_1), ..., P(f_n)` to the stronger single fact `P(M)`; it does not create a
+validation-free route. The coroutine pipeline now has one verifier at its
+input boundary and this one verifier at its output boundary, with no verifier
+inside translation unless an explicit diagnostic mode requests additional
+checks.
+
+This boundary also preserves the optimized-away-suspend corner case. The
+batch root set is still
+
+`R = {entry} union {continuation(t) | t in T_live}`,
+
+not a reconstruction from `T_front`. Consequently a token in
+`T_front - T_live` contributes neither a root definition nor a lowered
+callable, sparse surviving token values are unchanged, and
+`T_live = empty` still supplies the token-zero entry root. Whole-module
+verification validates what was materialized; it never invents a missing
+front-end token/callable pairing.
+
+The production path asserts exactly one module verification and zero
+per-function verifications and reports both counts. On the unchanged
+37-material strict native-XIR Vulkan canary, all three runs reported
+`module_verifications=1`, `function_verifications=0`, 59 translated functions,
+and 1,146 callable-cache hits:
+
+| Coroutine boundary | Shared value domain | Batch verification | Speedup |
+| --- | ---: | ---: | ---: |
+| output verification | 82.383 ms | 81.727 ms | 1.01x |
+| XIR-to-AST continuation translation | 170.537 ms | 86.763 ms | 1.97x |
+| output verify + translation | 252.920 ms | 168.490 ms | 1.50x |
+| complete coroutine lowering | 524.369 ms | 441.566 ms | 1.19x |
+
+The three complete observations were `441.566`, `441.159`, and `443.067` ms.
+Relative to the original `1,881.809` ms median, the accumulated formal
+lowering optimizations are now 4.26x faster. Output remained four callables,
+297 frame fields, and 1,424 bytes. Strict Vulkan loaded no DXC and retained the
+exact display, Combined, Normal, and Albedo hashes recorded above.
+
+Regressions separately assert the one-module/zero-function batch contract and
+the default zero-module/one-function standalone contract. The focused
+XIR-to-AST and generic coroutine pipeline tests pass; the all-scheduler suite
+passes 61 assertions in 12 tests on fallback, HIP, and strict native-XIR
+Vulkan, including dead/sparse/empty live-token cases. Psycles passes 265/265.
+The broader standalone Luisa suite remains 116/117 solely because of the
+pre-existing EASTL `fixed_vector` allocation test.
+
+The strict output and full log are under
+`/var/tmp/psycles-coro-batch-verify-t57YxF`; the three timing runs are under
+`/var/tmp/psycles-coro-batch-verify-median-PZQSaI`.
+
 ## Multi-sample renderer equivalence after the cut
 
 The actual Lone Monk renderer was also run through the new loop-header cut with
