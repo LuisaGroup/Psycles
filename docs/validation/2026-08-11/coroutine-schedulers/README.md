@@ -864,6 +864,63 @@ The isolated dense value-map output is under
 `/var/tmp/psycles-coro-value-map-perf-uAQ33J`, and the three final production
 runs are under `/var/tmp/psycles-coro-variable-bindings-9qpiRm`.
 
+## One immutable instruction-fact table per verifier function
+
+After the translator containers were made dense, the two required whole-module
+verifier boundaries dominated coroutine lowering. Sampling showed repeated
+virtual instruction classification in both the structural-discovery pass and
+the detailed semantic pass. Luisa `next@cb43134bb` now classifies every owned
+instruction exactly once and records the immutable tuple
+
+`F(i) = (parent block, order in block, derived tag, operand-shape validity)`.
+
+CFG discovery, dominance checks, PHI edge validation, and instruction-specific
+semantic checks consume `F`; they no longer repeat virtual tag dispatch or
+rebuild separate block and order maps. Opcode validity is still checked before
+operand-shape or opcode-specific semantic access, so malformed IR cannot drive
+an unsafe downcast. The complete input and output verifier boundaries are
+unchanged. A verifier statistic and high-fanout regression assert
+
+`instruction_tag_queries = number of owned instructions`.
+
+This optimization also leaves coroutine root selection unchanged. If
+`T_front` is the front-end suspend-token set and `T_live` is the reachable set
+after optimization, the translated root set remains
+
+`R = {entry} union {continuation(t) | t in T_live}`.
+
+Thus a suspend in optimized-away control flow has no graph node, root
+definition, or lowered callable. The surviving token values remain sparse and
+the schedulers map them to dense queue indices only after callable/token pairs
+have been materialized. The all-dead case still yields only the token-zero
+entry callable.
+
+Three cache-disabled strict native-XIR Vulkan runs of the unchanged 37-material
+1x1/1 spp Lone Monk canary measured:
+
+| Coroutine phase | Dense translator state | Instruction facts | Speedup |
+| --- | ---: | ---: | ---: |
+| AST-to-XIR translation | 42.865 ms | 41.367 ms | 1.04x |
+| input verification | 74.045 ms | 54.438 ms | 1.36x |
+| CFG distillation | 9.083 ms | 9.235 ms | 0.98x |
+| output verification | 80.232 ms | 59.010 ms | 1.36x |
+| XIR-to-AST continuation translation | 55.006 ms | 55.135 ms | 1.00x |
+| complete coroutine lowering | 309.873 ms | 268.156 ms | 1.16x |
+
+The complete observations were `268.156`, `265.118`, and `270.677` ms. Relative
+to the original `1,881.809` ms checkpoint, complete coroutine lowering is now
+about 7.02x faster. All runs retained 59 translated functions, 1,146 callable
+cache hits, four continuations, 297 frame fields, and a 1,424-byte frame; DXC
+was absent. Display, Combined, Normal, and Albedo retained their exact hashes.
+
+The focused translator/coroutine selection passes 7/7 tests. The scheduler
+matrix passes 65 assertions in 12 tests independently on fallback, HIP, and
+strict native-XIR Vulkan, including the dead/sparse/empty suspend-token cases.
+Psycles passes 265/265. Standalone Luisa passes 116/117, with only the existing
+EASTL `fixed_vector` move/allocation test failing. The three production runs
+are under `/var/tmp/psycles-coro-verifier-facts-K2XVac`; scheduler logs are
+under `/var/tmp/luisa-coro-verifier-facts-matrix-9Hb8ro`.
+
 ## Multi-sample renderer equivalence after the cut
 
 The actual Lone Monk renderer was also run through the new loop-header cut with
