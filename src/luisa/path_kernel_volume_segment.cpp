@@ -114,10 +114,6 @@ class PathVolumeSegmentStageImpl final
             sample.continuation_probability;
         auto &continuation_decided =
             sample.continuation_decided_in_volume;
-        auto &terminate_on_next_surface =
-            sample.terminate_on_next_surface;
-        auto &terminate_after_transparent =
-            sample.terminate_after_transparent;
         auto &ray_source_object =
             sample.ray_source_object;
         auto &ray_source_primitive =
@@ -126,8 +122,6 @@ class PathVolumeSegmentStageImpl final
         auto &ray_dD = sample.ray_dD;
         auto &previous_bsdf_pdf =
             sample.previous_bsdf_pdf;
-        auto &previous_delta =
-            sample.previous_delta;
         auto &previous_mis_origin_normal =
             sample.previous_mis_origin_normal;
         auto &previous_light_tree_dt =
@@ -187,11 +181,6 @@ class PathVolumeSegmentStageImpl final
                 flag_terminate_in_next_volume,
             roulette_failed &
                 !event.surface_may_emit);
-        terminate_on_next_surface =
-            (path_flags &
-             cycles_path_state::
-                 flag_terminate_on_next_surface) !=
-            0u;
 
         const auto segment_start =
             ray->t_min();
@@ -622,7 +611,6 @@ class PathVolumeSegmentStageImpl final
                 surface_ray::invalid_primitive;
             previous_bsdf_pdf =
                 result_phase.pdf;
-            previous_delta = false;
             previous_mis_origin_normal =
                 collision_position -
                 segment_position;
@@ -687,16 +675,6 @@ class PathVolumeSegmentStageImpl final
                 next.state.rng_offset;
             volume_bounce =
                 next.volume_bounce;
-            terminate_on_next_surface =
-                (path_flags &
-                 cycles_path_state::
-                     flag_terminate_on_next_surface) !=
-                0u;
-            terminate_after_transparent =
-                (path_flags &
-                 cycles_path_state::
-                     flag_terminate_after_transparent) !=
-                0u;
         };
         return {
             .scattered =

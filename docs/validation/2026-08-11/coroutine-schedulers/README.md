@@ -2200,3 +2200,72 @@ Frame and exact artifacts are under
 `/var/tmp/psycles-frame-compact-bssrdf-WKn6sf` and
 `/var/tmp/psycles-frame212-exact-0md5DI`; timing artifacts are under
 `/var/tmp/psycles-frame212-timing-{1,2,3}-*`.
+
+## Canonical path flags and BSSRDF capability specialization
+
+Four mutable booleans duplicated facts already carried by the canonical
+Cycles path flags: `primary_recorded`, `previous_delta`,
+`terminate_on_next_surface`, and `terminate_after_transparent`. Their removal
+is justified by induction over path-state transitions. The initial state has
+exactly `MIS_SKIP` and neither data-pass nor termination bit. Every former
+write to the three other caches assigned the corresponding flag projection
+immediately after updating the flag word, and there was no independent cache
+transition. Surface and volume transitions already define the complete flag
+state, so every use can read the projection directly.
+
+The MIS predicate exposes a correctness issue in addition to redundant state.
+For ordinary non-transparent surface and volume transitions, the old
+`previous_delta` recurrence happened to agree with `MIS_SKIP`; transparent
+transitions retained both values. A ray portal is the exception: Cycles makes
+it transparent but explicitly sets `MIS_SKIP`. The old separate boolean kept
+its preceding value and could therefore enable a forward-emitter competitor
+after a portal. Forward surface, analytic-light, and environment MIS now all
+read `MIS_SKIP` from the flag word. A focused fallback/HIP path-state
+regression starts from a non-delta diffuse path, crosses a ray portal, and
+checks that the transparent transition preserves bounce identity while
+restoring `MIS_SKIP`.
+
+This canonicalization removes four logical values and four stores from both
+the entry and back-edge transitions, but the two remaining BSSRDF booleans
+still occupied one packed 32-bit SoA field. The next reduction uses an existing
+scene proof instead of another packing convention. `has_subsurface` is a host
+capability computed over every reachable material program and its parameter
+block. Explicit BSSRDF instructions are always retained, linked Principled
+weights are treated conservatively, and only a statically bound zero/thin-wall
+Principled configuration proves absence. Therefore, when the capability is
+false, no surface sample can produce a subsurface event. The pending-exit
+predicate is initially false and has no producer, so it remains false by
+induction over every bounce. Bounce setup now omits the complete pending-hit
+state machine in that host/JIT specialization; BSSRDF-capable kernels retain
+the original exact-hit path unchanged.
+
+On the unchanged Lone Monk specialization the two stages measure as follows:
+
+| Metric | Typed pending hit | Canonical flags | Capability-specialized BSSRDF | Final change |
+| --- | ---: | ---: | ---: | ---: |
+| raw XIR atoms | 30,799 | 30,794 | 30,450 | -349 |
+| logical frame values | 51 | 47 | 45 | -6 |
+| physical user slots | 46 | 46 | 45 | -1 |
+| fields including scheduler state | 53 | 53 | 52 | -1 |
+| complete frame | 212 B | 212 B | 208 B | -4 B (-1.9%) |
+| entry stores | 45 | 41 | 40 | -5 |
+| surface stores | 7 | 7 | 5 | -2 |
+| back-edge stores | 40 | 36 | 36 | -4 |
+
+The surface-program capability suite, full Combined/Normal/Albedo/all-light
+film suite, volume and stacked-volume paths, BSSRDF exit, and random walk pass;
+the applicable suites were run on fallback and HIP. A cache-disabled 64x64/1
+spp HIP canary is byte-identical to the 212-byte checkpoint for the display
+PPM and all 15 linear PFM files. Combined SHA-256 remains
+`9d37dc0ad91750654f166e2285eefe6652ea5f7cb906f592adf9cfa3385e3e07`
+and display SHA-256 remains
+`b4f198ebedd7621e41bd51d66f495c9f1c734141e48ccad866671d983555a58e`.
+
+Three cached 640x480/64 spp HIP wavefront render-only observations are
+`3.33136 s`, `3.31908 s`, and `3.31172 s` (median `3.31908 s`). This is about
+0.35% below the 212-byte median and remains performance-neutral within normal
+run-to-run noise. The intermediate canonical-flag dump is under
+`/var/tmp/psycles-frame-canonical-flags-osQhjh`; the final frame, exact, and
+timing artifacts are under `/var/tmp/psycles-frame-capability-bssrdf-1DMiCe`,
+`/var/tmp/psycles-frame208-exact-P3bNZf`, and
+`/var/tmp/psycles-frame208-timing-ROFbZY`.

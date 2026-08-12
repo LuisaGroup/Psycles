@@ -22,8 +22,8 @@ class ForwardLightStageImpl final
         const auto &kernel_parameters =
             invocation.parameters;
         auto &ray = sample.ray;
-        auto &previous_delta =
-            sample.previous_delta;
+        const auto mis_competition_skipped =
+            sample.mis_competition_skipped();
         auto &previous_bsdf_pdf =
             sample.previous_bsdf_pdf;
         auto &previous_mis_origin_normal =
@@ -58,7 +58,7 @@ class ForwardLightStageImpl final
             event.light_pdf * selection_pdf;
         const auto competing =
             (path_depth > 0u) &
-            (!previous_delta);
+            (!mis_competition_skipped);
         const auto mis_weight =
             forward_light_weight(
                 previous_bsdf_pdf,

@@ -26,8 +26,8 @@ class BackgroundEventStageImpl final
         auto &ray = sample.ray;
         const auto ray_visibility =
             sample.contracted_ray_visibility();
-        auto &previous_delta =
-            sample.previous_delta;
+        const auto mis_competition_skipped =
+            sample.mis_competition_skipped();
         auto &previous_bsdf_pdf =
             sample.previous_bsdf_pdf;
         auto &previous_mis_origin_normal =
@@ -52,7 +52,7 @@ class BackgroundEventStageImpl final
 
         Bool competing =
             (path_depth > 0u) &
-            (!previous_delta);
+            (!mis_competition_skipped);
         Float environment_selection_pdf =
             scene->environment_in_light_distribution
                 ? scene->light_selection_pdf

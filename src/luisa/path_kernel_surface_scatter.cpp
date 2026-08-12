@@ -40,11 +40,8 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
         auto &transmission_depth = sample.transmission_depth;
         auto &transparent_depth = sample.transparent_depth;
         auto &cycles_rng_offset = sample.cycles_rng_offset;
-        auto &terminate_on_next_surface = sample.terminate_on_next_surface;
-        auto &terminate_after_transparent = sample.terminate_after_transparent;
         auto &previous_bsdf_pdf = sample.previous_bsdf_pdf;
         auto &minimum_bsdf_pdf = sample.minimum_bsdf_pdf;
-        auto &previous_delta = sample.previous_delta;
         auto &previous_mis_origin_normal = sample.previous_mis_origin_normal;
         auto &ray_source_object = sample.ray_source_object;
         auto &ray_source_primitive = sample.ray_source_primitive;
@@ -150,9 +147,6 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
         Bool transparent =
             (surface_sample.evaluation.events &
              static_cast<std::uint32_t>(contract::event_transparent)) != 0u;
-        Bool singular =
-            (surface_sample.evaluation.events &
-             static_cast<std::uint32_t>(contract::event_singular)) != 0u;
         Bool subsurface =
             (surface_sample.evaluation.events &
              static_cast<std::uint32_t>(contract::event_subsurface)) != 0u;
@@ -228,12 +222,6 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
                     surface.surface_has_volume,
                     cycles_label);
             }
-            terminate_on_next_surface =
-                (path_flags &
-                 cycles_path_state::flag_terminate_on_next_surface) != 0u;
-            terminate_after_transparent =
-                (path_flags &
-                 cycles_path_state::flag_terminate_after_transparent) != 0u;
             // Cycles does not update forward-MIS state for a transparent
             // bounce. The next emitter remains paired with the most recent
             // non-transparent BSDF technique.
@@ -245,7 +233,6 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
                 min(minimum_bsdf_pdf, surface_sample.evaluation.pdf),
                 minimum_bsdf_pdf,
                 transparent);
-            previous_delta = select(singular, previous_delta, transparent);
             previous_mis_origin_normal = select(
                 point.shading_normal,
                 previous_mis_origin_normal,

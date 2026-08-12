@@ -59,7 +59,8 @@ class PathKernelPipeline::Impl {
             traversal_plan.primitives;
         bounce_setup =
             make_path_bounce_setup_stage(
-                traversal_plan);
+                traversal_plan,
+                config.has_subsurface);
         closest_event =
             make_closest_event_stage(
                 stage_plan
