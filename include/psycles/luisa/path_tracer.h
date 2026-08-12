@@ -143,6 +143,11 @@ struct LuisaPathTracerOptions {
     // launches one lane per active frame; nonzero values do not specialize
     // the shader and are intended for scheduler-policy sweeps.
     std::uint32_t wavefront_graph_worker_count{0u};
+    // Exact one-continuation-at-a-time graph scheduling. This currently uses
+    // one counter snapshot per action; delayed Markov prediction is a separate
+    // policy so approximation can never enter correctness decisions.
+    bool wavefront_graph_selective_scheduling{false};
+    std::uint32_t wavefront_graph_refill_threshold{0u};
     // Graph-wavefront counter snapshots are accumulated on device and copied
     // to the host in contiguous batches. Batch size and pipeline depth are
     // runtime scheduling policy and do not specialize the path shaders.

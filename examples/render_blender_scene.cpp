@@ -176,7 +176,9 @@ int main(int argc, char **argv) {
                  "[wavefront-counter-readback-batch-size=4] "
                  "[wavefront-counter-readback-pipeline-depth=2] "
                  "[wavefront-tail-megakernel-threshold=4096] "
-                 "[wavefront-graph-worker-count=0]\n";
+                 "[wavefront-graph-worker-count=0] "
+                 "[wavefront-graph-selective=0] "
+                 "[wavefront-graph-refill-threshold=0]\n";
         return EXIT_FAILURE;
     }
     const auto bundle = std::filesystem::path{argv[1]};
@@ -422,6 +424,24 @@ int main(int argc, char **argv) {
     }
     wavefront_graph_worker_count = *value;
   }
+  auto wavefront_graph_selective = false;
+  if (argc > 28) {
+    auto value = parse_unsigned<std::uint32_t>(argv[28]);
+    if (!value || *value > 1u) {
+      std::cerr << "error: graph-wavefront selective must be 0 or 1\n";
+      return EXIT_FAILURE;
+    }
+    wavefront_graph_selective = *value != 0u;
+  }
+  auto wavefront_graph_refill_threshold = std::uint32_t{0u};
+  if (argc > 29) {
+    auto value = parse_unsigned<std::uint32_t>(argv[29]);
+    if (!value) {
+      std::cerr << "error: invalid graph-wavefront refill threshold\n";
+      return EXIT_FAILURE;
+    }
+    wavefront_graph_refill_threshold = *value;
+  }
   if (!psycles::luisa_backend::valid_luisa_persistent_scheduler_shape(
           persistent_worker_count, persistent_block_size,
                 persistent_fetch_size)) {
@@ -451,6 +471,9 @@ int main(int argc, char **argv) {
          .scheduler = scheduler,
        .wavefront_execution_block_size = wavefront_execution_block_size,
        .wavefront_graph_worker_count = wavefront_graph_worker_count,
+       .wavefront_graph_selective_scheduling = wavefront_graph_selective,
+       .wavefront_graph_refill_threshold =
+           wavefront_graph_refill_threshold,
        .wavefront_counter_readback_batch_size =
            wavefront_counter_readback_batch_size,
        .wavefront_counter_readback_pipeline_depth =

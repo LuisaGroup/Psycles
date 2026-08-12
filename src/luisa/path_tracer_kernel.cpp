@@ -305,6 +305,10 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                 _options.wavefront_execution_block_size,
             .wavefront_graph_worker_count =
                 _options.wavefront_graph_worker_count,
+            .wavefront_graph_selective_scheduling =
+                _options.wavefront_graph_selective_scheduling,
+            .wavefront_graph_refill_threshold =
+                _options.wavefront_graph_refill_threshold,
             .wavefront_counter_readback_batch_size =
                 _options.wavefront_counter_readback_batch_size,
             .wavefront_counter_readback_pipeline_depth =

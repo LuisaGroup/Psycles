@@ -231,10 +231,20 @@ build_path_kernel_executor(luisa::compute::Device &device,
                 config.wavefront_execution_block_size;
             scheduler_config.worker_count =
                 config.wavefront_graph_worker_count;
+            scheduler_config.selective_scheduling =
+                config.wavefront_graph_selective_scheduling;
+            scheduler_config.refill_threshold =
+                config.wavefront_graph_refill_threshold;
+            if (config.wavefront_graph_selective_scheduling) {
+                scheduler_config.refill_continuations = {
+                    path_transition::path_bounce};
+            }
             scheduler_config.counter_readback_batch_size =
-                config.wavefront_counter_readback_batch_size;
+                config.wavefront_graph_selective_scheduling ?
+                    1u : config.wavefront_counter_readback_batch_size;
             scheduler_config.counter_readback_pipeline_depth =
-                config.wavefront_counter_readback_pipeline_depth;
+                config.wavefront_graph_selective_scheduling ?
+                    1u : config.wavefront_counter_readback_pipeline_depth;
             scheduler_config.tail_megakernel_threshold =
                 config.wavefront_tail_megakernel_threshold;
             scheduler_config.shader_option = config.shader_option;
@@ -244,7 +254,8 @@ build_path_kernel_executor(luisa::compute::Device &device,
             LUISA_INFO(
                 "Psycles graph-wavefront path coroutine: subroutines={} "
                 "frame_fields={} frame_bytes={} capacity={} block={} "
-                "workers={} readback_batch={} readback_depth={} "
+                "workers={} selective={} refill_threshold={} "
+                "readback_batch={} readback_depth={} "
                 "tail_threshold={}.",
                 coroutine.subroutine_count(),
                 coroutine.frame().frame_field_count(),
@@ -252,6 +263,8 @@ build_path_kernel_executor(luisa::compute::Device &device,
                 config.wavefront_frame_capacity,
                 config.wavefront_execution_block_size,
                 config.wavefront_graph_worker_count,
+                config.wavefront_graph_selective_scheduling,
+                config.wavefront_graph_refill_threshold,
                 config.wavefront_counter_readback_batch_size,
                 config.wavefront_counter_readback_pipeline_depth,
                 config.wavefront_tail_megakernel_threshold);
