@@ -269,6 +269,7 @@ PathKernelExecutor build_path_kernel_executor(
             scheduler_config.execution_block_size =
                 config.wavefront_execution_block_size;
             scheduler_config.largest_continuation_first = true;
+            scheduler_config.incremental_continuation_counts = true;
             scheduler_config.refill_continuations = {
                 "intersect_closest"};
             scheduler_config.shader_option =
