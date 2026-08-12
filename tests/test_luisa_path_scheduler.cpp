@@ -11,6 +11,8 @@ int main() {
     using psycles::luisa_backend::
         luisa_path_scheduler_uses_per_sample_dispatch;
     using psycles::luisa_backend::parse_luisa_path_scheduler;
+    using psycles::luisa_backend::
+        valid_luisa_wavefront_execution_block_size;
 
     constexpr std::array schedulers{
         LuisaPathScheduler::megakernel,
@@ -50,6 +52,13 @@ int main() {
     static_assert(
         options.scheduler == LuisaPathScheduler::megakernel);
     static_assert(options.wavefront_frame_capacity == (1u << 24u));
+    static_assert(options.wavefront_execution_block_size == 32u);
+    static_assert(!valid_luisa_wavefront_execution_block_size(0u));
+    static_assert(!valid_luisa_wavefront_execution_block_size(16u));
+    static_assert(valid_luisa_wavefront_execution_block_size(32u));
+    static_assert(valid_luisa_wavefront_execution_block_size(64u));
+    static_assert(valid_luisa_wavefront_execution_block_size(1024u));
+    static_assert(!valid_luisa_wavefront_execution_block_size(1056u));
     static_assert(options.persistent_worker_count == (1u << 15u));
     static_assert(options.persistent_block_size == 128u);
     static_assert(options.persistent_fetch_size == 16u);

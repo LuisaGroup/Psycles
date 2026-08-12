@@ -224,7 +224,8 @@ int main(int argc, char **argv) {
                "[sample-count=samples-sample-first] "
                "[sample-chunk-pixel.json|-] "
                "[probe-chunk-size=1] [probe-full-frame=0] "
-               "[scheduler=megakernel|megakernel-per-sample|wavefront|persistent]\n";
+               "[scheduler=megakernel|megakernel-per-sample|wavefront|persistent] "
+               "[wavefront-execution-block-size=32]\n";
         return EXIT_FAILURE;
     }
     const auto bundle = std::filesystem::path{argv[1]};
@@ -382,6 +383,19 @@ int main(int argc, char **argv) {
         }
         scheduler = *parsed;
     }
+    auto wavefront_execution_block_size = std::uint32_t{32u};
+    if (argc > 18) {
+        auto value = parse_unsigned<std::uint32_t>(argv[18]);
+        if (!value ||
+            !psycles::luisa_backend::
+                valid_luisa_wavefront_execution_block_size(*value)) {
+            std::cerr
+                << "error: wavefront execution block size must be a "
+                   "multiple of 32 in [32, 1024]\n";
+            return EXIT_FAILURE;
+        }
+        wavefront_execution_block_size = *value;
+    }
     auto path_trace_sink =
         path_trace_output
             ? std::make_shared<MemoryPathTraceSink>()
@@ -405,6 +419,8 @@ int main(int argc, char **argv) {
         std::move(device),
         {.next_event_estimation = true,
          .scheduler = scheduler,
+         .wavefront_execution_block_size =
+             wavefront_execution_block_size,
          .max_samples_per_dispatch =
              max_samples_per_dispatch,
          .path_trace = path_trace_request}};

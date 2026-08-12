@@ -14,7 +14,9 @@ namespace {
         case LuisaPathScheduler::megakernel_per_sample:
             return true;
         case LuisaPathScheduler::wavefront:
-            return options.wavefront_frame_capacity != 0u;
+            return options.wavefront_frame_capacity != 0u &&
+                   valid_luisa_wavefront_execution_block_size(
+                       options.wavefront_execution_block_size);
         case LuisaPathScheduler::persistent:
             return options.persistent_worker_count != 0u &&
                    options.persistent_block_size != 0u &&

@@ -236,6 +236,8 @@ PathKernelExecutor build_path_kernel_executor(
                 scheduler_config;
             scheduler_config.thread_count =
                 config.wavefront_frame_capacity;
+            scheduler_config.execution_block_size =
+                config.wavefront_execution_block_size;
             scheduler_config.shader_option =
                 config.shader_option;
             auto scheduler =

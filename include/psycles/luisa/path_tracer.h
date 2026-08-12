@@ -59,6 +59,14 @@ parse_luisa_path_scheduler(
     return std::nullopt;
 }
 
+[[nodiscard]] constexpr bool
+valid_luisa_wavefront_execution_block_size(
+    std::uint32_t size) noexcept {
+    // Mirrors the Luisa DSL workgroup contract, so invalid scheduler options
+    // are rejected before shader AST construction reaches set_block_size().
+    return size >= 32u && size <= 1024u && size % 32u == 0u;
+}
+
 // The serial megakernel gives one invocation exclusive ownership of a pixel
 // and loops over its sample batch. Every other mode launches the Cartesian
 // product of pixels and samples and therefore requires race-free film writes.
@@ -106,6 +114,9 @@ struct LuisaPathTracerOptions {
     // GPU Coroutines' path-tracing evaluation uses 2^24 global coroutine
     // frames with SoA storage and compaction.
     std::uint32_t wavefront_frame_capacity{1u << 24u};
+    // Host/JIT choice for Luisa's thread-local wavefront generate/resume
+    // kernels. Unlike frame capacity, this is part of shader structure.
+    std::uint32_t wavefront_execution_block_size{32u};
     // Persistent workers are independent of the logical image size. The
     // scheduler rounds this count up to a complete block.
     // The paper's persistent configuration is 2^15 workers, 128 threads per
