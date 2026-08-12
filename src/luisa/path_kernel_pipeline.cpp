@@ -107,9 +107,7 @@ void PathKernelPipeline::emit(
         // guarded by a device-side predicate. At this boundary only canonical
         // per-path state is live; no hit shading or closure temporaries have
         // been populated yet.
-        if (cut_policy == PathCoroutineCutPolicy::compact) {
-            $suspend(path_transition::path_bounce);
-    } else if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
+        if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
             // This names the semantic work queue; traversal remains the same
             // PathBounceSetupStage used by both megakernel variants.
             $suspend(path_transition::intersect_closest);
@@ -193,9 +191,7 @@ void PathKernelPipeline::emit(
             // hit, but surface geometry and closure population have not begun.
             // Suspending here keeps those large, short-lived values out of the
             // coroutine frame while separating traversal from shading.
-            if (cut_policy == PathCoroutineCutPolicy::compact) {
-                $suspend(path_transition::surface_shading);
-      } else if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
+            if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
                 // Resolve only the topology-deduplicated material tag here,
                 // after volume transport selected the surface path. Keeping
                 // this recomputation at the cut avoids carrying it through

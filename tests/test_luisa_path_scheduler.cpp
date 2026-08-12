@@ -7,6 +7,8 @@
 
 int main() {
   using psycles::luisa_backend::luisa_path_scheduler_name;
+  using psycles::luisa_backend::
+      luisa_path_scheduler_uses_cycles_stage_partition;
   using psycles::luisa_backend::luisa_path_scheduler_uses_per_sample_dispatch;
     using psycles::luisa_backend::LuisaPathScheduler;
     using psycles::luisa_backend::LuisaPathTracerOptions;
@@ -43,6 +45,20 @@ int main() {
             LuisaPathScheduler::wavefront_staged));
   static_assert(luisa_path_scheduler_uses_per_sample_dispatch(
             LuisaPathScheduler::persistent));
+  static_assert(!luisa_path_scheduler_uses_cycles_stage_partition(
+      LuisaPathScheduler::megakernel));
+  static_assert(!luisa_path_scheduler_uses_cycles_stage_partition(
+      LuisaPathScheduler::megakernel_per_sample));
+  static_assert(luisa_path_scheduler_uses_cycles_stage_partition(
+      LuisaPathScheduler::wavefront));
+  static_assert(luisa_path_scheduler_uses_cycles_stage_partition(
+      LuisaPathScheduler::wavefront_graph));
+  static_assert(luisa_path_scheduler_uses_cycles_stage_partition(
+      LuisaPathScheduler::wavefront_staged));
+  static_assert(luisa_path_scheduler_uses_cycles_stage_partition(
+      LuisaPathScheduler::persistent));
+  static_assert(!luisa_path_scheduler_uses_cycles_stage_partition(
+      static_cast<LuisaPathScheduler>(255u)));
 
     // Defaults reproduce the path-tracing experiment in GPU Coroutines:
     // wavefront 2^24; persistent 2^15, block 128, fetch 16, SoA + GME.
