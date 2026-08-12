@@ -60,7 +60,7 @@ void validate_surface_queue_hint_abi(
         path_transition::scheduler_hint);
 }
 
-void validate_cycles_wavefront_abi(
+void validate_cycles_stage_partition_abi(
     const RenderCoroutine &coroutine,
     const PathKernelSceneStagePlan &plan,
     bool has_volume,
@@ -94,7 +94,29 @@ void validate_cycles_wavefront_abi(
         coroutine.graph().node_by_name(path_transition::path_bounce) == nullptr &&
             coroutine.graph().node_by_name(
                 path_transition::surface_shading) == nullptr,
-        "Cycles-wavefront graph must not retain compact-only transitions.");
+        "Cycles-stage graph must not retain legacy compact transitions.");
+}
+
+[[nodiscard]] RenderCoroutine build_cycles_stage_coroutine(
+    const PathKernelConfig &path,
+    LuisaPathScheduler scheduler) {
+    LUISA_ASSERT(
+        luisa_path_scheduler_uses_cycles_stage_partition(scheduler),
+        "Scheduler '{}' does not own a Cycles-stage coroutine partition.",
+        luisa_path_scheduler_name(scheduler));
+    const auto stage_plan = make_path_kernel_scene_stage_plan(
+        path.next_event_estimation,
+        path.scene->environment_in_light_distribution,
+        path.scene->emissive_triangle_count, path.scene->light_count,
+        path.scene->geometries.size(), path.scene->curve_geometries.size(),
+        path.scene->cycles_completion_source_dense_count,
+        path.scene->cycles_completion_source_sparse_count);
+    auto coroutine = build_path_coroutine(
+        path, PathCoroutineCutPolicy::cycles_wavefront);
+    validate_cycles_stage_partition_abi(
+        coroutine, stage_plan, path.volume_state != nullptr,
+        path.has_subsurface);
+    return coroutine;
 }
 
 }// namespace
@@ -238,8 +260,7 @@ build_path_kernel_executor(luisa::compute::Device &device,
         case LuisaPathScheduler::wavefront: {
     LUISA_ASSERT(config.wavefront_frame_capacity != 0u,
                 "Wavefront frame capacity must be positive.");
-    auto coroutine =
-        build_path_coroutine(path, PathCoroutineCutPolicy::compact);
+    auto coroutine = build_cycles_stage_coroutine(path, config.scheduler);
     LUISA_INFO("Psycles wavefront path coroutine: subroutines={} "
                 "frame_fields={} frame_bytes={} capacity={}.",
                 coroutine.subroutine_count(),
@@ -259,19 +280,8 @@ build_path_kernel_executor(luisa::compute::Device &device,
         case LuisaPathScheduler::wavefront_graph: {
             LUISA_ASSERT(config.wavefront_frame_capacity != 0u,
                          "Graph-wavefront frame capacity must be positive.");
-            const auto stage_plan = make_path_kernel_scene_stage_plan(
-                path.next_event_estimation,
-                path.scene->environment_in_light_distribution,
-                path.scene->emissive_triangle_count, path.scene->light_count,
-                path.scene->geometries.size(),
-                path.scene->curve_geometries.size(),
-                path.scene->cycles_completion_source_dense_count,
-                path.scene->cycles_completion_source_sparse_count);
-            auto coroutine = build_path_coroutine(
-                path, PathCoroutineCutPolicy::cycles_wavefront);
-            validate_cycles_wavefront_abi(
-                coroutine, stage_plan, path.volume_state != nullptr,
-                path.has_subsurface);
+            auto coroutine =
+                build_cycles_stage_coroutine(path, config.scheduler);
             luisa::compute::coro::GraphWavefrontCoroSchedulerConfig
                 scheduler_config;
             scheduler_config.thread_count = config.wavefront_frame_capacity;
@@ -338,11 +348,8 @@ build_path_kernel_executor(luisa::compute::Device &device,
           device, path, config.wavefront_frame_capacity, config.shader_option);
       staged_path.direct_light_task_sink = direct_light_queue.sink;
     }
-            auto coroutine = build_path_coroutine(
-        staged_path, PathCoroutineCutPolicy::cycles_wavefront);
-            validate_cycles_wavefront_abi(
-                coroutine, stage_plan, path.volume_state != nullptr,
-                path.has_subsurface);
+            auto coroutine =
+                build_cycles_stage_coroutine(staged_path, config.scheduler);
     const auto surface_count = path.scene->surfaces.size();
     const auto has_surface_queue_hint = path.staged_surface_sorting &&
                 surface_count != 0u &&
@@ -394,8 +401,7 @@ build_path_kernel_executor(luisa::compute::Device &device,
                 "Persistent block size must be positive.");
     LUISA_ASSERT(config.persistent_fetch_size != 0u,
                 "Persistent fetch size must be positive.");
-    auto coroutine =
-        build_path_coroutine(path, PathCoroutineCutPolicy::compact);
+    auto coroutine = build_cycles_stage_coroutine(path, config.scheduler);
     luisa::compute::coro::PersistentThreadsCoroSchedulerConfig scheduler_config;
     scheduler_config.thread_count = config.persistent_worker_count;
     scheduler_config.block_size = config.persistent_block_size;

@@ -178,7 +178,6 @@ enum class PathFilmAccumulation : std::uint8_t {
 // statements around the same stage objects and closure implementations.
 enum class PathCoroutineCutPolicy : std::uint8_t {
     none,
-    compact,
     // Materialize the same main-path scheduling boundaries as Cycles'
     // GPU integrator. This remains one canonical Luisa path program: the
     // policy only inserts host-recorded suspend points before each stage.
@@ -729,7 +728,7 @@ class PathKernelPipeline {
     // `cut_policy` is a host-side AST-construction choice. It must never be a
     // device value: the megakernel contains neither dynamic scheduler branches
     // nor coroutine instructions, while coroutine variants annotate the same
-    // semantic path program at different transition boundaries.
+    // semantic path program at the Cycles scheduling boundaries.
     void emit(PathSampleContext &sample,
               PathCoroutineCutPolicy cut_policy) const noexcept;
 };

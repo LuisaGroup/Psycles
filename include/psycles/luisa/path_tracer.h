@@ -99,6 +99,26 @@ valid_luisa_persistent_scheduler_shape(std::uint32_t worker_count,
     return scheduler != LuisaPathScheduler::megakernel;
 }
 
+// Scheduler policy and coroutine partitioning are orthogonal. Every
+// coroutine scheduler consumes the same Cycles-stage CoroGraph so measured
+// differences describe scheduling alone; the two megakernels contain no
+// suspension points and remain the unsplit baselines.
+[[nodiscard]] constexpr bool
+luisa_path_scheduler_uses_cycles_stage_partition(
+    LuisaPathScheduler scheduler) noexcept {
+    switch (scheduler) {
+        case LuisaPathScheduler::wavefront:
+        case LuisaPathScheduler::wavefront_graph:
+        case LuisaPathScheduler::wavefront_staged:
+        case LuisaPathScheduler::persistent:
+            return true;
+        case LuisaPathScheduler::megakernel:
+        case LuisaPathScheduler::megakernel_per_sample:
+            return false;
+    }
+    return false;
+}
+
 struct LuisaPathTrace {
     using Slot = std::array<float, 4u>;
 
