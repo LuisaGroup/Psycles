@@ -366,14 +366,12 @@ struct PathSampleContext {
     // component accumulates transparency, and alpha is derived only after
     // sample normalization.
     Float sample_transparency;
-    Bool primary_recorded;
     Float previous_bsdf_pdf;
     Float3 previous_mis_origin_normal;
     // Cycles ray.previous_dt: full volume segment length associated with
     // mis_origin_n. It is not generally the distance to the sampled collision.
     Float previous_light_tree_dt;
     Float minimum_bsdf_pdf;
-    Bool previous_delta;
     Float continuation_probability;
     // The closest-event volume stage performs Cycles' roulette before
     // integrating the segment. An attenuated surface must reuse that exact
@@ -394,8 +392,6 @@ struct PathSampleContext {
     UInt volume_bounce;
     UInt volume_bounds_bounce;
     Float optical_depth;
-    Bool terminate_after_transparent;
-    Bool terminate_on_next_surface;
     // A successful BSSRDF traversal carries its exact selected intersection
     // into the next shading iteration. Re-tracing a short ray would change
     // the hit identity at shared edges and would not match Cycles.
@@ -406,6 +402,13 @@ struct PathSampleContext {
     // visibility. Re-materializing it at each use prevents a duplicate frame
     // field from drifting away from the state that defines it.
     [[nodiscard]] UInt contracted_ray_visibility() const noexcept;
+    // These predicates are projections of the canonical Cycles path flags,
+    // not independently mutable path state. Keeping one source of truth also
+    // preserves PATH_RAY_MIS_SKIP for transparent ray-portal transitions.
+    [[nodiscard]] Bool single_pass_recorded() const noexcept;
+    [[nodiscard]] Bool mis_competition_skipped() const noexcept;
+    [[nodiscard]] Bool terminate_after_transparent_requested() const noexcept;
+    [[nodiscard]] Bool terminate_on_next_surface_requested() const noexcept;
     [[nodiscard]] Float3 trace_uint32(UInt value) const noexcept;
     void trace_write(UInt slot, Float3 value) const noexcept;
     void trace_write_global(path_trace_schema::GlobalSlot slot,
@@ -697,7 +700,8 @@ class SubsurfaceTransportStage {
 
 [[nodiscard]] std::unique_ptr<PathBounceSetupStage>
 make_path_bounce_setup_stage(
-    SceneTraversalStagePlan plan);
+    SceneTraversalStagePlan plan,
+    bool has_subsurface);
 [[nodiscard]] std::unique_ptr<PathBounceRandomStage>
 make_path_bounce_random_stage();
 [[nodiscard]] std::unique_ptr<ClosestEventStage>

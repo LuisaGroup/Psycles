@@ -326,15 +326,48 @@ int main(int argc, char **argv) {
                     cast<float>(initial.visibility),
                     cast<float>(initial.bounce),
                     cast<float>(initial.rng_offset)));
+
+            const auto diffuse_before_portal =
+                cycles_path_state::next_surface(
+                    initial,
+                    cycles_closure::label_reflect |
+                        cycles_closure::label_diffuse,
+                    cycles_closure::runtime_bsdf,
+                    {
+                        .maximum = 8u,
+                        .maximum_diffuse = 8u,
+                        .maximum_glossy = 8u,
+                        .maximum_transmission = 8u,
+                        .maximum_transparent = 8u});
+            const auto portal =
+                cycles_path_state::next_surface(
+                    diffuse_before_portal,
+                    cycles_closure::label_ray_portal,
+                    cycles_closure::runtime_ray_portal,
+                    {
+                        .maximum = 8u,
+                        .maximum_diffuse = 8u,
+                        .maximum_glossy = 8u,
+                        .maximum_transmission = 8u,
+                        .maximum_transparent = 8u});
+            output.write(
+                19u,
+                make_float4(
+                    cast<float>(portal.flag),
+                    cast<float>(
+                        (portal.flag &
+                         cycles_path_state::flag_mis_skip) != 0u),
+                    cast<float>(portal.bounce),
+                    cast<float>(portal.transparent_bounce)));
         };
 
     Context context{argv[0]};
     auto device = context.create_device(backend);
     auto stream = device.create_stream();
     auto output =
-        device.create_buffer<luisa::float4>(19u);
+        device.create_buffer<luisa::float4>(20u);
     auto kernel = device.compile(evaluate);
-    std::array<luisa::float4, 19u> actual{};
+    std::array<luisa::float4, 20u> actual{};
     stream << kernel(output).dispatch(1u)
            << output.copy_to(luisa::span{actual})
            << synchronize();
@@ -399,7 +432,20 @@ int main(int argc, char **argv) {
         // Camera initialization has MIS_SKIP and TRANSPARENT_BACKGROUND.
         // SINGLE_PASS_DONE belongs to film data-pass evaluation, not
         // transport initialization.
-        luisa::float4{640.0f, 1.0f, 0.0f, 16.0f}};
+        luisa::float4{640.0f, 1.0f, 0.0f, 16.0f},
+        // A ray portal is a transparent transition, but unlike ordinary
+        // transparency it explicitly restores MIS_SKIP. This is the
+        // canonical predicate used by forward-emitter competition.
+        luisa::float4{
+            static_cast<float>(
+                cycles_path_state::flag_reflect |
+                cycles_path_state::flag_transparent |
+                cycles_path_state::flag_diffuse_ancestor |
+                cycles_path_state::flag_mis_skip |
+                cycles_path_state::flag_surface_pass),
+            1.0f,
+            1.0f,
+            1.0f}};
     for (std::size_t index = 0u;
          index < expected.size();
          ++index) {

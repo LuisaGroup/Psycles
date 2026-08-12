@@ -38,7 +38,8 @@ public:
     auto &glossy_depth = sample.glossy_depth;
     auto &transparent_depth = sample.transparent_depth;
     auto &transmission_depth = sample.transmission_depth;
-    auto &terminate_after_transparent = sample.terminate_after_transparent;
+    const auto terminate_after_transparent =
+        sample.terminate_after_transparent_requested();
     auto &minimum_bsdf_pdf = sample.minimum_bsdf_pdf;
     const auto &surface_query = invocation.surface_query;
     const auto &kernel_parameters = invocation.parameters;

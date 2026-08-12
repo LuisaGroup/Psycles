@@ -44,13 +44,15 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         auto &light_terminate_sample = bounce.random().light_terminate_sample;
         auto &throughput = sample.throughput;
         auto &path_depth = sample.path_depth;
-        auto &previous_delta = sample.previous_delta;
+        const auto mis_competition_skipped =
+            sample.mis_competition_skipped();
         auto &previous_bsdf_pdf = sample.previous_bsdf_pdf;
         auto &previous_mis_origin_normal =
             sample.previous_mis_origin_normal;
         auto &previous_light_tree_dt =
             sample.previous_light_tree_dt;
-        auto &terminate_on_next_surface = sample.terminate_on_next_surface;
+        const auto terminate_on_next_surface =
+            sample.terminate_on_next_surface_requested();
         auto &ray_events = sample.ray_events;
         auto &transparent_depth = sample.transparent_depth;
         auto &continuation_probability = sample.continuation_probability;
@@ -62,7 +64,6 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         auto &diffuse_depth = sample.diffuse_depth;
         auto &glossy_depth = sample.glossy_depth;
         auto &transmission_depth = sample.transmission_depth;
-        auto &primary_recorded = sample.primary_recorded;
         const auto &forward_light_weight =
             config.light_transport.forward_light_weight;
         const auto next_event_estimation = config.next_event_estimation;
@@ -134,7 +135,8 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                 (surface.emission_sampling !=
                  static_cast<std::uint32_t>(
                      contract::EmissionSampling::none))) {
-                Bool competing = (path_depth > 0u) & (!previous_delta);
+                Bool competing =
+                    (path_depth > 0u) & (!mis_competition_skipped);
                 const auto oriented_geometric_normal =
                     select(
                         point.geometric_normal,
@@ -251,7 +253,7 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                     (surface_alpha.x + surface_alpha.y + surface_alpha.z) *
                     (1.0f / 3.0f);
                 auto writes_normal =
-                    (!primary_recorded) &
+                    (!sample.single_pass_recorded()) &
                     ((kernel_parameters.pass_alpha_threshold == 0.0f) |
                      (average_alpha >=
                       kernel_parameters.pass_alpha_threshold));
@@ -260,7 +262,6 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                         make_float3(0.0f),
                         aov.normal,
                         writes_normal));
-                primary_recorded = primary_recorded | writes_normal;
                 path_flags |= select(
                     0u,
                     cycles_path_state::flag_single_pass_done,

@@ -454,6 +454,24 @@ UInt PathSampleContext::contracted_ray_visibility() const noexcept {
     return cycles_path_state::contract_visibility(cycles_path_visibility);
 }
 
+Bool PathSampleContext::single_pass_recorded() const noexcept {
+    return (path_flags & cycles_path_state::flag_single_pass_done) != 0u;
+}
+
+Bool PathSampleContext::mis_competition_skipped() const noexcept {
+    return (path_flags & cycles_path_state::flag_mis_skip) != 0u;
+}
+
+Bool PathSampleContext::terminate_after_transparent_requested() const noexcept {
+    return (path_flags &
+            cycles_path_state::flag_terminate_after_transparent) != 0u;
+}
+
+Bool PathSampleContext::terminate_on_next_surface_requested() const noexcept {
+    return (path_flags & cycles_path_state::flag_terminate_on_next_surface) !=
+           0u;
+}
+
 Float3 PathSampleContext::trace_uint32(UInt value) const noexcept {
     return make_float3(
         cast<float>(value & 0xffffu), cast<float>(value >> 16u), 0.0f);
@@ -609,12 +627,10 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
     Float3 volume_guiding_transmit =
         make_float3(0.0f);
     Float sample_transparency = 0.0f;
-    Bool primary_recorded = false;
     Float previous_bsdf_pdf = 0.0f;
     Float3 previous_mis_origin_normal = make_float3(0.0f);
     Float previous_light_tree_dt = 0.0f;
     Float minimum_bsdf_pdf = std::numeric_limits<float>::max();
-    Bool previous_delta = true;
     Float continuation_probability = 1.0f;
     Bool continuation_decided_in_volume = false;
     Float3 path_diffuse_weight = make_float3(0.0f);
@@ -647,8 +663,6 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
     UInt volume_bounce = 0u;
     UInt volume_bounds_bounce = 0u;
     Float optical_depth = 0.0f;
-    Bool terminate_after_transparent = false;
-    Bool terminate_on_next_surface = false;
     Bool pending_subsurface_exit = false;
     PendingSubsurfaceHit pending_subsurface_hit{
         .instance = surface_ray::invalid_primitive,
@@ -686,12 +700,10 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
             std::move(volume_guiding_scatter),
             std::move(volume_guiding_transmit),
             std::move(sample_transparency),
-            std::move(primary_recorded),
             std::move(previous_bsdf_pdf),
             std::move(previous_mis_origin_normal),
             std::move(previous_light_tree_dt),
             std::move(minimum_bsdf_pdf),
-            std::move(previous_delta),
             std::move(continuation_probability),
             std::move(
                 continuation_decided_in_volume),
@@ -710,8 +722,6 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
             std::move(volume_bounce),
             std::move(volume_bounds_bounce),
             std::move(optical_depth),
-            std::move(terminate_after_transparent),
-            std::move(terminate_on_next_surface),
             std::move(pending_subsurface_exit),
             std::move(pending_subsurface_hit)};
 }
