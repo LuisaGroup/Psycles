@@ -18,9 +18,10 @@ namespace {
                    valid_luisa_wavefront_execution_block_size(
                        options.wavefront_execution_block_size);
         case LuisaPathScheduler::persistent:
-            return options.persistent_worker_count != 0u &&
-                   options.persistent_block_size != 0u &&
-                   options.persistent_fetch_size != 0u;
+            return valid_luisa_persistent_scheduler_shape(
+                options.persistent_worker_count,
+                options.persistent_block_size,
+                options.persistent_fetch_size);
     }
     return false;
 }
