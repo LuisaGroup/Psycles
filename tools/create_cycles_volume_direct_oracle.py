@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Render the homogeneous distant-light volume regression with Cycles.
+"""Build and render a configurable volume-transport regression with Cycles.
 
 Run through Blender:
   blender --background --factory-startup --python \
     tools/create_cycles_volume_direct_oracle.py -- /tmp/volume-direct.exr
+
+Use ``--save-blend`` to preserve the same original Blender closure graph for
+Psycles export and later Cycles/Psycles performance comparisons.
 """
 
 from __future__ import annotations
@@ -25,6 +28,16 @@ def argument_options() -> argparse.Namespace:
         description=__doc__
     )
     parser.add_argument("output", type=Path)
+    parser.add_argument(
+        "--save-blend",
+        type=Path,
+        default=None,
+        help=(
+            "optionally save the configured source scene before rendering; "
+            "the saved file retains the original closure graph and can be "
+            "fed to the Psycles exporter"
+        ),
+    )
     parser.add_argument(
         "--samples",
         type=int,
@@ -141,6 +154,8 @@ def argument_options() -> argparse.Namespace:
     if not math.isfinite(options.sun_rotation_y):
         parser.error("--sun-rotation-y must be finite")
     options.output = options.output.resolve()
+    if options.save_blend is not None:
+        options.save_blend = options.save_blend.resolve()
     return options
 
 
@@ -482,6 +497,7 @@ def configure_scene(
     scene.render.engine = "CYCLES"
     scene.cycles.device = "CPU"
     scene.cycles.samples = samples
+    scene.cycles.use_adaptive_sampling = False
     scene.cycles.use_denoising = False
     scene.cycles.seed = 11939
     # Psycles currently implements Cycles' explicit Tabulated Sobol mode.
@@ -600,6 +616,12 @@ def main() -> None:
         options.shadow_split_plane,
         options.hide_volume_shadow,
     )
+    if options.save_blend is not None:
+        options.save_blend.parent.mkdir(parents=True, exist_ok=True)
+        bpy.ops.wm.save_as_mainfile(
+            filepath=str(options.save_blend), check_existing=False
+        )
+        print(f"Saved Cycles volume-direct source: {options.save_blend}")
     bpy.ops.render.render(write_still=True)
     print(
         "Cycles volume-direct oracle: "
