@@ -17,16 +17,16 @@ using LightComponentRatioCallable =
 using SplitScatteredLightCallable = Callable<LightPassContributionCall(
     luisa::float3, luisa::float3, luisa::float3, bool)>;
 struct LightTransportCallables {
-  SafeNormalizeCallable safe_normalize;
-  ForwardLightWeightCallable forward_light_weight;
-  NeeLightWeightCallable nee_light_weight;
-  ClampLightContributionCallable clamp_light_contribution;
-  LightSampleRouletteCallable light_sample_roulette_weight;
-  LightComponentRatioCallable light_component_ratio;
-  SplitScatteredLightCallable split_scattered_light;
+    SafeNormalizeCallable safe_normalize;
+    ForwardLightWeightCallable forward_light_weight;
+    NeeLightWeightCallable nee_light_weight;
+    ClampLightContributionCallable clamp_light_contribution;
+    LightSampleRouletteCallable light_sample_roulette_weight;
+    LightComponentRatioCallable light_component_ratio;
+    SplitScatteredLightCallable split_scattered_light;
 };
 
 [[nodiscard]] LightTransportCallables
 make_light_transport_callables(contract::DirectLightSampling mode) noexcept;
 
-} // namespace psycles::luisa_backend::detail
+}// namespace psycles::luisa_backend::detail
