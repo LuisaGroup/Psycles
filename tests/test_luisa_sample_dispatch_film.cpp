@@ -217,7 +217,7 @@ render(luisa::compute::Context &context, std::string_view backend,
     psycles::luisa_backend::LuisaPathScheduler scheduler,
        std::uint32_t samples_per_dispatch, bool split_request,
        bool staged_surface_sorting = true, bool path_trace_enabled = true,
-       bool staged_direct_light_queue = true) {
+       bool staged_direct_light_queue = false) {
     auto device = context.create_device(backend);
   auto trace_sink = path_trace_enabled ? std::make_shared<TraceSink>()
                                        : std::shared_ptr<TraceSink>{};

@@ -172,7 +172,7 @@ int main(int argc, char **argv) {
                "[persistent-block-size=32] "
                "[persistent-fetch-size=1] "
                  "[staged-surface-sorting=1] "
-                 "[staged-direct-light-queue=1]\n";
+                 "[staged-direct-light-queue=0]\n";
         return EXIT_FAILURE;
     }
     const auto bundle = std::filesystem::path{argv[1]};
@@ -370,7 +370,7 @@ int main(int argc, char **argv) {
         }
         staged_surface_sorting = *value != 0u;
     }
-  auto staged_direct_light_queue = true;
+    auto staged_direct_light_queue = false;
   if (argc > 23) {
     auto value = parse_unsigned<std::uint32_t>(argv[23]);
     if (!value || *value > 1u) {
