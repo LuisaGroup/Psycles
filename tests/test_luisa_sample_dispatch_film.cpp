@@ -217,7 +217,10 @@ render(luisa::compute::Context &context, std::string_view backend,
     psycles::luisa_backend::LuisaPathScheduler scheduler,
        std::uint32_t samples_per_dispatch, bool split_request,
        bool staged_surface_sorting = true, bool path_trace_enabled = true,
-       bool staged_direct_light_queue = false) {
+       bool staged_direct_light_queue = false,
+       std::uint32_t wavefront_tail_megakernel_threshold = 4096u,
+       std::uint32_t wavefront_counter_readback_batch_size = 4u,
+       std::uint32_t wavefront_counter_readback_pipeline_depth = 2u) {
     auto device = context.create_device(backend);
   auto trace_sink = path_trace_enabled ? std::make_shared<TraceSink>()
                                        : std::shared_ptr<TraceSink>{};
@@ -234,6 +237,12 @@ render(luisa::compute::Context &context, std::string_view backend,
         {.next_event_estimation = true,
          .scheduler = scheduler,
          .wavefront_frame_capacity = 128u,
+         .wavefront_counter_readback_batch_size =
+             wavefront_counter_readback_batch_size,
+         .wavefront_counter_readback_pipeline_depth =
+             wavefront_counter_readback_pipeline_depth,
+         .wavefront_tail_megakernel_threshold =
+             wavefront_tail_megakernel_threshold,
          .staged_surface_sorting = staged_surface_sorting,
        .staged_direct_light_queue = staged_direct_light_queue,
          .persistent_worker_count = 128u,
@@ -412,6 +421,17 @@ int main(int argc, char **argv) {
     const auto wavefront = render(
       context, backend, psycles::luisa_backend::LuisaPathScheduler::wavefront,
       sample_count, false);
+  const auto graph_wavefront =
+      render(context, backend,
+             psycles::luisa_backend::LuisaPathScheduler::wavefront_graph,
+             sample_count, false, true, true, false, 0u);
+  // Exercise the CoroGraph-derived state-machine tail on the same graph and
+  // all-pass film contract. The threshold exceeds this fixture's 48 logical
+  // invocations, so any residual work after admission is eligible.
+  const auto graph_wavefront_tail =
+      render(context, backend,
+             psycles::luisa_backend::LuisaPathScheduler::wavefront_graph,
+             sample_count, false, true, true, false, 128u, 1u, 1u);
   const auto staged_wavefront =
       render(context, backend,
              psycles::luisa_backend::LuisaPathScheduler::wavefront_staged,
@@ -439,7 +459,8 @@ int main(int argc, char **argv) {
       context, backend, psycles::luisa_backend::LuisaPathScheduler::persistent,
       sample_count, false);
     if (!reference || !deterministic || !single_plane || !per_sample ||
-      !chunked || !wavefront || !staged_wavefront ||
+      !chunked || !wavefront || !graph_wavefront || !graph_wavefront_tail ||
+      !staged_wavefront ||
       !staged_wavefront_unsorted || !staged_direct_inline ||
       !staged_direct_queued || !staged_direct_queued_chunked || !persistent ||
         !validate_reference(*reference) ||
@@ -452,6 +473,10 @@ int main(int argc, char **argv) {
       !compare_outputs(*reference, *chunked, false,
             "chunked per-sample dispatch") ||
       !compare_outputs(*reference, *wavefront, false, "wavefront dispatch") ||
+      !compare_outputs(*reference, *graph_wavefront, false,
+                       "graph wavefront dispatch") ||
+      !compare_outputs(*reference, *graph_wavefront_tail, false,
+                       "graph wavefront tail dispatch") ||
       !compare_outputs(*reference, *staged_wavefront, false,
             "staged wavefront dispatch") ||
       !compare_outputs(*reference, *staged_wavefront_unsorted, false,

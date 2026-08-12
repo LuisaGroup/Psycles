@@ -22,6 +22,7 @@ enum class LuisaPathScheduler : std::uint8_t {
     megakernel,
     megakernel_per_sample,
     wavefront,
+    wavefront_graph,
     wavefront_staged,
     persistent,
 };
@@ -35,6 +36,8 @@ luisa_path_scheduler_name(LuisaPathScheduler scheduler) noexcept {
             return "megakernel-per-sample";
         case LuisaPathScheduler::wavefront:
             return "wavefront";
+        case LuisaPathScheduler::wavefront_graph:
+            return "wavefront-graph";
         case LuisaPathScheduler::wavefront_staged:
             return "wavefront-staged";
         case LuisaPathScheduler::persistent:
@@ -53,6 +56,9 @@ parse_luisa_path_scheduler(std::string_view name) noexcept {
     }
     if (name == "wavefront") {
         return LuisaPathScheduler::wavefront;
+    }
+    if (name == "wavefront-graph") {
+        return LuisaPathScheduler::wavefront_graph;
     }
     if (name == "wavefront-staged") {
         return LuisaPathScheduler::wavefront_staged;
@@ -133,6 +139,15 @@ struct LuisaPathTracerOptions {
     // Host/JIT choice for Luisa's thread-local wavefront generate/resume
     // kernels. Unlike frame capacity, this is part of shader structure.
     std::uint32_t wavefront_execution_block_size{32u};
+    // Graph-wavefront counter snapshots are accumulated on device and copied
+    // to the host in contiguous batches. Batch size and pipeline depth are
+    // runtime scheduling policy and do not specialize the path shaders.
+    std::uint32_t wavefront_counter_readback_batch_size{4u};
+    std::uint32_t wavefront_counter_readback_pipeline_depth{2u};
+    // Once all logical samples have been generated, finish a residual set no
+    // larger than this in one CoroGraph-derived state-machine kernel. Zero
+    // disables and avoids compiling the optional tail kernel.
+    std::uint32_t wavefront_tail_megakernel_threshold{4096u};
     // Host/JIT policy for ordering the staged shade_surface queue by the
     // structure-deduplicated SurfaceDispatch tag. False preserves the same
     // continuation cuts without recording a key resolver, frame export, or
