@@ -31,9 +31,8 @@ public:
     Var<Triangle> triangle =
         scene->heap->buffer<Triangle>(geometry.bindless_base)
             .read(resolved_primitive_id);
-    UInt material_slot =
-        scene->heap->buffer<luisa::uint>(geometry.bindless_base + 4u)
-            .read(resolved_primitive_id);
+    UInt material_slot = _material->triangle_material_slot(
+        scene, geometry, resolved_primitive_id);
     Bool smooth = scene->heap->buffer<luisa::uint>(geometry.bindless_base + 8u)
                       .read(resolved_primitive_id) != 0u;
 

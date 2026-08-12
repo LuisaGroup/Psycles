@@ -1,8 +1,10 @@
 #include "path_kernel_executor.h"
 
 #include "path_kernel_builder.h"
+#include "path_kernel_transitions.h"
 #include "sample_dispatch_partition.h"
 
+#include <limits>
 #include <utility>
 
 #include <luisa/core/logging.h>
@@ -46,6 +48,29 @@ template<typename Program>
                dispatch.sobol_table,
                dispatch.filter_table,
                dispatch.parameters);
+}
+
+void validate_surface_queue_hint_abi(
+    const RenderCoroutine &coroutine) noexcept {
+    const auto *surface_node =
+        coroutine.graph().node_by_name(
+            path_transition::shade_surface);
+    LUISA_ASSERT(
+        surface_node != nullptr &&
+            surface_node->index != 0u &&
+            surface_node->index < coroutine.subroutine_count(),
+        "Staged path pipeline did not materialize '{}' as a "
+        "non-entry continuation.",
+        path_transition::shade_surface);
+    const auto *hint_field =
+        coroutine.frame().field(
+            path_transition::scheduler_hint);
+    LUISA_ASSERT(
+        hint_field != nullptr &&
+            hint_field->type == luisa::compute::Type::of<luisa::uint>(),
+        "Staged path pipeline must explicitly export a uint '{}' frame "
+        "field at the surface queue boundary.",
+        path_transition::scheduler_hint);
 }
 
 }// namespace
@@ -255,6 +280,15 @@ PathKernelExecutor build_path_kernel_executor(
                 "Staged wavefront frame capacity must be positive.");
             auto coroutine = build_path_coroutine(
                 path, PathCoroutineCutPolicy::staged_wavefront);
+            const auto surface_count =
+                path.scene->surfaces.size();
+            const auto has_surface_queue =
+                surface_count != 0u &&
+                (!path.scene->geometries.empty() ||
+                 !path.scene->curve_geometries.empty());
+            if (has_surface_queue) {
+                validate_surface_queue_hint_abi(coroutine);
+            }
             LUISA_INFO(
                 "Psycles staged wavefront path coroutine: "
                 "subroutines={} frame_fields={} frame_bytes={} capacity={}.",
@@ -271,12 +305,28 @@ PathKernelExecutor build_path_kernel_executor(
             scheduler_config.largest_continuation_first = true;
             scheduler_config.incremental_continuation_counts = true;
             scheduler_config.refill_continuations = {
-                "intersect_closest"};
+                path_transition::intersect_closest};
+            if (has_surface_queue) {
+                LUISA_ASSERT(
+                    surface_count <=
+                        std::numeric_limits<std::uint32_t>::max(),
+                    "Surface queue key range {} exceeds the uint32 "
+                    "scheduler ABI.",
+                    surface_count);
+                scheduler_config.hint_range =
+                    static_cast<std::uint32_t>(surface_count);
+                scheduler_config.hint_fields = {
+                    path_transition::shade_surface};
+            }
             scheduler_config.shader_option =
                 config.shader_option;
             auto scheduler =
                 std::make_unique<RenderSchedulers::Wavefront>(
                     device, coroutine, scheduler_config);
+            LUISA_INFO(
+                "Psycles staged surface queue: keys={} hint_sort={}",
+                surface_count,
+                !scheduler->config().hint_fields.empty());
             return PathKernelExecutor{
                 std::make_unique<CoroutineExecutor>(
                     config.scheduler,

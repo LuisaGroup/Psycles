@@ -11,6 +11,40 @@ class BindlessPrimitiveMaterialComponent final
     : public PrimitiveMaterialComponent {
 
 public:
+  UInt triangle_material_slot(
+      const std::shared_ptr<LuisaSceneData> &scene,
+      const Var<GeometryGpu> &geometry,
+      Expr<std::uint32_t> primitive_id) const noexcept override {
+    return scene->heap
+        ->buffer<luisa::uint>(geometry.bindless_base + 4u)
+        .read(primitive_id);
+  }
+
+  UInt curve_material_slot(
+      const std::shared_ptr<LuisaSceneData> &scene,
+      const Var<GeometryGpu> &geometry,
+      const Var<CurveSegmentGpu> &segment) const noexcept override {
+    return scene->heap
+        ->buffer<luisa::uint>(geometry.bindless_base + 4u)
+        .read(segment.curve_index);
+  }
+
+  Var<MaterialBindingGpu> resolve_binding(
+      const std::shared_ptr<LuisaSceneData> &scene,
+      const Var<InstanceGpu> &instance,
+      const Var<GeometryGpu> &geometry,
+      Expr<std::uint32_t> material_slot) const noexcept override {
+    UInt resolved_material_slot = material_slot;
+    Var<MaterialBindingGpu> binding = scene->geometry_material_buffer->read(
+        geometry.material_offset +
+        min(resolved_material_slot, max(geometry.material_count, 1u) - 1u));
+    $if(resolved_material_slot < instance.override_count) {
+      binding = scene->override_material_buffer->read(instance.override_offset +
+                                                      resolved_material_slot);
+    };
+    return binding;
+  }
+
   UInt cycles_object_index(
       Expr<std::uint32_t> instance_id,
       const Var<InstanceGpu> &instance) const noexcept override {
@@ -27,14 +61,8 @@ public:
                                 Expr<std::uint32_t> material_slot,
                                 Expr<bool> smooth) const noexcept override {
     UInt resolved_instance_id = instance_id;
-    UInt resolved_material_slot = material_slot;
-    Var<MaterialBindingGpu> binding = scene->geometry_material_buffer->read(
-        geometry.material_offset +
-        min(resolved_material_slot, max(geometry.material_count, 1u) - 1u));
-    $if(resolved_material_slot < instance.override_count) {
-      binding = scene->override_material_buffer->read(instance.override_offset +
-                                                      resolved_material_slot);
-    };
+    auto binding = resolve_binding(
+        scene, instance, geometry, material_slot);
 
     const auto has_cycles_shader_identity =
         binding.cycles_shader_index != cycles_shader_identity::invalid_index;

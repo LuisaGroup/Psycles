@@ -27,6 +27,26 @@ class PrimitiveMaterialComponent {
 public:
   virtual ~PrimitiveMaterialComponent() noexcept = default;
 
+  // Bindless primitive payload layout is part of material selection, not of
+  // surface geometry evaluation. Keeping these address translations here
+  // gives shading, volume traversal, and scheduler metadata one definition
+  // for the primitive -> material-slot relation.
+  [[nodiscard]] virtual UInt
+  triangle_material_slot(const std::shared_ptr<LuisaSceneData> &scene,
+                         const Var<GeometryGpu> &geometry,
+                         Expr<std::uint32_t> primitive_id) const noexcept = 0;
+
+  [[nodiscard]] virtual UInt
+  curve_material_slot(const std::shared_ptr<LuisaSceneData> &scene,
+                      const Var<GeometryGpu> &geometry,
+                      const Var<CurveSegmentGpu> &segment) const noexcept = 0;
+
+  [[nodiscard]] virtual Var<MaterialBindingGpu>
+  resolve_binding(const std::shared_ptr<LuisaSceneData> &scene,
+                  const Var<InstanceGpu> &instance,
+                  const Var<GeometryGpu> &geometry,
+                  Expr<std::uint32_t> material_slot) const noexcept = 0;
+
   [[nodiscard]] virtual UInt
   cycles_object_index(Expr<std::uint32_t> instance_id,
                       const Var<InstanceGpu> &instance) const noexcept = 0;
