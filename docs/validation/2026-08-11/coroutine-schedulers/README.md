@@ -2519,3 +2519,88 @@ the original-size or amplified-difference panels. The complete report is
 ![Persistent, per-sample megakernel, and Diffuse Indirect difference](persistent-tuned-comparison/triptychs/diffind.png)
 
 ![Persistent, per-sample megakernel, and Glossy Indirect difference](persistent-tuned-comparison/triptychs/glossind.png)
+
+## Persistent GME relocation payload
+
+The persistent scheduler's global-memory extension exchanges queued frames
+between a block-local slot and an AoS overflow slot. Copying every physical
+field is correct, but it ignores that a queued frame is a token-indexed sum
+type. A first experiment copied only the immediate `input_fields(token)`.
+It appeared to improve three cached 640x480/64 spp observations to
+`2.61067 s`, `2.62370 s`, and `2.61866 s` (median `2.61866 s`), but the image
+was invalid: against the committed persistent result, Combined relative RMSE
+was `2.759%`, Diffuse Indirect was `42.75%`, and Glossy Indirect was `33.74%`.
+The apparent 1.18% speedup is therefore rejected rather than reported as an
+optimization.
+
+The root cause is formal. Immediate callable input is not the state of a
+queued continuation. A value may be resident before continuation `s`, neither
+read nor redefined in `s`, and first consumed by a later continuation. For the
+distilled scope graph, the required state is the least fixed point
+
+`L(s) = External(s) union U_(s -> t) (L(t) - K(s -> t))`.
+
+Luisa's coroutine distiller already solves exactly this backward may-liveness
+problem over one dense value numbering, including cyclic schedules and
+path-sensitive must-kills. The scheduler now consumes that analysis
+certificate directly: `CoroGraph::Node::relocation_fields` is `L(s)` projected
+through interference coloring onto physical frame slots. It is deliberately
+not reconstructed from materialized `load_fields` and `store_fields`.
+Several materialized control-flow exits may share the same `(from, to)` graph
+edge; their stored-field union is correct for generated writes but is not a
+must-definition relation for liveness.
+
+For code generation, the token payloads are transposed into their intersection
+and token-specific residuals. Common fields are emitted once; a token switch
+handles only residual fields. The field-storage API also supports exact
+subsequent transfers so the seven reserved header fields are not emitted again
+in every residual branch. On this scene, the two continuation payloads share
+47 of 52 frame fields and the larger token requires all 52. This explains both
+why immediate inputs were unsound and why correct sparsification cannot produce
+a large Lone Monk gain.
+
+The corrected main HIP code object is `1,596,112 B`, versus `1,597,855 B` for
+the committed full-frame exchange (`-0.11%`). Three hot-cache observations are
+`2.66455 s`, `2.64584 s`, and `2.64533 s` (median `2.64584 s`), only 0.15%
+below the committed `2.64980 s` median and therefore noise-scale. The current
+same-device boundary remains:
+
+| Lone Monk 640x480/64 spp, RX 9070 XT | median | versus Cycles HIP |
+| --- | ---: | ---: |
+| Cycles HIP 5.3 Alpha `61f93ccb1478` | `1.90100 s` | baseline |
+| Psycles HIP per-sample megakernel | `2.41657 s` | 27.12% slower, 78.67% throughput |
+| Psycles HIP persistent | `2.64584 s` | 39.18% slower, 71.85% throughput |
+
+Persistent's remaining overhead over the topology-matched megakernel is
+9.49%. The relocation change establishes a sound sparse-transfer substrate;
+it does not materially close that gap on a graph whose live payloads are
+nearly identical.
+
+Regressions include an explicit partial AoS load, a two-suspend coroutine in
+which a field is dormant through the intermediate continuation, and the real
+GME spill/restore path. The coroutine graph suite passes 65 assertions in five
+tests. The complete persistent suite passes 90 assertions in 23 tests on
+fallback, HIP, and strict native Vulkan with
+`LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`; the Vulkan run emits native SPIR-V
+and does not load DXC. Psycles' Combined, Normal, Albedo, and all light-pass
+film accumulation suite passes on fallback and HIP.
+
+At 640x480/64 spp, corrected versus committed persistent has relative RMSE
+`7.25e-5`, `1.18e-3`, and `1.09e-3` for Combined, Diffuse Indirect, and Glossy
+Indirect; Combined luminance mean ratio is `1.00000012`. Original-resolution
+visual inspection finds no geometry, material, or lighting structure in the
+difference. Even the amplified panels contain only sparse firefly/atomic-order
+points, consistent with repeated unordered floating-point accumulation.
+The numeric report is
+[here](persistent-relocation-comparison/report-committed-vs-live.json).
+
+![Committed persistent, live-certificate persistent, and Combined difference](persistent-relocation-comparison/triptychs/combined.png)
+
+![Committed persistent, live-certificate persistent, and Diffuse Indirect difference](persistent-relocation-comparison/triptychs/diffind.png)
+
+![Committed persistent, live-certificate persistent, and Glossy Indirect difference](persistent-relocation-comparison/triptychs/glossind.png)
+
+Raw timing, comparison, profiler, and regression artifacts are under
+`/var/tmp/psycles-persistent-live-certificate-{timing,comparison,tests}-20260812`
+and `/var/tmp/luisa-persistent-live-certificate-tests-20260812` on the
+measurement host.
