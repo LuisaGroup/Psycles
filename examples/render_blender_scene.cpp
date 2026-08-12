@@ -225,7 +225,10 @@ int main(int argc, char **argv) {
                "[sample-chunk-pixel.json|-] "
                "[probe-chunk-size=1] [probe-full-frame=0] "
                "[scheduler=megakernel|megakernel-per-sample|wavefront|persistent] "
-               "[wavefront-execution-block-size=32]\n";
+               "[wavefront-execution-block-size=32] "
+               "[persistent-workers=32768] "
+               "[persistent-block-size=32] "
+               "[persistent-fetch-size=1]\n";
         return EXIT_FAILURE;
     }
     const auto bundle = std::filesystem::path{argv[1]};
@@ -396,6 +399,49 @@ int main(int argc, char **argv) {
         }
         wavefront_execution_block_size = *value;
     }
+    auto persistent_worker_count = std::uint32_t{1u << 15u};
+    if (argc > 19) {
+        auto value = parse_unsigned<std::uint32_t>(argv[19]);
+        if (!value || *value == 0u) {
+            std::cerr
+                << "error: persistent worker count must be positive\n";
+            return EXIT_FAILURE;
+        }
+        persistent_worker_count = *value;
+    }
+    auto persistent_block_size = std::uint32_t{32u};
+    if (argc > 20) {
+        auto value = parse_unsigned<std::uint32_t>(argv[20]);
+        if (!value ||
+            !psycles::luisa_backend::
+                valid_luisa_execution_block_size(*value)) {
+            std::cerr
+                << "error: persistent block size must be a multiple of 32 "
+                   "in [32, 1024]\n";
+            return EXIT_FAILURE;
+        }
+        persistent_block_size = *value;
+    }
+    auto persistent_fetch_size = std::uint32_t{1u};
+    if (argc > 21) {
+        auto value = parse_unsigned<std::uint32_t>(argv[21]);
+        if (!value || *value == 0u) {
+            std::cerr
+                << "error: persistent fetch size must be positive\n";
+            return EXIT_FAILURE;
+        }
+        persistent_fetch_size = *value;
+    }
+    if (!psycles::luisa_backend::
+            valid_luisa_persistent_scheduler_shape(
+                persistent_worker_count,
+                persistent_block_size,
+                persistent_fetch_size)) {
+        std::cerr
+            << "error: persistent block-size times fetch-size exceeds "
+               "the uint scheduler ABI\n";
+        return EXIT_FAILURE;
+    }
     auto path_trace_sink =
         path_trace_output
             ? std::make_shared<MemoryPathTraceSink>()
@@ -421,6 +467,9 @@ int main(int argc, char **argv) {
          .scheduler = scheduler,
          .wavefront_execution_block_size =
              wavefront_execution_block_size,
+         .persistent_worker_count = persistent_worker_count,
+         .persistent_block_size = persistent_block_size,
+         .persistent_fetch_size = persistent_fetch_size,
          .max_samples_per_dispatch =
              max_samples_per_dispatch,
          .path_trace = path_trace_request}};

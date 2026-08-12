@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <cstdlib>
+#include <limits>
 
 int main() {
     using psycles::luisa_backend::LuisaPathScheduler;
@@ -13,6 +14,8 @@ int main() {
     using psycles::luisa_backend::parse_luisa_path_scheduler;
     using psycles::luisa_backend::
         valid_luisa_wavefront_execution_block_size;
+    using psycles::luisa_backend::
+        valid_luisa_persistent_scheduler_shape;
 
     constexpr std::array schedulers{
         LuisaPathScheduler::megakernel,
@@ -60,8 +63,18 @@ int main() {
     static_assert(valid_luisa_wavefront_execution_block_size(1024u));
     static_assert(!valid_luisa_wavefront_execution_block_size(1056u));
     static_assert(options.persistent_worker_count == (1u << 15u));
-    static_assert(options.persistent_block_size == 128u);
-    static_assert(options.persistent_fetch_size == 16u);
+    static_assert(options.persistent_block_size == 32u);
+    static_assert(options.persistent_fetch_size == 1u);
+    static_assert(valid_luisa_persistent_scheduler_shape(
+        1u, 32u, 1u));
+    static_assert(!valid_luisa_persistent_scheduler_shape(
+        0u, 32u, 1u));
+    static_assert(!valid_luisa_persistent_scheduler_shape(
+        1u, 16u, 1u));
+    static_assert(!valid_luisa_persistent_scheduler_shape(
+        1u, 32u, 0u));
+    static_assert(!valid_luisa_persistent_scheduler_shape(
+        1u, 1024u, std::numeric_limits<std::uint32_t>::max()));
     static_assert(options.persistent_shared_memory_soa);
     static_assert(options.persistent_global_memory_extension);
     static_assert(options.max_samples_per_dispatch == 64u);

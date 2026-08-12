@@ -60,11 +60,29 @@ parse_luisa_path_scheduler(
 }
 
 [[nodiscard]] constexpr bool
-valid_luisa_wavefront_execution_block_size(
+valid_luisa_execution_block_size(
     std::uint32_t size) noexcept {
     // Mirrors the Luisa DSL workgroup contract, so invalid scheduler options
     // are rejected before shader AST construction reaches set_block_size().
     return size >= 32u && size <= 1024u && size % 32u == 0u;
+}
+
+[[nodiscard]] constexpr bool
+valid_luisa_wavefront_execution_block_size(
+    std::uint32_t size) noexcept {
+    return valid_luisa_execution_block_size(size);
+}
+
+[[nodiscard]] constexpr bool
+valid_luisa_persistent_scheduler_shape(
+    std::uint32_t worker_count,
+    std::uint32_t block_size,
+    std::uint32_t fetch_size) noexcept {
+    return worker_count != 0u &&
+           valid_luisa_execution_block_size(block_size) &&
+           fetch_size != 0u &&
+           static_cast<std::uint64_t>(block_size) * fetch_size <=
+               std::numeric_limits<std::uint32_t>::max();
 }
 
 // The serial megakernel gives one invocation exclusive ownership of a pixel
@@ -120,12 +138,17 @@ struct LuisaPathTracerOptions {
     // Persistent workers are independent of the logical image size. The
     // scheduler rounds this count up to a complete block.
     // The paper's persistent configuration is 2^15 workers, 128 threads per
-    // block, and 16 logical instances fetched per worker acquisition.
+    // block, and 16 block-sized batches fetched per acquisition.
     std::uint32_t persistent_worker_count{1u << 15u};
-    // Kept backend-independent: fallback is allowed to execute the same block
-    // scheduler and is not silently normalized to a scalar special case.
-    std::uint32_t persistent_block_size{128u};
-    std::uint32_t persistent_fetch_size{16u};
+    // Kept backend-independent: fallback executes the same block scheduler
+    // instead of being silently normalized to a scalar special case. The
+    // single-wave default is an application tuning choice; callers retain
+    // control because the best occupancy depends on the coroutine frame and
+    // continuation resource footprint.
+    std::uint32_t persistent_block_size{32u};
+    // Runtime task-allocation granularity, measured in block-sized batches.
+    // It does not enter shader AST/cache identity.
+    std::uint32_t persistent_fetch_size{1u};
     bool persistent_shared_memory_soa{true};
     bool persistent_global_memory_extension{true};
     // Each batch is submitted and synchronized independently. Per-sample

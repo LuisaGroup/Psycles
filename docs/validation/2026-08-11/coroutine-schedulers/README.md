@@ -2431,3 +2431,91 @@ profiler artifacts are under
 `/var/tmp/psycles-wavefront-block-profile-20260812`; attempted counter data is
 under `/var/tmp/psycles-wavefront-block-counters-20260812`; regression logs are
 under `/var/tmp/luisa-wavefront-block-tests-20260812`.
+
+## Persistent scheduler granularity and runtime policy
+
+The same resource argument applies more strongly to the persistent scheduler.
+Its main state-machine kernel contains all continuations and the scheduler,
+and the original 128-thread configuration compiled to 256 VGPRs, 2168 B of
+scratch per thread, and 29,184 B of reported LDS per block. A 32-thread block
+retains exactly the same path program and 208 B coroutine frame while reducing
+the reported LDS allocation to 7,212 B. Three matched observations changed
+from `3.19461 s`, `3.19990 s`, and `3.19873 s` at 128 threads (median
+`3.19873 s`) to `2.69318 s`, `2.69910 s`, and `2.69233 s` at 32 threads
+(median `2.69318 s`), a 15.80% reduction in render time.
+
+Worker count and task-acquisition size were then swept independently at the
+32-thread block size. The worker curve has a sharp saturation boundary:
+
+| persistent workers | render time (s) |
+| ---: | ---: |
+| 4,096 | 8.82724 |
+| 8,192 | 4.75350 |
+| 10,240 | 3.88382 |
+| 12,288 | 3.34497 |
+| 14,336 | 2.94617 |
+| 16,384 | 2.69537 |
+| 18,432 | 2.65467 |
+| 24,576 | 2.65478 |
+| 32,768 | 2.70026 |
+| 65,536 | 2.70253 |
+
+Repeated interleaved measurements showed 16,384 workers to be too close to
+the knee to use as a backend-independent default; 32,768 remained stable and
+does not expand shader structure. It is therefore retained. The acquisition
+factor multiplies block size, so factors 1, 2, 4, 8, 16, 32, and 64 allocate
+respectively 32 through 2,048 consecutive logical tasks per global atomic.
+The first sweep measured `2.67673`, `2.67925`, `2.68976`, `2.70762`,
+`2.70266`, `2.77181`, and `2.84583 s`. Repeated interleaved observations for
+the leading factors confirmed factor one as the stable best choice; coarse
+batches reduce atomic traffic but create a worse final load imbalance.
+
+Luisa `next@5dbf60046` consequently makes fetch size a runtime kernel uniform
+instead of capturing it in the shader AST. This follows from an exact
+partition argument: for batch size `B = block_size * fetch_size`, atomic
+acquisitions produce disjoint intervals `[kB, min((k+1)B, N))`; those
+intervals cover `[0, N)` exactly, so `B` changes scheduling but not the
+program. Worker count was already dispatch-only. A new regression constructs
+independent 64-worker/fetch-one and 96-worker/fetch-17 schedulers, proves their
+main-kernel structure hashes are equal, and uses an atomic per-task counter to
+prove that each of 257 logical tasks executes exactly once. The same change
+validates the persistent block contract before AST construction: a multiple
+of 32 in `[32, 1024]`. The complete persistent optimization suite passes 81
+assertions in 21 tests on both fallback and HIP.
+
+With Psycles defaults of 32,768 workers, a 32-thread block, and fetch factor
+one, the post-change observations are `2.66098 s`, `2.64650 s`, and
+`2.64980 s` (median `2.64980 s`). This is 17.16% faster than the original
+persistent configuration and 6.02% faster than the 32-thread global
+wavefront. Against the fresh Cycles HIP median of `1.901 s`, it is 1.394x the
+render time (39.39% slower, 71.74% of Cycles throughput). Against the matched
+per-sample megakernel median of `2.41657 s`, the remaining persistent
+scheduler overhead is 9.65%. Thus this tuning closes 42.30% of the original
+persistent/Cycles time gap without changing rendering semantics.
+
+The tuned profiler records one 2,630.602 ms persistent main-kernel dispatch at
+32 threads with 256 VGPRs, 2168 B scratch, and 7,212 B LDS. This confirms that
+the remaining boundary is inside the combined persistent state-machine
+kernel, not host dispatch gaps. At 64x64/1 spp, persistent, 32-thread
+wavefront, and topology-matched megakernel produce the same display SHA-256
+`b4f198ebedd7621e41bd51d66f495c9f1c734141e48ccad866671d983555a58e`;
+all 15 linear EXR passes compare with zero relative RMSE. The full film/pass
+suite also passes on fallback and HIP. Timing and policy-sweep artifacts are
+under `/var/tmp/psycles-persistent-{block-sweep,worker-sweep,fetch-sweep,tuned-repeat,runtime-fetch-final}-20260812`;
+the exact canary and profiler data are under
+`/var/tmp/psycles-persistent-runtime-fetch-canary-20260812` and
+`/var/tmp/psycles-persistent-profile-tuned-20260812`.
+
+At 640x480/64 spp, tuned persistent versus the topology-matched per-sample
+megakernel has Combined relative RMSE `9.59e-5` and luminance mean ratio
+`1.0000003`; Diffuse Indirect and Glossy Indirect relative RMSE are
+`1.51e-3` and `8.50e-4`. These are the expected unordered floating-point
+atomic accumulation differences, with no structured visual discrepancy in
+the original-size or amplified-difference panels. The complete report is
+[here](persistent-tuned-comparison/report-persistent-vs-per-sample.json).
+
+![Persistent, per-sample megakernel, and Combined difference](persistent-tuned-comparison/triptychs/combined.png)
+
+![Persistent, per-sample megakernel, and Diffuse Indirect difference](persistent-tuned-comparison/triptychs/diffind.png)
+
+![Persistent, per-sample megakernel, and Glossy Indirect difference](persistent-tuned-comparison/triptychs/glossind.png)

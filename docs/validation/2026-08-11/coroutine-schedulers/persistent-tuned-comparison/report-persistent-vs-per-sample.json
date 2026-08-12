@@ -1,0 +1,208 @@
+{
+  "actual_label": "Persistent coroutine",
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.DiffCol.R",
+    "ViewLayer.DiffCol.G",
+    "ViewLayer.DiffCol.B",
+    "ViewLayer.DiffDir.R",
+    "ViewLayer.DiffDir.G",
+    "ViewLayer.DiffDir.B",
+    "ViewLayer.DiffInd.R",
+    "ViewLayer.DiffInd.G",
+    "ViewLayer.DiffInd.B",
+    "ViewLayer.Emit.R",
+    "ViewLayer.Emit.G",
+    "ViewLayer.Emit.B",
+    "ViewLayer.Env.R",
+    "ViewLayer.Env.G",
+    "ViewLayer.Env.B",
+    "ViewLayer.GlossCol.R",
+    "ViewLayer.GlossCol.G",
+    "ViewLayer.GlossCol.B",
+    "ViewLayer.GlossDir.R",
+    "ViewLayer.GlossDir.G",
+    "ViewLayer.GlossDir.B",
+    "ViewLayer.GlossInd.R",
+    "ViewLayer.GlossInd.G",
+    "ViewLayer.GlossInd.B",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.TransCol.R",
+    "ViewLayer.TransCol.G",
+    "ViewLayer.TransCol.B",
+    "ViewLayer.TransDir.R",
+    "ViewLayer.TransDir.G",
+    "ViewLayer.TransDir.B",
+    "ViewLayer.TransInd.R",
+    "ViewLayer.TransInd.G",
+    "ViewLayer.TransInd.B",
+    "ViewLayer.VolumeDir.R",
+    "ViewLayer.VolumeDir.G",
+    "ViewLayer.VolumeDir.B",
+    "ViewLayer.VolumeInd.R",
+    "ViewLayer.VolumeInd.G",
+    "ViewLayer.VolumeInd.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        1.0000004768371582,
+        1.000000238418579,
+        1.0000001192092896
+      ],
+      "cycles": "/var/tmp/psycles-frame208-per-sample-megakernel-fresh-floTDX/out-1.exr",
+      "cycles_channel_mean": [
+        0.6282229423522949,
+        0.46425724029541016,
+        0.38870474696159363
+      ],
+      "cycles_luminance_mean": 0.4939078688621521,
+      "cycles_rms": 1.560150384902954,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.000000301699206,
+      "maximum_absolute_error": 0.09238195419311523,
+      "mean_absolute_error": 6.948275199647469e-07,
+      "orientation_rmse": {
+        "flip_x": 1.0087860822677612,
+        "flip_xy": 1.8486652374267578,
+        "flip_y": 1.8192837238311768,
+        "identity": 0.0001496924669481814
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 8.603189272093914e-09,
+      "psycles": "/var/tmp/psycles-persistent-runtime-fetch-final-20260812/out-2.exr",
+      "psycles_channel_mean": [
+        0.6282232403755188,
+        0.4642573595046997,
+        0.3887048065662384
+      ],
+      "psycles_luminance_mean": 0.49390801787376404,
+      "psycles_rms": 1.5601506691089309,
+      "relative_rmse": 9.59474601914691e-05,
+      "rmse": 0.0001496924669481814,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 40265318.4,
+        "display_scale": 0.08939135590980714,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles/docs/validation/2026-08-11/coroutine-schedulers/persistent-tuned-comparison/triptychs/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "DiffInd": {
+      "channel_mean_ratio": [
+        1.0000063180923462,
+        1.000006079673767,
+        1.0000050067901611
+      ],
+      "cycles": "/var/tmp/psycles-frame208-per-sample-megakernel-fresh-floTDX/out-1.exr",
+      "cycles_channel_mean": [
+        0.24324287474155426,
+        0.16326983273029327,
+        0.10946043580770493
+      ],
+      "cycles_luminance_mean": 0.1764126867055893,
+      "cycles_rms": 0.5684142112731934,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0000060816692156,
+      "maximum_absolute_error": 0.5148537158966064,
+      "mean_absolute_error": 3.909035513061099e-06,
+      "orientation_rmse": {
+        "flip_x": 0.6602254509925842,
+        "flip_xy": 0.7317387461662292,
+        "flip_y": 0.7293130159378052,
+        "identity": 0.000859621271956712
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 8.603189272093914e-09,
+      "psycles": "/var/tmp/psycles-persistent-runtime-fetch-final-20260812/out-2.exr",
+      "psycles_channel_mean": [
+        0.24324442446231842,
+        0.16327081620693207,
+        0.1094609797000885
+      ],
+      "psycles_luminance_mean": 0.17641375958919525,
+      "psycles_rms": 0.5684160027363304,
+      "relative_rmse": 0.0015123148839492292,
+      "rmse": 0.000859621271956712,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 30198988.8,
+        "display_scale": 0.35509920722270577,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles/docs/validation/2026-08-11/coroutine-schedulers/persistent-tuned-comparison/triptychs/diffind.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "GlossInd": {
+      "channel_mean_ratio": [
+        1.0000029802322388,
+        1.000003457069397,
+        1.0000022649765015
+      ],
+      "cycles": "/var/tmp/psycles-frame208-per-sample-megakernel-fresh-floTDX/out-1.exr",
+      "cycles_channel_mean": [
+        0.23890124261379242,
+        0.16465064883232117,
+        0.1131247729063034
+      ],
+      "cycles_luminance_mean": 0.17676106095314026,
+      "cycles_rms": 0.44966715574264526,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0000036249495667,
+      "maximum_absolute_error": 0.17695170640945435,
+      "mean_absolute_error": 2.1771056708530523e-06,
+      "orientation_rmse": {
+        "flip_x": 0.47838208079338074,
+        "flip_xy": 0.5559707880020142,
+        "flip_y": 0.5520910620689392,
+        "identity": 0.0003824142331723124
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 4.301594636046957e-09,
+      "psycles": "/var/tmp/psycles-persistent-runtime-fetch-final-20260812/out-2.exr",
+      "psycles_channel_mean": [
+        0.23890195786952972,
+        0.16465121507644653,
+        0.1131250262260437
+      ],
+      "psycles_luminance_mean": 0.1767617017030716,
+      "psycles_rms": 0.44966983537792293,
+      "relative_rmse": 0.000850438437160789,
+      "rmse": 0.0003824142331723124,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 30198988.8,
+        "display_scale": 0.3567172147948009,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles/docs/validation/2026-08-11/coroutine-schedulers/persistent-tuned-comparison/triptychs/glossind.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    }
+  },
+  "reference_label": "Per-sample megakernel",
+  "schema": "psycles.cycles-differential.v1"
+}
