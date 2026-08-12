@@ -2165,8 +2165,10 @@ under that predicate. Thus every observable pending hit has
 `HitType::Surface`; transporting a mutable hit-kind word is impossible to
 distinguish from materializing the Surface constant. `PendingSubsurfaceHit`
 stores only instance, primitive, barycentric coordinates, and committed
-distance, and its sole materializer restores the tag. A focused fallback/HIP
-regression verifies exact round-trip values and the materialized tag.
+distance, and its sole materializer restores the tag. Focused fallback/HIP
+regressions verify exact round-trip values and the materialized tag both within
+one kernel segment and after all four payload values cross a real `$suspend`
+through the coroutine frame.
 
 This scalar semantic representation also removed an aggregate-analysis
 barrier. In the specialized Lone Monk program the compiler proves that no
