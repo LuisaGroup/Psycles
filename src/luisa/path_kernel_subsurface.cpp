@@ -5,6 +5,7 @@
 #include <psycles/luisa/cycles_noise.h>
 #include <psycles/luisa/cycles_path_state.h>
 #include <psycles/luisa/cycles_sample_mapping.h>
+#include <psycles/sampling/tabulated_sobol.h>
 
 #include <utility>
 
@@ -127,14 +128,81 @@ private:
     SubsurfaceRandomWalkComponent _random_walk;
 
 public:
-    Bool emit(DirectLightingContext &context,
-              const SurfaceSample &closure_sample) const noexcept override {
+    SubsurfaceTransportPreparation
+    prepare(DirectLightingContext &context,
+            const SurfaceSample &closure_sample) const noexcept override {
         auto &bounce = context.bounce;
         auto &path = bounce.sample;
         auto &invocation = path.invocation;
-        const auto &scene = invocation.config.scene;
         const auto &parameters = invocation.parameters;
         auto &surface = context.surface;
+        const auto is_burley =
+            closure_sample.bssrdf_method ==
+            static_cast<std::uint32_t>(SurfaceBssrdfMethod::burley);
+
+        // Cycles samples the random-walk entry while ShaderData is still
+        // available. Doing the same here proves that neither SurfacePoint nor
+        // the full closure array is live across INTERSECT_SUBSURFACE.
+        Float3 entry_direction = path.ray->direction();
+        Float3 transport_normal = surface.point.geometric_normal;
+        Bool valid = true;
+        $if(!is_burley) {
+            const auto entry_random = cycles_sampler::sample_2d(
+                invocation.sobol_table,
+                parameters.sobol_sequence_size,
+                path.sample_index,
+                path.rng_hash,
+                cycles_sampler::path_state_dimension(
+                    path.cycles_rng_offset,
+                    sampling::tabulated_sobol::subsurface_bsdf_dimension));
+            const auto entry = _random_walk.sample_entry(
+                surface.point, closure_sample, entry_random);
+            entry_direction = entry.direction;
+            valid = entry.valid;
+            transport_normal = invocation.surface_shading_normal(
+                surface.surface_tag, surface.point);
+        };
+
+        path.ray = make_ray(surface.point.position,
+                            entry_direction,
+                            0.0f,
+                            ray_maximum);
+        path.ray_dD = 0.0f;
+        path.ray_source_object = surface.cycles_object_index;
+        path.ray_source_primitive = surface.cycles_primitive_index;
+        // The canonical pending-hit storage is also Cycles' intersection
+        // state. Before transport it names the entry primitive; successful
+        // transport replaces it atomically with the selected exit.
+        path.pending_subsurface_hit.store_surface(bounce.hit);
+        path.path_flags &= ~cycles_path_state::flag_subsurface;
+        path.path_flags |= select(
+            cycles_path_state::flag_subsurface_random_walk,
+            cycles_path_state::flag_subsurface_disk,
+            is_burley);
+        path.path_flags |= select(
+            0u,
+            cycles_path_state::flag_subsurface_backfacing,
+            surface.point.back_facing);
+
+        const auto modern =
+            closure_sample.bssrdf_method ==
+            static_cast<std::uint32_t>(SurfaceBssrdfMethod::random_walk);
+        return {
+            .state = {
+                .albedo = closure_sample.bssrdf_albedo,
+                .radius = closure_sample.bssrdf_radius,
+                .encoded_anisotropy =
+                    closure_sample.bssrdf_anisotropy +
+                    select(2.0f, 0.0f, modern),
+                .normal = std::move(transport_normal)},
+            .valid = std::move(valid)};
+    }
+
+    Bool emit(PathSampleContext &path,
+              const SubsurfaceTransportState &state) const noexcept override {
+        auto &invocation = path.invocation;
+        const auto &scene = invocation.config.scene;
+        const auto &parameters = invocation.parameters;
         auto &rng_offset = path.cycles_rng_offset;
         auto &ray = path.ray;
         auto &ray_dD = path.ray_dD;
@@ -144,8 +212,7 @@ public:
 
         Bool success = false;
         const auto is_burley =
-            closure_sample.bssrdf_method ==
-            static_cast<std::uint32_t>(SurfaceBssrdfMethod::burley);
+            (path.path_flags & cycles_path_state::flag_subsurface_disk) != 0u;
         $if(is_burley) {
             const auto random_disk = cycles_sampler::sample_2d(
                 invocation.sobol_table,
@@ -156,8 +223,8 @@ public:
             auto disk_random_y = random_disk.y;
 
             const auto basis = cycles_sample_mapping::make_orthonormals(
-                surface.point.geometric_normal);
-            Float3 disk_normal = surface.point.geometric_normal;
+                state.normal);
+            Float3 disk_normal = state.normal;
             Float3 disk_tangent = basis.tangent;
             Float3 disk_bitangent = basis.bitangent;
             Float pick_pdf_normal = 0.5f;
@@ -169,7 +236,7 @@ public:
             const auto bitangent_axis = disk_random_y >= 0.75f;
             disk_normal = select(disk_normal, basis.tangent, tangent_axis);
             disk_tangent = select(disk_tangent,
-                                  surface.point.geometric_normal,
+                                  state.normal,
                                   tangent_axis);
             pick_pdf_normal = select(
                 pick_pdf_normal, 0.25f, tangent_axis);
@@ -184,7 +251,7 @@ public:
                 disk_normal, basis.bitangent, bitangent_axis);
             disk_bitangent = select(
                 disk_bitangent,
-                surface.point.geometric_normal,
+                state.normal,
                 bitangent_axis);
             pick_pdf_normal = select(
                 pick_pdf_normal, 0.25f, bitangent_axis);
@@ -200,14 +267,14 @@ public:
                 (!tangent_axis) & (!bitangent_axis));
 
             const auto disk = sample_burley_disk(
-                closure_sample.bssrdf_radius, random_disk.x);
+                state.radius, random_disk.x);
             const auto phi = 2.0f * cycles_sample_mapping::pi *
                              disk_random_y;
             const auto disk_offset =
                 disk_tangent * (disk.radius * cos(phi)) +
                 disk_bitangent * (disk.radius * sin(phi));
             Var<luisa::compute::Ray> probe = make_ray(
-                surface.point.position + disk_normal * disk.height +
+                ray->origin() + disk_normal * disk.height +
                     disk_offset,
                 -disk_normal,
                 0.0f,
@@ -218,9 +285,9 @@ public:
             luisa::compute::ArrayFloat2<maximum_hits> hit_barycentrics;
             luisa::compute::ArrayFloat<maximum_hits> hit_distances;
             for (auto index = 0u; index < maximum_hits; ++index) {
-                hit_instances[index] = bounce.hit->inst;
-                hit_primitives[index] = bounce.hit->prim;
-                hit_barycentrics[index] = bounce.hit->bary;
+                hit_instances[index] = pending_hit.instance;
+                hit_primitives[index] = pending_hit.primitive;
+                hit_barycentrics[index] = pending_hit.barycentric;
                 hit_distances[index] = 0.0f;
             }
 
@@ -256,7 +323,7 @@ public:
                                                       hit->committed_ray_t);
                                              }
                                              $if((object ==
-                                                  surface.cycles_object_index) &
+                                                  path.ray_source_object) &
                                                  !duplicate) {
                                                  hit_count += 1u;
                                                  UInt record = hit_count - 1u;
@@ -309,9 +376,9 @@ public:
             luisa::compute::ArrayFloat3<maximum_hits> hit_weights;
             Float weight_sum = 0.0f;
             const auto channels = channel_count(
-                closure_sample.bssrdf_radius);
+                state.radius);
             const auto disk_profile = burley_profile(
-                closure_sample.bssrdf_radius, disk.radius);
+                state.radius, disk.radius);
             const auto disk_pdf =
                 (disk_profile.x + disk_profile.y + disk_profile.z) /
                 max(channels, 1.0f);
@@ -328,14 +395,17 @@ public:
                 auto hit_normal = normalize(
                     (normal_to_world * make_float4(object_normal, 0.0f)).xyz());
                 hit_normal = select(
-                    hit_normal, -hit_normal, surface.point.back_facing);
+                    hit_normal,
+                    -hit_normal,
+                    (path.path_flags &
+                     cycles_path_state::flag_subsurface_backfacing) != 0u);
                 hit_normals[index] = hit_normal;
 
                 const auto hit_position =
                     probe->origin() +
                     probe->direction() * hit_distances[index];
                 const auto distance = luisa::compute::length(
-                    hit_position - surface.point.position);
+                    hit_position - ray->origin());
                 const auto pdf_normal =
                     pick_pdf_normal * abs(dot(disk_normal, hit_normal));
                 const auto pdf_tangent =
@@ -353,7 +423,7 @@ public:
                         static_cast<float>(maximum_hits),
                     hit_count > maximum_hits);
                 auto weight = burley_profile(
-                                  closure_sample.bssrdf_radius, distance) *
+                                  state.radius, distance) *
                               (mis_weight / max(disk_pdf, 1.0e-20f));
                 weight = select(
                     make_float3(0.0f),
@@ -420,8 +490,12 @@ public:
             };
         }
         $else {
-            success = _random_walk.transport(context, closure_sample);
+            success = _random_walk.transport(path, state);
         };
+        // This stage is the sole consumer of these method tags. Psycles keeps
+        // exact exit identity in pending_subsurface_exit rather than asking
+        // the next surface stage to infer it from transient transport flags.
+        path.path_flags &= ~cycles_path_state::flag_subsurface;
         return success;
     }
 };

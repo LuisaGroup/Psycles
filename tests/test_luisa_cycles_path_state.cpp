@@ -28,6 +28,18 @@ constexpr auto expected_singular_flag =
     cycles_path_state::flag_terminate_after_transparent |
     cycles_path_state::flag_surface_pass;
 
+// These are an ABI shared with Cycles' PathRayFlag. In particular, the
+// BSSRDF method and orientation must remain path-state bits rather than
+// widening the INTERSECT_SUBSURFACE continuation payload.
+static_assert(cycles_path_state::flag_subsurface_random_walk == (1u << 14u));
+static_assert(cycles_path_state::flag_subsurface_disk == (1u << 15u));
+static_assert(cycles_path_state::flag_subsurface_backfacing == (1u << 16u));
+static_assert(
+    cycles_path_state::flag_subsurface ==
+    (cycles_path_state::flag_subsurface_random_walk |
+     cycles_path_state::flag_subsurface_disk |
+     cycles_path_state::flag_subsurface_backfacing));
+
 } // namespace
 
 int main(int argc, char **argv) {

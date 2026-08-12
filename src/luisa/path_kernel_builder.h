@@ -645,15 +645,38 @@ class SurfaceScatterStage {
     emit(DirectLightingContext &context) const noexcept = 0;
 };
 
+// Exact sufficient state at Cycles' SHADE_SURFACE -> INTERSECT_SUBSURFACE
+// boundary. The entry ray and intersection live in PathSampleContext's
+// canonical ray/pending-hit state; the BSSRDF contributes only the same 40
+// logical bytes as Cycles' packed subsurface state. Method and back-facing
+// tags use the canonical PathRayFlag bits instead of widening this payload.
+struct SubsurfaceTransportState {
+    Float3 albedo;
+    Float3 radius;
+    Float encoded_anisotropy;
+    Float3 normal;
+};
+
+struct SubsurfaceTransportPreparation {
+    SubsurfaceTransportState state;
+    Bool valid;
+};
+
 class SubsurfaceTransportStage {
 
   public:
     virtual ~SubsurfaceTransportStage() noexcept = default;
+    // Samples random-walk entry and canonicalizes ray/intersection state at
+    // the last point where populated surface data is available. Invalid
+    // entries terminate before they consume a scheduler queue slot.
+    [[nodiscard]] virtual SubsurfaceTransportPreparation
+    prepare(DirectLightingContext &context,
+            const SurfaceSample &sample) const noexcept = 0;
     // Returns false when the sampled profile finds no valid same-object exit;
     // Cycles terminates that path rather than substituting another closure.
     [[nodiscard]] virtual Bool
-    emit(DirectLightingContext &context,
-         const SurfaceSample &sample) const noexcept = 0;
+    emit(PathSampleContext &path,
+         const SubsurfaceTransportState &state) const noexcept = 0;
 };
 
 [[nodiscard]] std::unique_ptr<PathBounceSetupStage>

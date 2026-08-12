@@ -40,8 +40,8 @@ public:
     // throughput, exact pending exit, synthetic exit ray, and the outer RNG
     // offset. A false result terminates the selected BSSRDF path.
     [[nodiscard]] Bool transport(
-        DirectLightingContext &context,
-        const SurfaceSample &closure) const noexcept;
+        PathSampleContext &path,
+        const SubsurfaceTransportState &state) const noexcept;
 };
 
 }// namespace psycles::luisa_backend::detail

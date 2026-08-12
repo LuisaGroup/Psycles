@@ -241,8 +241,22 @@ void PathKernelPipeline::emit(
       const auto scatter = _impl->surface_scatter->emit(lighting);
             if (_impl->subsurface_transport) {
                 $if(scatter.subsurface) {
+                    const auto transport =
+                        _impl->subsurface_transport->prepare(
+                            lighting, scatter.sample);
+                    $if(!transport.valid) { $break; };
+                    if (cut_policy ==
+                        PathCoroutineCutPolicy::cycles_wavefront) {
+                        // Cycles' INTERSECT_SUBSURFACE consumes canonical
+                        // path ray/isect state plus the dedicated 40-byte
+                        // BSSRDF payload. Surface geometry, closures, NEE
+                        // reservoirs, and shader temporaries die before this
+                        // scheduling boundary.
+                        $suspend(path_transition::intersect_subsurface);
+                    }
                     const auto transported =
-              _impl->subsurface_transport->emit(lighting, scatter.sample);
+                        _impl->subsurface_transport->emit(
+                            sample, transport.state);
           $if(transported) { $continue; }
           $else { $break; };
                 };
