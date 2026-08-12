@@ -60,6 +60,7 @@ int main() {
         options.scheduler == LuisaPathScheduler::megakernel);
     static_assert(options.wavefront_frame_capacity == (1u << 24u));
     static_assert(options.wavefront_execution_block_size == 32u);
+    static_assert(options.staged_surface_sorting);
     static_assert(!valid_luisa_wavefront_execution_block_size(0u));
     static_assert(!valid_luisa_wavefront_execution_block_size(16u));
     static_assert(valid_luisa_wavefront_execution_block_size(32u));

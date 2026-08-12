@@ -228,7 +228,8 @@ int main(int argc, char **argv) {
                "[wavefront-execution-block-size=32] "
                "[persistent-workers=32768] "
                "[persistent-block-size=32] "
-               "[persistent-fetch-size=1]\n";
+               "[persistent-fetch-size=1] "
+               "[staged-surface-sorting=1]\n";
         return EXIT_FAILURE;
     }
     const auto bundle = std::filesystem::path{argv[1]};
@@ -432,6 +433,16 @@ int main(int argc, char **argv) {
         }
         persistent_fetch_size = *value;
     }
+    auto staged_surface_sorting = true;
+    if (argc > 22) {
+        auto value = parse_unsigned<std::uint32_t>(argv[22]);
+        if (!value || *value > 1u) {
+            std::cerr
+                << "error: staged surface sorting must be 0 or 1\n";
+            return EXIT_FAILURE;
+        }
+        staged_surface_sorting = *value != 0u;
+    }
     if (!psycles::luisa_backend::
             valid_luisa_persistent_scheduler_shape(
                 persistent_worker_count,
@@ -467,6 +478,8 @@ int main(int argc, char **argv) {
          .scheduler = scheduler,
          .wavefront_execution_block_size =
              wavefront_execution_block_size,
+         .staged_surface_sorting =
+             staged_surface_sorting,
          .persistent_worker_count = persistent_worker_count,
          .persistent_block_size = persistent_block_size,
          .persistent_fetch_size = persistent_fetch_size,

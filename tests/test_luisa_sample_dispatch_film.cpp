@@ -264,7 +264,8 @@ struct RenderResult {
     std::string_view backend,
     psycles::luisa_backend::LuisaPathScheduler scheduler,
     std::uint32_t samples_per_dispatch,
-    bool split_request) {
+    bool split_request,
+    bool staged_surface_sorting = true) {
     auto device = context.create_device(backend);
     auto trace_sink = std::make_shared<TraceSink>();
     psycles::luisa_backend::LuisaPathTracerBackend renderer{
@@ -272,6 +273,7 @@ struct RenderResult {
         {.next_event_estimation = true,
          .scheduler = scheduler,
          .wavefront_frame_capacity = 128u,
+         .staged_surface_sorting = staged_surface_sorting,
          .persistent_worker_count = 128u,
          .persistent_block_size = 64u,
          .persistent_fetch_size = 4u,
@@ -494,6 +496,13 @@ int main(int argc, char **argv) {
         psycles::luisa_backend::LuisaPathScheduler::wavefront_staged,
         sample_count,
         false);
+    const auto staged_wavefront_unsorted = render(
+        context,
+        backend,
+        psycles::luisa_backend::LuisaPathScheduler::wavefront_staged,
+        sample_count,
+        false,
+        false);
     const auto persistent = render(
         context,
         backend,
@@ -502,7 +511,8 @@ int main(int argc, char **argv) {
         false);
     if (!reference || !deterministic || !single_plane || !per_sample ||
         !chunked ||
-        !wavefront || !staged_wavefront || !persistent ||
+        !wavefront || !staged_wavefront ||
+        !staged_wavefront_unsorted || !persistent ||
         !validate_reference(*reference) ||
         !compare_outputs(
             *reference,
@@ -534,6 +544,11 @@ int main(int argc, char **argv) {
             *staged_wavefront,
             false,
             "staged wavefront dispatch") ||
+        !compare_outputs(
+            *reference,
+            *staged_wavefront_unsorted,
+            false,
+            "staged wavefront dispatch without surface sorting") ||
         !compare_outputs(
             *reference,
             *persistent,

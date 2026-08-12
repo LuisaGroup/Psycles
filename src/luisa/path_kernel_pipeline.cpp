@@ -82,9 +82,12 @@ class PathKernelPipeline::Impl {
             surface_geometry =
                 make_surface_geometry_stage(
                     primitive_plan);
-            surface_queue_key =
-                make_surface_queue_key_stage(
-                    primitive_plan);
+            if (config.staged_surface_sorting &&
+                !config.scene->surfaces.empty()) {
+                surface_queue_key =
+                    make_surface_queue_key_stage(
+                        primitive_plan);
+            }
             surface_shading =
                 make_surface_shading_stage();
             surface_scatter =
@@ -272,13 +275,17 @@ void PathKernelPipeline::emit(
                 // this recomputation at the cut avoids carrying it through
                 // shade_volume while still giving the scheduler a coherence
                 // key before closure population begins.
-                const auto surface_queue_key =
-                    _impl->surface_queue_key->emit(bounce);
-                $suspend(
-                    path_transition::shade_surface,
-                    coro_frame_export(
-                        path_transition::scheduler_hint,
-                        surface_queue_key));
+                if (_impl->surface_queue_key) {
+                    const auto surface_queue_key =
+                        _impl->surface_queue_key->emit(bounce);
+                    $suspend(
+                        path_transition::shade_surface,
+                        coro_frame_export(
+                            path_transition::scheduler_hint,
+                            surface_queue_key));
+                } else {
+                    $suspend(path_transition::shade_surface);
+                }
             }
             auto surface =
                 _impl->surface_geometry->emit(bounce);

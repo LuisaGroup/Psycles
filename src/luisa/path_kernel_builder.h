@@ -80,6 +80,7 @@ struct PathKernelConfig {
     bool refractive_caustics{};
     bool has_subsurface{};
     bool path_trace_enabled{};
+    bool staged_surface_sorting{};
     std::uint32_t volume_stack_size{};
     bool camera_may_be_inside_volume{};
     std::shared_ptr<const PathVolumeStateComponent>
