@@ -95,6 +95,79 @@ void dump(std::string_view backend,
     return ok;
 }
 
+[[nodiscard]] bool verify_transport_state_frame(
+    Device &device,
+    Stream &stream,
+    std::string_view backend) {
+    constexpr auto scalar_count = 10u;
+    auto source = device.create_buffer<float>(scalar_count);
+    auto output = device.create_buffer<float>(scalar_count);
+    auto coroutine = Coroutine<void(Buffer<float>, Buffer<float>)>(
+        [](BufferFloat source, BufferFloat output) noexcept {
+            SubsurfaceTransportState state{
+                .albedo = make_float3(source.read(0u),
+                                      source.read(1u),
+                                      source.read(2u)),
+                .radius = make_float3(source.read(3u),
+                                      source.read(4u),
+                                      source.read(5u)),
+                .encoded_anisotropy = source.read(6u),
+                .normal = make_float3(source.read(7u),
+                                      source.read(8u),
+                                      source.read(9u))};
+            // The exact-arity binding makes an added hidden continuation
+            // member a compile-time failure. All ten independent scalars are
+            // consumed after the cut, so liveness cannot legally omit one.
+            auto &[albedo, radius, encoded_anisotropy, normal] = state;
+            $suspend("intersect_subsurface");
+            output.write(0u, albedo.x);
+            output.write(1u, albedo.y);
+            output.write(2u, albedo.z);
+            output.write(3u, radius.x);
+            output.write(4u, radius.y);
+            output.write(5u, radius.z);
+            output.write(6u, encoded_anisotropy);
+            output.write(7u, normal.x);
+            output.write(8u, normal.y);
+            output.write(9u, normal.z);
+        });
+
+    const auto &frame = coroutine.frame();
+    const auto *continuation =
+        coroutine.graph().node_by_name("intersect_subsurface");
+    auto descriptor_ok = frame.field_count() == scalar_count &&
+                         frame.total_size() == scalar_count * sizeof(float) &&
+                         continuation != nullptr &&
+                         continuation->input_fields.size() ==
+                             CoroFrameDesc::reserved_field_count + scalar_count;
+
+    std::array<float, scalar_count> expected{};
+    for (auto i = 0u; i < scalar_count; ++i) {
+        expected[i] = static_cast<float>(i + 1u) * 0.125f;
+    }
+    stream << source.copy_from(luisa::span{expected});
+    luisa::compute::coro::StateMachineCoroScheduler<Buffer<float>,
+                                                     Buffer<float>>
+        scheduler{device, coroutine};
+    scheduler(source, output).dispatch(1u)(stream);
+    std::array<float, scalar_count> actual{};
+    stream << output.copy_to(luisa::span{actual}) << synchronize();
+    auto values_ok = true;
+    for (auto i = 0u; i < scalar_count; ++i) {
+        values_ok &= actual[i] == expected[i];
+    }
+    if (!descriptor_ok || !values_ok) {
+        std::cerr << "BSSRDF transport-state frame regression failed on "
+                  << backend << ": fields=" << frame.field_count()
+                  << ", payload=" << frame.total_size()
+                  << ", continuation_inputs="
+                  << (continuation == nullptr ? 0u
+                                              : continuation->input_fields.size())
+                  << '\n';
+    }
+    return descriptor_ok && values_ok;
+}
+
 }// namespace
 
 int main(int argc, char **argv) {
@@ -308,8 +381,10 @@ int main(int argc, char **argv) {
                0.0f});
     const auto pending_frame_ok =
         verify_pending_surface_frame(device, stream, backend);
+    const auto transport_frame_ok =
+        verify_transport_state_frame(device, stream, backend);
     if (!coefficients_ok || !entries_ok ||
-        !pending_hit_ok || !pending_frame_ok) {
+        !pending_hit_ok || !pending_frame_ok || !transport_frame_ok) {
         dump(backend, actual);
         return EXIT_FAILURE;
     }

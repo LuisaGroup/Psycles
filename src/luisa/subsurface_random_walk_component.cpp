@@ -275,42 +275,38 @@ SubsurfaceRandomWalkComponent::sample_entry(
 }
 
 Bool SubsurfaceRandomWalkComponent::transport(
-    DirectLightingContext &context,
-    const SurfaceSample &closure) const noexcept {
-    auto &path = context.bounce.sample;
+    PathSampleContext &path,
+    const SubsurfaceTransportState &state) const noexcept {
     const auto &invocation = path.invocation;
     const auto &scene = invocation.config.scene;
     const auto &parameters = invocation.parameters;
-    const auto &surface = context.surface;
     auto &throughput = path.throughput;
     auto &outer_rng_offset = path.cycles_rng_offset;
 
-    const auto entry_random = cycles_sampler::sample_2d(
-        invocation.sobol_table,
-        parameters.sobol_sequence_size,
-        path.sample_index,
-        path.rng_hash,
-        cycles_sampler::path_state_dimension(
-            outer_rng_offset,
-            sampling::tabulated_sobol::subsurface_bsdf_dimension));
-    const auto entry = sample_entry(
-        surface.point, closure, entry_random);
+    const auto legacy_encoded = state.encoded_anisotropy >= 1.0f;
+    const auto anisotropy = select(
+        state.encoded_anisotropy,
+        state.encoded_anisotropy - 2.0f,
+        legacy_encoded);
+    const auto method = select(
+        static_cast<std::uint32_t>(SurfaceBssrdfMethod::random_walk),
+        static_cast<std::uint32_t>(SurfaceBssrdfMethod::random_walk_legacy),
+        legacy_encoded);
     const auto mapped = coefficients(
-        closure.bssrdf_method,
-        closure.bssrdf_albedo,
-        closure.bssrdf_radius,
-        closure.bssrdf_anisotropy,
+        method,
+        state.albedo,
+        state.radius,
+        anisotropy,
         throughput);
 
-    const auto guide_normal = invocation.surface_shading_normal(
-        surface.surface_tag, surface.point);
-    const auto start_position = surface.point.position;
+    const auto guide_normal = state.normal;
+    const auto start_position = path.ray->origin();
     Float3 walk_position = start_position;
-    Float3 walk_direction = entry.direction;
+    Float3 walk_direction = path.ray->direction();
     Float3 walk_throughput = mapped.throughput;
     const auto original_sigma_t = mapped.sigma_t;
     const auto original_sigma_s = mapped.sigma_s;
-    const auto original_anisotropy = closure.bssrdf_anisotropy;
+    const auto original_anisotropy = anisotropy;
     const auto original_guided_fraction =
         1.0f - max(0.5f, pow(abs(original_anisotropy), 0.125f));
     const auto reduced_sigma_s =
@@ -336,7 +332,7 @@ Bool SubsurfaceRandomWalkComponent::transport(
         luisa::compute::HitType::Miss);
     exit_hit.committed_ray_t = 0.0f;
 
-    $if(entry.valid & mapped.valid) {
+    $if(mapped.valid) {
         $for(bounce, maximum_bounces) {
             local_rng_offset += cycles_path_state::bounce_dimension_count;
             const auto use_original = bounce <= similarity_level;
@@ -492,10 +488,12 @@ Bool SubsurfaceRandomWalkComponent::transport(
                                                  surface_ray::same_primitive(
                                                      candidate_value->inst,
                                                      candidate_value->prim,
-                                                     context.bounce.hit->inst,
-                                                     context.bounce.hit->prim);
+                                                     path.pending_subsurface_hit
+                                                         .instance,
+                                                     path.pending_subsurface_hit
+                                                         .primitive);
                                              $if((object ==
-                                                  surface.cycles_object_index) &
+                                                  path.ray_source_object) &
                                                  !(reject_entry_primitive &
                                                    self)) {
                                                  candidate.commit();

@@ -36,6 +36,13 @@ inline constexpr std::uint32_t flag_terminate =
     flag_terminate_in_next_volume |
     flag_terminate_after_transparent |
     flag_terminate_after_volume;
+inline constexpr std::uint32_t flag_subsurface_random_walk = 1u << 14u;
+inline constexpr std::uint32_t flag_subsurface_disk = 1u << 15u;
+inline constexpr std::uint32_t flag_subsurface_backfacing = 1u << 16u;
+inline constexpr std::uint32_t flag_subsurface =
+    flag_subsurface_random_walk |
+    flag_subsurface_disk |
+    flag_subsurface_backfacing;
 inline constexpr std::uint32_t flag_surface_pass = 1u << 18u;
 inline constexpr std::uint32_t flag_volume_pass = 1u << 19u;
 inline constexpr std::uint32_t

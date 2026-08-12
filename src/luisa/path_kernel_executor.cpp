@@ -63,7 +63,8 @@ void validate_surface_queue_hint_abi(
 void validate_cycles_wavefront_abi(
     const RenderCoroutine &coroutine,
     const PathKernelSceneStagePlan &plan,
-    bool has_volume) noexcept {
+    bool has_volume,
+    bool has_subsurface) noexcept {
     const auto require = [&](luisa::string_view name,
                              bool reachable) noexcept {
         const auto *node = coroutine.graph().node_by_name(name);
@@ -87,6 +88,8 @@ void validate_cycles_wavefront_abi(
     require(path_transition::shade_background, true);
     require(path_transition::shade_surface,
             !plan.traversal.primitives.empty());
+    require(path_transition::intersect_subsurface,
+            has_subsurface && !plan.traversal.primitives.empty());
     LUISA_ASSERT(
         coroutine.graph().node_by_name(path_transition::path_bounce) == nullptr &&
             coroutine.graph().node_by_name(
@@ -267,7 +270,8 @@ build_path_kernel_executor(luisa::compute::Device &device,
             auto coroutine = build_path_coroutine(
                 path, PathCoroutineCutPolicy::cycles_wavefront);
             validate_cycles_wavefront_abi(
-                coroutine, stage_plan, path.volume_state != nullptr);
+                coroutine, stage_plan, path.volume_state != nullptr,
+                path.has_subsurface);
             luisa::compute::coro::GraphWavefrontCoroSchedulerConfig
                 scheduler_config;
             scheduler_config.thread_count = config.wavefront_frame_capacity;
@@ -337,7 +341,8 @@ build_path_kernel_executor(luisa::compute::Device &device,
             auto coroutine = build_path_coroutine(
         staged_path, PathCoroutineCutPolicy::cycles_wavefront);
             validate_cycles_wavefront_abi(
-                coroutine, stage_plan, path.volume_state != nullptr);
+                coroutine, stage_plan, path.volume_state != nullptr,
+                path.has_subsurface);
     const auto surface_count = path.scene->surfaces.size();
     const auto has_surface_queue_hint = path.staged_surface_sorting &&
                 surface_count != 0u &&

@@ -12,6 +12,7 @@ inline constexpr char shade_light_forward[] = "shade_light_forward";
 inline constexpr char shade_background[] = "shade_background";
 inline constexpr char surface_shading[] = "surface_shading";
 inline constexpr char shade_surface[] = "shade_surface";
+inline constexpr char intersect_subsurface[] = "intersect_subsurface";
 
 // Scheduler-only frame ABI. The value exported under this name is not an
 // integrator input: it only orders frames already queued at shade_surface.
