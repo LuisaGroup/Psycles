@@ -31,7 +31,7 @@ public:
     auto &ray = sample.ray;
     auto &ray_dP = sample.ray_dP;
     auto &ray_dD = sample.ray_dD;
-    auto &ray_visibility = sample.ray_visibility;
+    const auto ray_visibility = sample.contracted_ray_visibility();
     auto &ray_events = sample.ray_events;
     auto &path_depth = sample.path_depth;
     auto &diffuse_depth = sample.diffuse_depth;

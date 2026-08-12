@@ -312,6 +312,25 @@ begin_path_kernel(const PathKernelConfig &config,
                   const BufferFloat &filter_table,
                   const Var<RenderKernelParameters> &parameters) noexcept;
 
+// A pending BSSRDF exit can only originate from a committed surface
+// candidate. Its hit kind is therefore a type-level invariant rather than
+// mutable path state; materialization restores the canonical Surface tag.
+struct PendingSubsurfaceHit {
+    UInt instance;
+    UInt primitive;
+    Float2 barycentric;
+    Float committed_ray_t;
+
+    void store_surface(UInt selected_instance,
+                       UInt selected_primitive,
+                       Float2 selected_barycentric,
+                       Float selected_ray_t) noexcept;
+    void store_surface(
+        const Var<luisa::compute::CommittedHit> &source) noexcept;
+    [[nodiscard]] Var<luisa::compute::CommittedHit>
+    materialize_surface() const noexcept;
+};
+
 struct PathSampleContext {
     PathKernelInvocation &invocation;
     UInt sample_index;
@@ -325,7 +344,6 @@ struct PathSampleContext {
     Float ray_dD;
     UInt ray_source_object;
     UInt ray_source_primitive;
-    UInt ray_visibility;
     Float3 radiance;
     Float3 throughput;
     Float3 sample_normal;
@@ -382,8 +400,12 @@ struct PathSampleContext {
     // into the next shading iteration. Re-tracing a short ray would change
     // the hit identity at shared edges and would not match Cycles.
     Bool pending_subsurface_exit;
-    Var<luisa::compute::CommittedHit> pending_subsurface_hit;
+    PendingSubsurfaceHit pending_subsurface_hit;
 
+    // Traversal visibility is a pure projection of the canonical Cycles path
+    // visibility. Re-materializing it at each use prevents a duplicate frame
+    // field from drifting away from the state that defines it.
+    [[nodiscard]] UInt contracted_ray_visibility() const noexcept;
     [[nodiscard]] Float3 trace_uint32(UInt value) const noexcept;
     void trace_write(UInt slot, Float3 value) const noexcept;
     void trace_write_global(path_trace_schema::GlobalSlot slot,
@@ -436,15 +458,26 @@ begin_path_sample(PathKernelInvocation &invocation,
                   const UInt &sample_offset) noexcept;
 void accumulate_path_sample(PathSampleContext &sample) noexcept;
 
-struct PathBounceContext {
-    PathSampleContext &sample;
-    const UInt &path_step;
+struct PathBounceRandomState {
     Float terminate_sample;
     Float3 light_sample;
     Var<LightDistributionGpu> selected_light;
     Float light_terminate_sample;
+};
+
+struct PathBounceContext {
+    PathSampleContext &sample;
+    const UInt &path_step;
+    // Host/JIT link to state emitted at its first dominating use. Volume
+    // pipelines bind it before segment transport; surface-only pipelines bind
+    // it after the surface coroutine boundary. This is not a device ABI field.
+    PathBounceRandomState *random_state;
     Var<luisa::compute::CommittedHit> hit;
     Bool subsurface_exit;
+
+    [[nodiscard]] PathBounceRandomState &random() const noexcept {
+        return *random_state;
+    }
 };
 
 // Exactly one of analytic_light, surface, and background is true. The
@@ -563,6 +596,14 @@ class PathBounceSetupStage {
     emit(PathSampleContext &sample, const UInt &path_step) const noexcept = 0;
 };
 
+class PathBounceRandomStage {
+
+  public:
+    virtual ~PathBounceRandomStage() noexcept = default;
+    [[nodiscard]] virtual PathBounceRandomState
+    emit(PathSampleContext &sample) const noexcept = 0;
+};
+
 class ClosestEventStage {
 
   public:
@@ -657,6 +698,8 @@ class SubsurfaceTransportStage {
 [[nodiscard]] std::unique_ptr<PathBounceSetupStage>
 make_path_bounce_setup_stage(
     SceneTraversalStagePlan plan);
+[[nodiscard]] std::unique_ptr<PathBounceRandomStage>
+make_path_bounce_random_stage();
 [[nodiscard]] std::unique_ptr<ClosestEventStage>
 make_closest_event_stage(
     bool analytic_light_endpoints,

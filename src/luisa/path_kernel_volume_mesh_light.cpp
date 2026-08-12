@@ -84,10 +84,10 @@ class MeshVolumeLightProvider final
                         _proposal
                             .emitter_index,
                         position,
-                        _event.bounce
+                        _event.bounce.random()
                             .light_sample
                             .xy(),
-                        _event.bounce
+                        _event.bounce.random()
                             .selected_light
                             .selection_pdf);
             const auto visible =
@@ -201,7 +201,7 @@ class PathVolumeMeshLightComponent final
             &result)
         const noexcept override {
         const auto &selected =
-            event.bounce
+            event.bounce.random()
                 .selected_light;
         const auto selected_mesh =
             selected.kind ==
@@ -214,7 +214,7 @@ class PathVolumeMeshLightComponent final
                         _config.scene,
                         selected.index,
                         segment_position,
-                        event.bounce
+                        event.bounce.random()
                             .light_sample
                             .xy());
             const auto visible =

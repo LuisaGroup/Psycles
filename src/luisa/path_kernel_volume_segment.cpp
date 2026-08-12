@@ -103,8 +103,8 @@ class PathVolumeSegmentStageImpl final
             sample.cycles_path_visibility;
         auto &cycles_rng_offset =
             sample.cycles_rng_offset;
-        auto &ray_visibility =
-            sample.ray_visibility;
+        const auto ray_visibility =
+            sample.contracted_ray_visibility();
         auto &ray_events = sample.ray_events;
         auto &volume_bounce =
             sample.volume_bounce;
@@ -173,7 +173,7 @@ class PathVolumeSegmentStageImpl final
             inside_volume &
             (continuation_probability != 1.0f) &
             ((continuation_probability <= 0.0f) |
-             (bounce.terminate_sample >=
+             (bounce.random().terminate_sample >=
               continuation_probability));
         path_flags |= select(
             0u,
@@ -687,10 +687,6 @@ class PathVolumeSegmentStageImpl final
                 next.state.rng_offset;
             volume_bounce =
                 next.volume_bounce;
-            ray_visibility =
-                cycles_path_state::
-                    contract_visibility(
-                        cycles_path_visibility);
             terminate_on_next_surface =
                 (path_flags &
                  cycles_path_state::

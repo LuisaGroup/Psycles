@@ -79,10 +79,10 @@ class EnvironmentVolumeLightProvider final
                             .invocation
                             .config.scene,
                         position,
-                        _event.bounce
+                        _event.bounce.random()
                             .light_sample
                             .xy(),
-                        _event.bounce
+                        _event.bounce.random()
                             .selected_light
                             .selection_pdf);
             _sample_valid = light.valid;
@@ -187,7 +187,7 @@ class PathVolumeEnvironmentLightComponent final
         const noexcept override {
         static_cast<void>(path_stack);
         const auto selected_environment =
-            event.bounce
+            event.bounce.random()
                 .selected_light.kind ==
             environment_emitter_kind;
         const auto visible_to_volume =
@@ -204,7 +204,7 @@ class PathVolumeEnvironmentLightComponent final
             result.emitter_kind =
                 environment_emitter_kind;
             result.emitter_index =
-                event.bounce
+                event.bounce.random()
                     .selected_light.index;
             result.requested_method =
                 volume_sample_distance;

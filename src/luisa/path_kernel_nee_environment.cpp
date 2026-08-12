@@ -34,8 +34,8 @@ class EnvironmentLightingComponent final : public DirectLightingComponent {
         auto &invocation = sample.invocation;
         const auto &config = invocation.config;
         auto &surface = context.surface;
-        auto &selected_light = bounce.selected_light;
-        auto &light_sample = bounce.light_sample;
+        auto &selected_light = bounce.random().selected_light;
+        auto &light_sample = bounce.random().light_sample;
         auto &surface_tag = surface.surface_tag;
         auto &point = surface.point;
         auto &path_surface_query = surface.path_surface_query;

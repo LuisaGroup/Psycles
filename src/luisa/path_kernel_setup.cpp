@@ -2,6 +2,7 @@
 #include "subsurface_exit_closure_component.h"
 
 #include <psycles/luisa/analytic_light_sampling.h>
+#include <psycles/luisa/cycles_path_state.h>
 
 #include <utility>
 
@@ -449,6 +450,10 @@ Float3 PathKernelInvocation::constant_environment() const noexcept {
         parameters.background);
 }
 
+UInt PathSampleContext::contracted_ray_visibility() const noexcept {
+    return cycles_path_state::contract_visibility(cycles_path_visibility);
+}
+
 Float3 PathSampleContext::trace_uint32(UInt value) const noexcept {
     return make_float3(
         cast<float>(value & 0xffffu), cast<float>(value >> 16u), 0.0f);
@@ -582,7 +587,6 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
     }
     UInt ray_source_object = surface_ray::invalid_primitive;
     UInt ray_source_primitive = surface_ray::invalid_primitive;
-    UInt ray_visibility = camera_visibility;
 
     Float3 radiance = make_float3(0.0f);
     Float3 throughput = make_float3(1.0f);
@@ -635,7 +639,7 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
             config.volume_state->initialize(
                 config.scene,
                 ray->origin(),
-                ray_visibility,
+                camera_visibility,
                 config.volume_stack_size,
                 config
                     .camera_may_be_inside_volume);
@@ -646,13 +650,11 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
     Bool terminate_after_transparent = false;
     Bool terminate_on_next_surface = false;
     Bool pending_subsurface_exit = false;
-    Var<luisa::compute::CommittedHit> pending_subsurface_hit;
-    pending_subsurface_hit.inst = surface_ray::invalid_primitive;
-    pending_subsurface_hit.prim = surface_ray::invalid_primitive;
-    pending_subsurface_hit.bary = make_float2(0.0f);
-    pending_subsurface_hit.hit_type =
-        static_cast<std::uint32_t>(luisa::compute::HitType::Miss);
-    pending_subsurface_hit.committed_ray_t = 0.0f;
+    PendingSubsurfaceHit pending_subsurface_hit{
+        .instance = surface_ray::invalid_primitive,
+        .primitive = surface_ray::invalid_primitive,
+        .barycentric = make_float2(0.0f),
+        .committed_ray_t = 0.0f};
     return {invocation,
             std::move(sample_index),
             std::move(cycles_y),
@@ -665,7 +667,6 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
             std::move(ray_dD),
             std::move(ray_source_object),
             std::move(ray_source_primitive),
-            std::move(ray_visibility),
             std::move(radiance),
             std::move(throughput),
             std::move(sample_normal),
@@ -798,7 +799,7 @@ PathSampleContext::analytic_light_shader(Var<LightGpu> light,
             .curve_thickness = 0.0f,
             .curve_tangent_normal = make_float3(0.0f),
             .curve_random = 0.0f,
-            .ray_visibility = ray_visibility,
+            .ray_visibility = contracted_ray_visibility(),
             .ray_events = ray_events,
             .ray_depth = path_depth,
             .diffuse_depth = diffuse_depth,

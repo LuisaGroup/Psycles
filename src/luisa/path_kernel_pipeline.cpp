@@ -3,6 +3,7 @@
 
 #include <psycles/luisa/cycles_closure.h>
 
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -14,6 +15,8 @@ class PathKernelPipeline::Impl {
 
   public:
     std::unique_ptr<PathBounceSetupStage> bounce_setup;
+    std::unique_ptr<PathBounceRandomStage> bounce_random{
+        make_path_bounce_random_stage()};
     std::unique_ptr<ClosestEventStage> closest_event;
     std::unique_ptr<ForwardLightStage> forward_light;
     std::unique_ptr<PathVolumeSegmentStage>
@@ -138,6 +141,12 @@ void PathKernelPipeline::emit(
         auto bounce =
             _impl->bounce_setup->emit(
                 sample, path_step);
+        std::optional<PathBounceRandomState> random_state;
+        if (_impl->volume_segment) {
+            random_state.emplace(
+                _impl->bounce_random->emit(sample));
+            bounce.random_state = &*random_state;
+        }
 
         // A Cycles lamp is a transparent closest event. Resolve every lamp
         // before the already-known mesh/background event without consuming
@@ -225,12 +234,17 @@ void PathKernelPipeline::emit(
             }
             auto surface =
                 _impl->surface_geometry->emit(bounce);
+            if (!_impl->volume_segment) {
+                random_state.emplace(
+                    _impl->bounce_random->emit(sample));
+                bounce.random_state = &*random_state;
+            }
             auto shading =
                 _impl->surface_shading->emit(surface);
             if (sample.invocation.config.use_light_tree) {
-                bounce.selected_light =
+                bounce.random().selected_light =
                     sample.invocation.config.light_tree.surface_sample(
-                        bounce.light_sample.z,
+                        bounce.random().light_sample.z,
                         surface.hit_position,
                         surface.point.shading_normal,
                         0.0f,

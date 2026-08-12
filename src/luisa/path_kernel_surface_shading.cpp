@@ -39,9 +39,9 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         auto &cycles_primitive_index =
             surface.cycles_primitive_index;
         auto &path_step = bounce.path_step;
-        auto &terminate_sample = bounce.terminate_sample;
-        auto &light_sample = bounce.light_sample;
-        auto &light_terminate_sample = bounce.light_terminate_sample;
+        auto &terminate_sample = bounce.random().terminate_sample;
+        auto &light_sample = bounce.random().light_sample;
+        auto &light_terminate_sample = bounce.random().light_terminate_sample;
         auto &throughput = sample.throughput;
         auto &path_depth = sample.path_depth;
         auto &previous_delta = sample.previous_delta;

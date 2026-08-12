@@ -40,7 +40,6 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
         auto &transmission_depth = sample.transmission_depth;
         auto &transparent_depth = sample.transparent_depth;
         auto &cycles_rng_offset = sample.cycles_rng_offset;
-        auto &ray_visibility = sample.ray_visibility;
         auto &terminate_on_next_surface = sample.terminate_on_next_surface;
         auto &terminate_after_transparent = sample.terminate_after_transparent;
         auto &previous_bsdf_pdf = sample.previous_bsdf_pdf;
@@ -189,8 +188,6 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
             cycles_rng_offset += cycles_path_state::bounce_dimension_count;
             cycles_path_visibility &=
                 ~cycles_path_state::visibility_camera;
-            ray_visibility = cycles_path_state::contract_visibility(
-                cycles_path_visibility);
             ray_dP = differential_radius;
         }
         $else {
@@ -231,8 +228,6 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
                     surface.surface_has_volume,
                     cycles_label);
             }
-            ray_visibility = cycles_path_state::contract_visibility(
-                cycles_path_visibility);
             terminate_on_next_surface =
                 (path_flags &
                  cycles_path_state::flag_terminate_on_next_surface) != 0u;
