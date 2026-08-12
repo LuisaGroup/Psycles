@@ -11,6 +11,8 @@
 #include <string_view>
 
 #include <luisa/luisa-compute.h>
+#include <luisa/coro/schedulers/state_machine.h>
+#include <luisa/dsl/coro_func.h>
 
 namespace {
 
@@ -42,6 +44,55 @@ void dump(std::string_view backend,
                   << value.y << ", " << value.z << ", "
                   << value.w << "}\n";
     }
+}
+
+[[nodiscard]] bool verify_pending_surface_frame(
+    Device &device,
+    Stream &stream,
+    std::string_view backend) {
+    auto output = device.create_buffer<luisa::float4>(2u);
+    auto coroutine = Coroutine<void(Buffer<luisa::float4>)>(
+        [](BufferFloat4 values) noexcept {
+            PendingSubsurfaceHit pending_hit{
+                .instance = 0u,
+                .primitive = 0u,
+                .barycentric = make_float2(0.0f),
+                .committed_ray_t = 0.0f};
+            pending_hit.store_surface(
+                dispatch_x() + 17u,
+                dispatch_x() + 23u,
+                make_float2(0.25f, 0.625f),
+                4.75f);
+            $suspend("pending_surface");
+            const auto restored_hit = pending_hit.materialize_surface();
+            values.write(0u,
+                         make_float4(cast<float>(restored_hit->inst),
+                                     cast<float>(restored_hit->prim),
+                                     restored_hit->bary));
+            values.write(1u,
+                         make_float4(restored_hit->committed_ray_t,
+                                     cast<float>(restored_hit->hit_type),
+                                     0.0f,
+                                     0.0f));
+        });
+    luisa::compute::coro::StateMachineCoroScheduler<
+        Buffer<luisa::float4>> scheduler{device, coroutine};
+    scheduler(output).dispatch(1u)(stream);
+    std::array<luisa::float4, 2u> actual{};
+    stream << output.copy_to(luisa::span{actual})
+           << synchronize();
+    const auto ok =
+        close(actual[0u], {17.0f, 23.0f, 0.25f, 0.625f}) &&
+        close(actual[1u],
+              {4.75f,
+               static_cast<float>(luisa::compute::HitType::Surface),
+               0.0f,
+               0.0f});
+    if (!ok) {
+        std::cerr << "Pending BSSRDF surface frame regression failed on "
+                  << backend << '\n';
+    }
+    return ok;
 }
 
 }// namespace
@@ -255,7 +306,10 @@ int main(int argc, char **argv) {
                static_cast<float>(luisa::compute::HitType::Surface),
                0.0f,
                0.0f});
-    if (!coefficients_ok || !entries_ok || !pending_hit_ok) {
+    const auto pending_frame_ok =
+        verify_pending_surface_frame(device, stream, backend);
+    if (!coefficients_ok || !entries_ok ||
+        !pending_hit_ok || !pending_frame_ok) {
         dump(backend, actual);
         return EXIT_FAILURE;
     }
