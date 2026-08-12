@@ -166,13 +166,16 @@ int main(int argc, char **argv) {
                "[sample-chunk-pixel.json|-] "
                "[probe-chunk-size=1] [probe-full-frame=0] "
                  "[scheduler=megakernel|megakernel-per-sample|wavefront|"
-                 "wavefront-staged|persistent] "
+                 "wavefront-graph|wavefront-staged|persistent] "
                "[wavefront-execution-block-size=32] "
                "[persistent-workers=32768] "
                "[persistent-block-size=32] "
                "[persistent-fetch-size=1] "
                  "[staged-surface-sorting=1] "
-                 "[staged-direct-light-queue=0]\n";
+                 "[staged-direct-light-queue=0] "
+                 "[wavefront-counter-readback-batch-size=4] "
+                 "[wavefront-counter-readback-pipeline-depth=2] "
+                 "[wavefront-tail-megakernel-threshold=4096]\n";
         return EXIT_FAILURE;
     }
     const auto bundle = std::filesystem::path{argv[1]};
@@ -315,7 +318,8 @@ int main(int argc, char **argv) {
         if (!parsed) {
       std::cerr << "error: invalid path scheduler '" << argv[17]
                 << "' (expected megakernel, megakernel-per-sample, "
-                   "wavefront, wavefront-staged, or persistent)\n";
+                   "wavefront, wavefront-graph, wavefront-staged, or "
+                   "persistent)\n";
             return EXIT_FAILURE;
         }
         scheduler = *parsed;
@@ -379,6 +383,35 @@ int main(int argc, char **argv) {
     }
     staged_direct_light_queue = *value != 0u;
   }
+  auto wavefront_counter_readback_batch_size = std::uint32_t{4u};
+  if (argc > 24) {
+    auto value = parse_unsigned<std::uint32_t>(argv[24]);
+    if (!value || *value == 0u) {
+      std::cerr << "error: wavefront counter readback batch size must be "
+                   "positive\n";
+      return EXIT_FAILURE;
+    }
+    wavefront_counter_readback_batch_size = *value;
+  }
+  auto wavefront_counter_readback_pipeline_depth = std::uint32_t{2u};
+  if (argc > 25) {
+    auto value = parse_unsigned<std::uint32_t>(argv[25]);
+    if (!value || *value == 0u) {
+      std::cerr << "error: wavefront counter readback pipeline depth must be "
+                   "positive\n";
+      return EXIT_FAILURE;
+    }
+    wavefront_counter_readback_pipeline_depth = *value;
+  }
+  auto wavefront_tail_megakernel_threshold = std::uint32_t{4096u};
+  if (argc > 26) {
+    auto value = parse_unsigned<std::uint32_t>(argv[26]);
+    if (!value) {
+      std::cerr << "error: invalid wavefront tail megakernel threshold\n";
+      return EXIT_FAILURE;
+    }
+    wavefront_tail_megakernel_threshold = *value;
+  }
   if (!psycles::luisa_backend::valid_luisa_persistent_scheduler_shape(
           persistent_worker_count, persistent_block_size,
                 persistent_fetch_size)) {
@@ -407,6 +440,12 @@ int main(int argc, char **argv) {
         {.next_event_estimation = true,
          .scheduler = scheduler,
        .wavefront_execution_block_size = wavefront_execution_block_size,
+       .wavefront_counter_readback_batch_size =
+           wavefront_counter_readback_batch_size,
+       .wavefront_counter_readback_pipeline_depth =
+           wavefront_counter_readback_pipeline_depth,
+       .wavefront_tail_megakernel_threshold =
+           wavefront_tail_megakernel_threshold,
        .staged_surface_sorting = staged_surface_sorting,
        .staged_direct_light_queue = staged_direct_light_queue,
          .persistent_worker_count = persistent_worker_count,

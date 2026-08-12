@@ -10,6 +10,7 @@
 
 #include <luisa/core/logging.h>
 #include <luisa/coro/coro_scheduler.h>
+#include <luisa/coro/schedulers/graph_wavefront.h>
 #include <luisa/coro/schedulers/persistent_threads.h>
 #include <luisa/coro/schedulers/wavefront.h>
 
@@ -21,6 +22,8 @@ template <typename Signature> struct RenderSchedulerTypes;
 template <typename... Args> struct RenderSchedulerTypes<void(Args...)> {
     using Base = luisa::compute::coro::CoroScheduler<Args...>;
   using Wavefront = luisa::compute::coro::WavefrontCoroScheduler<Args...>;
+    using GraphWavefront =
+        luisa::compute::coro::GraphWavefrontCoroScheduler<Args...>;
     using Persistent =
         luisa::compute::coro::PersistentThreadsCoroScheduler<Args...>;
 };
@@ -215,6 +218,41 @@ build_path_kernel_executor(luisa::compute::Device &device,
                     device, coroutine, scheduler_config);
     return PathKernelExecutor{std::make_unique<CoroutineExecutor>(
         config.scheduler, std::move(scheduler))};
+        }
+        case LuisaPathScheduler::wavefront_graph: {
+            LUISA_ASSERT(config.wavefront_frame_capacity != 0u,
+                         "Graph-wavefront frame capacity must be positive.");
+            auto coroutine =
+                build_path_coroutine(path, PathCoroutineCutPolicy::compact);
+            luisa::compute::coro::GraphWavefrontCoroSchedulerConfig
+                scheduler_config;
+            scheduler_config.thread_count = config.wavefront_frame_capacity;
+            scheduler_config.execution_block_size =
+                config.wavefront_execution_block_size;
+            scheduler_config.counter_readback_batch_size =
+                config.wavefront_counter_readback_batch_size;
+            scheduler_config.counter_readback_pipeline_depth =
+                config.wavefront_counter_readback_pipeline_depth;
+            scheduler_config.tail_megakernel_threshold =
+                config.wavefront_tail_megakernel_threshold;
+            scheduler_config.shader_option = config.shader_option;
+            auto scheduler =
+                std::make_unique<RenderSchedulers::GraphWavefront>(
+                    device, coroutine, scheduler_config);
+            LUISA_INFO(
+                "Psycles graph-wavefront path coroutine: subroutines={} "
+                "frame_fields={} frame_bytes={} capacity={} block={} "
+                "readback_batch={} readback_depth={} tail_threshold={}.",
+                coroutine.subroutine_count(),
+                coroutine.frame().frame_field_count(),
+                coroutine.frame().frame_type()->size(),
+                config.wavefront_frame_capacity,
+                config.wavefront_execution_block_size,
+                config.wavefront_counter_readback_batch_size,
+                config.wavefront_counter_readback_pipeline_depth,
+                config.wavefront_tail_megakernel_threshold);
+            return PathKernelExecutor{std::make_unique<CoroutineExecutor>(
+                config.scheduler, std::move(scheduler))};
         }
         case LuisaPathScheduler::wavefront_staged: {
     LUISA_ASSERT(config.wavefront_frame_capacity != 0u,

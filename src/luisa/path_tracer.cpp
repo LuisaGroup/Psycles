@@ -18,6 +18,12 @@ namespace {
             return options.wavefront_frame_capacity != 0u &&
                    valid_luisa_wavefront_execution_block_size(
                        options.wavefront_execution_block_size);
+        case LuisaPathScheduler::wavefront_graph:
+            return options.wavefront_frame_capacity != 0u &&
+                   options.wavefront_counter_readback_batch_size != 0u &&
+                   options.wavefront_counter_readback_pipeline_depth != 0u &&
+                   valid_luisa_wavefront_execution_block_size(
+                       options.wavefront_execution_block_size);
         case LuisaPathScheduler::persistent:
             return valid_luisa_persistent_scheduler_shape(
                 options.persistent_worker_count,

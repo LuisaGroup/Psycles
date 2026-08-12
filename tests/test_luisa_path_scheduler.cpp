@@ -16,7 +16,8 @@ int main() {
 
     constexpr std::array schedulers{
       LuisaPathScheduler::megakernel, LuisaPathScheduler::megakernel_per_sample,
-      LuisaPathScheduler::wavefront, LuisaPathScheduler::wavefront_staged,
+      LuisaPathScheduler::wavefront, LuisaPathScheduler::wavefront_graph,
+      LuisaPathScheduler::wavefront_staged,
         LuisaPathScheduler::persistent};
     for (const auto scheduler : schedulers) {
         const auto name = luisa_path_scheduler_name(scheduler);
@@ -37,6 +38,8 @@ int main() {
   static_assert(luisa_path_scheduler_uses_per_sample_dispatch(
             LuisaPathScheduler::wavefront));
   static_assert(luisa_path_scheduler_uses_per_sample_dispatch(
+            LuisaPathScheduler::wavefront_graph));
+  static_assert(luisa_path_scheduler_uses_per_sample_dispatch(
             LuisaPathScheduler::wavefront_staged));
   static_assert(luisa_path_scheduler_uses_per_sample_dispatch(
             LuisaPathScheduler::persistent));
@@ -47,6 +50,9 @@ int main() {
   static_assert(options.scheduler == LuisaPathScheduler::megakernel);
     static_assert(options.wavefront_frame_capacity == (1u << 24u));
     static_assert(options.wavefront_execution_block_size == 32u);
+    static_assert(options.wavefront_counter_readback_batch_size == 4u);
+    static_assert(options.wavefront_counter_readback_pipeline_depth == 2u);
+    static_assert(options.wavefront_tail_megakernel_threshold == 4096u);
     static_assert(options.staged_surface_sorting);
     static_assert(!options.staged_direct_light_queue);
     static_assert(!valid_luisa_wavefront_execution_block_size(0u));
