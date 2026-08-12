@@ -139,6 +139,10 @@ struct LuisaPathTracerOptions {
     // Host/JIT choice for Luisa's thread-local wavefront generate/resume
     // kernels. Unlike frame capacity, this is part of shader structure.
     std::uint32_t wavefront_execution_block_size{32u};
+    // Runtime grid-stride lane ceiling for graph-wavefront consumers. Zero
+    // launches one lane per active frame; nonzero values do not specialize
+    // the shader and are intended for scheduler-policy sweeps.
+    std::uint32_t wavefront_graph_worker_count{0u};
     // Graph-wavefront counter snapshots are accumulated on device and copied
     // to the host in contiguous batches. Batch size and pipeline depth are
     // runtime scheduling policy and do not specialize the path shaders.

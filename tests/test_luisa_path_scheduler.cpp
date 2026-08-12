@@ -50,6 +50,7 @@ int main() {
   static_assert(options.scheduler == LuisaPathScheduler::megakernel);
     static_assert(options.wavefront_frame_capacity == (1u << 24u));
     static_assert(options.wavefront_execution_block_size == 32u);
+    static_assert(options.wavefront_graph_worker_count == 0u);
     static_assert(options.wavefront_counter_readback_batch_size == 4u);
     static_assert(options.wavefront_counter_readback_pipeline_depth == 2u);
     static_assert(options.wavefront_tail_megakernel_threshold == 4096u);
