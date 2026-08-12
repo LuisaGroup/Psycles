@@ -303,6 +303,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
               std::min<std::size_t>(_options.wavefront_frame_capacity, count)),
             .wavefront_execution_block_size =
                 _options.wavefront_execution_block_size,
+            .wavefront_graph_worker_count =
+                _options.wavefront_graph_worker_count,
             .wavefront_counter_readback_batch_size =
                 _options.wavefront_counter_readback_batch_size,
             .wavefront_counter_readback_pipeline_depth =

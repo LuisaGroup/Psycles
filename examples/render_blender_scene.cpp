@@ -175,7 +175,8 @@ int main(int argc, char **argv) {
                  "[staged-direct-light-queue=0] "
                  "[wavefront-counter-readback-batch-size=4] "
                  "[wavefront-counter-readback-pipeline-depth=2] "
-                 "[wavefront-tail-megakernel-threshold=4096]\n";
+                 "[wavefront-tail-megakernel-threshold=4096] "
+                 "[wavefront-graph-worker-count=0]\n";
         return EXIT_FAILURE;
     }
     const auto bundle = std::filesystem::path{argv[1]};
@@ -412,6 +413,15 @@ int main(int argc, char **argv) {
     }
     wavefront_tail_megakernel_threshold = *value;
   }
+  auto wavefront_graph_worker_count = std::uint32_t{0u};
+  if (argc > 27) {
+    auto value = parse_unsigned<std::uint32_t>(argv[27]);
+    if (!value) {
+      std::cerr << "error: invalid graph-wavefront worker count\n";
+      return EXIT_FAILURE;
+    }
+    wavefront_graph_worker_count = *value;
+  }
   if (!psycles::luisa_backend::valid_luisa_persistent_scheduler_shape(
           persistent_worker_count, persistent_block_size,
                 persistent_fetch_size)) {
@@ -440,6 +450,7 @@ int main(int argc, char **argv) {
         {.next_event_estimation = true,
          .scheduler = scheduler,
        .wavefront_execution_block_size = wavefront_execution_block_size,
+       .wavefront_graph_worker_count = wavefront_graph_worker_count,
        .wavefront_counter_readback_batch_size =
            wavefront_counter_readback_batch_size,
        .wavefront_counter_readback_pipeline_depth =

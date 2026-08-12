@@ -229,6 +229,8 @@ build_path_kernel_executor(luisa::compute::Device &device,
             scheduler_config.thread_count = config.wavefront_frame_capacity;
             scheduler_config.execution_block_size =
                 config.wavefront_execution_block_size;
+            scheduler_config.worker_count =
+                config.wavefront_graph_worker_count;
             scheduler_config.counter_readback_batch_size =
                 config.wavefront_counter_readback_batch_size;
             scheduler_config.counter_readback_pipeline_depth =
@@ -242,12 +244,14 @@ build_path_kernel_executor(luisa::compute::Device &device,
             LUISA_INFO(
                 "Psycles graph-wavefront path coroutine: subroutines={} "
                 "frame_fields={} frame_bytes={} capacity={} block={} "
-                "readback_batch={} readback_depth={} tail_threshold={}.",
+                "workers={} readback_batch={} readback_depth={} "
+                "tail_threshold={}.",
                 coroutine.subroutine_count(),
                 coroutine.frame().frame_field_count(),
                 coroutine.frame().frame_type()->size(),
                 config.wavefront_frame_capacity,
                 config.wavefront_execution_block_size,
+                config.wavefront_graph_worker_count,
                 config.wavefront_counter_readback_batch_size,
                 config.wavefront_counter_readback_pipeline_depth,
                 config.wavefront_tail_megakernel_threshold);
