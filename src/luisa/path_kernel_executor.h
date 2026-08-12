@@ -21,6 +21,7 @@ struct PathKernelExecutorConfig {
     LuisaPathScheduler scheduler{
         LuisaPathScheduler::megakernel};
     std::uint32_t wavefront_frame_capacity{1u << 24u};
+    std::uint32_t wavefront_execution_block_size{32u};
     std::uint32_t persistent_worker_count{1u << 15u};
     std::uint32_t persistent_block_size{128u};
     std::uint32_t persistent_fetch_size{16u};

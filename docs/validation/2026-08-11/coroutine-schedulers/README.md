@@ -2342,3 +2342,92 @@ firefly pixels. The complete numeric report is
 ![Wavefront, per-sample megakernel, and Diffuse Indirect difference](frame208-fresh-comparison/triptychs/diffind.png)
 
 ![Wavefront, per-sample megakernel, and Glossy Indirect difference](frame208-fresh-comparison/triptychs/glossind.png)
+
+## Wavefront execution-block granularity
+
+The profiler boundary above showed that queue-management kernels account for
+only about 2% of wavefront GPU time. The two generated coroutine kernels are
+the real boundary: `path_bounce` uses 184 VGPRs and 464 B of scratch per
+thread, while `surface_shading` uses 256 VGPRs and 2472 B of scratch. Luisa's
+wavefront scheduler previously hard-coded 256 threads for both kernels, even
+though neither uses block-local communication. This coupled a shader resource
+decision to the scheduler implementation without exposing it to the host/JIT
+policy.
+
+Luisa `next` commit `37f8f0eae` adds an
+`execution_block_size` structural parameter for only the generate/resume
+kernels. Queue scan, gather, compaction, and radix kernels retain their own
+sizes because some use block collectives. Frame capacity remains a runtime
+allocation parameter and therefore does not enter shader identity; execution
+block size changes `set_block_size`, so it deliberately does. A regression
+constructs independent 32- and 256-thread schedulers, proves their structure
+hashes differ, and checks the 32-thread scheduler's exact mapping over 257
+instances, including the partial tail. Existing positional aggregate
+initializers retain their meaning because the new field is appended to the
+configuration. Both Luisa fallback and HIP pass the 101-assert SoA suite.
+
+Psycles validates the same DSL contract before AST construction: the value
+must be a multiple of 32 in `[32, 1024]`. This makes 32 the formal legal lower
+bound, not an unconstrained tuning constant. One warm-up followed by three
+cached Lone Monk 640x480/64 spp HIP observations for each size gave:
+
+| execution block | observations (s) | median (s) | relative to 32 |
+| ---: | --- | ---: | ---: |
+| 32 | 2.81954, 2.82108, 2.81290 | 2.81954 | 1.000x |
+| 64 | 2.88417, 2.87614, 2.88633 | 2.88417 | 1.023x |
+| 128 | 2.96590, 2.96636, 2.97032 | 2.96636 | 1.052x |
+| 256 | 3.57247, 3.42166, 3.32243 | 3.42166 | 1.214x |
+
+The 256-thread series drifted down after background load subsided, so the
+stronger comparison is both its median and the adjacent pre-change median of
+3.37633 s. The 32-thread configuration is respectively 17.60% and 16.49%
+faster. A fresh `rocprofv3 --kernel-trace --scratch-memory-trace --stats`
+pair preserves identical generated resource counts and dispatch counts:
+
+| kernel | resources at 32 and 256 | 256 time | 32 time | change |
+| --- | --- | ---: | ---: | ---: |
+| `path_bounce` | 184 VGPR, 464 B scratch, 231 calls | 0.927 s | 0.809 s | -12.75% |
+| `surface_shading` | 256 VGPR, 2472 B scratch, 231 calls | 2.141 s | 1.749 s | -18.32% |
+| all `kernel_main` | same non-coroutine utility sizes | 3.139 s | 2.628 s | -16.25% |
+
+Thus the improvement is not different shader code or fewer paths: it is finer
+workgroup admission and tail scheduling for register/scratch-heavy
+continuations. The attempted hardware occupancy counters report zero for both
+derived occupancy metrics on this gfx1201/rocprof version, so they are not
+used as evidence; GPUBusy reports 100% and the exact wave counts agree with
+the rounded grids.
+
+The new 32-thread default reduces wavefront's overhead over the topology-
+matched per-sample megakernel from 39.72% to 16.68%. Against the same fresh
+Cycles HIP median of 1.901 s, wavefront is now 1.483x the render time (48.32%
+slower, 67.42% of Cycles throughput); the unscheduled per-sample kernel remains
+1.271x (27.12% slower, 78.67% of Cycles throughput). This closes about 29
+percentage points of the former wavefront/Cycles time gap without changing
+path semantics.
+
+Before rebasing onto the two concurrent Luisa `next` build-fix commits, the
+64x64/1 spp Lone Monk output was byte-identical to the 208-byte checkpoint for
+the display PPM and all 15 linear PFM passes. After that rebase and an all-core
+rebuild, three repeated runs remain mutually byte-identical and the display
+PPM retains SHA-256
+`b4f198ebedd7621e41bd51d66f495c9f1c734141e48ccad866671d983555a58e`.
+Eight non-empty linear passes differ from the earlier codegen at only 5--12 of
+12,288 scalar values: the worst relative RMSE is `5.75e-6` (Diffuse
+Indirect), and the Combined relative RMSE is `8.07e-7`. Seven passes remain
+byte-identical. This deterministic, sub-ULP-scale boundary is recorded rather
+than silently relabelled as the old exact hash; no structured or display-space
+difference is present.
+Psycles' scheduler contract and full film/pass tests pass on fallback and HIP;
+Luisa's SoA and wavefront integration suites also pass on both. The pre-existing
+`wavefront_hint_sort_handles_non_power_of_two_full_bucket` assertion fails on
+fallback even after restoring Luisa `34c3c4bb9` byte-for-byte, so it is
+recorded as an independent hint-frame-liveness issue rather than attributed to
+this change.
+
+Timing artifacts are under
+`/var/tmp/psycles-wavefront-block-sweep-rJAQcB`; the post-rebase exact/numeric
+canary is under `/var/tmp/psycles-wavefront-block-canary-rebased-20260812`;
+profiler artifacts are under
+`/var/tmp/psycles-wavefront-block-profile-20260812`; attempted counter data is
+under `/var/tmp/psycles-wavefront-block-counters-20260812`; regression logs are
+under `/var/tmp/luisa-wavefront-block-tests-20260812`.
