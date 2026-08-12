@@ -282,11 +282,12 @@ PathKernelExecutor build_path_kernel_executor(
                 path, PathCoroutineCutPolicy::staged_wavefront);
             const auto surface_count =
                 path.scene->surfaces.size();
-            const auto has_surface_queue =
+            const auto has_surface_queue_hint =
+                path.staged_surface_sorting &&
                 surface_count != 0u &&
                 (!path.scene->geometries.empty() ||
                  !path.scene->curve_geometries.empty());
-            if (has_surface_queue) {
+            if (has_surface_queue_hint) {
                 validate_surface_queue_hint_abi(coroutine);
             }
             LUISA_INFO(
@@ -306,7 +307,7 @@ PathKernelExecutor build_path_kernel_executor(
             scheduler_config.incremental_continuation_counts = true;
             scheduler_config.refill_continuations = {
                 path_transition::intersect_closest};
-            if (has_surface_queue) {
+            if (has_surface_queue_hint) {
                 LUISA_ASSERT(
                     surface_count <=
                         std::numeric_limits<std::uint32_t>::max(),
@@ -324,8 +325,10 @@ PathKernelExecutor build_path_kernel_executor(
                 std::make_unique<RenderSchedulers::Wavefront>(
                     device, coroutine, scheduler_config);
             LUISA_INFO(
-                "Psycles staged surface queue: keys={} hint_sort={}",
+                "Psycles staged surface queue: keys={} requested={} "
+                "hint_sort={}",
                 surface_count,
+                path.staged_surface_sorting,
                 !scheduler->config().hint_fields.empty());
             return PathKernelExecutor{
                 std::make_unique<CoroutineExecutor>(

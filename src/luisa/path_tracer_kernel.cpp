@@ -416,6 +416,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         .refractive_caustics = refractive_caustics,
         .has_subsurface = scene->has_subsurface,
         .path_trace_enabled = path_trace_enabled,
+        .staged_surface_sorting =
+            _options.staged_surface_sorting,
         .volume_stack_size =
             scene->volume_metadata.stack_size,
         .camera_may_be_inside_volume =

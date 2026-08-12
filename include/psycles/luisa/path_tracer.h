@@ -141,6 +141,11 @@ struct LuisaPathTracerOptions {
     // Host/JIT choice for Luisa's thread-local wavefront generate/resume
     // kernels. Unlike frame capacity, this is part of shader structure.
     std::uint32_t wavefront_execution_block_size{32u};
+    // Host/JIT policy for ordering the staged shade_surface queue by the
+    // structure-deduplicated SurfaceDispatch tag. False preserves the same
+    // continuation cuts without recording a key resolver, frame export, or
+    // sorting kernel, providing a matched scheduler-only baseline.
+    bool staged_surface_sorting{true};
     // Persistent workers are independent of the logical image size. The
     // scheduler rounds this count up to a complete block.
     // The paper's persistent configuration is 2^15 workers, 128 threads per
