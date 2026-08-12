@@ -100,6 +100,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_tracer_generated_coordinates.cpp
     src/luisa/path_tracer_geometry.cpp
     src/luisa/path_kernel_background_event.cpp
+    src/luisa/path_kernel_bounce_random.cpp
     src/luisa/path_kernel_bounce_setup.cpp
     src/luisa/path_kernel_closest_event.cpp
     src/luisa/path_kernel_curve_geometry.cpp
@@ -124,6 +125,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_kernel_surface_scatter.cpp
     src/luisa/path_kernel_surface_shading.cpp
     src/luisa/path_kernel_subsurface.cpp
+    src/luisa/path_kernel_subsurface_state.cpp
     src/luisa/subsurface_random_walk_component.cpp
     src/luisa/path_kernel_triangle_geometry.cpp
     src/luisa/path_kernel_triangle_primitive.cpp

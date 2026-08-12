@@ -400,13 +400,11 @@ public:
                 const auto selected_weight = hit_weights[selected_index];
                 throughput *= selected_weight * weight_sum /
                               max(selected_sample_weight, 1.0e-20f);
-                pending_hit.inst = hit_instances[selected_index];
-                pending_hit.prim = hit_primitives[selected_index];
-                pending_hit.bary = hit_barycentrics[selected_index];
-                pending_hit.hit_type = static_cast<std::uint32_t>(
-                    luisa::compute::HitType::Surface);
-                pending_hit.committed_ray_t =
-                    hit_distances[selected_index];
+                pending_hit.store_surface(
+                    hit_instances[selected_index],
+                    hit_primitives[selected_index],
+                    hit_barycentrics[selected_index],
+                    hit_distances[selected_index]);
                 pending_exit = true;
 
                 const auto exit_normal = hit_normals[selected_index];

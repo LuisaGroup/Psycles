@@ -38,7 +38,7 @@ class EmissiveMeshLightingComponent final
         auto &surface =
             context.surface;
         auto &selected_light =
-            bounce.selected_light;
+            bounce.random().selected_light;
         const auto selected_mesh =
             selected_light.kind ==
             static_cast<std::uint32_t>(
@@ -54,7 +54,7 @@ class EmissiveMeshLightingComponent final
                             .index,
                         surface
                             .hit_position,
-                        bounce
+                        bounce.random()
                             .light_sample
                             .xy(),
                         selected_light

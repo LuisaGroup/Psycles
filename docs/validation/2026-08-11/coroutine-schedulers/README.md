@@ -2096,3 +2096,105 @@ of both the 280-byte and 288-byte medians, so runtime remains statistically
 neutral. Frame dump, exact outputs, and test logs are under
 `/var/tmp/psycles-frame-emission-policy-tzpkca`; timing artifacts are under
 `/var/tmp/psycles-frame272-timing-{1,2,3}-*`.
+
+## First-use placement of per-bounce random state
+
+Four independent random/light values were still constructed in bounce setup:
+termination, the three-dimensional light sample, the selected emitter, and
+light-sample roulette. In a volume-enabled specialization the volume segment
+can consume them before surface shading, so their original placement is
+necessary. In a surface-only specialization no instruction before the
+`surface_shading` continuation consumes them.
+
+The pipeline now uses a host/JIT topology branch, not a device predicate. Let
+`V` denote the presence of the volume component in `PathKernelConfig`. If `V`
+is true, the random stage is emitted immediately after bounce setup as before.
+If `V` is false, it is emitted after surface geometry resumes and immediately
+before shading. Sobol evaluation is a pure function of the table, global
+sample index, RNG hash, and canonical Cycles RNG offset. Surface geometry does
+not mutate any of those inputs, and any volume event that mutates the offset
+continues to the next bounce instead of reaching the surface continuation.
+The moved definition therefore dominates every use with identical operands;
+paths ending at a lamp or background simply avoid unused work.
+
+On Lone Monk this removes eight logical frame values (one terminate scalar,
+three light-sample scalars, three effective selected-emitter scalars, and one
+roulette scalar):
+
+| Metric | Delayed emission policy | First-use random state | Change |
+| --- | ---: | ---: | ---: |
+| logical frame values | 65 | 57 | -8 |
+| physical user slots | 60 | 52 | -8 |
+| physical fields including scheduler state | 67 | 59 | -8 |
+| complete frame | 272 B | 240 B | -32 B (-11.8%) |
+| `path_bounce -> surface_shading` stores | 15 | 7 | -8 |
+
+An attempted alias between the local BSSRDF-exit predicate and its persistent
+path field was rejected. It reduced the maximum logical set by one but kept
+the frame at 240 B and increased the back-edge store set from 41 to 42 because
+the delayed clear became a cross-transition definition. The theoretically
+valid transformation is intentionally not retained without a frame or runtime
+benefit. Its audit artifact is
+`/var/tmp/psycles-frame-subsurface-alias-pl33Si`.
+
+Combined, Normal, Albedo, all light/volume passes, stacked volume, BSSRDF exit,
+and random-walk regressions pass on fallback and HIP. The 64x64 HIP canary is
+byte-identical for all 15 PFM files and the display PPM. Three cached
+640x480/64 spp observations are `3.35999 s`, `3.35287 s`, and `3.33496 s`
+(median `3.35287 s`), effectively tied with the 272-byte median. Frame and
+exact artifacts are under `/var/tmp/psycles-frame-random-late-cIdzAo`; timing
+artifacts are under `/var/tmp/psycles-frame240-timing-{1,2,3}-*`.
+
+## Canonical visibility and typed pending-surface state
+
+`ray_visibility` was a duplicate cache of
+`contract_visibility(cycles_path_visibility)`. Initially the two values are
+equal by construction. Every path-state transition updated the canonical
+Cycles visibility and immediately assigned the same projection to the cache;
+there was no independent cache transition. Induction over path transitions
+therefore proves equality at every use. Traversal visibility is now
+re-materialized from the canonical state, removing one logical and one
+physical frame value. The complete frame remained 240 B because of layout
+alignment; the intermediate dump is
+`/var/tmp/psycles-frame-derived-visibility-p49TbR`.
+
+The pending BSSRDF hit exposed a second, stronger invariant. Both producers
+are accepted triangle surface candidates. `pending_subsurface_exit` becomes
+true only after such a producer succeeds, and the stored hit is read only
+under that predicate. Thus every observable pending hit has
+`HitType::Surface`; transporting a mutable hit-kind word is impossible to
+distinguish from materializing the Surface constant. `PendingSubsurfaceHit`
+stores only instance, primitive, barycentric coordinates, and committed
+distance, and its sole materializer restores the tag. A focused fallback/HIP
+regression verifies exact round-trip values and the materialized tag.
+
+This scalar semantic representation also removed an aggregate-analysis
+barrier. In the specialized Lone Monk program the compiler proves that no
+BSSRDF producer is reachable. The old whole-`CommittedHit` assignment kept all
+five aggregate values live despite the false pending predicate; after the
+typed split, SCCP and DCE remove the complete pending-hit state. The observed
+change is therefore five values, not merely the constant tag:
+
+| Metric | Derived visibility only | Typed pending surface | Change |
+| --- | ---: | ---: | ---: |
+| logical frame values | 56 | 51 | -5 |
+| physical user slots | 51 | 46 | -5 |
+| physical fields including scheduler state | 58 | 53 | -5 |
+| complete frame | 240 B | 212 B | -28 B (-11.7%) |
+| entry transition stores | 50 | 45 | -5 |
+| surface transition stores | 7 | 7 | unchanged |
+| back-edge stores | 40 | 40 | unchanged |
+
+The Combined SHA-256 remains
+`9d37dc0ad91750654f166e2285eefe6652ea5f7cb906f592adf9cfa3385e3e07`
+and display SHA-256 remains
+`b4f198ebedd7621e41bd51d66f495c9f1c734141e48ccad866671d983555a58e`;
+all 15 PFM files and the PPM are byte-identical to the earlier checkpoint.
+Random-walk, BSSRDF exit, complete film/pass, and volume regressions pass on
+fallback and HIP. Three cached 640x480/64 spp HIP observations are
+`3.34365 s`, `3.32280 s`, and `3.33071 s` (median `3.33071 s`), about 0.66%
+below the 240-byte median but still small enough to treat conservatively.
+Frame and exact artifacts are under
+`/var/tmp/psycles-frame-compact-bssrdf-WKn6sf` and
+`/var/tmp/psycles-frame212-exact-0md5DI`; timing artifacts are under
+`/var/tmp/psycles-frame212-timing-{1,2,3}-*`.

@@ -34,8 +34,8 @@ class AnalyticLightingComponent final : public DirectLightingComponent {
         const auto &config = invocation.config;
         const auto &scene = config.scene;
         auto &surface = context.surface;
-        auto &selected_light = bounce.selected_light;
-        auto &light_sample = bounce.light_sample;
+        auto &selected_light = bounce.random().selected_light;
+        auto &light_sample = bounce.random().light_sample;
         auto &hit_position = surface.hit_position;
         auto &surface_tag = surface.surface_tag;
         auto &point = surface.point;

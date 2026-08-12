@@ -24,8 +24,8 @@ class BackgroundEventStageImpl final
             invocation.config;
         const auto &scene = config.scene;
         auto &ray = sample.ray;
-        auto &ray_visibility =
-            sample.ray_visibility;
+        const auto ray_visibility =
+            sample.contracted_ray_visibility();
         auto &previous_delta =
             sample.previous_delta;
         auto &previous_bsdf_pdf =

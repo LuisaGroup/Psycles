@@ -154,7 +154,7 @@ class AnalyticVolumeLightProvider final
         const auto pdf =
             distant_sample
                 .conditional_pdf *
-            _event.bounce.selected_light
+            _event.bounce.random().selected_light
                 .selection_pdf;
         const auto valid =
             active & (pdf > 0.0f);
@@ -208,7 +208,7 @@ class AnalyticVolumeLightProvider final
              finite.evaluation_factor);
         const auto pdf =
             finite.conditional_pdf *
-            _event.bounce.selected_light
+            _event.bounce.random().selected_light
                 .selection_pdf;
         const auto valid =
             active &
@@ -347,7 +347,7 @@ class AnalyticVolumeLightProvider final
             _segment_direction *
                 distance;
         const auto random =
-            _event.bounce.light_sample;
+            _event.bounce.random().light_sample;
         const auto active =
             _proposal.valid &
             (_proposal.emitter_kind ==
@@ -731,13 +731,13 @@ class PathVolumeDirectLightingComponent final
         Float segment_length)
         const noexcept override {
         auto &selected =
-            event.bounce.selected_light;
+            event.bounce.random().selected_light;
         if (_config.use_light_tree) {
             // Cycles selects a volume light against the complete free-flight
             // segment. The same Sobol light dimension is reused; only the
             // spatial proposal changes from the surface specialization.
             selected = _config.light_tree.volume_sample(
-                event.bounce.light_sample.z,
+                event.bounce.random().light_sample.z,
                 segment_position,
                 segment_direction,
                 segment_length,
@@ -811,7 +811,7 @@ class PathVolumeDirectLightingComponent final
                     light_index,
                     path_stack,
                     segment_position,
-                    event.bounce
+                    event.bounce.random()
                         .light_sample.xy(),
                     segment_length,
                     result);
@@ -823,7 +823,7 @@ class PathVolumeDirectLightingComponent final
                     path_stack,
                     segment_position,
                     segment_direction,
-                    event.bounce
+                    event.bounce.random()
                         .light_sample.xy(),
                     segment_length,
                     result);
@@ -835,7 +835,7 @@ class PathVolumeDirectLightingComponent final
                     path_stack,
                     segment_position,
                     segment_direction,
-                    event.bounce
+                    event.bounce.random()
                         .light_sample.xy(),
                     segment_length,
                     result);
@@ -946,7 +946,7 @@ class PathVolumeDirectLightingComponent final
                 invocation
                     .sample_light_roulette(
                         unshadowed,
-                        bounce
+                        bounce.random()
                             .light_terminate_sample);
             // Cycles terminates the complete unshadowed light sample before
             // branching to INTERSECT_SHADOW. A zero roulette weight therefore

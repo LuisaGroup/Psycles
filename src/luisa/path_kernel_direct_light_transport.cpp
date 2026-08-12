@@ -82,7 +82,7 @@ class CommonDirectLightTransportStage final
             const auto roulette_weight =
                 invocation.sample_light_roulette(
                     unshadowed,
-                    bounce.light_terminate_sample);
+                    bounce.random().light_terminate_sample);
             const auto surviving_unshadowed =
                 unshadowed * roulette_weight;
             _trace->record_transport(

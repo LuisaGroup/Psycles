@@ -570,7 +570,7 @@ Bool SubsurfaceRandomWalkComponent::transport(
 
     $if(hit) {
         throughput = walk_throughput;
-        store_hit(path.pending_subsurface_hit, exit_hit);
+        path.pending_subsurface_hit.store_surface(exit_hit);
         path.pending_subsurface_exit = true;
         path.ray = make_ray(
             walk_position + walk_direction * (2.0f * exit_distance),

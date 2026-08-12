@@ -20,7 +20,7 @@ using namespace psycles::luisa_backend::detail;
 using psycles::test_support::approximately_equal;
 using psycles::test_support::make_surface_point;
 
-inline constexpr std::uint32_t record_count = 20u;
+inline constexpr std::uint32_t record_count = 22u;
 
 [[nodiscard]] bool finite(luisa::float4 value) noexcept {
     return std::isfinite(value.x) && std::isfinite(value.y) &&
@@ -183,6 +183,30 @@ int main(int argc, char **argv) {
         output.write(19u, make_float4(
             rejected.direction,
             select(0.0f, 1.0f, rejected.valid)));
+
+        Var<luisa::compute::CommittedHit> source_hit;
+        source_hit.inst = 17u;
+        source_hit.prim = 23u;
+        source_hit.bary = make_float2(0.25f, 0.625f);
+        source_hit.hit_type = static_cast<std::uint32_t>(
+            luisa::compute::HitType::Surface);
+        source_hit.committed_ray_t = 4.75f;
+        PendingSubsurfaceHit pending_hit{
+            .instance = 0u,
+            .primitive = 0u,
+            .barycentric = make_float2(0.0f),
+            .committed_ray_t = 0.0f};
+        pending_hit.store_surface(source_hit);
+        const auto restored_hit = pending_hit.materialize_surface();
+        output.write(20u,
+                     make_float4(cast<float>(restored_hit->inst),
+                                 cast<float>(restored_hit->prim),
+                                 restored_hit->bary));
+        output.write(21u,
+                     make_float4(restored_hit->committed_ray_t,
+                                 cast<float>(restored_hit->hit_type),
+                                 0.0f,
+                                 0.0f));
     };
 
     Context context{argv[0]};
@@ -224,7 +248,14 @@ int main(int argc, char **argv) {
         close(actual[15u], actual[16u]) &&
         close(actual[17u], actual[18u]) &&
         approximately_equal(actual[19u].w, 0.0f);
-    if (!coefficients_ok || !entries_ok) {
+    const auto pending_hit_ok =
+        close(actual[20u], {17.0f, 23.0f, 0.25f, 0.625f}) &&
+        close(actual[21u],
+              {4.75f,
+               static_cast<float>(luisa::compute::HitType::Surface),
+               0.0f,
+               0.0f});
+    if (!coefficients_ok || !entries_ok || !pending_hit_ok) {
         dump(backend, actual);
         return EXIT_FAILURE;
     }
