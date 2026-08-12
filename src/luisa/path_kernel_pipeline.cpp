@@ -109,7 +109,7 @@ void PathKernelPipeline::emit(
         // been populated yet.
         if (cut_policy == PathCoroutineCutPolicy::compact) {
             $suspend(path_transition::path_bounce);
-    } else if (cut_policy == PathCoroutineCutPolicy::staged_wavefront) {
+    } else if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
             // This names the semantic work queue; traversal remains the same
             // PathBounceSetupStage used by both megakernel variants.
             $suspend(path_transition::intersect_closest);
@@ -137,7 +137,7 @@ void PathKernelPipeline::emit(
     $while(search_events & !path_terminated) {
       auto event = _impl->closest_event->emit(bounce, previous_analytic_light);
             if (_impl->volume_segment) {
-        if (cut_policy == PathCoroutineCutPolicy::staged_wavefront) {
+        if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
                     // Route only paths that actually carry medium state. The
                     // transition is immediately before volume transport, so
                     // none of its closures, reservoirs, or tracking scratch
@@ -157,7 +157,7 @@ void PathKernelPipeline::emit(
       $if(search_events & !path_terminated) {
                 if (_impl->forward_light) {
                     $if(event.analytic_light) {
-            if (cut_policy == PathCoroutineCutPolicy::staged_wavefront) {
+            if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
                             $suspend(path_transition::shade_light_forward);
                         }
             path_terminated = _impl->forward_light->emit(event);
@@ -166,7 +166,7 @@ void PathKernelPipeline::emit(
                     $else {
                         search_events = false;
                         $if(event.background) {
-              if (cut_policy == PathCoroutineCutPolicy::staged_wavefront) {
+              if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
                                 $suspend(path_transition::shade_background);
                             }
               _impl->background->emit(event);
@@ -176,7 +176,7 @@ void PathKernelPipeline::emit(
                 } else {
                     search_events = false;
                     $if(event.background) {
-            if (cut_policy == PathCoroutineCutPolicy::staged_wavefront) {
+            if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
                             $suspend(path_transition::shade_background);
                         }
             _impl->background->emit(event);
@@ -195,7 +195,7 @@ void PathKernelPipeline::emit(
             // coroutine frame while separating traversal from shading.
             if (cut_policy == PathCoroutineCutPolicy::compact) {
                 $suspend(path_transition::surface_shading);
-      } else if (cut_policy == PathCoroutineCutPolicy::staged_wavefront) {
+      } else if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
                 // Resolve only the topology-deduplicated material tag here,
                 // after volume transport selected the surface path. Keeping
                 // this recomputation at the cut avoids carrying it through

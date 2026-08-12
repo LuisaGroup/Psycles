@@ -60,6 +60,40 @@ void validate_surface_queue_hint_abi(
         path_transition::scheduler_hint);
 }
 
+void validate_cycles_wavefront_abi(
+    const RenderCoroutine &coroutine,
+    const PathKernelSceneStagePlan &plan,
+    bool has_volume) noexcept {
+    const auto require = [&](luisa::string_view name,
+                             bool reachable) noexcept {
+        const auto *node = coroutine.graph().node_by_name(name);
+        LUISA_ASSERT(
+            !reachable ||
+                (node != nullptr && node->index != 0u &&
+                 node->index < coroutine.subroutine_count()),
+            "Cycles-wavefront path pipeline did not materialize reachable "
+            "stage '{}' as a non-entry continuation.",
+            name);
+        LUISA_ASSERT(
+            reachable || node == nullptr,
+            "Cycles-wavefront path pipeline materialized unreachable stage "
+            "{}'. Host-stage reachability and the coroutine graph disagree.",
+            name);
+    };
+    require(path_transition::intersect_closest, true);
+    require(path_transition::shade_volume, has_volume);
+    require(path_transition::shade_light_forward,
+            plan.analytic_light_endpoints);
+    require(path_transition::shade_background, true);
+    require(path_transition::shade_surface,
+            !plan.traversal.primitives.empty());
+    LUISA_ASSERT(
+        coroutine.graph().node_by_name(path_transition::path_bounce) == nullptr &&
+            coroutine.graph().node_by_name(
+                path_transition::surface_shading) == nullptr,
+        "Cycles-wavefront graph must not retain compact-only transitions.");
+}
+
 }// namespace
 
 class PathKernelExecutorImpl {
@@ -222,8 +256,18 @@ build_path_kernel_executor(luisa::compute::Device &device,
         case LuisaPathScheduler::wavefront_graph: {
             LUISA_ASSERT(config.wavefront_frame_capacity != 0u,
                          "Graph-wavefront frame capacity must be positive.");
-            auto coroutine =
-                build_path_coroutine(path, PathCoroutineCutPolicy::compact);
+            const auto stage_plan = make_path_kernel_scene_stage_plan(
+                path.next_event_estimation,
+                path.scene->environment_in_light_distribution,
+                path.scene->emissive_triangle_count, path.scene->light_count,
+                path.scene->geometries.size(),
+                path.scene->curve_geometries.size(),
+                path.scene->cycles_completion_source_dense_count,
+                path.scene->cycles_completion_source_sparse_count);
+            auto coroutine = build_path_coroutine(
+                path, PathCoroutineCutPolicy::cycles_wavefront);
+            validate_cycles_wavefront_abi(
+                coroutine, stage_plan, path.volume_state != nullptr);
             luisa::compute::coro::GraphWavefrontCoroSchedulerConfig
                 scheduler_config;
             scheduler_config.thread_count = config.wavefront_frame_capacity;
@@ -237,7 +281,7 @@ build_path_kernel_executor(luisa::compute::Device &device,
                 config.wavefront_graph_refill_threshold;
             if (config.wavefront_graph_selective_scheduling) {
                 scheduler_config.refill_continuations = {
-                    path_transition::path_bounce};
+                    path_transition::intersect_closest};
             }
             scheduler_config.counter_readback_batch_size =
                 config.wavefront_graph_selective_scheduling ?
@@ -291,7 +335,9 @@ build_path_kernel_executor(luisa::compute::Device &device,
       staged_path.direct_light_task_sink = direct_light_queue.sink;
     }
             auto coroutine = build_path_coroutine(
-        staged_path, PathCoroutineCutPolicy::staged_wavefront);
+        staged_path, PathCoroutineCutPolicy::cycles_wavefront);
+            validate_cycles_wavefront_abi(
+                coroutine, stage_plan, path.volume_state != nullptr);
     const auto surface_count = path.scene->surfaces.size();
     const auto has_surface_queue_hint = path.staged_surface_sorting &&
                 surface_count != 0u &&
