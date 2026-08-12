@@ -2647,10 +2647,11 @@ rewriting their algorithms as Cycles kernels.
 Cycles' GPU host loop selects the stage with the largest queued population,
 injects new tile work when occupancy is low, and drains shadow stages when a
 shading stage could exceed shadow-state capacity. The staged experiment maps
-only the first two ideas so far: Luisa's wavefront scheduler uses
-`largest_continuation_first` and permits `intersect_closest` refill. Shadow
-capacity pressure and shader-key sorting remain explicit follow-up scheduler
-policies rather than hidden integrator changes.
+the first two ideas: Luisa's wavefront scheduler uses
+`largest_continuation_first` and permits `intersect_closest` refill. The
+surface queue is now also ordered by the structure-deduplicated Psycles shader
+tag, as validated in the next section. Shadow-capacity pressure remains an
+explicit follow-up scheduler policy rather than a hidden integrator change.
 
 The staged graph currently has five reachable subroutines and a 264-byte
 frame. The compact graph remains three subroutines and 216 bytes. Combined,
@@ -2677,8 +2678,153 @@ including 1,450 assertions in 78 restructuring tests and 180 assertions in
 seven coroutine-pipeline tests.
 
 This checkpoint is a scheduler/compiler equivalence canary, not a new
-full-scene Cycles quality or performance result. The next measurement must
-first expose the remaining Psycles component boundaries through the same DSL
-pipeline, then compare stage populations, dispatch counts, frame traffic,
-occupancy, scratch/VGPR pressure, and render-only time against Cycles without
-changing either renderer's transport algorithm.
+full-scene Cycles quality or performance result. Remaining Psycles component
+boundaries must continue to be exposed through the same DSL pipeline, then
+compared by stage population, dispatch count, frame traffic, occupancy,
+scratch/VGPR pressure, and render-only time without changing either
+renderer's transport algorithm.
+
+## Surface queue coherence without a Cycles-kernel rewrite
+
+Psycles `b92c480` adds shader-coherent ordering to the existing staged
+`shade_surface` continuation. It does not add a second surface integrator,
+copy a Cycles kernel, or translate one into Luisa DSL. `PathKernelPipeline`
+remains the single source of traversal, geometry, graph evaluation, closure,
+BSDF, NEE, sampling, and film semantics. The staged host/JIT policy merely
+exports a scheduler key immediately before the already-existing
+`shade_surface` suspension; resumption enters the same surface stages as the
+unsorted continuation.
+
+For a continuation token `t`, let `Q_t` be the finite sequence of queued
+frames and let `k(f)` be the surface-program tag exported by frame `f`. The
+new policy replaces `Q_t` by a permutation `sort_k(Q_t)` only when
+`t = shade_surface`. Therefore:
+
+```text
+multiset(sort_k(Q_t)) = multiset(Q_t)
+erase_scheduler(cut(P, sort_k(Q_t))) = P
+```
+
+Every frame executes the same continuation exactly once and produces the same
+next token. The renderer-visible exception is ordering of floating-point
+atomic additions from different paths; those additions are commutative over
+real arithmetic but not associative in IEEE-754. The existing bounded film
+tolerance is consequently the correct contract, while path/sample identity
+and integer scheduler invariants remain exact.
+
+The key is derived without evaluating a closure or a shader graph:
+
+1. read the committed hit's instance and geometry;
+2. use the shared primitive-material component to map a triangle primitive or
+   a curve segment's containing `curve_index` to its material slot;
+3. apply the same instance override relation used by real shading; and
+4. export only `MaterialBindingGpu::surface_tag` as `coro_hint`.
+
+`surface_tag` is assigned once per `SurfaceProgram::structure_signature`, so
+materials with identical expanded graph topology share a key even when their
+parameter blocks differ. Lone Monk contains 37 material records and 24 such
+surface implementations. The resolver is deliberately recorded after volume
+transport has selected the surface path, so the key does not extend a live
+range through `shade_volume`. It also calls the common slot/binding resolver
+rather than maintaining a scheduler-specific copy of triangle, curve, or
+override semantics.
+
+The frame ABI is checked while constructing the production executor:
+`shade_surface` must resolve to a non-entry continuation and `coro_hint` must
+be an explicitly exported `uint`. Missing or mistyped metadata is a hard
+construction failure rather than a warning which silently disables sorting.
+On the production Lone Monk graph, sorted and unsorted staged variants both
+have four subroutines, 54 physical fields, and a 216-byte frame. The export
+therefore reuses a compatible physical slot and does not enlarge the frame.
+
+Psycles `7841140` adds a matched host/JIT diagnostic option. With
+`staged_surface_sorting=false`, the program retains exactly the same staged
+cut set but records no key resolver, `coro_hint` export, or hint-sort kernels.
+The flag is never a device value and does not enter the unified path wrapper.
+The film regression now executes both sorted and unsorted staged variants and
+compares Combined, Normal, Albedo, all light passes, sample count, volume
+guiding, and the global-sample/RNG trace against the serial oracle. It passes
+on fallback, HIP, and strict native-XIR Vulkan; the latter used both
+`LUISA_VULKAN_USE_XIR=1` and
+`LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`.
+
+### Lone Monk HIP A/B
+
+The matched command was run on the RX 9070 XT with the existing immutable
+Lone Monk bundle, 640x480, 64 spp, one 64-sample dispatch, and the staged
+wavefront scheduler. The final argument is the only difference:
+
+```text
+build/bin/psycles_render_blender_scene \
+  /var/tmp/psycles-lone-monk-transmission-dbdcb17/export \
+  <output.ppm> hip 640 480 64 64 - 0 0 0 0 64 - 1 0 \
+  wavefront-staged 32 32768 32 1 <staged-surface-sorting: 0|1>
+```
+
+Each variant was warmed independently, then measured in the interleaved order
+`U,S,S,U,U,S,S,U`, where `U` is the matched unsorted baseline and `S` is
+shader-sorted. Times are the renderer-reported render interval and exclude
+scene import, shader JIT, and output encoding.
+
+| Variant | Four render-only times (s) | Mean (s) | Median (s) | Sample standard deviation (s) |
+| --- | --- | ---: | ---: | ---: |
+| staged, unsorted | 2.53910, 2.53662, 2.54223, 2.53989 | 2.53946 | 2.53950 | 0.00231 |
+| staged, shader-sorted | 2.46969, 2.46364, 2.47048, 2.47459 | 2.46960 | 2.47009 | 0.00452 |
+
+Sorting is `1.0283x` faster, or a 2.751% render-time reduction. The separation
+is much larger than either series' run-to-run variation.
+
+`rocprofv3 --kernel-trace --stats` reproduced the same boundary: 2.56811 s
+unsorted and 2.49869 s sorted. HIP names every generated shader
+`kernel_main`, so dispatches were identified by code object and the static
+tuple `(workgroup, VGPR, SGPR, scratch, LDS)` rather than by a guessed source
+name. The 1,558,984-byte, 256-VGPR, 2472-byte-scratch continuation is the
+surface-heavy resume shader in both builds: it has the same 240 calls and
+53,838,624 logical threads.
+
+| Profile component | Unsorted GPU time (ms) | Sorted GPU time (ms) | Change (ms) |
+| --- | ---: | ---: | ---: |
+| surface-heavy continuation | 1549.032 | 1463.454 | -85.577 |
+| hint bucket/sort helpers | 0 | 13.297 | +13.297 |
+| all Psycles `kernel_main` dispatches | 2326.589 | 2255.646 | -70.943 |
+
+The sorted trace contains 3,148 Psycles kernel dispatches versus 1,948 in the
+baseline. The 1,200 extra launches are five small hint-ordering launches for
+each of 240 surface resumes. Their 13.3 ms cost is repaid by 85.6 ms in the
+unchanged surface continuation. This is direct evidence of better execution
+coherence in the same Luisa surface program, not a transport-algorithm change.
+
+With `LUISA_CORO_WAVEFRONT_STATS=1`, both modes use 599 host iterations,
+generate all 19,660,800 pixel/sample instances, and have the same 307,200
+maximum live population. Repeated HIP runs vary by only a few resume events
+around 111,555,800 in both modes; the variation is not correlated with
+sorting. `LUISA_CORO_WAVEFRONT_VERIFY_QUEUES=1` passed for both variants,
+materializing every queue at every iteration and proving that each maintained
+integer continuation count equals the actual number of frames carrying that
+token. Verifier timings are intentionally excluded from the benchmark.
+
+### Numerical and visual validation
+
+All 15 linear EXR passes were compared. There are no invalid pixels. Combined
+has relative RMSE `8.41e-8`, maximum absolute error `7.90e-5`, and luminance
+mean ratio exactly `1.0`. The largest relative RMSE is `1.49e-6` in Diffuse
+Indirect; Glossy Indirect is `9.14e-7`. Emission, Environment, Transmission,
+and both Volume passes are exact in this scene. These sparse differences are
+consistent with the permitted cross-path atomic-add order change.
+
+The complete numeric report is
+[here](surface-queue-sorting/report-sorted-vs-unsorted.json). Combined,
+Diffuse Indirect, and Glossy Indirect triptychs were opened at their original
+1936x550 resolution. Both render panels have the same geometry, material,
+lighting, and sample-noise structure; every difference panel is visually
+black at the recorded display scale.
+
+![Unsorted staged, shader-sorted staged, and Combined difference](surface-queue-sorting/triptychs/combined.png)
+
+![Unsorted staged, shader-sorted staged, and Diffuse Indirect difference](surface-queue-sorting/triptychs/diffind.png)
+
+![Unsorted staged, shader-sorted staged, and Glossy Indirect difference](surface-queue-sorting/triptychs/glossind.png)
+
+Raw logs, complete EXRs/PFMs, profiler databases, repeated scheduler stats,
+and queue-verifier runs remain under
+`/var/tmp/psycles-surface-sort-{ab,profile}-20260812` on the measurement host.
