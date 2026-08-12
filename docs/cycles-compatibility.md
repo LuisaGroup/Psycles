@@ -1056,6 +1056,15 @@ dependency tree is accepted only when the homogeneous segment integrator can
 represent it; a spatial dependency remains an explicit scene capability
 error.
 
+The graph-driven coroutine path now uses the main Cycles path-stage cuts,
+per-continuation exact frame-field I/O, and bounded selective-queue service.
+The 640x480, 64-spp HIP matrix across Lone Monk, Classroom, Monster Under the
+Bed, and Barbershop separates scheduler overhead from estimator differences
+with an identical per-(pixel,sample) megakernel baseline. Timings, formal
+service bound, frame sizes, linear EXR metrics, and four inspected triptychs
+are recorded in
+[`validation/2026-08-13/cycles-wavefront-multiscene`](validation/2026-08-13/cycles-wavefront-multiscene/README.md).
+
 The following integrator work remains explicit and is not considered Cycles
 compatible yet:
 
