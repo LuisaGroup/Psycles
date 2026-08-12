@@ -183,6 +183,16 @@ enum class PathFilmAccumulation : std::uint8_t {
     atomic,
 };
 
+// Host/JIT policy for placing coroutine transitions in the one authoritative
+// path program. This is deliberately not a device enum: `none` records the
+// megakernel, while the coroutine policies insert different `$suspend`
+// statements around the same stage objects and closure implementations.
+enum class PathCoroutineCutPolicy : std::uint8_t {
+    none,
+    compact,
+    staged_wavefront,
+};
+
 struct PathKernelInvocation {
     const PathKernelConfig &config;
     PathFilmAccumulation film_accumulation;
@@ -750,11 +760,12 @@ class PathKernelPipeline {
     PathKernelPipeline(const PathKernelPipeline &) = delete;
     PathKernelPipeline &operator=(const PathKernelPipeline &) = delete;
 
-    // `is_coro` is a host-side AST-construction choice. It must never be a
-    // device Bool: the megakernel contains neither dynamic scheduler branches
-    // nor coroutine instructions, while the coroutine records suspension at
-    // the same semantic path-event boundaries.
-    void emit(PathSampleContext &sample, bool is_coro) const noexcept;
+    // `cut_policy` is a host-side AST-construction choice. It must never be a
+    // device value: the megakernel contains neither dynamic scheduler branches
+    // nor coroutine instructions, while coroutine variants annotate the same
+    // semantic path program at different transition boundaries.
+    void emit(PathSampleContext &sample,
+              PathCoroutineCutPolicy cut_policy) const noexcept;
 };
 
 [[nodiscard]] RenderSerialKernel
@@ -762,6 +773,7 @@ build_path_serial_kernel(const PathKernelConfig &config) noexcept;
 [[nodiscard]] RenderSampleKernel
 build_path_sample_kernel(const PathKernelConfig &config) noexcept;
 [[nodiscard]] RenderCoroutine
-build_path_coroutine(const PathKernelConfig &config);
+build_path_coroutine(const PathKernelConfig &config,
+                     PathCoroutineCutPolicy cut_policy);
 
 } // namespace psycles::luisa_backend::detail

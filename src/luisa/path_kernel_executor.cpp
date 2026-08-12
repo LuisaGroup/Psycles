@@ -224,7 +224,8 @@ PathKernelExecutor build_path_kernel_executor(
             LUISA_ASSERT(
                 config.wavefront_frame_capacity != 0u,
                 "Wavefront frame capacity must be positive.");
-            auto coroutine = build_path_coroutine(path);
+            auto coroutine = build_path_coroutine(
+                path, PathCoroutineCutPolicy::compact);
             LUISA_INFO(
                 "Psycles wavefront path coroutine: subroutines={} "
                 "frame_fields={} frame_bytes={} capacity={}.",
@@ -248,6 +249,38 @@ PathKernelExecutor build_path_kernel_executor(
                     config.scheduler,
                     std::move(scheduler))};
         }
+        case LuisaPathScheduler::wavefront_staged: {
+            LUISA_ASSERT(
+                config.wavefront_frame_capacity != 0u,
+                "Staged wavefront frame capacity must be positive.");
+            auto coroutine = build_path_coroutine(
+                path, PathCoroutineCutPolicy::staged_wavefront);
+            LUISA_INFO(
+                "Psycles staged wavefront path coroutine: "
+                "subroutines={} frame_fields={} frame_bytes={} capacity={}.",
+                coroutine.subroutine_count(),
+                coroutine.frame().frame_field_count(),
+                coroutine.frame().frame_type()->size(),
+                config.wavefront_frame_capacity);
+            luisa::compute::coro::WavefrontCoroSchedulerConfig
+                scheduler_config;
+            scheduler_config.thread_count =
+                config.wavefront_frame_capacity;
+            scheduler_config.execution_block_size =
+                config.wavefront_execution_block_size;
+            scheduler_config.largest_continuation_first = true;
+            scheduler_config.refill_continuations = {
+                "intersect_closest"};
+            scheduler_config.shader_option =
+                config.shader_option;
+            auto scheduler =
+                std::make_unique<RenderSchedulers::Wavefront>(
+                    device, coroutine, scheduler_config);
+            return PathKernelExecutor{
+                std::make_unique<CoroutineExecutor>(
+                    config.scheduler,
+                    std::move(scheduler))};
+        }
         case LuisaPathScheduler::persistent: {
             LUISA_ASSERT(
                 config.persistent_worker_count != 0u,
@@ -258,7 +291,8 @@ PathKernelExecutor build_path_kernel_executor(
             LUISA_ASSERT(
                 config.persistent_fetch_size != 0u,
                 "Persistent fetch size must be positive.");
-            auto coroutine = build_path_coroutine(path);
+            auto coroutine = build_path_coroutine(
+                path, PathCoroutineCutPolicy::compact);
             luisa::compute::coro::PersistentThreadsCoroSchedulerConfig
                 scheduler_config;
             scheduler_config.thread_count =

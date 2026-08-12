@@ -488,6 +488,12 @@ int main(int argc, char **argv) {
         psycles::luisa_backend::LuisaPathScheduler::wavefront,
         sample_count,
         false);
+    const auto staged_wavefront = render(
+        context,
+        backend,
+        psycles::luisa_backend::LuisaPathScheduler::wavefront_staged,
+        sample_count,
+        false);
     const auto persistent = render(
         context,
         backend,
@@ -496,7 +502,8 @@ int main(int argc, char **argv) {
         false);
     if (!reference || !deterministic || !single_plane || !per_sample ||
         !chunked ||
-        !wavefront || !persistent || !validate_reference(*reference) ||
+        !wavefront || !staged_wavefront || !persistent ||
+        !validate_reference(*reference) ||
         !compare_outputs(
             *reference,
             *deterministic,
@@ -522,6 +529,11 @@ int main(int argc, char **argv) {
             *wavefront,
             false,
             "wavefront dispatch") ||
+        !compare_outputs(
+            *reference,
+            *staged_wavefront,
+            false,
+            "staged wavefront dispatch") ||
         !compare_outputs(
             *reference,
             *persistent,

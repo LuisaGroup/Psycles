@@ -21,6 +21,7 @@ int main() {
         LuisaPathScheduler::megakernel,
         LuisaPathScheduler::megakernel_per_sample,
         LuisaPathScheduler::wavefront,
+        LuisaPathScheduler::wavefront_staged,
         LuisaPathScheduler::persistent};
     for (const auto scheduler : schedulers) {
         const auto name = luisa_path_scheduler_name(scheduler);
@@ -45,6 +46,9 @@ int main() {
     static_assert(
         luisa_path_scheduler_uses_per_sample_dispatch(
             LuisaPathScheduler::wavefront));
+    static_assert(
+        luisa_path_scheduler_uses_per_sample_dispatch(
+            LuisaPathScheduler::wavefront_staged));
     static_assert(
         luisa_path_scheduler_uses_per_sample_dispatch(
             LuisaPathScheduler::persistent));

@@ -2604,3 +2604,81 @@ Raw timing, comparison, profiler, and regression artifacts are under
 `/var/tmp/psycles-persistent-live-certificate-{timing,comparison,tests}-20260812`
 and `/var/tmp/luisa-persistent-live-certificate-tests-20260812` on the
 measurement host.
+
+## Staged scheduling topology without a Cycles-kernel port
+
+The next checkpoint adds a deliberately separate `wavefront-staged` scheduler
+experiment. It does **not** add another path integrator and does not copy or
+translate Cycles kernel functions. Psycles still records one authoritative
+Luisa DSL program, `PathKernelPipeline`. At host AST-construction time a
+`PathCoroutineCutPolicy` either records no suspension (`none`), the compact
+two-transition schedule (`compact`), or additional semantic transitions
+(`staged_wavefront`). All policies call the same geometry, volume, light,
+surface, closure, sampling, and film components.
+
+Formally, let `P` be the ordered effect trace of the DSL path program and let
+`cut_C(P)` insert coroutine transitions at a host-selected cut set `C`. A
+scheduler activation saves the live state at one cut and its continuation
+restores that state before executing the next effect. Erasing those
+save/restore transitions from `cut_C(P)` must therefore yield exactly `P`.
+Neither the cut policy nor scheduler kind is a device value, so no dynamic
+scheduler branch enters the shader and `C` does not alter the integrator's
+sampling or material semantics.
+
+The current staged cut set is:
+
+| Transition | Location in the Psycles DSL program | State intentionally kept out of the frame |
+| --- | --- | --- |
+| `intersect_closest` | before the existing bounce setup / closest-event traversal stage | hit resolution and all following shading temporaries |
+| `shade_volume` | conditionally, immediately before volume-segment evaluation when the medium stack is non-empty | tracking, phase, reservoir, and volume-closure scratch |
+| `shade_light_forward` | after event resolution and immediately before the existing analytic-light forward stage | light shading temporaries |
+| `shade_background` | after event resolution and immediately before the existing background stage | background evaluation temporaries |
+| `shade_surface` | after a surface hit is selected and before surface geometry plus closure population | geometry attributes, shader graph values, closures, and BSDF scratch |
+
+These names make the queue comparison legible against the locally checked-out
+Cycles stage graph; they do not claim that Psycles now contains Cycles' stage
+kernels. In particular, Psycles still evaluates NEE/shadow work and subsurface
+transitions inside its own component graph, while current Cycles has separate
+`SHADE_LIGHT_NEE`, `INTERSECT_SHADOW`, `SHADE_SHADOW`, subsurface, volume-stack,
+and dedicated-light states. Matching those scheduling boundaries requires
+exposing resumable boundaries in the existing Psycles components, not
+rewriting their algorithms as Cycles kernels.
+
+Cycles' GPU host loop selects the stage with the largest queued population,
+injects new tile work when occupancy is low, and drains shadow stages when a
+shading stage could exceed shadow-state capacity. The staged experiment maps
+only the first two ideas so far: Luisa's wavefront scheduler uses
+`largest_continuation_first` and permits `intersect_closest` refill. Shadow
+capacity pressure and shader-key sorting remain explicit follow-up scheduler
+policies rather than hidden integrator changes.
+
+The staged graph currently has five reachable subroutines and a 264-byte
+frame. The compact graph remains three subroutines and 216 bytes. Combined,
+Normal, Albedo, every light pass, and the trace diagnostic were compared by
+the film-accumulation regression across serial, per-sample megakernel,
+chunked per-sample megakernel, compact wavefront, staged wavefront, and
+persistent execution. The matrix passes on HIP and fallback. A Vulkan canary
+with both `LUISA_VULKAN_USE_XIR=1` and
+`LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1` also passes; it emits native SPIR-V
+(the largest observed module in this run was 205,806 words) and does not load
+DXC.
+
+That strict Vulkan run exposed a general XIR fixed-point bug rather than a
+renderer-stage bug. Selection-exit repair normalized a `Break` nested inside a
+`Switch` to an ordinary branch to the enclosing loop merge. Loop-boundary
+canonicalization then contracted through the empty loop-merge block, forgot
+its structural identity, and inserted a new break proxy. The two passes added
+two blocks on every round until the 64-round guard fired. Luisa
+`next@dab44c884` now treats the declared loop merge as an absorbing boundary
+of the forwarding quotient. A regression gives that merge an empty forwarding
+successor and runs restructuring twice, proving both successful convergence
+and stable block count. Seven focused XIR/SPIR-V/coroutine executables pass,
+including 1,450 assertions in 78 restructuring tests and 180 assertions in
+seven coroutine-pipeline tests.
+
+This checkpoint is a scheduler/compiler equivalence canary, not a new
+full-scene Cycles quality or performance result. The next measurement must
+first expose the remaining Psycles component boundaries through the same DSL
+pipeline, then compare stage populations, dispatch counts, frame traffic,
+occupancy, scratch/VGPR pressure, and render-only time against Cycles without
+changing either renderer's transport algorithm.
