@@ -179,7 +179,10 @@ enum class PathFilmAccumulation : std::uint8_t {
 enum class PathCoroutineCutPolicy : std::uint8_t {
     none,
     compact,
-    staged_wavefront,
+    // Materialize the same main-path scheduling boundaries as Cycles'
+    // GPU integrator. This remains one canonical Luisa path program: the
+    // policy only inserts host-recorded suspend points before each stage.
+    cycles_wavefront,
 };
 
 struct PathKernelInvocation {
