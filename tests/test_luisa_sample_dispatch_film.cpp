@@ -238,6 +238,9 @@ render(luisa::compute::Context &context, std::string_view backend,
          .scheduler = scheduler,
          .wavefront_frame_capacity = 128u,
          .wavefront_graph_worker_count = 5u,
+         .wavefront_graph_selective_scheduling =
+             scheduler ==
+             psycles::luisa_backend::LuisaPathScheduler::wavefront_graph,
          .wavefront_counter_readback_batch_size =
              wavefront_counter_readback_batch_size,
          .wavefront_counter_readback_pipeline_depth =
