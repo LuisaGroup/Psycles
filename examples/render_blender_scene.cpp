@@ -224,7 +224,7 @@ int main(int argc, char **argv) {
                "[sample-count=samples-sample-first] "
                "[sample-chunk-pixel.json|-] "
                "[probe-chunk-size=1] [probe-full-frame=0] "
-               "[scheduler=megakernel|megakernel-per-sample|wavefront|persistent] "
+               "[scheduler=megakernel|megakernel-per-sample|wavefront|wavefront-staged|persistent] "
                "[wavefront-execution-block-size=32] "
                "[persistent-workers=32768] "
                "[persistent-block-size=32] "
@@ -381,7 +381,7 @@ int main(int argc, char **argv) {
             std::cerr
                 << "error: invalid path scheduler '" << argv[17]
                 << "' (expected megakernel, megakernel-per-sample, "
-                   "wavefront, or persistent)\n";
+                   "wavefront, wavefront-staged, or persistent)\n";
             return EXIT_FAILURE;
         }
         scheduler = *parsed;

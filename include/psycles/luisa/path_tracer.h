@@ -22,6 +22,7 @@ enum class LuisaPathScheduler : std::uint8_t {
     megakernel,
     megakernel_per_sample,
     wavefront,
+    wavefront_staged,
     persistent,
 };
 
@@ -35,6 +36,8 @@ luisa_path_scheduler_name(
             return "megakernel-per-sample";
         case LuisaPathScheduler::wavefront:
             return "wavefront";
+        case LuisaPathScheduler::wavefront_staged:
+            return "wavefront-staged";
         case LuisaPathScheduler::persistent:
             return "persistent";
     }
@@ -52,6 +55,9 @@ parse_luisa_path_scheduler(
     }
     if (name == "wavefront") {
         return LuisaPathScheduler::wavefront;
+    }
+    if (name == "wavefront-staged") {
+        return LuisaPathScheduler::wavefront_staged;
     }
     if (name == "persistent") {
         return LuisaPathScheduler::persistent;

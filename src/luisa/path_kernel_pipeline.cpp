@@ -129,15 +129,20 @@ PathKernelPipeline::operator=(PathKernelPipeline &&) noexcept = default;
 
 void PathKernelPipeline::emit(
     PathSampleContext &sample,
-    bool is_coro) const noexcept {
+    PathCoroutineCutPolicy cut_policy) const noexcept {
     $for(path_step, sample.invocation.parameters.max_path_steps) {
         // This ordinary C++ branch executes while recording the Luisa AST.
         // The suspension is therefore absent from the megakernel rather than
         // guarded by a device-side predicate. At this boundary only canonical
         // per-path state is live; no hit shading or closure temporaries have
         // been populated yet.
-        if (is_coro) {
+        if (cut_policy == PathCoroutineCutPolicy::compact) {
             $suspend("path_bounce");
+        } else if (cut_policy ==
+                   PathCoroutineCutPolicy::staged_wavefront) {
+            // This names the semantic work queue; traversal remains the same
+            // PathBounceSetupStage used by both megakernel variants.
+            $suspend("intersect_closest");
         }
         auto bounce =
             _impl->bounce_setup->emit(
@@ -170,6 +175,16 @@ void PathKernelPipeline::emit(
                     bounce,
                     previous_analytic_light);
             if (_impl->volume_segment) {
+                if (cut_policy ==
+                    PathCoroutineCutPolicy::staged_wavefront) {
+                    // Route only paths that actually carry medium state. The
+                    // transition is immediately before volume transport, so
+                    // none of its closures, reservoirs, or tracking scratch
+                    // becomes frame state.
+                    $if(!sample.volume.stack->empty()) {
+                        $suspend("shade_volume");
+                    };
+                }
                 VolumeSegmentEvent volume{
                     .scattered = false,
                     .terminated = false};
@@ -194,6 +209,10 @@ void PathKernelPipeline::emit(
                 !path_terminated) {
                 if (_impl->forward_light) {
                     $if(event.analytic_light) {
+                        if (cut_policy ==
+                            PathCoroutineCutPolicy::staged_wavefront) {
+                            $suspend("shade_light_forward");
+                        }
                         path_terminated =
                             _impl->forward_light->emit(
                                 event);
@@ -203,6 +222,10 @@ void PathKernelPipeline::emit(
                     $else {
                         search_events = false;
                         $if(event.background) {
+                            if (cut_policy ==
+                                PathCoroutineCutPolicy::staged_wavefront) {
+                                $suspend("shade_background");
+                            }
                             _impl->background->emit(
                                 event);
                             path_terminated = true;
@@ -211,6 +234,10 @@ void PathKernelPipeline::emit(
                 } else {
                     search_events = false;
                     $if(event.background) {
+                        if (cut_policy ==
+                            PathCoroutineCutPolicy::staged_wavefront) {
+                            $suspend("shade_background");
+                        }
                         _impl->background->emit(
                             event);
                         path_terminated = true;
@@ -230,8 +257,11 @@ void PathKernelPipeline::emit(
             // hit, but surface geometry and closure population have not begun.
             // Suspending here keeps those large, short-lived values out of the
             // coroutine frame while separating traversal from shading.
-            if (is_coro) {
+            if (cut_policy == PathCoroutineCutPolicy::compact) {
                 $suspend("surface_shading");
+            } else if (cut_policy ==
+                       PathCoroutineCutPolicy::staged_wavefront) {
+                $suspend("shade_surface");
             }
             auto surface =
                 _impl->surface_geometry->emit(bounce);
@@ -332,10 +362,10 @@ void emit_path_sample(
     const PathKernelPipeline &pipeline,
     PathKernelInvocation &invocation,
     const UInt &sub_spp_index,
-    bool is_coro) noexcept {
+    PathCoroutineCutPolicy cut_policy) noexcept {
     auto sample = begin_path_sample(
         invocation, sub_spp_index);
-    pipeline.emit(sample, is_coro);
+    pipeline.emit(sample, cut_policy);
     accumulate_path_sample(sample);
 }
 
@@ -373,7 +403,8 @@ void emit_serial_path_program(
         parameters);
     $for(sub_spp_index, samples) {
         emit_path_sample(
-            pipeline, invocation, sub_spp_index, false);
+            pipeline, invocation, sub_spp_index,
+            PathCoroutineCutPolicy::none);
     };
     invocation.write_film();
 }
@@ -381,7 +412,7 @@ void emit_serial_path_program(
 void emit_per_sample_path_program(
     const PathKernelConfig &config,
     const PathKernelPipeline &pipeline,
-    bool is_coro,
+    PathCoroutineCutPolicy cut_policy,
     const BufferFloat4 &combined,
     const BufferFloat4 &normal,
     const BufferFloat4 &albedo,
@@ -418,7 +449,7 @@ void emit_per_sample_path_program(
         pipeline,
         invocation,
         luisa::compute::dispatch_z(),
-        is_coro);
+        cut_policy);
     invocation.write_film();
 }
 
@@ -488,7 +519,7 @@ RenderSampleKernel build_path_sample_kernel(
             emit_per_sample_path_program(
                 config,
                 pipeline,
-                false,
+                PathCoroutineCutPolicy::none,
                 combined,
                 normal,
                 albedo,
@@ -506,11 +537,14 @@ RenderSampleKernel build_path_sample_kernel(
 }
 
 RenderCoroutine build_path_coroutine(
-    const PathKernelConfig &config) {
+    const PathKernelConfig &config,
+    PathCoroutineCutPolicy cut_policy) {
+    LUISA_ASSERT(cut_policy != PathCoroutineCutPolicy::none,
+                 "A path coroutine requires at least one suspension policy.");
     PathKernelPipeline pipeline{
         config};
     return RenderCoroutine{
-        [&config, &pipeline](BufferFloat4 combined,
+        [&config, &pipeline, cut_policy](BufferFloat4 combined,
                              BufferFloat4 normal,
                              BufferFloat4 albedo,
                              BufferFloat4 light_passes,
@@ -527,7 +561,7 @@ RenderCoroutine build_path_coroutine(
             emit_per_sample_path_program(
                 config,
                 pipeline,
-                true,
+                cut_policy,
                 combined,
                 normal,
                 albedo,
