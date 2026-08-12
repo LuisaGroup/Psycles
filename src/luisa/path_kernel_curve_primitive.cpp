@@ -49,9 +49,8 @@ public:
        Expr<std::uint32_t> instance_id,
        Expr<std::uint32_t> segment_id) const noexcept override {
     auto curve = emit_segment(scene, instance_id, segment_id);
-    UInt material_slot =
-        scene->heap->buffer<luisa::uint>(curve.geometry.bindless_base + 4u)
-            .read(curve.segment.curve_index);
+    UInt material_slot = _material->curve_material_slot(
+        scene, curve.geometry, curve.segment);
     // Cycles curve shader IDs do not carry SHADER_SMOOTH_NORMAL; ribbon
     // smoothing is reconstructed geometrically from u/v at the hit.
     auto material = _material->emit(scene, curve.instance_id, curve.instance,

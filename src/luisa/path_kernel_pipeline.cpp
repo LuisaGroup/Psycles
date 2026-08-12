@@ -1,5 +1,7 @@
 #include "path_kernel_builder.h"
 #include "path_kernel_direct_light_trace.h"
+#include "path_kernel_surface_queue.h"
+#include "path_kernel_transitions.h"
 
 #include <psycles/luisa/cycles_closure.h>
 
@@ -25,6 +27,7 @@ class PathKernelPipeline::Impl {
         background{
             make_background_event_stage()};
     std::unique_ptr<SurfaceGeometryStage> surface_geometry;
+    std::unique_ptr<SurfaceQueueKeyStage> surface_queue_key;
     std::unique_ptr<SurfaceShadingStage> surface_shading;
     std::shared_ptr<const DirectLightTraceRecorder>
         direct_light_trace;
@@ -78,6 +81,9 @@ class PathKernelPipeline::Impl {
         if (!primitive_plan.empty()) {
             surface_geometry =
                 make_surface_geometry_stage(
+                    primitive_plan);
+            surface_queue_key =
+                make_surface_queue_key_stage(
                     primitive_plan);
             surface_shading =
                 make_surface_shading_stage();
@@ -137,12 +143,12 @@ void PathKernelPipeline::emit(
         // per-path state is live; no hit shading or closure temporaries have
         // been populated yet.
         if (cut_policy == PathCoroutineCutPolicy::compact) {
-            $suspend("path_bounce");
+            $suspend(path_transition::path_bounce);
         } else if (cut_policy ==
                    PathCoroutineCutPolicy::staged_wavefront) {
             // This names the semantic work queue; traversal remains the same
             // PathBounceSetupStage used by both megakernel variants.
-            $suspend("intersect_closest");
+            $suspend(path_transition::intersect_closest);
         }
         auto bounce =
             _impl->bounce_setup->emit(
@@ -182,7 +188,7 @@ void PathKernelPipeline::emit(
                     // none of its closures, reservoirs, or tracking scratch
                     // becomes frame state.
                     $if(!sample.volume.stack->empty()) {
-                        $suspend("shade_volume");
+                        $suspend(path_transition::shade_volume);
                     };
                 }
                 VolumeSegmentEvent volume{
@@ -211,7 +217,7 @@ void PathKernelPipeline::emit(
                     $if(event.analytic_light) {
                         if (cut_policy ==
                             PathCoroutineCutPolicy::staged_wavefront) {
-                            $suspend("shade_light_forward");
+                            $suspend(path_transition::shade_light_forward);
                         }
                         path_terminated =
                             _impl->forward_light->emit(
@@ -224,7 +230,7 @@ void PathKernelPipeline::emit(
                         $if(event.background) {
                             if (cut_policy ==
                                 PathCoroutineCutPolicy::staged_wavefront) {
-                                $suspend("shade_background");
+                                $suspend(path_transition::shade_background);
                             }
                             _impl->background->emit(
                                 event);
@@ -236,7 +242,7 @@ void PathKernelPipeline::emit(
                     $if(event.background) {
                         if (cut_policy ==
                             PathCoroutineCutPolicy::staged_wavefront) {
-                            $suspend("shade_background");
+                            $suspend(path_transition::shade_background);
                         }
                         _impl->background->emit(
                             event);
@@ -258,10 +264,21 @@ void PathKernelPipeline::emit(
             // Suspending here keeps those large, short-lived values out of the
             // coroutine frame while separating traversal from shading.
             if (cut_policy == PathCoroutineCutPolicy::compact) {
-                $suspend("surface_shading");
+                $suspend(path_transition::surface_shading);
             } else if (cut_policy ==
                        PathCoroutineCutPolicy::staged_wavefront) {
-                $suspend("shade_surface");
+                // Resolve only the topology-deduplicated material tag here,
+                // after volume transport selected the surface path. Keeping
+                // this recomputation at the cut avoids carrying it through
+                // shade_volume while still giving the scheduler a coherence
+                // key before closure population begins.
+                const auto surface_queue_key =
+                    _impl->surface_queue_key->emit(bounce);
+                $suspend(
+                    path_transition::shade_surface,
+                    coro_frame_export(
+                        path_transition::scheduler_hint,
+                        surface_queue_key));
             }
             auto surface =
                 _impl->surface_geometry->emit(bounce);
