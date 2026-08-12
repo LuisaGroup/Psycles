@@ -2269,3 +2269,76 @@ run-to-run noise. The intermediate canonical-flag dump is under
 timing artifacts are under `/var/tmp/psycles-frame-capability-bssrdf-1DMiCe`,
 `/var/tmp/psycles-frame208-exact-P3bNZf`, and
 `/var/tmp/psycles-frame208-timing-ROFbZY`.
+
+## Rejected light-pass rematerialization and fresh Cycles boundary
+
+The light-pass buffer is a dense pixel-major array, so its base address obeys
+the exact affine identity
+
+`light_pass_base = pixel * light_pass_buffer_count`.
+
+`pixel` already crosses every continuation. An experiment removed the stored
+base and re-materialized that expression at each use. This is semantics
+preserving over the unsigned index domain: the original definition and every
+replacement use have identical operands and identical modular arithmetic.
+The cache-disabled 64x64/1 spp HIP canary remained byte-identical to the
+208-byte checkpoint for all 15 PFM passes and the display PPM. It reduced the
+Lone Monk frame from 52 to 51 complete fields and from 208 B to 204 B, but raw
+XIR grew from 30,450 to 30,509 atoms because the address computation was now
+present in multiple continuation blocks.
+
+Three 640x480/64 spp observations of that 204-byte experiment were
+`3.46772 s`, `3.37064 s`, and `3.37565 s` (median `3.37565 s`). After restoring
+the committed 208-byte representation and rebuilding with all host threads,
+three immediately adjacent observations were `3.37633 s`, `3.37245 s`, and
+`3.37876 s` (median `3.37633 s`). The medians differ by only 0.02%, so the
+four-byte reduction has no measurable render benefit. It also expands the IR
+and repeats arithmetic on hot continuation paths. The experiment is therefore
+rejected and the stored affine base is retained; frame byte count alone is not
+used as the optimization objective. The exact, experimental timing, and
+restored timing artifacts are under
+`/var/tmp/psycles-frame204-exact-9EHNcR`,
+`/var/tmp/psycles-frame204-timing-QEkRrP`, and
+`/var/tmp/psycles-frame208-fresh-timing-BaIkET`.
+
+A fresh matched Cycles boundary uses the same Lone Monk blend, frame 4,
+`cam.001`, 640x480, 64 fixed samples, seed zero, no denoising, no adaptive
+sampling, and the same RX 9070 XT. Blender/Cycles 5.3 Alpha
+`61f93ccb1478` measured `1.951 s`, `1.898 s`, and `1.901 s` (median
+`1.901 s`). The restored Psycles HIP wavefront median is therefore 1.776x
+Cycles HIP, or 56.30% of its throughput.
+
+Both required megakernel controls were measured. The serial megakernel, with
+one invocation per pixel and an internal sample loop, measured `3.22463 s`,
+`3.18750 s`, and `3.18837 s` (median `3.18837 s`): 1.677x Cycles HIP, or
+59.62% of its throughput. The topology-matched per-(pixel, sample) megakernel,
+with the sample coordinate in dispatch Z and no coroutine scheduler, measured
+`2.43990 s`, `2.41657 s`, and `2.41158 s` (median `2.41657 s`): 1.271x
+Cycles HIP, or 78.67% of its throughput. Per-sample dispatch is 24.21% faster
+than the serial pixel-loop baseline, while wavefront is 39.72% slower than the
+topology-matched megakernel. Thus the current unscheduled path program is
+within 27.12% of Cycles on this gate, and coroutine scheduling/frame traffic
+is the dominant additional gap. The Cycles, serial-megakernel, and
+per-sample-megakernel logs are under
+`/var/tmp/cycles-lone-monk-640x480-64-fresh-hiYQhX` and
+`/var/tmp/psycles-frame208-megakernel-fresh-9ZW1QD`, and
+`/var/tmp/psycles-frame208-per-sample-megakernel-fresh-floTDX`.
+
+The 64-spp wavefront and topology-matched megakernel images are not
+byte-identical because both perform unordered floating-point atomic film
+accumulation. Their Combined relative RMSE is `7.25e-5` and luminance mean
+ratio is `1.0`; Diffuse Indirect and Glossy Indirect relative RMSE are
+`1.18e-3` and `1.09e-3`. Every pixel and channel is finite, and at least 99%
+of pixels are exactly equal in these three passes. As a control, two wavefront
+runs differ by `5.10e-5`, `8.30e-4`, and `8.27e-4` respectively, establishing
+that the cross-scheduler differences are of the same order as the scheduler's
+own atomic-order variation. Original-resolution visual inspection found no
+structured difference: the amplified panels are black apart from isolated
+firefly pixels. The complete numeric report is
+[here](frame208-fresh-comparison/report-wavefront-vs-per-sample.json).
+
+![Wavefront, per-sample megakernel, and Combined difference](frame208-fresh-comparison/triptychs/combined.png)
+
+![Wavefront, per-sample megakernel, and Diffuse Indirect difference](frame208-fresh-comparison/triptychs/diffind.png)
+
+![Wavefront, per-sample megakernel, and Glossy Indirect difference](frame208-fresh-comparison/triptychs/glossind.png)
