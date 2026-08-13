@@ -196,7 +196,21 @@ optimization. The pass atomically rejects external/address-taken functions,
 non-default calling conventions, COMDAT/GC or exceptional ABIs, semantic
 metadata, operand bundles, tail annotations, fast-math call assumptions, and
 indexed `allocsize` attributes rather than partially remapping an unproved
-contract.
+contract. Both the default C convention and Luisa's production `fastcc`
+convention are modeled and preserved exactly; all other calling conventions
+remain outside the proved domain and are rejected.
+
+A cold production-IR audit caught an integration regression before the final
+measurement: all 184 surviving Barbershop material callables use `fastcc`,
+whereas the first checked-in guard admitted only the default convention. An
+AMDGPU `llc` boundary probe independently confirms that `fastcc` returns 32
+`i32` values in VGPR0--VGPR31 and demotes 33 values to a caller-owned private
+object, exactly like the convention modeled by the pass. The corrected pass
+was then run offline over the complete 181 MB optimized `shade_surface` IR:
+it rewrote 184 functions and 189 calls into one shared slot, reported 35,328
+demoted bytes, and passed LLVM's module verifier. This production fixture
+check complements the small structural unit tests and prevents a green test
+suite from masking a route-selection failure.
 
 For the production Barbershop kernel, the pass transformed 184 surviving
 generated functions at 189 call sites into one shared result slot, moving
@@ -229,7 +243,9 @@ ABI transform. Original-resolution visual inspection of Combined, Diffuse
 Indirect, and Glossy Indirect triptychs found no structural difference. The
 scene-level Cycles/Psycles triptychs above remain the visual parity record.
 
-The formal boundary and rejection-domain regressions contain 122 assertions.
+The formal boundary and rejection-domain regressions contain 128 assertions,
+including preservation of `fastcc` on both the replacement function and its
+call site plus rejection of an otherwise eligible `coldcc` function.
 The HIP LLVM pipeline and callable graph suites pass, as do full parallel
 Luisa and Psycles builds. Film/light regressions pass on fallback, HIP, and
 strict native XIR-to-SPIR-V Vulkan, together with the sample-dispatch
