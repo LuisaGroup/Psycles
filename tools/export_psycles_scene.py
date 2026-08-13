@@ -32,6 +32,7 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import blender_scene_manifest as manifest  # noqa: E402
+import blender_build_identity  # noqa: E402
 import cycles_hash  # noqa: E402
 
 
@@ -1586,6 +1587,7 @@ def _export_scene(
         "schema": "psycles.blender-scene.v2",
         "source": bpy.data.filepath,
         "blender": bpy.app.version_string,
+        "blender_build": blender_build_identity.current(bpy.app),
         "frame": scene.frame_current,
         "camera": camera_data,
         "render": {

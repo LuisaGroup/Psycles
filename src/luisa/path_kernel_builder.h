@@ -140,13 +140,11 @@ make_direct_lighting_stage_plan(bool next_event_estimation,
 make_path_kernel_scene_stage_plan(
     bool next_event_estimation, bool environment_in_distribution,
     std::uint32_t emissive_triangle_count, std::uint32_t analytic_light_count,
-    std::size_t triangle_geometry_count, std::size_t curve_geometry_count,
-    std::size_t completion_source_dense_count,
-    std::size_t completion_source_sparse_count) noexcept {
+    std::size_t triangle_geometry_count,
+    std::size_t curve_geometry_count) noexcept {
   return {.analytic_light_endpoints = analytic_light_count != 0u,
           .traversal = make_scene_traversal_stage_plan(
-              triangle_geometry_count, curve_geometry_count,
-              completion_source_dense_count, completion_source_sparse_count),
+              triangle_geometry_count, curve_geometry_count),
           .direct_lighting = make_direct_lighting_stage_plan(
               next_event_estimation, environment_in_distribution,
               emissive_triangle_count, analytic_light_count)};

@@ -46,7 +46,24 @@ def _main() -> None:
         root = pathlib.Path(temporary)
         scene.cycles.pixel_filter_type = "BOX"
         scene.cycles.filter_width = 0.01
-        box = _export(exporter, root / "box")["render"]
+        box_payload = _export(exporter, root / "box")
+        box = box_payload["render"]
+        build = box_payload.get("blender_build")
+        if (
+            not isinstance(build, dict)
+            or build.get("version") != bpy.app.version_string
+            or build.get("build_hash")
+            != bpy.app.build_hash.decode("utf-8")
+            or build.get("build_branch")
+            != bpy.app.build_branch.decode("utf-8")
+            or build.get("build_type")
+            != bpy.app.build_type.decode("utf-8")
+            or build.get("version_tuple") != list(bpy.app.version)
+        ):
+            raise AssertionError(
+                "scene export did not preserve Blender build identity: "
+                f"{build}"
+            )
         if (
             box["pixel_filter_type"] != "BOX"
             or float(box["filter_width"]) != 1.0
@@ -236,6 +253,24 @@ def _main() -> None:
         raise AssertionError(
             "Cycles golden did not enable the canonical volume passes"
         )
+
+    disabled_layer = scene.view_layers.new("Psycles Disabled Golden Layer")
+    disabled_layer.use = False
+    disabled_layer.use_pass_normal = False
+    try:
+        enabled_names = golden[
+            "_configure_enabled_view_layer_passes"
+        ](scene)
+        if (
+            disabled_layer.use
+            or disabled_layer.use_pass_normal
+            or disabled_layer.name in enabled_names
+        ):
+            raise AssertionError(
+                "Cycles golden changed an authored-disabled view layer"
+            )
+    finally:
+        scene.view_layers.remove(disabled_layer)
 
     scene.cycles.sampling_pattern = "AUTOMATIC"
     probes["_PROBES"]["camera_dof_disk"](scene)

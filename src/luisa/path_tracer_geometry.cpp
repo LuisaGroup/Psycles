@@ -100,9 +100,7 @@ TraceShadowCallable make_trace_shadow_callable(
         make_scene_traversal_component(
             make_scene_traversal_stage_plan(
                 scene->geometries.size(),
-                scene->curve_geometries.size(),
-                scene->cycles_completion_source_dense_count,
-                scene->cycles_completion_source_sparse_count));
+                scene->curve_geometries.size()));
     TraceShadowCallable trace_shadow =
         [scene, evaluate_shadow_surface, traversal](
             Var<luisa::compute::Ray> shadow_ray,

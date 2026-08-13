@@ -319,6 +319,55 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
                 )
             )
 
+    def test_reused_export_requires_exact_blender_build(self) -> None:
+        identity = {
+            "version": "5.2.0 LTS",
+            "version_cycle": "release",
+            "version_tuple": [5, 2, 0],
+            "build_hash": "fbe6228777e7",
+            "build_branch": "blender-v5.2-release",
+            "build_type": "Release",
+        }
+        source = pathlib.Path("/out/cycles.json")
+        parsed = self.runner._blender_build_identity(
+            {"blender_build": identity}, source
+        )
+        self.assertEqual(parsed, identity)
+        self.runner._require_same_blender_build(
+            identity,
+            parsed,
+            reference_source=source,
+            candidate_source=pathlib.Path("/out/export/scene.json"),
+        )
+
+        mismatched = dict(identity)
+        mismatched["build_hash"] = "ec438d7429e5"
+        with self.assertRaisesRegex(
+            RuntimeError, "different Blender builds"
+        ):
+            self.runner._require_same_blender_build(
+                identity,
+                mismatched,
+                reference_source=source,
+                candidate_source=pathlib.Path(
+                    "/out/export/scene.json"
+                ),
+            )
+
+        with self.assertRaisesRegex(
+            RuntimeError, "no exact Blender build identity"
+        ):
+            self.runner._blender_build_identity({}, source)
+
+        invalid = dict(identity)
+        invalid["build_hash"] = 0
+        with self.assertRaisesRegex(
+            RuntimeError, "invalid Blender build identity fields"
+        ):
+            self.runner._blender_build_identity(
+                {"blender_build": invalid}, source
+            )
+
 
 if __name__ == "__main__":
     runner_path = sys.argv[1:]

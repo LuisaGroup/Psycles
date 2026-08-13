@@ -67,28 +67,15 @@ public:
   }
 };
 
-struct SourceAccelerationIdentity {
-  Bool valid;
-  UInt instance;
-  UInt primitive;
-};
-
 struct CompletedTriangleHit {
   Bool valid;
   UInt instance;
-  UInt coincident_next;
   UInt primitive;
   UInt object;
   UInt cycles_primitive;
   UInt type_order;
   Float distance;
   Float2 barycentric;
-};
-
-struct PrimitiveCompletionRange {
-  Bool valid;
-  UInt instance_offset;
-  UInt instance_count;
 };
 
 [[nodiscard]] Float distance_upper_neighbor(Expr<float> distance) noexcept {
@@ -119,97 +106,6 @@ private:
   std::shared_ptr<const PrimitiveMaterialComponent> _materials;
   std::shared_ptr<const CyclesTriangleIntersectionComponent>
       _triangle_intersection;
-
-  [[nodiscard]] SourceAccelerationIdentity
-  source_acceleration_identity(
-      const std::shared_ptr<LuisaSceneData> &scene,
-      const ScenePrimitiveIdentity &source) const noexcept {
-    Bool found = false;
-    UInt instance_index = 0u;
-    UInt primitive_index = 0u;
-    if (scene->cycles_completion_source_dense_count != 0u) {
-      $if((source.object != surface_ray::invalid_primitive) &
-          (source.object < scene->cycles_completion_source_dense_count)) {
-        const auto candidate =
-            scene->cycles_completion_source_dense_buffer->read(source.object);
-        $if(candidate != surface_ray::invalid_primitive) {
-          found = true;
-          instance_index = candidate;
-        };
-      };
-    } else if (scene->cycles_completion_source_sparse_count != 0u) {
-      $if(source.object != surface_ray::invalid_primitive) {
-        UInt first = 0u;
-        UInt last = scene->cycles_completion_source_sparse_count;
-        $while(first < last) {
-          const auto middle = first + (last - first) / 2u;
-          const auto entry =
-              scene->cycles_completion_source_sparse_buffer->read(middle);
-          $if(entry.x < source.object) {
-            first = middle + 1u;
-          }
-          $else {
-            last = middle;
-          };
-        };
-        $if(first < scene->cycles_completion_source_sparse_count) {
-          const auto entry =
-              scene->cycles_completion_source_sparse_buffer->read(first);
-          $if(entry.x == source.object) {
-            found = true;
-            instance_index = entry.y;
-          };
-        };
-      };
-    }
-    Bool valid = false;
-    $if(found) {
-      const auto instance = scene->instance_buffer->read(instance_index);
-      const auto geometry =
-          scene->geometry_buffer->read(instance.geometry_index);
-      valid = (geometry.primitive_kind == geometry_kind_triangle) &
-              (source.primitive >= geometry.cycles_primitive_offset);
-      primitive_index = source.primitive - geometry.cycles_primitive_offset;
-    };
-    return {.valid = std::move(valid),
-            .instance = std::move(instance_index),
-            .primitive = std::move(primitive_index)};
-  }
-
-  [[nodiscard]] PrimitiveCompletionRange
-  primitive_completion_range(
-      const std::shared_ptr<LuisaSceneData> &scene,
-      Expr<std::uint32_t> instance_index,
-      Expr<std::uint32_t> local_primitive) const noexcept {
-    const auto instance = scene->instance_buffer->read(instance_index);
-    Bool valid = false;
-    UInt instance_offset = 0u;
-    UInt instance_count = 0u;
-    UInt first = instance.primitive_completion_offset;
-    const UInt end = first + instance.primitive_completion_count;
-    UInt last = end;
-    $while(first < last) {
-      const auto middle = first + (last - first) / 2u;
-      const auto record = scene->primitive_completion_buffer->read(middle);
-      $if(record.local_primitive < local_primitive) {
-        first = middle + 1u;
-      }
-      $else {
-        last = middle;
-      };
-    };
-    $if(first < end) {
-      const auto record = scene->primitive_completion_buffer->read(first);
-      $if(record.local_primitive == local_primitive) {
-        valid = record.instance_count > 1u;
-        instance_offset = record.instance_offset;
-        instance_count = record.instance_count;
-      };
-    };
-    return {.valid = std::move(valid),
-            .instance_offset = std::move(instance_offset),
-            .instance_count = std::move(instance_count)};
-  }
 
   [[nodiscard]] CompletedTriangleHit
   resolve_triangle_instance(
@@ -247,7 +143,6 @@ private:
     return {
         .valid = intersection.valid & visible & !excluded,
         .instance = UInt{instance_index},
-        .coincident_next = UInt{instance.coincident_next},
         .primitive = UInt{local_primitive},
         .object = UInt{object},
         .cycles_primitive = UInt{primitive},
@@ -256,93 +151,13 @@ private:
         .barycentric = Float2{intersection.barycentric}};
   }
 
-  [[nodiscard]] CompletedTriangleHit
-  resolve_completed_triangle(
-      const std::shared_ptr<LuisaSceneData> &scene,
-      const Var<luisa::compute::Ray> &ray,
-      Expr<std::uint32_t> visibility_mask,
-      const ScenePrimitiveIdentity &source,
-      const ScenePrimitiveIdentity &light,
-      Expr<std::uint32_t> seed_instance,
-      Expr<std::uint32_t> local_primitive) const noexcept {
-    if (!_plan.triangle_completion) {
-      return resolve_triangle_instance(
-          scene, ray, visibility_mask, source, light,
-          seed_instance, local_primitive);
-    }
-    CyclesClosestHitOrder group_closest;
-    Bool group_has_hit = false;
-    UInt group_instance = seed_instance;
-    UInt group_object = 0u;
-    UInt group_primitive = 0u;
-    UInt group_type = geometry_kind_triangle;
-    Float group_distance = ray->t_max();
-    Float2 group_barycentric = make_float2(0.0f);
-    const auto seed = scene->instance_buffer->read(seed_instance);
-    const auto completion = primitive_completion_range(
-        scene, seed_instance, local_primitive);
-    UInt alias_index = seed_instance;
-    UInt completion_index = completion.instance_offset;
-    UInt remaining = select(
-        max(seed.coincident_count, 1u),
-        completion.instance_count,
-        completion.valid);
-    $while(remaining > 0u) {
-      $if(completion.valid) {
-        alias_index =
-            scene->primitive_completion_instance_buffer->read(
-                completion_index);
-      };
-      const auto candidate = resolve_triangle_instance(
-          scene, ray, visibility_mask, source, light,
-          alias_index, local_primitive);
-      const auto accepted =
-          candidate.valid &
-          group_closest.accepts(
-              candidate.distance,
-              candidate.object,
-              candidate.cycles_primitive,
-              candidate.type_order);
-      $if(accepted) {
-        group_closest.select(
-            candidate.distance,
-            candidate.object,
-            candidate.cycles_primitive,
-            candidate.type_order);
-        group_has_hit = true;
-        group_instance = candidate.instance;
-        group_object = candidate.object;
-        group_primitive = candidate.cycles_primitive;
-        group_type = candidate.type_order;
-        group_distance = candidate.distance;
-        group_barycentric = candidate.barycentric;
-      };
-      $if(completion.valid) {
-        completion_index += 1u;
-      }
-      $else {
-        alias_index = candidate.coincident_next;
-      };
-      remaining -= 1u;
-    };
-    return {.valid = std::move(group_has_hit),
-            .instance = std::move(group_instance),
-            .coincident_next = 0u,
-            .primitive = UInt{local_primitive},
-            .object = std::move(group_object),
-            .cycles_primitive = std::move(group_primitive),
-            .type_order = std::move(group_type),
-            .distance = std::move(group_distance),
-            .barycentric = std::move(group_barycentric)};
-  }
-
   [[nodiscard]] TriangleResolverCallable
   make_triangle_resolver(
       const std::shared_ptr<LuisaSceneData> &scene) const noexcept {
     TriangleResolverCallable resolver =
         [this, scene](Var<luisa::compute::Ray> ray,
                       Var<TriangleResolutionQueryCall> query) noexcept {
-          const auto resolved = resolve_completed_triangle(
+          const auto resolved = resolve_triangle_instance(
               scene,
               ray,
               query.visibility_mask,
@@ -363,10 +178,7 @@ private:
           result.valid = select(0u, 1u, resolved.valid);
           return result;
         };
-    resolver.set_name(
-        _plan.triangle_completion
-            ? "cycles_triangle_resolver_completion"
-            : "cycles_triangle_resolver_singleton");
+    resolver.set_name("cycles_triangle_resolver");
     return resolver;
   }
 
@@ -391,7 +203,6 @@ private:
     return {
         .valid = resolved.valid != 0u,
         .instance = resolved.instance,
-        .coincident_next = 0u,
         .primitive = resolved.primitive,
         .object = resolved.object,
         .cycles_primitive = resolved.cycles_primitive,
@@ -438,10 +249,10 @@ private:
         [&](luisa::compute::SurfaceCandidate &candidate,
             bool commit_candidate) noexcept {
           const auto hit = candidate.hit();
-          // Hardware triangle queries are broad-phase candidate sources. The
-          // Resolver handles a singleton, a whole-instance class, or a sparse
-          // primitive completion list through the same Cycles predicate and
-          // stable identity order.
+          // Hardware traversal owns the candidate set. The resolver only
+          // validates the reported candidate with the shared triangle
+          // predicate and stable identity order; it never fabricates a
+          // source/coincident candidate that the backend did not enumerate.
           const auto group = invoke_triangle_resolver(
               *triangle_resolver, ray, visibility_mask, source, light,
               hit->inst, hit->prim);
@@ -517,51 +328,6 @@ private:
             };
           };
         };
-
-    // Explicit self exclusion and geometric origin offset are independent
-    // parts of the Cycles ray contract. If Cycles' exact source-triangle test
-    // certifies the origin, it deliberately leaves the ray at the surface and
-    // rejects only the source identity. Distinct instances with bit-identical
-    // support, or corresponding primitives with overlapping closed world
-    // bounds, therefore remain eligible at the closed t == 0 endpoint for
-    // continuation as well as shadow rays. Hardware traversal is not required
-    // to report that endpoint consistently, so complete its broad-phase
-    // candidates from the source's finite completion relation. This is not a
-    // topological forced hit: resolve_completed_triangle still applies the
-    // actual ray, visibility, exclusions, and Cycles Pluecker predicate. A
-    // geometrically offset origin therefore rejects candidates normally.
-    if (_plan.triangle_completion) {
-      const auto source_acceleration =
-          source_acceleration_identity(scene, source);
-      $if(source_acceleration.valid) {
-        const auto source_instance =
-            scene->instance_buffer->read(source_acceleration.instance);
-        const auto completion = primitive_completion_range(
-            scene, source_acceleration.instance,
-            source_acceleration.primitive);
-        $if((max(source_instance.coincident_count, 1u) > 1u) |
-            completion.valid) {
-          const auto group = invoke_triangle_resolver(
-              *triangle_resolver, ray, visibility_mask, source, light,
-              source_acceleration.instance,
-              source_acceleration.primitive);
-          const auto accepted =
-              group.valid &
-              closest.accepts(group.distance, group.object,
-                              group.cycles_primitive, group.type_order);
-          $if(accepted) {
-            closest.select(group.distance, group.object,
-                           group.cycles_primitive, group.type_order);
-            resolved->inst = group.instance;
-            resolved->prim = group.primitive;
-            resolved->bary = group.barycentric;
-            resolved->hit_type = static_cast<std::uint32_t>(
-                luisa::compute::HitType::Surface);
-            resolved->committed_ray_t = group.distance;
-          };
-        };
-      };
-    }
 
     const auto trace_backend =
         [&](const Var<luisa::compute::Ray> &candidate_ray,
@@ -665,7 +431,7 @@ std::shared_ptr<const SceneTraversalComponent>
 make_scene_traversal_component(
     SceneTraversalStagePlan plan) {
   return std::make_shared<UnifiedSceneTraversalComponent>(
-      plan.canonicalized());
+      plan);
 }
 
 } // namespace psycles::luisa_backend::detail

@@ -1,5 +1,14 @@
 # Barbershop exact finite world support
 
+> **Superseded scene-level conclusion (2026-08-14).** This checkpoint paired
+> a Blender 5.3 Alpha evaluated export with a different Cycles reference
+> build. Blender 5.2 LTS evaluates the same official `.blend` to 1,105 runtime
+> instances instead of 2,565 and does not contain the claimed black-gap
+> oracle. The finite-relation analysis below is retained as history, but its
+> use to synthesize candidates outside the acceleration backend was invalid
+> and has been removed. See
+> [the Blender 5.2 revalidation](../../2026-08-14/barbershop-blender-5.2-revalidation/README.md).
+
 ## Result
 
 The remaining large Barbershop floor/cupboard error was not a UV, handedness,

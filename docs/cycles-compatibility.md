@@ -1023,12 +1023,13 @@ differentials are recorded in
 The official Barbershop Interior graph audit confirms that its only connected
 Volume root is the `fog` material's Emission closure. It contains no reachable
 volume scattering or absorption closure, and Cycles main produces identically
-zero Volume Direct and Volume Indirect passes. Full-scene work exposed exact
-coincident triangle and curve hits instead: scene traversal now models
-Cycles' closed ray interval and stable primitive identity relation explicitly,
-with endpoint, exclusion, coincident-instance, and curve-segment regressions
-on fallback, HIP, and Vulkan. The latest-Cycles CPU/HIP differential,
-independent HIP repeat, performance, and inspected triptychs are recorded in
+zero Volume Direct and Volume Indirect passes. Scene traversal models Cycles'
+closed ray interval and stable primitive identity relation over candidates
+enumerated by the selected acceleration backend. An earlier experiment also
+synthesized whole-scene coincident/source candidates, but a Blender 5.2 audit
+proved that experiment had been fitted to a mismatched Blender 5.3 Alpha
+export and removed it. Endpoint, exclusion, and curve-segment regressions
+remain on fallback, HIP, and Vulkan. The original differential is recorded in
 [`validation/2026-08-04/barbershop-stable-traversal`](validation/2026-08-04/barbershop-stable-traversal/README.md).
 
 Implicit conversions among the supported color/vector/point/normal/float3
@@ -1050,19 +1051,16 @@ official Barbershop staged node differentials, and inspected triptychs are
 recorded in
 [`validation/2026-08-05/barbershop-render-uv-box`](validation/2026-08-05/barbershop-render-uv-box/README.md).
 
-Exact-support aliases now reproduce Cycles' per-object geometry
-representation instead of inheriting the first acceleration-backend
-candidate. Bit-identical position/index support at a bit-identical transform
-forms an exact class; each member then uses either Cycles' static-transformed
-vertices or its object-space ray relation according to geometry user count,
-motion, adaptive subdivision, BSSRDF, and true-displacement gates. An
-explicit FMA-ordered Pluecker component evaluates those candidates before
-visibility, exclusion, closed-interval, and stable identity selection. The
-official Barbershop sample-6 object/primitive regression passes on
-fallback/HIP/Vulkan, and the 128 spp Cycles CPU/HIP differential, fallback
-full-scene run, performance cost, inspected triptychs, sparse repeat
-nondeterminism, and remaining event-3 residual are recorded in
-[`validation/2026-08-05/barbershop-cycles-geometry-representation`](validation/2026-08-05/barbershop-cycles-geometry-representation/README.md).
+Cycles' per-object geometry representation remains explicit: each accelerator
+candidate uses either static-transformed vertices or its object-space ray
+relation according to geometry user count, motion, adaptive subdivision,
+BSSRDF, and true-displacement gates. An FMA-ordered Pluecker component then
+applies visibility, exclusion, closed-interval, and stable identity selection.
+It does not fabricate another instance merely because finite support overlaps.
+The representation study is recorded in
+[`validation/2026-08-05/barbershop-cycles-geometry-representation`](validation/2026-08-05/barbershop-cycles-geometry-representation/README.md),
+while the corrected same-build scene oracle and traversal rule are in
+[`validation/2026-08-14/barbershop-blender-5.2-revalidation`](validation/2026-08-14/barbershop-blender-5.2-revalidation/README.md).
 
 Adaptive sampling and denoising are exported and diagnosed but are not part of
 the path-integrator estimator. Psycles renders fixed-count, un-denoised linear
