@@ -8,6 +8,7 @@
 
 #include "../src/luisa/path_tracer_shader_services.h"
 #include "../src/luisa/path_tracer_surface_closure_setup.h"
+#include "../src/luisa/path_tracer_surfaces.h"
 
 #include <luisa/xir/instructions/if.h>
 #include <luisa/xir/instructions/loop.h>
@@ -18,6 +19,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -386,6 +388,60 @@ public:
         ShaderDomain::surface,
         OutputRef{.node = diffuse, .socket = "Closure"});
     return graph;
+}
+
+[[nodiscard]] bool surface_topologies_are_typed_callables(
+    const ShaderCompiler &compiler) {
+    const auto compile = [&](ShaderGraph graph) {
+        const auto shader = compiler.compile(graph);
+        if (!shader.ok()) {
+            throw std::runtime_error{
+                "surface-topology callable fixture failed graph validation"};
+        }
+        const auto lowered = compile_surface_program(*shader.program);
+        if (!lowered.ok()) {
+            throw std::runtime_error{
+                "surface-topology callable fixture failed lowering"};
+        }
+        return lowered.program;
+    };
+
+    auto scene = std::make_shared<
+        psycles::luisa_backend::detail::LuisaSceneData>();
+    const auto first = compile(make_graph());
+    ShaderGraph principled_graph;
+    const auto principled = principled_graph.add_node(
+        node_type::principled_bsdf,
+        "Independent topology callable");
+    principled_graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = principled, .socket = "Closure"});
+    const auto second = compile(std::move(principled_graph));
+    static_cast<void>(scene->surfaces.create<GraphSurface>(first));
+    static_cast<void>(scene->surfaces.create<GraphSurface>(second));
+
+    const auto callables =
+        psycles::luisa_backend::detail::make_surface_callables(scene);
+    const auto count_named = [](const auto &root,
+                                std::string_view prefix) noexcept {
+        auto count = std::size_t{0u};
+        for (const auto &builder :
+             root.function().custom_callables()) {
+            const auto name = builder->name();
+            count += name.starts_with(prefix) ? 1u : 0u;
+        }
+        return count;
+    };
+
+    // The outer dispatcher must directly reference one typed leaf per distinct
+    // topology. This asserts the host/JIT structural boundary, not a brittle
+    // total callable count: helpers remain free to deduplicate by full hash.
+    return count_named(callables.preparation,
+                       "surface_prepare_topology_") == 2u &&
+           count_named(callables.evaluate_light,
+                       "surface_evaluate_light_topology_") == 2u &&
+           count_named(callables.sample,
+                       "surface_sample_topology_") == 2u;
 }
 
 [[nodiscard]] bool attribute_lookup_cfg_is_bounded() {
@@ -1358,6 +1414,12 @@ int main() {
     if (!predicated_categorical_is_branchless()) {
         return 11;
     }
+    if (!surface_topologies_are_typed_callables(
+            shader_compiler)) {
+        std::cerr
+            << "Surface topologies were not retained as typed callables\n";
+        return 12;
+    }
 
     Kernel1D sampler_kernel = [](
                                   BufferFloat4 table,
@@ -1385,5 +1447,5 @@ int main() {
                 rng_hash,
                 dimension));
     };
-    return sampler_kernel.function() ? 0 : 12;
+    return sampler_kernel.function() ? 0 : 13;
 }
