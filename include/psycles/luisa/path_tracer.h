@@ -146,6 +146,11 @@ struct LuisaPathTraceRequest {
 
 struct LuisaPathTracerOptions {
     bool next_event_estimation{true};
+    // Cycles' HIP kernels are compiled with fast math and explicitly select
+    // device fast transcendental functions. Keep that as the production
+    // policy for every Psycles path-kernel scheduler; false is the strict
+    // diagnostic baseline. This is a host/JIT choice, never a device branch.
+    bool enable_fast_math{true};
     // All three modes record the same path program. The scheduler is a host-
     // side execution policy and is never inferred from the backend name, so a
     // GPU can use the megakernel baseline and fallback can exercise both
