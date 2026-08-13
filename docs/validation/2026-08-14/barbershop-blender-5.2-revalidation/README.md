@@ -15,10 +15,11 @@ Combined relative RMSE is `0.107473` and mean luminance is `0.999559x`
 Cycles CPU. Coherent indirect/glossy residuals remain and are not classified
 as mere floating-point noise.
 
-On the RX 9070 XT, the best current Psycles HIP mode is staged wavefront:
-`5.182 s` versus Cycles HIP `1.751 s` at 64 spp (`2.96x` slower), and
-`20.010 s` versus `6.085 s` at 256 spp (`3.29x` slower). These are render-only
-intervals with adaptive sampling and denoising disabled.
+On the RX 9070 XT, the best current Psycles HIP mode is staged wavefront.
+Fresh three-run medians are `5.155 s` for Psycles versus `1.748 s` for
+Cycles HIP at 64 spp (`2.95x` slower). The preceding 256-spp checkpoint was
+`20.010 s` versus `6.085 s` (`3.29x` slower). These are render-only intervals
+with adaptive sampling and denoising disabled.
 
 ## Exact reference identity
 
@@ -133,8 +134,8 @@ JIT are excluded.
 
 | renderer/mode | render-only | slowdown vs Cycles HIP |
 | --- | ---: | ---: |
-| Cycles 5.2 HIP | 1.751 s | 1.00x |
-| Psycles staged wavefront | 5.182 s | 2.96x |
+| Cycles 5.2 HIP | 1.748 s | 1.00x |
+| Psycles staged wavefront | 5.155 s | 2.95x |
 | Psycles per-sample megakernel | 6.605 s | 3.77x |
 | Psycles pixel-loop megakernel | 8.160 s | 4.66x |
 | Psycles ordinary wavefront | 10.245 s | 5.85x |
@@ -150,7 +151,7 @@ and its optional giant state-machine tail, not bulk PCIe transfer.
 At 256 spp, rocprofv3 maps the dominant continuation kernels using their
 scheduler dispatch counts:
 
-| continuation | GPU kernel time | share of 20.057 s wall | scratch per workgroup | VGPR |
+| continuation | GPU kernel time | share of 20.057 s wall | private segment per work-item | VGPR |
 | --- | ---: | ---: | ---: | ---: |
 | `shade_surface` | 10.570 s | 52.7% | 40,384 B | 256 |
 | `intersect_closest` | 6.530 s | 32.6% | 1,344 B | 256 |
@@ -158,7 +159,7 @@ scheduler dispatch counts:
 | `shade_light_forward` | 0.118 s | 0.6% | 1,056 B | 256 |
 
 The first two continuations account for `85.3%` of render wall time.
-`shade_surface`'s 40 KB scratch footprint proves severe register spilling;
+`shade_surface`'s 40 KB private segment proves severe register spilling;
 the 784-byte coroutine frame alone does not explain the gap. The next
 performance work is therefore closure-local live-range contraction and
 generation of only reachable closures, followed by HIPRT closest-hit path
@@ -169,6 +170,70 @@ graph tail kernel spent about 79% of sampled host compile time in LLVM IPSCCP,
 which materializes a dense per-member lattice over the giant aggregate state
 machine. A formal sparse aggregate projection or an earlier demanded-mask
 lowering is required; disabling SCCP for this scene would be an ad hoc fix.
+
+## Post-IPO HIP large-return ABI correction
+
+The 189 mutually exclusive surface-topology callables return a roughly
+144-byte `SurfaceSampleCall` aggregate. AMDGPU's generated-function return
+convention has only 32 32-bit VGPR locations. A return beyond that boundary is
+lowered to a hidden caller stack object; because the old IR had one independent
+object per static call site, the 189 alternatives accumulated linearly even
+though only one executes for a hit.
+
+The Luisa HIP backend now applies a post-IPO ABI transform to every supported
+generated callable whose conservatively legalized return exceeds 32 VGPR
+locations:
+
+```text
+Ret f(args...)  ->  void f(private Ret *result, args...)
+```
+
+All calls of one exact return type in a caller share one private result slot,
+and each call is followed immediately by the defining load. Hence the slot
+live intervals are disjoint; recursive calls still have distinct machine
+frames. Running after IPO keeps the callable body in SSA form during ordinary
+optimization. The pass atomically rejects external/address-taken functions,
+non-default calling conventions, COMDAT/GC or exceptional ABIs, semantic
+metadata, operand bundles, tail annotations, fast-math call assumptions, and
+indexed `allocsize` attributes rather than partially remapping an unproved
+contract.
+
+For the production Barbershop kernel, the pass transformed 184 surviving
+generated functions at 189 call sites into one shared result slot, moving
+35,328 bytes of aggregate return ABI behind explicit storage. Same-command
+rocprofv3 traces at 640x480/64 spp report:
+
+| variant / continuation | calls | GPU kernel time | private segment per work-item | VGPR |
+| --- | ---: | ---: | ---: | ---: |
+| before / `shade_surface` | 583 | 2700.162 ms | 40,384 B | 256 |
+| after / `shade_surface` | 583 | 2688.286 ms | 4,288 B | 256 |
+| before / `intersect_closest` | 475 | 1662.468 ms | 1,344 B | 256 |
+| after / `intersect_closest` | 475 | 1667.342 ms | 1,344 B | 256 |
+
+Thus the static private segment falls by `89.38%`, but `shade_surface` kernel
+time changes by only `-0.44%` and the warm render median by about `-0.52%`,
+both near run-to-run noise. The old ABI reserved 189 disjoint static objects,
+while a dynamic path touched only one return; sharing removes the capacity
+pathology without removing the remaining dynamic store/load work. The
+unchanged 256-VGPR count identifies live-range/instruction pressure inside
+surface evaluation as the next target. `intersect_closest` remains the other
+large cost and is unaffected, as expected.
+
+An exact pass-disabled/pass-enabled A/B was compared against a repeated
+pass-disabled render for all Combined, Normal, Albedo, twelve light passes,
+and volume guiding outputs. The two comparisons have the same notable noise:
+Combined relative RMSE `4.4494e-5`, Diffuse Indirect `0.00270209`, and Glossy
+Indirect `0.000218899`; every p99 pixel error is zero. The isolated bright
+pixels therefore come from existing atomic/scheduling nondeterminism, not the
+ABI transform. Original-resolution visual inspection of Combined, Diffuse
+Indirect, and Glossy Indirect triptychs found no structural difference. The
+scene-level Cycles/Psycles triptychs above remain the visual parity record.
+
+The formal boundary and rejection-domain regressions contain 122 assertions.
+The HIP LLVM pipeline and callable graph suites pass, as do full parallel
+Luisa and Psycles builds. Film/light regressions pass on fallback, HIP, and
+strict native XIR-to-SPIR-V Vulkan, together with the sample-dispatch
+partition test.
 
 ## Commands and gates
 
