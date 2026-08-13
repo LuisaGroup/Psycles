@@ -16,8 +16,9 @@ Cycles CPU. Coherent indirect/glossy residuals remain and are not classified
 as mere floating-point noise.
 
 On the RX 9070 XT, the best current Psycles HIP mode is staged wavefront.
-Fresh three-run medians are `5.155 s` for Psycles versus `1.748 s` for
-Cycles HIP at 64 spp (`2.95x` slower). The preceding 256-spp checkpoint was
+The final five-run median is `5.16578 s` for Psycles versus `1.74768 s` for
+Cycles HIP at 64 spp (`2.9558x` slower, or `33.83%` of Cycles throughput).
+The preceding 256-spp checkpoint was
 `20.010 s` versus `6.085 s` (`3.29x` slower). These are render-only intervals
 with adaptive sampling and denoising disabled.
 
@@ -135,7 +136,7 @@ JIT are excluded.
 | renderer/mode | render-only | slowdown vs Cycles HIP |
 | --- | ---: | ---: |
 | Cycles 5.2 HIP | 1.748 s | 1.00x |
-| Psycles staged wavefront | 5.155 s | 2.95x |
+| Psycles staged wavefront | 5.166 s | 2.96x |
 | Psycles per-sample megakernel | 6.605 s | 3.77x |
 | Psycles pixel-loop megakernel | 8.160 s | 4.66x |
 | Psycles ordinary wavefront | 10.245 s | 5.85x |
@@ -219,29 +220,56 @@ rocprofv3 traces at 640x480/64 spp report:
 
 | variant / continuation | calls | GPU kernel time | private segment per work-item | VGPR |
 | --- | ---: | ---: | ---: | ---: |
-| before / `shade_surface` | 583 | 2700.162 ms | 40,384 B | 256 |
-| after / `shade_surface` | 583 | 2688.286 ms | 4,288 B | 256 |
-| before / `intersect_closest` | 475 | 1662.468 ms | 1,344 B | 256 |
-| after / `intersect_closest` | 475 | 1667.342 ms | 1,344 B | 256 |
+| before / `shade_surface` | 583 | 2705.035 ms | 40,384 B | 256 |
+| after / `shade_surface` | 583 | 2689.540 ms | 4,288 B | 256 |
+| before / `intersect_closest` | 475 | 1671.748 ms | 1,344 B | 256 |
+| after / `intersect_closest` | 475 | 1667.639 ms | 1,344 B | 256 |
 
 Thus the static private segment falls by `89.38%`, but `shade_surface` kernel
-time changes by only `-0.44%` and the warm render median by about `-0.52%`,
-both near run-to-run noise. The old ABI reserved 189 disjoint static objects,
+time changes by only `-0.57%` and the warm render median by about `-0.41%`,
+both near run-to-run noise. The final five fixed-object render-only samples
+are `5.16170`, `5.16172`, `5.16578`, `5.16623`, and `5.17089` seconds. The old
+ABI reserved 189 disjoint static objects,
 while a dynamic path touched only one return; sharing removes the capacity
 pathology without removing the remaining dynamic store/load work. The
 unchanged 256-VGPR count identifies live-range/instruction pressure inside
 surface evaluation as the next target. `intersect_closest` remains the other
 large cost and is unaffected, as expected.
 
-An exact pass-disabled/pass-enabled A/B was compared against a repeated
-pass-disabled render for all Combined, Normal, Albedo, twelve light passes,
-and volume guiding outputs. The two comparisons have the same notable noise:
-Combined relative RMSE `4.4494e-5`, Diffuse Indirect `0.00270209`, and Glossy
-Indirect `0.000218899`; every p99 pixel error is zero. The isolated bright
-pixels therefore come from existing atomic/scheduling nondeterminism, not the
-ABI transform. Original-resolution visual inspection of Combined, Diffuse
-Indirect, and Glossy Indirect triptychs found no structural difference. The
-scene-level Cycles/Psycles triptychs above remain the visual parity record.
+The final profile also audited shader-cache identity. During development, an
+old object had been compiled with the same temporary codegen revision before
+the `fastcc` admission fix; its 21,418,182-byte artifact still reported the
+40,384-byte private segment. The clean cache was preserved outside the
+worktree and regenerated with the released revision-14 backend. The resulting
+21,412,550-byte artifact logs the exact 184/189/1 transform above and reports
+4,288 bytes under rocprofv3. This local development collision cannot occur
+when updating from the published revision 13, but the artifact-size and
+private-segment checks ensure that no stale object entered the final numbers.
+
+A no-cache 1x1 render isolates compilation from image work. The dominant
+surface module took `115.99 s` in LLVM code generation, emitted a 23,098,396
+byte bitcode package, and one fully cold HIPRT link took `94.37 s`; total
+process time was `256.87 s` with a `19,671,996 KiB` peak RSS. A repeated link
+of identical bitcode took `1.61 s`, so link caching/cold-state behavior is a
+separate compiler-startup investigation rather than render throughput.
+
+An exact old-object/fixed-object A/B was compared against two repeated fixed
+runs for Combined, Normal, Albedo, all twelve light passes, and both volume
+passes. The notable relative RMSE values are all smaller across the ABI change
+than across the fixed-object repeat: Combined `2.7774e-5` versus `4.1930e-5`,
+Diffuse Indirect `0.00134755` versus `0.00234347`, and Glossy Indirect
+`0.000162856` versus `0.000215460`. Environment and both volume passes are
+bit-exact. Every p99 pixel error is zero except Normal at no more than
+`6.73e-11`; the remaining color/normal differences are float-ULP scale.
+Therefore the isolated bright pixels are existing atomic/scheduling
+nondeterminism, not the ABI transform.
+
+Original-resolution visual inspection of the ABI Combined triptych found no
+structural difference on the floor, ceiling, cupboard, lamps, or highlights;
+the difference panel is visually black. The scene-level Cycles/Psycles
+triptychs above remain the visual parity record.
+
+![Barbershop pre-FastCC object, fixed FastCC object, and absolute difference](triptychs/fastcc-abi-combined.png)
 
 The formal boundary and rejection-domain regressions contain 128 assertions,
 including preservation of `fastcc` on both the replacement function and its
