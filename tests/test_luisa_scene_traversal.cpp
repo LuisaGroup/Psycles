@@ -2,6 +2,7 @@
 #include "path_kernel_curve_geometry.h"
 #include "path_kernel_curve_primitive.h"
 #include "path_kernel_scene_traversal.h"
+#include "path_kernel_subsurface_intersection.h"
 #include "path_tracer_scene_geometry.h"
 #include "path_tracer_scene_upload.h"
 
@@ -24,7 +25,7 @@ using namespace luisa::compute;
 using namespace psycles::luisa_backend::detail;
 using psycles::luisa_backend::surface_ray::invalid_primitive;
 
-inline constexpr std::size_t record_count = 26u;
+inline constexpr std::size_t record_count = 28u;
 
 [[nodiscard]] bool near(float actual, float expected,
                         float tolerance = 2.0e-6f) noexcept {
@@ -619,6 +620,15 @@ int main(int argc, char **argv) {
   scene->accel.emplace_back(
       partial_support_mesh, to_luisa(partial_b_transform),
       0xffu, false, 11u);
+  // The compact local domain deliberately has a different ordinal space and
+  // traversal order from the primary TLAS. User ids are the sole canonical
+  // injection back into InstanceGpu/primary-TLAS identity.
+  scene->subsurface_accel.emplace(device.create_accel());
+  scene->subsurface_accel->emplace_back(
+      mesh, coincident_transform, 0xffu, false, 3u);
+  scene->subsurface_accel->emplace_back(
+      mesh, make_float4x4(1.0f), 0xffu, false, 0u);
+  scene->subsurface_instance_count = 2u;
 
   const auto empty_shape = traversal_xir_shape(scene, {});
   const auto triangle_shape = traversal_xir_shape(
@@ -701,6 +711,29 @@ int main(int argc, char **argv) {
   Kernel1D evaluate = [scene, traversal, curve_primitive,
                        curve_geometry](BufferFloat4 records) noexcept {
     const UInt test = dispatch_x();
+    $if(test >= 26u) {
+      const auto local_hit = (*scene->subsurface_accel)
+                                 ->intersect(
+                                     make_ray(
+                                         make_float3(
+                                             select(5.0f, 0.0f,
+                                                    test == 27u),
+                                             0.0f,
+                                             0.0f),
+                                         make_float3(0.0f, 0.0f, 1.0f),
+                                         0.0f,
+                                         10.0f),
+                                     {.visibility_mask = 0xffu});
+      const auto primary_instance = subsurface_primary_instance(
+          scene, select(0u, 1u, test == 27u));
+      records.write(
+          test,
+          make_float4(cast<float>(primary_instance),
+                      cast<float>(local_hit->inst),
+                      cast<float>(local_hit->prim),
+                      local_hit->committed_ray_t));
+      $return();
+    };
     UInt source_object = invalid_primitive;
     UInt source_primitive = invalid_primitive;
     UInt light_object = invalid_primitive;
@@ -986,7 +1019,8 @@ int main(int argc, char **argv) {
          << overlap_mesh.build() << barbershop_floor_mesh.build()
          << partial_support_mesh.build()
          << curves.build()
-         << scene->accel.build() << shader(output).dispatch(record_count)
+         << scene->accel.build() << scene->subsurface_accel->build()
+         << shader(output).dispatch(record_count)
          << output.copy_to(luisa::span{actual}) << synchronize();
 
   constexpr std::array expected{luisa::float4{2.0f, 1.0f, 0.0f, 1.0f},
@@ -1023,7 +1057,9 @@ int main(int argc, char **argv) {
                                 luisa::float4{0.0f, 29.0f,
                                               457043.0f, 10.0f},
                                 luisa::float4{0.0f, 29.0f,
-                                              457046.0f, 10.0f}};
+                                              457046.0f, 10.0f},
+                                luisa::float4{3.0f, 0.0f, 0.0f, 4.0f},
+                                luisa::float4{0.0f, 1.0f, 0.0f, 4.0f}};
   for (auto index = std::size_t{0u}; index < expected.size(); ++index) {
     if (!equal_record(actual[index], expected[index])) {
       std::cerr << "scene traversal failed on " << backend << " at record "

@@ -1,4 +1,5 @@
 #include "subsurface_random_walk_component.h"
+#include "path_kernel_subsurface_intersection.h"
 
 #include <psycles/luisa/cycles_path_state.h>
 #include <psycles/luisa/cycles_sample_mapping.h>
@@ -161,16 +162,6 @@ struct ChannelSample {
         axis, cosine, azimuth_random);
 }
 
-void store_hit(
-    Var<luisa::compute::CommittedHit> &destination,
-    const Var<luisa::compute::CommittedHit> &source) noexcept {
-    destination.inst = source->inst;
-    destination.prim = source->prim;
-    destination.bary = source->bary;
-    destination.hit_type = source->hit_type;
-    destination.committed_ray_t = source->committed_ray_t;
-}
-
 }// namespace
 
 SubsurfaceRandomWalkCoefficients
@@ -282,6 +273,11 @@ Bool SubsurfaceRandomWalkComponent::transport(
     const auto &parameters = invocation.parameters;
     auto &throughput = path.throughput;
     auto &outer_rng_offset = path.cycles_rng_offset;
+
+    if (!scene->subsurface_accel) {
+        return false;
+    }
+    const auto &subsurface_accel = *scene->subsurface_accel;
 
     const auto legacy_encoded = state.encoded_anisotropy >= 1.0f;
     const auto anisotropy = select(
@@ -467,7 +463,7 @@ Bool SubsurfaceRandomWalkComponent::transport(
                 0.0f,
                 trace_maximum);
             const auto reject_entry_primitive = bounce == 0u;
-            auto candidate_hit = scene->accel
+            auto candidate_hit = subsurface_accel
                                      ->traverse(
                                          query_ray,
                                          {.visibility_mask = ~0u})
@@ -476,17 +472,21 @@ Bool SubsurfaceRandomWalkComponent::transport(
                                                  &candidate) noexcept {
                                              const auto candidate_value =
                                                  candidate.hit();
+                                             const auto primary_instance =
+                                                 subsurface_primary_instance(
+                                                     scene,
+                                                     candidate_value->inst);
                                              const auto instance =
                                                  scene->instance_buffer->read(
-                                                     candidate_value->inst);
+                                                     primary_instance);
                                              const auto object = select(
-                                                 candidate_value->inst,
+                                                 primary_instance,
                                                  instance.cycles_object_index,
                                                  instance.cycles_object_index !=
                                                      ~0u);
                                              const auto self =
                                                  surface_ray::same_primitive(
-                                                     candidate_value->inst,
+                                                     primary_instance,
                                                      candidate_value->prim,
                                                      path.pending_subsurface_hit
                                                          .instance,
@@ -504,6 +504,11 @@ Bool SubsurfaceRandomWalkComponent::transport(
                                                 &) noexcept {})
                                      .trace();
             const auto query_hit = !candidate_hit->miss();
+            UInt primary_hit_instance = surface_ray::invalid_primitive;
+            $if(query_hit) {
+                primary_hit_instance = subsurface_primary_instance(
+                    scene, candidate_hit->inst);
+            };
             const auto query_distance = select(
                 trace_maximum,
                 candidate_hit->committed_ray_t,
@@ -555,7 +560,12 @@ Bool SubsurfaceRandomWalkComponent::transport(
             $if(step_hit) {
                 hit = true;
                 exit_distance = query_distance;
-                store_hit(exit_hit, candidate_hit);
+                exit_hit.inst = primary_hit_instance;
+                exit_hit.prim = candidate_hit->prim;
+                exit_hit.bary = candidate_hit->bary;
+                exit_hit.hit_type = candidate_hit->hit_type;
+                exit_hit.committed_ray_t =
+                    candidate_hit->committed_ray_t;
                 $break;
             };
             $if(max(walk_throughput.x,

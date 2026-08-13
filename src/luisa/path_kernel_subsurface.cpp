@@ -1,4 +1,5 @@
 #include "path_kernel_builder.h"
+#include "path_kernel_subsurface_intersection.h"
 #include "path_kernel_triangle_geometry.h"
 #include "subsurface_random_walk_component.h"
 
@@ -210,6 +211,13 @@ public:
         auto &pending_exit = path.pending_subsurface_exit;
         auto &pending_hit = path.pending_subsurface_hit;
 
+        if (!scene->subsurface_accel) {
+            // A BSSRDF closure on a non-triangle object follows Cycles'
+            // local-intersection early-out: it has no spatial exit support.
+            return false;
+        }
+        const auto &subsurface_accel = *scene->subsurface_accel;
+
         Bool success = false;
         const auto is_burley =
             (path.path_flags & cycles_path_state::flag_subsurface_disk) != 0u;
@@ -296,7 +304,7 @@ public:
                 path.rng_hash ^ local_intersection_scramble,
                 rng_offset,
                 path.sample_index);
-            const auto ignored = scene->accel
+            const auto ignored = subsurface_accel
                                      ->traverse(
                                          probe,
                                          {.visibility_mask = ~0u})
@@ -304,11 +312,14 @@ public:
                                          [&](luisa::compute::SurfaceCandidate
                                                  &candidate) noexcept {
                                              const auto hit = candidate.hit();
+                                             const auto primary_instance =
+                                                 subsurface_primary_instance(
+                                                     scene, hit->inst);
                                              const auto instance =
                                                  scene->instance_buffer->read(
-                                                     hit->inst);
+                                                     primary_instance);
                                              const auto object = select(
-                                                 hit->inst,
+                                                 primary_instance,
                                                  instance.cycles_object_index,
                                                  instance.cycles_object_index !=
                                                      ~0u);
@@ -334,7 +345,7 @@ public:
                                                  };
                                                  $if(record < maximum_hits) {
                                                      hit_instances[record] =
-                                                         hit->inst;
+                                                         primary_instance;
                                                      hit_primitives[record] =
                                                          hit->prim;
                                                      hit_barycentrics[record] =

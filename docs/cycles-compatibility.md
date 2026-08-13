@@ -1,5 +1,12 @@
 # Cycles compatibility status
 
+The [HIP BSSRDF local-intersection domain checkpoint](validation/2026-08-13/hip-bssrdf-local-domain/README.md)
+formally narrows spatial subsurface traversal from the whole scene to complete
+triangle objects that can originate BSSRDF transport. On Monster it reduces
+the domain from 36 instances to 3, cuts the HIP subsurface stage by 31.59%,
+and reduces the warm 640x480x64 render median by 10.69%, with three-backend
+regressions and 640x480 EXR triptychs.
+
 The [surface-topology callable checkpoint](validation/2026-08-13/hip-surface-topology-callables/README.md)
 keeps original typed closure graphs behind per-topology Luisa callables and
 formally bounds HIP inlining over CFG-proven alternative frontiers. On Monster

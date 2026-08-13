@@ -222,7 +222,12 @@ using namespace psycles::contract;
             .channels = 4u}}};
 }
 
-[[nodiscard]] bool compiled_scene_has_subsurface(
+struct CompiledSubsurfaceCapability {
+    bool enabled{};
+    std::uint32_t local_instance_count{};
+};
+
+[[nodiscard]] CompiledSubsurfaceCapability compiled_scene_subsurface(
     const SceneCompilation &compilation) {
     const auto *compiled = dynamic_cast<
         const psycles::luisa_backend::detail::LuisaCompiledScene *>(
@@ -231,7 +236,10 @@ using namespace psycles::contract;
         throw std::runtime_error{
             "compiled scene does not expose Luisa scene data"};
     }
-    return compiled->data()->has_subsurface;
+    return {
+        .enabled = compiled->data()->has_subsurface,
+        .local_instance_count =
+            compiled->data()->subsurface_instance_count};
 }
 
 }// namespace
@@ -256,8 +264,11 @@ int main(int argc, char **argv) {
                 .cycles_shader_index = 2u});
         const auto capability =
             renderer.compile_scene(unreachable);
-        if (!capability.ok() ||
-            compiled_scene_has_subsurface(capability)) {
+        const auto subsurface = capability.ok()
+                                    ? compiled_scene_subsurface(capability)
+                                    : CompiledSubsurfaceCapability{};
+        if (!capability.ok() || subsurface.enabled ||
+            subsurface.local_instance_count != 0u) {
             std::cerr
                 << "unreachable BSSRDF enabled path transport on "
                 << backend << '\n';
@@ -270,8 +281,11 @@ int main(int argc, char **argv) {
             subsurface_shader();
         const auto capability =
             renderer.compile_scene(reachable);
-        if (!capability.ok() ||
-            !compiled_scene_has_subsurface(capability)) {
+        const auto subsurface = capability.ok()
+                                    ? compiled_scene_subsurface(capability)
+                                    : CompiledSubsurfaceCapability{};
+        if (!capability.ok() || !subsurface.enabled ||
+            subsurface.local_instance_count != 1u) {
             std::cerr
                 << "reachable BSSRDF did not enable path transport on "
                 << backend << '\n';

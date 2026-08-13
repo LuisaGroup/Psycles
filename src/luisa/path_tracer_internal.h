@@ -295,6 +295,7 @@ struct LuisaSceneData {
     // derived from the raw SurfaceProgram plus its parameter block; it never
     // rewrites, bakes, or approximates a material closure.
     bool has_subsurface{};
+    std::uint32_t subsurface_instance_count{};
     std::map<contract::MaterialId, MaterialBinding>
         material_bindings;
     std::optional<MaterialBinding> world_surface;
@@ -374,6 +375,16 @@ struct LuisaSceneData {
     bool environment_in_light_distribution{};
     luisa::float3 background{};
     contract::ShaderColorSpace shader_color_space;
+    // Cycles local intersection traverses only the current object's triangle
+    // BLAS. Luisa's public traversal abstraction is TLAS-based, so the first
+    // exact domain reduction is a secondary TLAS containing every complete
+    // triangle object that can originate BSSRDF transport. Candidate user ids
+    // map bijectively back to the primary TLAS/InstanceGpu index. The callback
+    // still filters the current Cycles object; this structure only removes
+    // objects that can be proved unreachable at the host/JIT stage. Keep both
+    // TLAS resources after their referenced meshes so reverse member
+    // destruction releases acceleration structures first.
+    std::optional<Accel> subsurface_accel;
     Accel accel;
     CameraDesc camera;
     VolumeSceneMetadata volume_metadata;
