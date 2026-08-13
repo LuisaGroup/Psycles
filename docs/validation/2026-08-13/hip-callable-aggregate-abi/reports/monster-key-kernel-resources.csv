@@ -1,0 +1,9 @@
+variant,stage,kernel_hash,calls,total_ms,scratch_bytes_per_thread,vgpr_count,sgpr_count
+before,shade_surface,c6120c4ec646228a,313,1146.293,3032,256,128
+after,shade_surface,c6120c4ec646228a,313,970.543,2632,256,128
+before,intersect_subsurface,a8deef960dd3738e,102,778.516,672,256,128
+after,intersect_subsurface,a8deef960dd3738e,102,779.291,672,256,128
+before,closest_intersection,f22027039279e9e0,364,280.169,464,184,128
+after,closest_intersection,f22027039279e9e0,364,279.855,464,184,128
+before,surface_queue_compaction,499b5c183d8adb86,162,70.731,8,48,128
+after,surface_queue_compaction,499b5c183d8adb86,162,70.774,8,48,128

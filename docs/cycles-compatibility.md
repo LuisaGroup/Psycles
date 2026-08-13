@@ -1,5 +1,10 @@
 # Cycles compatibility status
 
+The [HIP retained-callable aggregate ABI checkpoint](validation/2026-08-13/hip-callable-aggregate-abi/README.md)
+formally narrows post-IPO material-callable arguments and records a 6.67%
+Monster render-time reduction, full-pass numerical validation, profiler
+evidence, and a visual triptych.
+
 Psycles treats Blender Cycles as the semantic reference. A feature is complete
 only after the same Blender scene and render settings have been evaluated by
 official Cycles and Psycles-Luisa and their linear passes have passed a
