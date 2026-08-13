@@ -21,26 +21,8 @@ struct ScenePrimitiveStagePlan {
     }
 };
 
-// Exact source completion is a traversal property rather than a primitive
-// kind. The scene upload creates a dense or sparse source lookup if and only if
-// at least one triangle instance has coincident or partial-overlap support.
-// Keep that finite proof beside primitive reachability so ordinary triangle
-// scenes can record the singleton exact resolver without the completion
-// lookup, binary search, and alias loop.
 struct SceneTraversalStagePlan {
     ScenePrimitiveStagePlan primitives{};
-    bool triangle_completion{};
-
-    // Completion is a refinement of triangle traversal, never an
-    // independent stage. Canonicalizing at every public construction
-    // boundary keeps the finite plan domain closed even for manually built
-    // test/plugin plans.
-    [[nodiscard]] constexpr SceneTraversalStagePlan
-    canonicalized() const noexcept {
-        auto result = *this;
-        result.triangle_completion &= result.primitives.triangles;
-        return result;
-    }
 };
 
 [[nodiscard]] constexpr ScenePrimitiveStagePlan
@@ -55,20 +37,10 @@ make_scene_primitive_stage_plan(
 [[nodiscard]] constexpr SceneTraversalStagePlan
 make_scene_traversal_stage_plan(
     std::size_t triangle_geometry_count,
-    std::size_t curve_geometry_count,
-    std::size_t completion_source_dense_count,
-    std::size_t completion_source_sparse_count) noexcept {
-    const auto primitives =
-        make_scene_primitive_stage_plan(
-            triangle_geometry_count,
-            curve_geometry_count);
-    return SceneTraversalStagePlan{
-        .primitives = primitives,
-        .triangle_completion =
-            primitives.triangles &&
-            (completion_source_dense_count != 0u ||
-             completion_source_sparse_count != 0u)}
-        .canonicalized();
+    std::size_t curve_geometry_count) noexcept {
+    return {.primitives = make_scene_primitive_stage_plan(
+                triangle_geometry_count,
+                curve_geometry_count)};
 }
 
 }// namespace psycles::luisa_backend::detail

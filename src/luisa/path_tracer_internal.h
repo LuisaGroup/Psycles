@@ -339,16 +339,6 @@ struct LuisaSceneData {
     BindlessArray heap;
     Buffer<GeometryGpu> geometry_buffer;
     Buffer<InstanceGpu> instance_buffer;
-    Buffer<PrimitiveCompletionGpu> primitive_completion_buffer;
-    Buffer<luisa::uint> primitive_completion_instance_buffer;
-    // Only instances whose exact Cycles support needs endpoint completion
-    // participate. Dense object identities use one direct device read; very
-    // sparse identities use a sorted table whose size is the number of
-    // special instances rather than the whole scene.
-    Buffer<luisa::uint> cycles_completion_source_dense_buffer;
-    std::uint32_t cycles_completion_source_dense_count{};
-    Buffer<luisa::uint2> cycles_completion_source_sparse_buffer;
-    std::uint32_t cycles_completion_source_sparse_count{};
     Buffer<MaterialBindingGpu> geometry_material_buffer;
     Buffer<MaterialBindingGpu> override_material_buffer;
     Buffer<AttributeBindingGpu> attribute_binding_buffer;

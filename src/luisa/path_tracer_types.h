@@ -51,13 +51,6 @@ struct AttributeRangeGpu {
     luisa::uint padding{};
 };
 
-struct PrimitiveCompletionGpu {
-    luisa::uint local_primitive{};
-    luisa::uint instance_offset{};
-    luisa::uint instance_count{};
-    luisa::uint padding{};
-};
-
 struct InstanceGpu {
     luisa::uint geometry_index{};
     luisa::uint override_offset{};
@@ -71,14 +64,6 @@ struct InstanceGpu {
     luisa::uint cycles_object_index{};
     std::int32_t cycles_light_group{};
     luisa::uint is_shadow_catcher{};
-    // Circular exact-support equivalence class. Singleton hand-authored test
-    // fixtures may leave count at zero; traversal normalizes that to one.
-    luisa::uint coincident_next{};
-    luisa::uint coincident_count{1u};
-    // Sorted sparse records for corresponding local primitives whose closed
-    // finite world bounds overlap across whole-instance classes.
-    luisa::uint primitive_completion_offset{};
-    luisa::uint primitive_completion_count{};
     luisa::uint cycles_transform_applied{};
     luisa::uint intersection_padding{};
     luisa::float4x4 cycles_world_to_object{};
@@ -501,12 +486,6 @@ LUISA_STRUCT(
     triangle_slot,
     padding) {};
 LUISA_STRUCT(
-    psycles::luisa_backend::detail::PrimitiveCompletionGpu,
-    local_primitive,
-    instance_offset,
-    instance_count,
-    padding) {};
-LUISA_STRUCT(
     psycles::luisa_backend::detail::InstanceGpu,
     geometry_index,
     override_offset,
@@ -518,10 +497,6 @@ LUISA_STRUCT(
     cycles_object_index,
     cycles_light_group,
     is_shadow_catcher,
-    coincident_next,
-    coincident_count,
-    primitive_completion_offset,
-    primitive_completion_count,
     cycles_transform_applied,
     intersection_padding,
     cycles_world_to_object) {};

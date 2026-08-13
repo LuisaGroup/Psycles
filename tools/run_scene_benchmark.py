@@ -417,6 +417,85 @@ def _require_output(path: pathlib.Path) -> None:
         raise RuntimeError(f"renderer did not produce output: {path}")
 
 
+_BLENDER_BUILD_IDENTITY_FIELDS = (
+    "version",
+    "version_cycle",
+    "version_tuple",
+    "build_hash",
+    "build_branch",
+    "build_type",
+)
+
+
+def _blender_build_identity(
+    document: dict[str, Any],
+    source: pathlib.Path,
+) -> dict[str, Any]:
+    identity = document.get("blender_build")
+    if not isinstance(identity, dict):
+        raise RuntimeError(
+            f"{source} has no exact Blender build identity; regenerate it "
+            "with the current Psycles exporter/golden script"
+        )
+    missing = [
+        field
+        for field in _BLENDER_BUILD_IDENTITY_FIELDS
+        if field not in identity
+    ]
+    if missing:
+        raise RuntimeError(
+            f"{source} has an incomplete Blender build identity: "
+            + ", ".join(missing)
+        )
+    if (
+        not isinstance(identity["version_tuple"], list)
+        or len(identity["version_tuple"]) != 3
+        or not all(
+            isinstance(value, int)
+            for value in identity["version_tuple"]
+        )
+    ):
+        raise RuntimeError(
+            f"{source} has an invalid Blender version tuple"
+        )
+    text_fields = (
+        field
+        for field in _BLENDER_BUILD_IDENTITY_FIELDS
+        if field != "version_tuple"
+    )
+    invalid_text_fields = [
+        field
+        for field in text_fields
+        if not isinstance(identity[field], str)
+        or not identity[field]
+    ]
+    if invalid_text_fields:
+        raise RuntimeError(
+            f"{source} has invalid Blender build identity fields: "
+            + ", ".join(invalid_text_fields)
+        )
+    return {
+        field: identity[field]
+        for field in _BLENDER_BUILD_IDENTITY_FIELDS
+    }
+
+
+def _require_same_blender_build(
+    reference: dict[str, Any],
+    candidate: dict[str, Any],
+    *,
+    reference_source: pathlib.Path,
+    candidate_source: pathlib.Path,
+) -> None:
+    if candidate != reference:
+        raise RuntimeError(
+            "Cycles golden and Psycles export use different Blender builds: "
+            f"{reference_source} reports {reference}, while "
+            f"{candidate_source} reports {candidate}. Re-export and render "
+            "the golden with the same Blender executable."
+        )
+
+
 def _validate_resume_configuration(
     previous: dict[str, Any],
     expected: dict[str, Any],
@@ -721,6 +800,8 @@ def _main() -> int:
 
     try:
         cycles_outputs: dict[str, pathlib.Path] = {}
+        cycles_build: dict[str, Any] | None = None
+        cycles_build_source: pathlib.Path | None = None
         cycles_runs = []
         if not arguments.skip_cycles_cpu:
             cycles_runs.append(
@@ -786,6 +867,23 @@ def _main() -> int:
                     "process_wall_seconds": record["wall_seconds"],
                 }
             cycles_outputs[key] = output
+            metadata_document = json.loads(
+                metadata_path.read_text(encoding="utf-8")
+            )
+            current_cycles_build = _blender_build_identity(
+                metadata_document, metadata_path
+            )
+            if cycles_build is None:
+                cycles_build = current_cycles_build
+                cycles_build_source = metadata_path
+            else:
+                assert cycles_build_source is not None
+                _require_same_blender_build(
+                    cycles_build,
+                    current_cycles_build,
+                    reference_source=cycles_build_source,
+                    candidate_source=metadata_path,
+                )
             _write_manifest(manifest_path, manifest)
 
         export_command = _export_command(
@@ -843,6 +941,26 @@ def _main() -> int:
         manifest["scene"]["geometry_bin_sha256"] = _sha256(
             bundle / "geometry.bin"
         )
+        bundle_scene_path = bundle / "scene.json"
+        bundle_scene = json.loads(
+            bundle_scene_path.read_text(encoding="utf-8")
+        )
+        if not isinstance(bundle_scene, dict):
+            raise RuntimeError(
+                f"scene bundle root is not an object: {bundle_scene_path}"
+            )
+        bundle_build = _blender_build_identity(
+            bundle_scene, bundle_scene_path
+        )
+        if cycles_build is None or cycles_build_source is None:
+            raise RuntimeError("benchmark has no Cycles build identity")
+        _require_same_blender_build(
+            cycles_build,
+            bundle_build,
+            reference_source=cycles_build_source,
+            candidate_source=bundle_scene_path,
+        )
+        manifest["scene"]["blender_build"] = bundle_build
         _write_manifest(manifest_path, manifest)
 
         psycles_outputs: dict[str, pathlib.Path] = {}

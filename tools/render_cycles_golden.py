@@ -28,6 +28,7 @@ if str(_TOOLS) not in sys.path:
     sys.path.insert(0, str(_TOOLS))
 
 import cycles_hash  # noqa: E402
+import blender_build_identity  # noqa: E402
 
 
 _GOLDEN_PASSES = (
@@ -215,6 +216,17 @@ def _configure_view_layer_passes(view_layer: Any) -> None:
         view_layer.cycles.pass_debug_sample_count = True
 
 
+def _configure_enabled_view_layer_passes(scene: Any) -> list[str]:
+    """Configure passes without changing the scene's layer selection."""
+
+    enabled = [view_layer for view_layer in scene.view_layers if view_layer.use]
+    if not enabled:
+        raise RuntimeError("the scene has no enabled view layer")
+    for view_layer in enabled:
+        _configure_view_layer_passes(view_layer)
+    return [view_layer.name for view_layer in enabled]
+
+
 def _set_if_present(owner: Any, name: str, value: Any) -> None:
     if hasattr(owner, name):
         setattr(owner, name, value)
@@ -291,9 +303,7 @@ def _main() -> None:
     image_settings.color_depth = "32"
     image_settings.exr_codec = "ZIP"
 
-    for view_layer in scene.view_layers:
-        view_layer.use = True
-        _configure_view_layer_passes(view_layer)
+    enabled_view_layers = _configure_enabled_view_layer_passes(scene)
 
     begin = time.perf_counter()
     bpy.ops.render.render(write_still=True)
@@ -304,6 +314,7 @@ def _main() -> None:
         "source": bpy.data.filepath,
         "output": str(output),
         "blender": bpy.app.version_string,
+        "blender_build": blender_build_identity.current(bpy.app),
         "cycles_device": scene.cycles.device,
         "cycles_compute_device_type": (
             arguments.cycles_device.strip().upper()
@@ -339,6 +350,7 @@ def _main() -> None:
         "transparent": scene.render.film_transparent,
         "elapsed_seconds": elapsed,
         "passes": list(_GOLDEN_PASSES),
+        "view_layers": enabled_view_layers,
     }
     output.with_suffix(".json").write_text(
         json.dumps(metadata, indent=2, sort_keys=True) + "\n",

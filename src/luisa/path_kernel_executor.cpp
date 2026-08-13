@@ -108,9 +108,7 @@ void validate_cycles_stage_partition_abi(
         path.next_event_estimation,
         path.scene->environment_in_light_distribution,
         path.scene->emissive_triangle_count, path.scene->light_count,
-        path.scene->geometries.size(), path.scene->curve_geometries.size(),
-        path.scene->cycles_completion_source_dense_count,
-        path.scene->cycles_completion_source_sparse_count);
+        path.scene->geometries.size(), path.scene->curve_geometries.size());
     auto coroutine = build_path_coroutine(
         path, PathCoroutineCutPolicy::cycles_wavefront);
     validate_cycles_stage_partition_abi(
@@ -338,9 +336,7 @@ build_path_kernel_executor(luisa::compute::Device &device,
         path.next_event_estimation,
         path.scene->environment_in_light_distribution,
         path.scene->emissive_triangle_count, path.scene->light_count,
-        path.scene->geometries.size(), path.scene->curve_geometries.size(),
-        path.scene->cycles_completion_source_dense_count,
-        path.scene->cycles_completion_source_sparse_count);
+        path.scene->geometries.size(), path.scene->curve_geometries.size());
     const auto can_publish_direct_light = can_stage_direct_light_queue(
         config.staged_direct_light_queue, path.path_trace_enabled, stage_plan);
     if (can_publish_direct_light) {
