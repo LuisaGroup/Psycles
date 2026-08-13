@@ -1,5 +1,12 @@
 # Cycles compatibility status
 
+The [surface-topology callable checkpoint](validation/2026-08-13/hip-surface-topology-callables/README.md)
+keeps original typed closure graphs behind per-topology Luisa callables and
+formally bounds HIP inlining over CFG-proven alternative frontiers. On Monster
+it reduces the warm 640x480x64 HIP median another 8.46% to 2.24823 s, 4.09%
+faster than the same-device Cycles HIP checkpoint. Full-pass, three-backend,
+strict native Vulkan, profiler, and visual-triptych evidence is recorded.
+
 The [HIP retained-callable aggregate ABI checkpoint](validation/2026-08-13/hip-callable-aggregate-abi/README.md)
 formally narrows post-IPO material-callable arguments and records a 6.67%
 Monster render-time reduction, full-pass numerical validation, profiler

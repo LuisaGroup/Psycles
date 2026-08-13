@@ -8,497 +8,476 @@
 #include <psycles/luisa/surface_closure_operations.h>
 
 #include <utility>
+#include <vector>
 
 namespace psycles::luisa_backend::detail {
+namespace {
 
-SurfaceCallables make_surface_callables(
-    const std::shared_ptr<LuisaSceneData> &scene) noexcept {
-    const auto closure_identity =
-        make_surface_closure_identity_callable();
+using SurfacePreparationImplementationCallable =
+    Callable<SurfacePreparationCall(
+        Buffer<float>, Buffer<luisa::float3>, Buffer<float>, BindlessArray,
+        BindlessArray, SurfacePointCall, SurfacePreparationQueryCall)>;
+
+using SurfaceEvaluateLightImplementationCallable =
+    Callable<SurfaceEvaluationCall(
+        Buffer<float>, Buffer<luisa::float3>, Buffer<float>, BindlessArray,
+        BindlessArray, SurfacePointCall, luisa::float3, luisa::uint,
+        luisa::uint, float, bool, bool, luisa::uint)>;
+
+using SurfaceSampleImplementationCallable = Callable<SurfaceSampleCall(
+    Buffer<float>, Buffer<luisa::float3>, Buffer<float>, BindlessArray,
+    BindlessArray, SurfacePointCall, float, luisa::float2, luisa::uint,
+    luisa::uint, float, bool, bool)>;
+
+// For every valid runtime tag t this records exactly
+// `result = implementations[t](args...)`. Unlike placing the material graph
+// directly in each switch arm, the graph's temporaries are owned by the typed
+// leaf callable and cannot become live at the dispatch merge. The single-tag
+// case deliberately matches Polymorphic<T>: its only implementation is used
+// without inspecting the tag.
+template<typename Result, typename Callable, typename Invoke,
+         typename EmptyResult>
+[[nodiscard]] Var<Result> dispatch_surface_implementation(
+    UInt tag, const std::vector<Callable> &implementations, Invoke &&invoke,
+    EmptyResult &&empty_result) noexcept {
+    if (implementations.empty()) {
+        return empty_result();
+    }
+    if (implementations.size() == 1u) {
+        return invoke(implementations.front());
+    }
+    Var<Result> result;
+    luisa::compute::detail::SwitchStmtBuilder{tag} % [&] {
+        for (auto index = std::size_t{0u}; index < implementations.size();
+             index++) {
+            luisa::compute::detail::SwitchCaseStmtBuilder{
+                static_cast<luisa::uint>(index)} %
+                [&, index] { result = invoke(implementations[index]); };
+        }
+        luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
+            luisa::compute::dsl::unreachable("invalid surface topology tag");
+        };
+    };
+    return result;
+}
+
+}// namespace
+
+SurfaceCallables
+make_surface_callables(const std::shared_ptr<LuisaSceneData> &scene) noexcept {
+    const auto closure_identity = make_surface_closure_identity_callable();
     const auto closure_evaluation =
         make_surface_closure_evaluation_callable(scene);
-    const auto closure_sampling =
-        make_surface_closure_sampling_callables(scene);
-    const auto closure_setup =
-        make_surface_closure_setup_callables();
-    const auto texture_sampling =
-        make_texture_2d_sampling_callables();
-    const auto attribute_lookup =
-        make_surface_attribute_lookup_callable(
-            scene->attribute_binding_slot,
-            scene->attribute_range_slot);
+    const auto closure_sampling = make_surface_closure_sampling_callables(scene);
+    const auto closure_setup = make_surface_closure_setup_callables();
+    const auto texture_sampling = make_texture_2d_sampling_callables();
+    const auto attribute_lookup = make_surface_attribute_lookup_callable(
+        scene->attribute_binding_slot, scene->attribute_range_slot);
+    std::vector<SurfacePreparationImplementationCallable>
+        preparation_implementations;
+    preparation_implementations.reserve(scene->surfaces.size());
+    for (auto surface_index = std::size_t{0u};
+         surface_index < scene->surfaces.size(); surface_index++) {
+        const auto *surface = scene->surfaces.implementation(surface_index);
+        SurfacePreparationImplementationCallable implementation =
+            [scene, surface, closure_setup, texture_sampling, attribute_lookup](
+                BufferFloat scalar_parameters, BufferFloat3 vector_parameters,
+                BufferFloat cycles_bsdf_tables, BindlessVar textures,
+                BindlessVar geometry_heap, Var<SurfacePointCall> packed_point,
+                Var<SurfacePreparationQueryCall> packed_query) noexcept {
+                CallableSurfaceClosureSetupProvider setup_provider{cycles_bsdf_tables,
+                                                                   closure_setup};
+                CallableTexture2DSamplingProvider texture_provider{textures,
+                                                                   texture_sampling};
+                CallableSurfaceAttributeLookupProvider attribute_provider{
+                    geometry_heap, attribute_lookup};
+                BufferShaderServices services{scalar_parameters,
+                                              vector_parameters,
+                                              cycles_bsdf_tables,
+                                              textures,
+                                              geometry_heap,
+                                              scene->attribute_binding_slot,
+                                              scene->attribute_range_slot,
+                                              scene->nishita_texture_bindings,
+                                              scene->shader_color_space,
+                                              &setup_provider,
+                                              &texture_provider,
+                                              &attribute_provider};
+                return pack_surface_preparation(
+                    surface->prepare(services, unpack_surface_point(packed_point),
+                                     unpack_surface_preparation_query(packed_query)));
+            };
+        implementation.set_name(
+            luisa::format("surface_prepare_topology_{}", surface_index));
+        preparation_implementations.emplace_back(std::move(implementation));
+    }
     SurfacePreparationCallable preparation =
-        [scene, closure_setup, texture_sampling, attribute_lookup](
-            BufferFloat scalar_parameters,
-            BufferFloat3 vector_parameters,
-            BufferFloat cycles_bsdf_tables,
-            BindlessVar textures,
-            BindlessVar geometry_heap,
-            UInt surface_tag,
+        [scene,
+         preparation_implementations = std::move(preparation_implementations)](
+            BufferFloat scalar_parameters, BufferFloat3 vector_parameters,
+            BufferFloat cycles_bsdf_tables, BindlessVar textures,
+            BindlessVar geometry_heap, UInt surface_tag,
             Var<SurfacePointCall> packed_point,
             Var<SurfacePreparationQueryCall> packed_query) noexcept {
-            CallableSurfaceClosureSetupProvider setup_provider{
-                cycles_bsdf_tables,
-                closure_setup};
-            CallableTexture2DSamplingProvider texture_provider{
-                textures,
-                texture_sampling};
-            CallableSurfaceAttributeLookupProvider attribute_provider{
-                geometry_heap,
-                attribute_lookup};
-            BufferShaderServices services{
-                scalar_parameters,
-                vector_parameters,
-                cycles_bsdf_tables,
-                textures,
-                geometry_heap,
-                scene->attribute_binding_slot,
-                scene->attribute_range_slot,
-                scene->nishita_texture_bindings,
-                scene->shader_color_space,
-                &setup_provider,
-                &texture_provider,
-                &attribute_provider};
-            return pack_surface_preparation(
-                scene->surfaces.prepare(
-                    surface_tag,
-                    services,
-                    unpack_surface_point(packed_point),
-                    unpack_surface_preparation_query(packed_query)));
+            const auto point = unpack_surface_point(packed_point);
+            return dispatch_surface_implementation<SurfacePreparationCall>(
+                surface_tag, preparation_implementations,
+                [&](const auto &implementation) noexcept {
+                    return implementation(scalar_parameters, vector_parameters,
+                                          cycles_bsdf_tables, textures, geometry_heap,
+                                          packed_point, packed_query);
+                },
+                [&]() noexcept {
+                    return pack_surface_preparation(SurfacePreparation::zero(point));
+                });
         };
     preparation.set_name("surface_prepare");
+    std::vector<SurfaceEvaluateLightImplementationCallable>
+        evaluate_light_implementations;
+    evaluate_light_implementations.reserve(scene->surfaces.size());
+    for (auto surface_index = std::size_t{0u};
+         surface_index < scene->surfaces.size(); surface_index++) {
+        const auto *surface = scene->surfaces.implementation(surface_index);
+        SurfaceEvaluateLightImplementationCallable implementation =
+            [scene, surface, closure_evaluation, closure_setup, texture_sampling,
+             attribute_lookup](
+                BufferFloat scalar_parameters, BufferFloat3 vector_parameters,
+                BufferFloat cycles_bsdf_tables, BindlessVar textures,
+                BindlessVar geometry_heap, Var<SurfacePointCall> packed_point,
+                Float3 outgoing, UInt lobe_mask, UInt transport_mode,
+                Float glossy_filter_roughness, Bool reflective_caustics,
+                Bool refractive_caustics, UInt shader_flags) noexcept {
+                CallableSurfaceClosureSetupProvider setup_provider{cycles_bsdf_tables,
+                                                                   closure_setup};
+                CallableTexture2DSamplingProvider texture_provider{textures,
+                                                                   texture_sampling};
+                CallableSurfaceAttributeLookupProvider attribute_provider{
+                    geometry_heap, attribute_lookup};
+                BufferShaderServices services{scalar_parameters,
+                                              vector_parameters,
+                                              cycles_bsdf_tables,
+                                              textures,
+                                              geometry_heap,
+                                              scene->attribute_binding_slot,
+                                              scene->attribute_range_slot,
+                                              scene->nishita_texture_bindings,
+                                              scene->shader_color_space,
+                                              &setup_provider,
+                                              &texture_provider,
+                                              &attribute_provider};
+                auto query = SurfaceLightQuery{
+                    .surface = {.lobe_mask = lobe_mask,
+                                .transport_mode = transport_mode,
+                                .glossy_filter_roughness = glossy_filter_roughness,
+                                .reflective_caustics = reflective_caustics,
+                                .refractive_caustics = refractive_caustics},
+                    .shader_flags = shader_flags};
+                const auto point = unpack_surface_point(packed_point);
+                const SurfaceClosurePoint closure_point{point};
+                const auto packed_closure_point =
+                    pack_surface_closure_point(closure_point);
+                const auto policy = make_surface_closure_evaluation_policy(
+                    true, Expr<std::uint32_t>{shader_flags.expression()});
+                CallableSurfaceClosureEvaluationOperation operation{
+                    scalar_parameters, vector_parameters, cycles_bsdf_tables,
+                    textures, geometry_heap, packed_closure_point,
+                    closure_point, query.surface, policy,
+                    closure_evaluation};
+                operation.set_outgoing(Expr<luisa::float3>{outgoing.expression()});
+                SurfaceClosureEvaluationVisitor visitor{
+                    scene->volume_metadata.closure_allocation_budget, operation,
+                    Expr<bool>{policy.preserve_pdf.expression()}};
+                static_cast<void>(
+                    surface->collect_closures(services, point, reflective_caustics,
+                                              refractive_caustics, visitor));
+                return pack_surface_evaluation(visitor.result());
+            };
+        implementation.set_name(
+            luisa::format("surface_evaluate_light_topology_{}", surface_index));
+        evaluate_light_implementations.emplace_back(std::move(implementation));
+    }
     SurfaceEvaluateLightCallable evaluate_light =
-        [scene,
-         closure_evaluation,
-         closure_setup,
-         texture_sampling,
-         attribute_lookup](
-            BufferFloat scalar_parameters,
-            BufferFloat3 vector_parameters,
-            BufferFloat cycles_bsdf_tables,
-            BindlessVar textures,
-            BindlessVar geometry_heap,
-            UInt surface_tag,
-            Var<SurfacePointCall> packed_point,
-            Float3 outgoing,
-            UInt lobe_mask,
-            UInt transport_mode,
-            Float glossy_filter_roughness,
-            Bool reflective_caustics,
-            Bool refractive_caustics,
+        [evaluate_light_implementations =
+             std::move(evaluate_light_implementations)](
+            BufferFloat scalar_parameters, BufferFloat3 vector_parameters,
+            BufferFloat cycles_bsdf_tables, BindlessVar textures,
+            BindlessVar geometry_heap, UInt surface_tag,
+            Var<SurfacePointCall> packed_point, Float3 outgoing, UInt lobe_mask,
+            UInt transport_mode, Float glossy_filter_roughness,
+            Bool reflective_caustics, Bool refractive_caustics,
             UInt shader_flags) noexcept {
-            CallableSurfaceClosureSetupProvider setup_provider{
-                cycles_bsdf_tables,
-                closure_setup};
-            CallableTexture2DSamplingProvider texture_provider{
-                textures,
-                texture_sampling};
-            CallableSurfaceAttributeLookupProvider attribute_provider{
-                geometry_heap,
-                attribute_lookup};
-            BufferShaderServices services{
-                scalar_parameters,
-                vector_parameters,
-                cycles_bsdf_tables,
-                textures,
-                geometry_heap,
-                scene->attribute_binding_slot,
-                scene->attribute_range_slot,
-                scene->nishita_texture_bindings,
-                scene->shader_color_space,
-                &setup_provider,
-                &texture_provider,
-                &attribute_provider};
-            auto query = SurfaceLightQuery{
-                .surface = {
-                    .lobe_mask = lobe_mask,
-                    .transport_mode = transport_mode,
-                    .glossy_filter_roughness =
-                        glossy_filter_roughness,
-                    .reflective_caustics = reflective_caustics,
-                    .refractive_caustics = refractive_caustics},
-                .shader_flags = shader_flags};
-            const auto point =
-                unpack_surface_point(packed_point);
-            const SurfaceClosurePoint closure_point{point};
-            const auto packed_closure_point =
-                pack_surface_closure_point(closure_point);
-            const auto policy =
-                make_surface_closure_evaluation_policy(
-                    true,
-                    Expr<std::uint32_t>{
-                        shader_flags.expression()});
-            CallableSurfaceClosureEvaluationOperation operation{
-                scalar_parameters,
-                vector_parameters,
-                cycles_bsdf_tables,
-                textures,
-                geometry_heap,
-                packed_closure_point,
-                closure_point,
-                query.surface,
-                policy,
-                closure_evaluation};
-            operation.set_outgoing(
-                Expr<luisa::float3>{outgoing.expression()});
-            SurfaceClosureEvaluationVisitor visitor{
-                scene->volume_metadata.closure_allocation_budget,
-                operation,
-                Expr<bool>{policy.preserve_pdf.expression()}};
-            static_cast<void>(scene->surfaces.collect_closures(
-                surface_tag,
-                services,
-                point,
-                reflective_caustics,
-                refractive_caustics,
-                visitor));
-            return pack_surface_evaluation(visitor.result());
+            return dispatch_surface_implementation<SurfaceEvaluationCall>(
+                surface_tag, evaluate_light_implementations,
+                [&](const auto &implementation) noexcept {
+                    return implementation(
+                        scalar_parameters, vector_parameters, cycles_bsdf_tables,
+                        textures, geometry_heap, packed_point, outgoing, lobe_mask,
+                        transport_mode, glossy_filter_roughness, reflective_caustics,
+                        refractive_caustics, shader_flags);
+                },
+                []() noexcept {
+                    return pack_surface_evaluation(SurfaceEvaluation::zero());
+                });
         };
     evaluate_light.set_name("surface_evaluate_light");
     SurfaceEmissionCallable emission =
         [scene, texture_sampling, attribute_lookup](
-            BufferFloat scalar_parameters,
-            BufferFloat3 vector_parameters,
-            BufferFloat cycles_bsdf_tables,
-            BindlessVar textures,
-            BindlessVar geometry_heap,
-            UInt surface_tag,
-            Var<SurfacePointCall> packed_point,
-            Float3 outgoing,
+            BufferFloat scalar_parameters, BufferFloat3 vector_parameters,
+            BufferFloat cycles_bsdf_tables, BindlessVar textures,
+            BindlessVar geometry_heap, UInt surface_tag,
+            Var<SurfacePointCall> packed_point, Float3 outgoing,
             Bool reflective_caustics) noexcept {
-            CallableTexture2DSamplingProvider texture_provider{
-                textures,
-                texture_sampling};
+            CallableTexture2DSamplingProvider texture_provider{textures,
+                                                               texture_sampling};
             CallableSurfaceAttributeLookupProvider attribute_provider{
-                geometry_heap,
-                attribute_lookup};
-            BufferShaderServices services{
-                scalar_parameters,
-                vector_parameters,
-                cycles_bsdf_tables,
-                textures,
-                geometry_heap,
-                scene->attribute_binding_slot,
-                scene->attribute_range_slot,
-                scene->nishita_texture_bindings,
-                scene->shader_color_space,
-                nullptr,
-                &texture_provider,
-                &attribute_provider};
-            return scene->surfaces.emission(
-                surface_tag,
-                services,
-                unpack_surface_point(packed_point),
-                outgoing,
-                reflective_caustics);
+                geometry_heap, attribute_lookup};
+            BufferShaderServices services{scalar_parameters,
+                                          vector_parameters,
+                                          cycles_bsdf_tables,
+                                          textures,
+                                          geometry_heap,
+                                          scene->attribute_binding_slot,
+                                          scene->attribute_range_slot,
+                                          scene->nishita_texture_bindings,
+                                          scene->shader_color_space,
+                                          nullptr,
+                                          &texture_provider,
+                                          &attribute_provider};
+            return scene->surfaces.emission(surface_tag, services,
+                                            unpack_surface_point(packed_point),
+                                            outgoing, reflective_caustics);
         };
     emission.set_name("surface_emission");
     SurfaceConstantEmissionCallable constant_emission =
-        [scene](
-            BufferFloat scalar_parameters,
-            BufferFloat3 vector_parameters,
-            UInt surface_tag,
-            UInt parameter_block) noexcept {
-            BufferSurfaceParameterServices services{
-                scalar_parameters,
-                vector_parameters};
-            return scene->surfaces.constant_emission(
-                surface_tag,
-                services,
-                parameter_block);
+        [scene](BufferFloat scalar_parameters, BufferFloat3 vector_parameters,
+                UInt surface_tag, UInt parameter_block) noexcept {
+            BufferSurfaceParameterServices services{scalar_parameters,
+                                                    vector_parameters};
+            return scene->surfaces.constant_emission(surface_tag, services,
+                                                     parameter_block);
         };
     constant_emission.set_name("surface_constant_emission");
+    std::vector<SurfaceSampleImplementationCallable> sample_implementations;
+    sample_implementations.reserve(scene->surfaces.size());
+    for (auto surface_index = std::size_t{0u};
+         surface_index < scene->surfaces.size(); surface_index++) {
+        const auto *surface = scene->surfaces.implementation(surface_index);
+        SurfaceSampleImplementationCallable implementation =
+            [scene, surface, closure_sampling, closure_evaluation, closure_setup,
+             texture_sampling, attribute_lookup](
+                BufferFloat scalar_parameters, BufferFloat3 vector_parameters,
+                BufferFloat cycles_bsdf_tables, BindlessVar textures,
+                BindlessVar geometry_heap, Var<SurfacePointCall> packed_point,
+                Float u_lobe, Float2 u_direction, UInt lobe_mask,
+                UInt transport_mode, Float glossy_filter_roughness,
+                Bool reflective_caustics, Bool refractive_caustics) noexcept {
+                CallableSurfaceClosureSetupProvider setup_provider{cycles_bsdf_tables,
+                                                                   closure_setup};
+                CallableTexture2DSamplingProvider texture_provider{textures,
+                                                                   texture_sampling};
+                CallableSurfaceAttributeLookupProvider attribute_provider{
+                    geometry_heap, attribute_lookup};
+                BufferShaderServices services{scalar_parameters,
+                                              vector_parameters,
+                                              cycles_bsdf_tables,
+                                              textures,
+                                              geometry_heap,
+                                              scene->attribute_binding_slot,
+                                              scene->attribute_range_slot,
+                                              scene->nishita_texture_bindings,
+                                              scene->shader_color_space,
+                                              &setup_provider,
+                                              &texture_provider,
+                                              &attribute_provider};
+                auto query =
+                    SurfaceQuery{.lobe_mask = lobe_mask,
+                                 .transport_mode = transport_mode,
+                                 .glossy_filter_roughness = glossy_filter_roughness,
+                                 .reflective_caustics = reflective_caustics,
+                                 .refractive_caustics = refractive_caustics};
+                const auto point = unpack_surface_point(packed_point);
+                return pack_surface_sample(
+                    sample_surface_closures_for_surface(
+                        *scene, *surface, closure_sampling, closure_evaluation,
+                        scalar_parameters, vector_parameters, cycles_bsdf_tables,
+                        textures, geometry_heap, services, point,
+                        Expr<float>{u_lobe.expression()},
+                        Expr<luisa::float2>{u_direction.expression()}, query, false)
+                        .sample);
+            };
+        implementation.set_name(
+            luisa::format("surface_sample_topology_{}", surface_index));
+        sample_implementations.emplace_back(std::move(implementation));
+    }
     SurfaceSampleCallable sample =
-        [scene,
-         closure_sampling,
-         closure_evaluation,
-         closure_setup,
-         texture_sampling,
-         attribute_lookup](
-            BufferFloat scalar_parameters,
-            BufferFloat3 vector_parameters,
-            BufferFloat cycles_bsdf_tables,
-            BindlessVar textures,
-            BindlessVar geometry_heap,
-            UInt surface_tag,
-            Var<SurfacePointCall> packed_point,
-            Float u_lobe,
-            Float2 u_direction,
-            UInt lobe_mask,
-            UInt transport_mode,
-            Float glossy_filter_roughness,
-            Bool reflective_caustics,
-            Bool refractive_caustics) noexcept {
-            CallableSurfaceClosureSetupProvider setup_provider{
-                cycles_bsdf_tables,
-                closure_setup};
-            CallableTexture2DSamplingProvider texture_provider{
-                textures,
-                texture_sampling};
-            CallableSurfaceAttributeLookupProvider attribute_provider{
-                geometry_heap,
-                attribute_lookup};
-            BufferShaderServices services{
-                scalar_parameters,
-                vector_parameters,
-                cycles_bsdf_tables,
-                textures,
-                geometry_heap,
-                scene->attribute_binding_slot,
-                scene->attribute_range_slot,
-                scene->nishita_texture_bindings,
-                scene->shader_color_space,
-                &setup_provider,
-                &texture_provider,
-                &attribute_provider};
-            auto query = SurfaceQuery{
-                .lobe_mask = lobe_mask,
-                .transport_mode = transport_mode,
-                .glossy_filter_roughness =
-                    glossy_filter_roughness,
-                .reflective_caustics = reflective_caustics,
-                .refractive_caustics = refractive_caustics};
-            const auto point =
-                unpack_surface_point(packed_point);
-            return pack_surface_sample(sample_surface_closures(
-                *scene,
-                closure_sampling,
-                closure_evaluation,
-                scalar_parameters,
-                vector_parameters,
-                cycles_bsdf_tables,
-                textures,
-                geometry_heap,
-                Expr<std::uint32_t>{surface_tag.expression()},
-                services,
-                point,
-                Expr<float>{u_lobe.expression()},
-                Expr<luisa::float2>{u_direction.expression()},
-                query,
-                false)
-                                           .sample);
+        [sample_implementations = std::move(sample_implementations)](
+            BufferFloat scalar_parameters, BufferFloat3 vector_parameters,
+            BufferFloat cycles_bsdf_tables, BindlessVar textures,
+            BindlessVar geometry_heap, UInt surface_tag,
+            Var<SurfacePointCall> packed_point, Float u_lobe, Float2 u_direction,
+            UInt lobe_mask, UInt transport_mode, Float glossy_filter_roughness,
+            Bool reflective_caustics, Bool refractive_caustics) noexcept {
+            return dispatch_surface_implementation<SurfaceSampleCall>(
+                surface_tag, sample_implementations,
+                [&](const auto &implementation) noexcept {
+                    return implementation(
+                        scalar_parameters, vector_parameters, cycles_bsdf_tables,
+                        textures, geometry_heap, packed_point, u_lobe, u_direction,
+                        lobe_mask, transport_mode, glossy_filter_roughness,
+                        reflective_caustics, refractive_caustics);
+                },
+                []() noexcept {
+                    return pack_surface_sample(SurfaceSample::zero());
+                });
         };
     sample.set_name("surface_sample");
     SurfaceClosureTraceCallable closure_trace =
-        [scene,
-         closure_identity,
-         closure_setup,
-         texture_sampling,
+        [scene, closure_identity, closure_setup, texture_sampling,
          attribute_lookup](
-            BufferFloat scalar_parameters,
-            BufferFloat3 vector_parameters,
-            BufferFloat cycles_bsdf_tables,
-            BindlessVar textures,
-            BindlessVar geometry_heap,
-            UInt surface_tag,
-            Var<SurfacePointCall> packed_point,
-            UInt requested_index,
-            Bool reflective_caustics,
-            Bool refractive_caustics) noexcept {
-            CallableSurfaceClosureSetupProvider setup_provider{
-                cycles_bsdf_tables,
-                closure_setup};
-            CallableTexture2DSamplingProvider texture_provider{
-                textures,
-                texture_sampling};
+            BufferFloat scalar_parameters, BufferFloat3 vector_parameters,
+            BufferFloat cycles_bsdf_tables, BindlessVar textures,
+            BindlessVar geometry_heap, UInt surface_tag,
+            Var<SurfacePointCall> packed_point, UInt requested_index,
+            Bool reflective_caustics, Bool refractive_caustics) noexcept {
+            CallableSurfaceClosureSetupProvider setup_provider{cycles_bsdf_tables,
+                                                               closure_setup};
+            CallableTexture2DSamplingProvider texture_provider{textures,
+                                                               texture_sampling};
             CallableSurfaceAttributeLookupProvider attribute_provider{
-                geometry_heap,
-                attribute_lookup};
-            BufferShaderServices services{
-                scalar_parameters,
-                vector_parameters,
-                cycles_bsdf_tables,
-                textures,
-                geometry_heap,
-                scene->attribute_binding_slot,
-                scene->attribute_range_slot,
-                scene->nishita_texture_bindings,
-                scene->shader_color_space,
-                &setup_provider,
-                &texture_provider,
-                &attribute_provider};
-            const auto point =
-                unpack_surface_point(packed_point);
+                geometry_heap, attribute_lookup};
+            BufferShaderServices services{scalar_parameters,
+                                          vector_parameters,
+                                          cycles_bsdf_tables,
+                                          textures,
+                                          geometry_heap,
+                                          scene->attribute_binding_slot,
+                                          scene->attribute_range_slot,
+                                          scene->nishita_texture_bindings,
+                                          scene->shader_color_space,
+                                          &setup_provider,
+                                          &texture_provider,
+                                          &attribute_provider};
+            const auto point = unpack_surface_point(packed_point);
             SurfaceClosureTraceVisitor visitor{
-                point,
-                requested_index,
-                scene->volume_metadata.closure_allocation_budget,
-                closure_identity};
+                point, requested_index,
+                scene->volume_metadata.closure_allocation_budget, closure_identity};
             static_cast<void>(scene->surfaces.collect_closures(
-                surface_tag,
-                services,
-                point,
-                reflective_caustics,
-                refractive_caustics,
-                visitor));
+                surface_tag, services, point, reflective_caustics,
+                refractive_caustics, visitor));
             return pack_surface_closure_trace(visitor.result());
         };
     closure_trace.set_name("surface_closure_trace");
     SurfaceSampleTraceCallable sample_trace =
-        [scene,
-         closure_sampling,
-         closure_evaluation,
-         closure_setup,
-         texture_sampling,
-         attribute_lookup](
-            BufferFloat scalar_parameters,
-            BufferFloat3 vector_parameters,
-            BufferFloat cycles_bsdf_tables,
-            BindlessVar textures,
-            BindlessVar geometry_heap,
-            UInt surface_tag,
-            Var<SurfacePointCall> packed_point,
-            Float u_lobe,
-            Float2 u_direction,
-            UInt lobe_mask,
-            UInt transport_mode,
-            Float glossy_filter_roughness,
-            Bool reflective_caustics,
-            Bool refractive_caustics) noexcept {
-            CallableSurfaceClosureSetupProvider setup_provider{
-                cycles_bsdf_tables,
-                closure_setup};
-            CallableTexture2DSamplingProvider texture_provider{
-                textures,
-                texture_sampling};
+        [scene, closure_sampling, closure_evaluation, closure_setup,
+         texture_sampling, attribute_lookup](
+            BufferFloat scalar_parameters, BufferFloat3 vector_parameters,
+            BufferFloat cycles_bsdf_tables, BindlessVar textures,
+            BindlessVar geometry_heap, UInt surface_tag,
+            Var<SurfacePointCall> packed_point, Float u_lobe, Float2 u_direction,
+            UInt lobe_mask, UInt transport_mode, Float glossy_filter_roughness,
+            Bool reflective_caustics, Bool refractive_caustics) noexcept {
+            CallableSurfaceClosureSetupProvider setup_provider{cycles_bsdf_tables,
+                                                               closure_setup};
+            CallableTexture2DSamplingProvider texture_provider{textures,
+                                                               texture_sampling};
             CallableSurfaceAttributeLookupProvider attribute_provider{
-                geometry_heap,
-                attribute_lookup};
-            BufferShaderServices services{
-                scalar_parameters,
-                vector_parameters,
-                cycles_bsdf_tables,
-                textures,
-                geometry_heap,
-                scene->attribute_binding_slot,
-                scene->attribute_range_slot,
-                scene->nishita_texture_bindings,
-                scene->shader_color_space,
-                &setup_provider,
-                &texture_provider,
-                &attribute_provider};
-            auto query = SurfaceQuery{
-                .lobe_mask = lobe_mask,
-                .transport_mode = transport_mode,
-                .glossy_filter_roughness =
-                    glossy_filter_roughness,
-                .reflective_caustics = reflective_caustics,
-                .refractive_caustics = refractive_caustics};
-            const auto point =
-                unpack_surface_point(packed_point);
-            return pack_surface_sample_trace(
-                sample_surface_closures(
-                    *scene,
-                    closure_sampling,
-                    closure_evaluation,
-                    scalar_parameters,
-                    vector_parameters,
-                    cycles_bsdf_tables,
-                    textures,
-                    geometry_heap,
-                    Expr<std::uint32_t>{
-                        surface_tag.expression()},
-                    services,
-                    point,
-                    Expr<float>{u_lobe.expression()},
-                    Expr<luisa::float2>{
-                        u_direction.expression()},
-                    query,
-                    true));
+                geometry_heap, attribute_lookup};
+            BufferShaderServices services{scalar_parameters,
+                                          vector_parameters,
+                                          cycles_bsdf_tables,
+                                          textures,
+                                          geometry_heap,
+                                          scene->attribute_binding_slot,
+                                          scene->attribute_range_slot,
+                                          scene->nishita_texture_bindings,
+                                          scene->shader_color_space,
+                                          &setup_provider,
+                                          &texture_provider,
+                                          &attribute_provider};
+            auto query =
+                SurfaceQuery{.lobe_mask = lobe_mask,
+                             .transport_mode = transport_mode,
+                             .glossy_filter_roughness = glossy_filter_roughness,
+                             .reflective_caustics = reflective_caustics,
+                             .refractive_caustics = refractive_caustics};
+            const auto point = unpack_surface_point(packed_point);
+            return pack_surface_sample_trace(sample_surface_closures(
+                *scene, closure_sampling, closure_evaluation, scalar_parameters,
+                vector_parameters, cycles_bsdf_tables, textures, geometry_heap,
+                Expr<std::uint32_t>{surface_tag.expression()}, services, point,
+                Expr<float>{u_lobe.expression()},
+                Expr<luisa::float2>{u_direction.expression()}, query, true));
         };
     sample_trace.set_name("surface_sample_trace");
     SurfaceBssrdfNormalCallable bssrdf_normal =
         [scene, closure_setup, texture_sampling, attribute_lookup](
-            BufferFloat scalar_parameters,
-            BufferFloat3 vector_parameters,
-            BufferFloat cycles_bsdf_tables,
-            BindlessVar textures,
-            BindlessVar geometry_heap,
-            UInt surface_tag,
-            Var<SurfacePointCall> packed_point,
-            Bool reflective_caustics,
+            BufferFloat scalar_parameters, BufferFloat3 vector_parameters,
+            BufferFloat cycles_bsdf_tables, BindlessVar textures,
+            BindlessVar geometry_heap, UInt surface_tag,
+            Var<SurfacePointCall> packed_point, Bool reflective_caustics,
             Bool refractive_caustics) noexcept {
-            CallableSurfaceClosureSetupProvider setup_provider{
-                cycles_bsdf_tables,
-                closure_setup};
-            CallableTexture2DSamplingProvider texture_provider{
-                textures,
-                texture_sampling};
+            CallableSurfaceClosureSetupProvider setup_provider{cycles_bsdf_tables,
+                                                               closure_setup};
+            CallableTexture2DSamplingProvider texture_provider{textures,
+                                                               texture_sampling};
             CallableSurfaceAttributeLookupProvider attribute_provider{
-                geometry_heap,
-                attribute_lookup};
-            BufferShaderServices services{
-                scalar_parameters,
-                vector_parameters,
-                cycles_bsdf_tables,
-                textures,
-                geometry_heap,
-                scene->attribute_binding_slot,
-                scene->attribute_range_slot,
-                scene->nishita_texture_bindings,
-                scene->shader_color_space,
-                &setup_provider,
-                &texture_provider,
-                &attribute_provider};
-            const auto point =
-                unpack_surface_point(packed_point);
+                geometry_heap, attribute_lookup};
+            BufferShaderServices services{scalar_parameters,
+                                          vector_parameters,
+                                          cycles_bsdf_tables,
+                                          textures,
+                                          geometry_heap,
+                                          scene->attribute_binding_slot,
+                                          scene->attribute_range_slot,
+                                          scene->nishita_texture_bindings,
+                                          scene->shader_color_space,
+                                          &setup_provider,
+                                          &texture_provider,
+                                          &attribute_provider};
+            const auto point = unpack_surface_point(packed_point);
             SurfaceBssrdfNormalVisitor visitor{
                 scene->volume_metadata.closure_allocation_budget};
             static_cast<void>(scene->surfaces.collect_bssrdf_bump_closures(
-                surface_tag,
-                scene->surface_bssrdf_bump_tags,
-                services,
-                point,
-                reflective_caustics,
-                refractive_caustics,
-                visitor));
+                surface_tag, scene->surface_bssrdf_bump_tags, services, point,
+                reflective_caustics, refractive_caustics, visitor));
             return Float3{visitor.result()};
         };
     bssrdf_normal.set_name("surface_bssrdf_normal");
     SurfaceShadingNormalCallable shading_normal =
         [scene, texture_sampling, attribute_lookup](
-            BufferFloat scalar_parameters,
-            BufferFloat3 vector_parameters,
-            BufferFloat cycles_bsdf_tables,
-            BindlessVar textures,
-            BindlessVar geometry_heap,
-            UInt surface_tag,
+            BufferFloat scalar_parameters, BufferFloat3 vector_parameters,
+            BufferFloat cycles_bsdf_tables, BindlessVar textures,
+            BindlessVar geometry_heap, UInt surface_tag,
             Var<SurfacePointCall> packed_point) noexcept {
-            CallableTexture2DSamplingProvider texture_provider{
-                textures,
-                texture_sampling};
+            CallableTexture2DSamplingProvider texture_provider{textures,
+                                                               texture_sampling};
             CallableSurfaceAttributeLookupProvider attribute_provider{
-                geometry_heap,
-                attribute_lookup};
-            BufferShaderServices services{
-                scalar_parameters,
-                vector_parameters,
-                cycles_bsdf_tables,
-                textures,
-                geometry_heap,
-                scene->attribute_binding_slot,
-                scene->attribute_range_slot,
-                scene->nishita_texture_bindings,
-                scene->shader_color_space,
-                nullptr,
-                &texture_provider,
-                &attribute_provider};
+                geometry_heap, attribute_lookup};
+            BufferShaderServices services{scalar_parameters,
+                                          vector_parameters,
+                                          cycles_bsdf_tables,
+                                          textures,
+                                          geometry_heap,
+                                          scene->attribute_binding_slot,
+                                          scene->attribute_range_slot,
+                                          scene->nishita_texture_bindings,
+                                          scene->shader_color_space,
+                                          nullptr,
+                                          &texture_provider,
+                                          &attribute_provider};
             return scene->surfaces.shading_normal(
-                surface_tag,
-                services,
-                unpack_surface_point(packed_point));
+                surface_tag, services, unpack_surface_point(packed_point));
         };
     shading_normal.set_name("surface_shading_normal");
-    return {
-        std::move(preparation),
-        std::move(evaluate_light),
-        std::move(constant_emission),
-        std::move(emission),
-        std::move(sample),
-        std::move(closure_trace),
-        std::move(sample_trace),
-        std::move(bssrdf_normal),
-        std::move(shading_normal)};
+    return {std::move(preparation),
+            std::move(evaluate_light),
+            std::move(constant_emission),
+            std::move(emission),
+            std::move(sample),
+            std::move(closure_trace),
+            std::move(sample_trace),
+            std::move(bssrdf_normal),
+            std::move(shading_normal)};
 }
 
 }// namespace psycles::luisa_backend::detail

@@ -299,15 +299,15 @@ render(luisa::compute::Context &context, std::string_view backend,
 }
 
 [[nodiscard]] bool close(float lhs, float rhs,
-    float tolerance = 2.0e-5f) noexcept {
-  return std::isfinite(lhs) && std::isfinite(rhs) &&
+                         float tolerance = 2.0e-5f) noexcept {
+    return std::isfinite(lhs) && std::isfinite(rhs) &&
            std::abs(lhs - rhs) <=
-             tolerance * std::max({1.0f, std::abs(lhs), std::abs(rhs)});
+               tolerance * std::max({1.0f, std::abs(lhs), std::abs(rhs)});
 }
 
 [[nodiscard]] bool compare_outputs(const RenderResult &reference,
                                    const RenderResult &candidate, bool exact,
-    std::string_view label) {
+                                   std::string_view label) {
     for (const auto kind : pass_kinds) {
         const auto *expected = reference.output.find(kind);
         const auto *actual = candidate.output.find(kind);
@@ -320,37 +320,48 @@ render(luisa::compute::Context &context, std::string_view backend,
                       << static_cast<std::uint32_t>(kind) << '\n';
             return false;
         }
-    for (auto i = std::size_t{0u}; i < expected->pixels.size(); ++i) {
-            const auto matches =
-          exact ? same_bits(expected->pixels[i], actual->pixels[i])
-                    : close(expected->pixels[i], actual->pixels[i]);
+        for (auto i = std::size_t{0u}; i < expected->pixels.size(); ++i) {
+            const auto matches = exact ?
+                                     same_bits(expected->pixels[i],
+                                               actual->pixels[i]) :
+                                     close(expected->pixels[i],
+                                           actual->pixels[i]);
             if (!matches) {
                 std::cerr << label << " changed pass "
-                  << static_cast<std::uint32_t>(kind) << " value " << i
-                  << ": expected " << expected->pixels[i] << ", got "
+                          << static_cast<std::uint32_t>(kind) << " value " << i
+                          << ": expected " << expected->pixels[i] << ", got "
                           << actual->pixels[i] << '\n';
                 return false;
             }
         }
     }
-  if (reference.trace.has_value() != candidate.trace.has_value()) {
-    std::cerr << label << " changed path-trace availability\n";
-    return false;
-  }
-  if (reference.trace) {
-    for (auto slot = std::size_t{0u}; slot < reference.trace->slots.size();
-         ++slot) {
-        for (auto component = std::size_t{0u};
-           component < reference.trace->slots[slot].size(); ++component) {
-        if (!same_bits(reference.trace->slots[slot][component],
-                       candidate.trace->slots[slot][component])) {
-          std::cerr << label << " changed deterministic path trace at slot "
-                          << slot << ", component " << component << '\n';
-                return false;
+    if (reference.trace.has_value() != candidate.trace.has_value()) {
+        std::cerr << label << " changed path-trace availability\n";
+        return false;
+    }
+    if (reference.trace) {
+        for (auto slot = std::size_t{0u}; slot < reference.trace->slots.size();
+             ++slot) {
+            for (auto component = std::size_t{0u};
+                 component < reference.trace->slots[slot].size(); ++component) {
+                const auto expected = reference.trace->slots[slot][component];
+                const auto actual = candidate.trace->slots[slot][component];
+                const auto matches = exact ? same_bits(expected, actual)
+                                           : close(expected, actual);
+                if (!matches) {
+                    std::cerr
+                        << label << " changed path trace at slot " << slot
+                        << ", component " << component << ": expected "
+                        << expected << " (0x" << std::hex
+                        << std::bit_cast<std::uint32_t>(expected) << "), got "
+                        << std::dec << actual << " (0x" << std::hex
+                        << std::bit_cast<std::uint32_t>(actual) << ")\n"
+                        << std::dec;
+                    return false;
+                }
             }
         }
     }
-  }
     return true;
 }
 
