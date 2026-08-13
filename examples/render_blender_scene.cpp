@@ -178,7 +178,8 @@ int main(int argc, char **argv) {
                  "[wavefront-tail-megakernel-threshold=4096] "
                  "[wavefront-graph-worker-count=0] "
                  "[wavefront-graph-selective=0] "
-                 "[wavefront-graph-refill-threshold=0]\n";
+                 "[wavefront-graph-refill-threshold=0] "
+                 "[fast-math=1]\n";
         return EXIT_FAILURE;
     }
     const auto bundle = std::filesystem::path{argv[1]};
@@ -442,6 +443,15 @@ int main(int argc, char **argv) {
     }
     wavefront_graph_refill_threshold = *value;
   }
+  auto enable_fast_math = true;
+  if (argc > 30) {
+    auto value = parse_unsigned<std::uint32_t>(argv[30]);
+    if (!value || *value > 1u) {
+      std::cerr << "error: fast math must be 0 or 1\n";
+      return EXIT_FAILURE;
+    }
+    enable_fast_math = *value != 0u;
+  }
   if (!psycles::luisa_backend::valid_luisa_persistent_scheduler_shape(
           persistent_worker_count, persistent_block_size,
                 persistent_fetch_size)) {
@@ -468,6 +478,7 @@ int main(int argc, char **argv) {
     psycles::luisa_backend::LuisaPathTracerBackend renderer{
         std::move(device),
         {.next_event_estimation = true,
+         .enable_fast_math = enable_fast_math,
          .scheduler = scheduler,
        .wavefront_execution_block_size = wavefront_execution_block_size,
        .wavefront_graph_worker_count = wavefront_graph_worker_count,

@@ -63,6 +63,7 @@ int main() {
     // Defaults reproduce the path-tracing experiment in GPU Coroutines:
     // wavefront 2^24; persistent 2^15, block 128, fetch 16, SoA + GME.
     constexpr LuisaPathTracerOptions options;
+    static_assert(options.enable_fast_math);
   static_assert(options.scheduler == LuisaPathScheduler::megakernel);
     static_assert(options.wavefront_frame_capacity == (1u << 24u));
     static_assert(options.wavefront_execution_block_size == 32u);
