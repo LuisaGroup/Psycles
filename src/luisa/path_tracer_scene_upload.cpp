@@ -274,7 +274,11 @@ SceneTableUploadComponent::upload(const std::shared_ptr<LuisaSceneData> &scene,
            << scene->light_tree_triangle_lookup_buffer.copy_from(
                   luisa::span{input.light_tree_triangle_lookup})
            << scene->texture_heap.update() << scene->heap.update()
-           << scene->accel.build() << synchronize();
+           << scene->accel.build();
+    if (scene->subsurface_accel) {
+        stream << scene->subsurface_accel->build();
+    }
+    stream << synchronize();
     return {};
 }
 

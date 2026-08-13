@@ -93,6 +93,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_tracer_color_transforms.cpp
     src/luisa/path_tracer_normal_maps.cpp
     src/luisa/path_tracer_shader_tables.cpp
+    src/luisa/path_tracer_subsurface_scene.cpp
     src/luisa/path_tracer_vector_mapping.cpp
     src/luisa/path_tracer_common.cpp
     src/luisa/path_tracer_curve_scene.cpp
@@ -128,6 +129,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_kernel_surface_scatter.cpp
     src/luisa/path_kernel_surface_shading.cpp
     src/luisa/path_kernel_subsurface.cpp
+    src/luisa/path_kernel_subsurface_intersection.cpp
     src/luisa/path_kernel_subsurface_state.cpp
     src/luisa/subsurface_random_walk_component.cpp
     src/luisa/path_kernel_triangle_geometry.cpp

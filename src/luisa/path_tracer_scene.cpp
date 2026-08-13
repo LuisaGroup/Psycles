@@ -10,6 +10,7 @@
 #include "path_tracer_bsdf_tables.h"
 #include "path_tracer_scene_geometry.h"
 #include "path_tracer_scene_upload.h"
+#include "path_tracer_subsurface_scene.h"
 #include "shader_table_data.h"
 #include "path_tracer_shader_services.h"
 #include "path_tracer_surfaces.h"
@@ -23,7 +24,6 @@
 #include <psycles/luisa/cycles_nishita.h>
 
 namespace psycles::luisa_backend {
-
 using namespace detail;
 
 contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
@@ -140,6 +140,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         }
     }
     data->has_subsurface = !surface_bssrdf_materials.empty();
+    const SubsurfaceSceneComponent subsurface_scene;
+    const auto subsurface_scene_plan = subsurface_scene.plan(
+        snapshot, surface_bssrdf_materials);
     auto cycles_instance_intersection_plan =
         build_cycles_instance_intersection_plan(
             snapshot, surface_bssrdf_materials);
@@ -1449,6 +1452,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     luisa::vector<EmissiveTriangleGpu> emissive_triangles;
     std::vector<float> emissive_triangle_areas;
     data->accel = data->device.create_accel();
+    subsurface_scene.initialize_accel(data, subsurface_scene_plan);
     source_instance_index = 0u;
     for (const auto &[instance_id, instance] :
          snapshot.instances) {
@@ -1678,6 +1682,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             visibility,
             false,
             instance_index);
+        subsurface_scene.append_triangle_instance(
+            data, subsurface_scene_plan, instance_index,
+            geometry_iter->second, instance.transform);
     }
     if (!result.diagnostics.empty()) {
         return result;
@@ -1990,6 +1997,4 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             std::move(data));
     return result;
 }
-
-
 }// namespace psycles::luisa_backend

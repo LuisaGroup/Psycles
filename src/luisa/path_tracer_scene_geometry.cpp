@@ -59,6 +59,43 @@ void include_resolved_material(
     }
 }
 
+[[nodiscard]] std::optional<contract::MaterialId>
+resolve_surface_material(
+    std::span<const contract::MaterialId> geometry_materials,
+    std::span<const contract::MaterialId> material_overrides,
+    std::uint32_t slot) noexcept {
+    if (slot < material_overrides.size()) {
+        return material_overrides[slot];
+    }
+    if (!geometry_materials.empty()) {
+        return geometry_materials[std::min<std::size_t>(
+            slot, geometry_materials.size() - 1u)];
+    }
+    return std::nullopt;
+}
+
+[[nodiscard]] bool triangle_instance_uses_material(
+    const contract::TriangleMeshDesc &geometry,
+    const contract::InstanceDesc &instance,
+    const std::set<contract::MaterialId> &materials) noexcept {
+    for (auto primitive = std::size_t{0u};
+         primitive < geometry.triangles.size();
+         ++primitive) {
+        const auto slot =
+            primitive < geometry.triangle_material_slots.size()
+                ? geometry.triangle_material_slots[primitive]
+                : 0u;
+        const auto material = resolve_surface_material(
+            geometry.material_slots,
+            instance.material_overrides,
+            slot);
+        if (material && materials.contains(*material)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void include_triangle_materials(
     std::set<contract::MaterialId> &result,
     const contract::TriangleMeshDesc &geometry,
@@ -279,6 +316,30 @@ collect_reachable_surface_materials(
                    mesh != scene.geometries.end()) {
             include_triangle_materials(result, mesh->second, instance);
         }
+    }
+    return result;
+}
+
+std::vector<std::uint32_t>
+collect_triangle_instances_with_surface_materials(
+    const contract::SceneSnapshot &scene,
+    const std::set<contract::MaterialId> &materials) {
+    std::vector<std::uint32_t> result;
+    auto instance_index = std::uint32_t{0u};
+    for (const auto &[instance_id, instance] : scene.instances) {
+        static_cast<void>(instance_id);
+        // Match scene upload's curve precedence for malformed snapshots that
+        // reuse a geometry id in both maps. Such an instance cannot enter the
+        // triangle-only Cycles local-intersection domain.
+        const auto is_curve =
+            scene.curve_geometries.contains(instance.geometry);
+        const auto geometry = scene.geometries.find(instance.geometry);
+        if (!is_curve && geometry != scene.geometries.end() &&
+            triangle_instance_uses_material(
+                geometry->second, instance, materials)) {
+            result.emplace_back(instance_index);
+        }
+        ++instance_index;
     }
     return result;
 }

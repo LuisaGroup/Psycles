@@ -59,6 +59,18 @@ class CyclesPrimitiveIntervalResolver {
 collect_reachable_surface_materials(
     const contract::SceneSnapshot &scene);
 
+// Returns stable SceneSnapshot instance ordinals whose triangle support may
+// enter BSSRDF transport. Material resolution is evaluated per primitive,
+// including instance overrides and Cycles' last-slot clamp. Once any surface
+// primitive selects a target material, the complete object is retained: a
+// local BSSRDF ray may exit through a different primitive or material slot on
+// that same object. Curves are excluded because Cycles' local intersection
+// contract accepts triangle and motion-triangle objects only.
+[[nodiscard]] std::vector<std::uint32_t>
+collect_triangle_instances_with_surface_materials(
+    const contract::SceneSnapshot &scene,
+    const std::set<contract::MaterialId> &materials);
+
 // One entry per SceneSnapshot instance, in stable map iteration order. Exact
 // coincident triangle supports form a circular list so a device ray query can
 // recover source candidates that an acceleration backend legally coalesces.
