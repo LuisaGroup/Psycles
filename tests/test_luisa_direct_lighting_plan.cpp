@@ -1,4 +1,5 @@
 #include "path_kernel_builder.h"
+#include "path_kernel_direct_light_queue.h"
 
 #include <algorithm>
 #include <array>
@@ -19,6 +20,7 @@ using psycles::luisa_backend::detail::can_stage_direct_light_queue;
 using psycles::luisa_backend::detail::DirectLightingStagePlan;
 using psycles::luisa_backend::detail::make_direct_lighting_stage_plan;
 using psycles::luisa_backend::detail::make_path_kernel_scene_stage_plan;
+using psycles::luisa_backend::detail::make_runtime_direct_light_task_storage;
 using psycles::luisa_backend::detail::SceneTraversalStagePlan;
 
 struct PlanCase {
@@ -183,6 +185,56 @@ int main(int argc, char **argv) {
         std::cerr << "Device-visible direct-light plan changed on " << backend
                   << '\n';
         return EXIT_FAILURE;
+    }
+
+    // Differently sized allocations must produce one shader structure. The
+    // runtime capacity controls every SoA member offset and is not embedded as
+    // a host literal in the AST.
+    using DirectLightTaskCall =
+        psycles::luisa_backend::detail::DirectLightTaskCall;
+    auto small_tasks = device.create_soa<DirectLightTaskCall>(7u);
+    auto large_tasks = device.create_soa<DirectLightTaskCall>(19u);
+    const auto make_runtime_soa_kernel = [](auto *tasks) {
+      return Kernel1D{[tasks](UInt capacity, BufferUInt values) noexcept {
+        const auto x = dispatch_x();
+        const auto runtime_tasks =
+            make_runtime_direct_light_task_storage(*tasks, capacity);
+        runtime_tasks.pixel.write(x, x + 37u);
+        values.write(x, runtime_tasks.pixel.read(x));
+      }};
+    };
+    auto small_kernel = make_runtime_soa_kernel(&small_tasks);
+    auto large_kernel = make_runtime_soa_kernel(&large_tasks);
+    if (small_kernel.function()->function().hash() !=
+        large_kernel.function()->function().hash()) {
+      std::cerr << "Direct-light runtime SoA hashed host capacity on "
+                << backend << '\n';
+      return EXIT_FAILURE;
+    }
+    auto small_values = device.create_buffer<std::uint32_t>(7u);
+    auto large_values = device.create_buffer<std::uint32_t>(19u);
+    auto small_shader = device.compile(small_kernel);
+    auto large_shader = device.compile(large_kernel);
+    std::array<std::uint32_t, 7u> small_actual{};
+    std::array<std::uint32_t, 19u> large_actual{};
+    stream << small_shader(7u, small_values).dispatch(7u)
+           << large_shader(19u, large_values).dispatch(19u)
+           << small_values.copy_to(luisa::span{small_actual})
+           << large_values.copy_to(luisa::span{large_actual})
+           << synchronize();
+    for (auto index = std::size_t{0u}; index < small_actual.size(); ++index) {
+      if (small_actual[index] != index + 37u) {
+        std::cerr << "Small direct-light runtime SoA failed at " << index
+                  << " on " << backend << '\n';
+        return EXIT_FAILURE;
+      }
+    }
+    for (auto index = std::size_t{0u}; index < large_actual.size(); ++index) {
+      if (large_actual[index] != index + 37u) {
+        std::cerr << "Large direct-light runtime SoA failed at " << index
+                  << " on " << backend << '\n';
+        return EXIT_FAILURE;
+      }
     }
     return EXIT_SUCCESS;
 }

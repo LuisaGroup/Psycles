@@ -73,7 +73,9 @@ class DirectLightTaskSink {
 
 public:
   virtual ~DirectLightTaskSink() noexcept = default;
-  virtual void emit(Var<DirectLightTaskCall> task) const noexcept = 0;
+  virtual void emit(
+      Var<DirectLightTaskCall> task,
+      Expr<std::uint32_t> runtime_capacity) const noexcept = 0;
 };
 
 } // namespace psycles::luisa_backend::detail

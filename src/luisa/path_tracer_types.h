@@ -431,6 +431,10 @@ struct RenderKernelParameters {
     luisa::uint path_trace_pixel_x{};
     luisa::uint path_trace_pixel_y{};
     luisa::uint path_trace_sample{};
+    // Runtime allocation bound for coroutine-owned auxiliary queues. This is
+    // deliberately a kernel argument: resolution and frame-pool capacity must
+    // not specialize the shader AST or its cache identity.
+    luisa::uint wavefront_frame_capacity{};
     float sample_clamp_direct{};
     float sample_clamp_indirect{};
     float filter_glossy{};
@@ -775,6 +779,7 @@ LUISA_STRUCT(
     path_trace_pixel_x,
     path_trace_pixel_y,
     path_trace_sample,
+    wavefront_frame_capacity,
     sample_clamp_direct,
     sample_clamp_indirect,
     filter_glossy,

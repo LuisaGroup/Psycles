@@ -139,7 +139,8 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
         task.transmission_depth = sample.transmission_depth;
 
         if (_task_sink) {
-          _task_sink->emit(task);
+          _task_sink->emit(
+              task, invocation.parameters.wavefront_frame_capacity);
         } else {
           const auto shadow_result =
               _evaluator.trace(task, invocation.parameters);

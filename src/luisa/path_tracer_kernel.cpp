@@ -212,6 +212,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
               .aperture_ratio = camera_aperture_ratio});
   const auto pass_alpha_threshold =
       std::clamp(render_settings.pass_alpha_threshold, 0.0f, 1.0f);
+  const auto wavefront_frame_capacity = static_cast<std::uint32_t>(
+      std::min<std::size_t>(_options.wavefront_frame_capacity, count));
     _kernel_parameters = RenderKernelParameters{
         .window_x = render_window.x,
         .window_y = render_window.y,
@@ -238,6 +240,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
           _options.path_trace ? _options.path_trace->pixel_y : 0u,
         .path_trace_sample =
           _options.path_trace ? _options.path_trace->sample : 0u,
+      .wavefront_frame_capacity = wavefront_frame_capacity,
         .sample_clamp_direct = sample_clamp_direct,
         .sample_clamp_indirect = sample_clamp_indirect,
         .filter_glossy = filter_glossy,
@@ -299,8 +302,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
       _scene->device, kernel_config,
         PathKernelExecutorConfig{
             .scheduler = _options.scheduler,
-          .wavefront_frame_capacity = static_cast<std::uint32_t>(
-              std::min<std::size_t>(_options.wavefront_frame_capacity, count)),
+          .wavefront_frame_capacity = wavefront_frame_capacity,
             .wavefront_execution_block_size =
                 _options.wavefront_execution_block_size,
             .wavefront_graph_worker_count =
