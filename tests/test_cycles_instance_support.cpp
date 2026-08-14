@@ -154,11 +154,48 @@ void test_triangle_instances_with_surface_materials() {
           "BSSRDF compact-domain mask is not a bijective primary-index image");
 }
 
+void test_instanced_material_slot_image() {
+  SceneSnapshot scene;
+  TriangleMeshDesc geometry;
+  // The primitive domain is intentionally much larger than the slot image.
+  // Reachability must factor through the one-element image {0}; repeating
+  // this scan for every instance would restore the former O(I * P) defect.
+  geometry.name = "heavily instanced single-slot mesh";
+  geometry.triangles.resize(1u << 18u, {0u, 1u, 2u});
+  geometry.material_slots = {MaterialId{10u}};
+  scene.geometries.emplace(GeometryId{1u}, std::move(geometry));
+
+  constexpr auto instance_count = 2048u;
+  for (auto i = 0u; i < instance_count; ++i) {
+    scene.instances.emplace(
+        InstanceId{i + 1u},
+        InstanceDesc{
+            .name = "slot-image instance",
+            .geometry = GeometryId{1u},
+            .material_overrides = {
+                (i & 1u) == 0u ? MaterialId{7u} : MaterialId{8u}}});
+  }
+
+  require(
+      collect_reachable_surface_materials(scene) ==
+          std::set<MaterialId>{MaterialId{7u}, MaterialId{8u}},
+      "instanced slot-image reachability lost an override material");
+  const auto selected = collect_triangle_instances_with_surface_materials(
+      scene, {MaterialId{7u}});
+  require(selected.size() == instance_count / 2u,
+          "instanced slot-image selection has the wrong cardinality");
+  for (auto i = std::size_t{0u}; i < selected.size(); ++i) {
+    require(selected[i] == i * 2u,
+            "instanced slot-image selection changed primary indices");
+  }
+}
+
 } // namespace
 
 int main() {
   test_reachable_surface_materials();
   test_triangle_instances_with_surface_materials();
+  test_instanced_material_slot_image();
   std::cout << "Cycles instance material-domain tests passed\n";
   return EXIT_SUCCESS;
 }
