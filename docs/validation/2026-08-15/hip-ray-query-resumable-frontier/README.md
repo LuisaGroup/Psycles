@@ -12,7 +12,8 @@ LuisaCompute commits:
 
 - `3a556dd47` -- formally localize invocation-local RayQuery handler scratch;
 - `d98735f55` -- persist resumable RayQuery on the gfx12 hardware frontier;
-- `8a7a62162` -- evaluate the handler-scratch proof as sparse reachability.
+- `8a7a62162` -- evaluate the handler-scratch proof as sparse reachability;
+- `fb2427984` -- separate RayQuery identity from callback captures.
 
 ## Traversal-state model
 
@@ -90,10 +91,45 @@ HIP LLVM codegen intervals are 443.9 ms and 340.7 ms. The regression now
 explicitly disables persistent shader cache so this compiler path is exercised
 on every run.
 
-The cutout kernel's projected callback environment fell from 48 B to 16 B and
-its linked code object from approximately 46,836 B to 45,992 B. In the current
-Psycles split kernels, the remaining projected environments are 96 B and
-192 B; the analysis correctly rejects all of their cross-stage allocations.
+At the scratch-localization checkpoint, the cutout kernel's projected callback
+environment fell from 48 B to 16 B and its linked code object from
+approximately 46,836 B to 45,992 B. The corresponding Psycles split-kernel
+environments were 96 B and 192 B; identity separation removes another 8 B
+from each, leaving 88 B and 184 B. The analysis correctly retains all of their
+genuinely cross-stage allocations.
+
+## Callback identity and environment ABI
+
+The follow-up redesign models a synchronous candidate callback as the product
+
+```text
+CallbackABI = QueryIdentity x UserEnvironment
+```
+
+`QueryIdentity` is not a user capture. It is the identity of the active
+per-invocation traversal state and is always required by the candidate object.
+AMDGPU private pointers are exactly 32 bits in the target data layout, so the
+HIP LLVM RayQuery representation is now the exact `i32` state-address token
+instead of the historical five-`i64`, 40 B source-layout surrogate. The token
+is stored in an existing four-byte alignment hole in the 128 B synchronous
+state; neither the state size nor the following ray offset changes. The native
+wrapper passes a pointer to that token as a dedicated dispatcher operand.
+
+Only `UserEnvironment` is subject to the interprocedural least-fixed-point
+demand proof described above. An empty product is represented by `null`. A
+single retained generic pointer is transported directly using the exact
+one-field-product isomorphism `{p : ptr} <-> p`; non-pointer scalars are not
+encoded as pointers. Larger products retain ordinary typed storage. This does
+not merge object lifetimes or infer aliasing: it only removes representation
+that has no semantic observer.
+
+The structural regression compiles a cache-disabled RayQuery and checks the
+final LLVM IR for all four properties: no 40 B query surrogate, no escaped
+standalone query-token allocation, no materialized empty user environment,
+and direct decoding of the 32-bit token from the dedicated dispatcher
+identity operand. The semantic RayQuery suite additionally covers rejection,
+commit, early termination, paired triangles, deep TLAS/BLAS continuation, and
+reentrant fallback selection.
 
 ## Renderer transparent-shadow integration
 
@@ -140,12 +176,17 @@ cold/cache warm-up; the following five runs determine the median.
 |---|---:|---:|
 | Previous independent default-path checkpoint | 447.302 | 1.000x |
 | New frontier plus XIR scratch localization | 459.962 | 1.028x |
+| Compact identity/environment ABI | 485.045 | 1.084x |
 | Ordinary no-RayQuery trace | 913.061 | 2.041x throughput |
 
-The five final warm cutout measurements were 464.227, 458.487, 458.441,
-462.802, and 459.962 FPS. The remaining cutout/direct time ratio is 1.998x.
-That ratio includes real alpha fetch/evaluation and candidate callback work;
-it is not interpreted as traversal overhead alone.
+The final ABI's five warm cutout measurements were 487.461, 482.681, 485.045,
+486.078, and 483.040 FPS. Its median is 5.45% above the frontier-plus-XIR
+checkpoint and 8.44% above the original independent checkpoint. The remaining
+cutout/direct time ratio is 1.882x, down from 1.998x. That ratio includes real
+alpha fetch/evaluation and candidate callback work; it is not interpreted as
+traversal overhead alone. The generated kernel uses 150 VGPRs instead of the
+pre-compaction 162, and the cutout's two static user environments collapse
+from 128 B total to zero.
 
 A separate forced-resumable A/B isolates the traversal-state redesign from
 the default synchronous cost choice. The old private-stack implementation was
@@ -184,10 +225,13 @@ with a 32-sample staged-wavefront dispatch on HIP:
 ```
 
 The scene contains 348 geometries, 87,534 instances, and 37 materials. Scene
-upload took 4.397 s, cold JIT compilation took 11.544 s, and render-only time
-was 1.799 s. The Blender source enables adaptive sampling and denoising, while
-this Psycles run uses fixed sampling; official Cycles comparisons must disable
-both features as well.
+upload took 4.397 s, cold JIT compilation took 11.544 s, and the pre-ABI
+render-only time was 1.799 s. With the compact ABI and a warm shader cache,
+scene upload took 4.167 s, session creation took 0.670 s, and render-only time
+was 1.780 s, a 1.08% reduction in this matched full-scene check. The Blender
+source enables adaptive sampling and denoising, while this Psycles run uses
+fixed sampling; official Cycles comparisons must disable both features as
+well.
 
 Against the immediately preceding initialized-batch checkpoint, Combined has
 RMSE 0.0017703, relative RMSE 0.0011346, MAE 0.00001570, and a mean-luminance
@@ -195,6 +239,18 @@ ratio of 1.000022. The 95th percentile is exactly zero and the 99th percentile
 is 6.88e-8; the sparse maximum of 0.6978 lies on stochastic/geometry edges.
 Emission, Environment, Transmission, and volume passes are unchanged where
 present.
+
+The compact-ABI render versus the immediately preceding four-hit render has
+Combined RMSE 0.0007384, relative RMSE 0.0004732, MAE 4.77e-6, luminance ratio
+0.9999940, and no invalid pixels. Its p95 pixel error is zero and p99 is
+4.30e-9. Normal, Albedo, and every light pass were also checked: Emission,
+Environment, all Transmission passes, and both Volume passes are bit-exact;
+all changed Diffuse/Glossy passes have a zero p99 pixel error and at most
+0.002501 relative RMSE. Visual inspection of the triptych below finds no
+coherent geometry, grass, material, shadow, or lighting change. The amplified
+difference consists of sparse atomic-accumulation noise.
+
+![Lone Monk before and after the compact RayQuery ABI, with amplified difference](triptychs/ray-query-abi/combined.png)
 
 The triptych below compares the earlier single-hit transparent-shadow
 checkpoint with the four-hit batch. Its larger Combined RMSE of 0.03480
@@ -208,15 +264,20 @@ Environment remain bit-exact.
 
 Machine-readable reports are retained at
 `/var/tmp/psycles-shadow-batch-final-comparison.json` and
-`/var/tmp/psycles-shadow-batch-vs-single-hit.json`; the rendered EXR is
-`/var/tmp/psycles-shadow-batch-final.exr`.
+`/var/tmp/psycles-shadow-batch-vs-single-hit.json`; the compact-ABI comparison
+is `/var/tmp/psycles-rq-abi-lone-monk-all-pass-comparison.json` and its rendered
+EXR is `/var/tmp/psycles-rq-abi-lone-monk-warm.exr`.
 
 ## Remaining bottleneck
 
-The resumable kernel still spills and reloads values across every candidate
-callback. LLVM inspection shows that the dominant residual cost is the
-continuation ABI and the live resource/private-reference set around
-`luisa_ray_query_proceed`, not repeated TLAS restarts or parent-link traversal.
+The compact ABI removes the accidental identity/capture coupling, but the
+RayQuery cutout remains 1.882x the time of ordinary trace. The resumable kernel
+still spills and reloads genuinely live values across every candidate callback.
+LLVM inspection shows that the dominant residual cost is the continuation ABI
+and the live resource/private-reference set around `luisa_ray_query_proceed`,
+not repeated TLAS restarts or parent-link traversal. This is the next backend
+profiling target; further reduction must follow liveness and traversal
+semantics rather than backend-specific renderer policy.
 
 A whole-object struct-frame experiment reduced the apparent callback product
 but regressed render time by about 31%, because it destroyed LLVM lifetime
@@ -233,13 +294,19 @@ All checks were rebuilt with 32 parallel jobs after the final source change:
 
 ```text
 test_xir_pass_lower_ray_query_loop : 212 assertions / 18 tests
+test_hip_callable_boundary hip     :  65 assertions / 4 tests
 test_hip_llvm_pipeline            :  39 assertions / 12 tests
 test_hip_ray_query_pipeline hip   : 1482 assertions / 8 tests
 test_hip_ray_query_pipeline fallback: 42 assertions / 8 tests
-psycles_luisa_scene_traversal_tests: pass
-psycles_luisa_curve_ribbon_tests   : pass
+psycles_luisa_scene_traversal_tests fallback/hip/vk: pass
+psycles_luisa_curve_ribbon_tests fallback/hip/vk   : pass
 ```
 
 The fallback run exercises shared semantic cases and explicitly skips only the
 HIP implementation-specific stack tests. No CPU reference renderer is used;
 Cycles remains the renderer reference.
+
+The Vulkan runs set `LUISA_VULKAN_DISABLE_DXC=1`; both scene kernels were
+compiled by the native XIR-to-SPIR-V route (32,463 and 37,566 optimized SPIR-V
+words), with no DXC load or invocation. The HIP wrapper bitcode was rebuilt for
+gfx1030, gfx1100, gfx1200, and gfx1201 before running the semantic tests.
