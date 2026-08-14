@@ -200,6 +200,55 @@ already agree within 3%. For `shade_surface`, the 28% invocation-count
 divergence must be explained alongside the remaining 3.52x per-invocation
 cost; code generation alone cannot account for the aggregate 4.50x gap.
 
+### Continuation-local source-argument projection
+
+The matched trace also prevents a generic compiler cleanup from being
+misclassified as a renderer speedup. Let `A` be the ordered source-coroutine
+argument domain and let `U_c(a)` mean that continuation `c` has an XIR use of
+argument `a`. Once splitting and continuation cleanup are complete, a
+continuation denotes a function of `[frame, A]` whose result is independent of
+every unannotated `a` for which `U_c(a)` is false. Its signature may therefore
+be projected to `[frame, {a in A | U_c(a)}]` without changing its denotation.
+The scheduler frame is never projected, annotated arguments are retained, and
+the complete set of continuation signatures is validated before any mutation.
+The DSL wrapper receives an explicit ordered source-index map, so captured
+resources and unbound C++ arguments are reconstructed without positional magic
+numbers.
+
+For the six Barbershop continuations, this removes 63 of 180 continuation
+argument slots (`35%`). The coroutine frame remains 784 bytes. The
+`shade_surface` kernarg segment falls from 832 to 752 bytes, while
+`intersect_closest` remains 832 bytes because all of its source arguments are
+live. Private storage, VGPR allocation, and the exact intersection ray-query
+helpers are unchanged.
+
+The same-command rocprofv3 A/B is intentionally reported against both the
+previous Psycles object and the matched Cycles trace:
+
+| continuation | Cycles | Psycles before | Psycles projected | projected / Cycles | change vs before |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `shade_surface` | 596.981 ms | 2687.007 ms | 2686.375 ms | 4.500x | -0.02% |
+| `intersect_closest` | 469.631 ms | 1653.946 ms | 1663.887 ms | 3.543x | +0.60% |
+
+Both Psycles changes are run-to-run noise. The warm render changes from the
+previous five-run median of `5.16578 s` to `5.18509 s` (`+0.37%`). A cold 1x1
+compile took `138.20 s` for surface LLVM code generation and `99.41 s` for the
+HIPRT link, compared with the earlier `115.99 s` and `94.37 s`; a single cold
+sample does not establish a regression, but it provides no compilation-speed
+claim either. This transform is retained as a formally justified ABI and
+resource-binding simplification, not counted toward the rendering performance
+target.
+
+The unprofiled old/new warm outputs remain within the renderer's established
+atomic scheduling variation: Combined relative RMSE is `4.85e-5`, Diffuse
+Indirect is `0.001353`, Glossy Indirect is `0.000366`, Environment and both
+volume passes are bit-exact, and p99 pixel RMSE is zero for every color pass.
+Compile-time projection tests validate the exact retained source-index sets.
+Runtime tests validate captured-resource and scalar-argument routing through
+state-machine, wavefront, and persistent schedulers on HIP and fallback (87
+assertions per backend). The film/light and sample-partition gates also pass on
+fallback, HIP, and strict native XIR-to-SPIR-V Vulkan.
+
 At 256 spp, rocprofv3 maps the dominant continuation kernels using their
 scheduler dispatch counts:
 
