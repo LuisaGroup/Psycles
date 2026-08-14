@@ -76,12 +76,13 @@ class PathKernelPipeline::Impl {
             make_analytic_lighting_component(direct_light_trace));
             }
             if (direct_lighting_plan.transport_stage_count() != 0u) {
-        direct_light_transport = make_direct_light_transport_stage(
-            direct_light_trace, make_direct_light_task_evaluator(config),
-            config.direct_light_task_sink);
+                direct_light_transport = make_direct_light_transport_stage(
+                    direct_light_trace,
+                    make_direct_light_task_evaluator(config),
+                    config.direct_light_task_sink, config.path_trace_enabled);
             }
             if (config.has_subsurface) {
-        subsurface_transport = make_subsurface_transport_stage();
+                subsurface_transport = make_subsurface_transport_stage();
             }
         }
     }
@@ -217,28 +218,69 @@ void PathKernelPipeline::emit(
                 surface.point.shading_normal, 0.0f,
                         (shading.cycles_surface_runtime_flags &
                          cycles_closure::runtime_bsdf_has_transmission) != 0u);
-            }
+      }
             DirectLightingContext lighting{
-          .bounce = bounce, .surface = surface, .shading = shading};
+                .bounce = bounce, .surface = surface, .shading = shading};
+            std::optional<DirectLightTransportPreparation>
+                direct_light_preparation;
+            bool defer_direct_light = false;
             if (_impl->direct_light_transport) {
+                direct_light_preparation.emplace();
+                defer_direct_light = _impl->direct_light_transport
+                                         ->defer_until_after_surface_scatter(
+                                             cut_policy);
                 const auto has_evaluable_bsdf =
                     (shading.cycles_surface_runtime_flags &
                      cycles_closure::runtime_bsdf_has_eval) != 0u;
                 $if(has_evaluable_bsdf) {
-          auto transport = DirectLightTransportState::empty();
+                    auto transport = DirectLightTransportState::empty();
                     for (const auto &component : _impl->direct_lighting) {
-            component->prepare(lighting, transport);
+                        component->prepare(lighting, transport);
                     }
-          _impl->direct_light_transport->emit(lighting, transport);
+                    *direct_light_preparation =
+                        _impl->direct_light_transport->prepare(lighting,
+                                                               transport);
+                };
+                if (!defer_direct_light) {
+                    _impl->direct_light_transport->emit(
+                        bounce, std::move(*direct_light_preparation),
+                        cut_policy);
+                }
+            }
+            const auto scatter = _impl->surface_scatter->emit(lighting);
+
+            // BSSRDF entry sampling is the final consumer of populated
+            // surface data. Reduce it before the shadow stages as well; only
+            // the compact transport state can then remain live at a shadow
+            // suspension.
+            std::optional<SubsurfaceTransportPreparation>
+                subsurface_preparation;
+            if (_impl->subsurface_transport) {
+                subsurface_preparation.emplace();
+                $if(scatter.valid & scatter.subsurface) {
+                    *subsurface_preparation =
+                        _impl->subsurface_transport->prepare(lighting,
+                                                             scatter.sample);
                 };
             }
-      const auto scatter = _impl->surface_scatter->emit(lighting);
+
+            // This is the sequential A/bypass -> C graph: surface and closure
+            // temporaries have no uses below this point. Only the prepared
+            // shadow task, canonical continuation state, and (when reachable)
+            // compact BSSRDF transport state cross these suspensions.
+            if (_impl->direct_light_transport && defer_direct_light) {
+                _impl->direct_light_transport->emit(
+                    bounce, std::move(*direct_light_preparation), cut_policy);
+            }
+
+            // A failed continuation sample does not discard the direct-light
+            // contribution from the current vertex. Consume this predicate
+            // only after the deferred shadow state machine has completed.
+            $if(!scatter.valid) { $break; };
+
             if (_impl->subsurface_transport) {
                 $if(scatter.subsurface) {
-                    const auto transport =
-                        _impl->subsurface_transport->prepare(
-                            lighting, scatter.sample);
-                    $if(!transport.valid) { $break; };
+                    $if(!subsurface_preparation->valid) { $break; };
                     if (cut_policy ==
                         PathCoroutineCutPolicy::cycles_wavefront) {
                         // Cycles' INTERSECT_SUBSURFACE consumes canonical
@@ -250,9 +292,9 @@ void PathKernelPipeline::emit(
                     }
                     const auto transported =
                         _impl->subsurface_transport->emit(
-                            sample, transport.state);
-          $if(transported) { $continue; }
-          $else { $break; };
+                            sample, subsurface_preparation->state);
+                    $if(transported) { $continue; }
+                    $else { $break; };
                 };
             }
         }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "path_kernel_direct_light_task.h"
 #include "path_kernel_scene_geometry_plan.h"
 #include "path_kernel_volume_state.h"
 #include "path_tracer_camera.h"
@@ -25,8 +26,6 @@ template <typename T> class Coroutine;
 namespace psycles::luisa_backend::detail {
 
 class DirectLightTraceRecorder;
-class DirectLightTaskSink;
-struct DirectLightTaskEvaluator;
 
 using RenderKernelSignature = void(Buffer<luisa::float4>, Buffer<luisa::float4>,
                                    Buffer<luisa::float4>, Buffer<luisa::float4>,
@@ -85,6 +84,8 @@ struct PathKernelConfig {
     LightTreeCallables light_tree;
     SurfaceCallables surfaces;
     EnvironmentCallables environment;
+    IntersectShadowCallable intersect_shadow;
+    EvaluateShadowSurfaceCallable shade_shadow_surface;
     TraceShadowCallable trace_shadow;
 };
 
@@ -407,6 +408,14 @@ struct PathSampleContext {
   void
   accumulate_radiance(Float3 contribution,
                       Bool primary_volume_scatter_override = false) noexcept;
+  // Accumulates an event using an explicitly captured path classification.
+  // This is semantically identical to accumulate_radiance() at the capture
+  // point, but permits later scheduling stages to run after the canonical
+  // path state has advanced.
+  void accumulate_radiance_at_state(
+      Float3 contribution, UInt event_path_flags,
+      UInt event_path_visibility, UInt event_path_depth,
+      Bool primary_volume_scatter_override = false) noexcept;
   void accumulate_transparency(Float transparency) noexcept;
     [[nodiscard]] Float3
   analytic_light_constant_shader(Var<LightGpu> light) const noexcept;
@@ -537,16 +546,17 @@ struct DirectLightTransportState {
     UInt light_primitive;
     UInt shader_flags;
     Float average_roughness_squared;
+    Bool constant_light_shader;
     Bool distant;
     Bool valid;
 
     [[nodiscard]] static DirectLightTransportState empty() noexcept;
     void accept(const SurfaceEvaluation &evaluation,
-              Float3 proposal_weighted_bsdf, Float3 proposal_light_shader,
-              Float3 proposal_direction, Float3 proposal_target_position,
-              Bool proposal_distant, UInt proposal_light_object,
-                UInt proposal_light_primitive,
-                UInt proposal_shader_flags) noexcept;
+                Float3 proposal_weighted_bsdf, Float3 proposal_light_shader,
+                Float3 proposal_direction, Float3 proposal_target_position,
+                Bool proposal_distant, UInt proposal_light_object,
+                UInt proposal_light_primitive, UInt proposal_shader_flags,
+                Bool proposal_constant_light_shader) noexcept;
 };
 
 class PathBounceSetupStage {
@@ -625,9 +635,23 @@ class DirectLightTransportStage {
 
   public:
     virtual ~DirectLightTransportStage() noexcept = default;
-  virtual void
-  emit(DirectLightingContext &context,
-        const DirectLightTransportState &transport) const noexcept = 0;
+
+    // Reduces all surface/closure data to the exact shadow-path state. The
+    // returned record is deliberately self-contained so the pipeline may
+    // finish surface scattering before entering a coroutine shadow stage.
+    [[nodiscard]] virtual DirectLightTransportPreparation
+    prepare(DirectLightingContext &context,
+            const DirectLightTransportState &transport) const noexcept = 0;
+
+    // True only when emit() records coroutine transitions. Megakernel and
+    // detached-queue construction stay before surface scattering to avoid
+    // lengthening their live ranges.
+    [[nodiscard]] virtual bool defer_until_after_surface_scatter(
+        PathCoroutineCutPolicy cut_policy) const noexcept = 0;
+
+    virtual void emit(PathBounceContext &bounce,
+                      DirectLightTransportPreparation preparation,
+                      PathCoroutineCutPolicy cut_policy) const noexcept = 0;
 };
 
 class SurfaceScatterStage {
@@ -637,6 +661,11 @@ class SurfaceScatterStage {
     struct Result {
         SurfaceSample sample;
         Bool subsurface;
+        // Surface sampling cannot terminate its caller internally once NEE
+        // shadow work is deferred: a failed BSDF sample still keeps the NEE
+        // contribution produced at this vertex. The pipeline consumes this
+        // explicit continuation predicate after shadow completion.
+        Bool valid;
     };
     [[nodiscard]] virtual Result
     emit(DirectLightingContext &context) const noexcept = 0;
@@ -704,7 +733,8 @@ make_analytic_lighting_component(
 make_direct_light_transport_stage(
     std::shared_ptr<const DirectLightTraceRecorder> trace,
     DirectLightTaskEvaluator evaluator,
-    std::shared_ptr<const DirectLightTaskSink> task_sink);
+    std::shared_ptr<const DirectLightTaskSink> task_sink,
+    bool path_trace_enabled);
 [[nodiscard]] std::unique_ptr<SurfaceScatterStage> make_surface_scatter_stage();
 [[nodiscard]] std::unique_ptr<SubsurfaceTransportStage>
 make_subsurface_transport_stage();

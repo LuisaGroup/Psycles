@@ -11,14 +11,6 @@
 namespace psycles::luisa_backend::detail {
 namespace {
 
-using EvaluateShadowSurfaceCallable =
-    Callable<ShadowSurfaceEvaluationCall(
-        luisa::compute::Ray,
-        luisa::compute::CommittedHit,
-        float,
-        float,
-        ShaderEvaluationStateCall)>;
-
 [[nodiscard]] EvaluateShadowSurfaceCallable
 make_evaluate_shadow_surface_callable(
     const std::shared_ptr<LuisaSceneData> &scene,
@@ -35,7 +27,7 @@ make_evaluate_shadow_surface_callable(
     EvaluateShadowSurfaceCallable evaluate_shadow_surface =
         [scene, safe_normalize, geometry](
             Var<luisa::compute::Ray> candidate_ray,
-            Var<luisa::compute::CommittedHit> hit,
+            Var<ShadowIntersectionCall> intersection,
             Float ray_dP,
             Float ray_dD,
             Var<ShaderEvaluationStateCall> shader_state_call) noexcept {
@@ -51,6 +43,12 @@ make_evaluate_shadow_surface_callable(
                     surface_ray::invalid_primitive;
                 return result;
             }
+            Var<luisa::compute::CommittedHit> hit;
+            hit->inst = intersection->instance;
+            hit->prim = intersection->primitive;
+            hit->bary = intersection->barycentric;
+            hit->hit_type = intersection->hit_type;
+            hit->committed_ray_t = intersection->distance;
             const auto shader_state =
                 unpack_shader_evaluation_state(shader_state_call);
             BufferShaderServices services{
@@ -91,7 +89,7 @@ make_evaluate_shadow_surface_callable(
 
 } // namespace
 
-TraceShadowCallable make_trace_shadow_callable(
+ShadowTraceCallables make_shadow_trace_callables(
     const std::shared_ptr<LuisaSceneData> &scene,
     const SafeNormalizeCallable &safe_normalize) noexcept {
     const auto evaluate_shadow_surface =
@@ -101,8 +99,27 @@ TraceShadowCallable make_trace_shadow_callable(
             make_scene_traversal_stage_plan(
                 scene->geometries.size(),
                 scene->curve_geometries.size()));
+    IntersectShadowCallable intersect_shadow =
+        [scene, traversal](Var<luisa::compute::Ray> shadow_ray,
+                           UInt source_object, UInt source_primitive,
+                           UInt light_object,
+                           UInt light_primitive) noexcept {
+            const auto committed = traversal->closest_shadow(
+                scene, shadow_ray, shadow_visibility,
+                {.object = source_object,
+                 .primitive = source_primitive},
+                {.object = light_object,
+                 .primitive = light_primitive});
+            Var<ShadowIntersectionCall> result;
+            result->instance = committed->inst;
+            result->primitive = committed->prim;
+            result->hit_type = committed->hit_type;
+            result->distance = committed->committed_ray_t;
+            result->barycentric = committed->bary;
+            return result;
+        };
     TraceShadowCallable trace_shadow =
-        [scene, evaluate_shadow_surface, traversal](
+        [intersect_shadow, evaluate_shadow_surface](
             Var<luisa::compute::Ray> shadow_ray,
             Float ray_dP,
             Float ray_dD,
@@ -129,15 +146,14 @@ TraceShadowCallable make_trace_shadow_callable(
             // the order-independent closest-hit reduction and advance tmin
             // by the same one-ULP offset as transparent continuation.
             $while(active) {
-                const auto committed = traversal->closest_shadow(
-                    scene,
-                    shadow_ray,
-                    shadow_visibility,
-                    {.object = source_object,
-                     .primitive = source_primitive},
-                    {.object = light_object,
-                     .primitive = light_primitive});
-                $if(committed->miss()) {
+                const auto intersection = intersect_shadow(
+                    shadow_ray, source_object, source_primitive,
+                    light_object, light_primitive);
+                const auto missed =
+                    intersection->hit_type ==
+                    static_cast<std::uint32_t>(
+                        luisa::compute::HitType::Miss);
+                $if(missed) {
                     active = false;
                 }
                 $else {
@@ -152,7 +168,7 @@ TraceShadowCallable make_trace_shadow_callable(
                         shader_state.transparent_depth = transparent_depth;
                         const auto surface = evaluate_shadow_surface(
                             shadow_ray,
-                            committed,
+                            intersection,
                             ray_dP,
                             ray_dD,
                             pack_shader_evaluation_state(shader_state));
@@ -161,8 +177,9 @@ TraceShadowCallable make_trace_shadow_callable(
                             first_object = surface->object;
                             first_primitive = surface->primitive;
                             first_kind = surface->kind;
-                            first_distance = committed->committed_ray_t;
-                            first_barycentric = committed->bary;
+                            first_distance = intersection->distance;
+                            first_barycentric =
+                                intersection->barycentric;
                         };
                         const auto transparent = surface->transmittance;
                         const auto carries_light =
@@ -174,7 +191,7 @@ TraceShadowCallable make_trace_shadow_callable(
                             transparent_depth += 1u;
                             shadow_ray->set_t_min(
                                 surface_ray::intersection_t_offset(
-                                    committed->committed_ray_t));
+                                    intersection->distance));
                         }
                         $else {
                             transmittance = make_float3(0.0f);
@@ -193,7 +210,9 @@ TraceShadowCallable make_trace_shadow_callable(
             result->first_barycentric = first_barycentric;
             return result;
         };
-    return trace_shadow;
+    return {.intersect = std::move(intersect_shadow),
+            .shade_surface = std::move(evaluate_shadow_surface),
+            .trace = std::move(trace_shadow)};
 }
 
 } // namespace psycles::luisa_backend::detail

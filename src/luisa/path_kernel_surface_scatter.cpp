@@ -140,14 +140,15 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
                 make_float3(trace_uint32(cycles_surface_runtime_flags).xy(),
                             0.0f));
         }
-        $if(!surface_sample.valid | (surface_sample.evaluation.pdf <= 0.0f)) {
-            $break;
-        };
+        Bool valid = surface_sample.valid &
+                     (surface_sample.evaluation.pdf > 0.0f);
+        Bool subsurface = false;
+        $if(valid) {
 
-        Bool transparent =
+        const auto transparent =
             (surface_sample.evaluation.events &
              static_cast<std::uint32_t>(contract::event_transparent)) != 0u;
-        Bool subsurface =
+        subsurface =
             (surface_sample.evaluation.events &
              static_cast<std::uint32_t>(contract::event_subsurface)) != 0u;
         const auto cycles_label =
@@ -172,8 +173,9 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
             surface_sample.evaluation.f / surface_sample.evaluation.pdf;
         $if(any(luisa::compute::dsl::isnan(throughput)) |
             any(throughput < 0.0f)) {
-            $break;
+            valid = false;
         };
+        $if(valid) {
 
         $if(subsurface) {
             // Cycles schedules INTERSECT_SUBSURFACE without applying
@@ -300,9 +302,12 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
                 path_trace_schema::EventSlot::post_visibility,
                 make_float3(trace_uint32(cycles_path_visibility).xy(), 0.0f));
         }
+        };
+        };
         return {
             .sample = std::move(surface_sample),
-            .subsurface = std::move(subsurface)};
+            .subsurface = std::move(subsurface),
+            .valid = std::move(valid)};
     }
 };
 

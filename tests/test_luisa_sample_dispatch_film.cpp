@@ -430,6 +430,14 @@ int main(int argc, char **argv) {
       render(context, backend,
              psycles::luisa_backend::LuisaPathScheduler::megakernel_per_sample,
              sample_count, false);
+  // Same atomic per-(pixel,sample) film topology as the deferred shadow
+  // coroutine below, but without coroutine cuts. This isolates the semantic
+  // effect of moving BSDF continuation construction before the shadow state
+  // machine from host chunking and serial-vs-atomic accumulation order.
+  const auto per_sample_no_trace =
+      render(context, backend,
+             psycles::luisa_backend::LuisaPathScheduler::megakernel_per_sample,
+             sample_count, false, true, false);
   const auto chunked =
       render(context, backend,
              psycles::luisa_backend::LuisaPathScheduler::megakernel_per_sample,
@@ -483,8 +491,8 @@ int main(int argc, char **argv) {
       context, backend, psycles::luisa_backend::LuisaPathScheduler::persistent,
       sample_count, false);
     if (!reference || !deterministic || !single_plane || !per_sample ||
-      !chunked || !wavefront || !graph_wavefront || !graph_wavefront_tail ||
-      !staged_wavefront ||
+      !per_sample_no_trace || !chunked || !wavefront || !graph_wavefront ||
+      !graph_wavefront_tail || !staged_wavefront ||
       !staged_wavefront_unsorted || !staged_direct_inline ||
       !staged_direct_queued || !staged_direct_queued_chunked ||
       !staged_direct_queued_small_capacity || !persistent ||
@@ -497,6 +505,8 @@ int main(int argc, char **argv) {
             "batched per-sample dispatch") ||
       !compare_outputs(*reference, *chunked, false,
             "chunked per-sample dispatch") ||
+      !compare_outputs(*per_sample_no_trace, *staged_direct_inline, false,
+                       "deferred shadow after surface continuation") ||
       !compare_outputs(*reference, *wavefront, false, "wavefront dispatch") ||
       !compare_outputs(*reference, *graph_wavefront, false,
                        "graph wavefront dispatch") ||
