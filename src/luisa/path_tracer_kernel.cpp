@@ -267,8 +267,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
   auto environment_callables = make_environment_callables(
       scene, light_transport.safe_normalize,
       surface_callables.constant_emission, surface_callables.emission);
-    auto trace_shadow_callable =
-      make_trace_shadow_callable(scene, light_transport.safe_normalize);
+    auto shadow_trace_callables =
+        make_shadow_trace_callables(scene, light_transport.safe_normalize);
   const auto path_trace_enabled = _options.path_trace.has_value();
   std::shared_ptr<const PathVolumeStateComponent> volume_state;
     if (scene->volume_metadata.stack_size != 0u) {
@@ -297,7 +297,11 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         .light_tree = std::move(light_tree_callables),
         .surfaces = std::move(surface_callables),
         .environment = std::move(environment_callables),
-        .trace_shadow = std::move(trace_shadow_callable)};
+        .intersect_shadow =
+            std::move(shadow_trace_callables.intersect),
+        .shade_shadow_surface =
+            std::move(shadow_trace_callables.shade_surface),
+        .trace_shadow = std::move(shadow_trace_callables.trace)};
     _render_executor = build_path_kernel_executor(
       _scene->device, kernel_config,
         PathKernelExecutorConfig{

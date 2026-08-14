@@ -1,5 +1,7 @@
 #include "path_kernel_film.h"
 
+#include <utility>
+
 namespace psycles::luisa_backend::detail {
 
 void atomic_accumulate_float4(const BufferFloat4 &buffer, const UInt &index,
@@ -271,17 +273,25 @@ void PathSampleContext::accumulate_scattered_light(
 
 void PathSampleContext::accumulate_radiance(
     Float3 contribution, Bool primary_volume_scatter_override) noexcept {
+    accumulate_radiance_at_state(std::move(contribution), path_flags,
+                                 cycles_path_visibility, path_depth,
+                                 std::move(primary_volume_scatter_override));
+}
+
+void PathSampleContext::accumulate_radiance_at_state(
+    Float3 contribution, UInt event_path_flags, UInt event_path_visibility,
+    UInt event_path_depth, Bool primary_volume_scatter_override) noexcept {
     auto &invocation = this->invocation;
     const auto atomic_film =
-      invocation.film_accumulation == PathFilmAccumulation::atomic;
+        invocation.film_accumulation == PathFilmAccumulation::atomic;
     if (atomic_film) {
-    atomic_accumulate_radiance(invocation.combined,
-                               invocation.volume_guiding_raw, invocation.pixel,
-                               invocation.volume_guiding_raw_base,
-                               invocation.config.volume_state != nullptr,
-                               path_flags, cycles_path_visibility, path_depth,
-                               contribution, primary_volume_scatter_override);
-    return;
+        atomic_accumulate_radiance(
+            invocation.combined, invocation.volume_guiding_raw,
+            invocation.pixel, invocation.volume_guiding_raw_base,
+            invocation.config.volume_state != nullptr, event_path_flags,
+            event_path_visibility, event_path_depth, contribution,
+            primary_volume_scatter_override);
+        return;
     } else {
         radiance += contribution;
     }
@@ -295,19 +305,20 @@ void PathSampleContext::accumulate_radiance(
     // one exception; Cycles clears PRIMARY_TRANSMIT and injects VOLUME_SCATTER
     // into the copied shadow state before writing Combined.
     const auto primary_volume_direct =
-      primary_volume_scatter_override & (path_depth == 0u);
+        primary_volume_scatter_override & (event_path_depth == 0u);
     const auto primary_transmit =
-      ((path_flags & cycles_path_state::flag_volume_primary_transmit) != 0u) &
+        ((event_path_flags &
+          cycles_path_state::flag_volume_primary_transmit) != 0u) &
         !primary_volume_direct;
     const auto volume_scatter =
         !primary_transmit &
         (primary_volume_direct |
-         ((cycles_path_visibility &
-         cycles_path_state::visibility_volume_scatter) != 0u));
-        volume_guiding_transmit +=
-      select(make_float3(0.0f), contribution, primary_transmit);
-        volume_guiding_scatter +=
-      select(make_float3(0.0f), contribution, volume_scatter);
+         ((event_path_visibility &
+           cycles_path_state::visibility_volume_scatter) != 0u));
+    volume_guiding_transmit +=
+        select(make_float3(0.0f), contribution, primary_transmit);
+    volume_guiding_scatter +=
+        select(make_float3(0.0f), contribution, volume_scatter);
 }
 
 void PathSampleContext::accumulate_transparency(Float transparency) noexcept {

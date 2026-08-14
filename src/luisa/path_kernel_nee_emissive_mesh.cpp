@@ -178,7 +178,8 @@ class EmissiveMeshLightingComponent final
                             false,
                             emitter.cycles_object_index,
                             emitter.cycles_primitive_index,
-                            emitter.cycles_shader_flags);
+                            emitter.cycles_shader_flags,
+                            constant_emission);
                     };
                 };
             }

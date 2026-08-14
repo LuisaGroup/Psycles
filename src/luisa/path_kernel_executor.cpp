@@ -64,7 +64,8 @@ void validate_cycles_stage_partition_abi(
     const RenderCoroutine &coroutine,
     const PathKernelSceneStagePlan &plan,
     bool has_volume,
-    bool has_subsurface) noexcept {
+    bool has_subsurface,
+    bool has_split_shadow_path) noexcept {
     const auto require = [&](luisa::string_view name,
                              bool reachable) noexcept {
         const auto *node = coroutine.graph().node_by_name(name);
@@ -88,6 +89,12 @@ void validate_cycles_stage_partition_abi(
     require(path_transition::shade_background, true);
     require(path_transition::shade_surface,
             !plan.traversal.primitives.empty());
+    require(path_transition::shade_light_nee,
+            has_split_shadow_path);
+    require(path_transition::intersect_shadow,
+            has_split_shadow_path);
+    require(path_transition::shade_shadow,
+            has_split_shadow_path);
     require(path_transition::intersect_subsurface,
             has_subsurface && !plan.traversal.primitives.empty());
     LUISA_ASSERT(
@@ -113,7 +120,10 @@ void validate_cycles_stage_partition_abi(
         path, PathCoroutineCutPolicy::cycles_wavefront);
     validate_cycles_stage_partition_abi(
         coroutine, stage_plan, path.volume_state != nullptr,
-        path.has_subsurface);
+        path.has_subsurface,
+        !path.path_trace_enabled &&
+            path.direct_light_task_sink == nullptr &&
+            stage_plan.direct_lighting.transport_stage_count() != 0u);
     return coroutine;
 }
 

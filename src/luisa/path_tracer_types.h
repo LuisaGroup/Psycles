@@ -219,6 +219,18 @@ struct ShaderEvaluationStateCall {
     luisa::uint transmission_depth{};
 };
 
+// Backend-neutral result of the geometry-only shadow traversal stage. Keeping
+// this record free of material data makes the INTERSECT_SHADOW ->
+// SHADE_SHADOW boundary explicit: traversal identifies the closest candidate,
+// while the following stage alone evaluates transparency/volume closures.
+struct ShadowIntersectionCall {
+    luisa::uint instance{};
+    luisa::uint primitive{};
+    luisa::uint hit_type{};
+    float distance{};
+    luisa::float2 barycentric{};
+};
+
 struct ShadowSurfaceEvaluationCall {
     luisa::float3 transmittance{};
     luisa::uint object{};
@@ -586,6 +598,13 @@ LUISA_STRUCT(
     glossy_depth,
     transparent_depth,
     transmission_depth) {};
+LUISA_STRUCT(
+    psycles::luisa_backend::detail::ShadowIntersectionCall,
+    instance,
+    primitive,
+    hit_type,
+    distance,
+    barycentric) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::ShadowSurfaceEvaluationCall,
     transmittance,

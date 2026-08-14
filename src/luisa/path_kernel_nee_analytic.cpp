@@ -277,7 +277,8 @@ class AnalyticLightingComponent final : public DirectLightingComponent {
                                           LightType::distant),
                         light.cycles_object_index,
                         surface_ray::invalid_primitive,
-                        light.cycles_shader_flags);
+                        light.cycles_shader_flags,
+                        constant_emission);
                 };
             }
             $else {

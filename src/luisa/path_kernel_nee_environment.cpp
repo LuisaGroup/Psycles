@@ -163,7 +163,8 @@ class EnvironmentLightingComponent final : public DirectLightingComponent {
                         surface_ray::invalid_primitive,
                         surface_ray::invalid_primitive,
                         config.scene
-                            ->cycles_background_shader_flags);
+                            ->cycles_background_shader_flags,
+                        Bool{constant_emission});
                 };
             }
             $else {
