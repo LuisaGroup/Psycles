@@ -149,6 +149,57 @@ benefit. Graph counter readback is already batched: its largest 64-spp chunk
 read only 8,064 bytes in 72 readbacks. Its loss comes from sweep/queue policy
 and its optional giant state-machine tail, not bulk PCIe transfer.
 
+### Matched Cycles/Psycles continuation cost
+
+The percentages in a single Psycles profile are not a Cycles comparison. A
+matched pair of rocprofv3 traces was therefore captured back-to-back on the
+same RX 9070 XT with Blender/Cycles 5.2 commit `fbe6228777e7`, the 5.2 export,
+640x480, 64 samples, Tabulated Sobol, and adaptive sampling and denoising
+disabled. The Cycles `work_size` values below come from its trace-level
+`GPU queue launch` diagnostics before HIP block rounding. The Psycles values
+come from `WavefrontCoroDispatchStats::executed_count`; their sums reproduce
+the 583 and 475 dispatches in the independent rocprof trace. Thus the
+normalization counts logical continuation invocations rather than padded grid
+lanes.
+
+| continuation | renderer | calls | logical work | GPU time | ns/logical work | private bytes | VGPR |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `shade_surface` | Cycles | 296 | 53,874,901 | 596.981 ms | 11.081 | 6,976 | 192 |
+| `shade_surface` | Psycles | 583 | 68,938,289 | 2,687.007 ms | 38.977 | 4,288 | 256 |
+| `intersect_closest` | Cycles | 334 | 73,142,950 | 469.631 ms | 6.421 | 976 | 192 |
+| `intersect_closest` | Psycles | 475 | 71,117,397 | 1,653.946 ms | 23.257 | 1,344 | 256 |
+
+The direct answers for aggregate GPU time are therefore:
+
+- Psycles `shade_surface` is `4.501x` the Cycles time, or `350.1%` slower.
+- Psycles `intersect_closest` is `3.522x` the Cycles time, or `252.2%` slower.
+
+Those totals contain both implementation cost and different amounts of work.
+Psycles executes `27.96%` more `shade_surface` continuations; after
+normalization its cost is still `3.517x` per logical surface invocation. By
+contrast, Psycles executes `2.77%` fewer `intersect_closest` continuations,
+yet costs `3.622x` per logical intersection invocation. The latter is
+therefore a direct traversal/kernel efficiency gap rather than a launch-count
+artifact. HIP grid padding is only `0.014%` and `0.011%` for the two Psycles
+continuations; using grid size in place of the exact counts would not change
+the conclusion, but the table deliberately does not do so.
+
+There is one semantic qualification for the surface row. With
+`staged_direct_light_queue=0`, the Psycles surface continuation evaluates
+direct-light visibility, transparent shadow transport, and film contribution
+inline. Cycles' `integrator_shade_surface` publishes a shadow path and delegates
+that work to `shade_light_nee`, `intersect_shadow`, and `shade_shadow`. The four
+Cycles kernels total `865.255 ms`; comparing the current Psycles surface kernel
+against that deliberately over-inclusive denominator gives `3.105x`. This is
+a conservative lower bound, not an exact surface-only ratio, because Cycles'
+shadow queues also contain proposals originating in volume shading.
+
+This comparison changes the optimization order. `intersect_closest` can be
+investigated directly against Cycles traversal because its logical workloads
+already agree within 3%. For `shade_surface`, the 28% invocation-count
+divergence must be explained alongside the remaining 3.52x per-invocation
+cost; code generation alone cannot account for the aggregate 4.50x gap.
+
 At 256 spp, rocprofv3 maps the dominant continuation kernels using their
 scheduler dispatch counts:
 
