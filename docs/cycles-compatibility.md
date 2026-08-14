@@ -1082,6 +1082,18 @@ service bound, frame sizes, linear EXR metrics, and four inspected triptychs
 are recorded in
 [`validation/2026-08-13/cycles-wavefront-multiscene`](validation/2026-08-13/cycles-wavefront-multiscene/README.md).
 
+The newer
+[`five-scene HIP performance checkpoint`](validation/2026-08-14/multiscene-hip-performance/README.md)
+repeats the comparison on Blender/Cycles 5.2 with profiler-matched GPU
+boundaries. Psycles currently takes 1.74x--3.40x the Cycles path-kernel time
+across Lone Monk, Classroom, Monster, Barbershop, and Flat Archiviz. Closest
+intersection is at parity per dispatched item on the first three scenes;
+surface shading is the common 2.4x--3.9x per-item hotspot. The same-topology
+megakernel control shows coroutine staging already helps Monster and
+Barbershop but regresses Lone Monk and Flat Archiviz. Five inspected Combined
+triptychs, shader resource records, code-object sizes, and explicit asset/
+unsupported-feature caveats are retained with the measurements.
+
 The following integrator work remains explicit and is not considered Cycles
 compatible yet:
 

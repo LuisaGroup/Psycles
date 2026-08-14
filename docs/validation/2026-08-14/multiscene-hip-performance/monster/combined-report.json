@@ -1,0 +1,108 @@
+{
+  "actual_label": "Psycles HIP staged",
+  "cycles_channels": [
+    "View Layer.Combined.R",
+    "View Layer.Combined.G",
+    "View Layer.Combined.B",
+    "View Layer.Combined.A",
+    "View Layer.Debug Sample Count.X",
+    "View Layer.Depth.Z",
+    "View Layer.Diffuse Color.R",
+    "View Layer.Diffuse Color.G",
+    "View Layer.Diffuse Color.B",
+    "View Layer.Diffuse Direct.R",
+    "View Layer.Diffuse Direct.G",
+    "View Layer.Diffuse Direct.B",
+    "View Layer.Diffuse Indirect.R",
+    "View Layer.Diffuse Indirect.G",
+    "View Layer.Diffuse Indirect.B",
+    "View Layer.Emission.R",
+    "View Layer.Emission.G",
+    "View Layer.Emission.B",
+    "View Layer.Environment.R",
+    "View Layer.Environment.G",
+    "View Layer.Environment.B",
+    "View Layer.Glossy Color.R",
+    "View Layer.Glossy Color.G",
+    "View Layer.Glossy Color.B",
+    "View Layer.Glossy Direct.R",
+    "View Layer.Glossy Direct.G",
+    "View Layer.Glossy Direct.B",
+    "View Layer.Glossy Indirect.R",
+    "View Layer.Glossy Indirect.G",
+    "View Layer.Glossy Indirect.B",
+    "View Layer.Normal.X",
+    "View Layer.Normal.Y",
+    "View Layer.Normal.Z",
+    "View Layer.Transmission Color.R",
+    "View Layer.Transmission Color.G",
+    "View Layer.Transmission Color.B",
+    "View Layer.Transmission Direct.R",
+    "View Layer.Transmission Direct.G",
+    "View Layer.Transmission Direct.B",
+    "View Layer.Transmission Indirect.R",
+    "View Layer.Transmission Indirect.G",
+    "View Layer.Transmission Indirect.B",
+    "View Layer.Volume Direct.R",
+    "View Layer.Volume Direct.G",
+    "View Layer.Volume Direct.B",
+    "View Layer.Volume Indirect.R",
+    "View Layer.Volume Indirect.G",
+    "View Layer.Volume Indirect.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        1.0037637948989868,
+        1.0019692182540894,
+        1.006980299949646
+      ],
+      "cycles": "/var/tmp/psycles-multiscene-perf-c51c61a/cycles-hip/monster/out.exr",
+      "cycles_channel_mean": [
+        0.1637629121541977,
+        0.07474900037050247,
+        0.05765961483120918
+      ],
+      "cycles_luminance_mean": 0.09243972599506378,
+      "cycles_rms": 0.1596875786781311,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.002873608150205,
+      "maximum_absolute_error": 0.7448338270187378,
+      "mean_absolute_error": 0.010541391558945179,
+      "orientation_rmse": {
+        "flip_x": 0.13295099139213562,
+        "flip_xy": 0.16966664791107178,
+        "flip_y": 0.16899673640727997,
+        "identity": 0.022517329081892967
+      },
+      "p95_pixel_rmse": 0.0480537936091423,
+      "p99_pixel_rmse": 0.09169821441173553,
+      "psycles": "/var/tmp/psycles-multiscene-perf-c51c61a/psycles-hip/monster/out.exr",
+      "psycles_channel_mean": [
+        0.16437928378582,
+        0.0748961940407753,
+        0.05806209519505501
+      ],
+      "psycles_luminance_mean": 0.09270536154508591,
+      "psycles_rms": 0.16084727795298376,
+      "relative_rmse": 0.14100864493211,
+      "rmse": 0.022517329081892967,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 6.89690591471736,
+        "display_scale": 1.0864433022736855,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-acdf743-clean/docs/validation/2026-08-14/multiscene-hip-performance/monster/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    }
+  },
+  "reference_label": "Cycles 5.2 HIP",
+  "schema": "psycles.cycles-differential.v1"
+}
