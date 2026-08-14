@@ -1,10 +1,10 @@
 # HIP resumable RayQuery frontier validation
 
-This checkpoint redesigns LuisaCompute's gfx12 resumable RayQuery traversal
-state. It does not add renderer policy to the HIP backend: source filtering,
-alpha evaluation, material closures, and transparent-shadow batching remain
-expressed by ordinary RayQuery handlers in Psycles. The backend change only
-changes how the native HIPRT traversal frontier survives a candidate callback.
+This checkpoint redesigns LuisaCompute's gfx12 RayQuery traversal state and
+callback transport. It does not add renderer policy to the HIP backend: source
+filtering, alpha evaluation, material closures, and transparent-shadow batching
+remain expressed by ordinary RayQuery handlers in Psycles. The backend changes
+only how the native HIPRT frontier and callback state are represented.
 
 Machine: Radeon RX 9070 XT (`gfx1201`), ROCm 7.2.53211.
 
@@ -13,7 +13,9 @@ LuisaCompute commits:
 - `3a556dd47` -- formally localize invocation-local RayQuery handler scratch;
 - `d98735f55` -- persist resumable RayQuery on the gfx12 hardware frontier;
 - `8a7a62162` -- evaluate the handler-scratch proof as sparse reachability;
-- `fb2427984` -- separate RayQuery identity from callback captures.
+- `fb2427984` -- separate RayQuery identity from callback captures;
+- `e6c65fb90` -- compact the synchronous hardware frontier to the proven
+  nine-entry minimum.
 
 ## Traversal-state model
 
@@ -39,11 +41,12 @@ overflow traps because it would violate the partition invariant instead of
 silently dropping or repeating candidates.
 
 The former implementation persisted a 64-entry per-thread private software
-stack. The new state is 224 B instead of 448 B and uses a nine-entry resumable
-hardware frontier. Nine is the minimum capacity that leaves one ordinary
-hardware entry plus the complete eight-child expansion reserve. Synchronous
-RayQuery retains its measured 16-entry hot frontier; ordinary static trace
-retains eight entries.
+stack. The new state is 224 B instead of 448 B. Both resumable and synchronous
+RayQuery now use a nine-entry hardware frontier. Nine is the minimum capacity
+that leaves one ordinary hardware entry plus the complete eight-child
+expansion reserve; both paths use the same exact parent-link continuation when
+that reserve would be crossed. Ordinary static trace retains eight entries and
+its one-shot overflow fallback.
 
 The deep regression constructs 1024 overlapping BLAS triangles and 256
 overlapping TLAS instances. It verifies that every candidate callback is
@@ -177,6 +180,7 @@ cold/cache warm-up; the following five runs determine the median.
 | Previous independent default-path checkpoint | 447.302 | 1.000x |
 | New frontier plus XIR scratch localization | 459.962 | 1.028x |
 | Compact identity/environment ABI | 485.045 | 1.084x |
+| Compact nine-entry synchronous frontier | 499.724 | 1.117x |
 | Ordinary no-RayQuery trace | 913.061 | 2.041x throughput |
 
 The final ABI's five warm cutout measurements were 487.461, 482.681, 485.045,
@@ -188,12 +192,30 @@ traversal overhead alone. The generated kernel uses 150 VGPRs instead of the
 pre-compaction 162, and the cutout's two static user environments collapse
 from 128 B total to zero.
 
+The final nine-entry frontier's five warm measurements were 498.612, 501.135,
+494.660, 499.724, and 500.938 FPS. Its 499.724 FPS median is another 3.03%
+above the compact-ABI/16-entry result and 11.72% above the original checkpoint.
+The remaining cutout/direct time ratio is 1.827x.
+
+Static code-object metadata explains why this helps and rules out private
+scratch as the dominant difference:
+
+| Kernel | VGPR | SGPR spills | Private bytes | LDS bytes |
+|---|---:|---:|---:|---:|
+| Ordinary closest/any trace | 140 | 24 | 2,800 | 16,384 |
+| RayQuery, 16-entry frontier | 150 | 0 | 144 | 32,768 |
+| RayQuery, 9-entry frontier | 150 | 0 | 144 | 18,432 |
+
+The old synchronous policy doubled LDS despite using less private scratch than
+ordinary trace. Reducing the frontier therefore removes an occupancy limit
+without increasing VGPRs, spills, private state, or code-object size.
+
 A separate forced-resumable A/B isolates the traversal-state redesign from
 the default synchronous cost choice. The old private-stack implementation was
 approximately 327.45 FPS and the new persistent hardware frontier was
 approximately 378.29 FPS, a 15.5% gain.
 
-### Frontier-capacity A/B
+### Resumable frontier-capacity A/B
 
 Scene: current Lone Monk export, 640x480, 64 spp, staged wavefront. These runs
 are only a capacity sensitivity test: the renderer source also contains the
@@ -210,6 +232,30 @@ Increasing the frontier does not improve render time and consumes more LDS.
 The retained nine-entry capacity is therefore both the formal lower bound and
 the measured optimum. Parent-link backtracking is not the current production
 bottleneck.
+
+### Synchronous frontier-capacity A/B
+
+The same 1024x1024/64 spp cutout benchmark was rebuilt under a fresh cache
+revision for every capacity. Five warm runs determine each median.
+
+| Synchronous capacity | Median FPS | Versus 9 entries |
+|---|---:|---:|
+| 9 | 499.724 | baseline |
+| 12 | 498.410 | 0.26% slower |
+| 16 | 485.045 | 2.94% slower |
+
+Nine entries are both the formal minimum and the measured optimum. The deep
+semantic test with 1,024 overlapping BLAS triangles and 256 overlapping TLAS
+instances passes at this capacity, so the gain does not rely on the shallow
+Cornell-box benchmark.
+
+`rocprofv3 --kernel-trace` successfully measured the ordinary-trace kernel,
+but consistently stalled the cutout process during the final HIPRT geometry
+build, before the RayQuery kernel was loaded or dispatched. Kernel-name
+filtering and PMC-only collection reproduced the stall; the legacy profiler is
+unsupported on gfx1201. No incomplete profiler trace is used as evidence here.
+The A/B uses in-application synchronized render timing, while the resource
+counts above come directly from dumped AMDGPU code-object metadata.
 
 ### Lone Monk renderer validation
 
@@ -233,6 +279,12 @@ source enables adaptive sampling and denoising, while this Psycles run uses
 fixed sampling; official Cycles comparisons must disable both features as
 well.
 
+With the final nine-entry synchronous frontier, five warm render-only times
+were 1.78276, 1.78158, 1.77928, 1.77682, and 1.78139 s, for a 1.78139 s median.
+This is within 0.08% of the preceding compact-ABI run: RayQuery is only one
+part of this full renderer workload, so the microbenchmark gain is not
+misreported as a whole-render speedup.
+
 Against the immediately preceding initialized-batch checkpoint, Combined has
 RMSE 0.0017703, relative RMSE 0.0011346, MAE 0.00001570, and a mean-luminance
 ratio of 1.000022. The 95th percentile is exactly zero and the 99th percentile
@@ -252,6 +304,15 @@ difference consists of sparse atomic-accumulation noise.
 
 ![Lone Monk before and after the compact RayQuery ABI, with amplified difference](triptychs/ray-query-abi/combined.png)
 
+The nine-entry render versus the preceding 16-entry render has Combined RMSE
+0.001615, relative RMSE 0.001035, MAE 1.51e-5, luminance ratio 0.9999830, and
+no invalid pixels. Its p95 error is zero and p99 is 6.88e-8. Emission,
+Environment, every Transmission pass, and both Volume passes are bit-exact;
+all remaining differences are sparse atomic-order variation. Visual inspection
+again finds no structured change.
+
+![Lone Monk 16-entry and 9-entry RayQuery frontiers, with amplified difference](triptychs/ray-query-frontier9/combined.png)
+
 The triptych below compares the earlier single-hit transparent-shadow
 checkpoint with the four-hit batch. Its larger Combined RMSE of 0.03480
 (relative RMSE 0.02231, MAE 0.00525) reflects changed sample consumption and
@@ -266,23 +327,26 @@ Machine-readable reports are retained at
 `/var/tmp/psycles-shadow-batch-final-comparison.json` and
 `/var/tmp/psycles-shadow-batch-vs-single-hit.json`; the compact-ABI comparison
 is `/var/tmp/psycles-rq-abi-lone-monk-all-pass-comparison.json` and its rendered
-EXR is `/var/tmp/psycles-rq-abi-lone-monk-warm.exr`.
+EXR is `/var/tmp/psycles-rq-abi-lone-monk-warm.exr`. The frontier comparison is
+`/var/tmp/psycles-rq-frontier9-lone-monk-all-pass-comparison.json`; its final
+render is `/var/tmp/psycles-rq-frontier9-lone-monk-warm-5.exr`.
 
 ## Remaining bottleneck
 
 The compact ABI removes the accidental identity/capture coupling, but the
-RayQuery cutout remains 1.882x the time of ordinary trace. The resumable kernel
-still spills and reloads genuinely live values across every candidate callback.
-LLVM inspection shows that the dominant residual cost is the continuation ABI
-and the live resource/private-reference set around `luisa_ray_query_proceed`,
-not repeated TLAS restarts or parent-link traversal. This is the next backend
-profiling target; further reduction must follow liveness and traversal
-semantics rather than backend-specific renderer policy.
+RayQuery cutout remains 1.827x the time of ordinary trace. Code-object metadata
+shows no register spills and only 144 B of private memory, so the residual is
+not attributed to scratch. The remaining structural delta is the generic
+candidate path: candidate-state materialization, opaque/candidate branching,
+ordered triangle-pair handling, and the out-of-line dispatcher around the
+actual rejection predicate. This is the next backend profiling target;
+further reduction must preserve generic RayQuery semantics rather than import
+renderer policy into HIP.
 
 A whole-object struct-frame experiment reduced the apparent callback product
 but regressed render time by about 31%, because it destroyed LLVM lifetime
-separation and stack coloring. It was discarded and is not present in either
-commit. The next design must preserve independent object lifetimes. The
+separation and stack coloring. It was discarded and is not present in the
+retained history. The next design must preserve independent object lifetimes. The
 candidate direction is an address-only table for proven private references,
 combined with interprocedural rematerialization of immutable kernel arguments
 when every call site has one identical kernel-argument provenance. Ambiguous,
@@ -294,7 +358,7 @@ All checks were rebuilt with 32 parallel jobs after the final source change:
 
 ```text
 test_xir_pass_lower_ray_query_loop : 212 assertions / 18 tests
-test_hip_callable_boundary hip     :  65 assertions / 4 tests
+test_hip_callable_boundary hip     :  68 assertions / 4 tests
 test_hip_llvm_pipeline            :  39 assertions / 12 tests
 test_hip_ray_query_pipeline hip   : 1482 assertions / 8 tests
 test_hip_ray_query_pipeline fallback: 42 assertions / 8 tests
@@ -307,6 +371,6 @@ HIP implementation-specific stack tests. No CPU reference renderer is used;
 Cycles remains the renderer reference.
 
 The Vulkan runs set `LUISA_VULKAN_DISABLE_DXC=1`; both scene kernels were
-compiled by the native XIR-to-SPIR-V route (32,463 and 37,566 optimized SPIR-V
+compiled by the native XIR-to-SPIR-V route (32,484 and 37,566 optimized SPIR-V
 words), with no DXC load or invocation. The HIP wrapper bitcode was rebuilt for
 gfx1030, gfx1100, gfx1200, and gfx1201 before running the semantic tests.
