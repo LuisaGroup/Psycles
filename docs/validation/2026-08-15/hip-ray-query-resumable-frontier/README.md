@@ -181,6 +181,7 @@ cold/cache warm-up; the following five runs determine the median.
 | New frontier plus XIR scratch localization | 459.962 | 1.028x |
 | Compact identity/environment ABI | 485.045 | 1.084x |
 | Compact nine-entry synchronous frontier | 499.724 | 1.117x |
+| Opaque-hit semantic projection | 501.687 | 1.122x |
 | Ordinary no-RayQuery trace | 913.061 | 2.041x throughput |
 
 The final ABI's five warm cutout measurements were 487.461, 482.681, 485.045,
@@ -197,6 +198,25 @@ The final nine-entry frontier's five warm measurements were 498.612, 501.135,
 above the compact-ABI/16-entry result and 11.72% above the original checkpoint.
 The remaining cutout/direct time ratio is 1.827x.
 
+The subsequent opaque-hit projection's five warm measurements were 505.410,
+501.687, 499.664, 499.931, and 503.002 FPS. Its 501.687 FPS median is 0.39%
+above the nine-entry result and 12.16% above the original checkpoint. The
+remaining cutout/direct time ratio is 1.820x. The 64 spp output is pixel-exact
+against the retained pre-projection 64 spp outputs; a low-spp image produced
+by an earlier ISA probe was explicitly rejected as an invalid comparison
+baseline.
+
+This is a semantics-preserving projection, not a scene-specific shortcut. For
+a surface candidate `h`, the generic transition is
+`candidate := h; callback(candidate); commit(candidate)`. Once the instance's
+opaque bit proves that the RayQuery language does not expose `h` to the
+callback, the observable transition is exactly `committed := h`. The gfx12
+flat traversal now performs that transition directly. Non-opaque and
+procedural candidates retain the complete arbitrary DSL callback semantics,
+including rejection, explicit commit, termination, candidate-ray access, and
+reentrant tracing. The opacity proof is evaluated at the candidate, so it is
+not incorrectly promoted across an observable handler invocation.
+
 Static code-object metadata explains why this helps and rules out private
 scratch as the dominant difference:
 
@@ -205,10 +225,17 @@ scratch as the dominant difference:
 | Ordinary closest/any trace | 140 | 24 | 2,800 | 16,384 |
 | RayQuery, 16-entry frontier | 150 | 0 | 144 | 32,768 |
 | RayQuery, 9-entry frontier | 150 | 0 | 144 | 18,432 |
+| RayQuery, 9-entry plus opaque projection | 151 | 2 | 144 | 18,432 |
 
 The old synchronous policy doubled LDS despite using less private scratch than
 ordinary trace. Reducing the frontier therefore removes an occupancy limit
 without increasing VGPRs, spills, private state, or code-object size.
+
+The opaque projection reduces the final code-object text by 128 B, but costs
+one VGPR and two SGPR spills on this gfx1201 kernel. Its small measured speedup
+therefore does not justify attributing the remaining gap to the old opaque
+callback boundary. This mixed resource result is retained in the evidence
+rather than hidden behind the favorable timing median.
 
 A separate forced-resumable A/B isolates the traversal-state redesign from
 the default synchronous cost choice. The old private-stack implementation was
@@ -285,6 +312,10 @@ This is within 0.08% of the preceding compact-ABI run: RayQuery is only one
 part of this full renderer workload, so the microbenchmark gain is not
 misreported as a whole-render speedup.
 
+With direct opaque-hit projection, five warm render-only times were 1.77464,
+1.78079, 1.77676, 1.78441, and 1.78107 s. The 1.78079 s median is 0.034% below
+the nine-entry checkpoint and therefore neutral at whole-scene scale.
+
 Against the immediately preceding initialized-batch checkpoint, Combined has
 RMSE 0.0017703, relative RMSE 0.0011346, MAE 0.00001570, and a mean-luminance
 ratio of 1.000022. The 95th percentile is exactly zero and the 99th percentile
@@ -313,6 +344,16 @@ again finds no structured change.
 
 ![Lone Monk 16-entry and 9-entry RayQuery frontiers, with amplified difference](triptychs/ray-query-frontier9/combined.png)
 
+The opaque-projection render versus the nine-entry checkpoint has Combined
+RMSE 0.001780, relative RMSE 0.001141, MAE 1.60e-5, luminance ratio 1.0000234,
+and no invalid pixels. Its p95 error is zero and p99 is 6.88e-8. Emission,
+Environment, every Transmission pass, and both Volume passes are bit-exact;
+all remaining differences are sparse atomic-order variation. The original
+640x480 triptych was inspected visually: geometry, grass, materials, shadows,
+and illumination remain structurally unchanged.
+
+![Lone Monk nine-entry frontier and opaque-hit projection, with amplified difference](triptychs/ray-query-opaque-fastpath/combined.png)
+
 The triptych below compares the earlier single-hit transparent-shadow
 checkpoint with the four-hit batch. Its larger Combined RMSE of 0.03480
 (relative RMSE 0.02231, MAE 0.00525) reflects changed sample consumption and
@@ -329,19 +370,39 @@ Machine-readable reports are retained at
 is `/var/tmp/psycles-rq-abi-lone-monk-all-pass-comparison.json` and its rendered
 EXR is `/var/tmp/psycles-rq-abi-lone-monk-warm.exr`. The frontier comparison is
 `/var/tmp/psycles-rq-frontier9-lone-monk-all-pass-comparison.json`; its final
-render is `/var/tmp/psycles-rq-frontier9-lone-monk-warm-5.exr`.
+render is `/var/tmp/psycles-rq-frontier9-lone-monk-warm-5.exr`. The opaque-hit
+comparison is `/var/tmp/psycles-rq-opaque-lone-monk-all-pass-comparison.json`;
+its final render is `/var/tmp/psycles-rq-opaque-lone-monk-warm-e.exr`.
 
 ## Remaining bottleneck
 
-The compact ABI removes the accidental identity/capture coupling, but the
-RayQuery cutout remains 1.827x the time of ordinary trace. Code-object metadata
-shows no register spills and only 144 B of private memory, so the residual is
-not attributed to scratch. The remaining structural delta is the generic
-candidate path: candidate-state materialization, opaque/candidate branching,
-ordered triangle-pair handling, and the out-of-line dispatcher around the
-actual rejection predicate. This is the next backend profiling target;
-further reduction must preserve generic RayQuery semantics rather than import
-renderer policy into HIP.
+The compact ABI, nine-entry frontier, and opaque projection remove three
+accidental costs, but the RayQuery cutout remains 1.820x the time of ordinary
+trace. The opaque projection moves only another 0.39%, proving that the
+remaining gap is not primarily the callback taken by opaque instances. The
+remaining structural delta is the handling of genuinely observable
+non-opaque/procedural candidates: flat traversal state stays live around a
+generic candidate-state transaction and an out-of-line DSL dispatcher, while
+the actual alpha predicate is a small part of that transaction.
+
+Cycles 5.2 uses a HIPRT function-table filter inside one any-hit traversal.
+Luisa cannot copy that renderer-specific filter, but the backend can adopt the
+same native boundary: lower each RayQuery handler to a typed device filter
+thunk, carry query identity separately from its exact projected environment,
+and communicate `reject`, `commit(t)`, and `terminate` directly to the active
+traversal. Opaque hits remain an identity transition and procedural commits
+retain their caller-supplied distance. Candidate fields should be materialized
+only when demanded by the handler's fixed-point use set. Reentrancy requires
+per-query identity rather than global callback state.
+
+Merely switching back to HIPRT's generic resumable `getNextHit()` class is not
+the redesign: the retained flat gfx12 traversal was introduced after that
+route measured roughly 2x slower. Nor is restarting closest-hit traversal
+after every rejection valid or efficient. The next prototype must preserve a
+single exact frontier and integrate the generated handler at its candidate
+boundary; it will be accepted only if the deep-overlap, paired-triangle, ANY,
+termination, procedural, and reentrant semantic suites pass and the cutout
+median materially improves.
 
 A whole-object struct-frame experiment reduced the apparent callback product
 but regressed render time by about 31%, because it destroyed LLVM lifetime
