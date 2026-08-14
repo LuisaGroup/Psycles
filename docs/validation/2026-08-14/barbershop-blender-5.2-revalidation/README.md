@@ -242,6 +242,90 @@ hash `e00e2a95d8fb8470` and agree for Combined, Normal, Albedo, every light
 pass, and both volume passes. The Vulkan run requires the strict native
 XIR-to-SPIR-V route.
 
+### Code-object evidence for the two dominant gaps
+
+The responsibility-aligned timing establishes *how much* slower the two hot
+continuations are; an offline disassembly of the exact traced objects narrows
+*where* the excess work enters. These are static, path-dependent ISA/resource
+facts rather than sampled hardware-counter attribution. `rocprofv3` PMC
+collection on this gfx1201 installation aborts inside rocprofiler-sdk's packet
+registration, including with an exact kernel filter, and the legacy profiler
+cannot enumerate the gfx1201 GRBM-derived metrics. No occupancy, cache-miss, or
+instruction-retirement number is inferred from that failed route.
+
+| surface code object | Psycles queued producer | Cycles `shade_surface` |
+| --- | ---: | ---: |
+| VGPRs | 256 | 192 |
+| VGPR spills reported by metadata | 3,283 | 2 |
+| SGPRs / SGPR spills | 108 / 48 | 102 / 0 |
+| private segment per work-item | 40,176 B | 6,976 B |
+| dynamic stack | no | no |
+| linked `.text` | 21,815,552 B | 7,039,616 B for the **entire** Cycles gfx1201 fatbin |
+
+The Psycles surface object contains 572 text symbols. Of those, 571 are linked
+callable symbols occupying 21,328,784 bytes. Barbershop has 189 distinct
+surface topology keys, and construction currently emits three independent
+typed leaf families for every key:
+
+```text
+prepare(topology[0..188])
+evaluate_light(topology[0..188])
+sample(topology[0..188])
+```
+
+That is 567 topology-specialized leaves before the shared dispatch callables.
+Each family invokes its own `trace_surface_values` schedule. The graph IR does
+topological scheduling and common-subexpression elimination *within* one such
+invocation, but it cannot reuse values across the three callable boundaries.
+For a bounce which prepares the surface, evaluates NEE, and samples a BSDF,
+the current value-work bound is
+
+```text
+W_current = W_prepare + W_evaluate + W_sample.
+```
+
+For the pure value graph, a single populated typed closure domain would instead
+evaluate the topology-closed union of demanded value nodes once:
+
+```text
+W_populated = W(D_prepare union D_evaluate union D_sample)
+            <= W_prepare + W_evaluate + W_sample.
+```
+
+The inequality follows because every value instruction is pure and appears at
+most once in the existing topological schedule. It is strict whenever two
+consumers share a non-trivial dependency, as material texture and coordinate
+subgraphs normally do. This explains both the 567-way code multiplication and
+real runtime recomputation; reducing only return-value storage cannot remove
+either. The planned correction follows LuisaRender's `create_closure` /
+`populate_closure` / typed `evaluate` and `sample` separation: generate only
+reachable closure types, populate original closure parameters once in the
+topology leaf, and consume that typed state without a weakly typed `float4`
+parameter VM or any Blender/Cycles prebake. Before applying the transform, its
+proof obligation is to preserve automatic-bump-before-surface ordering,
+closure allocation order, caustics pruning, and RNG consumption; those are
+semantic effects outside ordinary value CSE.
+
+| closest-intersection code object | Psycles `intersect_closest` | Cycles `intersect_closest` |
+| --- | ---: | ---: |
+| main symbol size | 57,484 B | 28,756 B |
+| VGPRs | 256 | 191 |
+| VGPR spills reported by metadata | 222 | 18 |
+| private segment per work-item | 1,344 B | 976 B |
+| dynamic stack | yes | no |
+| static scratch-memory instructions in main symbol | 931 | 44 |
+
+Static scratch instructions are control-flow dependent and therefore cannot be
+multiplied directly by invocation count. The `21.2x` count nevertheless agrees
+with the metadata-level spill and dynamic-stack gap. Psycles' exact resolver
+currently uses HIPRT programmable ray-query callbacks plus a second query for
+the Cycles-compatible equal-distance tie domain; Cycles' matched kernel uses
+its software BVH traversal and has no dynamic stack. Since logical intersection
+work differs by only `-2.77%` while normalized cost differs by `3.622x`, the
+next intersection experiment must compare exact closest-hit, callback, and tie
+resolver variants on identical rays. It must not be mixed with surface graph
+work or attributed to scheduler launch padding.
+
 This comparison changes the optimization order. `intersect_closest` can be
 investigated directly against Cycles traversal because its logical workloads
 already agree within 3%. For `shade_surface`, the 28% invocation-count
