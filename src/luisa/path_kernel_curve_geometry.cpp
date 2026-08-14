@@ -26,7 +26,8 @@ public:
        Expr<float> committed_distance) const noexcept override {
     auto primitive = _primitive->emit(scene, instance_id, segment_id);
     const auto object_to_world = scene->accel->instance_transform(instance_id);
-    const auto world_to_object = inverse(object_to_world);
+    const auto world_to_object =
+        primitive.curve.instance.cycles_world_to_object;
     const auto normal_to_world = transpose(world_to_object);
     const auto object_origin =
         (world_to_object * make_float4(world_ray->origin(), 1.0f)).xyz();

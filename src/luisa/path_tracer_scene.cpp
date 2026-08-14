@@ -1,22 +1,22 @@
-#include "path_tracer_internal.h"
+#include "cycles_shader_identity.h"
 #include "graph_surface_value_expression.h"
+#include "path_tracer_bsdf_tables.h"
 #include "path_tracer_curve_scene.h"
 #include "path_tracer_displacement_scene.h"
 #include "path_tracer_environment.h"
 #include "path_tracer_generated_coordinates.h"
 #include "path_tracer_image_decode.h"
+#include "path_tracer_internal.h"
 #include "path_tracer_light_sampling_scene.h"
-#include "path_tracer_bsdf_tables.h"
 #include "path_tracer_scene_geometry.h"
 #include "path_tracer_scene_upload.h"
-#include "path_tracer_subsurface_scene.h"
-#include "shader_table_data.h"
 #include "path_tracer_shader_services.h"
+#include "path_tracer_subsurface_scene.h"
 #include "path_tracer_surfaces.h"
 #include "path_tracer_tangent_space.h"
 #include "path_tracer_volume_capabilities.h"
 #include "path_tracer_volume_majorant_scene.h"
-#include "cycles_shader_identity.h"
+#include "shader_table_data.h"
 
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/contract/cycles_pointiness.h>
@@ -229,35 +229,25 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 .surface_tag = surface_iter->second,
                 .parameter_block = base,
                 .cycles_shader_index =
-                    snapshot.materials.at(id)
-                        .cycles_shader_index
-                        .value_or(
-                            cycles_shader_identity::
-                                invalid_index),
+                    snapshot.materials.at(id).cycles_shader_index.value_or(
+                        cycles_shader_identity::invalid_index),
                 .material_identity =
-                    static_cast<std::uint32_t>(
-                        data->material_bindings
-                            .size()),
+                    static_cast<std::uint32_t>(data->material_bindings.size()),
                 .flags =
-                    (capabilities.may_have_volume
-                         ? material_flag_has_volume
-                         : 0u) |
-                    (may_emit
-                         ? material_flag_may_emit
-                         : 0u) |
-                    (emission_is_constant
-                         ? material_flag_constant_emission
-                         : 0u) |
-                    (snapshot.materials.at(id)
-                            .use_bump_map_correction
+                    (capabilities.may_have_volume ? material_flag_has_volume
+                                                  : 0u) |
+                    (may_emit ? material_flag_may_emit : 0u) |
+                    (emission_is_constant ? material_flag_constant_emission
+                                          : 0u) |
+                    (snapshot.materials.at(id).use_bump_map_correction
                          ? material_flag_use_bump_map_correction
+                         : 0u) |
+                    (capabilities.may_be_transparent
+                         ? material_flag_may_be_transparent
                          : 0u),
                 .emission_sampling =
-                    snapshot.materials.at(id)
-                        .emission_sampling,
-                .volume_sampling =
-                    snapshot.materials.at(id)
-                        .volume_sampling});
+                    snapshot.materials.at(id).emission_sampling,
+                .volume_sampling = snapshot.materials.at(id).volume_sampling});
         const auto &program = *material.surface_program();
         if (program.root().valid() &&
             std::any_of(

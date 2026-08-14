@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 
@@ -84,6 +85,11 @@ inline constexpr std::uint32_t material_emission_sampling_shift = 4u;
 inline constexpr std::uint32_t material_emission_sampling_mask =
     0x7u << material_emission_sampling_shift;
 
+// Conservative surface-program capability. A clear bit proves that the raw
+// closure graph cannot transmit a shadow ray; a set bit only requests deferred
+// closure evaluation and does not encode a sampled or precomputed opacity.
+inline constexpr std::uint32_t material_flag_may_be_transparent = 1u << 7u;
+
 [[nodiscard]] constexpr std::uint32_t
 material_emission_sampling_bits(
     std::uint32_t sampling) noexcept {
@@ -103,12 +109,11 @@ material_emission_sampling_value(
 static_assert(
     material_emission_sampling_value(
         material_emission_sampling_bits(4u)) == 4u);
-static_assert(
-    (material_emission_sampling_mask &
-     (material_flag_has_volume |
-      material_flag_may_emit |
-      material_flag_constant_emission |
-      material_flag_use_bump_map_correction)) == 0u);
+static_assert((material_emission_sampling_mask &
+               (material_flag_has_volume | material_flag_may_emit |
+                material_flag_constant_emission |
+                material_flag_use_bump_map_correction |
+                material_flag_may_be_transparent)) == 0u);
 
 struct MaterialBindingGpu {
     luisa::uint surface_tag{};
@@ -229,6 +234,21 @@ struct ShadowIntersectionCall {
     luisa::uint hit_type{};
     float distance{};
     luisa::float2 barycentric{};
+};
+
+// Cycles' GPU shadow state retains four closest intersections from one BVH
+// traversal. Keep the same bounded state transition here: `count` entries are
+// sorted by distance, `total` counts accepted transparent candidates, and a
+// nonzero `blocked` proves that an opaque candidate or bounce-budget overflow
+// terminated traversal. `total > count` is exactly the continuation predicate
+// for the next traversal batch.
+inline constexpr std::size_t shadow_intersection_batch_capacity = 4u;
+
+struct ShadowIntersectionBatchCall {
+  std::array<ShadowIntersectionCall, shadow_intersection_batch_capacity> hits{};
+  luisa::uint count{};
+  luisa::uint total{};
+  luisa::uint blocked{};
 };
 
 struct ShadowSurfaceEvaluationCall {
@@ -605,12 +625,10 @@ LUISA_STRUCT(
     hit_type,
     distance,
     barycentric) {};
-LUISA_STRUCT(
-    psycles::luisa_backend::detail::ShadowSurfaceEvaluationCall,
-    transmittance,
-    object,
-    primitive,
-    kind) {};
+LUISA_STRUCT(psycles::luisa_backend::detail::ShadowIntersectionBatchCall, hits,
+             count, total, blocked){};
+LUISA_STRUCT(psycles::luisa_backend::detail::ShadowSurfaceEvaluationCall,
+             transmittance, object, primitive, kind){};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::ShadowTraceResultCall,
     transmittance,

@@ -143,18 +143,12 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
                 task.ray_maximum = shadow_maximum;
                 task.ray_dP = shadow_differential.position;
                 task.ray_dD = shadow_differential.direction;
-                task.shadow_hit_barycentric = make_float2(0.0f);
-                task.shadow_hit_distance = 0.0f;
                 task.light_terminate_sample =
                     bounce.random().light_terminate_sample;
                 task.source_object = source_object;
                 task.source_primitive = source_primitive;
                 task.light_object = transport.light_object;
                 task.light_primitive = transport.light_primitive;
-                task.shadow_hit_instance = surface_ray::invalid_primitive;
-                task.shadow_hit_primitive = surface_ray::invalid_primitive;
-                task.shadow_hit_type = static_cast<std::uint32_t>(
-                    luisa::compute::HitType::Miss);
                 task.constant_light_shader =
                     cast<std::uint32_t>(transport.constant_light_shader);
                 task.shader_flags = transport.shader_flags;
@@ -211,7 +205,7 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
 
                 $while(active) {
                     $suspend(path_transition::intersect_shadow);
-                    _evaluator.intersect(task);
+                    _evaluator.intersect(task, invocation.parameters);
 
                     $suspend(path_transition::shade_shadow);
                     const auto step =

@@ -8,8 +8,14 @@
 #include <string>
 #include <string_view>
 
+#include <vector>
+
 #include <luisa/luisa-compute.h>
+#include <luisa/xir/instructions/arithmetic.h>
+#include <luisa/xir/instructions/break.h>
+#include <luisa/xir/instructions/if.h>
 #include <luisa/xir/instructions/loop.h>
+#include <luisa/xir/passes/dom_tree.h>
 #include <luisa/xir/translators/ast2xir.h>
 
 namespace {
@@ -34,20 +40,20 @@ void expect_near(
             ", expected " + std::to_string(expected));
 }
 
-void expect_runtime_subdivision_loop(
+void expect_runtime_subdivision_control_flow(
     const std::shared_ptr<const CurveRibbonComponent> &ribbon) {
-    Kernel1D shape = [ribbon](BufferUInt subdivision,
-                              BufferFloat4 output) noexcept {
+  Kernel1D shape =
+      [ribbon](BufferUInt subdivision, BufferFloat4 control_points,
+               BufferFloat4 output) noexcept {
         const auto ray = make_ray(
             make_float3(0.0f),
             make_float3(0.0f, 0.0f, 1.0f),
             0.0f,
             10.0f);
-        const CurveControlPoints curve{
-            .before = make_float4(-2.0f, 0.0f, 2.0f, 0.5f),
-            .begin = make_float4(-1.0f, 0.0f, 2.0f, 0.5f),
-            .end = make_float4(1.0f, 0.0f, 2.0f, 0.5f),
-            .after = make_float4(2.0f, 0.0f, 2.0f, 0.5f)};
+        const CurveControlPoints curve{.before = control_points.read(0u),
+                                       .begin = control_points.read(1u),
+                                       .end = control_points.read(2u),
+                                       .after = control_points.read(3u)};
         const auto intersection = ribbon->intersect(
             ray, curve, subdivision.read(0u));
         output.write(
@@ -57,28 +63,73 @@ void expect_runtime_subdivision_loop(
                 intersection.u,
                 intersection.v,
                 select(0.0f, 1.0f, intersection.valid)));
-    };
-    auto module = luisa::compute::xir::ast_to_xir_translate(
-        shape.function()->function(), {});
-    std::size_t loops = 0u;
-    for (auto *function : module->function_list()) {
-        if (auto *definition = function->definition()) {
-            definition->traverse_instructions(
-                [&](const luisa::compute::xir::Instruction
-                        *instruction) noexcept {
-                    loops +=
-                        instruction->isa<
-                            luisa::compute::xir::LoopInst>() ||
-                                instruction->isa<
-                                    luisa::compute::xir::SimpleLoopInst>()
-                            ? 1u
-                            : 0u;
-                });
+      };
+  auto module = luisa::compute::xir::ast_to_xir_translate(
+      shape.function()->function(), {});
+  std::size_t loops = 0u;
+  std::size_t breaks = 0u;
+  std::size_t in_loop_scalar_divisions = 0u;
+  std::size_t guarded_in_loop_scalar_divisions = 0u;
+  for (auto *function : module->function_list()) {
+    if (auto *definition = function->definition()) {
+      std::vector<luisa::compute::xir::LoopInst *> loop_instructions;
+      std::vector<luisa::compute::xir::IfInst *> if_instructions;
+      std::vector<luisa::compute::xir::ArithmeticInst *> scalar_divisions;
+      definition->traverse_instructions([&](luisa::compute::xir::Instruction
+                                                *instruction) noexcept {
+        if (instruction->isa<luisa::compute::xir::LoopInst>()) {
+          loop_instructions.emplace_back(
+              static_cast<luisa::compute::xir::LoopInst *>(instruction));
+        } else if (instruction->isa<luisa::compute::xir::SimpleLoopInst>()) {
+          ++loops;
+        } else if (instruction->isa<luisa::compute::xir::IfInst>()) {
+          if_instructions.emplace_back(
+              static_cast<luisa::compute::xir::IfInst *>(instruction));
+        } else if (instruction->isa<luisa::compute::xir::ArithmeticInst>()) {
+          auto *arithmetic =
+              static_cast<luisa::compute::xir::ArithmeticInst *>(instruction);
+          if (arithmetic->op() ==
+                  luisa::compute::xir::ArithmeticOp::BINARY_DIV &&
+              arithmetic->type() == Type::of<float>()) {
+            scalar_divisions.emplace_back(arithmetic);
+          }
         }
+        breaks += instruction->isa<luisa::compute::xir::BreakInst>() ? 1u : 0u;
+      });
+      loops += loop_instructions.size();
+      const auto dominance = luisa::compute::xir::compute_dom_tree(function);
+      for (auto *division : scalar_divisions) {
+        for (auto *loop : loop_instructions) {
+          if (!dominance.dominates(loop->body_block(),
+                                   division->parent_block())) {
+            continue;
+          }
+          ++in_loop_scalar_divisions;
+          auto guarded = false;
+          for (auto *if_instruction : if_instructions) {
+            const auto conditional_is_in_loop = dominance.dominates(
+                loop->body_block(), if_instruction->parent_block());
+            const auto true_path_dominates_division = dominance.dominates(
+                if_instruction->true_block(), division->parent_block());
+            if (conditional_is_in_loop && true_path_dominates_division) {
+              guarded = true;
+              break;
+            }
+          }
+          guarded_in_loop_scalar_divisions += guarded ? 1u : 0u;
+        }
+      }
     }
-    expect(
-        loops == 1u,
-        "runtime curve subdivision did not lower to exactly one device loop");
+  }
+  expect(loops == 1u,
+         "runtime curve subdivision did not lower to exactly one device loop");
+  expect(breaks == 1u,
+         "a committed ribbon hit does not terminate subdivision immediately");
+  expect(in_loop_scalar_divisions == 1u,
+         "unexpected exact ribbon division shape inside subdivision loop");
+  expect(
+      guarded_in_loop_scalar_divisions == 1u,
+      "exact ribbon intersection is not control-dependent on coarse culling");
 }
 
 }// namespace
@@ -88,7 +139,7 @@ int main(int argc, char **argv) {
         argc > 1 ? argv[1] : "fallback"};
     try {
         const auto ribbon = make_curve_ribbon_component();
-        expect_runtime_subdivision_loop(ribbon);
+        expect_runtime_subdivision_control_flow(ribbon);
 
         Context context{argv[0]};
         auto device = context.create_device(backend);

@@ -44,6 +44,15 @@ public:
                  Expr<std::uint32_t> visibility_mask,
                  const ScenePrimitiveIdentity &source,
                  const ScenePrimitiveIdentity &light) const noexcept = 0;
+  // Enumerates one backend-native RayQuery and reduces its order-independent
+  // candidate stream to the nearest fixed-capacity batch used by the shadow
+  // scheduler. `transparent_maximum` is the remaining transparent-bounce
+  // budget; exceeding it is an opaque terminal result.
+  [[nodiscard]] virtual Var<ShadowIntersectionBatchCall> collect_shadow(
+      const std::shared_ptr<LuisaSceneData> &scene,
+      const Var<luisa::compute::Ray> &ray, Expr<std::uint32_t> visibility_mask,
+      const ScenePrimitiveIdentity &source, const ScenePrimitiveIdentity &light,
+      Expr<std::uint32_t> transparent_maximum) const noexcept = 0;
 };
 
 [[nodiscard]] std::shared_ptr<const SceneTraversalComponent>
