@@ -86,17 +86,15 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
         auto &task = preparation.task;
 
         $if(transport.valid) {
-            const auto base_contribution =
-                sample.throughput * transport.weighted_bsdf;
-            const auto complete_unshadowed =
-                base_contribution * transport.light_shader;
-            const auto constant_roulette_weight =
-                invocation.sample_light_roulette(
-                    complete_unshadowed,
-                    bounce.random().light_terminate_sample);
+            const auto local_unshadowed =
+                transport.weighted_bsdf * transport.light_shader;
+            const auto constant_contribution = finalize_direct_light_sample(
+                config.light_transport.light_sample_roulette_weight,
+                local_unshadowed, sample.throughput,
+                bounce.random().light_terminate_sample,
+                invocation.parameters.light_inv_rr_threshold);
             const auto initial_contribution = select(
-                base_contribution,
-                complete_unshadowed * constant_roulette_weight,
+                transport.weighted_bsdf, constant_contribution,
                 transport.constant_light_shader);
             const auto publish =
                 (!transport.constant_light_shader) |
@@ -128,6 +126,7 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
                 task.ray_origin = shadow.position;
                 task.ray_direction = shadow_direction;
                 task.unshadowed_contribution = initial_contribution;
+                task.nee_path_throughput = sample.throughput;
                 task.light_shader = transport.light_shader;
                 task.shadow_transmittance = make_float3(1.0f);
                 task.diffuse_weight =

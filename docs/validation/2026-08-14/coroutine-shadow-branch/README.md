@@ -10,9 +10,11 @@ coroutine or hand-written shadow scheduler is involved.
 
 On the Lone Monk structural canary, releasing populated surface/closure state
 before this branch reduced the fallback coroutine frame from **992 B to
-352 B** and the physical field count from **223 to 87**. The graph still has
+368 B** and the physical field count from **223 to 90**. The graph still has
 seven subroutines. This is a liveness reduction, not a packed-layout trick or
-an unsafe liveness override.
+an unsafe liveness override. The final 16 B above the first 352 B prototype is
+the explicitly typed path throughput required to preserve Cycles' light
+roulette measure; it is not closure leakage.
 
 ## Formal control-flow model
 
@@ -73,16 +75,16 @@ materializations:
 | Measurement | Shadow before scatter | Scatter before shadow |
 |---|---:|---:|
 | Subroutines | 7 | 7 |
-| Physical frame fields | 223 | 87 |
-| Frame bytes | 992 | 352 |
-| `shade_surface` touched values | 218 | 78 |
-| surface -> `shade_light_nee` live values | 218 | 77 |
+| Physical frame fields | 223 | 90 |
+| Frame bytes | 992 | 368 |
+| `shade_surface` touched values | 218 | 81 |
+| surface -> `shade_light_nee` live values | 218 | 80 |
 | surface -> `intersect_shadow` live values | 214 | 73 |
-| `shade_light_nee` external values | 195 | 22 |
+| `shade_light_nee` external values | 195 | 25 |
 | `shade_shadow` external values | 210 | 37 |
 | `shade_shadow` -> `intersect_closest` live values | 40 | 40 |
 
-The two conditional edges remain distinct: the non-constant-light edge has 77
+The two conditional edges remain distinct: the non-constant-light edge has 80
 live values and the constant-light bypass has 73. Their branch-local values
 are not combined into one interference clique. The remaining 40-value main
 continuation is unchanged; those values are genuinely used after the
@@ -123,6 +125,34 @@ also passed directly:
 ./build/bin/psycles_luisa_sample_dispatch_film_tests fallback
 ```
 
+HIP validation exposed and fixed one additional algebraic regression that the
+small fixture did not originally activate. Cycles defines light termination
+roulette in the local light-sample domain:
+
+```text
+path_throughput * roulette(weighted_bsdf * light_shader)
+```
+
+The first staged prototype had incorrectly included `path_throughput` inside
+the roulette argument. This changes the survival probability whenever
+`light_sampling_threshold` is enabled. `DirectLightTaskCall` now carries a
+separate `nee_path_throughput`; `finalize_direct_light_sample` applies it only
+after roulette. The direct-light plan test constructs a case whose correct
+local probability is 0.2 but whose incorrect path-scaled probability is 0.08,
+with random value 0.1. The correct result is `(0.05, 0.1, 0.2)` while the old
+formula necessarily returns zero. This regression passes on fallback and HIP.
+The Vulkan run also passed through native XIR-to-SPIR-V codegen (the log
+contains SPIR-V optimization/compilation and no DXC load).
+
+The ordering was checked directly against the Blender Cycles checkout.
+`intern/cycles/kernel/integrator/shade_surface.h` applies
+`light_sample_terminate` to the local `bsdf_eval` before
+`integrate_direct_light_shadow_init_common` multiplies it by the main-path
+throughput. For non-constant emitters, `shade_light.h` forms the termination
+probability from `light_eval * bsdf_eval_average`; the separately stored
+shadow throughput is updated only after that decision. The implementation
+above preserves both cases rather than fitting the Lone Monk output.
+
 ## Numerical and visual check
 
 The pre/post 64x48, 1 spp Lone Monk EXRs were compared over all 46 channels:
@@ -149,5 +179,60 @@ sample count.
 ![Lone Monk shadow-before-scatter, scatter-before-shadow, and amplified absolute difference](triptychs/lone-monk-before-after-diff.png)
 
 This small render is a structural/frame canary, not the final performance
-claim. HIP 640x480+ profiling and high-spp scene comparisons remain the next
-validation stage.
+claim.
+
+## HIP 640x480 performance and correctness gate
+
+Lone Monk was rendered at 640x480, 64 fixed spp, one 64-sample dispatch, with
+the same staged-surface and 32-thread continuation configuration used by the
+preceding HIP RayQuery checkpoint. Adaptive sampling and denoising do not
+participate in the Psycles render. The final, roulette-correct split graph ran
+in 1.81952, 1.84801, and 1.83786 seconds (median **1.83786 s**). Its scheduler
+executed 1,418 iterations, about 20.793 million instances in each of
+`intersect_shadow` and `shade_shadow`, and peaked at 191,565 queued shadow
+instances.
+
+This is currently a performance regression, not a speedup:
+
+| Execution | Warm render-only median | Relative time |
+|---|---:|---:|
+| commit `3b8936c` fused-shadow staged baseline | 1.51818 s | 1.000x |
+| current same-source per-sample megakernel | 1.49519 s | 0.985x |
+| current split-shadow staged graph | 1.83786 s | 1.211x |
+
+The same-source megakernel observations were 1.49519, 1.49542, and 1.49409
+seconds. The split graph is therefore 22.92% slower than its own megakernel
+control and 21.06% slower than the immediately preceding fused staged
+baseline. This localizes the remaining cost to the new scheduler boundaries
+and frame traffic rather than the shared shading algorithm or scene setup.
+
+All 46 EXR channels were compared between the current megakernel and split
+graph. The all-channel mean error was `1.39739e-5` and RMS was `0.00316694`.
+The large maxima are sparse threshold/tie outliers rather than a coherent
+feature: across the nine direct-light channels, 77 pixels (0.0251%) exceeded
+0.01 and 15 pixels (0.00488%) exceeded 0.1. Two executions of the split graph
+itself had seven direct-light pixels (0.00228%) above 0.1, establishing the
+same scale of run-to-run nondeterminism. Normal, material-color, geometry,
+silhouette, and illumination structure were visually inspected and showed no
+structured change.
+
+The following 1920x480 triptych was inspected at original resolution. It is,
+from left to right, the same-source megakernel, the split coroutine graph, and
+the automatically normalized absolute Combined heatmap. The heatmap's P99
+scale is `3.6432295e-5`; it exposes sampling/accumulation noise but no shifted
+edge, missing object, changed material region, or coherent shadow feature.
+
+![Lone Monk HIP megakernel, split coroutine graph, and normalized Combined difference](triptychs/lone-monk-hip-mega-split-diff.png)
+
+Reproduction:
+
+```bash
+LUISA_CORO_WAVEFRONT_STATS=1 \
+./build/bin/psycles_render_blender_scene \
+  /var/tmp/psycles-lone-monk-transmission-dbdcb17/export \
+  output.exr hip 640 480 64 64 - 0 0 0 0 64 - 1 0 \
+  wavefront-staged 32 32768 32 1 1 0 4 2 4096 131072 0 0 1
+```
+
+Per-continuation HIP profiling is the next step; the negative result is kept
+as the optimization baseline rather than hidden by the frame-size win.
