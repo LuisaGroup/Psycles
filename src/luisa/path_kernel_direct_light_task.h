@@ -29,20 +29,16 @@ struct DirectLightTaskCall {
   luisa::float3 shadow_transmittance{};
   luisa::float3 diffuse_weight{};
   luisa::float3 glossy_weight{};
-  luisa::float2 shadow_hit_barycentric{};
+  ShadowIntersectionBatchCall shadow_batch{};
   float ray_minimum{};
   float ray_maximum{};
   float ray_dP{};
   float ray_dD{};
-  float shadow_hit_distance{};
   float light_terminate_sample{};
   luisa::uint source_object{};
   luisa::uint source_primitive{};
   luisa::uint light_object{};
   luisa::uint light_primitive{};
-  luisa::uint shadow_hit_instance{};
-  luisa::uint shadow_hit_primitive{};
-  luisa::uint shadow_hit_type{};
   luisa::uint constant_light_shader{};
   luisa::uint shader_flags{};
   luisa::uint pixel{};
@@ -56,7 +52,7 @@ struct DirectLightTaskCall {
 };
 
 static_assert(std::is_trivially_copyable_v<DirectLightTaskCall>);
-static_assert(sizeof(DirectLightTaskCall) == 240u);
+static_assert(sizeof(DirectLightTaskCall) == 320u);
 
 struct DirectLightTaskFilm {
   const BufferFloat4 &combined;
@@ -101,7 +97,8 @@ struct DirectLightTaskEvaluator {
   [[nodiscard]] Bool
   shade_light_nee(Var<DirectLightTaskCall> &task,
                   const Var<RenderKernelParameters> &parameters) const noexcept;
-  void intersect(Var<DirectLightTaskCall> &task) const noexcept;
+  void intersect(Var<DirectLightTaskCall> &task,
+                 const Var<RenderKernelParameters> &parameters) const noexcept;
   [[nodiscard]] DirectLightShadowStep
   shade_shadow(Var<DirectLightTaskCall> &task,
                const Var<RenderKernelParameters> &parameters) const noexcept;
@@ -134,13 +131,11 @@ public:
 LUISA_STRUCT(psycles::luisa_backend::detail::DirectLightTaskCall, ray_origin,
              ray_direction, unshadowed_contribution, nee_path_throughput,
              light_shader, shadow_transmittance, diffuse_weight, glossy_weight,
-             shadow_hit_barycentric, ray_minimum, ray_maximum, ray_dP, ray_dD,
-             shadow_hit_distance, light_terminate_sample, source_object,
-             source_primitive, light_object, light_primitive,
-             shadow_hit_instance, shadow_hit_primitive, shadow_hit_type,
-             constant_light_shader, shader_flags, pixel, path_depth, path_flags,
-             path_visibility, diffuse_depth, glossy_depth, transparent_depth,
-             transmission_depth){};
+             shadow_batch, ray_minimum, ray_maximum, ray_dP, ray_dD,
+             light_terminate_sample, source_object, source_primitive,
+             light_object, light_primitive, constant_light_shader, shader_flags,
+             pixel, path_depth, path_flags, path_visibility, diffuse_depth,
+             glossy_depth, transparent_depth, transmission_depth){};
 
 namespace psycles::luisa_backend::detail {
 

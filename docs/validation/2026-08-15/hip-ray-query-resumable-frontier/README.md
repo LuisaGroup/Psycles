@@ -11,7 +11,8 @@ Machine: Radeon RX 9070 XT (`gfx1201`), ROCm 7.2.53211.
 LuisaCompute commits:
 
 - `3a556dd47` -- formally localize invocation-local RayQuery handler scratch;
-- `d98735f55` -- persist resumable RayQuery on the gfx12 hardware frontier.
+- `d98735f55` -- persist resumable RayQuery on the gfx12 hardware frontier;
+- `8a7a62162` -- evaluate the handler-scratch proof as sparse reachability.
 
 ## Traversal-state model
 
@@ -58,30 +59,69 @@ all of the following hold:
 1. every use is a direct whole-object load or store;
 2. its address never escapes through GEP, cast, call, pointer store, or return;
 3. exactly one candidate-handler region owns all loads;
-4. a forward must-definition fixed point proves every handler load is preceded
-   by a full store on every path from that handler's entry.
+4. every handler load is preceded by a full store on every path from that
+   handler's entry.
 
-For block `B`, `D_out(B)` means that a full definition exists on every path to
-the end of `B`:
+The implementation evaluates the fourth condition through its equivalent
+counterexample graph. Starting at handler entry in the uninitialized state,
+each path is cut immediately after its first full store. Localization is valid
+exactly when no load is reachable in the remaining graph:
 
 ```text
-D_in(entry) = false
-D_in(B)     = intersection(D_out(P) for P in pred(B))
-D_out(B)    = D_in(B) or contains_full_store(B)
+unsafe(alloca) iff
+    exists path(entry, load) containing no earlier full_store(alloca)
 ```
 
-Non-entry blocks start at `true` and converge downward, computing the greatest
-fixed point while the false entry boundary prevents cyclic self-justification.
-A second instruction-order scan rejects a load before a later store in the same
-block. Anything not proven safe remains captured. Regression coverage includes
-load-before-store, a conditional single-arm store, stores on both diamond arms,
-an outside initializer killed by a must-store, and genuinely observable
-cross-candidate state.
+The traversal scans instructions through the first store and visits each block
+at most once per candidate allocation. Diamond joins and cycles need no dense
+fixed-point iteration: both written arms are cut, while any unwritten arm still
+reaches and rejects a load. Anything not proven safe remains captured.
+Regression coverage includes load-before-store, a conditional single-arm
+store, stores on both diamond arms, an outside initializer killed by a
+must-store, and genuinely observable cross-candidate state.
+
+The first implementation computed a separate dense predecessor fixed point for
+every captured allocation. A cold Psycles mixed triangle/curve shadow shader
+exposed its pathological complexity: it remained in XIR for more than 58 s,
+and a five-second `perf` sample attributed 32.45% directly to predecessor
+traversal plus 24.69% to associated hashing. The sparse equivalent completes
+the entire cache-disabled HIP scene-traversal regression in 1.25 s; its two
+HIP LLVM codegen intervals are 443.9 ms and 340.7 ms. The regression now
+explicitly disables persistent shader cache so this compiler path is exercised
+on every run.
 
 The cutout kernel's projected callback environment fell from 48 B to 16 B and
 its linked code object from approximately 46,836 B to 45,992 B. In the current
 Psycles split kernels, the remaining projected environments are 96 B and
 192 B; the analysis correctly rejects all of their cross-stage allocations.
+
+## Renderer transparent-shadow integration
+
+Psycles now expresses the Cycles GPU shadow traversal shape with one ordinary
+RayQuery per batch. The handler maintains this order-independent invariant:
+
+```text
+hits[0:count) = nearest min(total, 4) accepted candidates, sorted by ray t
+```
+
+An opaque candidate or exhausted transparent-bounce budget terminates the
+query. Otherwise the shade stage evaluates the four raw material closures in
+distance order. It launches another query only when `total > count`, starting
+after the farthest shaded hit. No opacity or closure is baked during scene
+export; the material flag is only a conservative proof that a shader cannot be
+transparent and therefore may terminate without deferred closure evaluation.
+
+The batch storage is explicitly initialized before traversal. A Luisa DSL
+`Var<T>` allocates storage but does not implicitly establish a value, and the
+fixed-capacity reduction eagerly reads inactive lanes before masking them with
+`count`. This initialization requirement was exposed by the cache-disabled HIP
+test and is now covered on fallback, HIP, and native XIR-to-SPIR-V Vulkan.
+
+Curve candidates use the affine inverse uploaded with the Cycles instance
+instead of recomputing a general matrix inverse inside every candidate. Exact
+ribbon quad construction is control-dependent on the coarse cylinder test and
+the subdivision loop exits immediately after the same first accepted interval
+as before. XIR-shape regressions verify both properties.
 
 ## Performance
 
@@ -129,6 +169,47 @@ Increasing the frontier does not improve render time and consumes more LDS.
 The retained nine-entry capacity is therefore both the formal lower bound and
 the measured optimum. Parent-link backtracking is not the current production
 bottleneck.
+
+### Lone Monk renderer validation
+
+The final transparent-shadow implementation was rendered at 640x480, 64 spp,
+with a 32-sample staged-wavefront dispatch on HIP:
+
+```bash
+./build/bin/psycles_render_blender_scene \
+  /var/tmp/psycles-all-scenes-5.2-20260814/exports/lone-monk \
+  /var/tmp/psycles-shadow-batch-final.exr hip 640 480 64 64 - \
+  0 0 0 0 64 - 1 0 wavefront-staged 32 32768 32 1 1 0 4 2 \
+  4096 131072 0 0 1
+```
+
+The scene contains 348 geometries, 87,534 instances, and 37 materials. Scene
+upload took 4.397 s, cold JIT compilation took 11.544 s, and render-only time
+was 1.799 s. The Blender source enables adaptive sampling and denoising, while
+this Psycles run uses fixed sampling; official Cycles comparisons must disable
+both features as well.
+
+Against the immediately preceding initialized-batch checkpoint, Combined has
+RMSE 0.0017703, relative RMSE 0.0011346, MAE 0.00001570, and a mean-luminance
+ratio of 1.000022. The 95th percentile is exactly zero and the 99th percentile
+is 6.88e-8; the sparse maximum of 0.6978 lies on stochastic/geometry edges.
+Emission, Environment, Transmission, and volume passes are unchanged where
+present.
+
+The triptych below compares the earlier single-hit transparent-shadow
+checkpoint with the four-hit batch. Its larger Combined RMSE of 0.03480
+(relative RMSE 0.02231, MAE 0.00525) reflects changed sample consumption and
+Monte Carlo noise. Visual inspection finds no coherent geometry, material,
+grass, roof, or illumination displacement: the amplified difference is
+noise-like and follows the high-variance lit surfaces. Emission and
+Environment remain bit-exact.
+
+![Lone Monk single-hit shadow, four-hit batch, and amplified difference](triptychs/lone-monk-single-hit-vs-four-hit-shadow.png)
+
+Machine-readable reports are retained at
+`/var/tmp/psycles-shadow-batch-final-comparison.json` and
+`/var/tmp/psycles-shadow-batch-vs-single-hit.json`; the rendered EXR is
+`/var/tmp/psycles-shadow-batch-final.exr`.
 
 ## Remaining bottleneck
 

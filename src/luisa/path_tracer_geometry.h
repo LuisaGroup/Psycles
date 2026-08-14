@@ -4,15 +4,14 @@
 
 namespace psycles::luisa_backend::detail {
 
-using IntersectShadowCallable =
-    Callable<ShadowIntersectionCall(
-        luisa::compute::Ray,
-        // Exact Cycles source (object, primitive) identity.
-        luisa::uint,
-        luisa::uint,
-        // Exact Cycles light (object, primitive) identity.
-        luisa::uint,
-        luisa::uint)>;
+using IntersectShadowCallable = Callable<ShadowIntersectionBatchCall(
+    luisa::compute::Ray,
+    // Exact Cycles source (object, primitive) identity.
+    luisa::uint, luisa::uint,
+    // Exact Cycles light (object, primitive) identity.
+    luisa::uint, luisa::uint,
+    // Remaining transparent-bounce budget.
+    luisa::uint)>;
 
 using EvaluateShadowSurfaceCallable =
     Callable<ShadowSurfaceEvaluationCall(

@@ -115,20 +115,30 @@ inline constexpr std::size_t record_count = 23u;
 struct TraversalXirShape {
   std::size_t instructions{};
   std::size_t callable_definitions{};
+  std::size_t ray_query_loops{};
   std::size_t triangle_candidate_reads{};
   std::size_t procedural_candidate_reads{};
+  std::size_t instance_transform_queries{};
 };
 
-[[nodiscard]] TraversalXirShape traversal_xir_shape(
-    const std::shared_ptr<LuisaSceneData> &scene,
-    SceneTraversalStagePlan plan) {
+[[nodiscard]] TraversalXirShape
+traversal_xir_shape(const std::shared_ptr<LuisaSceneData> &scene,
+                    SceneTraversalStagePlan plan, bool collect_shadow = false) {
   const auto traversal = make_scene_traversal_component(plan);
-  Kernel1D shape = [scene, traversal](BufferUInt output) noexcept {
+  Kernel1D shape = [scene, traversal,
+                    collect_shadow](BufferUInt output) noexcept {
     const auto ray = make_ray(
         make_float3(0.0f), make_float3(0.0f, 0.0f, 1.0f), 0.0f, 10.0f);
-    const auto hit = traversal->closest(
-        scene, ray, 0xffu, ScenePrimitiveIdentity::invalid());
-    output.write(0u, hit->inst);
+    if (collect_shadow) {
+      const auto batch = traversal->collect_shadow(
+          scene, ray, 0xffu, ScenePrimitiveIdentity::invalid(),
+          ScenePrimitiveIdentity::invalid(), 8u);
+      output.write(0u, batch->count);
+    } else {
+      const auto hit = traversal->closest(scene, ray, 0xffu,
+                                          ScenePrimitiveIdentity::invalid());
+      output.write(0u, hit->inst);
+    }
   };
   TraversalXirShape result;
   result.callable_definitions =
@@ -140,6 +150,9 @@ struct TraversalXirShape {
       definition->traverse_instructions(
           [&](const luisa::compute::xir::Instruction *instruction) noexcept {
             ++result.instructions;
+            result.ray_query_loops +=
+                instruction->isa<luisa::compute::xir::RayQueryLoopInst>() ? 1u
+                                                                          : 0u;
             if (instruction->isa<
                     luisa::compute::xir::RayQueryObjectReadInst>()) {
               const auto *read = static_cast<const luisa::compute::xir::
@@ -154,6 +167,16 @@ struct TraversalXirShape {
                   read->op() == luisa::compute::xir::
                                     RayQueryObjectReadOp::
                                         RAY_QUERY_OBJECT_PROCEDURAL_CANDIDATE_HIT
+                      ? 1u
+                      : 0u;
+            }
+            if (instruction->isa<luisa::compute::xir::ResourceQueryInst>()) {
+              const auto *query =
+                  static_cast<const luisa::compute::xir::ResourceQueryInst *>(
+                      instruction);
+              result.instance_transform_queries +=
+                  query->op() == luisa::compute::xir::ResourceQueryOp::
+                                     RAY_TRACING_INSTANCE_TRANSFORM
                       ? 1u
                       : 0u;
             }
@@ -233,12 +256,16 @@ int main(int argc, char **argv) {
                   .material_count = 1u,
                   .cycles_primitive_offset = 700000u,
                   .primitive_kind = geometry_kind_triangle}};
+  const auto identity_world_to_object = luisa::make_float4x4(1.0f);
   const std::array instances{
-      InstanceGpu{.geometry_index = 0u, .cycles_object_index = 11u},
+      InstanceGpu{.geometry_index = 0u,
+                  .cycles_object_index = 11u,
+                  .cycles_world_to_object = identity_world_to_object},
       InstanceGpu{.geometry_index = 1u,
                   .override_offset = 0u,
                   .override_count = 1u,
-                  .cycles_object_index = 22u},
+                  .cycles_object_index = 22u,
+                  .cycles_world_to_object = identity_world_to_object},
       InstanceGpu{.geometry_index = 0u,
                   .cycles_object_index = 489u,
                   .cycles_world_to_object = coincident_world_to_object},
@@ -257,7 +284,52 @@ int main(int argc, char **argv) {
                   .cycles_world_to_object = overlap_a_world_to_object},
       InstanceGpu{.geometry_index = 4u,
                   .cycles_object_index = 5066u,
-                  .cycles_world_to_object = overlap_b_world_to_object}};
+                  .cycles_world_to_object = overlap_b_world_to_object},
+      // Six transparent layers are inserted in far-to-near instance order.
+      // The collector must therefore derive distance order from candidates,
+      // never from TLAS construction or callback order.
+      InstanceGpu{.geometry_index = 0u,
+                  .override_offset = 1u,
+                  .override_count = 1u,
+                  .visibility_mask = 0x02u,
+                  .cycles_object_index = 3006u,
+                  .cycles_world_to_object = identity_world_to_object},
+      InstanceGpu{.geometry_index = 0u,
+                  .override_offset = 1u,
+                  .override_count = 1u,
+                  .visibility_mask = 0x02u,
+                  .cycles_object_index = 3005u,
+                  .cycles_world_to_object = identity_world_to_object},
+      InstanceGpu{.geometry_index = 0u,
+                  .override_offset = 1u,
+                  .override_count = 1u,
+                  .visibility_mask = 0x02u,
+                  .cycles_object_index = 3004u,
+                  .cycles_world_to_object = identity_world_to_object},
+      InstanceGpu{.geometry_index = 0u,
+                  .override_offset = 1u,
+                  .override_count = 1u,
+                  .visibility_mask = 0x02u,
+                  .cycles_object_index = 3003u,
+                  .cycles_world_to_object = identity_world_to_object},
+      InstanceGpu{.geometry_index = 0u,
+                  .override_offset = 1u,
+                  .override_count = 1u,
+                  .visibility_mask = 0x02u,
+                  .cycles_object_index = 3002u,
+                  .cycles_world_to_object = identity_world_to_object},
+      InstanceGpu{.geometry_index = 0u,
+                  .override_offset = 1u,
+                  .override_count = 1u,
+                  .visibility_mask = 0x02u,
+                  .cycles_object_index = 3001u,
+                  .cycles_world_to_object = identity_world_to_object},
+      InstanceGpu{.geometry_index = 0u,
+                  .override_offset = 2u,
+                  .override_count = 1u,
+                  .visibility_mask = 0x04u,
+                  .cycles_object_index = 3007u,
+                  .cycles_world_to_object = identity_world_to_object}};
   constexpr std::array geometry_materials{
       MaterialBindingGpu{.surface_tag = 41u,
                          .cycles_shader_index = 5u,
@@ -268,7 +340,14 @@ int main(int argc, char **argv) {
   constexpr std::array override_materials{
       MaterialBindingGpu{.surface_tag = 77u,
                          .cycles_shader_index = 9u,
-                         .material_identity = 109u}};
+                         .material_identity = 109u},
+      MaterialBindingGpu{.surface_tag = 78u,
+                         .cycles_shader_index = 10u,
+                         .material_identity = 110u,
+                         .flags = material_flag_may_be_transparent},
+      MaterialBindingGpu{.surface_tag = 79u,
+                         .cycles_shader_index = 11u,
+                         .material_identity = 111u}};
   constexpr std::array vertices{luisa::float3{-2.0f, -2.0f, 4.0f},
                                 luisa::float3{2.0f, -2.0f, 4.0f},
                                 luisa::float3{0.0f, 2.0f, 4.0f}};
@@ -378,6 +457,7 @@ int main(int argc, char **argv) {
 
   scene->heap = device.create_bindless_array(5u * geometry_bindless_stride);
   scene->heap.emplace_on_update(0u, triangle_buffer);
+  scene->heap.emplace_on_update(4u, curve_material_buffer);
   scene->heap.emplace_on_update(9u, vertex_buffer);
   scene->heap.emplace_on_update(curve_bindless_base, segment_buffer);
   scene->heap.emplace_on_update(curve_bindless_base + 1u, key_buffer);
@@ -416,6 +496,14 @@ int main(int argc, char **argv) {
       overlap_mesh, to_luisa(overlap_a_transform), 0xffu, false, 6u);
   scene->accel.emplace_back(
       overlap_mesh, to_luisa(overlap_b_transform), 0xffu, false, 7u);
+  for (auto layer = std::uint32_t{0u}; layer < 6u; ++layer) {
+    const auto distance = 6.0f - static_cast<float>(layer);
+    scene->accel.emplace_back(
+        mesh, translation(make_float3(10.0f, 0.0f, distance - 4.0f)), 0x02u,
+        false, 8u + layer);
+  }
+  scene->accel.emplace_back(mesh, translation(make_float3(10.0f, 0.0f, 3.0f)),
+                            0x04u, false, 14u);
   // The compact local domain deliberately has a different ordinal space and
   // traversal order from the primary TLAS. User ids are the sole canonical
   // injection back into InstanceGpu/primary-TLAS identity.
@@ -434,13 +522,16 @@ int main(int argc, char **argv) {
   const auto mixed_shape = traversal_xir_shape(
       scene,
       {.primitives = {.triangles = true, .curves = true}});
+  const auto shadow_batch_shape = traversal_xir_shape(
+      scene, {.primitives = {.triangles = true, .curves = true}}, true);
   const auto report_shapes =
       std::getenv("PSYCLES_REPORT_SHADER_SHAPES") != nullptr;
   if (report_shapes) {
     std::cerr << "scene traversal XIR: empty=" << empty_shape.instructions
               << ", triangles=" << triangle_shape.instructions
               << ", curves=" << curve_shape.instructions
-              << ", mixed=" << mixed_shape.instructions << '\n';
+              << ", mixed=" << mixed_shape.instructions
+              << ", shadow_batch=" << shadow_batch_shape.instructions << '\n';
   }
   if (empty_shape.triangle_candidate_reads != 0u ||
       empty_shape.procedural_candidate_reads != 0u ||
@@ -450,10 +541,19 @@ int main(int argc, char **argv) {
       triangle_shape.callable_definitions != 0u ||
       curve_shape.triangle_candidate_reads != 0u ||
       curve_shape.procedural_candidate_reads == 0u ||
+      curve_shape.instance_transform_queries != 0u ||
       curve_shape.callable_definitions != 0u ||
       mixed_shape.triangle_candidate_reads == 0u ||
       mixed_shape.procedural_candidate_reads == 0u ||
+      mixed_shape.instance_transform_queries != 0u ||
       mixed_shape.callable_definitions != 0u ||
+      empty_shape.ray_query_loops != 0u ||
+      triangle_shape.ray_query_loops != 1u ||
+      curve_shape.ray_query_loops != 1u || mixed_shape.ray_query_loops != 1u ||
+      shadow_batch_shape.ray_query_loops != 1u ||
+      shadow_batch_shape.triangle_candidate_reads == 0u ||
+      shadow_batch_shape.procedural_candidate_reads == 0u ||
+      shadow_batch_shape.callable_definitions != 0u ||
       !(empty_shape.instructions < triangle_shape.instructions &&
         empty_shape.instructions < curve_shape.instructions &&
         triangle_shape.instructions < mixed_shape.instructions &&
@@ -663,9 +763,75 @@ int main(int argc, char **argv) {
                                 geometry.position.z, geometry.dpdu.x));
     };
   };
-  auto shader = device.compile(evaluate);
+  // This is also a compiler-pipeline regression. Bypass persistent shader
+  // cache so every run exercises RayQuery outlining and its handler-local
+  // storage analysis instead of hiding an accidental complexity regression.
+  auto shader = device.compile(
+      evaluate, luisa::compute::ShaderOption{.enable_cache = false});
+
+  constexpr auto shadow_batch_record_count = std::size_t{9u};
+  auto shadow_batch_output =
+      device.create_buffer<luisa::float4>(shadow_batch_record_count);
+  Kernel1D evaluate_shadow_batches = [scene, traversal](
+                                         BufferFloat4 records) noexcept {
+    const auto ray = make_ray(make_float3(10.0f, 0.0f, 0.0f),
+                              make_float3(0.0f, 0.0f, 1.0f), 0.0f, 10.0f);
+    const auto all = traversal->collect_shadow(
+        scene, ray, 0x02u, ScenePrimitiveIdentity::invalid(),
+        ScenePrimitiveIdentity::invalid(), 8u);
+    for (auto index = std::size_t{0u};
+         index < shadow_intersection_batch_capacity; ++index) {
+      const auto &hit = all->hits[static_cast<luisa::uint>(index)];
+      records.write(static_cast<std::uint32_t>(index),
+                    make_float4(hit->distance, cast<float>(hit->instance),
+                                cast<float>(hit->primitive),
+                                cast<float>(hit->hit_type)));
+    }
+    records.write(4u,
+                  make_float4(cast<float>(all->count), cast<float>(all->total),
+                              cast<float>(all->blocked), 0.0f));
+
+    const auto continuation_ray =
+        make_ray(ray->origin(), ray->direction(),
+                 psycles::luisa_backend::surface_ray::intersection_t_offset(
+                     all->hits[3u]->distance),
+                 ray->t_max());
+    const auto continuation = traversal->collect_shadow(
+        scene, continuation_ray, 0x02u, ScenePrimitiveIdentity::invalid(),
+        ScenePrimitiveIdentity::invalid(), 4u);
+    records.write(5u, make_float4(continuation->hits[0u]->distance,
+                                  continuation->hits[1u]->distance,
+                                  cast<float>(continuation->count),
+                                  cast<float>(continuation->total)));
+
+    const auto excluded = traversal->collect_shadow(
+        scene, ray, 0x02u, {.object = 3001u, .primitive = 100u},
+        ScenePrimitiveIdentity::invalid(), 8u);
+    records.write(6u, make_float4(excluded->hits[0u]->distance,
+                                  cast<float>(excluded->hits[0u]->instance),
+                                  cast<float>(excluded->count),
+                                  cast<float>(excluded->total)));
+
+    const auto exhausted = traversal->collect_shadow(
+        scene, ray, 0x02u, ScenePrimitiveIdentity::invalid(),
+        ScenePrimitiveIdentity::invalid(), 5u);
+    records.write(7u, make_float4(cast<float>(exhausted->blocked),
+                                  cast<float>(exhausted->total),
+                                  cast<float>(exhausted->count), 0.0f));
+
+    const auto opaque = traversal->collect_shadow(
+        scene, ray, 0x06u, ScenePrimitiveIdentity::invalid(),
+        ScenePrimitiveIdentity::invalid(), 8u);
+    records.write(8u, make_float4(cast<float>(opaque->blocked),
+                                  cast<float>(opaque->total),
+                                  cast<float>(opaque->count), 0.0f));
+  };
+  auto shadow_batch_shader =
+      device.compile(evaluate_shadow_batches,
+                     luisa::compute::ShaderOption{.enable_cache = false});
 
   std::array<luisa::float4, record_count> actual{};
+  std::array<luisa::float4, shadow_batch_record_count> shadow_batch_actual{};
   stream << scene->geometry_buffer.copy_from(luisa::span{geometries})
          << scene->instance_buffer.copy_from(luisa::span{instances})
          << scene->geometry_material_buffer.copy_from(
@@ -688,10 +854,13 @@ int main(int argc, char **argv) {
          << curve_length_buffer.copy_from(luisa::span{curve_lengths})
          << curve_random_buffer.copy_from(luisa::span{curve_randoms})
          << scene->heap.update() << mesh.build() << bottle_mesh.build()
-         << overlap_mesh.build() << curves.build()
-         << scene->accel.build() << scene->subsurface_accel->build()
+         << overlap_mesh.build() << curves.build() << scene->accel.build()
+         << scene->subsurface_accel->build()
          << shader(output).dispatch(record_count)
-         << output.copy_to(luisa::span{actual}) << synchronize();
+         << shadow_batch_shader(shadow_batch_output).dispatch(1u)
+         << output.copy_to(luisa::span{actual})
+         << shadow_batch_output.copy_to(luisa::span{shadow_batch_actual})
+         << synchronize();
 
   constexpr std::array expected{luisa::float4{2.0f, 1.0f, 0.0f, 1.0f},
                                 luisa::float4{4.0f, 0.0f, 0.0f, 0.0f},
@@ -732,6 +901,36 @@ int main(int argc, char **argv) {
                 << ", " << expected[index].w << "}\n";
       failed = true;
     }
+  }
+  const auto surface_hit = static_cast<float>(
+      static_cast<std::uint32_t>(luisa::compute::HitType::Surface));
+  const std::array shadow_batch_expected{
+      luisa::float4{1.0f, 13.0f, 0.0f, surface_hit},
+      luisa::float4{2.0f, 12.0f, 0.0f, surface_hit},
+      luisa::float4{3.0f, 11.0f, 0.0f, surface_hit},
+      luisa::float4{4.0f, 10.0f, 0.0f, surface_hit},
+      luisa::float4{4.0f, 6.0f, 0.0f, 0.0f},
+      luisa::float4{5.0f, 6.0f, 2.0f, 2.0f},
+      luisa::float4{2.0f, 12.0f, 4.0f, 5.0f},
+      luisa::float4{1.0f, 6.0f, 4.0f, 0.0f}};
+  for (auto index = std::size_t{0u}; index < shadow_batch_expected.size();
+       ++index) {
+    if (!equal_record(shadow_batch_actual[index],
+                      shadow_batch_expected[index])) {
+      const auto value = shadow_batch_actual[index];
+      const auto wanted = shadow_batch_expected[index];
+      std::cerr << "shadow batch failed on " << backend << " at record "
+                << index << ": got {" << value.x << ", " << value.y << ", "
+                << value.z << ", " << value.w << "}, expected {" << wanted.x
+                << ", " << wanted.y << ", " << wanted.z << ", " << wanted.w
+                << "}\n";
+      failed = true;
+    }
+  }
+  if (!near(shadow_batch_actual[8u].x, 1.0f)) {
+    std::cerr << "opaque shadow candidate did not terminate collection on "
+              << backend << '\n';
+    failed = true;
   }
   return failed ? EXIT_FAILURE : EXIT_SUCCESS;
 }

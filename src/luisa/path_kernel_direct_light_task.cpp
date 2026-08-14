@@ -43,17 +43,16 @@ Bool DirectLightTaskEvaluator::shade_light_nee(
 }
 
 void DirectLightTaskEvaluator::intersect(
-    Var<DirectLightTaskCall> &task) const noexcept {
+    Var<DirectLightTaskCall> &task,
+    const Var<RenderKernelParameters> &parameters) const noexcept {
   const auto ray = make_ray(task.ray_origin, task.ray_direction,
                             task.ray_minimum, task.ray_maximum);
-  const auto hit = intersect_shadow(
-      ray, task.source_object, task.source_primitive,
-      task.light_object, task.light_primitive);
-  task.shadow_hit_instance = hit->instance;
-  task.shadow_hit_primitive = hit->primitive;
-  task.shadow_hit_type = hit->hit_type;
-  task.shadow_hit_distance = hit->distance;
-  task.shadow_hit_barycentric = hit->barycentric;
+  const auto remaining =
+      parameters.transparent_max_bounces -
+      min(task.transparent_depth, parameters.transparent_max_bounces);
+  task.shadow_batch =
+      intersect_shadow(ray, task.source_object, task.source_primitive,
+                       task.light_object, task.light_primitive, remaining);
 }
 
 DirectLightShadowStep DirectLightTaskEvaluator::shade_shadow(
@@ -61,42 +60,42 @@ DirectLightShadowStep DirectLightTaskEvaluator::shade_shadow(
     const Var<RenderKernelParameters> &parameters) const noexcept {
   Bool continue_shadow = false;
   Bool visible = false;
-  const auto missed =
-      task.shadow_hit_type == static_cast<std::uint32_t>(
-                                  luisa::compute::HitType::Miss);
-  $if(missed) {
-    visible = true;
-  }
-  $else {
-    // Cycles' INTERSECT_SHADOW makes the next hit opaque once the transparent
-    // bounce budget is exhausted. Material evaluation is therefore reachable
-    // iff this strict precondition holds.
-    $if(task.transparent_depth < parameters.transparent_max_bounces) {
-      Var<ShadowIntersectionCall> hit;
-      hit->instance = task.shadow_hit_instance;
-      hit->primitive = task.shadow_hit_primitive;
-      hit->hit_type = task.shadow_hit_type;
-      hit->distance = task.shadow_hit_distance;
-      hit->barycentric = task.shadow_hit_barycentric;
-      const auto ray = make_ray(task.ray_origin, task.ray_direction,
-                                task.ray_minimum, task.ray_maximum);
-      const auto surface = shade_shadow_surface(
-          ray, hit, task.ray_dP, task.ray_dD,
-          pack_shader_evaluation_state(
-              cycles_path_state::shadow_shader_state(
-                  task.path_depth, task.diffuse_depth,
-                  task.glossy_depth, task.transparent_depth,
-                  task.transmission_depth)));
-      const auto transparent = surface->transmittance;
-      const auto carries_light =
-          max(transparent.x, max(transparent.y, transparent.z)) > 0.0f;
-      $if(carries_light) {
-        task.shadow_transmittance *= transparent;
-        task.transparent_depth += 1u;
-        task.ray_minimum = surface_ray::intersection_t_offset(
-            task.shadow_hit_distance);
-        continue_shadow = true;
+
+  $if(task.shadow_batch.blocked == 0u) {
+    Bool carries_light = true;
+    Float last_distance = task.ray_minimum;
+    const auto ray = make_ray(task.ray_origin, task.ray_direction,
+                              task.ray_minimum, task.ray_maximum);
+    for (auto index = std::size_t{0u};
+         index < shadow_intersection_batch_capacity; ++index) {
+      const auto shade =
+          static_cast<std::uint32_t>(index) < task.shadow_batch.count;
+      $if(shade & carries_light) {
+        const auto &hit =
+            task.shadow_batch.hits[static_cast<luisa::uint>(index)];
+        const auto surface = shade_shadow_surface(
+            ray, hit, task.ray_dP, task.ray_dD,
+            pack_shader_evaluation_state(cycles_path_state::shadow_shader_state(
+                task.path_depth, task.diffuse_depth, task.glossy_depth,
+                task.transparent_depth, task.transmission_depth)));
+        const auto transparent = surface->transmittance;
+        carries_light =
+            max(transparent.x, max(transparent.y, transparent.z)) > 0.0f;
+        $if(carries_light) {
+          task.shadow_transmittance *= transparent;
+          task.transparent_depth += 1u;
+          last_distance = hit->distance;
+        };
       };
+    }
+    $if(carries_light) {
+      const auto has_remaining =
+          task.shadow_batch.total > task.shadow_batch.count;
+      $if(has_remaining) {
+        task.ray_minimum = surface_ray::intersection_t_offset(last_distance);
+        continue_shadow = true;
+      }
+      $else { visible = true; };
     };
   };
   return {.continue_shadow = std::move(continue_shadow),

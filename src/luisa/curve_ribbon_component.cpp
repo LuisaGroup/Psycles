@@ -184,7 +184,7 @@ public:
         // ribbon records one interval body instead of sixteen guarded copies.
         // The loop remains bounded by the Cycles-compatible clamp above.
         $for(interval, interval_count) {
-            $if(!found) {
+
                 const auto interval_u =
                     cast<float>(interval) * interval_size;
                 const auto interval_end =
@@ -224,38 +224,36 @@ public:
                     culling_radius * culling_radius *
                         dot(projected_delta, projected_delta);
 
-                const auto lower_begin =
-                    interval_begin.xyz() + begin_width;
-                const auto lower_end =
-                    interval_end.xyz() + end_width;
-                const auto upper_begin =
-                    interval_begin.xyz() - begin_width;
-                const auto upper_end =
-                    interval_end.xyz() - end_width;
-                const auto quad = intersect_quad(
-                    object_ray->t_min(),
-                    object_ray->t_max(),
-                    lower_begin,
-                    lower_end,
-                    upper_end,
-                    upper_begin);
-                const auto radius =
-                    interval_begin.w +
-                    (interval_end.w - interval_begin.w) * quad.u;
-                // Cycles' ribbon contract is a strict 2r/|D| exclusion. It
-                // is independent of any floating-point origin epsilon.
-                const auto avoids_self =
-                    quad.distance >
-                    2.0f * radius * inverse_direction_length;
-                $if(overlaps_ray & quad.valid & avoids_self) {
+                // The cylinder test is the coarse interval predicate. Keeping
+                // the
+                // quad construction and its reciprocal in the dominated block
+                // is essential on dense hair: rejected AABB candidates must not
+                // pay for an exact ribbon intersection.
+                $if(overlaps_ray) {
+                  const auto lower_begin = interval_begin.xyz() + begin_width;
+                  const auto lower_end = interval_end.xyz() + end_width;
+                  const auto upper_begin = interval_begin.xyz() - begin_width;
+                  const auto upper_end = interval_end.xyz() - end_width;
+                  const auto quad = intersect_quad(
+                      object_ray->t_min(), object_ray->t_max(), lower_begin,
+                      lower_end, upper_end, upper_begin);
+                  const auto radius =
+                      interval_begin.w +
+                      (interval_end.w - interval_begin.w) * quad.u;
+                  // Cycles' ribbon contract is a strict 2r/|D| exclusion. It
+                  // is independent of any floating-point origin epsilon.
+                  const auto avoids_self =
+                      quad.distance > 2.0f * radius * inverse_direction_length;
+                  $if(quad.valid & avoids_self) {
                     found = true;
                     hit_distance = quad.distance;
                     hit_u = interval_u + quad.u * interval_size;
                     hit_v = 2.0f * quad.v - 1.0f;
+                    $break;
+                  };
                 };
                 interval_begin = interval_end;
                 begin_width = end_width;
-            };
         };
         return {
             .valid = found,
