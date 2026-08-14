@@ -51,7 +51,8 @@ public:
           const auto x = dispatch_x();
           $if(x < count) {
             const auto task_storage =
-                Expr<luisa::compute::SOA<DirectLightTaskCall>>{*tasks};
+                make_runtime_direct_light_task_storage(
+                    *tasks, parameters.wavefront_frame_capacity);
             evaluator.emit_atomic(task_storage.read(x),
                                   {.combined = combined,
                                    .light_passes = light_passes,
@@ -78,16 +79,18 @@ public:
     return _producers;
   }
 
-  void emit(Var<DirectLightTaskCall> task) const noexcept override {
+  void emit(Var<DirectLightTaskCall> task,
+            Expr<std::uint32_t> runtime_capacity) const noexcept override {
     const auto task_storage =
-        Expr<luisa::compute::SOA<DirectLightTaskCall>>{_tasks};
+        make_runtime_direct_light_task_storage(
+            _tasks, runtime_capacity);
     const auto queue_count = Expr<luisa::compute::Buffer<luisa::uint>>{_count};
     const auto slot = queue_count.atomic(0u).fetch_add(1u);
     // Admission control proves slot < capacity. Keep the guard as a local
     // memory-safety invariant: if a producer ever violates its declared
     // bound, the scheduler observes count > capacity and diagnoses it
     // without permitting an out-of-bounds payload write.
-    $if(slot < _capacity) { task_storage.write(slot, task); };
+    $if(slot < runtime_capacity) { task_storage.write(slot, task); };
   }
 
   void reset(Stream &stream) noexcept override {
@@ -117,6 +120,11 @@ public:
                 luisa::compute::BufferView<float>,
                 const RenderKernelParameters &parameters) noexcept override {
     const auto count = _host_count;
+    LUISA_ASSERT(
+        parameters.wavefront_frame_capacity == _capacity,
+        "Direct-light queue runtime capacity {} does not match its "
+        "allocation capacity {}.",
+        parameters.wavefront_frame_capacity, _capacity);
     LUISA_ASSERT(count != 0u && count <= _capacity,
                  "Invalid direct-light auxiliary dispatch count {} "
                  "for capacity {}.",

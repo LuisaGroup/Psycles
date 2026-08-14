@@ -194,11 +194,61 @@ against that deliberately over-inclusive denominator gives `3.105x`. This is
 a conservative lower bound, not an exact surface-only ratio, because Cycles'
 shadow queues also contain proposals originating in volume shading.
 
+To remove that scope mismatch, a second Psycles trace enables the staged
+direct-light side queue while keeping every other scene and scheduler setting
+fixed. The comparison is by semantic responsibility, not merely by similar
+kernel names:
+
+| responsibility | Cycles kernels | Cycles time | Psycles kernels | Psycles time | Psycles / Cycles |
+| --- | --- | ---: | --- | ---: | ---: |
+| surface population and NEE publication | `shade_surface` + `shade_light_nee` | 657.619 ms | `shade_surface` producer | 2,273.557 ms | 3.457x |
+| direct-light visibility, transparent shadow, and contribution | `intersect_shadow` + `shade_shadow` | 207.636 ms | direct-light evaluator | 246.421 ms | 1.187x |
+| complete surface/direct group | all four above | 865.255 ms | both above | 2,519.978 ms | 2.912x |
+| closest path intersection | `intersect_closest` | 469.631 ms | `intersect_closest` | 1,684.666 ms | 3.587x |
+
+The grouped surface/direct result is therefore `191.2%` slower, while the
+queued direct-shadow portion alone is only `18.7%` slower. The dominant
+remaining surface cost is the material/closure producer (`245.7%` slower than
+the Cycles surface-and-NEE pair), not direct-shadow ray query. The exact
+shadow invocation topologies differ, so the aggregate responsibility rows are
+the valid comparison; per-invocation division across those rows would not be.
+The closest-intersection result remains a direct kernel comparison and is
+`258.7%` slower in this queued trace.
+
+The queued and inline production outputs have the same visible geometry,
+materials, lighting structure, and mean Combined luminance within `0.20%`.
+Their p99 Combined pixel RMSE is `0.000672`; the larger global relative RMSE
+of `0.1177` is concentrated in rare high-energy atomic-order outliers. Visual
+inspection shows noise/highlight redistribution rather than a structured
+image change. Environment and both volume passes are bit-exact.
+
+![Inline surface transport, queued direct light, and absolute difference](triptychs/queued-direct-light-combined.png)
+
+The queue experiment also exposed a shader-cache identity bug. A Luisa SoA
+member base is a function of its logical capacity; constructing the expression
+from the host allocation embedded the scheduler capacity in the AST, so a
+resolution change could trigger a full surface recompile. Let `C` be the
+runtime frame-pool capacity, `A` the allocation capacity, and `q` a produced
+slot. The corrected contract is `0 <= q < C <= A`: `C` is now a kernel
+argument used both for every SoA member offset and the local bounds guard,
+while the host asserts `C == A` for each auxiliary dispatch. No capacity value
+is captured during shader construction.
+
+Two independently allocated queues of capacities 7 and 19 now produce the
+same structural hash and store/read the expected payload on fallback, HIP,
+and Vulkan. The complete production film test forces refill and back-pressure
+with capacities 6 and 3; both queued `shade_surface` variants have structural
+hash `e00e2a95d8fb8470` and agree for Combined, Normal, Albedo, every light
+pass, and both volume passes. The Vulkan run requires the strict native
+XIR-to-SPIR-V route.
+
 This comparison changes the optimization order. `intersect_closest` can be
 investigated directly against Cycles traversal because its logical workloads
 already agree within 3%. For `shade_surface`, the 28% invocation-count
-divergence must be explained alongside the remaining 3.52x per-invocation
-cost; code generation alone cannot account for the aggregate 4.50x gap.
+divergence remains relevant to the inline name-matched row, but the queued
+responsibility split now localizes the main implementation gap to surface
+population/material evaluation. Code generation alone is not assumed to
+account for either aggregate gap.
 
 ### Continuation-local source-argument projection
 

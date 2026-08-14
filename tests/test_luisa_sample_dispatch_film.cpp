@@ -220,7 +220,8 @@ render(luisa::compute::Context &context, std::string_view backend,
        bool staged_direct_light_queue = false,
        std::uint32_t wavefront_tail_megakernel_threshold = 4096u,
        std::uint32_t wavefront_counter_readback_batch_size = 4u,
-       std::uint32_t wavefront_counter_readback_pipeline_depth = 2u) {
+       std::uint32_t wavefront_counter_readback_pipeline_depth = 2u,
+       std::uint32_t wavefront_frame_capacity = 128u) {
     auto device = context.create_device(backend);
   auto trace_sink = path_trace_enabled ? std::make_shared<TraceSink>()
                                        : std::shared_ptr<TraceSink>{};
@@ -236,7 +237,7 @@ render(luisa::compute::Context &context, std::string_view backend,
         std::move(device),
         {.next_event_estimation = true,
          .scheduler = scheduler,
-         .wavefront_frame_capacity = 128u,
+         .wavefront_frame_capacity = wavefront_frame_capacity,
          .wavefront_graph_worker_count = 5u,
          .wavefront_graph_selective_scheduling =
              scheduler ==
@@ -470,6 +471,14 @@ int main(int argc, char **argv) {
       render(context, backend,
              psycles::luisa_backend::LuisaPathScheduler::wavefront_staged, 3u,
              true, true, false, true);
+  // A capacity below the six simultaneously resident pixel frames forces
+  // refill and direct-light queue back-pressure across the 48 logical
+  // (pixel, sample) instances. Runtime SoA offsets must preserve the same film
+  // while the shader structure remains capacity-independent.
+  const auto staged_direct_queued_small_capacity =
+      render(context, backend,
+             psycles::luisa_backend::LuisaPathScheduler::wavefront_staged,
+             sample_count, false, true, false, true, 4096u, 4u, 2u, 3u);
     const auto persistent = render(
       context, backend, psycles::luisa_backend::LuisaPathScheduler::persistent,
       sample_count, false);
@@ -477,7 +486,8 @@ int main(int argc, char **argv) {
       !chunked || !wavefront || !graph_wavefront || !graph_wavefront_tail ||
       !staged_wavefront ||
       !staged_wavefront_unsorted || !staged_direct_inline ||
-      !staged_direct_queued || !staged_direct_queued_chunked || !persistent ||
+      !staged_direct_queued || !staged_direct_queued_chunked ||
+      !staged_direct_queued_small_capacity || !persistent ||
         !validate_reference(*reference) ||
       !compare_outputs(*reference, *deterministic, true,
             "deterministic serial chunking") ||
@@ -500,6 +510,9 @@ int main(int argc, char **argv) {
                        "queued direct-light visibility") ||
       !compare_outputs(*staged_direct_inline, *staged_direct_queued_chunked,
                        false, "chunked queued direct-light visibility") ||
+      !compare_outputs(*staged_direct_inline,
+                       *staged_direct_queued_small_capacity, false,
+                       "small-capacity queued direct-light visibility") ||
       !compare_outputs(*reference, *persistent, false, "persistent dispatch")) {
         return EXIT_FAILURE;
     }
