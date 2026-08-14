@@ -1,5 +1,10 @@
 # Maintainability audit
 
+The [HIP synchronous RayQuery pipeline checkpoint](validation/2026-08-14/hip-ray-query-pipeline/README.md)
+records the formal bounded-stack continuation, reentrant-handler guard,
+interprocedural callback-environment projection, regression coverage, kernel
+resource deltas, and the resulting HIP microbenchmark improvement.
+
 This audit tracks source structure independently from Cycles feature coverage.
 Line count is only a screening signal: a large table or a collection of small
 probe builders is less risky than one function that records an entire path
