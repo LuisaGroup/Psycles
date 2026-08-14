@@ -5,6 +5,7 @@
 #include <limits>
 #include <map>
 #include <span>
+#include <unordered_set>
 
 namespace psycles::luisa_backend::detail {
 
@@ -71,10 +72,19 @@ resolve_surface_material(
     return std::nullopt;
 }
 
-[[nodiscard]] bool triangle_instance_uses_material(
-    const contract::TriangleMeshDesc &geometry,
-    const contract::InstanceDesc &instance,
-    const std::set<contract::MaterialId> &materials) noexcept {
+// Material reachability depends on a primitive only through its raw material
+// slot. For geometry G and instance I, let S_G map primitives to slots and
+// R_G,I resolve a slot through overrides and the geometry table. Then
+// image(R_G,I ∘ S_G) = image(R_G,I | image(S_G)): duplicate primitive
+// slots can be eliminated once per geometry before considering any instance.
+// This changes the repeated work from instances * primitives to
+// primitives + instances * distinct_slots without approximating reachability.
+[[nodiscard]] std::vector<std::uint32_t>
+collect_triangle_material_slot_image(
+    const contract::TriangleMeshDesc &geometry) {
+    std::vector<std::uint32_t> result;
+    std::unordered_set<std::uint32_t> seen;
+    seen.reserve(std::min<std::size_t>(geometry.triangles.size(), 64u));
     for (auto primitive = std::size_t{0u};
          primitive < geometry.triangles.size();
          ++primitive) {
@@ -82,40 +92,21 @@ resolve_surface_material(
             primitive < geometry.triangle_material_slots.size()
                 ? geometry.triangle_material_slots[primitive]
                 : 0u;
-        const auto material = resolve_surface_material(
-            geometry.material_slots,
-            instance.material_overrides,
-            slot);
-        if (material && materials.contains(*material)) {
-            return true;
+        if (seen.emplace(slot).second) {
+            result.emplace_back(slot);
         }
     }
-    return false;
+    std::ranges::sort(result);
+    return result;
 }
 
-void include_triangle_materials(
-    std::set<contract::MaterialId> &result,
-    const contract::TriangleMeshDesc &geometry,
-    const contract::InstanceDesc &instance) {
-    for (auto primitive = std::size_t{0u};
-         primitive < geometry.triangles.size();
-         ++primitive) {
-        const auto slot =
-            primitive < geometry.triangle_material_slots.size()
-                ? geometry.triangle_material_slots[primitive]
-                : 0u;
-        include_resolved_material(
-            result,
-            geometry.material_slots,
-            instance.material_overrides,
-            slot);
-    }
-}
-
-void include_curve_materials(
-    std::set<contract::MaterialId> &result,
-    const contract::CurveGeometryDesc &geometry,
-    const contract::InstanceDesc &instance) {
+[[nodiscard]] std::vector<std::uint32_t>
+collect_curve_material_slot_image(
+    const contract::CurveGeometryDesc &geometry) {
+    std::vector<std::uint32_t> result;
+    std::unordered_set<std::uint32_t> seen;
+    seen.reserve(std::min<std::size_t>(
+        geometry.curve_first_key.size(), 64u));
     for (auto curve = std::size_t{0u};
          curve < geometry.curve_first_key.size();
          ++curve) {
@@ -126,23 +117,48 @@ void include_curve_materials(
                 ? static_cast<std::size_t>(
                       geometry.curve_first_key[curve + 1u])
                 : geometry.keys.size();
-        // A curve with fewer than two valid keys generates no procedural
-        // primitive and therefore cannot make its material reachable.
+        // Invalid and one-key curves generate no procedural primitive.
         if (first >= geometry.keys.size() ||
-            end > geometry.keys.size() ||
-            end <= first || end - first < 2u) {
+            end > geometry.keys.size() || end <= first ||
+            end - first < 2u) {
             continue;
         }
         const auto slot =
             curve < geometry.curve_material_slots.size()
                 ? geometry.curve_material_slots[curve]
                 : 0u;
-        include_resolved_material(
-            result,
-            geometry.material_slots,
-            instance.material_overrides,
-            slot);
+        if (seen.emplace(slot).second) {
+            result.emplace_back(slot);
+        }
     }
+    std::ranges::sort(result);
+    return result;
+}
+
+void include_material_slot_image(
+    std::set<contract::MaterialId> &result,
+    std::span<const std::uint32_t> slots,
+    std::span<const contract::MaterialId> geometry_materials,
+    std::span<const contract::MaterialId> material_overrides) {
+    for (const auto slot : slots) {
+        include_resolved_material(
+            result, geometry_materials, material_overrides, slot);
+    }
+}
+
+[[nodiscard]] bool material_slot_image_intersects(
+    std::span<const std::uint32_t> slots,
+    std::span<const contract::MaterialId> geometry_materials,
+    std::span<const contract::MaterialId> material_overrides,
+    const std::set<contract::MaterialId> &materials) noexcept {
+    for (const auto slot : slots) {
+        const auto material = resolve_surface_material(
+            geometry_materials, material_overrides, slot);
+        if (material && materials.contains(*material)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 [[nodiscard]] Vec3f cross(Vec3f a, Vec3f b) noexcept {
@@ -204,6 +220,10 @@ std::set<contract::MaterialId>
 collect_reachable_surface_materials(
     const contract::SceneSnapshot &scene) {
     std::set<contract::MaterialId> result;
+    std::map<contract::GeometryId, std::vector<std::uint32_t>>
+        triangle_slot_images;
+    std::map<contract::GeometryId, std::vector<std::uint32_t>>
+        curve_slot_images;
     for (const auto &[instance_id, instance] : scene.instances) {
         static_cast<void>(instance_id);
         // Scene upload gives curve geometry precedence when an invalid scene
@@ -212,11 +232,27 @@ collect_reachable_surface_materials(
         if (const auto curve =
                 scene.curve_geometries.find(instance.geometry);
             curve != scene.curve_geometries.end()) {
-            include_curve_materials(result, curve->second, instance);
+            auto [slots, inserted] =
+                curve_slot_images.try_emplace(instance.geometry);
+            if (inserted) {
+                slots->second =
+                    collect_curve_material_slot_image(curve->second);
+            }
+            include_material_slot_image(
+                result, slots->second, curve->second.material_slots,
+                instance.material_overrides);
         } else if (const auto mesh =
                        scene.geometries.find(instance.geometry);
                    mesh != scene.geometries.end()) {
-            include_triangle_materials(result, mesh->second, instance);
+            auto [slots, inserted] =
+                triangle_slot_images.try_emplace(instance.geometry);
+            if (inserted) {
+                slots->second =
+                    collect_triangle_material_slot_image(mesh->second);
+            }
+            include_material_slot_image(
+                result, slots->second, mesh->second.material_slots,
+                instance.material_overrides);
         }
     }
     return result;
@@ -227,6 +263,8 @@ collect_triangle_instances_with_surface_materials(
     const contract::SceneSnapshot &scene,
     const std::set<contract::MaterialId> &materials) {
     std::vector<std::uint32_t> result;
+    std::map<contract::GeometryId, std::vector<std::uint32_t>>
+        triangle_slot_images;
     auto instance_index = std::uint32_t{0u};
     for (const auto &[instance_id, instance] : scene.instances) {
         static_cast<void>(instance_id);
@@ -236,10 +274,18 @@ collect_triangle_instances_with_surface_materials(
         const auto is_curve =
             scene.curve_geometries.contains(instance.geometry);
         const auto geometry = scene.geometries.find(instance.geometry);
-        if (!is_curve && geometry != scene.geometries.end() &&
-            triangle_instance_uses_material(
-                geometry->second, instance, materials)) {
-            result.emplace_back(instance_index);
+        if (!is_curve && geometry != scene.geometries.end()) {
+            auto [slots, inserted] =
+                triangle_slot_images.try_emplace(instance.geometry);
+            if (inserted) {
+                slots->second = collect_triangle_material_slot_image(
+                    geometry->second);
+            }
+            if (material_slot_image_intersects(
+                    slots->second, geometry->second.material_slots,
+                    instance.material_overrides, materials)) {
+                result.emplace_back(instance_index);
+            }
         }
         ++instance_index;
     }
