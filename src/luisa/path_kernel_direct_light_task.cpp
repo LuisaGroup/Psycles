@@ -7,6 +7,16 @@
 #include <utility>
 
 namespace psycles::luisa_backend::detail {
+
+Float3 finalize_direct_light_sample(
+    const LightSampleRouletteCallable &light_sample_roulette,
+    Float3 local_unshadowed, Float3 path_throughput,
+    Float light_terminate_sample, Float inverse_threshold) noexcept {
+  const auto roulette_weight = light_sample_roulette(
+      local_unshadowed, light_terminate_sample, inverse_threshold);
+  return path_throughput * local_unshadowed * roulette_weight;
+}
+
 Var<ShadowTraceResultCall> DirectLightTaskEvaluator::trace(
     const Var<DirectLightTaskCall> &task,
     const Var<RenderKernelParameters> &parameters) const noexcept {
@@ -24,12 +34,11 @@ Var<ShadowTraceResultCall> DirectLightTaskEvaluator::trace(
 Bool DirectLightTaskEvaluator::shade_light_nee(
     Var<DirectLightTaskCall> &task,
     const Var<RenderKernelParameters> &parameters) const noexcept {
-  const auto evaluated =
+  const auto local_unshadowed =
       task.unshadowed_contribution * task.light_shader;
-  const auto roulette_weight = light_sample_roulette(
-      evaluated, task.light_terminate_sample,
-      parameters.light_inv_rr_threshold);
-  task.unshadowed_contribution = evaluated * roulette_weight;
+  task.unshadowed_contribution = finalize_direct_light_sample(
+      light_sample_roulette, local_unshadowed, task.nee_path_throughput,
+      task.light_terminate_sample, parameters.light_inv_rr_threshold);
   return any(task.unshadowed_contribution != 0.0f);
 }
 

@@ -15,10 +15,14 @@ struct PathKernelConfig;
 struct DirectLightTaskCall {
   luisa::float3 ray_origin{};
   luisa::float3 ray_direction{};
-  // Before SHADE_LIGHT_NEE this is the receiving BSDF/path factor. That
-  // stage multiplies the deferred light shader and applies light roulette,
-  // replacing the field with the complete unshadowed contribution.
+  // Before SHADE_LIGHT_NEE this is the receiving BSDF factor in the local
+  // light-sample domain. That stage multiplies the deferred light shader,
+  // applies roulette in that same domain, then replaces the field with the
+  // complete path-space unshadowed contribution.
   luisa::float3 unshadowed_contribution{};
+  // Path throughput is deliberately separate from the roulette domain.
+  // Cycles evaluates light termination before multiplying by path throughput.
+  luisa::float3 nee_path_throughput{};
   luisa::float3 light_shader{};
   // Running shadow-path throughput. INTERSECT_SHADOW never mutates it;
   // SHADE_SHADOW alone applies transparent closure extinction.
@@ -52,7 +56,7 @@ struct DirectLightTaskCall {
 };
 
 static_assert(std::is_trivially_copyable_v<DirectLightTaskCall>);
-static_assert(sizeof(DirectLightTaskCall) == 224u);
+static_assert(sizeof(DirectLightTaskCall) == 240u);
 
 struct DirectLightTaskFilm {
   const BufferFloat4 &combined;
@@ -73,6 +77,14 @@ struct DirectLightShadowStep {
   Bool continue_shadow;
   Bool visible;
 };
+
+// Finalizes one light sample without changing its roulette measure. The local
+// unshadowed value determines survival and inverse probability; path
+// throughput is applied exactly once, after that decision.
+[[nodiscard]] Float3 finalize_direct_light_sample(
+    const LightSampleRouletteCallable &light_sample_roulette,
+    Float3 local_unshadowed, Float3 path_throughput,
+    Float light_terminate_sample, Float inverse_threshold) noexcept;
 
 struct DirectLightTaskEvaluator {
   IntersectShadowCallable intersect_shadow;
@@ -120,8 +132,8 @@ public:
 } // namespace psycles::luisa_backend::detail
 
 LUISA_STRUCT(psycles::luisa_backend::detail::DirectLightTaskCall, ray_origin,
-             ray_direction, unshadowed_contribution, light_shader,
-             shadow_transmittance, diffuse_weight, glossy_weight,
+             ray_direction, unshadowed_contribution, nee_path_throughput,
+             light_shader, shadow_transmittance, diffuse_weight, glossy_weight,
              shadow_hit_barycentric, ray_minimum, ray_maximum, ray_dP, ray_dD,
              shadow_hit_distance, light_terminate_sample, source_object,
              source_primitive, light_object, light_primitive,

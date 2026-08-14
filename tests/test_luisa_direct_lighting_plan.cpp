@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -18,6 +19,8 @@ namespace {
 using namespace luisa::compute;
 using psycles::luisa_backend::detail::can_stage_direct_light_queue;
 using psycles::luisa_backend::detail::DirectLightingStagePlan;
+using psycles::luisa_backend::detail::finalize_direct_light_sample;
+using psycles::luisa_backend::detail::LightSampleRouletteCallable;
 using psycles::luisa_backend::detail::make_direct_lighting_stage_plan;
 using psycles::luisa_backend::detail::make_path_kernel_scene_stage_plan;
 using psycles::luisa_backend::detail::make_runtime_direct_light_task_storage;
@@ -184,6 +187,54 @@ int main(int argc, char **argv) {
     if (!std::equal(actual.begin(), actual.end(), expected.begin())) {
         std::cerr << "Device-visible direct-light plan changed on " << backend
                   << '\n';
+        return EXIT_FAILURE;
+    }
+
+    // Light roulette is defined in the local light-sample domain. This case
+    // survives with probability 0.2 there, but would be incorrectly rejected
+    // (probability 0.08) if path throughput entered the roulette measure.
+    LightSampleRouletteCallable light_sample_roulette =
+        [](Float3 unshadowed, Float random, Float inverse_threshold) noexcept {
+            const auto maximum = max(abs(unshadowed.x),
+                                     max(abs(unshadowed.y), abs(unshadowed.z)));
+            const auto probability = maximum * inverse_threshold;
+            const auto roulette =
+                (inverse_threshold > 0.0f) & (probability < 1.0f);
+            const auto survives = (!roulette) | (random < probability);
+            const auto inverse_probability = select(
+                1.0f, 1.0f / max(probability, 1.0e-20f), roulette);
+            return select(0.0f, inverse_probability, survives);
+        };
+    Kernel1D write_finalized_light =
+        [light_sample_roulette](BufferFloat4 values) noexcept {
+            const auto local_weight = make_float3(0.5f, 0.25f, 0.125f);
+            const auto light_shader = make_float3(0.2f, 0.4f, 0.8f);
+            const auto path_throughput = make_float3(0.1f, 0.2f, 0.4f);
+            const auto finalized = finalize_direct_light_sample(
+                light_sample_roulette, local_weight * light_shader,
+                path_throughput, 0.1f, 2.0f);
+            values.write(0u, make_float4(finalized, 1.0f));
+        };
+    auto finalized_light = device.create_buffer<luisa::float4>(1u);
+    auto finalized_light_shader = device.compile(write_finalized_light);
+    luisa::float4 finalized_light_actual{};
+    stream << finalized_light_shader(finalized_light).dispatch(1u)
+           << finalized_light.copy_to(&finalized_light_actual) << synchronize();
+    constexpr auto finalized_light_expected =
+        luisa::float4{0.05f, 0.1f, 0.2f, 1.0f};
+    const auto finalized_matches =
+        std::abs(finalized_light_actual.x - finalized_light_expected.x) <=
+            1.0e-6f &&
+        std::abs(finalized_light_actual.y - finalized_light_expected.y) <=
+            1.0e-6f &&
+        std::abs(finalized_light_actual.z - finalized_light_expected.z) <=
+            1.0e-6f &&
+        finalized_light_actual.w == finalized_light_expected.w;
+    if (!finalized_matches) {
+        std::cerr << "Direct-light roulette included path throughput on "
+                  << backend << ": got " << finalized_light_actual.x << ", "
+                  << finalized_light_actual.y << ", "
+                  << finalized_light_actual.z << '\n';
         return EXIT_FAILURE;
     }
 
