@@ -26,7 +26,11 @@ LuisaCompute commits:
   while retaining only the measured-profitable pipeline identity in the HIP
   RayQuery production boundary;
 - `ff91c47da` -- project candidate-only callback transactions into scalar
-  actions while retaining the exact full-state path for observable queries.
+  actions while retaining the exact full-state path for observable queries;
+- `a5a03ee0f` -- prove function-local RayQuery state provenance across lowered
+  handler boundaries and remove the candidate-only pointer-identity escape;
+- `d3b3eecc2` -- select synchronous versus resumable traversal from a closed
+  proof of whether the parent observes the query post-state.
 
 ## Traversal-state model
 
@@ -729,6 +733,144 @@ Cycles' HIPRT filter path; it must not reintroduce per-candidate TLAS restart,
 generic `getNextHit()` (previously about 2x slower), or renderer-specific policy
 inside the backend.
 
+## Local-state provenance and production route audit
+
+The compact transaction originally reconstructed its local query token through
+the public pointer-to-integer ABI. That representation was semantically exact,
+but made the otherwise local 112 B state appear to escape and prevented LLVM
+SROA. Commit `a5a03ee0f` proves local provenance from XIR use-def structure.
+A query denotes the function's singleton state only when every whole-object
+definition is itself local and every other use is a recognized query
+operation; PHIs require the property on every incoming value, cycles and
+unknown uses fail closed. Only the opaque cross-call form retains encoded
+identity.
+
+For the synthetic candidate-only kernel this changes the linked code object
+from 35,392 to 32,704 B, VGPR allocation from 144 to 141, SGPR allocation from
+72 to 70, private allocation from 176 to 8 B, and reported spills from 25 to
+zero. Alternating A/B processes measured +18.9% for an accept callback and
++17.6% for alpha cutout. The current direct, accept, and cutout means were
+1,211, 1,333, and 1,143 FPS respectively, leaving cutout at approximately
+1.06x direct time in that synthetic workload.
+
+The corresponding Lone Monk render remains visually unchanged. Combined has
+RMSE 0.000521909 and MAE 2.45e-6; the amplified difference is sparse sampling
+and atomic-order noise rather than a coherent visibility boundary. All 15 pass
+triptychs were inspected and are retained under `triptychs/query-provenance/`.
+
+![Lone Monk before and after local RayQuery provenance recovery](triptychs/query-provenance/combined.png)
+
+The production audit then found why this large microbenchmark result was
+neutral in Lone Monk. Cache-disabled verbose compilation reported two
+projected environments:
+
+```text
+closest       144 B ->  88 B, synchronous plan rejected by 64 B budget
+shadow batch  240 B -> 184 B, synchronous plan rejected by 64 B budget
+```
+
+Both production kernels therefore retried with the 224 B resumable RayQuery
+ABI; the compact synchronous path was not present. Raising the threshold to
+256 B was retained only as an experiment. It made shadow much faster, but made
+closest substantially slower, so a global byte-threshold change was rejected.
+
+## Effect-selected synchronous traversal
+
+Commit `d3b3eecc2` replaces that global decision with a closed semantic proof.
+For pipeline `P` over query object `q`, let `Defs(q)` be whole-object stores
+whose destination is `q`. The parent query post-state is proven dead only when
+
+```text
+q is a function-local alloca
+and Uses(q) is a subset of Defs(q) union {P.query_operand}.
+```
+
+A store defines state and cannot observe its old value. A load, query read or
+write, second pipeline, call, address escape, non-local object, or any unknown
+use rejects the proof. The test is deliberately independent of instruction
+order: it may conservatively miss a dead state, but cannot classify an
+observable state as dead.
+
+The traversal plan is then
+
+```text
+synchronous native traversal
+    if projected_environment <= 64 B
+    or query_post_state is proven dead;
+resumable traversal
+    otherwise.
+```
+
+This is not a renderer or scene-name special case. `collect_shadow()` ignores
+the final committed hit and communicates its result through captured batch
+side effects, so its 184 B handler environment selects the synchronous native
+frontier. `closest()` reads the final committed hit, so its 88 B environment
+fails closed to the already efficient resumable HIPRT frontier. A paired
+compiler regression constructs two 144 B callback products differing only by
+one post-state read: the handler-only form must contain the native trace entry,
+while the observed form must retry through `luisa_ray_query_proceed`.
+
+### Kernel-level comparison with Cycles 5.2
+
+The command topology was 640x480, 64 spp, fixed sampling, staged wavefront,
+32-thread blocks. Cycles adaptive sampling was disabled. Psycles was profiled
+with `rocprofv3 --kernel-trace --stats`; both renderers used the RX 9070 XT.
+Work-normalized timing is the sum of device durations divided by dispatched
+logical items, not a host wall-clock attribution.
+
+| Kernel | Plan | Logical items | Calls | Device time | ns/item |
+|---|---|---:|---:|---:|---:|
+| Psycles closest, pre-selection | resumable | 55,778,144 | 309 | 419.700 ms | 7.524 |
+| Psycles closest, effect-selected | resumable | 55,778,048 | 309 | 418.775 ms | 7.508 |
+| Cycles closest | HIPRT filter | 55,756,800 | 90 | 406.705 ms | 7.294 |
+| Psycles shadow, pre-selection | resumable | 20,369,504 | 199 | 134.446 ms | 6.600 |
+| Psycles shadow, effect-selected | synchronous | 20,369,824 | 199 | 76.814 ms | 3.771 |
+| Cycles shadow | HIPRT filter | 20,439,040 | 90 | 104.440 ms | 5.110 |
+
+Closest is now within 2.9% of Cycles per logical item. Shadow is 26.2% faster
+than Cycles per logical item. The two trace kernels together take 495.589 ms
+in Psycles versus 511.145 ms in Cycles, so the measured production trace total
+is 3.0% faster. Before semantic selection, the same Psycles total was
+554.146 ms, 8.4% slower than Cycles. The shadow kernel also moves from 200
+VGPRs and 352 B scratch to 128 VGPRs and 120 B scratch; closest deliberately
+retains its 200-VGPR, 240 B resumable allocation.
+
+A workgroup-size sweep ruled out block tuning as the cause of the previous
+gap. With the old resumable shadow plan, 32/64/128/256-thread blocks measured
+6.600/6.684/6.880/7.532 ns per ray; closest similarly regressed from 7.524 to
+9.451 ns per ray. The retained block size is 32.
+
+The cache-disabled effect-selected full render completed in 1.77093 s; a
+separate profiler run completed in 1.79334 s. The prior paired unprofiled
+median was approximately 1.793 s. Full-frame movement is therefore modest, as
+expected from Amdahl's law, while the isolated shadow reduction is structural.
+
+### Numeric and visual validation
+
+All 15 film passes were compared between the preceding resumable render and
+the effect-selected render. Combined has RMSE 0.0205857, relative RMSE
+0.0131935, MAE 0.000200894, zero invalid pixels, and p99 pixel RMSE
+8.60e-9. Emission, Environment, all Transmission passes, and both Volume
+passes are exact. The difference is sparse (the 99th percentile is effectively
+zero), and native-resolution inspection shows no coherent geometry, grass,
+material, normal, or shadow-boundary change.
+
+![Lone Monk resumable and effect-selected renders, with amplified difference](triptychs/semantic-traversal-plan/combined.png)
+
+Against the retained Cycles 5.2 HIP image, Combined RMSE improves from
+0.0360721 for the resumable render to 0.0292205 for the effect-selected render;
+relative RMSE improves from 0.0231372 to 0.0187424 and luminance ratio from
+1.000852 to 1.000438. This comparison is stochastic and is not used as an
+exact-hash proof, but it rejects a coherent new shading or visibility bias.
+
+![Cycles 5.2 HIP and effect-selected Psycles Lone Monk](triptychs/cycles-effect-selected/combined.png)
+
+The durable all-pass reports are
+`semantic-traversal-plan-comparison.json` and
+`cycles-effect-selected-comparison.json`. The profiled run is retained at
+`/var/tmp/psycles-rq-semantic-profile.TJyyPY`, and the Cycles trace at
+`/var/tmp/psycles-multiscene-perf-c51c61a/cycles-hip/lone-monk`.
+
 ## Validation
 
 All checks were rebuilt with 32 parallel jobs after the final source change:
@@ -736,7 +878,7 @@ All checks were rebuilt with 32 parallel jobs after the final source change:
 ```text
 test_xir_pass_lower_ray_query_loop : 212 assertions / 18 tests
 test_hip_callable_abi              : 237 assertions / 16 tests
-test_hip_callable_boundary hip     :  78 assertions / 4 tests
+test_hip_callable_boundary hip     :  82 assertions / 4 tests
 test_hip_llvm_pipeline            :  39 assertions / 12 tests
 test_hip_ray_query_pipeline hip   : 1507 assertions / 8 tests
 test_accel_visibility hip         :  162 assertions
