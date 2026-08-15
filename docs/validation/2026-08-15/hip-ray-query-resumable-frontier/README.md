@@ -31,6 +31,10 @@ LuisaCompute commits:
   handler boundaries and remove the candidate-only pointer-identity escape;
 - `d3b3eecc2` -- select synchronous versus resumable traversal from a closed
   proof of whether the parent observes the query post-state.
+- `e8220ef02` -- isolate wavefront queue publication and exact tagged-union
+  frame relocation from user continuation kernels;
+- `10fe501bc` -- restore the published HIPRT revision whose resumable any-hit
+  traversal contracts its active ray interval monotonically.
 
 ## Traversal-state model
 
@@ -896,3 +900,74 @@ The Vulkan runs set `LUISA_VULKAN_DISABLE_DXC=1`; both scene kernels were
 compiled by the native XIR-to-SPIR-V route (32,463 and 37,566 optimized SPIR-V
 words), with no DXC load or invocation. The HIP wrapper bitcode was rebuilt for
 gfx1030, gfx1100, gfx1200, and gfx1201 before running the semantic tests.
+
+## Scheduler-state isolation and Barbershop checkpoint
+
+The subsequent wavefront audit removed queue accounting from every generated
+continuation. Let `C` be the vector of ready counts and `target(f)` the token of
+frame `f`. Scheduler-owned publisher kernels now implement the two complete
+state transitions
+
+```text
+generated [first, first+n): C' = C + histogram(target(f))
+resumed queue i, n frames:   C' = C - n e_i + histogram(target(f))
+```
+
+No captured counter or mode flag remains in a user continuation, so enabling
+incremental accounting leaves the continuation AST, ABI, and structural hash
+unchanged. The compactor similarly copies only fields certified live for the
+frame's active token. This is a tagged-union relocation: moving an inactive
+field is unnecessary, while omitting an active field is forbidden. AoS and SoA
+tests cover sparse token sets, self-loops, refill, and selective relocation.
+
+This separation fixed a real Barbershop device fault. The failing launch had
+exactly `capacity` live frames, so neither compaction nor refill executed; an
+A/B build instead isolated the fault to the captured `_resume_count` changing
+the enormous `shade_surface` continuation's ABI and register/scratch
+allocation. Publishing counts after the continuation removes that perturbation
+and completes both 640x480/1 spp and 640x480/64 spp. The warm 64-spp render-only
+time is 5.41178 s. The first cold `shade_surface` build still exposes an
+independent code-size problem: about 117.54 s in HIP LLVM code generation,
+104.90 s in linking, and a 21.83 MB cached object.
+
+The current 64-spp profiler attribution is:
+
+| Psycles kernel | calls | logical items | device time | ns/item |
+|---|---:|---:|---:|---:|
+| `shade_surface` | 744 | 68,950,656 | 2,820.712 ms | 40.909 |
+| `intersect_closest` | 679 | 71,128,160 | 1,393.216 ms | 19.587 |
+| `intersect_shadow` | 147 | 8,046,400 | 82.885 ms | 10.301 |
+| generated/resumed count publishers | 2,495 | different domains | 57.701 ms | per-frame below 0.33 ns |
+
+The publisher row's logical domains differ between generated and resumed
+batches, so their item counts are deliberately not summed into a misleading
+single denominator. The individual costs are 0.325 and 0.269 ns/item; total
+publisher time is about 1.06% of the 5.45 s profiled render.
+
+The retained Cycles 5.2 HIP closest kernel takes 6.325 ns/item on this scene,
+versus Psycles' 19.587 ns/item (`3.10x`). Psycles allocates 2,560 B LDS,
+1,120 B scratch, and 256 VGPRs for closest; Cycles reports no static LDS,
+976 B scratch, and 192 VGPRs. This is not the ordinary triangle baseline:
+Psycles' combined closest/shadow traversal is already 3.0% faster than Cycles
+on Lone Monk and its ordinary trace is faster on Classroom and Monster. The
+remaining structural gap is specifically the Barbershop curve/custom-candidate
+path selecting a resumable RayQuery frontier, whereas Cycles invokes curve
+intersection and self filtering inside one
+`hiprtSceneTraversalClosestCustomStack` and returns one final hit.
+
+Visual inspection of the new Barbershop output against the retained Cycles 5.2
+HIP image finds aligned camera, silhouettes, floor, ceiling, cabinetry, and
+hair. Combined RMSE is 0.0174432, relative RMSE 0.107796, luminance ratio
+0.999606, and there are no invalid pixels. The amplified difference remains
+predominantly stochastic high-energy transport rather than a coherent geometry
+or texture displacement.
+
+![Cycles 5.2 HIP and the scheduler-isolated Psycles Barbershop render](triptychs/barbershop-scheduler-checkpoint/combined.png)
+
+The HIP/fallback scheduler suites pass 770/769 assertions respectively; the
+integration suite passes 52 assertions on both backends, SoA passes 120, and
+persistent scheduling passes 90. Restoring HIPRT commit `def3db7` was also
+validated by rebuilding the native wrapper for gfx1030, gfx1100, gfx1200, and
+gfx1201. That revision is the published child of the accidentally restored
+parent and supplies `contractRayMaxT`, preserving the invariant
+`new_max_t <= old_max_t` across resumed traversal.
