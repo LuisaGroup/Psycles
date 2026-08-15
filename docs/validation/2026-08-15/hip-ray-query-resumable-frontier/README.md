@@ -271,10 +271,11 @@ revision for every capacity. Five warm runs determine each median.
 | 12 | 498.410 | 0.26% slower |
 | 16 | 485.045 | 2.94% slower |
 
-Nine entries are both the formal minimum and the measured optimum. The deep
-semantic test with 1,024 overlapping BLAS triangles and 256 overlapping TLAS
-instances passes at this capacity, so the gain does not rely on the shallow
-Cornell-box benchmark.
+At this checkpoint nine entries were both the formal minimum and the measured
+optimum. The deep semantic test with 1,024 overlapping BLAS triangles and 256
+overlapping TLAS instances passes at this capacity, so the gain did not rely on
+the shallow Cornell-box benchmark. A later occupancy-policy change altered the
+block size and LDS tradeoff; the fresh matched A/B below retains 16 entries.
 
 `rocprofv3 --kernel-trace` successfully measured the ordinary-trace kernel,
 but consistently stalled the cutout process during the final HIPRT geometry
@@ -374,16 +375,126 @@ render is `/var/tmp/psycles-rq-frontier9-lone-monk-warm-5.exr`. The opaque-hit
 comparison is `/var/tmp/psycles-rq-opaque-lone-monk-all-pass-comparison.json`;
 its final render is `/var/tmp/psycles-rq-opaque-lone-monk-warm-e.exr`.
 
+### Native candidate transaction and stable-opacity snapshot
+
+The subsequent native synchronous work removes candidate costs under explicit
+semantic proofs rather than scene-name or material-name tests:
+
+1. A surface candidate emitted by the gfx12 traversal has already passed a
+   valid scene instance node. The candidate-domain lookup therefore does not
+   repeat the null-instance and invalid-ID checks used by defensive public
+   wrapper entry points.
+2. Both triangles reported by one immutable hardware triangle-packet
+   intersection are consumed from that result. Before consuming the second
+   triangle, traversal rechecks its interval and the current opacity. It does
+   not restart the intrinsic on the same leaf.
+3. Parent resolution is an overflow-only path. Marking the source helper cold
+   records that frequency fact, while the HIP optimizer deliberately leaves the
+   final inline decision to LLVM's cost model.
+4. Stable instance opacity is projected into the HIPRT instance node only when
+   the complete kernel-reachable call graph contains no
+   `RAY_TRACING_SET_INSTANCE_OPACITY` operation.
+
+The fourth rule has a simple refinement proof. Let `V` be the public eight-bit
+visibility mask and `O` the instance opacity. The backend stores
+`P = V | (O << 31)` in `CodegenInstance::visibility_mask`, and a scene
+build/refit copies `P` to the HIPRT instance node. If whole-module analysis
+proves absence of a device opacity write, `O` is invariant for the dispatch.
+The traversal transports
+`tag = hardware_instance_id | (node_mask & (1 << 31))`; gfx12 HIPRT instance
+IDs use 24 bits, so decoding the public ID by masking those bits is injective
+and cannot alter `O`. Ray visibility is masked to the public low eight bits,
+so the private tag bit cannot affect culling. If the proof fails, every
+candidate instead reads the authoritative `CodegenInstance::flags`, preserving
+callback-visible mutation even between the two triangles of one packet.
+
+Visibility and opacity are independently device-mutable. A host mirror may be
+stale after either device write, so host updates copy only disjoint bytes: the
+low byte for visibility and the high byte for packed opacity. Regressions cover
+both hostile orders: device opacity followed by host visibility, and device
+visibility followed by host opacity. A paired-triangle regression changes
+opacity in the first callback and proves that the second triangle observes it;
+the stable specialization is therefore licensed by absence, not by an assumed
+material convention.
+
+The current 1024x1024, 64 spp microbenchmark uses a 16-entry synchronous stack.
+Each row is the median of five warm independent processes; FPS is the example's
+reported samples-per-second rate.
+
+| Trace mode | Before packed snapshot | Packed snapshot | Change |
+|---|---:|---:|---:|
+| Direct trace | 1294.509 | 1288.819 | -0.44% (noise) |
+| Opaque RayQuery | 1084.672 | 1100.501 | +1.46% |
+| Accept callback | 964.640 | 988.424 | +2.47% |
+| Alpha cutout callback | 799.371 | 809.069 | +1.21% |
+
+The packed cutout runs were 803.599, 802.728, 809.069, 814.227, and
+812.706 FPS. The accept runs were 987.919, 987.833, 988.424, 989.279, and
+989.072 FPS; the opaque runs were 1099.937, 1097.579, 1107.189, 1100.501,
+and 1101.770 FPS. The direct trace varied more widely, so its -0.44% delta is
+not treated as a regression. Relative to current direct throughput, the
+opaque-query time gap is 17.1%, accept-query is 30.4%, and cutout-query is
+59.3%.
+
+An earlier candidate kept opacity in a separate Boolean for the entire BLAS
+traversal. Although semantically valid, it expanded the live set and regressed
+cutout by 1.7%, accept by 1.3%, and opaque by 1.9%; it was removed. Carrying the
+bit in the already-live instance-ID register is the retained representation.
+Current code-object metadata confirms the resulting tradeoff:
+
+| Kernel | VGPR | SGPR spills | Private bytes | LDS bytes |
+|---|---:|---:|---:|---:|
+| Direct | 143 | 25 | 2,800 | 16,384 |
+| Opaque RayQuery | 144 | 16 | 176 | 16,384 |
+| Accept RayQuery | 144 | 24 | 176 | 16,384 |
+| Cutout RayQuery | 144 | 22 | 192 | 16,384 |
+
+After the occupancy-policy change, a clean Lone Monk A/B measured a 1.77695 s
+median with 16 entries and 1.77935 s with nine entries. The current policy
+therefore retains 16 entries; the 0.14% difference is small, but it no longer
+justifies the older nine-entry choice.
+
+The final packed-opacity Lone Monk run used the same 640x480, 64 spp staged
+wavefront command shown above. Its five warm render-only times were 1.77575,
+1.77993, 1.77848, 1.77859, and 1.77806 s, for a 1.77848 s median. This is only
+0.09% above the immediately preceding 16-entry median and is classified as
+whole-scene noise rather than a claimed speedup.
+
+Against the retained pre-snapshot EXR, Combined has RMSE 0.00085777, relative
+RMSE 0.00054975, MAE 3.60e-6, luminance ratio 1.00000139, zero invalid pixels,
+and p99 pixel RMSE 4.30e-9. Emission, Environment, all Transmission passes, and
+both Volume passes are exact. Normal, Diffuse, and Glossy passes have no p99
+error and at most 0.001448 relative RMSE. Combined, Normal, Diffuse Color, and
+the light-pass triptychs were inspected at native resolution: geometry,
+silhouettes, grass, materials, normals, and shadows have no coherent change;
+the amplified Combined difference is sparse atomic-order noise.
+
+![Lone Monk 16-entry baseline and packed stable opacity, with amplified difference](triptychs/packed-opacity/combined.png)
+
+The machine-readable all-pass report is
+`/var/tmp/psycles-rq-packed-all-pass-comparison.json`; the final EXR is
+`/var/tmp/psycles-rq-packed.exr`. All pass triptychs are retained under
+`triptychs/packed-opacity/`.
+
 ## Remaining bottleneck
 
-The compact ABI, nine-entry frontier, and opaque projection remove three
-accidental costs, but the RayQuery cutout remains 1.820x the time of ordinary
-trace. The opaque projection moves only another 0.39%, proving that the
-remaining gap is not primarily the callback taken by opaque instances. The
-remaining structural delta is the handling of genuinely observable
-non-opaque/procedural candidates: flat traversal state stays live around a
-generic candidate-state transaction and an out-of-line DSL dispatcher, while
-the actual alpha predicate is a small part of that transaction.
+The compact ABI, occupancy-targeted 16-entry frontier, paired-hit consumption,
+and stable-opacity snapshot reduce the current cutout/direct time ratio to
+1.593x. Opaque RayQuery remains 1.171x direct trace, proving there is still a
+backend traversal/transaction floor even without an observable callback. The
+remaining structural delta for accept and cutout is the handling of genuinely
+observable non-opaque/procedural candidates: flat traversal state stays live
+around a generic candidate-state transaction and an out-of-line DSL
+dispatcher, while the actual alpha predicate is a small part of that
+transaction.
+
+Final LLVM IR shows that all four candidate sites call one out-of-line
+dispatcher, but that dispatcher still switches on a pipeline ID which is
+constant at each post-optimization call site. The next experiment is a general
+post-inlining constant-argument specialization: clone once per distinct
+constant pipeline identity, replace the argument inside the clone, simplify,
+and redirect calls. This preserves one handler body per pipeline and avoids the
+rejected alternative of inlining the handler into every candidate site.
 
 Cycles 5.2 uses a HIPRT function-table filter inside one any-hit traversal.
 Luisa cannot copy that renderer-specific filter, but the backend can adopt the
@@ -419,9 +530,10 @@ All checks were rebuilt with 32 parallel jobs after the final source change:
 
 ```text
 test_xir_pass_lower_ray_query_loop : 212 assertions / 18 tests
-test_hip_callable_boundary hip     :  68 assertions / 4 tests
+test_hip_callable_boundary hip     :  72 assertions / 4 tests
 test_hip_llvm_pipeline            :  39 assertions / 12 tests
-test_hip_ray_query_pipeline hip   : 1482 assertions / 8 tests
+test_hip_ray_query_pipeline hip   : 1492 assertions / 8 tests
+test_accel_visibility hip         :  162 assertions
 test_hip_ray_query_pipeline fallback: 42 assertions / 8 tests
 psycles_luisa_scene_traversal_tests fallback/hip/vk: pass
 psycles_luisa_curve_ribbon_tests fallback/hip/vk   : pass
