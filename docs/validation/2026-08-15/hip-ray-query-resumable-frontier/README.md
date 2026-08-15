@@ -21,7 +21,10 @@ LuisaCompute commits:
 - `8e0efb4ff` -- specialize constant RayQuery dispatcher identities after IPO
   and merge equivalent specialized bodies;
 - `931213cdc` -- match each LLVM backend's RTTI mode to the selected LLVM
-  package so static RTTI-disabled ROCm LLVM remains loadable.
+  package so static RTTI-disabled ROCm LLVM remains loadable;
+- `f303c3132` -- generalize constant-argument specialization to atomic tuples,
+  while retaining only the measured-profitable pipeline identity in the HIP
+  RayQuery production boundary.
 
 ## Traversal-state model
 
@@ -586,13 +589,23 @@ transaction.
 
 Final LLVM IR no longer contains the dynamic pipeline-ID switch, yet opaque
 RayQuery is still 1.17x the direct-trace time and alpha cutout is still about
-1.59x. The remaining candidate dispatcher also receives a constant candidate
-kind at each native call site. A formally useful next compiler experiment is
-tuple specialization over all explicitly marked constant integer formals,
-followed by the same structural body merge. That can remove the surface versus
-procedural switch without inlining handlers into every leaf site. It will be
-retained only if the resource and paired timing results improve; the current
-single-formal pass is already complete and correct without that extension.
+1.59x. Constant-argument specialization was generalized formally to an atomic
+tuple transform: a function is specialized only when every selected actual in
+every observed tuple is constant; simultaneous substitution preserves the
+original Cartesian correlation instead of independently cloning parameters,
+and any dynamic selected actual rejects the whole transform.
+
+Marking candidate kind as the second production tuple member was nevertheless
+rejected by measurement. In a 12-pair alternating A/B run, accept changed from
+981.245 to 985.673 FPS (+0.45%, noise-sized), while alpha cutout changed from
+813.970 to 803.358 FPS (-1.30%) with all 12 pairs negative. The code object did
+shrink from 39,944 to 39,432 B, but private storage grew from 176 to 192 B and
+VGPR spills grew from 15 to 18; VGPR allocation remained 144 and SGPR allocation
+changed from 75 to 73. The final production boundary therefore specializes only
+pipeline identity and exactly restores the previous generated code and resource
+allocation. The candidate-kind switch is not the dominant cost. The retained
+tuple transform remains a general compiler capability, covered by both
+correlated-Cartesian and partly-dynamic fail-closed regressions.
 
 Cycles 5.2 uses a HIPRT function-table filter inside one any-hit traversal.
 Luisa cannot copy that renderer-specific filter, but the backend can adopt the
@@ -628,7 +641,7 @@ All checks were rebuilt with 32 parallel jobs after the final source change:
 
 ```text
 test_xir_pass_lower_ray_query_loop : 212 assertions / 18 tests
-test_hip_callable_abi              : 187 assertions / 14 tests
+test_hip_callable_abi              : 237 assertions / 16 tests
 test_hip_callable_boundary hip     :  76 assertions / 4 tests
 test_hip_llvm_pipeline            :  39 assertions / 12 tests
 test_hip_ray_query_pipeline hip   : 1492 assertions / 8 tests
