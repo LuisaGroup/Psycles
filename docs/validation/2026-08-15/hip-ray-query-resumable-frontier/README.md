@@ -15,7 +15,13 @@ LuisaCompute commits:
 - `8a7a62162` -- evaluate the handler-scratch proof as sparse reachability;
 - `fb2427984` -- separate RayQuery identity from callback captures;
 - `e6c65fb90` -- compact the synchronous hardware frontier to the proven
-  nine-entry minimum.
+  nine-entry minimum;
+- `4681981ca` -- consume paired triangle candidates and transport proven-stable
+  instance opacity in the native traversal node;
+- `8e0efb4ff` -- specialize constant RayQuery dispatcher identities after IPO
+  and merge equivalent specialized bodies;
+- `931213cdc` -- match each LLVM backend's RTTI mode to the selected LLVM
+  package so static RTTI-disabled ROCm LLVM remains loadable.
 
 ## Traversal-state model
 
@@ -476,6 +482,96 @@ The machine-readable all-pass report is
 `/var/tmp/psycles-rq-packed.exr`. All pass triptychs are retained under
 `triptychs/packed-opacity/`.
 
+### Post-IPO constant dispatcher specialization
+
+The next checkpoint removes a dynamic RayQuery pipeline-ID switch which IPO
+left behind even though every surviving call supplies a constant identity.
+This is implemented as a general LLVM transformation, not a dispatcher-name
+special case. A function may opt one integer formal into specialization. The
+transformation first proves that the function is local, non-recursive,
+non-address-taken, and reached exclusively by direct calls with a constant
+actual for that formal. Unsupported ABI features, semantic call metadata,
+calling-convention disagreement, a dynamic actual, or any non-direct use
+rejects the complete function before mutation.
+
+For each distinct constant `c`, cloning under the map `formal -> c` is the
+ordinary beta-reduction
+
+```text
+call f(..., c, ...) = call simplify(f[formal := c])(...)
+```
+
+so the specialized formal is removed from the ABI rather than copied into a
+dead parameter. Rewritten calls preserve operand bundles, debug/semantic
+metadata, tail kind, fast-math flags, and the attributes of every retained
+argument at its shifted index. Local constant folding removes the dead switch
+arms. Finally LLVM's structural `MergeFunctions` proof merges specialized
+bodies that are equivalent after substitution; no backend hash is used as an
+equivalence oracle.
+
+The cutout kernel has two distinct pipeline identities but identical all-hit
+and any-hit handler bodies. Final IR therefore contains eight direct calls to
+one two-argument specialized dispatcher, no call or definition of the dynamic
+three-argument dispatcher, and no internal specialization marker. Without the
+final structural merge, two clones produced a 40,528 B linked object. Merging
+them reduces it to 39,944 B. Relative to the packed-opacity control, the
+cutout kernel's private allocation falls from 192 B to 176 B and its reported
+VGPR spills fall from 22 to 15.
+
+Current merged code-object metadata is:
+
+| Mode | Code object | VGPR | SGPR | VGPR spills | SGPR spills | Private | LDS |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Direct trace | 65,216 B | 143 | 107 | 0 | 25 | 2,800 B | 16,384 B |
+| Opaque RayQuery | 38,208 B | 144 | 73 | 16 | 0 | 176 B | 16,384 B |
+| Accept RayQuery | 39,432 B | 144 | 75 | 22 | 0 | 192 B | 16,384 B |
+| Cutout RayQuery | 39,944 B | 144 | 75 | 15 | 0 | 176 B | 16,384 B |
+
+The matched microbenchmark used ten independent paired processes and
+alternated which library ran first. The control is the same packed-opacity
+source with specialization disabled; the tested library includes specialization
+and equivalent-body merging.
+
+| Trace mode | Control median | Specialized median | Change |
+|---|---:|---:|---:|
+| Direct trace | 1,284.619 FPS | 1,284.989 FPS | +0.03% (neutral) |
+| Opaque RayQuery | 1,097.473 FPS | 1,093.209 FPS | -0.39% (layout/noise) |
+| Accept RayQuery | 981.651 FPS | 980.743 FPS | -0.09% (neutral) |
+| Alpha cutout RayQuery | 805.003 FPS | 809.501 FPS | +0.56% |
+
+Cutout improved in eight of ten pairs; its paired median change is +0.75%.
+Opaque traversal never invokes the specialized dispatcher, so its small
+negative movement is not attributed to the transformation. Direct and accept
+are neutral. This is a small but repeatable reduction of callback-boundary
+cost, not the full trace-gap solution.
+
+The same 640x480, 64 spp Lone Monk command produced five warm render-only
+times of 1.77940, 1.77673, 1.78009, 1.77464, and 1.77874 s. Their 1.77874 s
+median is +0.015% from the packed-opacity checkpoint's 1.77848 s and is
+classified as whole-render noise. All 15 available film passes were compared.
+Combined has RMSE 0.00070566, relative RMSE 0.00045226, MAE 2.29e-6, no
+invalid pixels, and p99 pixel RMSE 4.30e-9. Emission, Environment, all three
+Transmission passes, and both Volume passes are bit-exact. Normal, Diffuse,
+and Glossy differences are sparse atomic-order variation; native-resolution
+inspection of Combined, Normal, and Diffuse Color finds no coherent geometry,
+grass, material, normal, shadow, or lighting change.
+
+![Lone Monk packed-opacity and specialized-dispatcher renders, with amplified difference](triptychs/constant-dispatch/combined.png)
+
+The all-pass report is
+`/var/tmp/psycles-rq-dispatch-all-pass-comparison.json`; the rendered EXR is
+`/var/tmp/psycles-rq-dispatch.exr`. All triptychs are retained under
+`triptychs/constant-dispatch/`.
+
+The first parent-project load also exposed a host ABI mismatch: the standalone
+build used RTTI-enabled shared LLVM, while Psycles selected ROCm's
+RTTI-disabled static LLVM. Instantiating LLVM's polymorphic `CallbackVH` helper
+then emitted a typeinfo reference which that library intentionally does not
+define. The common LLVM-backend CMake function now reads `LLVM_ENABLE_RTTI`
+from the selected package and compiles HIP/fallback with matching RTTI policy.
+Both plugins pass `ldd -r`; the RTTI-off HIP plugin loads and renders Lone Monk,
+and the RTTI-off fallback plugin loads and passes the scene-traversal test.
+
 ## Remaining bottleneck
 
 The compact ABI, occupancy-targeted 16-entry frontier, paired-hit consumption,
@@ -488,13 +584,15 @@ around a generic candidate-state transaction and an out-of-line DSL
 dispatcher, while the actual alpha predicate is a small part of that
 transaction.
 
-Final LLVM IR shows that all four candidate sites call one out-of-line
-dispatcher, but that dispatcher still switches on a pipeline ID which is
-constant at each post-optimization call site. The next experiment is a general
-post-inlining constant-argument specialization: clone once per distinct
-constant pipeline identity, replace the argument inside the clone, simplify,
-and redirect calls. This preserves one handler body per pipeline and avoids the
-rejected alternative of inlining the handler into every candidate site.
+Final LLVM IR no longer contains the dynamic pipeline-ID switch, yet opaque
+RayQuery is still 1.17x the direct-trace time and alpha cutout is still about
+1.59x. The remaining candidate dispatcher also receives a constant candidate
+kind at each native call site. A formally useful next compiler experiment is
+tuple specialization over all explicitly marked constant integer formals,
+followed by the same structural body merge. That can remove the surface versus
+procedural switch without inlining handlers into every leaf site. It will be
+retained only if the resource and paired timing results improve; the current
+single-formal pass is already complete and correct without that extension.
 
 Cycles 5.2 uses a HIPRT function-table filter inside one any-hit traversal.
 Luisa cannot copy that renderer-specific filter, but the backend can adopt the
@@ -530,13 +628,15 @@ All checks were rebuilt with 32 parallel jobs after the final source change:
 
 ```text
 test_xir_pass_lower_ray_query_loop : 212 assertions / 18 tests
-test_hip_callable_boundary hip     :  72 assertions / 4 tests
+test_hip_callable_abi              : 187 assertions / 14 tests
+test_hip_callable_boundary hip     :  76 assertions / 4 tests
 test_hip_llvm_pipeline            :  39 assertions / 12 tests
 test_hip_ray_query_pipeline hip   : 1492 assertions / 8 tests
 test_accel_visibility hip         :  162 assertions
 test_hip_ray_query_pipeline fallback: 42 assertions / 8 tests
 psycles_luisa_scene_traversal_tests fallback/hip/vk: pass
 psycles_luisa_curve_ribbon_tests fallback/hip/vk   : pass
+RTTI-off static-LLVM HIP/fallback module resolution : pass
 ```
 
 The fallback run exercises shared semantic cases and explicitly skips only the
