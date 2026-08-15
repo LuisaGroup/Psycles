@@ -24,7 +24,9 @@ LuisaCompute commits:
   package so static RTTI-disabled ROCm LLVM remains loadable;
 - `f303c3132` -- generalize constant-argument specialization to atomic tuples,
   while retaining only the measured-profitable pipeline identity in the HIP
-  RayQuery production boundary.
+  RayQuery production boundary;
+- `ff91c47da` -- project candidate-only callback transactions into scalar
+  actions while retaining the exact full-state path for observable queries.
 
 ## Traversal-state model
 
@@ -575,7 +577,7 @@ from the selected package and compiles HIP/fallback with matching RTTI policy.
 Both plugins pass `ldd -r`; the RTTI-off HIP plugin loads and renders Lone Monk,
 and the RTTI-off fallback plugin loads and passes the scene-traversal test.
 
-## Remaining bottleneck
+## Pre-projection bottleneck analysis
 
 The compact ABI, occupancy-targeted 16-entry frontier, paired-hit consumption,
 and stable-opacity snapshot reduce the current cutout/direct time ratio to
@@ -635,6 +637,98 @@ combined with interprocedural rematerialization of immutable kernel arguments
 when every call site has one identical kernel-argument provenance. Ambiguous,
 external, escaping, or address-sensitive values must fail closed.
 
+## Candidate-only transaction projection
+
+The retained redesign starts from the observable semantics of a synchronous
+candidate handler instead of changing the traversal frontier. Let `R(f)` be the
+set of ray-query components read by a handler `f`, including every generated
+Callable reachable by a direct function operand. The backend computes the
+least conservative call-graph union and distinguishes two components which
+cannot be reconstructed from the current candidate: the committed hit and the
+world ray. A reachable function without an inspectable XIR definition sets
+both bits, so incomplete information always selects the exact path.
+
+When both bits are absent, the handler denotes the smaller state transition
+
+```text
+F(candidate, query_flags) =
+    (candidate_committed, terminated, committed_distance)
+```
+
+Candidate kind, candidate hit, and the current termination bit are initialized
+in a scalar-replaceable local query object. The ordinary generated handler is
+then invoked unchanged, so nested Callables, reference captures, procedural
+commit distances, explicit termination, and `RayQueryAny`'s implicit
+termination keep their language semantics. The native traversal imports only
+the packed action result. Surface commits use the candidate distance;
+procedural commits use the distance returned by `F`. If committed state or the
+world ray is observable, the existing full export/callback/import transaction
+is retained exactly.
+
+This is a projection proof, not an alpha-material special case. The traversal
+frontier is neither moved nor replayed, and the candidate handler remains
+ordinary Luisa DSL. The compact dispatcher's name falls under the existing
+pipeline-wrapper optimization policy; no new manually marked `noinline`
+boundary was added. After ordinary inlining and scalar replacement, final
+cutout IR contains neither compact state-pointer calls nor the full dispatcher.
+A nested-Callable regression that reads `candidate.ray()->t_max()` proves that
+the interprocedural observation instead preserves the full dispatcher.
+
+Several alternatives were rejected by measurement. Merely reducing the state
+export without changing the transaction increased cutout spills from 15 to 65.
+An outlined compact transaction improved throughput, but retaining it as a
+call boundary left 61 spills. Four candidate-queue variants regressed cutout by
+approximately 7--17% because queue traffic and extended lifetimes cost more
+than the boundary they replaced. None is retained.
+
+The final 1024x1024, 64 spp measurement uses eight independent paired
+processes per mode and alternates library order. Shader caching is explicitly
+disabled in the benchmark binary. The control is `f303c3132`; the candidate is
+`ff91c47da`.
+
+| Trace mode | Control median | Projected median | Throughput change |
+|---|---:|---:|---:|
+| Direct trace | 1,277.560 FPS | 1,275.071 FPS | -0.19% (noise) |
+| Opaque RayQuery | 1,090.977 FPS | 1,160.227 FPS | +6.35% |
+| Accept callback | 977.628 FPS | 1,175.589 FPS | +20.25% |
+| Alpha cutout callback | 808.321 FPS | 1,019.512 FPS | +26.13% |
+
+Every paired median agrees with the aggregate result. Relative to current
+direct throughput, the remaining time ratios are 1.099x for opaque, 1.085x for
+accept, and 1.251x for alpha cutout. The cutout control-to-candidate gain is
+therefore structural, while the -0.19% direct movement is classified as run
+noise. For the cutout kernel, the linked code object shrinks from 39,944 B to
+38,208 B. VGPR allocation remains 144, SGPR allocation falls from 75 to 72,
+private allocation remains 176 B, and reported VGPR spills move from 15 to 25;
+the large throughput gain despite that small spill increase confirms that the
+removed full-state callback transaction, not metadata size alone, was the
+dominant cost.
+
+Five complete Lone Monk 640x480, 64 spp staged-wavefront renders took 1.80029,
+1.78165, 1.77959, 1.77883, and 1.78145 s, with a 1.78145 s median. This is
+neutral against the preceding 1.77874 s checkpoint because ray-query candidate
+handling is only part of the full renderer. All 15 film passes were compared.
+Combined has RMSE 0.00040736, relative RMSE 0.00026108, MAE 1.48e-6, zero
+invalid pixels, and p99 pixel RMSE 4.30e-9. Emission, Environment, all
+Transmission passes, and both Volume passes are exact; every other pass has a
+zero p99 error. Native-resolution visual inspection finds no coherent change
+to geometry, grass, materials, normals, shadows, or illumination; the amplified
+difference is sparse atomic-order noise.
+
+![Lone Monk before and after candidate-only transaction projection](triptychs/compact-action/combined.png)
+
+The all-pass report is
+`/var/tmp/psycles-rq-compact-action-all-pass-comparison.json`; the inspected
+render is `/var/tmp/psycles-rq-compact-action-5.exr`. All pass triptychs are
+retained under `triptychs/compact-action/`.
+
+The remaining microbenchmark target is now the 1.085x candidate-free/accept
+floor and the real alpha predicate on top of it. The next trace work must
+compare the native traversal instruction mix and memory traffic directly with
+Cycles' HIPRT filter path; it must not reintroduce per-candidate TLAS restart,
+generic `getNextHit()` (previously about 2x slower), or renderer-specific policy
+inside the backend.
+
 ## Validation
 
 All checks were rebuilt with 32 parallel jobs after the final source change:
@@ -642,9 +736,9 @@ All checks were rebuilt with 32 parallel jobs after the final source change:
 ```text
 test_xir_pass_lower_ray_query_loop : 212 assertions / 18 tests
 test_hip_callable_abi              : 237 assertions / 16 tests
-test_hip_callable_boundary hip     :  76 assertions / 4 tests
+test_hip_callable_boundary hip     :  78 assertions / 4 tests
 test_hip_llvm_pipeline            :  39 assertions / 12 tests
-test_hip_ray_query_pipeline hip   : 1492 assertions / 8 tests
+test_hip_ray_query_pipeline hip   : 1507 assertions / 8 tests
 test_accel_visibility hip         :  162 assertions
 test_hip_ray_query_pipeline fallback: 42 assertions / 8 tests
 psycles_luisa_scene_traversal_tests fallback/hip/vk: pass
@@ -657,6 +751,6 @@ HIP implementation-specific stack tests. No CPU reference renderer is used;
 Cycles remains the renderer reference.
 
 The Vulkan runs set `LUISA_VULKAN_DISABLE_DXC=1`; both scene kernels were
-compiled by the native XIR-to-SPIR-V route (32,484 and 37,566 optimized SPIR-V
+compiled by the native XIR-to-SPIR-V route (32,463 and 37,566 optimized SPIR-V
 words), with no DXC load or invocation. The HIP wrapper bitcode was rebuilt for
 gfx1030, gfx1100, gfx1200, and gfx1201 before running the semantic tests.
