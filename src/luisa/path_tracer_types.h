@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 
 #include <luisa/core/basic_types.h>
 #include <luisa/dsl/sugar.h>
@@ -79,6 +80,45 @@ static_assert(sizeof(InstanceGpu) == 112u);
 static_assert(offsetof(InstanceGpu, cycles_object_index) == 28u);
 static_assert(offsetof(InstanceGpu, cycles_primitive_offset) == 32u);
 static_assert(offsetof(InstanceGpu, cycles_world_to_object) == 48u);
+
+// Immutable quotient of InstanceGpu + GeometryGpu for traversal callbacks.
+// The callback observes only identity, primitive addressing, the material
+// selection relation, and curve intersection metadata. Keeping exactly those
+// fields in one cache-line-sized record avoids loading either full shading
+// record for every any-hit candidate. Material flags live in a separate dense
+// uint table; no closure value or sampled opacity is stored here.
+struct SceneTraversalInstanceGpu {
+    luisa::uint bindless_base{};
+    luisa::uint geometry_material_offset{};
+    luisa::uint geometry_material_count{};
+    luisa::uint override_material_offset{};
+    luisa::uint override_material_count{};
+    luisa::uint cycles_object_index{};
+    luisa::uint cycles_primitive_offset{};
+    // bit 0: primitive kind; bits [31:1]: curve subdivision level.
+    luisa::uint primitive_kind_and_curve_subdivision{};
+};
+
+inline constexpr std::uint32_t
+scene_traversal_primitive_kind_mask = 1u;
+inline constexpr std::uint32_t
+scene_traversal_curve_subdivision_shift = 1u;
+inline constexpr std::uint32_t
+scene_traversal_curve_subdivision_maximum =
+    std::numeric_limits<std::uint32_t>::max() >>
+    scene_traversal_curve_subdivision_shift;
+
+[[nodiscard]] constexpr std::uint32_t
+pack_scene_traversal_primitive(std::uint32_t primitive_kind,
+                               std::uint32_t curve_subdivision) noexcept {
+    return (curve_subdivision <<
+            scene_traversal_curve_subdivision_shift) |
+           (primitive_kind & scene_traversal_primitive_kind_mask);
+}
+
+static_assert(sizeof(SceneTraversalInstanceGpu) == 32u);
+static_assert(alignof(SceneTraversalInstanceGpu) == alignof(luisa::uint));
+static_assert(offsetof(SceneTraversalInstanceGpu, cycles_object_index) == 20u);
 
 inline constexpr std::uint32_t material_flag_has_volume =
     1u << 0u;
@@ -569,6 +609,16 @@ LUISA_STRUCT(
     is_shadow_catcher,
     cycles_transform_applied,
     cycles_world_to_object) {};
+LUISA_STRUCT(
+    psycles::luisa_backend::detail::SceneTraversalInstanceGpu,
+    bindless_base,
+    geometry_material_offset,
+    geometry_material_count,
+    override_material_offset,
+    override_material_count,
+    cycles_object_index,
+    cycles_primitive_offset,
+    primitive_kind_and_curve_subdivision) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::MaterialBindingGpu,
     surface_tag,

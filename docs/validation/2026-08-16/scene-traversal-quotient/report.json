@@ -1,0 +1,82 @@
+{
+  "date": "2026-08-16",
+  "device": "AMD Radeon RX 9070 XT (gfx1201)",
+  "configuration": {
+    "resolution": [640, 480],
+    "spp": 64,
+    "adaptive_sampling": false,
+    "psycles_scheduler": "wavefront-staged",
+    "samples_per_dispatch": 32,
+    "workgroup_size": 32
+  },
+  "trace": {
+    "barbershop_shadow": {
+      "before": {"calls": 82, "lanes": 8048928, "device_ms": 38.391277, "ns_per_lane": 4.769738},
+      "after": {"calls": 82, "lanes": 8048928, "device_ms": 37.965187, "ns_per_lane": 4.716800, "lds_bytes": 3072, "scratch_bytes": 8, "vgpr": 168},
+      "cycles_5_2_hiprt": {"calls": 141, "lanes": 29983232, "device_ms": 102.296, "ns_per_lane": 3.411766},
+      "improvement_percent": 1.109872,
+      "remaining_mixed_metric_gap_to_cycles_percent": 38.250982
+    },
+    "classroom_shadow": {
+      "before": {"calls": 58, "lanes": 28414784, "device_ms": 51.570, "ns_per_lane": 1.814907},
+      "after": {"calls": 58, "lanes": 28414784, "device_ms": 50.713471, "ns_per_lane": 1.784757, "lds_bytes": 3072, "scratch_bytes": 8, "vgpr": 168},
+      "cycles_5_2_hiprt": {"calls": 113, "lanes": 48077824, "device_ms": 131.224508, "ns_per_lane": 2.729419},
+      "improvement_percent": 1.661242,
+      "faster_than_cycles_percent": 34.610369
+    },
+    "classroom_closest": {
+      "before_ns_per_lane": 1.807084,
+      "after": {"calls": 90, "lanes": 62504736, "device_ms": 112.540820, "ns_per_lane": 1.800517, "lds_bytes": 3072, "scratch_bytes": 8, "vgpr": 128},
+      "cycles_5_2_hiprt_ns_per_lane": 4.402867,
+      "improvement_percent": 0.363403
+    }
+  },
+  "combined_differential": {
+    "barbershop": {"mae": 2.30955834e-7, "rms": 6.45946493e-5, "max": 0.035135746, "relative_l1": 3.40953079e-6, "rgb_energy_ratio": [1.0000013113, 1.0000026226, 1.0000028610]},
+    "classroom": {"mae": 5.90570301e-11, "rms": 1.91910798e-9, "max": 2.38418579e-7, "relative_l1": 2.92264296e-10}
+  },
+  "all_pass_differential": {
+    "barbershop": {
+      "albedo": {"mae": 4.94665713e-8, "rms": 1.44977539e-5, "max": 0.00655685365, "relative_l1": 2.38030665e-7},
+      "combined": {"mae": 2.30955834e-7, "rms": 6.45946493e-5, "max": 0.035135746, "relative_l1": 3.40953079e-6},
+      "diffuse-direct": {"mae": 3.71462534e-7, "rms": 9.52994087e-5, "max": 0.0559097528, "relative_l1": 1.79916049e-6},
+      "diffuse-indirect": {"mae": 2.70657825e-8, "rms": 6.45891760e-6, "max": 0.00409437716, "relative_l1": 4.54295673e-7},
+      "emission": {"mae": 3.47098877e-11, "rms": 1.62875913e-9, "max": 2.38418579e-7, "relative_l1": 4.12015533e-9},
+      "environment": {"mae": 0.0, "rms": 0.0, "max": 0.0, "relative_l1": 0.0},
+      "glossy-color": {"mae": 6.52089382e-10, "rms": 4.46094326e-8, "max": 3.18884850e-5, "relative_l1": 9.65380398e-9},
+      "glossy-direct": {"mae": 1.42769181e-6, "rms": 7.00671051e-4, "max": 0.418881536, "relative_l1": 9.52731170e-6},
+      "glossy-indirect": {"mae": 3.29678301e-7, "rms": 9.04624103e-5, "max": 0.0628378987, "relative_l1": 5.04162654e-6},
+      "normal": {"mae": 1.33942446e-9, "rms": 2.39662263e-8, "max": 1.53183937e-5, "relative_l1": 3.79273679e-9},
+      "transmission-color": {"mae": 4.68895062e-11, "rms": 1.78682247e-9, "max": 1.78813934e-7, "relative_l1": 7.58444330e-9},
+      "transmission-direct": {"mae": 1.16244837e-13, "rms": 1.13387320e-11, "max": 3.72529030e-9, "relative_l1": 1.31691973e-8},
+      "transmission-indirect": {"mae": 1.51627641e-10, "rms": 1.43912857e-7, "max": 1.38156116e-4, "relative_l1": 3.01961734e-7},
+      "volume-direct": {"mae": 0.0, "rms": 0.0, "max": 0.0, "relative_l1": 0.0},
+      "volume-indirect": {"mae": 0.0, "rms": 0.0, "max": 0.0, "relative_l1": 0.0}
+    },
+    "classroom": {
+      "albedo": {"mae": 7.09658388e-10, "rms": 7.06405467e-9, "max": 3.57627869e-7, "relative_l1": 2.91750291e-9},
+      "combined": {"mae": 5.90570301e-11, "rms": 1.91910798e-9, "max": 2.38418579e-7, "relative_l1": 2.92264296e-10},
+      "diffuse-direct": {"mae": 1.39692602e-9, "rms": 1.70357861e-8, "max": 1.19209290e-6, "relative_l1": 2.63083844e-9},
+      "diffuse-indirect": {"mae": 2.48303433e-10, "rms": 2.71913070e-9, "max": 3.57627869e-7, "relative_l1": 1.74524928e-9},
+      "emission": {"mae": 0.0, "rms": 0.0, "max": 0.0, "relative_l1": 0.0},
+      "environment": {"mae": 0.0, "rms": 0.0, "max": 0.0, "relative_l1": 0.0},
+      "glossy-color": {"mae": 2.30287213e-11, "rms": 6.43752329e-10, "max": 1.19209290e-7, "relative_l1": 6.75749401e-10},
+      "glossy-direct": {"mae": 3.89906663e-10, "rms": 1.15499006e-8, "max": 1.43051147e-6, "relative_l1": 3.18259841e-9},
+      "glossy-indirect": {"mae": 6.66358774e-11, "rms": 1.88773730e-9, "max": 4.76837158e-7, "relative_l1": 1.39695966e-9},
+      "normal": {"mae": 6.14858386e-10, "rms": 6.31060004e-9, "max": 2.38418579e-7, "relative_l1": 1.69779557e-9},
+      "transmission-color": {"mae": 5.82076609e-11, "rms": 2.13607221e-9, "max": 1.78813934e-7, "relative_l1": 2.17979093e-8},
+      "transmission-direct": {"mae": 1.50727155e-20, "rms": 3.38718032e-18, "max": 1.77635684e-15, "relative_l1": 6.94823310e-10},
+      "transmission-indirect": {"mae": 1.18017046e-11, "rms": 5.34969125e-10, "max": 5.96046448e-8, "relative_l1": 2.04985646e-8},
+      "volume-direct": {"mae": 0.0, "rms": 0.0, "max": 0.0, "relative_l1": 0.0},
+      "volume-indirect": {"mae": 0.0, "rms": 0.0, "max": 0.0, "relative_l1": 0.0}
+    }
+  },
+  "exact_passes": {
+    "barbershop": ["environment", "volume-direct", "volume-indirect"],
+    "classroom": ["emission", "environment", "volume-direct", "volume-indirect"]
+  },
+  "rejected_counterfactuals": {
+    "native_only_shadow_ns_per_lane": 4.783313,
+    "manual_soa_projection_ns_per_lane": [4.800710, 4.783809]
+  }
+}

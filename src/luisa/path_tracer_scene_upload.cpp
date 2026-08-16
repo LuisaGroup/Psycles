@@ -2,6 +2,7 @@
 
 #include "cycles_shader_identity.h"
 #include <cstdint>
+#include <limits>
 
 namespace psycles::luisa_backend::detail {
 namespace {
@@ -59,6 +60,100 @@ void provide_inert_storage(SceneTableUploadInput input) {
 
 }// namespace
 
+SceneTraversalTableBuildResult
+build_scene_traversal_tables(SceneTraversalTableBuildInput input) {
+    SceneTraversalTableBuildResult result;
+    constexpr auto uint_maximum =
+        static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max());
+    if (input.geometry_materials.size() > uint_maximum ||
+        input.override_materials.size() > uint_maximum ||
+        input.instances.size() > uint_maximum) {
+        result.diagnostic =
+            "Scene traversal table exceeds the 32-bit device address space.";
+        return result;
+    }
+    const auto material_flag_count =
+        input.geometry_materials.size() + input.override_materials.size();
+    if (material_flag_count > uint_maximum) {
+        result.diagnostic =
+            "Scene traversal table exceeds the 32-bit device address space.";
+        return result;
+    }
+
+    result.material_flags.reserve(material_flag_count);
+    for (const auto &binding : input.geometry_materials) {
+        result.material_flags.emplace_back(binding.flags);
+    }
+    for (const auto &binding : input.override_materials) {
+        result.material_flags.emplace_back(binding.flags);
+    }
+
+    const auto base_material_count =
+        static_cast<std::uint32_t>(input.geometry_materials.size());
+    result.instances.reserve(input.instances.size());
+    for (auto instance_index = std::size_t{0u};
+         instance_index < input.instances.size(); ++instance_index) {
+        const auto &instance = input.instances[instance_index];
+        if (instance.geometry_index >= input.geometries.size()) {
+            result.diagnostic =
+                "Scene traversal instance references an unavailable geometry.";
+            return result;
+        }
+        const auto &geometry = input.geometries[instance.geometry_index];
+        const auto geometry_material_count =
+            std::max(geometry.material_count, 1u);
+        if (geometry.material_offset > input.geometry_materials.size() ||
+            geometry_material_count >
+                input.geometry_materials.size() - geometry.material_offset) {
+            result.diagnostic =
+                "Scene traversal geometry material range is out of bounds.";
+            return result;
+        }
+        if (instance.override_offset > input.override_materials.size() ||
+            instance.override_count >
+                input.override_materials.size() - instance.override_offset) {
+            result.diagnostic =
+                "Scene traversal instance override range is out of bounds.";
+            return result;
+        }
+        if (instance.cycles_primitive_offset !=
+            geometry.cycles_primitive_offset) {
+            result.diagnostic =
+                "Scene traversal instance and geometry primitive offsets "
+                "disagree.";
+            return result;
+        }
+        if (geometry.primitive_kind >
+                scene_traversal_primitive_kind_mask ||
+            geometry.curve_subdivision_level >
+                scene_traversal_curve_subdivision_maximum) {
+            result.diagnostic =
+                "Scene traversal primitive metadata cannot be packed exactly.";
+            return result;
+        }
+
+        const auto cycles_object_index =
+            instance.cycles_object_index !=
+                    cycles_shader_identity::invalid_index
+                ? instance.cycles_object_index
+                : static_cast<std::uint32_t>(instance_index);
+        result.instances.emplace_back(SceneTraversalInstanceGpu{
+            .bindless_base = geometry.bindless_base,
+            .geometry_material_offset = geometry.material_offset,
+            .geometry_material_count = geometry_material_count,
+            .override_material_offset =
+                base_material_count + instance.override_offset,
+            .override_material_count = instance.override_count,
+            .cycles_object_index = cycles_object_index,
+            .cycles_primitive_offset = instance.cycles_primitive_offset,
+            .primitive_kind_and_curve_subdivision =
+                pack_scene_traversal_primitive(
+                    geometry.primitive_kind,
+                    geometry.curve_subdivision_level)});
+    }
+    return result;
+}
+
 std::uint32_t encode_attribute_domain(
     contract::MeshAttributeDomain domain) noexcept {
     switch (domain) {
@@ -81,6 +176,18 @@ SceneTableUploadComponent::upload(const std::shared_ptr<LuisaSceneData> &scene,
                                   Stream &stream,
                                   SceneTableUploadInput input) const {
     provide_inert_storage(input);
+    auto traversal_tables = build_scene_traversal_tables(
+        {.geometries = std::span<const GeometryGpu>{
+             input.geometries.data(), input.geometries.size()},
+         .instances = std::span<const InstanceGpu>{
+             input.instances.data(), input.instances.size()},
+         .geometry_materials = std::span<const MaterialBindingGpu>{
+             input.geometry_materials.data(), input.geometry_materials.size()},
+         .override_materials = std::span<const MaterialBindingGpu>{
+             input.override_materials.data(), input.override_materials.size()}});
+    if (!traversal_tables.ok()) {
+        return {.diagnostic = std::move(traversal_tables.diagnostic)};
+    }
     scene->geometry_buffer =
         scene->device.create_buffer<GeometryGpu>(input.geometries.size());
     if (!scene->attribute_binding_buffer) {
@@ -105,6 +212,12 @@ SceneTableUploadComponent::upload(const std::shared_ptr<LuisaSceneData> &scene,
     scene->override_material_buffer =
         scene->device.create_buffer<MaterialBindingGpu>(
             input.override_materials.size());
+    scene->traversal_instance_buffer =
+        scene->device.create_buffer<SceneTraversalInstanceGpu>(
+            traversal_tables.instances.size());
+    scene->traversal_material_flags_buffer =
+        scene->device.create_buffer<luisa::uint>(
+            traversal_tables.material_flags.size());
     scene->light_buffer =
         scene->device.create_buffer<LightGpu>(input.lights.size());
     scene->emissive_triangle_buffer =
@@ -136,6 +249,10 @@ SceneTableUploadComponent::upload(const std::shared_ptr<LuisaSceneData> &scene,
                   luisa::span{input.geometry_materials})
            << scene->override_material_buffer.copy_from(
                   luisa::span{input.override_materials})
+           << scene->traversal_instance_buffer.copy_from(
+                  luisa::span{traversal_tables.instances})
+           << scene->traversal_material_flags_buffer.copy_from(
+                  luisa::span{traversal_tables.material_flags})
            << scene->light_buffer.copy_from(luisa::span{input.lights})
            << scene->emissive_triangle_buffer.copy_from(
                   luisa::span{input.emissive_triangles})

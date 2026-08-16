@@ -1106,6 +1106,18 @@ triptychs are in
 and
 [`validation/2026-08-16/hip-private-memory`](validation/2026-08-16/hip-private-memory/README.md).
 
+Traversal candidate callbacks now consume a formally defined immutable scene
+quotient: one 32-byte instance record and a dense material-capability table
+replace full instance/geometry/material-binding loads without baking closure
+values. This improves Barbershop shadow trace by another 1.11% and Classroom
+triangle shadow by 1.66%. Classroom is now 34.6% faster than the retained
+Cycles 5.2 HIPRT per-launched-lane trace metric, proving that the remaining
+Barbershop gap is curve/callback semantic work rather than generic triangle
+RayQuery traversal. Formal equivalence, rejected counterfactuals, three-backend
+regressions, profiler records, all-pass differentials, and inspected
+triptychs are in
+[`validation/2026-08-16/scene-traversal-quotient`](validation/2026-08-16/scene-traversal-quotient/README.md).
+
 The following integrator work remains explicit and is not considered Cycles
 compatible yet:
 

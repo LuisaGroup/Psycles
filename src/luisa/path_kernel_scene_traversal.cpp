@@ -1,8 +1,6 @@
 #include "path_kernel_scene_traversal.h"
 
 #include "curve_ribbon_component.h"
-#include "path_kernel_curve_primitive.h"
-#include "path_kernel_primitive_material.h"
 #include "path_kernel_shadow_storage.h"
 
 #include <psycles/luisa/surface_ray.h>
@@ -232,13 +230,76 @@ public:
   }
 };
 
+struct TraversalPrimitiveMetadata {
+  UInt instance_id;
+  Var<SceneTraversalInstanceGpu> instance;
+  UInt primitive_kind;
+  UInt curve_subdivision_level;
+};
+
+struct TraversalCurveMetadata {
+  TraversalPrimitiveMetadata primitive;
+  Var<CurveSegmentGpu> segment;
+};
+
 class UnifiedSceneTraversalComponent final : public SceneTraversalComponent {
 
 private:
   SceneTraversalStagePlan _plan;
-  std::shared_ptr<const CurvePrimitiveComponent> _curves;
   std::shared_ptr<const CurveRibbonComponent> _ribbons;
-  std::shared_ptr<const PrimitiveMaterialComponent> _materials;
+
+  [[nodiscard]] TraversalPrimitiveMetadata emit_primitive_metadata(
+      const std::shared_ptr<LuisaSceneData> &scene,
+      Expr<std::uint32_t> instance_id) const noexcept {
+    UInt resolved_instance_id = instance_id;
+    auto instance =
+        scene->traversal_instance_buffer->read(resolved_instance_id);
+    const auto packed = instance.primitive_kind_and_curve_subdivision;
+    return {
+        .instance_id = std::move(resolved_instance_id),
+        .instance = std::move(instance),
+        .primitive_kind = packed & scene_traversal_primitive_kind_mask,
+        .curve_subdivision_level =
+            packed >> scene_traversal_curve_subdivision_shift};
+  }
+
+  [[nodiscard]] TraversalCurveMetadata emit_curve_metadata(
+      const std::shared_ptr<LuisaSceneData> &scene,
+      Expr<std::uint32_t> instance_id,
+      Expr<std::uint32_t> segment_id) const noexcept {
+    auto primitive = emit_primitive_metadata(scene, instance_id);
+    const auto segments = scene->heap->buffer<CurveSegmentGpu>(
+        primitive.instance.bindless_base);
+    return {.primitive = std::move(primitive),
+            .segment = segments.read(segment_id)};
+  }
+
+  [[nodiscard]] CurveControlPoints emit_curve_control_points(
+      const std::shared_ptr<LuisaSceneData> &scene,
+      const TraversalCurveMetadata &curve) const noexcept {
+    const auto keys = scene->heap->buffer<luisa::float4>(
+        curve.primitive.instance.bindless_base + 1u);
+    return {.before = keys.read(curve.segment.key_before),
+            .begin = keys.read(curve.segment.key_begin),
+            .end = keys.read(curve.segment.key_end),
+            .after = keys.read(curve.segment.key_after)};
+  }
+
+  [[nodiscard]] UInt resolve_material_flags(
+      const std::shared_ptr<LuisaSceneData> &scene,
+      const TraversalPrimitiveMetadata &primitive,
+      Expr<std::uint32_t> material_slot) const noexcept {
+    UInt resolved_material_slot = material_slot;
+    const auto &instance = primitive.instance;
+    UInt flags = scene->traversal_material_flags_buffer->read(
+        instance.geometry_material_offset +
+        min(resolved_material_slot, instance.geometry_material_count - 1u));
+    $if(resolved_material_slot < instance.override_material_count) {
+      flags = scene->traversal_material_flags_buffer->read(
+          instance.override_material_offset + resolved_material_slot);
+    };
+    return flags;
+  }
 
   [[nodiscard]] Var<luisa::compute::CommittedHit>
   trace(const std::shared_ptr<LuisaSceneData> &scene,
@@ -260,10 +321,10 @@ private:
     const auto handle_surface =
         [&](luisa::compute::SurfaceCandidate &candidate) noexcept {
           const auto hit = candidate.hit();
-          const auto instance = scene->instance_buffer->read(hit->inst);
-          const auto object =
-              _materials->cycles_object_index(hit->inst, instance);
-          const auto primitive = instance.cycles_primitive_offset + hit->prim;
+          const auto metadata = emit_primitive_metadata(scene, hit->inst);
+          const auto object = metadata.instance.cycles_object_index;
+          const auto primitive =
+              metadata.instance.cycles_primitive_offset + hit->prim;
           const auto excluded = source.matches(object, primitive) |
                                 light.matches(object, primitive);
           $if(!excluded) { candidate.commit(); };
@@ -271,11 +332,10 @@ private:
     const auto handle_procedural =
         [&](luisa::compute::ProceduralCandidate &candidate) noexcept {
           const auto hit = candidate.hit();
-          const auto curve =
-              _curves->emit_metadata(scene, hit->inst, hit->prim);
-          $if(curve.geometry.primitive_kind == geometry_kind_curve) {
+          const auto curve = emit_curve_metadata(scene, hit->inst, hit->prim);
+          $if(curve.primitive.primitive_kind == geometry_kind_curve) {
             const auto object =
-                _materials->cycles_object_index(hit->inst, curve.instance);
+                curve.primitive.instance.cycles_object_index;
             const auto primitive = curve.segment.cycles_curve_index;
             const auto excluded = source.matches(object, primitive) |
                                   light.matches(object, primitive);
@@ -284,11 +344,10 @@ private:
               // Consume its native object-space traversal ray directly; its
               // unnormalized direction preserves the world-ray parameter t.
               const auto object_ray = candidate.object_ray();
-              const auto control_points =
-                  _curves->emit_control_points(scene, curve);
+              const auto control_points = emit_curve_control_points(scene, curve);
               const auto intersection =
                   _ribbons->intersect(object_ray, control_points,
-                                      curve.geometry.curve_subdivision_level);
+                                      curve.primitive.curve_subdivision_level);
               $if(intersection.valid) {
                 candidate.commit(intersection.distance);
               };
@@ -326,19 +385,20 @@ private:
     const auto handle_surface =
         [&](luisa::compute::SurfaceCandidate &candidate) noexcept {
           const auto hit = candidate.hit();
-          const auto instance = scene->instance_buffer->read(hit->inst);
-          const auto geometry =
-              scene->geometry_buffer->read(instance.geometry_index);
-          const auto object =
-              _materials->cycles_object_index(hit->inst, instance);
-          const auto primitive = geometry.cycles_primitive_offset + hit->prim;
+          const auto metadata = emit_primitive_metadata(scene, hit->inst);
+          const auto object = metadata.instance.cycles_object_index;
+          const auto primitive =
+              metadata.instance.cycles_primitive_offset + hit->prim;
           const auto excluded = source.matches(object, primitive) |
                                 light.matches(object, primitive);
           $if(!excluded) {
-            const auto material_slot =
-                _materials->triangle_material_slot(scene, geometry, hit->prim);
-            const auto binding = _materials->resolve_binding(
-                scene, instance, geometry, material_slot);
+            const auto material_slot = scene->heap
+                                           ->buffer<luisa::uint>(
+                                               metadata.instance.bindless_base +
+                                               4u)
+                                           .read(hit->prim);
+            const auto material_flags =
+                resolve_material_flags(scene, metadata, material_slot);
             Var<ShadowIntersectionCall> intersection;
             intersection->instance = hit->inst;
             intersection->primitive = hit->prim;
@@ -348,32 +408,34 @@ private:
             intersection->barycentric = hit->bary;
             reducer.reduce(
                 candidate, intersection,
-                (binding.flags & material_flag_may_be_transparent) != 0u,
+                (material_flags & material_flag_may_be_transparent) != 0u,
                 transparent_maximum);
           };
         };
     const auto handle_procedural = [&](luisa::compute::ProceduralCandidate
                                            &candidate) noexcept {
       const auto hit = candidate.hit();
-      const auto curve = _curves->emit_metadata(scene, hit->inst, hit->prim);
-      $if(curve.geometry.primitive_kind == geometry_kind_curve) {
-        const auto object =
-            _materials->cycles_object_index(hit->inst, curve.instance);
+      const auto curve = emit_curve_metadata(scene, hit->inst, hit->prim);
+      $if(curve.primitive.primitive_kind == geometry_kind_curve) {
+        const auto object = curve.primitive.instance.cycles_object_index;
         const auto primitive = curve.segment.cycles_curve_index;
         const auto excluded = source.matches(object, primitive) |
                               light.matches(object, primitive);
         $if(!excluded) {
           const auto object_ray = candidate.object_ray();
-          const auto control_points =
-              _curves->emit_control_points(scene, curve);
+          const auto control_points = emit_curve_control_points(scene, curve);
           const auto exact =
               _ribbons->intersect(object_ray, control_points,
-                                  curve.geometry.curve_subdivision_level);
+                                  curve.primitive.curve_subdivision_level);
           $if(exact.valid) {
-            const auto material_slot = _materials->curve_material_slot(
-                scene, curve.geometry, curve.segment);
-            const auto binding = _materials->resolve_binding(
-                scene, curve.instance, curve.geometry, material_slot);
+            const auto material_slot = scene->heap
+                                           ->buffer<luisa::uint>(
+                                               curve.primitive.instance
+                                                       .bindless_base +
+                                               4u)
+                                           .read(curve.segment.curve_index);
+            const auto material_flags = resolve_material_flags(
+                scene, curve.primitive, material_slot);
             Var<ShadowIntersectionCall> intersection;
             intersection->instance = hit->inst;
             intersection->primitive = hit->prim;
@@ -383,7 +445,7 @@ private:
             intersection->barycentric = make_float2(exact.u, exact.v);
             reducer.reduce(
                 candidate, intersection,
-                (binding.flags & material_flag_may_be_transparent) != 0u,
+                (material_flags & material_flag_may_be_transparent) != 0u,
                 transparent_maximum);
           };
         };
@@ -416,13 +478,8 @@ private:
 public:
   explicit UnifiedSceneTraversalComponent(SceneTraversalStagePlan plan)
       : _plan{plan},
-        _curves{plan.primitives.curves ? make_curve_primitive_component()
-                                       : nullptr},
         _ribbons{plan.primitives.curves ? make_curve_ribbon_component()
-                                        : nullptr},
-        _materials{plan.primitives.empty()
-                       ? nullptr
-                       : make_primitive_material_component()} {}
+                                        : nullptr} {}
 
   Var<luisa::compute::CommittedHit>
   closest(const std::shared_ptr<LuisaSceneData> &scene,
