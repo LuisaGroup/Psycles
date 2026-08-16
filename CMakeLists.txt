@@ -291,6 +291,9 @@ if(PSYCLES_ENABLE_LUISA)
             target_compile_features(
                 psycles_luisa_path_scheduler_tests
                 PRIVATE cxx_std_20)
+            target_include_directories(
+                psycles_luisa_path_scheduler_tests
+                PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
             add_test(
                 NAME psycles.luisa_path_scheduler
                 COMMAND psycles_luisa_path_scheduler_tests)

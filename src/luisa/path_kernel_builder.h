@@ -2,6 +2,7 @@
 
 #include "path_kernel_direct_light_task.h"
 #include "path_kernel_scene_geometry_plan.h"
+#include "path_kernel_stage_policy.h"
 #include "path_kernel_volume_state.h"
 #include "path_tracer_camera.h"
 #include "path_tracer_environment.h"
@@ -169,18 +170,6 @@ can_stage_direct_light_queue(bool requested, bool path_trace_enabled,
 enum class PathFilmAccumulation : std::uint8_t {
     serial,
     atomic,
-};
-
-// Host/JIT policy for placing coroutine transitions in the one authoritative
-// path program. This is deliberately not a device enum: `none` records the
-// megakernel, while the coroutine policies insert different `$suspend`
-// statements around the same stage objects and closure implementations.
-enum class PathCoroutineCutPolicy : std::uint8_t {
-    none,
-    // Materialize the same main-path scheduling boundaries as Cycles'
-    // GPU integrator. This remains one canonical Luisa path program: the
-    // policy only inserts host-recorded suspend points before each stage.
-    cycles_wavefront,
 };
 
 struct PathKernelInvocation {
