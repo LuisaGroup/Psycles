@@ -341,6 +341,11 @@ struct LuisaSceneData {
     Buffer<InstanceGpu> instance_buffer;
     Buffer<MaterialBindingGpu> geometry_material_buffer;
     Buffer<MaterialBindingGpu> override_material_buffer;
+    // Read-only traversal quotient. These tables project the immutable scene
+    // records onto exactly the identity/material-capability fields observed by
+    // candidate callbacks; full material bindings remain the shading source.
+    Buffer<SceneTraversalInstanceGpu> traversal_instance_buffer;
+    Buffer<luisa::uint> traversal_material_flags_buffer;
     Buffer<AttributeBindingGpu> attribute_binding_buffer;
     Buffer<AttributeRangeGpu> attribute_range_buffer;
     std::uint32_t attribute_binding_slot{};

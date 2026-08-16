@@ -4,6 +4,7 @@
 
 #include <span>
 #include <string>
+#include <vector>
 
 namespace psycles::luisa_backend::detail {
 
@@ -11,6 +12,35 @@ namespace psycles::luisa_backend::detail {
     contract::MeshAttributeDomain domain) noexcept;
 
 [[nodiscard]] Vec3f from_luisa(luisa::float3 value) noexcept;
+
+struct SceneTraversalTableBuildInput {
+    std::span<const GeometryGpu> geometries;
+    std::span<const InstanceGpu> instances;
+    std::span<const MaterialBindingGpu> geometry_materials;
+    std::span<const MaterialBindingGpu> override_materials;
+};
+
+struct SceneTraversalTableBuildResult {
+    std::vector<SceneTraversalInstanceGpu> instances;
+    std::vector<luisa::uint> material_flags;
+    std::string diagnostic;
+
+    [[nodiscard]] bool ok() const noexcept {
+        return diagnostic.empty();
+    }
+};
+
+// Builds the immutable traversal quotient. For every source instance i and
+// material slot s, the dense table must preserve exactly the existing resolver
+// relation:
+//
+//   base = geometry[min(s, max(material_count, 1) - 1)]
+//   effective = s < override_count ? override[s] : base
+//
+// Only effective.flags is projected; raw closures and their parameters remain
+// exclusively in the ordinary material tables.
+[[nodiscard]] SceneTraversalTableBuildResult
+build_scene_traversal_tables(SceneTraversalTableBuildInput input);
 
 struct SceneTableUploadInput {
     luisa::vector<GeometryGpu> &geometries;

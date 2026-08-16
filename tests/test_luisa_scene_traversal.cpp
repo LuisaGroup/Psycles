@@ -6,6 +6,7 @@
 #include "path_kernel_subsurface_intersection.h"
 #include "path_tracer_geometry.h"
 #include "path_tracer_scene_geometry.h"
+#include "path_tracer_scene_upload.h"
 
 #include <psycles/luisa/surface_ray.h>
 
@@ -447,6 +448,73 @@ int main(int argc, char **argv) {
       MaterialBindingGpu{.surface_tag = 79u,
                          .cycles_shader_index = 11u,
                          .material_identity = 111u}};
+  const auto traversal_tables = build_scene_traversal_tables(
+      {.geometries = geometries,
+       .instances = instances,
+       .geometry_materials = geometry_materials,
+       .override_materials = override_materials});
+  if (!traversal_tables.ok() ||
+      traversal_tables.instances.size() != instances.size() ||
+      traversal_tables.material_flags.size() !=
+          geometry_materials.size() + override_materials.size() ||
+      traversal_tables.instances[1u].bindless_base != curve_bindless_base ||
+      traversal_tables.instances[1u].cycles_object_index != 22u ||
+      traversal_tables.instances[1u]
+              .primitive_kind_and_curve_subdivision !=
+          pack_scene_traversal_primitive(geometry_kind_curve, 2u) ||
+      traversal_tables.instances[8u].override_material_offset != 3u ||
+      (traversal_tables.material_flags[3u] &
+       material_flag_may_be_transparent) == 0u) {
+    std::cerr << "scene traversal quotient construction failed\n";
+    return EXIT_FAILURE;
+  }
+  auto invalid_instances = instances;
+  invalid_instances[0u].geometry_index =
+      static_cast<std::uint32_t>(geometries.size());
+  if (build_scene_traversal_tables(
+          {.geometries = geometries,
+           .instances = invalid_instances,
+           .geometry_materials = geometry_materials,
+           .override_materials = override_materials})
+          .ok()) {
+    std::cerr << "scene traversal quotient accepted an invalid geometry\n";
+    return EXIT_FAILURE;
+  }
+  invalid_instances = instances;
+  invalid_instances[0u].cycles_primitive_offset += 1u;
+  if (build_scene_traversal_tables(
+          {.geometries = geometries,
+           .instances = invalid_instances,
+           .geometry_materials = geometry_materials,
+           .override_materials = override_materials})
+          .ok()) {
+    std::cerr << "scene traversal quotient accepted inconsistent identity\n";
+    return EXIT_FAILURE;
+  }
+  invalid_instances = instances;
+  invalid_instances[0u].override_count =
+      static_cast<std::uint32_t>(override_materials.size() + 1u);
+  if (build_scene_traversal_tables(
+          {.geometries = geometries,
+           .instances = invalid_instances,
+           .geometry_materials = geometry_materials,
+           .override_materials = override_materials})
+          .ok()) {
+    std::cerr << "scene traversal quotient accepted an invalid override\n";
+    return EXIT_FAILURE;
+  }
+  auto invalid_geometries = geometries;
+  invalid_geometries[0u].curve_subdivision_level =
+      scene_traversal_curve_subdivision_maximum + 1u;
+  if (build_scene_traversal_tables(
+          {.geometries = invalid_geometries,
+           .instances = instances,
+           .geometry_materials = geometry_materials,
+           .override_materials = override_materials})
+          .ok()) {
+    std::cerr << "scene traversal quotient accepted lossy packed metadata\n";
+    return EXIT_FAILURE;
+  }
   constexpr std::array vertices{luisa::float3{-2.0f, -2.0f, 4.0f},
                                 luisa::float3{2.0f, -2.0f, 4.0f},
                                 luisa::float3{0.0f, 2.0f, 4.0f}};
@@ -516,6 +584,12 @@ int main(int argc, char **argv) {
       device.create_buffer<MaterialBindingGpu>(geometry_materials.size());
   scene->override_material_buffer =
       device.create_buffer<MaterialBindingGpu>(override_materials.size());
+  scene->traversal_instance_buffer =
+      device.create_buffer<SceneTraversalInstanceGpu>(
+          traversal_tables.instances.size());
+  scene->traversal_material_flags_buffer =
+      device.create_buffer<luisa::uint>(
+          traversal_tables.material_flags.size());
   auto vertex_buffer = device.create_buffer<luisa::float3>(vertices.size());
   auto triangle_buffer = device.create_buffer<Triangle>(triangles.size());
   auto mesh = device.create_mesh(vertex_buffer, triangle_buffer);
@@ -1118,6 +1192,10 @@ int main(int argc, char **argv) {
                 luisa::span{geometry_materials})
          << scene->override_material_buffer.copy_from(
                 luisa::span{override_materials})
+         << scene->traversal_instance_buffer.copy_from(
+                luisa::span{traversal_tables.instances})
+         << scene->traversal_material_flags_buffer.copy_from(
+                luisa::span{traversal_tables.material_flags})
          << vertex_buffer.copy_from(luisa::span{vertices})
          << triangle_buffer.copy_from(luisa::span{triangles})
          << bottle_vertex_buffer.copy_from(luisa::span{bottle_vertices})
