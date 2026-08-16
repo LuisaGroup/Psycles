@@ -255,6 +255,20 @@ struct ShadowIntersectionCall {
 // predicate for the next traversal batch.
 inline constexpr std::size_t shadow_intersection_batch_capacity = 4u;
 
+// Private reduction state returned by an externally stored shadow traversal.
+// The retained intersections are deliberately absent: candidate callbacks
+// write them directly to the invocation-owned SoA, exactly as Cycles writes
+// shadow intersections to IntegratorShadowState. This type boundary prevents
+// a RayQuery callable from silently rematerializing the four-hit array in its
+// return ABI and extending that private live range across traversal.
+struct ShadowIntersectionSummaryCall {
+  luisa::uint count{};
+  luisa::uint total{};
+  luisa::uint blocked{};
+};
+
+static_assert(sizeof(ShadowIntersectionSummaryCall) == 12u);
+
 struct ShadowIntersectionBatchCall {
   std::array<ShadowIntersectionCall, shadow_intersection_batch_capacity> hits{};
   luisa::uint count{};
@@ -644,6 +658,8 @@ LUISA_STRUCT(
     hit_type,
     distance,
     barycentric) {};
+LUISA_STRUCT(psycles::luisa_backend::detail::ShadowIntersectionSummaryCall,
+             count, total, blocked){};
 LUISA_STRUCT(psycles::luisa_backend::detail::ShadowIntersectionBatchCall, hits,
              count, total, blocked){};
 LUISA_STRUCT(psycles::luisa_backend::detail::ShadowSurfaceEvaluationCall,

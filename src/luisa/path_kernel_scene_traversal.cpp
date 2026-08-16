@@ -222,6 +222,14 @@ public:
     batch->blocked = _blocked;
     return batch;
   }
+
+  [[nodiscard]] Var<ShadowIntersectionSummaryCall> summary() const noexcept {
+    Var<ShadowIntersectionSummaryCall> result;
+    result->count = _count;
+    result->total = _total;
+    result->blocked = _blocked;
+    return result;
+  }
 };
 
 class UnifiedSceneTraversalComponent final : public SceneTraversalComponent {
@@ -304,24 +312,15 @@ private:
         .trace();
   }
 
-  [[nodiscard]] Var<ShadowIntersectionBatchCall> collect_shadow_batch(
+  [[nodiscard]] Var<ShadowIntersectionSummaryCall> reduce_shadow_candidates(
       const std::shared_ptr<LuisaSceneData> &scene,
       const Var<luisa::compute::Ray> &ray, Expr<std::uint32_t> visibility_mask,
       const ScenePrimitiveIdentity &source, const ScenePrimitiveIdentity &light,
       Expr<std::uint32_t> transparent_maximum,
-      const ShadowIntersectionBatchStorage *external_storage,
-      Expr<std::uint32_t> storage_invocation,
-      Expr<std::uint32_t> storage_capacity) const noexcept {
-    std::unique_ptr<ShadowHitStorage> hit_storage;
-    if (external_storage == nullptr) {
-      hit_storage = std::make_unique<LocalShadowHitStorage>(ray->t_max());
-    } else {
-      hit_storage = std::make_unique<SoAShadowHitStorage>(
-          external_storage, storage_invocation, storage_capacity);
-    }
-    ShadowBatchReducer reducer{*hit_storage, ray->t_max()};
+      ShadowHitStorage &hit_storage) const noexcept {
+    ShadowBatchReducer reducer{hit_storage, ray->t_max()};
     if (_plan.primitives.empty()) {
-      return reducer.materialize(ray->t_max());
+      return reducer.summary();
     }
 
     const auto handle_surface =
@@ -411,7 +410,7 @@ private:
               .trace();
       static_cast<void>(ignored);
     }
-    return reducer.materialize(ray->t_max());
+    return reducer.summary();
   }
 
 public:
@@ -446,13 +445,30 @@ public:
       const std::shared_ptr<LuisaSceneData> &scene,
       const Var<luisa::compute::Ray> &ray, Expr<std::uint32_t> visibility_mask,
       const ScenePrimitiveIdentity &source, const ScenePrimitiveIdentity &light,
+      Expr<std::uint32_t> transparent_maximum) const noexcept override {
+    LocalShadowHitStorage storage{ray->t_max()};
+    const auto summary = reduce_shadow_candidates(
+        scene, ray, visibility_mask, source, light, transparent_maximum,
+        storage);
+    Var<ShadowIntersectionBatchCall> batch;
+    storage.materialize(batch, summary->count, ray->t_max());
+    batch->count = summary->count;
+    batch->total = summary->total;
+    batch->blocked = summary->blocked;
+    return batch;
+  }
+
+  Var<ShadowIntersectionSummaryCall> collect_shadow_summary(
+      const std::shared_ptr<LuisaSceneData> &scene,
+      const Var<luisa::compute::Ray> &ray, Expr<std::uint32_t> visibility_mask,
+      const ScenePrimitiveIdentity &source, const ScenePrimitiveIdentity &light,
       Expr<std::uint32_t> transparent_maximum,
-      const ShadowIntersectionBatchStorage *storage,
+      const ShadowIntersectionBatchStorage &storage,
       Expr<std::uint32_t> storage_invocation,
       Expr<std::uint32_t> storage_capacity) const noexcept override {
-    return collect_shadow_batch(scene, ray, visibility_mask, source, light,
-                                transparent_maximum, storage,
-                                storage_invocation, storage_capacity);
+    SoAShadowHitStorage hits{&storage, storage_invocation, storage_capacity};
+    return reduce_shadow_candidates(scene, ray, visibility_mask, source, light,
+                                    transparent_maximum, hits);
   }
 };
 

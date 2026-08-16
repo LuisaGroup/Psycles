@@ -45,6 +45,16 @@ public:
                const luisa::compute::Var<ShadowIntersectionCall> &hit,
                luisa::compute::Expr<std::uint32_t> runtime_capacity) const
         noexcept;
+
+    // Materialization is intentionally a consumer-side operation. Calling it
+    // only after the summary RayQuery callable returns keeps the four retained
+    // records outside the traversal callback ABI and private live range.
+    [[nodiscard]] luisa::compute::Var<ShadowIntersectionBatchCall>
+    materialize(
+        luisa::compute::Expr<std::uint32_t> invocation,
+        const luisa::compute::Var<ShadowIntersectionSummaryCall> &summary,
+        luisa::compute::Expr<float> miss_distance,
+        luisa::compute::Expr<std::uint32_t> runtime_capacity) const noexcept;
 };
 
 }// namespace psycles::luisa_backend::detail
