@@ -3,6 +3,7 @@
 #include "curve_ribbon_component.h"
 #include "path_kernel_curve_primitive.h"
 #include "path_kernel_primitive_material.h"
+#include "path_kernel_shadow_storage.h"
 
 #include <psycles/luisa/surface_ray.h>
 
@@ -21,79 +22,207 @@ Bool ScenePrimitiveIdentity::matches(
 
 namespace {
 
-[[nodiscard]] Bool
-shadow_batch_contains(const Var<ShadowIntersectionBatchCall> &batch,
-                      const Var<ShadowIntersectionCall> &candidate) noexcept {
-  Bool duplicate = false;
-  for (auto index = std::size_t{0u}; index < shadow_intersection_batch_capacity;
-       ++index) {
-    const auto &stored = batch->hits[static_cast<luisa::uint>(index)];
-    duplicate |= (static_cast<std::uint32_t>(index) < batch->count) &
-                 (stored->instance == candidate->instance) &
-                 (stored->primitive == candidate->primitive) &
-                 (stored->hit_type == candidate->hit_type);
-  }
-  return duplicate;
+void initialize_shadow_intersection(Var<ShadowIntersectionCall> &hit,
+                                    Expr<float> miss_distance) noexcept {
+  hit->instance = surface_ray::invalid_primitive;
+  hit->primitive = surface_ray::invalid_primitive;
+  hit->hit_type = static_cast<std::uint32_t>(luisa::compute::HitType::Miss);
+  hit->distance = miss_distance;
+  hit->barycentric = make_float2(0.0f);
 }
 
-// Maintains the following reduction invariant after every accepted candidate:
-// hits[0:count) is sorted by nondecreasing t and contains exactly the nearest
-// min(total, capacity) candidates seen so far. This makes the result
-// independent of the backend's candidate enumeration order.
-void insert_shadow_batch_hit(
-    Var<ShadowIntersectionBatchCall> &batch,
-    const Var<ShadowIntersectionCall> &candidate) noexcept {
-  UInt insertion = batch->count;
-  for (auto index = std::size_t{0u}; index < shadow_intersection_batch_capacity;
-       ++index) {
-    const auto &stored = batch->hits[static_cast<luisa::uint>(index)];
-    const auto first_larger =
-        (static_cast<std::uint32_t>(index) < batch->count) &
-        (candidate->distance < stored->distance) & (insertion == batch->count);
-    insertion =
-        select(insertion, static_cast<std::uint32_t>(index), first_larger);
+// Host-side virtual dispatch selects the storage policy while recording the
+// shader AST. No virtual call or weakly typed payload survives on the device.
+class ShadowHitStorage {
+
+public:
+  virtual ~ShadowHitStorage() noexcept = default;
+  [[nodiscard]] virtual Var<ShadowIntersectionCall>
+  read(Expr<std::uint32_t> index) const noexcept = 0;
+  virtual void write(Expr<std::uint32_t> index,
+                     const Var<ShadowIntersectionCall> &hit) noexcept = 0;
+  virtual void materialize(Var<ShadowIntersectionBatchCall> &batch,
+                           Expr<std::uint32_t> count,
+                           Expr<float> miss_distance) const noexcept = 0;
+};
+
+class LocalShadowHitStorage final : public ShadowHitStorage {
+
+private:
+  Var<ShadowIntersectionBatchCall> _batch;
+
+public:
+  explicit LocalShadowHitStorage(Expr<float> miss_distance) noexcept {
+    for (auto index = std::size_t{0u};
+         index < shadow_intersection_batch_capacity; ++index) {
+      initialize_shadow_intersection(
+          _batch->hits[static_cast<luisa::uint>(index)], miss_distance);
+    }
   }
 
-  $if(insertion <
-      static_cast<std::uint32_t>(shadow_intersection_batch_capacity)) {
-    for (auto index = shadow_intersection_batch_capacity - 1u; index != 0u;
-         --index) {
-      const auto move = (insertion < static_cast<std::uint32_t>(index)) &
-                        (static_cast<std::uint32_t>(index) <= batch->count);
-      $if(move) {
-        batch->hits[static_cast<luisa::uint>(index)] =
-            batch->hits[static_cast<luisa::uint>(index - 1u)];
+  [[nodiscard]] Var<ShadowIntersectionCall>
+  read(Expr<std::uint32_t> index) const noexcept override {
+    return _batch->hits[index];
+  }
+
+  void write(Expr<std::uint32_t> index,
+             const Var<ShadowIntersectionCall> &hit) noexcept override {
+    _batch->hits[index] = hit;
+  }
+
+  void materialize(Var<ShadowIntersectionBatchCall> &batch,
+                   Expr<std::uint32_t>,
+                   Expr<float>) const noexcept override {
+    for (auto index = std::size_t{0u};
+         index < shadow_intersection_batch_capacity; ++index) {
+      batch->hits[static_cast<luisa::uint>(index)] =
+          _batch->hits[static_cast<luisa::uint>(index)];
+    }
+  }
+};
+
+class SoAShadowHitStorage final : public ShadowHitStorage {
+
+private:
+  const ShadowIntersectionBatchStorage *_storage;
+  UInt _invocation;
+  UInt _runtime_capacity;
+
+public:
+  SoAShadowHitStorage(const ShadowIntersectionBatchStorage *storage,
+                      Expr<std::uint32_t> invocation,
+                      Expr<std::uint32_t> runtime_capacity) noexcept
+      : _storage{storage},
+        _invocation{invocation},
+        _runtime_capacity{runtime_capacity} {}
+
+  [[nodiscard]] Var<ShadowIntersectionCall>
+  read(Expr<std::uint32_t> index) const noexcept override {
+    return _storage->read(_invocation, index, _runtime_capacity);
+  }
+
+  void write(Expr<std::uint32_t> index,
+             const Var<ShadowIntersectionCall> &hit) noexcept override {
+    _storage->write(_invocation, index, hit, _runtime_capacity);
+  }
+
+  void materialize(Var<ShadowIntersectionBatchCall> &batch,
+                   Expr<std::uint32_t> count,
+                   Expr<float> miss_distance) const noexcept override {
+    for (auto index = std::size_t{0u};
+         index < shadow_intersection_batch_capacity; ++index) {
+      auto &hit = batch->hits[static_cast<luisa::uint>(index)];
+      initialize_shadow_intersection(hit, miss_distance);
+      $if(static_cast<std::uint32_t>(index) < count) {
+        hit = read(static_cast<std::uint32_t>(index));
       };
     }
-    batch->hits[insertion] = candidate;
-    batch->count =
-        min(batch->count + 1u,
-            static_cast<std::uint32_t>(shadow_intersection_batch_capacity));
-  };
-}
+  }
+};
 
-template <typename Candidate>
-void reduce_shadow_candidate(Candidate &query_candidate,
-                             Var<ShadowIntersectionBatchCall> &batch,
-                             const Var<ShadowIntersectionCall> &intersection,
-                             Expr<bool> may_be_transparent,
-                             Expr<std::uint32_t> transparent_maximum) noexcept {
-  const auto duplicate = shadow_batch_contains(batch, intersection);
-  $if(!duplicate) {
-    $if(!may_be_transparent) {
-      batch->blocked = 1u;
-      query_candidate.terminate();
+// A reduction over a candidate prefix is modeled by
+// (R, n, m, i): R is the retained set, n the number of accepted candidates,
+// m=max(t in R), and i=argmax(t in R). The inductive update either appends
+// while |R|<k, rejects t>=m, or replaces R[i] and recomputes (m,i). Thus R is
+// exactly the nearest min(n,k) candidates after every prefix, independently
+// of candidate enumeration order (apart from unobservable equal-t ties).
+class ShadowBatchReducer {
+
+private:
+  ShadowHitStorage &_hits;
+  UInt _count{0u};
+  UInt _total{0u};
+  UInt _blocked{0u};
+  UInt _replacement_index{0u};
+  Float _max_record_distance;
+
+private:
+  void update_farthest() noexcept {
+    _replacement_index = 0u;
+    _max_record_distance = _hits.read(0u)->distance;
+    for (auto index = std::size_t{1u};
+         index < shadow_intersection_batch_capacity; ++index) {
+      const auto distance =
+          _hits.read(static_cast<std::uint32_t>(index))->distance;
+      const auto farther = distance > _max_record_distance;
+      _replacement_index = select(
+          _replacement_index, static_cast<std::uint32_t>(index), farther);
+      _max_record_distance =
+          select(_max_record_distance, distance, farther);
+    }
+  }
+
+  [[nodiscard]] Bool
+  contains(const Var<ShadowIntersectionCall> &candidate) const noexcept {
+    Bool duplicate = false;
+    for (auto index = std::size_t{0u};
+         index < shadow_intersection_batch_capacity; ++index) {
+      $if(static_cast<std::uint32_t>(index) < _count) {
+        const auto stored = _hits.read(static_cast<std::uint32_t>(index));
+        duplicate |= (stored->instance == candidate->instance) &
+                     (stored->primitive == candidate->primitive) &
+                     (stored->hit_type == candidate->hit_type);
+      };
+    }
+    return duplicate;
+  }
+
+  void insert(const Var<ShadowIntersectionCall> &candidate) noexcept {
+    constexpr auto capacity =
+        static_cast<std::uint32_t>(shadow_intersection_batch_capacity);
+    $if(_count < capacity) {
+      _hits.write(_count, candidate);
+      _count += 1u;
+      $if(_count == capacity) { update_farthest(); }
+      $else { _replacement_index = _count; };
     }
     $else {
-      batch->total += 1u;
-      $if(batch->total > transparent_maximum) {
-        batch->blocked = 1u;
+      // Strict comparison retains the first-seen representative for equal-t
+      // ties, matching Cycles' bounded replacement rule.
+      $if(candidate->distance < _max_record_distance) {
+        _hits.write(_replacement_index, candidate);
+        update_farthest();
+      };
+    };
+  }
+
+public:
+  ShadowBatchReducer(ShadowHitStorage &hits,
+                     Expr<float> miss_distance) noexcept
+      : _hits{hits}, _max_record_distance{miss_distance} {}
+
+  template <typename Candidate>
+  void reduce(Candidate &query_candidate,
+              const Var<ShadowIntersectionCall> &intersection,
+              Expr<bool> may_be_transparent,
+              Expr<std::uint32_t> transparent_maximum) noexcept {
+    const auto duplicate = contains(intersection);
+    $if(!duplicate) {
+      $if(!may_be_transparent) {
+        _blocked = 1u;
         query_candidate.terminate();
       }
-      $else { insert_shadow_batch_hit(batch, intersection); };
+      $else {
+        _total += 1u;
+        $if(_total > transparent_maximum) {
+          _blocked = 1u;
+          query_candidate.terminate();
+        }
+        $else { insert(intersection); };
+      };
     };
-  };
-}
+  }
+
+  [[nodiscard]] Var<ShadowIntersectionBatchCall>
+  materialize(Expr<float> miss_distance) const noexcept {
+    Var<ShadowIntersectionBatchCall> batch;
+    _hits.materialize(batch, _count, miss_distance);
+    batch->count = _count;
+    batch->total = _total;
+    batch->blocked = _blocked;
+    return batch;
+  }
+};
 
 class UnifiedSceneTraversalComponent final : public SceneTraversalComponent {
 
@@ -179,26 +308,20 @@ private:
       const std::shared_ptr<LuisaSceneData> &scene,
       const Var<luisa::compute::Ray> &ray, Expr<std::uint32_t> visibility_mask,
       const ScenePrimitiveIdentity &source, const ScenePrimitiveIdentity &light,
-      Expr<std::uint32_t> transparent_maximum) const noexcept {
-    Var<ShadowIntersectionBatchCall> batch;
-    // A DSL Var has storage but no implicit value initialization. Both the
-    // duplicate check and sorted insertion evaluate fixed-capacity lanes
-    // eagerly before masking them with `count`, so every lane must hold a
-    // defined value even while logically inactive.
-    batch->count = 0u;
-    batch->total = 0u;
-    batch->blocked = 0u;
-    for (auto index = std::size_t{0u};
-         index < shadow_intersection_batch_capacity; ++index) {
-      auto &hit = batch->hits[static_cast<luisa::uint>(index)];
-      hit->instance = surface_ray::invalid_primitive;
-      hit->primitive = surface_ray::invalid_primitive;
-      hit->hit_type = static_cast<std::uint32_t>(luisa::compute::HitType::Miss);
-      hit->distance = ray->t_max();
-      hit->barycentric = make_float2(0.0f);
+      Expr<std::uint32_t> transparent_maximum,
+      const ShadowIntersectionBatchStorage *external_storage,
+      Expr<std::uint32_t> storage_invocation,
+      Expr<std::uint32_t> storage_capacity) const noexcept {
+    std::unique_ptr<ShadowHitStorage> hit_storage;
+    if (external_storage == nullptr) {
+      hit_storage = std::make_unique<LocalShadowHitStorage>(ray->t_max());
+    } else {
+      hit_storage = std::make_unique<SoAShadowHitStorage>(
+          external_storage, storage_invocation, storage_capacity);
     }
+    ShadowBatchReducer reducer{*hit_storage, ray->t_max()};
     if (_plan.primitives.empty()) {
-      return batch;
+      return reducer.materialize(ray->t_max());
     }
 
     const auto handle_surface =
@@ -224,8 +347,8 @@ private:
                 static_cast<std::uint32_t>(luisa::compute::HitType::Surface);
             intersection->distance = hit->committed_ray_t;
             intersection->barycentric = hit->bary;
-            reduce_shadow_candidate(
-                candidate, batch, intersection,
+            reducer.reduce(
+                candidate, intersection,
                 (binding.flags & material_flag_may_be_transparent) != 0u,
                 transparent_maximum);
           };
@@ -259,8 +382,8 @@ private:
                 static_cast<std::uint32_t>(luisa::compute::HitType::Procedural);
             intersection->distance = exact.distance;
             intersection->barycentric = make_float2(exact.u, exact.v);
-            reduce_shadow_candidate(
-                candidate, batch, intersection,
+            reducer.reduce(
+                candidate, intersection,
                 (binding.flags & material_flag_may_be_transparent) != 0u,
                 transparent_maximum);
           };
@@ -288,7 +411,7 @@ private:
               .trace();
       static_cast<void>(ignored);
     }
-    return batch;
+    return reducer.materialize(ray->t_max());
   }
 
 public:
@@ -323,9 +446,13 @@ public:
       const std::shared_ptr<LuisaSceneData> &scene,
       const Var<luisa::compute::Ray> &ray, Expr<std::uint32_t> visibility_mask,
       const ScenePrimitiveIdentity &source, const ScenePrimitiveIdentity &light,
-      Expr<std::uint32_t> transparent_maximum) const noexcept override {
+      Expr<std::uint32_t> transparent_maximum,
+      const ShadowIntersectionBatchStorage *storage,
+      Expr<std::uint32_t> storage_invocation,
+      Expr<std::uint32_t> storage_capacity) const noexcept override {
     return collect_shadow_batch(scene, ray, visibility_mask, source, light,
-                                transparent_maximum);
+                                transparent_maximum, storage,
+                                storage_invocation, storage_capacity);
   }
 };
 

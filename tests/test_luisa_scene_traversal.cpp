@@ -2,7 +2,9 @@
 #include "path_kernel_curve_geometry.h"
 #include "path_kernel_curve_primitive.h"
 #include "path_kernel_scene_traversal.h"
+#include "path_kernel_shadow_storage.h"
 #include "path_kernel_subsurface_intersection.h"
+#include "path_tracer_geometry.h"
 #include "path_tracer_scene_geometry.h"
 
 #include <psycles/luisa/surface_ray.h>
@@ -17,6 +19,8 @@
 #include <vector>
 
 #include <luisa/luisa-compute.h>
+#include <luisa/coro/schedulers/wavefront.h>
+#include <luisa/dsl/coro_func.h>
 #include <luisa/xir/instructions/if.h>
 #include <luisa/xir/instructions/ray_query.h>
 #include <luisa/xir/instructions/resource.h>
@@ -248,6 +252,11 @@ int main(int argc, char **argv) {
   auto device = context.create_device(backend);
   auto stream = device.create_stream();
   auto scene = std::make_shared<LuisaSceneData>();
+  // Production traversal plans are derived from these host capability lists;
+  // the synthetic test populates device buffers manually, so mirror the one
+  // triangle and one curve resource represented below.
+  scene->geometries.resize(1u);
+  scene->curve_geometries.resize(1u);
 
   psycles::Mat4f bottle_transform;
   bottle_transform.elements[0u] = 0.5903866291046143f;
@@ -373,42 +382,42 @@ int main(int argc, char **argv) {
       InstanceGpu{.geometry_index = 0u,
                   .override_offset = 1u,
                   .override_count = 1u,
-                  .visibility_mask = 0x02u,
+                  .visibility_mask = 0x02u | shadow_visibility,
                   .cycles_object_index = 3006u,
                   .cycles_primitive_offset = 100u,
                   .cycles_world_to_object = identity_world_to_object},
       InstanceGpu{.geometry_index = 0u,
                   .override_offset = 1u,
                   .override_count = 1u,
-                  .visibility_mask = 0x02u,
+                  .visibility_mask = 0x02u | shadow_visibility,
                   .cycles_object_index = 3005u,
                   .cycles_primitive_offset = 100u,
                   .cycles_world_to_object = identity_world_to_object},
       InstanceGpu{.geometry_index = 0u,
                   .override_offset = 1u,
                   .override_count = 1u,
-                  .visibility_mask = 0x02u,
+                  .visibility_mask = 0x02u | shadow_visibility,
                   .cycles_object_index = 3004u,
                   .cycles_primitive_offset = 100u,
                   .cycles_world_to_object = identity_world_to_object},
       InstanceGpu{.geometry_index = 0u,
                   .override_offset = 1u,
                   .override_count = 1u,
-                  .visibility_mask = 0x02u,
+                  .visibility_mask = 0x02u | shadow_visibility,
                   .cycles_object_index = 3003u,
                   .cycles_primitive_offset = 100u,
                   .cycles_world_to_object = identity_world_to_object},
       InstanceGpu{.geometry_index = 0u,
                   .override_offset = 1u,
                   .override_count = 1u,
-                  .visibility_mask = 0x02u,
+                  .visibility_mask = 0x02u | shadow_visibility,
                   .cycles_object_index = 3002u,
                   .cycles_primitive_offset = 100u,
                   .cycles_world_to_object = identity_world_to_object},
       InstanceGpu{.geometry_index = 0u,
                   .override_offset = 1u,
                   .override_count = 1u,
-                  .visibility_mask = 0x02u,
+                  .visibility_mask = 0x02u | shadow_visibility,
                   .cycles_object_index = 3001u,
                   .cycles_primitive_offset = 100u,
                   .cycles_world_to_object = identity_world_to_object},
@@ -577,8 +586,8 @@ int main(int argc, char **argv) {
   for (auto layer = std::uint32_t{0u}; layer < 6u; ++layer) {
     const auto distance = 6.0f - static_cast<float>(layer);
     scene->accel.emplace_back(
-        mesh, translation(make_float3(10.0f, 0.0f, distance - 4.0f)), 0x02u,
-        false, 8u + layer);
+        mesh, translation(make_float3(10.0f, 0.0f, distance - 4.0f)),
+        0x02u | shadow_visibility, false, 8u + layer);
   }
   scene->accel.emplace_back(mesh, translation(make_float3(10.0f, 0.0f, 3.0f)),
                             0x04u, false, 14u);
@@ -842,25 +851,52 @@ int main(int argc, char **argv) {
   auto shader = device.compile(
       evaluate, luisa::compute::ShaderOption{.enable_cache = false});
 
+  constexpr auto shadow_batch_lane_count = std::size_t{257u};
+  constexpr auto shadow_test_block_size = std::uint32_t{256u};
   constexpr auto shadow_batch_record_count = std::size_t{9u};
+  constexpr auto shadow_batch_output_count =
+      shadow_batch_lane_count * shadow_batch_record_count;
   auto shadow_batch_output =
-      device.create_buffer<luisa::float4>(shadow_batch_record_count);
-  Kernel1D evaluate_shadow_batches = [scene, traversal](
-                                         BufferFloat4 records) noexcept {
+      device.create_buffer<luisa::float4>(shadow_batch_output_count);
+  auto shadow_batch_storage =
+      std::make_shared<ShadowIntersectionBatchStorage>(
+          device, static_cast<std::uint32_t>(shadow_batch_lane_count));
+  Kernel1D evaluate_shadow_batches =
+      [scene, traversal, shadow_batch_storage](
+          BufferFloat4 records, UInt runtime_capacity,
+          UInt runtime_block_size) noexcept {
+    set_block_size(shadow_test_block_size);
+    // Match the production coroutine mapping. Raw hardware lane registers are
+    // continuation-local, unlike dispatch_id after coroutine splitting.
+    const auto storage_invocation =
+        shadow_storage_invocation(runtime_block_size);
+    const auto record_base =
+        dispatch_x() * static_cast<std::uint32_t>(shadow_batch_record_count);
+    const auto collect =
+        [&](const Var<luisa::compute::Ray> &query_ray,
+            Expr<std::uint32_t> visibility,
+            const ScenePrimitiveIdentity &source,
+            const ScenePrimitiveIdentity &light,
+            Expr<std::uint32_t> transparent_maximum) noexcept {
+          return traversal->collect_shadow(
+              scene, query_ray, visibility, source, light,
+              transparent_maximum, shadow_batch_storage.get(),
+              storage_invocation, runtime_capacity);
+        };
     const auto ray = make_ray(make_float3(10.0f, 0.0f, 0.0f),
                               make_float3(0.0f, 0.0f, 1.0f), 0.0f, 10.0f);
-    const auto all = traversal->collect_shadow(
-        scene, ray, 0x02u, ScenePrimitiveIdentity::invalid(),
-        ScenePrimitiveIdentity::invalid(), 8u);
+    auto all = collect(ray, 0x02u, ScenePrimitiveIdentity::invalid(),
+                       ScenePrimitiveIdentity::invalid(), 8u);
+    sort_shadow_intersection_batch(all);
     for (auto index = std::size_t{0u};
          index < shadow_intersection_batch_capacity; ++index) {
       const auto &hit = all->hits[static_cast<luisa::uint>(index)];
-      records.write(static_cast<std::uint32_t>(index),
+      records.write(record_base + static_cast<std::uint32_t>(index),
                     make_float4(hit->distance, cast<float>(hit->instance),
                                 cast<float>(hit->primitive),
                                 cast<float>(hit->hit_type)));
     }
-    records.write(4u,
+    records.write(record_base + 4u,
                   make_float4(cast<float>(all->count), cast<float>(all->total),
                               cast<float>(all->blocked), 0.0f));
 
@@ -869,42 +905,193 @@ int main(int argc, char **argv) {
                  psycles::luisa_backend::surface_ray::intersection_t_offset(
                      all->hits[3u]->distance),
                  ray->t_max());
-    const auto continuation = traversal->collect_shadow(
-        scene, continuation_ray, 0x02u, ScenePrimitiveIdentity::invalid(),
-        ScenePrimitiveIdentity::invalid(), 4u);
-    records.write(5u, make_float4(continuation->hits[0u]->distance,
-                                  continuation->hits[1u]->distance,
-                                  cast<float>(continuation->count),
-                                  cast<float>(continuation->total)));
+    auto continuation =
+        collect(continuation_ray, 0x02u,
+                ScenePrimitiveIdentity::invalid(),
+                ScenePrimitiveIdentity::invalid(), 4u);
+    sort_shadow_intersection_batch(continuation);
+    records.write(record_base + 5u,
+                  make_float4(continuation->hits[0u]->distance,
+                              continuation->hits[1u]->distance,
+                              cast<float>(continuation->count),
+                              cast<float>(continuation->total)));
 
-    const auto excluded = traversal->collect_shadow(
-        scene, ray, 0x02u, {.object = 3001u, .primitive = 100u},
-        ScenePrimitiveIdentity::invalid(), 8u);
-    records.write(6u, make_float4(excluded->hits[0u]->distance,
-                                  cast<float>(excluded->hits[0u]->instance),
-                                  cast<float>(excluded->count),
-                                  cast<float>(excluded->total)));
+    auto excluded =
+        collect(ray, 0x02u, {.object = 3001u, .primitive = 100u},
+                ScenePrimitiveIdentity::invalid(), 8u);
+    sort_shadow_intersection_batch(excluded);
+    records.write(record_base + 6u,
+                  make_float4(excluded->hits[0u]->distance,
+                              cast<float>(excluded->hits[0u]->instance),
+                              cast<float>(excluded->count),
+                              cast<float>(excluded->total)));
 
-    const auto exhausted = traversal->collect_shadow(
-        scene, ray, 0x02u, ScenePrimitiveIdentity::invalid(),
-        ScenePrimitiveIdentity::invalid(), 5u);
-    records.write(7u, make_float4(cast<float>(exhausted->blocked),
-                                  cast<float>(exhausted->total),
-                                  cast<float>(exhausted->count), 0.0f));
+    const auto exhausted =
+        collect(ray, 0x02u, ScenePrimitiveIdentity::invalid(),
+                ScenePrimitiveIdentity::invalid(), 5u);
+    records.write(record_base + 7u,
+                  make_float4(cast<float>(exhausted->blocked),
+                              cast<float>(exhausted->total),
+                              cast<float>(exhausted->count), 0.0f));
 
-    const auto opaque = traversal->collect_shadow(
-        scene, ray, 0x06u, ScenePrimitiveIdentity::invalid(),
-        ScenePrimitiveIdentity::invalid(), 8u);
-    records.write(8u, make_float4(cast<float>(opaque->blocked),
-                                  cast<float>(opaque->total),
-                                  cast<float>(opaque->count), 0.0f));
+    const auto opaque =
+        collect(ray, 0x06u, ScenePrimitiveIdentity::invalid(),
+                ScenePrimitiveIdentity::invalid(), 8u);
+    records.write(record_base + 8u,
+                  make_float4(cast<float>(opaque->blocked),
+                              cast<float>(opaque->total),
+                              cast<float>(opaque->count), 0.0f));
   };
   auto shadow_batch_shader =
       device.compile(evaluate_shadow_batches,
                      luisa::compute::ShaderOption{.enable_cache = false});
 
+  // The ownership map must remain injective across block boundaries. Split
+  // the unique write and read into separate dispatches so the old
+  // thread_x-only alias is observed deterministically rather than as a race.
+  auto shadow_storage_identity_output =
+      device.create_buffer<luisa::float4>(shadow_batch_lane_count);
+  Kernel1D write_shadow_storage_identity =
+      [shadow_batch_storage](UInt runtime_capacity,
+                             UInt runtime_block_size) noexcept {
+        set_block_size(shadow_test_block_size);
+        const auto logical = dispatch_x();
+        Var<ShadowIntersectionCall> hit;
+        hit->instance = logical;
+        hit->primitive = logical * 3u + 1u;
+        hit->hit_type = logical * 5u + 2u;
+        hit->distance = cast<float>(logical) + 0.25f;
+        hit->barycentric =
+            make_float2(cast<float>(logical) + 0.5f,
+                        cast<float>(logical) + 0.75f);
+        shadow_batch_storage->write(
+            shadow_storage_invocation(runtime_block_size), 0u, hit,
+            runtime_capacity);
+      };
+  Kernel1D read_shadow_storage_identity =
+      [shadow_batch_storage](BufferFloat4 output, UInt runtime_capacity,
+                             UInt runtime_block_size) noexcept {
+        set_block_size(shadow_test_block_size);
+        const auto hit = shadow_batch_storage->read(
+            shadow_storage_invocation(runtime_block_size), 0u,
+            runtime_capacity);
+        output.write(dispatch_x(),
+                     make_float4(cast<float>(hit->instance),
+                                 cast<float>(hit->primitive),
+                                 hit->distance, hit->barycentric.x));
+      };
+  auto shadow_storage_identity_writer = device.compile(
+      write_shadow_storage_identity,
+      luisa::compute::ShaderOption{.enable_cache = false});
+  auto shadow_storage_identity_reader = device.compile(
+      read_shadow_storage_identity,
+      luisa::compute::ShaderOption{.enable_cache = false});
+
+  // Exercise the production ownership boundary, not merely the raw SoA:
+  // candidate records are transient to one resumed physical kernel, while
+  // the fully materialized batch crosses the following coroutine edge. Even
+  // and odd logical instances first enter distinct queues, so the common
+  // consumer cannot rely on physical-lane identity or queue order.
+  constexpr auto shadow_coro_record_count = std::size_t{7u};
+  constexpr auto shadow_coro_output_count =
+      shadow_batch_lane_count * shadow_coro_record_count;
+  auto shadow_coro_output =
+      device.create_buffer<luisa::float4>(shadow_coro_output_count);
+  SafeNormalizeCallable safe_normalize =
+      [](Float3 value, Float3 fallback) noexcept {
+        const auto valid = dot(value, value) > 1.0e-20f;
+        const auto selected = select(fallback, value, valid);
+        return normalize(select(make_float3(0.0f, 0.0f, 1.0f), selected,
+                                dot(selected, selected) > 1.0e-20f));
+      };
+  const auto shadow_callables = make_shadow_trace_callables(
+      scene, safe_normalize, shadow_batch_storage);
+  auto shadow_callable_output =
+      device.create_buffer<luisa::float4>(shadow_batch_lane_count);
+  Kernel1D evaluate_shadow_callable =
+      [intersect_shadow = shadow_callables.intersect](
+          BufferFloat4 records, UInt runtime_capacity,
+          UInt runtime_block_size) noexcept {
+        set_block_size(shadow_test_block_size);
+        const auto ray = make_ray(make_float3(10.0f, 0.0f, 0.0f),
+                                  make_float3(0.0f, 0.0f, 1.0f),
+                                  0.0f, 10.0f);
+        const auto batch = intersect_shadow(
+            ray, invalid_primitive, invalid_primitive,
+            invalid_primitive, invalid_primitive, 8u, runtime_capacity,
+            runtime_block_size);
+        records.write(dispatch_x(),
+                      make_float4(cast<float>(batch->count),
+                                  cast<float>(batch->total),
+                                  cast<float>(batch->blocked),
+                                  batch->hits[0u]->distance));
+      };
+  auto shadow_callable_shader =
+      device.compile(evaluate_shadow_callable,
+                     luisa::compute::ShaderOption{.enable_cache = false});
+  auto shadow_coro =
+      Coroutine<void(Buffer<luisa::float4>, std::uint32_t, std::uint32_t)>{
+      [intersect_shadow = shadow_callables.intersect](
+          BufferFloat4 records, UInt runtime_capacity,
+          UInt runtime_block_size) noexcept {
+        $if((dispatch_x() & 1u) == 0u) {
+          $suspend("shadow-query-even");
+        }
+        $else {
+          $suspend("shadow-query-odd");
+        };
+        const auto ray = make_ray(make_float3(10.0f, 0.0f, 0.0f),
+                                  make_float3(0.0f, 0.0f, 1.0f),
+                                  0.0f, 10.0f);
+        auto batch = intersect_shadow(
+            ray, invalid_primitive, invalid_primitive,
+            invalid_primitive, invalid_primitive, 8u, runtime_capacity,
+            runtime_block_size);
+        const auto record_base =
+            dispatch_x() *
+            static_cast<std::uint32_t>(shadow_coro_record_count);
+        records.write(record_base + 6u,
+                      make_float4(cast<float>(batch->count),
+                                  cast<float>(batch->total),
+                                  cast<float>(batch->blocked),
+                                  batch->hits[0u]->distance));
+        $suspend("after-intersect-shadow");
+        sort_shadow_intersection_batch(batch);
+        for (auto index = std::size_t{0u};
+             index < shadow_intersection_batch_capacity; ++index) {
+          const auto &hit = batch->hits[static_cast<luisa::uint>(index)];
+          records.write(record_base + static_cast<std::uint32_t>(index),
+                        make_float4(hit->distance,
+                                    cast<float>(hit->instance),
+                                    cast<float>(hit->primitive),
+                                    cast<float>(hit->hit_type)));
+        }
+        records.write(record_base + 4u,
+                      make_float4(cast<float>(batch->count),
+                                  cast<float>(batch->total),
+                                  cast<float>(batch->blocked), 0.0f));
+        records.write(record_base + 5u,
+                      make_float4(cast<float>(dispatch_x()),
+                                  cast<float>(batch->count),
+                                  cast<float>(batch->total),
+                                  cast<float>(batch->blocked)));
+      }};
+  luisa::compute::coro::WavefrontCoroSchedulerConfig shadow_coro_config;
+  shadow_coro_config.thread_count =
+      static_cast<std::uint32_t>(shadow_batch_lane_count);
+  shadow_coro_config.execution_block_size = shadow_test_block_size;
+  shadow_coro_config.largest_continuation_first = true;
+  shadow_coro_config.incremental_continuation_counts = true;
+  shadow_coro_config.shader_option.enable_cache = false;
+  luisa::compute::coro::WavefrontCoroScheduler shadow_coro_scheduler{
+      device, shadow_coro, shadow_coro_config};
+
   std::array<luisa::float4, record_count> actual{};
-  std::array<luisa::float4, shadow_batch_record_count> shadow_batch_actual{};
+  std::vector<luisa::float4> shadow_batch_actual(shadow_batch_output_count);
+  std::vector<luisa::float4> shadow_storage_identity_actual(
+      shadow_batch_lane_count);
+  std::vector<luisa::float4> shadow_callable_actual(shadow_batch_lane_count);
+  std::vector<luisa::float4> shadow_coro_actual(shadow_coro_output_count);
   stream << scene->geometry_buffer.copy_from(luisa::span{geometries})
          << scene->instance_buffer.copy_from(luisa::span{instances})
          << scene->geometry_material_buffer.copy_from(
@@ -930,9 +1117,37 @@ int main(int argc, char **argv) {
          << overlap_mesh.build() << curves.build() << scene->accel.build()
          << scene->subsurface_accel->build()
          << shader(output).dispatch(record_count)
-         << shadow_batch_shader(shadow_batch_output).dispatch(1u)
-         << output.copy_to(luisa::span{actual})
+         << shadow_batch_shader(
+                shadow_batch_output,
+                static_cast<std::uint32_t>(shadow_batch_lane_count),
+                shadow_test_block_size)
+                .dispatch(static_cast<std::uint32_t>(shadow_batch_lane_count))
+         << shadow_storage_identity_writer(
+                static_cast<std::uint32_t>(shadow_batch_lane_count),
+                shadow_test_block_size)
+                .dispatch(static_cast<std::uint32_t>(shadow_batch_lane_count))
+         << shadow_storage_identity_reader(
+                shadow_storage_identity_output,
+                static_cast<std::uint32_t>(shadow_batch_lane_count),
+                shadow_test_block_size)
+                .dispatch(static_cast<std::uint32_t>(shadow_batch_lane_count))
+         << shadow_callable_shader(
+                shadow_callable_output,
+                static_cast<std::uint32_t>(shadow_batch_lane_count),
+                shadow_test_block_size)
+                .dispatch(static_cast<std::uint32_t>(shadow_batch_lane_count));
+  shadow_coro_scheduler(
+      shadow_coro_output,
+      static_cast<std::uint32_t>(shadow_batch_lane_count),
+      shadow_test_block_size)
+      .dispatch(static_cast<std::uint32_t>(shadow_batch_lane_count))(stream);
+  stream << output.copy_to(luisa::span{actual})
          << shadow_batch_output.copy_to(luisa::span{shadow_batch_actual})
+         << shadow_storage_identity_output.copy_to(
+                luisa::span{shadow_storage_identity_actual})
+         << shadow_callable_output.copy_to(
+                luisa::span{shadow_callable_actual})
+         << shadow_coro_output.copy_to(luisa::span{shadow_coro_actual})
          << synchronize();
 
   constexpr std::array expected{
@@ -982,24 +1197,90 @@ int main(int argc, char **argv) {
       luisa::float4{5.0f, 6.0f, 2.0f, 2.0f},
       luisa::float4{2.0f, 12.0f, 4.0f, 5.0f},
       luisa::float4{1.0f, 6.0f, 4.0f, 0.0f}};
-  for (auto index = std::size_t{0u}; index < shadow_batch_expected.size();
-       ++index) {
-    if (!equal_record(shadow_batch_actual[index],
-                      shadow_batch_expected[index])) {
-      const auto value = shadow_batch_actual[index];
-      const auto wanted = shadow_batch_expected[index];
-      std::cerr << "shadow batch failed on " << backend << " at record "
-                << index << ": got {" << value.x << ", " << value.y << ", "
-                << value.z << ", " << value.w << "}, expected {" << wanted.x
-                << ", " << wanted.y << ", " << wanted.z << ", " << wanted.w
-                << "}\n";
+  for (auto lane = std::size_t{0u}; lane < shadow_batch_lane_count; ++lane) {
+    const auto record_base = lane * shadow_batch_record_count;
+    for (auto index = std::size_t{0u}; index < shadow_batch_expected.size();
+         ++index) {
+      if (!equal_record(shadow_batch_actual[record_base + index],
+                        shadow_batch_expected[index])) {
+        const auto value = shadow_batch_actual[record_base + index];
+        const auto wanted = shadow_batch_expected[index];
+        std::cerr << "shadow batch failed on " << backend << " at lane "
+                  << lane << ", record " << index << ": got {" << value.x
+                  << ", " << value.y << ", " << value.z << ", " << value.w
+                  << "}, expected {" << wanted.x << ", " << wanted.y << ", "
+                  << wanted.z << ", " << wanted.w << "}\n";
+        failed = true;
+      }
+    }
+    if (!near(shadow_batch_actual[record_base + 8u].x, 1.0f)) {
+      std::cerr << "opaque shadow candidate did not terminate collection on "
+                << backend << " at lane " << lane << '\n';
       failed = true;
     }
   }
-  if (!near(shadow_batch_actual[8u].x, 1.0f)) {
-    std::cerr << "opaque shadow candidate did not terminate collection on "
-              << backend << '\n';
-    failed = true;
+  for (auto lane = std::size_t{0u}; lane < shadow_batch_lane_count; ++lane) {
+    const auto logical = static_cast<float>(lane);
+    const auto identity = shadow_storage_identity_actual[lane];
+    const auto expected_identity =
+        make_float4(logical, logical * 3.0f + 1.0f,
+                    logical + 0.25f, logical + 0.5f);
+    if (!equal_record(identity, expected_identity)) {
+      std::cerr << "shadow storage ownership failed on " << backend
+                << " at lane " << lane << ": got {" << identity.x << ", "
+                << identity.y << ", " << identity.z << ", " << identity.w
+                << "}, expected {" << expected_identity.x << ", "
+                << expected_identity.y << ", " << expected_identity.z << ", "
+                << expected_identity.w << "}\n";
+      failed = true;
+    }
+  }
+  for (auto lane = std::size_t{0u}; lane < shadow_batch_lane_count; ++lane) {
+    const auto value = shadow_callable_actual[lane];
+    if (!near(value.x, 4.0f) || !near(value.y, 6.0f) ||
+        !near(value.z, 0.0f) || !(value.w >= 1.0f && value.w <= 6.0f)) {
+      std::cerr << "shadow callable failed on " << backend << " at lane "
+                << lane << ": got {" << value.x << ", " << value.y << ", "
+                << value.z << ", " << value.w << "}\n";
+      failed = true;
+    }
+  }
+  for (auto lane = std::size_t{0u}; lane < shadow_batch_lane_count; ++lane) {
+    const auto record_base = lane * shadow_coro_record_count;
+    for (auto index = std::size_t{0u}; index < 5u; ++index) {
+      if (!equal_record(shadow_coro_actual[record_base + index],
+                        shadow_batch_expected[index])) {
+        const auto value = shadow_coro_actual[record_base + index];
+        const auto wanted = shadow_batch_expected[index];
+        std::cerr << "shadow coroutine failed on " << backend << " at lane "
+                  << lane << ", record " << index << ": got {" << value.x
+                  << ", " << value.y << ", " << value.z << ", " << value.w
+                  << "}, expected {" << wanted.x << ", " << wanted.y << ", "
+                  << wanted.z << ", " << wanted.w << "}\n";
+        failed = true;
+      }
+    }
+    const auto identity = shadow_coro_actual[record_base + 5u];
+    const auto expected_identity =
+        make_float4(static_cast<float>(lane), 4.0f, 6.0f, 0.0f);
+    if (!equal_record(identity, expected_identity)) {
+      std::cerr << "shadow coroutine identity failed on " << backend
+                << " at lane " << lane << ": got {" << identity.x << ", "
+                << identity.y << ", " << identity.z << ", " << identity.w
+                << "}\n";
+      failed = true;
+    }
+    const auto before_suspend = shadow_coro_actual[record_base + 6u];
+    if (!near(before_suspend.x, 4.0f) ||
+        !near(before_suspend.y, 6.0f) ||
+        !near(before_suspend.z, 0.0f) ||
+        !(before_suspend.w >= 1.0f && before_suspend.w <= 6.0f)) {
+      std::cerr << "shadow coroutine pre-suspend result failed on " << backend
+                << " at lane " << lane << ": got {" << before_suspend.x
+                << ", " << before_suspend.y << ", " << before_suspend.z
+                << ", " << before_suspend.w << "}\n";
+      failed = true;
+    }
   }
   return failed ? EXIT_FAILURE : EXIT_SUCCESS;
 }

@@ -1,6 +1,7 @@
 #include "path_tracer_geometry.h"
 
 #include "path_kernel_scene_traversal.h"
+#include "path_kernel_shadow_storage.h"
 #include "path_kernel_surface_primitive.h"
 #include "path_tracer_shader_services.h"
 
@@ -9,6 +10,28 @@
 #include <utility>
 
 namespace psycles::luisa_backend::detail {
+
+void sort_shadow_intersection_batch(
+    Var<ShadowIntersectionBatchCall> &batch) noexcept {
+    const auto compare_exchange =
+        [&batch](luisa::uint left, luisa::uint right) noexcept {
+            auto &a = batch->hits[left];
+            auto &b = batch->hits[right];
+            $if(a->distance > b->distance) {
+                const auto temporary = def(a);
+                a = b;
+                b = temporary;
+            };
+        };
+    // Optimal sorting network for four values. Inactive lanes are initialized
+    // to ray.t_max, so the same network places them after every active hit.
+    compare_exchange(0u, 1u);
+    compare_exchange(2u, 3u);
+    compare_exchange(0u, 2u);
+    compare_exchange(1u, 3u);
+    compare_exchange(1u, 2u);
+}
+
 namespace {
 
 [[nodiscard]] EvaluateShadowSurfaceCallable
@@ -91,7 +114,8 @@ make_evaluate_shadow_surface_callable(
 
 ShadowTraceCallables make_shadow_trace_callables(
     const std::shared_ptr<LuisaSceneData> &scene,
-    const SafeNormalizeCallable &safe_normalize) noexcept {
+    const SafeNormalizeCallable &safe_normalize,
+    std::shared_ptr<const ShadowIntersectionBatchStorage> storage) noexcept {
     const auto evaluate_shadow_surface =
         make_evaluate_shadow_surface_callable(scene, safe_normalize);
     const auto traversal =
@@ -100,10 +124,26 @@ ShadowTraceCallables make_shadow_trace_callables(
                 scene->geometries.size(),
                 scene->curve_geometries.size()));
     IntersectShadowCallable intersect_shadow =
-        [scene, traversal](Var<luisa::compute::Ray> shadow_ray,
-                           UInt source_object, UInt source_primitive,
-                           UInt light_object, UInt light_primitive,
-                           UInt transparent_maximum) noexcept {
+        [scene, traversal, storage = std::move(storage)](
+            Var<luisa::compute::Ray> shadow_ray,
+            UInt source_object, UInt source_primitive,
+            UInt light_object, UInt light_primitive,
+            UInt transparent_maximum, UInt storage_capacity,
+            UInt storage_block_size) noexcept {
+          if (storage) {
+            // dispatch_id is the logical coroutine identity after splitting.
+            // Hardware block/thread registers remain continuation-local. A
+            // callable has no block size of its own, so the enclosing kernel
+            // supplies the physical stride that makes this map injective.
+            const auto invocation =
+                shadow_storage_invocation(storage_block_size);
+            return traversal->collect_shadow(
+                scene, shadow_ray, shadow_visibility,
+                {.object = source_object, .primitive = source_primitive},
+                {.object = light_object, .primitive = light_primitive},
+                transparent_maximum, storage.get(), invocation,
+                storage_capacity);
+          }
           return traversal->collect_shadow(
               scene, shadow_ray, shadow_visibility,
               {.object = source_object, .primitive = source_primitive},
@@ -120,6 +160,8 @@ ShadowTraceCallables make_shadow_trace_callables(
             UInt light_object,
             UInt light_primitive,
             UInt transparent_maximum,
+            UInt storage_capacity,
+            UInt storage_block_size,
             Var<ShaderEvaluationStateCall> shader_state_call) noexcept {
             const auto initial_shader_state =
                 unpack_shader_evaluation_state(shader_state_call);
@@ -140,9 +182,11 @@ ShadowTraceCallables make_shadow_trace_callables(
               const auto remaining =
                   transparent_maximum -
                   min(transparent_depth, transparent_maximum);
-              const auto batch =
+              auto batch =
                   intersect_shadow(shadow_ray, source_object, source_primitive,
-                                   light_object, light_primitive, remaining);
+                                   light_object, light_primitive, remaining,
+                                   storage_capacity, storage_block_size);
+              sort_shadow_intersection_batch(batch);
               $if(batch->blocked != 0u) {
                 transmittance = make_float3(0.0f);
                 active = false;

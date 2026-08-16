@@ -122,6 +122,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_kernel_pipeline.cpp
     src/luisa/path_kernel_primitive_material.cpp
     src/luisa/path_kernel_scene_traversal.cpp
+    src/luisa/path_kernel_shadow_storage.cpp
     src/luisa/path_kernel_setup.cpp
     src/luisa/path_kernel_surface_geometry.cpp
     src/luisa/path_kernel_surface_primitive.cpp

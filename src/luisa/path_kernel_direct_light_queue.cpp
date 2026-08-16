@@ -28,6 +28,7 @@ private:
   std::array<luisa::compute::coro::WavefrontCoroAuxiliaryProducer, 1u>
       _producers;
   std::uint32_t _capacity{};
+  std::uint32_t _execution_block_size{};
   std::uint32_t _host_count{};
   std::uint32_t _zero{};
 
@@ -35,19 +36,24 @@ public:
   DirectLightTaskQueue(
       luisa::compute::Device &device, const PathKernelConfig &config,
       std::uint32_t capacity,
+      std::uint32_t execution_block_size,
       const luisa::compute::ShaderOption &shader_option) noexcept
       : _tasks{device.create_soa<DirectLightTaskCall>(capacity)},
         _count{device.create_buffer<luisa::uint>(1u)},
         _producers{{{.continuation = path_transition::shade_surface,
                      .max_emitted_per_invocation = 1u}}},
-        _capacity{capacity} {
+        _capacity{capacity},
+        _execution_block_size{execution_block_size} {
+    LUISA_ASSERT(execution_block_size != 0u,
+                 "Direct-light consumer block size must be positive.");
     auto evaluator = make_direct_light_task_evaluator(config);
     auto *tasks = &_tasks;
     luisa::compute::Kernel1D consume =
-        [tasks, evaluator = std::move(evaluator)](
+        [tasks, evaluator = std::move(evaluator), execution_block_size](
             BufferFloat4 combined, BufferFloat4 light_passes,
             BufferFloat4 volume_guiding_raw,
             Var<RenderKernelParameters> parameters, UInt count) noexcept {
+          set_block_size(execution_block_size);
           const auto x = dispatch_x();
           $if(x < count) {
             const auto task_storage =
@@ -129,8 +135,10 @@ public:
                  "Invalid direct-light auxiliary dispatch count {} "
                  "for capacity {}.",
                  count, _capacity);
-    stream << _consumer(combined, light_passes, volume_guiding_raw, parameters,
-                        count)
+    auto consumer_parameters = parameters;
+    consumer_parameters.shadow_storage_block_size = _execution_block_size;
+    stream << _consumer(combined, light_passes, volume_guiding_raw,
+                        consumer_parameters, count)
                   .dispatch(count)
            << _count.copy_from(luisa::span{&_zero, 1u});
     _host_count = 0u;
@@ -142,11 +150,12 @@ public:
 DirectLightTaskQueueBinding make_direct_light_task_queue(
     luisa::compute::Device &device, const PathKernelConfig &config,
     std::uint32_t capacity,
+    std::uint32_t execution_block_size,
     const luisa::compute::ShaderOption &shader_option) noexcept {
   LUISA_ASSERT(capacity != 0u,
                "Direct-light task queue capacity must be positive.");
-  auto queue = std::make_shared<DirectLightTaskQueue>(device, config, capacity,
-                                                      shader_option);
+  auto queue = std::make_shared<DirectLightTaskQueue>(
+      device, config, capacity, execution_block_size, shader_option);
   const auto storage_words =
       luisa::compute::SOAView<DirectLightTaskCall>::compute_soa_size(capacity);
   LUISA_INFO("Psycles direct-light shadow queue: capacity={} "

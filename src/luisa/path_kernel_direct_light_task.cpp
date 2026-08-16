@@ -26,6 +26,8 @@ Var<ShadowTraceResultCall> DirectLightTaskEvaluator::trace(
       shadow_ray, task.ray_dP, task.ray_dD, task.source_object,
       task.source_primitive, task.light_object, task.light_primitive,
       parameters.transparent_max_bounces,
+      parameters.shadow_storage_capacity,
+      parameters.shadow_storage_block_size,
       pack_shader_evaluation_state(cycles_path_state::shadow_shader_state(
           task.path_depth, task.diffuse_depth, task.glossy_depth,
           task.transparent_depth, task.transmission_depth)));
@@ -52,7 +54,9 @@ void DirectLightTaskEvaluator::intersect(
       min(task.transparent_depth, parameters.transparent_max_bounces);
   task.shadow_batch =
       intersect_shadow(ray, task.source_object, task.source_primitive,
-                       task.light_object, task.light_primitive, remaining);
+                       task.light_object, task.light_primitive, remaining,
+                       parameters.shadow_storage_capacity,
+                       parameters.shadow_storage_block_size);
 }
 
 DirectLightShadowStep DirectLightTaskEvaluator::shade_shadow(
@@ -62,6 +66,8 @@ DirectLightShadowStep DirectLightTaskEvaluator::shade_shadow(
   Bool visible = false;
 
   $if(task.shadow_batch.blocked == 0u) {
+    auto ordered_batch = def(task.shadow_batch);
+    sort_shadow_intersection_batch(ordered_batch);
     Bool carries_light = true;
     Float last_distance = task.ray_minimum;
     const auto ray = make_ray(task.ray_origin, task.ray_direction,
@@ -69,10 +75,10 @@ DirectLightShadowStep DirectLightTaskEvaluator::shade_shadow(
     for (auto index = std::size_t{0u};
          index < shadow_intersection_batch_capacity; ++index) {
       const auto shade =
-          static_cast<std::uint32_t>(index) < task.shadow_batch.count;
+          static_cast<std::uint32_t>(index) < ordered_batch->count;
       $if(shade & carries_light) {
         const auto &hit =
-            task.shadow_batch.hits[static_cast<luisa::uint>(index)];
+            ordered_batch->hits[static_cast<luisa::uint>(index)];
         const auto surface = shade_shadow_surface(
             ray, hit, task.ray_dP, task.ray_dD,
             pack_shader_evaluation_state(cycles_path_state::shadow_shader_state(
@@ -90,7 +96,7 @@ DirectLightShadowStep DirectLightTaskEvaluator::shade_shadow(
     }
     $if(carries_light) {
       const auto has_remaining =
-          task.shadow_batch.total > task.shadow_batch.count;
+          ordered_batch->total > ordered_batch->count;
       $if(has_remaining) {
         task.ray_minimum = surface_ray::intersection_t_offset(last_distance);
         continue_shadow = true;

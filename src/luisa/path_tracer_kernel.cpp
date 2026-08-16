@@ -252,6 +252,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         .path_trace_sample =
           _options.path_trace ? _options.path_trace->sample : 0u,
       .wavefront_frame_capacity = wavefront_frame_capacity,
+      .shadow_storage_capacity = 1u,
+      .shadow_storage_block_size = 1u,
         .sample_clamp_direct = sample_clamp_direct,
         .sample_clamp_indirect = sample_clamp_indirect,
         .filter_glossy = filter_glossy,
