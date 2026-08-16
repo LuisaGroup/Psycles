@@ -179,7 +179,8 @@ int main(int argc, char **argv) {
                  "[wavefront-graph-worker-count=0] "
                  "[wavefront-graph-selective=0] "
                  "[wavefront-graph-refill-threshold=0] "
-                 "[fast-math=1]\n";
+                 "[fast-math=1] "
+                 "[wavefront-frame-capacity=1048576]\n";
         return EXIT_FAILURE;
     }
     const auto bundle = std::filesystem::path{argv[1]};
@@ -452,6 +453,15 @@ int main(int argc, char **argv) {
     }
     enable_fast_math = *value != 0u;
   }
+  auto wavefront_frame_capacity = std::uint32_t{1u << 20u};
+  if (argc > 31) {
+    auto value = parse_unsigned<std::uint32_t>(argv[31]);
+    if (!value || *value == 0u) {
+      std::cerr << "error: wavefront frame capacity must be positive\n";
+      return EXIT_FAILURE;
+    }
+    wavefront_frame_capacity = *value;
+  }
   if (!psycles::luisa_backend::valid_luisa_persistent_scheduler_shape(
           persistent_worker_count, persistent_block_size,
                 persistent_fetch_size)) {
@@ -480,6 +490,7 @@ int main(int argc, char **argv) {
         {.next_event_estimation = true,
          .enable_fast_math = enable_fast_math,
          .scheduler = scheduler,
+       .wavefront_frame_capacity = wavefront_frame_capacity,
        .wavefront_execution_block_size = wavefront_execution_block_size,
        .wavefront_graph_worker_count = wavefront_graph_worker_count,
        .wavefront_graph_selective_scheduling = wavefront_graph_selective,

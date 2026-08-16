@@ -24,6 +24,8 @@ using psycles::luisa_backend::detail::
 using psycles::luisa_backend::detail::
     PixelSampleDispatchPlan;
 using psycles::luisa_backend::detail::
+    WavefrontFrameCapacityPlan;
+using psycles::luisa_backend::detail::
     backend_max_pixel_samples_per_dispatch;
 using psycles::luisa_backend::detail::
     watchdog_max_pixel_samples_per_dispatch;
@@ -148,6 +150,48 @@ void require_exact_partition(
 }// namespace
 
 int main() {
+    require(
+        !WavefrontFrameCapacityPlan::make(0u, 64u, 1u, 1u) &&
+            !WavefrontFrameCapacityPlan::make(1u, 0u, 1u, 1u) &&
+            !WavefrontFrameCapacityPlan::make(1u, 1u, 0u, 1u) &&
+            !WavefrontFrameCapacityPlan::make(1u, 1u, 1u, 0u),
+        "an empty wavefront capacity domain was accepted");
+    constexpr auto barbershop_capacity =
+        WavefrontFrameCapacityPlan::make(
+            640u * 480u, 64u,
+            std::numeric_limits<std::uint32_t>::max(),
+            1u << 20u);
+    static_assert(
+        barbershop_capacity &&
+        barbershop_capacity->maximum_dispatch_work == 640u * 480u * 64u &&
+        barbershop_capacity->effective_capacity == (1u << 20u));
+    constexpr auto single_sample_capacity =
+        WavefrontFrameCapacityPlan::make(
+            640u * 480u, 1u,
+            std::numeric_limits<std::uint32_t>::max(),
+            1u << 20u);
+    static_assert(
+        single_sample_capacity &&
+        single_sample_capacity->effective_capacity == 640u * 480u);
+    constexpr auto watchdog_capacity =
+        WavefrontFrameCapacityPlan::make(
+            640u * 480u, 64u, 131072u, 1u << 20u);
+    static_assert(
+        watchdog_capacity &&
+        watchdog_capacity->maximum_dispatch_work == 131072u &&
+        watchdog_capacity->effective_capacity == 131072u);
+    constexpr auto saturated_capacity =
+        WavefrontFrameCapacityPlan::make(
+            std::numeric_limits<std::uint64_t>::max(),
+            std::numeric_limits<std::uint32_t>::max(),
+            std::numeric_limits<std::uint32_t>::max(),
+            std::numeric_limits<std::uint32_t>::max());
+    static_assert(
+        saturated_capacity &&
+        saturated_capacity->maximum_dispatch_work ==
+            std::numeric_limits<std::uint32_t>::max() &&
+        saturated_capacity->effective_capacity ==
+            std::numeric_limits<std::uint32_t>::max());
     require(
         backend_max_pixel_samples_per_dispatch("metal") ==
                 watchdog_max_pixel_samples_per_dispatch &&

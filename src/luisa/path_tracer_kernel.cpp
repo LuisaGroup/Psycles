@@ -2,6 +2,7 @@
 #include "cycles_integrator_limits.h"
 #include "path_kernel_builder.h"
 #include "path_kernel_executor.h"
+#include "sample_dispatch_partition.h"
 #include "path_tracer_internal.h"
 
 #include <psycles/luisa/camera_sampling.h>
@@ -212,8 +213,18 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
               .aperture_ratio = camera_aperture_ratio});
   const auto pass_alpha_threshold =
       std::clamp(render_settings.pass_alpha_threshold, 0.0f, 1.0f);
-  const auto wavefront_frame_capacity = static_cast<std::uint32_t>(
-      std::min<std::size_t>(_options.wavefront_frame_capacity, count));
+  const auto wavefront_capacity_plan =
+      WavefrontFrameCapacityPlan::make(
+          count, _options.max_samples_per_dispatch,
+          _options.max_pixel_samples_per_dispatch,
+          _options.wavefront_frame_capacity);
+  // A zero frame request is permitted for schedulers that do not allocate
+  // coroutine frames. Keep their otherwise-unused ABI value valid without
+  // weakening the nonzero validation of every wavefront scheduler.
+  const auto wavefront_frame_capacity =
+      wavefront_capacity_plan
+          ? wavefront_capacity_plan->effective_capacity
+          : 1u;
     _kernel_parameters = RenderKernelParameters{
         .window_x = render_window.x,
         .window_y = render_window.y,

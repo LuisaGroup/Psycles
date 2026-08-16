@@ -157,10 +157,12 @@ struct LuisaPathTracerOptions {
     // coroutine schedulers as well.
   LuisaPathScheduler scheduler{LuisaPathScheduler::megakernel};
     // Maximum number of live global frames in the wavefront scheduler. More
-    // logical pixels are admitted in subsequent scheduler iterations.
-    // GPU Coroutines' path-tracing evaluation uses 2^24 global coroutine
-    // frames with SoA storage and compaction.
-    std::uint32_t wavefront_frame_capacity{1u << 24u};
+    // logical pixel/sample instances are admitted by backpressured refills.
+    // Cycles' production wavefront benchmark admits at most 2^20 path states;
+    // this is also a practical 864 MiB frame budget at the current 864-byte
+    // Psycles frame. Callers can still request the GPU Coroutines paper's
+    // 2^24 configuration explicitly when device memory permits it.
+    std::uint32_t wavefront_frame_capacity{1u << 20u};
     // Host/JIT choice for Luisa's thread-local wavefront generate/resume
     // kernels. Unlike frame capacity, this is part of shader structure.
     std::uint32_t wavefront_execution_block_size{32u};
