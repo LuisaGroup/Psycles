@@ -6,7 +6,7 @@ namespace psycles::luisa_backend::detail {
 
 class ShadowIntersectionBatchStorage;
 
-using IntersectShadowCallable = Callable<ShadowIntersectionBatchCall(
+using IntersectShadowCallable = Callable<ShadowIntersectionSummaryCall(
     luisa::compute::Ray,
     // Exact Cycles source (object, primitive) identity.
     luisa::uint, luisa::uint,
@@ -14,11 +14,38 @@ using IntersectShadowCallable = Callable<ShadowIntersectionBatchCall(
     luisa::uint, luisa::uint,
     // Remaining transparent-bounce budget.
     luisa::uint,
-    // Runtime SoA capacity; a value, never a shader specialization constant.
+    // Invocation-owned SoA slot computed by the enclosing kernel.
     luisa::uint,
-    // Enclosing kernel's physical x block size. Callables do not own launch
-    // dimensions, so this must remain an explicit invocation-context value.
+    // Runtime SoA capacity; a value, never a shader specialization constant.
     luisa::uint)>;
+
+// Host-side composition of the compact traversal callable and its external
+// hit storage. `collect()` records a summary call followed by consumer-side
+// materialization; no virtual or resource wrapper survives in device code.
+class StoredShadowIntersectionComponent {
+
+private:
+    std::shared_ptr<const ShadowIntersectionBatchStorage> _storage;
+    IntersectShadowCallable _intersect;
+
+public:
+    StoredShadowIntersectionComponent(
+        std::shared_ptr<const ShadowIntersectionBatchStorage> storage,
+        IntersectShadowCallable intersect) noexcept;
+
+    [[nodiscard]] Var<ShadowIntersectionBatchCall> collect(
+        Var<luisa::compute::Ray> shadow_ray,
+        Expr<std::uint32_t> source_object,
+        Expr<std::uint32_t> source_primitive,
+        Expr<std::uint32_t> light_object,
+        Expr<std::uint32_t> light_primitive,
+        Expr<std::uint32_t> transparent_maximum,
+        Expr<std::uint32_t> storage_capacity,
+        Expr<std::uint32_t> storage_block_size) const noexcept;
+
+    [[nodiscard]] const IntersectShadowCallable &
+    summary_callable() const noexcept;
+};
 
 using EvaluateShadowSurfaceCallable =
     Callable<ShadowSurfaceEvaluationCall(
@@ -46,7 +73,7 @@ using TraceShadowCallable =
         ShaderEvaluationStateCall)>;
 
 struct ShadowTraceCallables {
-    IntersectShadowCallable intersect;
+    std::shared_ptr<const StoredShadowIntersectionComponent> intersect;
     EvaluateShadowSurfaceCallable shade_surface;
     TraceShadowCallable trace;
 };

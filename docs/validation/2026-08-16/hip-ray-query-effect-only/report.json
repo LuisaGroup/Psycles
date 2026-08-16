@@ -1,0 +1,44 @@
+{
+  "schema": "psycles.hip-effect-ray-query.v1",
+  "scene": "barbershop-5.2",
+  "resolution": [640, 480],
+  "samples": 64,
+  "adaptive_sampling": false,
+  "psycles": {
+    "exact": {
+      "calls": 82,
+      "launched_lanes": 8048928,
+      "duration_ns": 39116524,
+      "ns_per_lane": 4.8598427020,
+      "lds_bytes": 2048,
+      "scratch_bytes": 240,
+      "vgpr_count": 144
+    },
+    "native_effect": {
+      "calls": 82,
+      "launched_lanes": 8048928,
+      "duration_ns": 38811495,
+      "ns_per_lane": 4.8219458542,
+      "lds_bytes": 3072,
+      "scratch_bytes": 128,
+      "vgpr_count": 168,
+      "render_seconds": 3.68282
+    }
+  },
+  "cycles_5_2_hiprt": {
+    "calls": 141,
+    "launched_lanes": 29983232,
+    "duration_ns": 102295780,
+    "ns_per_lane": 3.4117662832,
+    "lds_bytes": 32768,
+    "scratch_bytes": 64,
+    "vgpr_count": 192
+  },
+  "combined_native_vs_exact": {
+    "mean_absolute_error": 9.1266875547e-8,
+    "rmse": 2.2343654058e-5,
+    "relative_l1": 1.3473426569e-6,
+    "maximum_absolute_error": 0.01320146024
+  },
+  "luisa_commit": "7b7275ca8"
+}

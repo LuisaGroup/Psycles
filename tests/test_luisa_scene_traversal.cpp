@@ -9,6 +9,7 @@
 
 #include <psycles/luisa/surface_ray.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdlib>
@@ -878,10 +879,13 @@ int main(int argc, char **argv) {
             const ScenePrimitiveIdentity &source,
             const ScenePrimitiveIdentity &light,
             Expr<std::uint32_t> transparent_maximum) noexcept {
-          return traversal->collect_shadow(
+          const auto summary = traversal->collect_shadow_summary(
               scene, query_ray, visibility, source, light,
-              transparent_maximum, shadow_batch_storage.get(),
+              transparent_maximum, *shadow_batch_storage,
               storage_invocation, runtime_capacity);
+          return shadow_batch_storage->materialize(
+              storage_invocation, summary, query_ray->t_max(),
+              runtime_capacity);
         };
     const auto ray = make_ray(make_float3(10.0f, 0.0f, 0.0f),
                               make_float3(0.0f, 0.0f, 1.0f), 0.0f, 10.0f);
@@ -1006,17 +1010,33 @@ int main(int argc, char **argv) {
       };
   const auto shadow_callables = make_shadow_trace_callables(
       scene, safe_normalize, shadow_batch_storage);
+  const auto summary_function =
+      shadow_callables.intersect->summary_callable().function();
+  const auto summary_has_batch_local = std::any_of(
+      summary_function.local_variables().begin(),
+      summary_function.local_variables().end(),
+      [](const auto &variable) noexcept {
+        return variable.type() == Type::of<ShadowIntersectionBatchCall>();
+      });
+  if (summary_function.return_type() !=
+          Type::of<ShadowIntersectionSummaryCall>() ||
+      summary_has_batch_local) {
+    std::cerr << "stored shadow traversal leaked the four-hit batch into "
+                 "its callable ABI on "
+              << backend << '\n';
+    return EXIT_FAILURE;
+  }
   auto shadow_callable_output =
       device.create_buffer<luisa::float4>(shadow_batch_lane_count);
   Kernel1D evaluate_shadow_callable =
-      [intersect_shadow = shadow_callables.intersect](
+      [stored_intersection = shadow_callables.intersect](
           BufferFloat4 records, UInt runtime_capacity,
           UInt runtime_block_size) noexcept {
         set_block_size(shadow_test_block_size);
         const auto ray = make_ray(make_float3(10.0f, 0.0f, 0.0f),
                                   make_float3(0.0f, 0.0f, 1.0f),
                                   0.0f, 10.0f);
-        const auto batch = intersect_shadow(
+        const auto batch = stored_intersection->collect(
             ray, invalid_primitive, invalid_primitive,
             invalid_primitive, invalid_primitive, 8u, runtime_capacity,
             runtime_block_size);
@@ -1031,7 +1051,7 @@ int main(int argc, char **argv) {
                      luisa::compute::ShaderOption{.enable_cache = false});
   auto shadow_coro =
       Coroutine<void(Buffer<luisa::float4>, std::uint32_t, std::uint32_t)>{
-      [intersect_shadow = shadow_callables.intersect](
+      [stored_intersection = shadow_callables.intersect](
           BufferFloat4 records, UInt runtime_capacity,
           UInt runtime_block_size) noexcept {
         $if((dispatch_x() & 1u) == 0u) {
@@ -1043,7 +1063,7 @@ int main(int argc, char **argv) {
         const auto ray = make_ray(make_float3(10.0f, 0.0f, 0.0f),
                                   make_float3(0.0f, 0.0f, 1.0f),
                                   0.0f, 10.0f);
-        auto batch = intersect_shadow(
+        auto batch = stored_intersection->collect(
             ray, invalid_primitive, invalid_primitive,
             invalid_primitive, invalid_primitive, 8u, runtime_capacity,
             runtime_block_size);

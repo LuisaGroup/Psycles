@@ -47,16 +47,18 @@ Bool DirectLightTaskEvaluator::shade_light_nee(
 void DirectLightTaskEvaluator::intersect(
     Var<DirectLightTaskCall> &task,
     const Var<RenderKernelParameters> &parameters) const noexcept {
+  LUISA_ASSERT(intersect_shadow != nullptr,
+               "Split shadow traversal requires external hit storage.");
   const auto ray = make_ray(task.ray_origin, task.ray_direction,
                             task.ray_minimum, task.ray_maximum);
   const auto remaining =
       parameters.transparent_max_bounces -
       min(task.transparent_depth, parameters.transparent_max_bounces);
   task.shadow_batch =
-      intersect_shadow(ray, task.source_object, task.source_primitive,
-                       task.light_object, task.light_primitive, remaining,
-                       parameters.shadow_storage_capacity,
-                       parameters.shadow_storage_block_size);
+      intersect_shadow->collect(
+          ray, task.source_object, task.source_primitive, task.light_object,
+          task.light_primitive, remaining, parameters.shadow_storage_capacity,
+          parameters.shadow_storage_block_size);
 }
 
 DirectLightShadowStep DirectLightTaskEvaluator::shade_shadow(

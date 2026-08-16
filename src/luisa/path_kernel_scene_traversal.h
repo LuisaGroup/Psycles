@@ -54,10 +54,22 @@ public:
       const std::shared_ptr<LuisaSceneData> &scene,
       const Var<luisa::compute::Ray> &ray, Expr<std::uint32_t> visibility_mask,
       const ScenePrimitiveIdentity &source, const ScenePrimitiveIdentity &light,
+      Expr<std::uint32_t> transparent_maximum) const noexcept = 0;
+
+  // Same order-independent reduction, but the callback writes retained hits
+  // directly to external SoA and returns only its compact private summary.
+  // Keeping this a distinct virtual operation makes returning the full batch
+  // from the RayQuery callable a type error rather than a performance
+  // convention that a later refactor can accidentally violate.
+  [[nodiscard]] virtual Var<ShadowIntersectionSummaryCall>
+  collect_shadow_summary(
+      const std::shared_ptr<LuisaSceneData> &scene,
+      const Var<luisa::compute::Ray> &ray, Expr<std::uint32_t> visibility_mask,
+      const ScenePrimitiveIdentity &source, const ScenePrimitiveIdentity &light,
       Expr<std::uint32_t> transparent_maximum,
-      const ShadowIntersectionBatchStorage *storage = nullptr,
-      Expr<std::uint32_t> storage_invocation = 0u,
-      Expr<std::uint32_t> storage_capacity = 1u) const noexcept = 0;
+      const ShadowIntersectionBatchStorage &storage,
+      Expr<std::uint32_t> storage_invocation,
+      Expr<std::uint32_t> storage_capacity) const noexcept = 0;
 };
 
 [[nodiscard]] std::shared_ptr<const SceneTraversalComponent>
