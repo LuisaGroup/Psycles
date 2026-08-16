@@ -1094,6 +1094,18 @@ Barbershop but regresses Lone Monk and Flat Archiviz. Five inspected Combined
 triptychs, shader resource records, code-object sizes, and explicit asset/
 unsupported-feature caveats are retained with the measurements.
 
+HIP effectful shadow-all traversal now uses a formally proven native any-hit
+route when query commits and post-state observation are absent. A subsequent
+representation-independent private-memory proof removes unread stored
+allocation identities before SROA. On the retained Barbershop profile this
+reduces the shadow kernel private segment from 128 B to 8 B and improves it by
+1.08%, while leaving a measured 39.8% per-launched-lane gap to Cycles 5.2
+HIPRT. The formal relations, regressions, profiler records, and inspected
+triptychs are in
+[`validation/2026-08-16/hip-ray-query-effect-only`](validation/2026-08-16/hip-ray-query-effect-only/README.md)
+and
+[`validation/2026-08-16/hip-private-memory`](validation/2026-08-16/hip-private-memory/README.md).
+
 The following integrator work remains explicit and is not considered Cycles
 compatible yet:
 
