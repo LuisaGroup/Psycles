@@ -123,12 +123,10 @@ private:
     const auto handle_surface =
         [&](luisa::compute::SurfaceCandidate &candidate) noexcept {
           const auto hit = candidate.hit();
-          const auto instance =
-              scene->instance_buffer->read(hit->inst);
+          const auto instance = scene->instance_buffer->read(hit->inst);
           const auto object =
               _materials->cycles_object_index(hit->inst, instance);
-          const auto primitive =
-              instance.cycles_primitive_offset + hit->prim;
+          const auto primitive = instance.cycles_primitive_offset + hit->prim;
           const auto excluded = source.matches(object, primitive) |
                                 light.matches(object, primitive);
           $if(!excluded) { candidate.commit(); };
@@ -137,53 +135,53 @@ private:
         [&](luisa::compute::ProceduralCandidate &candidate) noexcept {
           const auto hit = candidate.hit();
           const auto curve =
-              _curves->emit_segment(scene, hit->inst, hit->prim);
+              _curves->emit_metadata(scene, hit->inst, hit->prim);
           $if(curve.geometry.primitive_kind == geometry_kind_curve) {
             const auto object =
                 _materials->cycles_object_index(hit->inst, curve.instance);
             const auto primitive = curve.segment.cycles_curve_index;
             const auto excluded = source.matches(object, primitive) |
                                   light.matches(object, primitive);
-            // RayQuery exposes the world-space ray, while Cycles ribbon
-            // intersection is defined in object space. The transform is a
-            // static scene invariant that is already computed with Cycles'
-            // affine inverse during upload. Recomputing a general 4x4 inverse
-            // here would put it inside the procedural-candidate loop, once per
-            // overlapping curve AABB.
-            const auto world_to_object = curve.instance.cycles_world_to_object;
-            const auto candidate_ray = candidate.ray();
-            const auto object_ray = make_ray(
-                (world_to_object *
-                 make_float4(candidate_ray->origin(), 1.0f))
-                    .xyz(),
-                (world_to_object *
-                 make_float4(candidate_ray->direction(), 0.0f))
-                    .xyz(),
-                candidate_ray->t_min(), candidate_ray->t_max());
-            const auto intersection = _ribbons->intersect(
-                object_ray, curve.control_points,
-                curve.geometry.curve_subdivision_level);
-            $if((!excluded) & intersection.valid) {
-              candidate.commit(intersection.distance);
+            $if(!excluded) {
+              // RayQuery exposes the world-space ray, while Cycles ribbon
+              // intersection is defined in object space. The transform is a
+              // static scene invariant already computed with Cycles' affine
+              // inverse during upload, and remains dominated by identity
+              // rejection alongside the exact geometry loads.
+              const auto world_to_object =
+                  curve.instance.cycles_world_to_object;
+              const auto candidate_ray = candidate.ray();
+              const auto object_ray = make_ray(
+                  (world_to_object * make_float4(candidate_ray->origin(), 1.0f))
+                      .xyz(),
+                  (world_to_object *
+                   make_float4(candidate_ray->direction(), 0.0f))
+                      .xyz(),
+                  candidate_ray->t_min(), candidate_ray->t_max());
+              const auto control_points =
+                  _curves->emit_control_points(scene, curve);
+              const auto intersection =
+                  _ribbons->intersect(object_ray, control_points,
+                                      curve.geometry.curve_subdivision_level);
+              $if(intersection.valid) {
+                candidate.commit(intersection.distance);
+              };
             };
           };
         };
 
     if (_plan.primitives.mixed()) {
-      return scene->accel
-          ->traverse(ray, {.visibility_mask = visibility_mask})
+      return scene->accel->traverse(ray, {.visibility_mask = visibility_mask})
           .on_surface_candidate(handle_surface)
           .on_procedural_candidate(handle_procedural)
           .trace();
     }
     if (_plan.primitives.triangles) {
-      return scene->accel
-          ->traverse(ray, {.visibility_mask = visibility_mask})
+      return scene->accel->traverse(ray, {.visibility_mask = visibility_mask})
           .on_surface_candidate(handle_surface)
           .trace();
     }
-    return scene->accel
-        ->traverse(ray, {.visibility_mask = visibility_mask})
+    return scene->accel->traverse(ray, {.visibility_mask = visibility_mask})
         .on_procedural_candidate(handle_procedural)
         .trace();
   }
@@ -243,50 +241,50 @@ private:
                 transparent_maximum);
           };
         };
-    const auto handle_procedural =
-        [&](luisa::compute::ProceduralCandidate &candidate) noexcept {
-          const auto hit = candidate.hit();
-          const auto curve = _curves->emit_segment(scene, hit->inst, hit->prim);
-          $if(curve.geometry.primitive_kind == geometry_kind_curve) {
-            const auto object =
-                _materials->cycles_object_index(hit->inst, curve.instance);
-            const auto primitive = curve.segment.cycles_curve_index;
-            const auto excluded = source.matches(object, primitive) |
-                                  light.matches(object, primitive);
-            $if(!excluded) {
-              const auto world_to_object =
-                  curve.instance.cycles_world_to_object;
-              const auto candidate_ray = candidate.ray();
-              const auto object_ray = make_ray(
-                  (world_to_object * make_float4(candidate_ray->origin(), 1.0f))
-                      .xyz(),
-                  (world_to_object *
-                   make_float4(candidate_ray->direction(), 0.0f))
-                      .xyz(),
-                  candidate_ray->t_min(), candidate_ray->t_max());
-              const auto exact =
-                  _ribbons->intersect(object_ray, curve.control_points,
-                                      curve.geometry.curve_subdivision_level);
-              $if(exact.valid) {
-                const auto material_slot = _materials->curve_material_slot(
-                    scene, curve.geometry, curve.segment);
-                const auto binding = _materials->resolve_binding(
-                    scene, curve.instance, curve.geometry, material_slot);
-                Var<ShadowIntersectionCall> intersection;
-                intersection->instance = hit->inst;
-                intersection->primitive = hit->prim;
-                intersection->hit_type = static_cast<std::uint32_t>(
-                    luisa::compute::HitType::Procedural);
-                intersection->distance = exact.distance;
-                intersection->barycentric = make_float2(exact.u, exact.v);
-                reduce_shadow_candidate(
-                    candidate, batch, intersection,
-                    (binding.flags & material_flag_may_be_transparent) != 0u,
-                    transparent_maximum);
-              };
-            };
+    const auto handle_procedural = [&](luisa::compute::ProceduralCandidate
+                                           &candidate) noexcept {
+      const auto hit = candidate.hit();
+      const auto curve = _curves->emit_metadata(scene, hit->inst, hit->prim);
+      $if(curve.geometry.primitive_kind == geometry_kind_curve) {
+        const auto object =
+            _materials->cycles_object_index(hit->inst, curve.instance);
+        const auto primitive = curve.segment.cycles_curve_index;
+        const auto excluded = source.matches(object, primitive) |
+                              light.matches(object, primitive);
+        $if(!excluded) {
+          const auto world_to_object = curve.instance.cycles_world_to_object;
+          const auto candidate_ray = candidate.ray();
+          const auto object_ray = make_ray(
+              (world_to_object * make_float4(candidate_ray->origin(), 1.0f))
+                  .xyz(),
+              (world_to_object * make_float4(candidate_ray->direction(), 0.0f))
+                  .xyz(),
+              candidate_ray->t_min(), candidate_ray->t_max());
+          const auto control_points =
+              _curves->emit_control_points(scene, curve);
+          const auto exact =
+              _ribbons->intersect(object_ray, control_points,
+                                  curve.geometry.curve_subdivision_level);
+          $if(exact.valid) {
+            const auto material_slot = _materials->curve_material_slot(
+                scene, curve.geometry, curve.segment);
+            const auto binding = _materials->resolve_binding(
+                scene, curve.instance, curve.geometry, material_slot);
+            Var<ShadowIntersectionCall> intersection;
+            intersection->instance = hit->inst;
+            intersection->primitive = hit->prim;
+            intersection->hit_type =
+                static_cast<std::uint32_t>(luisa::compute::HitType::Procedural);
+            intersection->distance = exact.distance;
+            intersection->barycentric = make_float2(exact.u, exact.v);
+            reduce_shadow_candidate(
+                candidate, batch, intersection,
+                (binding.flags & material_flag_may_be_transparent) != 0u,
+                transparent_maximum);
           };
         };
+      };
+    };
 
     if (_plan.primitives.mixed()) {
       const auto ignored =
@@ -312,15 +310,12 @@ private:
   }
 
 public:
-  explicit UnifiedSceneTraversalComponent(
-      SceneTraversalStagePlan plan)
+  explicit UnifiedSceneTraversalComponent(SceneTraversalStagePlan plan)
       : _plan{plan},
-        _curves{plan.primitives.curves
-                    ? make_curve_primitive_component()
-                    : nullptr},
-        _ribbons{plan.primitives.curves
-                     ? make_curve_ribbon_component()
-                     : nullptr},
+        _curves{plan.primitives.curves ? make_curve_primitive_component()
+                                       : nullptr},
+        _ribbons{plan.primitives.curves ? make_curve_ribbon_component()
+                                        : nullptr},
         _materials{plan.primitives.empty()
                        ? nullptr
                        : make_primitive_material_component()} {}
@@ -352,12 +347,11 @@ public:
   }
 };
 
-}// namespace
+} // namespace
 
 std::shared_ptr<const SceneTraversalComponent>
-make_scene_traversal_component(
-    SceneTraversalStagePlan plan) {
+make_scene_traversal_component(SceneTraversalStagePlan plan) {
   return std::make_shared<UnifiedSceneTraversalComponent>(plan);
 }
 
-}// namespace psycles::luisa_backend::detail
+} // namespace psycles::luisa_backend::detail

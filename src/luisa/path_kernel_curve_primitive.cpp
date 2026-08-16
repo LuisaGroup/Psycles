@@ -17,10 +17,10 @@ public:
   BindlessCurvePrimitiveComponent()
       : _material{make_primitive_material_component()} {}
 
-  CurveSegmentContext
-  emit_segment(const std::shared_ptr<LuisaSceneData> &scene,
-               Expr<std::uint32_t> instance_id,
-               Expr<std::uint32_t> segment_id) const noexcept override {
+  CurveSegmentMetadata
+  emit_metadata(const std::shared_ptr<LuisaSceneData> &scene,
+                Expr<std::uint32_t> instance_id,
+                Expr<std::uint32_t> segment_id) const noexcept override {
     UInt resolved_instance_id = instance_id;
     UInt resolved_segment_id = segment_id;
     Var<InstanceGpu> instance =
@@ -30,18 +30,22 @@ public:
     Var<CurveSegmentGpu> segment =
         scene->heap->buffer<CurveSegmentGpu>(geometry.bindless_base)
             .read(resolved_segment_id);
-    const auto keys =
-        scene->heap->buffer<luisa::float4>(geometry.bindless_base + 1u);
-    CurveControlPoints control_points{.before = keys.read(segment.key_before),
-                                      .begin = keys.read(segment.key_begin),
-                                      .end = keys.read(segment.key_end),
-                                      .after = keys.read(segment.key_after)};
     return {.instance_id = std::move(resolved_instance_id),
             .segment_id = std::move(resolved_segment_id),
             .instance = std::move(instance),
             .geometry = std::move(geometry),
-            .segment = std::move(segment),
-            .control_points = std::move(control_points)};
+            .segment = std::move(segment)};
+  }
+
+  CurveControlPoints emit_control_points(
+      const std::shared_ptr<LuisaSceneData> &scene,
+      const CurveSegmentMetadata &metadata) const noexcept override {
+    const auto keys = scene->heap->buffer<luisa::float4>(
+        metadata.geometry.bindless_base + 1u);
+    return {.before = keys.read(metadata.segment.key_before),
+            .begin = keys.read(metadata.segment.key_begin),
+            .end = keys.read(metadata.segment.key_end),
+            .after = keys.read(metadata.segment.key_after)};
   }
 
   CurvePrimitiveContext
@@ -50,12 +54,13 @@ public:
        Expr<std::uint32_t> segment_id) const noexcept override {
     auto curve = emit_segment(scene, instance_id, segment_id);
     UInt material_slot = _material->curve_material_slot(
-        scene, curve.geometry, curve.segment);
+        scene, curve.metadata.geometry, curve.metadata.segment);
     // Cycles curve shader IDs do not carry SHADER_SMOOTH_NORMAL; ribbon
     // smoothing is reconstructed geometrically from u/v at the hit.
-    auto material = _material->emit(scene, curve.instance_id, curve.instance,
-                                    curve.geometry, material_slot, false);
-    UInt cycles_primitive_index = curve.segment.cycles_curve_index;
+    auto material = _material->emit(
+        scene, curve.metadata.instance_id, curve.metadata.instance,
+        curve.metadata.geometry, material_slot, false);
+    UInt cycles_primitive_index = curve.metadata.segment.cycles_curve_index;
     return {.curve = std::move(curve),
             .material_slot = std::move(material_slot),
             .material_binding = std::move(material.binding),
@@ -71,6 +76,16 @@ public:
 
 } // namespace
 
+CurveSegmentContext CurvePrimitiveComponent::emit_segment(
+    const std::shared_ptr<LuisaSceneData> &scene,
+    Expr<std::uint32_t> instance_id,
+    Expr<std::uint32_t> segment_id) const noexcept {
+  auto metadata = emit_metadata(scene, instance_id, segment_id);
+  auto control_points = emit_control_points(scene, metadata);
+  return {.metadata = std::move(metadata),
+          .control_points = std::move(control_points)};
+}
+
 VolumeStackEntry CurvePrimitiveContext::volume_stack_entry() const noexcept {
   const auto valid = has_volume & ((material_binding.cycles_shader_index !=
                                     cycles_shader_identity::invalid_index) |
@@ -80,7 +95,7 @@ VolumeStackEntry CurvePrimitiveContext::volume_stack_entry() const noexcept {
           .shader = cycles_surface_shader,
           .surface_tag = material_binding.surface_tag,
           .parameter_block = material_binding.parameter_block,
-          .instance_id = curve.instance_id,
+          .instance_id = curve.metadata.instance_id,
           .sample_method = material_binding.volume_sampling,
           .valid = valid};
 }

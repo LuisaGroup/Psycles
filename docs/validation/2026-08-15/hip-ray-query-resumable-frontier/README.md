@@ -819,6 +819,9 @@ while the observed form must retry through `luisa_ray_query_proceed`.
 The command topology was 640x480, 64 spp, fixed sampling, staged wavefront,
 32-thread blocks. Cycles adaptive sampling was disabled. Psycles was profiled
 with `rocprofv3 --kernel-trace --stats`; both renderers used the RX 9070 XT.
+This historical Cycles capture used its plain HIP software-BVH device, not
+HIPRT. A later device-capability audit corrected that distinction and the true
+HIPRT comparison is recorded below.
 Work-normalized timing is the sum of device durations divided by dispatched
 logical items, not a host wall-clock attribution.
 
@@ -826,10 +829,10 @@ logical items, not a host wall-clock attribution.
 |---|---|---:|---:|---:|---:|
 | Psycles closest, pre-selection | resumable | 55,778,144 | 309 | 419.700 ms | 7.524 |
 | Psycles closest, effect-selected | resumable | 55,778,048 | 309 | 418.775 ms | 7.508 |
-| Cycles closest | HIPRT filter | 55,756,800 | 90 | 406.705 ms | 7.294 |
+| Cycles closest | HIP software BVH | 55,756,800 | 90 | 406.705 ms | 7.294 |
 | Psycles shadow, pre-selection | resumable | 20,369,504 | 199 | 134.446 ms | 6.600 |
 | Psycles shadow, effect-selected | synchronous | 20,369,824 | 199 | 76.814 ms | 3.771 |
-| Cycles shadow | HIPRT filter | 20,439,040 | 90 | 104.440 ms | 5.110 |
+| Cycles shadow | HIP software BVH | 20,439,040 | 90 | 104.440 ms | 5.110 |
 
 Closest is now within 2.9% of Cycles per logical item. Shadow is 26.2% faster
 than Cycles per logical item. The two trace kernels together take 495.589 ms
@@ -971,3 +974,69 @@ validated by rebuilding the native wrapper for gfx1030, gfx1100, gfx1200, and
 gfx1201. That revision is the published child of the accidentally restored
 parent and supplies `contractRayMaxT`, preserving the invariant
 `new_max_t <= old_max_t` across resumed traversal.
+
+## True HIPRT baseline and identity-dominated curve evaluation
+
+The Blender 5.2 device audit used `_cycles.get_device_types()` and required the
+final HIPRT capability bit to be true. The resulting Cycles executable is
+`/home/mike/Projects/blender-install-5.2-hiprt/blender`; its retained profile is
+`/var/tmp/cycles-hiprt-barbershop-profile.Uh2jCH`. At 640x480, 64 spp, fixed
+sampling with adaptive sampling disabled, Cycles'
+`kernel_gpu_integrator_intersect_closest` processes 73,193,472 logical items in
+279.971 ms, or **3.825087 ns/item**. This supersedes the earlier 6.325 ns/item
+plain-HIP number for HIPRT comparisons.
+
+Two formally justified transformations then removed work from Psycles'
+closest continuation:
+
+1. The sampler is a pure function of `(sample_index, rng_hash, rng_offset,
+   dimension)`. Wavefront construction therefore evaluates bounce randomness
+   independently at its mutually exclusive first consumers, `shade_volume`
+   and `shade_surface`, instead of making volume-capable scenes carry all NEE
+   and light-distribution state through `intersect_closest`. Empty volume-stack
+   routing is observationally the identity.
+2. A curve candidate has a cheap metadata prefix and an expensive exact-
+   geometry suffix. Since self/light rejection depends only on the prefix, the
+   rejection predicate must dominate candidate-ray transformation, four
+   control-point reads, and ribbon evaluation. The curve component now exposes
+   explicit `emit_metadata()` and `emit_control_points()` stages. This is the
+   same partial-order constraint used by Cycles' HIPRT custom intersector, not
+   a scene-specific shortcut.
+
+The regression translates curve-only, mixed, and transparent-shadow kernels
+to XIR, constructs their dominator trees, identifies the four `float4`
+bindless control-point reads and the candidate world-ray read, and requires
+each to be dominated by both the primitive-kind and non-excluded true branches.
+The observed minimum true-guard depth is two on fallback and HIP.
+
+| Barbershop closest checkpoint | Calls | Logical items | Device time | ns/item | Relative to true Cycles HIPRT |
+|---|---:|---:|---:|---:|---:|
+| pre-partition Psycles | - | - | - | 13.9916 | 3.658x |
+| consumer-partitioned Psycles | 350 | 71,123,136 | 311.103 ms | 4.374152 | 1.144x |
+| identity-dominated curve work | 350 | 71,123,136 | 303.374 ms | **4.265481** | **1.115x** |
+| Cycles 5.2 true HIPRT | 330 | 73,193,472 | 279.971 ms | **3.825087** | 1.000x |
+
+Consumer partitioning removed 68.7% of the old per-ray cost. Delaying exact
+curve work removes another 2.48%, lowers the closest kernel from 152 to 144
+allocated VGPRs, and leaves scratch at 208 B. The remaining measured gap is
+11.51%. The complete profiled Psycles render is 3.69222 s; the unprofiled run
+is 3.66212 s. `shade_surface` still dominates at 2.593 s, so this second trace
+improvement is intentionally small at whole-frame scale.
+
+The profiler-to-profiler EXR comparison against the immediately preceding
+consumer-partitioned build has mean error `8.84094e-09`, RMS error
+`8.08947e-06`, peak SNR `150.722`, no invalid values, and only 37 of 307,200
+pixels above `1e-6` across the multilayer file. The display-referred PPM RMSE
+is `1.82685e-05`. Native-resolution inspection finds no coherent change in
+hair, silhouettes, floor, ceiling, cabinetry, texture placement, or shadows;
+the amplified difference is sparse.
+
+![Barbershop before and after identity-dominated exact curve work](triptychs/barbershop-lazy-curve-geometry/combined.png)
+
+Commands and complete artifacts are retained under
+`/var/tmp/psycles-curve-lazy-barber.o8TKAz`; the preceding profile is
+`/var/tmp/psycles-stage-partition-profile.osbIAc`. Both production runs use the
+same exported Blender 5.2 scene and `(pixel, sample)` mapping. The fallback and
+HIP scene-traversal regressions pass after rebuilding with 32 parallel jobs.
+Cycles remains the only renderer reference; no CPU reference implementation is
+introduced.
