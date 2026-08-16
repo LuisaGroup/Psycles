@@ -125,12 +125,10 @@ private:
           const auto hit = candidate.hit();
           const auto instance =
               scene->instance_buffer->read(hit->inst);
-          const auto geometry =
-              scene->geometry_buffer->read(instance.geometry_index);
           const auto object =
               _materials->cycles_object_index(hit->inst, instance);
           const auto primitive =
-              geometry.cycles_primitive_offset + hit->prim;
+              instance.cycles_primitive_offset + hit->prim;
           const auto excluded = source.matches(object, primitive) |
                                 light.matches(object, primitive);
           $if(!excluded) { candidate.commit(); };

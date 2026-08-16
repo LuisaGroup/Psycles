@@ -1482,6 +1482,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 instance.cycles_object_index.value_or(
                     cycles_shader_identity::
                         invalid_index),
+            .cycles_primitive_offset =
+                geometry_gpu[geometry_iter->second]
+                    .cycles_primitive_offset,
             .cycles_light_group =
                 instance.cycles_light_group,
             .is_shadow_catcher =
