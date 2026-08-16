@@ -1,0 +1,82 @@
+{
+  "schema": "psycles.hip-terminal-ray-query.v1",
+  "date": "2026-08-16",
+  "device": "AMD Radeon RX 9070 XT",
+  "architecture": "gfx1201",
+  "resolution": [1024, 1024],
+  "samples": 1024,
+  "runs_per_case": 5,
+  "luisa_commits": {
+    "terminal_semantic_lowering": "b53cec542",
+    "whole_kernel_cost_selection": "346bc241a"
+  },
+  "throughput_spp_per_second": {
+    "full_cutout_exact_terminal": {
+      "runs": [664.0577334179891, 667.4703948851327, 667.8789138555506, 668.2888224860263, 668.7768487658228],
+      "median": 667.8789138555506
+    },
+    "full_cutout_always_native_terminal": {
+      "runs": [711.6210978301403, 712.2427545493858, 712.5466789051013, 712.7677268518154, 712.9878952842142],
+      "median": 712.5466789051013
+    },
+    "full_cutout_final_selector": {
+      "runs": [710.3728349298881, 710.9517552249093, 711.3204161556199, 711.5547516629862, 711.9901831405415],
+      "median": 711.3204161556199,
+      "speedup_over_exact_percent": 6.504398
+    },
+    "direct_closest_accept_shadow_always_native": {
+      "runs": [813.6950224872168, 814.32326422193, 814.9394865848606, 816.3366788537708, 816.8298362304757],
+      "median": 814.9394865848606
+    },
+    "direct_closest_accept_shadow_exact": {
+      "runs": [1272.0179221760156, 1273.6063385715863, 1273.6256326631164, 1274.8163592487479, 1276.6695266723793],
+      "median": 1273.6256326631164
+    },
+    "direct_closest_accept_shadow_final": {
+      "runs": [1271.1181430095028, 1274.4027435003748, 1275.7836132997904, 1276.2551483310099, 1276.2735906117596],
+      "median": 1275.7836132997904,
+      "runtime_reduction_from_always_native_percent": 36.122437
+    },
+    "direct_closest_cutout_shadow_always_native": {
+      "runs": [771.6303413520069, 772.694773482818, 773.2870700247313, 773.3444528182142, 774.6516701224477],
+      "median": 773.2870700247313
+    },
+    "direct_closest_cutout_shadow_exact": {
+      "runs": [1201.7562761965046, 1203.1097166918062, 1203.5597126152813, 1204.385449228016, 1205.6780134429569],
+      "median": 1203.5597126152813
+    },
+    "direct_closest_cutout_shadow_final": {
+      "runs": [1197.8181868059717, 1198.394610450556, 1203.564393562924, 1205.5987118818239, 1206.3315418347856],
+      "median": 1203.564393562924,
+      "runtime_reduction_from_always_native_percent": 35.750254
+    }
+  },
+  "kernel_resources": {
+    "exact_terminal": {
+      "code_object_bytes": 38208,
+      "lds_bytes": 16384,
+      "private_bytes": 176,
+      "vgpr_count": 144,
+      "vgpr_spills": 25
+    },
+    "native_terminal_with_native_closest": {
+      "code_object_bytes": 40480,
+      "lds_bytes": 24576,
+      "private_bytes": 8,
+      "sgpr_count": 78,
+      "vgpr_count": 128,
+      "vgpr_spills": 0
+    }
+  },
+  "validation": {
+    "test_hip_callable_boundary_assertions": 95,
+    "test_hip_ray_query_pipeline_assertions": 1536,
+    "final_native_full_cutout_unique_image_hashes": 1,
+    "forced_exact_full_cutout_unique_image_hashes": 5,
+    "final_direct_closest_accept_matches_exact": true,
+    "final_direct_closest_cutout_matches_exact": true,
+    "scene_traversal_backends": ["fallback", "hip", "vk"],
+    "vulkan_native_spirv_compilations": 17,
+    "vulkan_dxc_mentions": 0
+  }
+}

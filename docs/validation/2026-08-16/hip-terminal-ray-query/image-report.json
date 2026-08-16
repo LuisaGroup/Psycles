@@ -1,0 +1,64 @@
+{
+  "actual_label": "native terminal",
+  "cycles_channels": [
+    "R",
+    "G",
+    "B",
+    "A"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        1.0032997131347656,
+        1.0029560327529907,
+        1.0034130811691284
+      ],
+      "cycles": "gfx12-exact-frontier-local-counterfactual",
+      "cycles_channel_mean": [
+        0.2843477725982666,
+        0.2230372428894043,
+        0.11593480408191681
+      ],
+      "cycles_luminance_mean": 0.22774766385555267,
+      "cycles_rms": 0.253238707780838,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0030846210783946,
+      "maximum_absolute_error": 0.0784313827753067,
+      "mean_absolute_error": 0.0009328730520792305,
+      "orientation_rmse": {
+        "flip_x": 0.1464458405971527,
+        "flip_xy": 0.20398414134979248,
+        "flip_y": 0.17265672981739044,
+        "identity": 0.0029988375026732683
+      },
+      "p95_pixel_rmse": 0.006792355794459581,
+      "p99_pixel_rmse": 0.013394713401794434,
+      "psycles": "native-terminal-final-selector",
+      "psycles_channel_mean": [
+        0.2852860391139984,
+        0.22369655966758728,
+        0.11633049696683884
+      ],
+      "psycles_luminance_mean": 0.22845017910003662,
+      "psycles_rms": 0.25382194586665113,
+      "relative_rmse": 0.01184193968194061,
+      "rmse": 0.0029988375026732683,
+      "shape": [
+        1024,
+        1024,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 57.37489441336006,
+        "display_scale": 0.9,
+        "mapping": "shared_linear_srgb",
+        "path": "triptychs/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 1048576
+    }
+  },
+  "reference_label": "gfx12 exact frontier",
+  "schema": "psycles.cycles-differential.v1"
+}
