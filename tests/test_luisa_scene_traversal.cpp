@@ -128,6 +128,7 @@ struct TraversalXirShape {
   std::size_t minimum_control_point_true_guard_depth{
       std::numeric_limits<std::size_t>::max()};
   std::size_t candidate_ray_reads{};
+  std::size_t world_ray_reads{};
   std::size_t minimum_candidate_ray_true_guard_depth{
       std::numeric_limits<std::size_t>::max()};
 };
@@ -196,12 +197,17 @@ traversal_xir_shape(const std::shared_ptr<LuisaSceneData> &scene,
                   ? 1u
                   : 0u;
           if (read->op() == luisa::compute::xir::RayQueryObjectReadOp::
-                                RAY_QUERY_OBJECT_WORLD_SPACE_RAY) {
+                                RAY_QUERY_OBJECT_CANDIDATE_OBJECT_SPACE_RAY) {
             ++result.candidate_ray_reads;
             result.minimum_candidate_ray_true_guard_depth =
                 std::min(result.minimum_candidate_ray_true_guard_depth,
                          true_guard_depth());
           }
+          result.world_ray_reads +=
+              read->op() == luisa::compute::xir::RayQueryObjectReadOp::
+                                RAY_QUERY_OBJECT_WORLD_SPACE_RAY
+                  ? 1u
+                  : 0u;
         }
         if (instruction->isa<luisa::compute::xir::ResourceQueryInst>()) {
           const auto *query =
@@ -621,6 +627,7 @@ int main(int argc, char **argv) {
       curve_shape.control_point_reads != 4u ||
       curve_shape.minimum_control_point_true_guard_depth < 2u ||
       curve_shape.candidate_ray_reads != 1u ||
+      curve_shape.world_ray_reads != 0u ||
       curve_shape.minimum_candidate_ray_true_guard_depth < 2u ||
       curve_shape.instance_transform_queries != 0u ||
       curve_shape.callable_definitions != 0u ||
@@ -629,6 +636,7 @@ int main(int argc, char **argv) {
       mixed_shape.control_point_reads != 4u ||
       mixed_shape.minimum_control_point_true_guard_depth < 2u ||
       mixed_shape.candidate_ray_reads != 1u ||
+      mixed_shape.world_ray_reads != 0u ||
       mixed_shape.minimum_candidate_ray_true_guard_depth < 2u ||
       mixed_shape.instance_transform_queries != 0u ||
       mixed_shape.callable_definitions != 0u ||
@@ -641,6 +649,7 @@ int main(int argc, char **argv) {
       shadow_batch_shape.control_point_reads != 4u ||
       shadow_batch_shape.minimum_control_point_true_guard_depth < 2u ||
       shadow_batch_shape.candidate_ray_reads != 1u ||
+      shadow_batch_shape.world_ray_reads != 0u ||
       shadow_batch_shape.minimum_candidate_ray_true_guard_depth < 2u ||
       shadow_batch_shape.callable_definitions != 0u ||
       !(empty_shape.instructions < triangle_shape.instructions &&
