@@ -1,5 +1,5 @@
 {
-  "schema": "psycles.hip-effect-ray-query.v1",
+  "schema": "psycles.hip-effect-ray-query.v2",
   "scene": "barbershop-5.2",
   "resolution": [640, 480],
   "samples": 64,
@@ -23,6 +23,24 @@
       "scratch_bytes": 128,
       "vgpr_count": 168,
       "render_seconds": 3.68282
+    },
+    "gfx12_hardware_effect": {
+      "runs_ns_per_lane": [4.470312, 4.499604],
+      "mean_ns_per_lane": 4.484958,
+      "lds_bytes": 2048,
+      "scratch_bytes": 8,
+      "vgpr_count": 176
+    },
+    "gfx12_hardware_effect_no_transition_stores": {
+      "calls": 82,
+      "launched_lanes": 8048928,
+      "runs_duration_ns": [35686927, 35928553],
+      "runs_ns_per_lane": [4.433749, 4.463769],
+      "mean_ns_per_lane": 4.448759,
+      "speedup_from_4_716800_percent": 5.6826874,
+      "lds_bytes": 2048,
+      "scratch_bytes": 8,
+      "vgpr_count": 176
     }
   },
   "cycles_5_2_hiprt": {
@@ -40,5 +58,21 @@
     "relative_l1": 1.3473426569e-6,
     "maximum_absolute_error": 0.01320146024
   },
-  "luisa_commit": "7b7275ca8"
+  "combined_hardware_transition_store_removal": {
+    "mean_absolute_error": 1.0237578607e-7,
+    "rmse": 2.7601356123e-5,
+    "relative_rmse": 1.7010370577e-4,
+    "p99_pixel_rmse": 6.0833738047e-9,
+    "maximum_absolute_error": 0.02006721497,
+    "invalid_pixels": 0
+  },
+  "rejected_experiments": {
+    "generic_gfx12_manual_ns_per_lane": 4.811009,
+    "compact_curve_segment_ns_per_lane": 4.7565,
+    "native_effect_intersect_false_ns_per_lane": 4.7510,
+    "ribbon_early_branch_ns_per_lane": 4.8046,
+    "explicit_soa_projection_ns_per_lane": [4.531733, 4.512770],
+    "unchecked_effect_without_exact_fallback_ns_per_lane": [4.608176, 4.533846]
+  },
+  "luisa_commits": ["7b7275ca8", "345d75757"]
 }
