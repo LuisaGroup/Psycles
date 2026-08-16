@@ -143,21 +143,10 @@ private:
             const auto excluded = source.matches(object, primitive) |
                                   light.matches(object, primitive);
             $if(!excluded) {
-              // RayQuery exposes the world-space ray, while Cycles ribbon
-              // intersection is defined in object space. The transform is a
-              // static scene invariant already computed with Cycles' affine
-              // inverse during upload, and remains dominated by identity
-              // rejection alongside the exact geometry loads.
-              const auto world_to_object =
-                  curve.instance.cycles_world_to_object;
-              const auto candidate_ray = candidate.ray();
-              const auto object_ray = make_ray(
-                  (world_to_object * make_float4(candidate_ray->origin(), 1.0f))
-                      .xyz(),
-                  (world_to_object *
-                   make_float4(candidate_ray->direction(), 0.0f))
-                      .xyz(),
-                  candidate_ray->t_min(), candidate_ray->t_max());
+              // The backend already owns the candidate instance transform.
+              // Consume its native object-space traversal ray directly; its
+              // unnormalized direction preserves the world-ray parameter t.
+              const auto object_ray = candidate.object_ray();
               const auto control_points =
                   _curves->emit_control_points(scene, curve);
               const auto intersection =
@@ -252,14 +241,7 @@ private:
         const auto excluded = source.matches(object, primitive) |
                               light.matches(object, primitive);
         $if(!excluded) {
-          const auto world_to_object = curve.instance.cycles_world_to_object;
-          const auto candidate_ray = candidate.ray();
-          const auto object_ray = make_ray(
-              (world_to_object * make_float4(candidate_ray->origin(), 1.0f))
-                  .xyz(),
-              (world_to_object * make_float4(candidate_ray->direction(), 0.0f))
-                  .xyz(),
-              candidate_ray->t_min(), candidate_ray->t_max());
+          const auto object_ray = candidate.object_ray();
           const auto control_points =
               _curves->emit_control_points(scene, curve);
           const auto exact =

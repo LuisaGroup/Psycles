@@ -1040,3 +1040,86 @@ same exported Blender 5.2 scene and `(pixel, sample)` mapping. The fallback and
 HIP scene-traversal regressions pass after rebuilding with 32 parallel jobs.
 Cycles remains the only renderer reference; no CPU reference implementation is
 introduced.
+
+## Native object-ray observation quotient
+
+The remaining closest-hit cost was traced to an observation mismatch in the
+HIP ray-query ABI. Psycles curve callbacks need the candidate's object-space
+ray, but the first native implementation classified that request as observing
+the complete public query transaction. Consequently every procedural callback
+saved and restored both world-ray endpoints and materialized a root query
+identity even though the program could not observe either value. On
+Barbershop, this raised the closest kernel from 144 to 152 VGPRs and made the
+otherwise native traversal slower.
+
+The corrected lowering is defined by the handler's observation set. Let `C`
+denote candidate identity and hit data, `O` the native object ray, and `Q` all
+public query state (including the world ray and committed state). Programs are
+equivalent at a callback boundary when they agree on every member of the
+handler's observation set. The minimal ABI representatives are therefore:
+
+```text
+Q0    = {C}       -> existing compact candidate dispatcher
+Qo    = {C, O}    -> compact object-ray dispatcher
+Qfull = {C, O, Q} -> exact query transaction
+```
+
+`Qo` cannot be replaced by `Q0`, because the object ray is observable, and it
+does not require `Qfull`, because no continuation can distinguish changes to
+unobserved world/committed state. Surface and procedural observation masks are
+tracked independently. A handler that observes only `O` now receives the
+eight object-ray scalars already owned by HIPRT traversal; ordinary `Q0`
+handlers retain the nine-argument compact ABI and pay no dead ray arguments.
+Joint object/world observation continues to use `Qfull`. The gfx12 manual
+frontier and pre-gfx12 resumable frontier implement the same quotient.
+
+Psycles now consumes `candidate.object_ray()` directly for exact ribbon
+intersection. The native object direction is deliberately not normalized:
+HIPRT's instance transform preserves the world-ray parameterization, so the
+reported `t` remains a world-ray parameter and no renderer-side matrix query
+or scale recovery is necessary.
+
+| Barbershop HIPRT checkpoint | Logical items | Device time | ns/item | Relative to Cycles |
+|---|---:|---:|---:|---:|
+| previous Psycles closest | 71,123,136 | 303.374 ms | 4.265481 | 1.115x |
+| first full-transaction object-ray lowering | 71,123,136 | 309.323 ms | 4.349123 | 1.137x |
+| native `Qo` closest | 71,123,136 | 265.585 ms | **3.734157** | **0.976x** |
+| Cycles 5.2 true HIPRT closest | 73,193,472 | 279.971 ms | **3.825087** | 1.000x |
+
+The observation quotient removes 12.46% from the previous committed closest
+checkpoint and makes Psycles closest traversal **2.38% faster per logical
+item than Cycles HIPRT** on this scene. It also reduces closest scratch from
+208 B to 8 B and allocated VGPRs from 144 to 128. The same ABI change cuts the
+Psycles transparent-shadow kernel from 8.71055 to 4.81782 ns/item (44.69%);
+that stage still trails Cycles' 3.41177 ns/item by 41.21%. Source inspection
+shows the remaining structural difference: Cycles keeps only counters and the
+replacement slot in its private HIPRT payload while writing the four retained
+intersections directly to `IntegratorShadowState` SoA. Psycles still captures
+the whole four-hit batch in the traversal callback, producing 240 B scratch.
+That storage-lifetime problem is the next trace target, not a reason to weaken
+intersection semantics.
+
+The full Luisa build completed with 32 parallel jobs. The callable-boundary
+suite passes 88 assertions and structurally requires object-only kernels to
+contain the `Qo` dispatcher without root-query identity materialization. The
+world/object-ray runtime suite passes 82 assertions on both HIP and fallback,
+covering object-only observation before and after commit as well as joint
+world/object observation. Psycles' scene-traversal suite passes on fallback,
+HIP, and Vulkan with `LUISA_VULKAN_DISABLE_DXC=1`; the Vulkan run uses native
+XIR-to-SPIR-V. Its XIR regression requires exactly one candidate object-ray
+query, no candidate world-ray query, and no instance-transform query.
+
+The profiler-to-profiler multilayer EXR comparison against the previous
+committed checkpoint has mean error `4.76709e-7`, RMS error `2.56378e-4`, peak
+SNR `120.703`, no invalid pixels, and 171 of 307,200 pixels above `1e-6`. The
+display-referred RMSE is `1.72054e-4`. Native-resolution inspection finds no
+coherent change in hair, silhouettes, floor, ceiling, cabinetry, texture
+placement, or shadows; the amplified difference contains only sparse
+high-energy samples.
+
+![Barbershop before and after the native object-ray observation quotient](triptychs/barbershop-object-ray-quotient/combined.png)
+
+Complete outputs and profiler tables are retained under
+`/var/tmp/psycles-object-ray-barber.kXiA3E`; the true Cycles HIPRT profile is
+`/var/tmp/cycles-hiprt-barbershop-profile.Uh2jCH`. LuisaCompute commit
+`065d4a8c4` is published on `next`.
