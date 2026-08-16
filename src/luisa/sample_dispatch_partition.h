@@ -25,6 +25,58 @@ struct PixelSampleDispatchIndex {
     std::uint32_t sample_offset{};
 };
 
+// The scheduler needs no more resident frames than there can be logical
+// pixel/sample instances in one host dispatch. For a requested capacity C,
+// P pixels, S samples and a backend work bound W, no host dispatch can contain
+// more than
+//
+//   U = min(P * S, W, UINT32_MAX)
+//
+// logical instances. Therefore min(C, U) is observationally equivalent to C
+// as a frame capacity. U is a conservative upper bound when complete-row
+// partitioning leaves an unusable remainder of W. The product is evaluated in
+// u64 before projection to the scheduler ABI. This is deliberately a host
+// scheduling plan: changing C must not alter the path program or its
+// shader-cache identity.
+struct WavefrontFrameCapacityPlan {
+    std::uint32_t maximum_dispatch_work{};
+    std::uint32_t effective_capacity{};
+
+    [[nodiscard]] static constexpr std::optional<
+        WavefrontFrameCapacityPlan>
+    make(
+        std::uint64_t pixel_count,
+        std::uint32_t samples_per_dispatch,
+        std::uint32_t max_pixel_samples_per_dispatch,
+        std::uint32_t requested_capacity) noexcept {
+        if (pixel_count == 0u || samples_per_dispatch == 0u ||
+            max_pixel_samples_per_dispatch == 0u ||
+            requested_capacity == 0u) {
+            return std::nullopt;
+        }
+        constexpr auto abi_max = static_cast<std::uint64_t>(
+            std::numeric_limits<std::uint32_t>::max());
+        const auto product =
+            pixel_count >
+                    std::numeric_limits<std::uint64_t>::max() /
+                        samples_per_dispatch
+                ? std::numeric_limits<std::uint64_t>::max()
+                : pixel_count * samples_per_dispatch;
+        const auto maximum_dispatch_work = std::min(
+            {product,
+             static_cast<std::uint64_t>(
+                 max_pixel_samples_per_dispatch),
+             abi_max});
+        return WavefrontFrameCapacityPlan{
+            .maximum_dispatch_work = static_cast<std::uint32_t>(
+                maximum_dispatch_work),
+            .effective_capacity = static_cast<std::uint32_t>(
+                std::min(
+                    maximum_dispatch_work,
+                    static_cast<std::uint64_t>(requested_capacity)))};
+    }
+};
+
 // A sample-major flattening of the Cartesian product
 //
 //   [0, pixel_count) x [0, sample_count).
