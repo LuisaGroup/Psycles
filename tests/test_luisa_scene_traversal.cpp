@@ -16,6 +16,7 @@
 
 #include <luisa/luisa-compute.h>
 #include <luisa/xir/instructions/ray_query.h>
+#include <luisa/xir/instructions/resource.h>
 #include <luisa/xir/translators/ast2xir.h>
 
 namespace {
@@ -119,6 +120,7 @@ struct TraversalXirShape {
   std::size_t triangle_candidate_reads{};
   std::size_t procedural_candidate_reads{};
   std::size_t instance_transform_queries{};
+  std::size_t resource_reads{};
 };
 
 [[nodiscard]] TraversalXirShape
@@ -180,6 +182,10 @@ traversal_xir_shape(const std::shared_ptr<LuisaSceneData> &scene,
                       ? 1u
                       : 0u;
             }
+            result.resource_reads +=
+                instruction->isa<luisa::compute::xir::ResourceReadInst>()
+                    ? 1u
+                    : 0u;
           });
     }
   }
@@ -260,30 +266,38 @@ int main(int argc, char **argv) {
   const std::array instances{
       InstanceGpu{.geometry_index = 0u,
                   .cycles_object_index = 11u,
+                  .cycles_primitive_offset = 100u,
                   .cycles_world_to_object = identity_world_to_object},
       InstanceGpu{.geometry_index = 1u,
                   .override_offset = 0u,
                   .override_count = 1u,
                   .cycles_object_index = 22u,
+                  .cycles_primitive_offset = 200u,
                   .cycles_world_to_object = identity_world_to_object},
       InstanceGpu{.geometry_index = 0u,
                   .cycles_object_index = 489u,
+                  .cycles_primitive_offset = 100u,
                   .cycles_world_to_object = coincident_world_to_object},
       InstanceGpu{.geometry_index = 0u,
                   .cycles_object_index = 1936u,
+                  .cycles_primitive_offset = 100u,
                   .cycles_world_to_object = coincident_world_to_object},
       InstanceGpu{.geometry_index = 2u,
                   .cycles_object_index = 2131u,
+                  .cycles_primitive_offset = 20474114u,
                   .cycles_transform_applied = 1u,
                   .cycles_world_to_object = bottle_world_to_object},
       InstanceGpu{.geometry_index = 3u,
                   .cycles_object_index = 2372u,
+                  .cycles_primitive_offset = 3396299u,
                   .cycles_world_to_object = bottle_world_to_object},
       InstanceGpu{.geometry_index = 4u,
                   .cycles_object_index = 5011u,
+                  .cycles_primitive_offset = 700000u,
                   .cycles_world_to_object = overlap_a_world_to_object},
       InstanceGpu{.geometry_index = 4u,
                   .cycles_object_index = 5066u,
+                  .cycles_primitive_offset = 700000u,
                   .cycles_world_to_object = overlap_b_world_to_object},
       // Six transparent layers are inserted in far-to-near instance order.
       // The collector must therefore derive distance order from candidates,
@@ -293,42 +307,49 @@ int main(int argc, char **argv) {
                   .override_count = 1u,
                   .visibility_mask = 0x02u,
                   .cycles_object_index = 3006u,
+                  .cycles_primitive_offset = 100u,
                   .cycles_world_to_object = identity_world_to_object},
       InstanceGpu{.geometry_index = 0u,
                   .override_offset = 1u,
                   .override_count = 1u,
                   .visibility_mask = 0x02u,
                   .cycles_object_index = 3005u,
+                  .cycles_primitive_offset = 100u,
                   .cycles_world_to_object = identity_world_to_object},
       InstanceGpu{.geometry_index = 0u,
                   .override_offset = 1u,
                   .override_count = 1u,
                   .visibility_mask = 0x02u,
                   .cycles_object_index = 3004u,
+                  .cycles_primitive_offset = 100u,
                   .cycles_world_to_object = identity_world_to_object},
       InstanceGpu{.geometry_index = 0u,
                   .override_offset = 1u,
                   .override_count = 1u,
                   .visibility_mask = 0x02u,
                   .cycles_object_index = 3003u,
+                  .cycles_primitive_offset = 100u,
                   .cycles_world_to_object = identity_world_to_object},
       InstanceGpu{.geometry_index = 0u,
                   .override_offset = 1u,
                   .override_count = 1u,
                   .visibility_mask = 0x02u,
                   .cycles_object_index = 3002u,
+                  .cycles_primitive_offset = 100u,
                   .cycles_world_to_object = identity_world_to_object},
       InstanceGpu{.geometry_index = 0u,
                   .override_offset = 1u,
                   .override_count = 1u,
                   .visibility_mask = 0x02u,
                   .cycles_object_index = 3001u,
+                  .cycles_primitive_offset = 100u,
                   .cycles_world_to_object = identity_world_to_object},
       InstanceGpu{.geometry_index = 0u,
                   .override_offset = 2u,
                   .override_count = 1u,
                   .visibility_mask = 0x04u,
                   .cycles_object_index = 3007u,
+                  .cycles_primitive_offset = 100u,
                   .cycles_world_to_object = identity_world_to_object}};
   constexpr std::array geometry_materials{
       MaterialBindingGpu{.surface_tag = 41u,
@@ -537,6 +558,7 @@ int main(int argc, char **argv) {
       empty_shape.procedural_candidate_reads != 0u ||
       empty_shape.callable_definitions != 0u ||
       triangle_shape.triangle_candidate_reads == 0u ||
+      triangle_shape.resource_reads != 1u ||
       triangle_shape.procedural_candidate_reads != 0u ||
       triangle_shape.callable_definitions != 0u ||
       curve_shape.triangle_candidate_reads != 0u ||

@@ -63,12 +63,22 @@ struct InstanceGpu {
     luisa::uint particle_index{};
     float shadow_terminator_geometry_offset{};
     luisa::uint cycles_object_index{};
+    // Immutable denormalization of
+    // GeometryGpu::cycles_primitive_offset for this instance. Closest-hit
+    // candidate filtering reads object and primitive identity together from
+    // one compact table location instead of chasing a second 112-byte-stride
+    // geometry record. Scene construction owns the equality invariant.
+    luisa::uint cycles_primitive_offset{};
     std::int32_t cycles_light_group{};
     luisa::uint is_shadow_catcher{};
     luisa::uint cycles_transform_applied{};
-    luisa::uint intersection_padding{};
     luisa::float4x4 cycles_world_to_object{};
 };
+
+static_assert(sizeof(InstanceGpu) == 112u);
+static_assert(offsetof(InstanceGpu, cycles_object_index) == 28u);
+static_assert(offsetof(InstanceGpu, cycles_primitive_offset) == 32u);
+static_assert(offsetof(InstanceGpu, cycles_world_to_object) == 48u);
 
 inline constexpr std::uint32_t material_flag_has_volume =
     1u << 0u;
@@ -531,10 +541,10 @@ LUISA_STRUCT(
     particle_index,
     shadow_terminator_geometry_offset,
     cycles_object_index,
+    cycles_primitive_offset,
     cycles_light_group,
     is_shadow_catcher,
     cycles_transform_applied,
-    intersection_padding,
     cycles_world_to_object) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::MaterialBindingGpu,
