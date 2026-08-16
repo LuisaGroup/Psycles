@@ -1,0 +1,64 @@
+{
+  "schema": "psycles.hip-private-memory-validation.v1",
+  "luisa_commit": "8ade983c9",
+  "kernel": "kernel_750b35814af0a216",
+  "workload": {
+    "scene": "barbershop-5.2",
+    "width": 640,
+    "height": 480,
+    "spp": 64,
+    "samples_per_dispatch": 32,
+    "scheduler": "wavefront-staged"
+  },
+  "llvm_ir": {
+    "before": {
+      "bytes": 671091,
+      "lines": 8216,
+      "allocas": 2,
+      "loads": 614,
+      "stores": 175
+    },
+    "after": {
+      "bytes": 657511,
+      "lines": 8086,
+      "allocas": 0,
+      "loads": 612,
+      "stores": 135
+    }
+  },
+  "profile": {
+    "calls": 82,
+    "launched_lanes": 8048928,
+    "before_device_ns": 38811495,
+    "after_device_ns": 38391277,
+    "before_ns_per_lane": 4.821946,
+    "after_ns_per_lane": 4.769738,
+    "cycles_5_2_hiprt_ns_per_lane": 3.411766,
+    "speedup_percent": 1.0827,
+    "remaining_cycles_gap_percent": 39.8026,
+    "before_private_segment_bytes": 128,
+    "after_private_segment_bytes": 8,
+    "private_segment_reduction_percent": 93.75,
+    "before_vgpr": 168,
+    "after_vgpr": 168,
+    "before_lds_bytes": 3072,
+    "after_lds_bytes": 3072
+  },
+  "combined": {
+    "mean_absolute_error": 1.7060803259028035e-7,
+    "rmse": 5.868712469236925e-5,
+    "relative_l1": 2.51863051e-6,
+    "maximum_absolute_error": 0.035135746002197266,
+    "invalid_pixels": 0,
+    "channel_mean_ratio": [
+      0.9999985098838806,
+      0.9999982714653015,
+      0.999998152256012
+    ]
+  },
+  "exact_passes": [
+    "environment",
+    "volume-direct",
+    "volume-indirect"
+  ]
+}
