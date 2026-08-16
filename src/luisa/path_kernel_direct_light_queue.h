@@ -46,6 +46,7 @@ struct DirectLightTaskQueueBinding {
 [[nodiscard]] DirectLightTaskQueueBinding make_direct_light_task_queue(
     luisa::compute::Device &device, const PathKernelConfig &config,
     std::uint32_t capacity,
+    std::uint32_t execution_block_size,
     const luisa::compute::ShaderOption &shader_option) noexcept;
 
 } // namespace psycles::luisa_backend::detail

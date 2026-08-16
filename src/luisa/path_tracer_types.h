@@ -247,11 +247,12 @@ struct ShadowIntersectionCall {
 };
 
 // Cycles' GPU shadow state retains four closest intersections from one BVH
-// traversal. Keep the same bounded state transition here: `count` entries are
-// sorted by distance, `total` counts accepted transparent candidates, and a
-// nonzero `blocked` proves that an opaque candidate or bounce-budget overflow
-// terminated traversal. `total > count` is exactly the continuation predicate
-// for the next traversal batch.
+// traversal. Keep the same bounded state transition here: `count` entries form
+// the unordered nearest-hit set, `total` counts accepted transparent
+// candidates, and a nonzero `blocked` proves that an opaque candidate or
+// bounce-budget overflow terminated traversal. Consumers order the bounded set
+// immediately before shading. `total > count` is exactly the continuation
+// predicate for the next traversal batch.
 inline constexpr std::size_t shadow_intersection_batch_capacity = 4u;
 
 struct ShadowIntersectionBatchCall {
@@ -477,6 +478,14 @@ struct RenderKernelParameters {
     // deliberately a kernel argument: resolution and frame-pool capacity must
     // not specialize the shader AST or its cache identity.
     luisa::uint wavefront_frame_capacity{};
+    // Runtime extent of the transient per-physical-lane shadow-hit SoA.
+    // Coroutine executors override this value for each dispatch; serial
+    // executors leave the valid one-element default unused.
+    luisa::uint shadow_storage_capacity{};
+    // Physical launch stride used to derive an injective transient-storage
+    // owner from (block_id.x, thread_id.x). A callable has no block size of
+    // its own, so the enclosing kernel must provide this value explicitly.
+    luisa::uint shadow_storage_block_size{};
     float sample_clamp_direct{};
     float sample_clamp_indirect{};
     float filter_glossy{};
@@ -827,6 +836,8 @@ LUISA_STRUCT(
     path_trace_pixel_y,
     path_trace_sample,
     wavefront_frame_capacity,
+    shadow_storage_capacity,
+    shadow_storage_block_size,
     sample_clamp_direct,
     sample_clamp_indirect,
     filter_glossy,

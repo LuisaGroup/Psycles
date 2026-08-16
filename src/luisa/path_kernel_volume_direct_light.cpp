@@ -986,6 +986,10 @@ class PathVolumeDirectLightingComponent final
                         light.light_primitive,
                         invocation.parameters
                             .transparent_max_bounces,
+                        invocation.parameters
+                            .shadow_storage_capacity,
+                        invocation.parameters
+                            .shadow_storage_block_size,
                         pack_shader_evaluation_state(
                             cycles_path_state::
                                 shadow_shader_state(

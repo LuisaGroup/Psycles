@@ -7,6 +7,8 @@
 
 namespace psycles::luisa_backend::detail {
 
+class ShadowIntersectionBatchStorage;
+
 struct ScenePrimitiveIdentity {
   UInt object;
   UInt primitive;
@@ -52,7 +54,10 @@ public:
       const std::shared_ptr<LuisaSceneData> &scene,
       const Var<luisa::compute::Ray> &ray, Expr<std::uint32_t> visibility_mask,
       const ScenePrimitiveIdentity &source, const ScenePrimitiveIdentity &light,
-      Expr<std::uint32_t> transparent_maximum) const noexcept = 0;
+      Expr<std::uint32_t> transparent_maximum,
+      const ShadowIntersectionBatchStorage *storage = nullptr,
+      Expr<std::uint32_t> storage_invocation = 0u,
+      Expr<std::uint32_t> storage_capacity = 1u) const noexcept = 0;
 };
 
 [[nodiscard]] std::shared_ptr<const SceneTraversalComponent>
