@@ -11,12 +11,16 @@
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <luisa/luisa-compute.h>
+#include <luisa/xir/instructions/if.h>
 #include <luisa/xir/instructions/ray_query.h>
 #include <luisa/xir/instructions/resource.h>
+#include <luisa/xir/passes/dom_tree.h>
 #include <luisa/xir/translators/ast2xir.h>
 
 namespace {
@@ -38,9 +42,9 @@ inline constexpr std::size_t record_count = 23u;
          near(actual.z, expected.z) && near(actual.w, expected.w);
 }
 
-[[nodiscard]] bool valid_backend_native_record(
-    std::size_t index, luisa::float4 actual,
-    luisa::float4 expected) noexcept {
+[[nodiscard]] bool
+valid_backend_native_record(std::size_t index, luisa::float4 actual,
+                            luisa::float4 expected) noexcept {
   constexpr auto coincident_forward = std::size_t{10u};
   constexpr auto coincident_endpoint = std::size_t{12u};
   constexpr auto filtered_coincident_endpoint = std::size_t{13u};
@@ -91,14 +95,13 @@ inline constexpr std::size_t record_count = 23u;
            (first_identity || second_identity);
   }
   if (index == transformed_overlap) {
-    const auto transform_applied =
-        near(actual.y, 2131.0f) && near(actual.z, 20474114.0f) &&
-        near(actual.w, 4.0f);
-    const auto object_space =
-        near(actual.y, 2372.0f) && near(actual.z, 3396299.0f) &&
-        near(actual.w, 5.0f);
-    return near(actual.x, expected.x) &&
-           (transform_applied || object_space);
+    const auto transform_applied = near(actual.y, 2131.0f) &&
+                                   near(actual.z, 20474114.0f) &&
+                                   near(actual.w, 4.0f);
+    const auto object_space = near(actual.y, 2372.0f) &&
+                              near(actual.z, 3396299.0f) &&
+                              near(actual.w, 5.0f);
+    return near(actual.x, expected.x) && (transform_applied || object_space);
   }
   if (index == near_overlap) {
     // The two nearly coincident Barbershop-floor instances are both valid
@@ -121,6 +124,12 @@ struct TraversalXirShape {
   std::size_t procedural_candidate_reads{};
   std::size_t instance_transform_queries{};
   std::size_t resource_reads{};
+  std::size_t control_point_reads{};
+  std::size_t minimum_control_point_true_guard_depth{
+      std::numeric_limits<std::size_t>::max()};
+  std::size_t candidate_ray_reads{};
+  std::size_t minimum_candidate_ray_true_guard_depth{
+      std::numeric_limits<std::size_t>::max()};
 };
 
 [[nodiscard]] TraversalXirShape
@@ -129,8 +138,8 @@ traversal_xir_shape(const std::shared_ptr<LuisaSceneData> &scene,
   const auto traversal = make_scene_traversal_component(plan);
   Kernel1D shape = [scene, traversal,
                     collect_shadow](BufferUInt output) noexcept {
-    const auto ray = make_ray(
-        make_float3(0.0f), make_float3(0.0f, 0.0f, 1.0f), 0.0f, 10.0f);
+    const auto ray =
+        make_ray(make_float3(0.0f), make_float3(0.0f, 0.0f, 1.0f), 0.0f, 10.0f);
     if (collect_shadow) {
       const auto batch = traversal->collect_shadow(
           scene, ray, 0xffu, ScenePrimitiveIdentity::invalid(),
@@ -148,45 +157,78 @@ traversal_xir_shape(const std::shared_ptr<LuisaSceneData> &scene,
   auto module = luisa::compute::xir::ast_to_xir_translate(
       shape.function()->function(), {});
   for (auto *function : module->function_list()) {
-    if (const auto *definition = function->definition()) {
+    if (auto *definition = function->definition()) {
+      const auto dominators = luisa::compute::xir::compute_dom_tree(
+          function, {.compute_dominance_frontiers = false});
+      std::vector<luisa::compute::xir::IfInst *> selections;
       definition->traverse_instructions(
-          [&](const luisa::compute::xir::Instruction *instruction) noexcept {
-            ++result.instructions;
-            result.ray_query_loops +=
-                instruction->isa<luisa::compute::xir::RayQueryLoopInst>() ? 1u
-                                                                          : 0u;
-            if (instruction->isa<
-                    luisa::compute::xir::RayQueryObjectReadInst>()) {
-              const auto *read = static_cast<const luisa::compute::xir::
-                  RayQueryObjectReadInst *>(instruction);
-              result.triangle_candidate_reads +=
-                  read->op() == luisa::compute::xir::
-                                    RayQueryObjectReadOp::
-                                        RAY_QUERY_OBJECT_TRIANGLE_CANDIDATE_HIT
-                      ? 1u
-                      : 0u;
-              result.procedural_candidate_reads +=
-                  read->op() == luisa::compute::xir::
-                                    RayQueryObjectReadOp::
-                                        RAY_QUERY_OBJECT_PROCEDURAL_CANDIDATE_HIT
-                      ? 1u
-                      : 0u;
+          [&](luisa::compute::xir::Instruction *instruction) noexcept {
+            if (instruction->isa<luisa::compute::xir::IfInst>()) {
+              selections.emplace_back(
+                  static_cast<luisa::compute::xir::IfInst *>(instruction));
             }
-            if (instruction->isa<luisa::compute::xir::ResourceQueryInst>()) {
-              const auto *query =
-                  static_cast<const luisa::compute::xir::ResourceQueryInst *>(
-                      instruction);
-              result.instance_transform_queries +=
-                  query->op() == luisa::compute::xir::ResourceQueryOp::
-                                     RAY_TRACING_INSTANCE_TRANSFORM
-                      ? 1u
-                      : 0u;
-            }
-            result.resource_reads +=
-                instruction->isa<luisa::compute::xir::ResourceReadInst>()
-                    ? 1u
-                    : 0u;
           });
+      definition->traverse_instructions([&](luisa::compute::xir::Instruction
+                                                *instruction) noexcept {
+        const auto true_guard_depth = [&]() noexcept {
+          auto depth = std::size_t{0u};
+          for (auto *selection : selections) {
+            depth += dominators.dominates(selection->true_block(),
+                                          instruction->parent_block());
+          }
+          return depth;
+        };
+        ++result.instructions;
+        result.ray_query_loops +=
+            instruction->isa<luisa::compute::xir::RayQueryLoopInst>() ? 1u : 0u;
+        if (instruction->isa<luisa::compute::xir::RayQueryObjectReadInst>()) {
+          const auto *read =
+              static_cast<const luisa::compute::xir::RayQueryObjectReadInst *>(
+                  instruction);
+          result.triangle_candidate_reads +=
+              read->op() == luisa::compute::xir::RayQueryObjectReadOp::
+                                RAY_QUERY_OBJECT_TRIANGLE_CANDIDATE_HIT
+                  ? 1u
+                  : 0u;
+          result.procedural_candidate_reads +=
+              read->op() == luisa::compute::xir::RayQueryObjectReadOp::
+                                RAY_QUERY_OBJECT_PROCEDURAL_CANDIDATE_HIT
+                  ? 1u
+                  : 0u;
+          if (read->op() == luisa::compute::xir::RayQueryObjectReadOp::
+                                RAY_QUERY_OBJECT_WORLD_SPACE_RAY) {
+            ++result.candidate_ray_reads;
+            result.minimum_candidate_ray_true_guard_depth =
+                std::min(result.minimum_candidate_ray_true_guard_depth,
+                         true_guard_depth());
+          }
+        }
+        if (instruction->isa<luisa::compute::xir::ResourceQueryInst>()) {
+          const auto *query =
+              static_cast<const luisa::compute::xir::ResourceQueryInst *>(
+                  instruction);
+          result.instance_transform_queries +=
+              query->op() == luisa::compute::xir::ResourceQueryOp::
+                                 RAY_TRACING_INSTANCE_TRANSFORM
+                  ? 1u
+                  : 0u;
+        }
+        result.resource_reads +=
+            instruction->isa<luisa::compute::xir::ResourceReadInst>() ? 1u : 0u;
+        if (instruction->isa<luisa::compute::xir::ResourceReadInst>()) {
+          const auto *read =
+              static_cast<const luisa::compute::xir::ResourceReadInst *>(
+                  instruction);
+          if (read->op() ==
+                  luisa::compute::xir::ResourceReadOp::BINDLESS_BUFFER_READ &&
+              read->type() == Type::of<luisa::float4>()) {
+            ++result.control_point_reads;
+            result.minimum_control_point_true_guard_depth =
+                std::min(result.minimum_control_point_true_guard_depth,
+                         true_guard_depth());
+          }
+        }
+      });
     }
   }
   return result;
@@ -215,19 +257,39 @@ int main(int argc, char **argv) {
   const auto coincident_world_to_object =
       to_luisa(cycles_inverse_transform(coincident_transform_source));
   psycles::Mat4f overlap_a_transform;
-  overlap_a_transform.elements = {
-      -4.013790899648484e-8f, -0.9182483553886414f, 0.0f, 0.0f,
-      1.0184273719787598f, -4.4516873742850294e-8f, 0.0f, 0.0f,
-      0.0f, 0.0f, 0.9999998807907104f, 0.0f,
-      1.6824010610580444f, 4.567445755004883f,
-      -0.0029841959476470947f, 1.0f};
+  overlap_a_transform.elements = {-4.013790899648484e-8f,
+                                  -0.9182483553886414f,
+                                  0.0f,
+                                  0.0f,
+                                  1.0184273719787598f,
+                                  -4.4516873742850294e-8f,
+                                  0.0f,
+                                  0.0f,
+                                  0.0f,
+                                  0.0f,
+                                  0.9999998807907104f,
+                                  0.0f,
+                                  1.6824010610580444f,
+                                  4.567445755004883f,
+                                  -0.0029841959476470947f,
+                                  1.0f};
   psycles::Mat4f overlap_b_transform;
-  overlap_b_transform.elements = {
-      6.932582152785471e-8f, -0.9182483553886414f, 0.0f, 0.0f,
-      1.0184273719787598f, 7.688912972980688e-8f, 0.0f, 0.0f,
-      0.0f, 0.0f, 0.9999998807907104f, 0.0f,
-      1.6824010610580444f, 4.567445755004883f,
-      -0.0029841959476470947f, 1.0f};
+  overlap_b_transform.elements = {6.932582152785471e-8f,
+                                  -0.9182483553886414f,
+                                  0.0f,
+                                  0.0f,
+                                  1.0184273719787598f,
+                                  7.688912972980688e-8f,
+                                  0.0f,
+                                  0.0f,
+                                  0.0f,
+                                  0.0f,
+                                  0.9999998807907104f,
+                                  0.0f,
+                                  1.6824010610580444f,
+                                  4.567445755004883f,
+                                  -0.0029841959476470947f,
+                                  1.0f};
   const auto overlap_a_world_to_object =
       to_luisa(cycles_inverse_transform(overlap_a_transform));
   const auto overlap_b_world_to_object =
@@ -374,33 +436,24 @@ int main(int argc, char **argv) {
                                 luisa::float3{0.0f, 2.0f, 4.0f}};
   constexpr std::array triangles{Triangle{0u, 1u, 2u}};
   constexpr std::array overlap_vertices{
-      luisa::float3{-0.12768065929412842f,
-                    -0.016480661928653717f,
+      luisa::float3{-0.12768065929412842f, -0.016480661928653717f,
                     -0.002021433785557747f},
-      luisa::float3{-0.1807040125131607f,
-                    0.0647093877196312f,
+      luisa::float3{-0.1807040125131607f, 0.0647093877196312f,
                     -0.002321503823623061f},
-      luisa::float3{-0.18065254390239716f,
-                    -0.016480661928653717f,
+      luisa::float3{-0.18065254390239716f, -0.016480661928653717f,
                     -0.002021433785557747f}};
   constexpr std::array bottle_vertices{
-      luisa::float3{0.04980994760990143f,
-                    -0.015110095962882042f,
+      luisa::float3{0.04980994760990143f, -0.015110095962882042f,
                     0.0014796979958191514f},
-      luisa::float3{0.047333888709545135f,
-                    -0.0196063332259655f,
+      luisa::float3{0.047333888709545135f, -0.0196063332259655f,
                     0.0005811812588945031f},
-      luisa::float3{0.04902583360671997f,
-                    -0.01487223245203495f,
+      luisa::float3{0.04902583360671997f, -0.01487223245203495f,
                     0.0005811817827634513f}};
-  std::array<luisa::float3, bottle_vertices.size()>
-      bottle_world_vertices{};
+  std::array<luisa::float3, bottle_vertices.size()> bottle_world_vertices{};
   for (std::size_t i = 0u; i < bottle_vertices.size(); ++i) {
     const auto transformed = cycles_transform_point(
         bottle_transform,
-        {bottle_vertices[i].x,
-         bottle_vertices[i].y,
-         bottle_vertices[i].z});
+        {bottle_vertices[i].x, bottle_vertices[i].y, bottle_vertices[i].z});
     bottle_world_vertices[i] =
         luisa::make_float3(transformed.x, transformed.y, transformed.z);
   }
@@ -486,10 +539,8 @@ int main(int argc, char **argv) {
                                 curve_intercept_buffer);
   scene->heap.emplace_on_update(curve_bindless_base + 4u,
                                 curve_material_buffer);
-  scene->heap.emplace_on_update(curve_bindless_base + 5u,
-                                curve_length_buffer);
-  scene->heap.emplace_on_update(curve_bindless_base + 6u,
-                                curve_random_buffer);
+  scene->heap.emplace_on_update(curve_bindless_base + 5u, curve_length_buffer);
+  scene->heap.emplace_on_update(curve_bindless_base + 6u, curve_random_buffer);
   scene->heap.emplace_on_update(2u * geometry_bindless_stride,
                                 bottle_triangle_buffer);
   scene->heap.emplace_on_update(2u * geometry_bindless_stride + 9u,
@@ -509,14 +560,14 @@ int main(int argc, char **argv) {
   scene->accel.emplace_back(mesh, coincident_transform, 0xffu, false, 2u);
   scene->accel.emplace_back(mesh, coincident_transform, 0xffu, false, 3u);
   const auto bottle_luisa_transform = to_luisa(bottle_transform);
-  scene->accel.emplace_back(
-      bottle_mesh, bottle_luisa_transform, 0xffu, false, 4u);
-  scene->accel.emplace_back(
-      bottle_mesh, bottle_luisa_transform, 0xffu, false, 5u);
-  scene->accel.emplace_back(
-      overlap_mesh, to_luisa(overlap_a_transform), 0xffu, false, 6u);
-  scene->accel.emplace_back(
-      overlap_mesh, to_luisa(overlap_b_transform), 0xffu, false, 7u);
+  scene->accel.emplace_back(bottle_mesh, bottle_luisa_transform, 0xffu, false,
+                            4u);
+  scene->accel.emplace_back(bottle_mesh, bottle_luisa_transform, 0xffu, false,
+                            5u);
+  scene->accel.emplace_back(overlap_mesh, to_luisa(overlap_a_transform), 0xffu,
+                            false, 6u);
+  scene->accel.emplace_back(overlap_mesh, to_luisa(overlap_b_transform), 0xffu,
+                            false, 7u);
   for (auto layer = std::uint32_t{0u}; layer < 6u; ++layer) {
     const auto distance = 6.0f - static_cast<float>(layer);
     scene->accel.emplace_back(
@@ -529,20 +580,19 @@ int main(int argc, char **argv) {
   // traversal order from the primary TLAS. User ids are the sole canonical
   // injection back into InstanceGpu/primary-TLAS identity.
   scene->subsurface_accel.emplace(device.create_accel());
-  scene->subsurface_accel->emplace_back(
-      mesh, coincident_transform, 0xffu, false, 3u);
-  scene->subsurface_accel->emplace_back(
-      mesh, make_float4x4(1.0f), 0xffu, false, 0u);
+  scene->subsurface_accel->emplace_back(mesh, coincident_transform, 0xffu,
+                                        false, 3u);
+  scene->subsurface_accel->emplace_back(mesh, make_float4x4(1.0f), 0xffu, false,
+                                        0u);
   scene->subsurface_instance_count = 2u;
 
   const auto empty_shape = traversal_xir_shape(scene, {});
-  const auto triangle_shape = traversal_xir_shape(
-      scene, {.primitives = {.triangles = true}});
-  const auto curve_shape = traversal_xir_shape(
-      scene, {.primitives = {.curves = true}});
+  const auto triangle_shape =
+      traversal_xir_shape(scene, {.primitives = {.triangles = true}});
+  const auto curve_shape =
+      traversal_xir_shape(scene, {.primitives = {.curves = true}});
   const auto mixed_shape = traversal_xir_shape(
-      scene,
-      {.primitives = {.triangles = true, .curves = true}});
+      scene, {.primitives = {.triangles = true, .curves = true}});
   const auto shadow_batch_shape = traversal_xir_shape(
       scene, {.primitives = {.triangles = true, .curves = true}}, true);
   const auto report_shapes =
@@ -552,7 +602,12 @@ int main(int argc, char **argv) {
               << ", triangles=" << triangle_shape.instructions
               << ", curves=" << curve_shape.instructions
               << ", mixed=" << mixed_shape.instructions
-              << ", shadow_batch=" << shadow_batch_shape.instructions << '\n';
+              << ", shadow_batch=" << shadow_batch_shape.instructions
+              << ", curve_control_reads=" << curve_shape.control_point_reads
+              << ", curve_control_guard_depth="
+              << curve_shape.minimum_control_point_true_guard_depth
+              << ", curve_ray_guard_depth="
+              << curve_shape.minimum_candidate_ray_true_guard_depth << '\n';
   }
   if (empty_shape.triangle_candidate_reads != 0u ||
       empty_shape.procedural_candidate_reads != 0u ||
@@ -563,10 +618,18 @@ int main(int argc, char **argv) {
       triangle_shape.callable_definitions != 0u ||
       curve_shape.triangle_candidate_reads != 0u ||
       curve_shape.procedural_candidate_reads == 0u ||
+      curve_shape.control_point_reads != 4u ||
+      curve_shape.minimum_control_point_true_guard_depth < 2u ||
+      curve_shape.candidate_ray_reads != 1u ||
+      curve_shape.minimum_candidate_ray_true_guard_depth < 2u ||
       curve_shape.instance_transform_queries != 0u ||
       curve_shape.callable_definitions != 0u ||
       mixed_shape.triangle_candidate_reads == 0u ||
       mixed_shape.procedural_candidate_reads == 0u ||
+      mixed_shape.control_point_reads != 4u ||
+      mixed_shape.minimum_control_point_true_guard_depth < 2u ||
+      mixed_shape.candidate_ray_reads != 1u ||
+      mixed_shape.minimum_candidate_ray_true_guard_depth < 2u ||
       mixed_shape.instance_transform_queries != 0u ||
       mixed_shape.callable_definitions != 0u ||
       empty_shape.ray_query_loops != 0u ||
@@ -575,6 +638,10 @@ int main(int argc, char **argv) {
       shadow_batch_shape.ray_query_loops != 1u ||
       shadow_batch_shape.triangle_candidate_reads == 0u ||
       shadow_batch_shape.procedural_candidate_reads == 0u ||
+      shadow_batch_shape.control_point_reads != 4u ||
+      shadow_batch_shape.minimum_control_point_true_guard_depth < 2u ||
+      shadow_batch_shape.candidate_ray_reads != 1u ||
+      shadow_batch_shape.minimum_candidate_ray_true_guard_depth < 2u ||
       shadow_batch_shape.callable_definitions != 0u ||
       !(empty_shape.instructions < triangle_shape.instructions &&
         empty_shape.instructions < curve_shape.instructions &&
@@ -594,26 +661,18 @@ int main(int argc, char **argv) {
                        curve_geometry](BufferFloat4 records) noexcept {
     const UInt test = dispatch_x();
     $if(test >= 21u) {
-      const auto local_hit = (*scene->subsurface_accel)
-                                 ->intersect(
-                                     make_ray(
-                                         make_float3(
-                                             select(5.0f, 0.0f,
-                                                    test == 22u),
-                                             0.0f,
-                                             0.0f),
-                                         make_float3(0.0f, 0.0f, 1.0f),
-                                         0.0f,
-                                         10.0f),
-                                     {.visibility_mask = 0xffu});
-      const auto primary_instance = subsurface_primary_instance(
-          scene, select(0u, 1u, test == 22u));
-      records.write(
-          test,
-          make_float4(cast<float>(primary_instance),
-                      cast<float>(local_hit->inst),
-                      cast<float>(local_hit->prim),
-                      local_hit->committed_ray_t));
+      const auto local_hit =
+          (*scene->subsurface_accel)
+              ->intersect(make_ray(make_float3(select(5.0f, 0.0f, test == 22u),
+                                               0.0f, 0.0f),
+                                   make_float3(0.0f, 0.0f, 1.0f), 0.0f, 10.0f),
+                          {.visibility_mask = 0xffu});
+      const auto primary_instance =
+          subsurface_primary_instance(scene, select(0u, 1u, test == 22u));
+      records.write(test, make_float4(cast<float>(primary_instance),
+                                      cast<float>(local_hit->inst),
+                                      cast<float>(local_hit->prim),
+                                      local_hit->committed_ray_t));
       $return();
     };
     UInt source_object = invalid_primitive;
@@ -629,10 +688,8 @@ int main(int argc, char **argv) {
     source_primitive = select(source_primitive, 0u, test == 5u);
     const auto exclude_later_coincident =
         (test == 11u) | (test == 13u) | (test == 15u);
-    source_object =
-        select(source_object, 1936u, exclude_later_coincident);
-    source_primitive =
-        select(source_primitive, 100u, exclude_later_coincident);
+    source_object = select(source_object, 1936u, exclude_later_coincident);
+    source_primitive = select(source_primitive, 100u, exclude_later_coincident);
     light_object = select(light_object, 22u, test == 3u);
     light_primitive = select(light_primitive, 200u, test == 3u);
     source_object = select(source_object, 2131u, test == 17u);
@@ -642,37 +699,31 @@ int main(int argc, char **argv) {
     source_object = select(source_object, 2372u, test == 19u);
     source_primitive = select(source_primitive, 3396299u, test == 19u);
     const auto ray_x = select(0.0f, 5.0f, test >= 10u);
-    const auto ray_z = select(0.0f, 4.0f,
-                              (test == 12u) | (test == 13u));
+    const auto ray_z = select(0.0f, 4.0f, (test == 12u) | (test == 13u));
     const auto ray_maximum = select(10.0f, 4.0f, test >= 14u);
     const auto bottle_test = (test >= 16u) & (test <= 19u);
     const auto overlap_test = test == 20u;
-    const auto ray_origin = select(
-        select(make_float3(ray_x, 0.0f, ray_z),
-               make_float3(1.8301146030426025f,
-                           9.144867897033691f,
-                           1.5106611251831055f),
-               bottle_test),
-        make_float3(2.7035441398620605f,
-                    8.901592254638672f,
-                    1.234214186668396f),
-        overlap_test);
-    const auto ray_direction = select(
-        select(make_float3(0.0f, 0.0f, 1.0f),
-               make_float3(-0.8146389126777649f,
-                           -0.5793101787567139f,
-                           -0.02762461081147194f),
-               bottle_test),
-        make_float3(-0.23053720593452454f,
-                    -0.9327327013015747f,
-                    -0.27724069356918335f),
-        overlap_test);
-    const auto ray_maximum_for_test = select(
-        select(ray_maximum, 125.67607116699219f, bottle_test),
-        101.64700317382812f,
-        overlap_test);
-    const auto ray = make_ray(
-        ray_origin, ray_direction, 0.0f, ray_maximum_for_test);
+    const auto ray_origin =
+        select(select(make_float3(ray_x, 0.0f, ray_z),
+                      make_float3(1.8301146030426025f, 9.144867897033691f,
+                                  1.5106611251831055f),
+                      bottle_test),
+               make_float3(2.7035441398620605f, 8.901592254638672f,
+                           1.234214186668396f),
+               overlap_test);
+    const auto ray_direction =
+        select(select(make_float3(0.0f, 0.0f, 1.0f),
+                      make_float3(-0.8146389126777649f, -0.5793101787567139f,
+                                  -0.02762461081147194f),
+                      bottle_test),
+               make_float3(-0.23053720593452454f, -0.9327327013015747f,
+                           -0.27724069356918335f),
+               overlap_test);
+    const auto ray_maximum_for_test =
+        select(select(ray_maximum, 125.67607116699219f, bottle_test),
+               101.64700317382812f, overlap_test);
+    const auto ray =
+        make_ray(ray_origin, ray_direction, 0.0f, ray_maximum_for_test);
     const auto hit = traversal->closest_shadow(
         scene, ray, 0xffu,
         {.object = source_object, .primitive = source_primitive},
@@ -694,24 +745,21 @@ int main(int argc, char **argv) {
           scene->geometry_buffer->read(instance.geometry_index);
       const auto triangle =
           scene->heap->buffer<Triangle>(geometry.bindless_base).read(hit->prim);
-      const auto positions = scene->heap->buffer<luisa::float3>(
-          geometry.bindless_base + 9u);
+      const auto positions =
+          scene->heap->buffer<luisa::float3>(geometry.bindless_base + 9u);
       const auto p0 = positions.read(triangle.i0);
       const auto p1 = positions.read(triangle.i1);
       const auto p2 = positions.read(triangle.i2);
       const auto object_position =
           p0 + hit->bary.x * (p1 - p0) + hit->bary.y * (p2 - p0);
-      const auto world_position =
-          (scene->accel->instance_transform(hit->inst) *
-           make_float4(object_position, 1.0f))
-              .xyz();
-      const auto shadow_ray = make_ray(
-          world_position,
-          make_float3(0.5150954127311707f,
-                      0.6604911684989929f,
-                      0.5462856888771057f),
-          0.0f,
-          3.6035547256469727f);
+      const auto world_position = (scene->accel->instance_transform(hit->inst) *
+                                   make_float4(object_position, 1.0f))
+                                      .xyz();
+      const auto shadow_ray =
+          make_ray(world_position,
+                   make_float3(0.5150954127311707f, 0.6604911684989929f,
+                               0.5462856888771057f),
+                   0.0f, 3.6035547256469727f);
       const auto cycles_object = instance.cycles_object_index;
       const auto cycles_primitive =
           geometry.cycles_primitive_offset + hit->prim;
@@ -724,21 +772,18 @@ int main(int argc, char **argv) {
       $if(!shadow_hit->miss()) {
         const auto shadow_instance =
             scene->instance_buffer->read(shadow_hit->inst);
-        const auto shadow_geometry = scene->geometry_buffer->read(
-            shadow_instance.geometry_index);
+        const auto shadow_geometry =
+            scene->geometry_buffer->read(shadow_instance.geometry_index);
         shadow_object = shadow_instance.cycles_object_index;
         shadow_primitive =
             shadow_geometry.cycles_primitive_offset + shadow_hit->prim;
       };
-      const auto repeated_source =
-          (shadow_object == cycles_object) &
-          (shadow_primitive == cycles_primitive);
-      records.write(
-          test,
-          make_float4(cast<float>(cycles_object),
-                      cast<float>(cycles_primitive),
-                      select(0.0f, 1.0f, repeated_source),
-                      hit->committed_ray_t));
+      const auto repeated_source = (shadow_object == cycles_object) &
+                                   (shadow_primitive == cycles_primitive);
+      records.write(test, make_float4(cast<float>(cycles_object),
+                                      cast<float>(cycles_primitive),
+                                      select(0.0f, 1.0f, repeated_source),
+                                      hit->committed_ray_t));
     };
 
     $if((test >= 10u) & (test <= 19u)) {
@@ -746,12 +791,12 @@ int main(int argc, char **argv) {
         const auto instance = scene->instance_buffer->read(hit->inst);
         const auto geometry =
             scene->geometry_buffer->read(instance.geometry_index);
-        records.write(test,
-                      make_float4(hit->committed_ray_t,
-                                  cast<float>(instance.cycles_object_index),
-                                  cast<float>(geometry.cycles_primitive_offset +
-                                             hit->prim),
-                                  cast<float>(hit->inst)));
+        records.write(
+            test,
+            make_float4(
+                hit->committed_ray_t, cast<float>(instance.cycles_object_index),
+                cast<float>(geometry.cycles_primitive_offset + hit->prim),
+                cast<float>(hit->inst)));
       };
     };
 
@@ -766,23 +811,20 @@ int main(int argc, char **argv) {
     };
     $if(test == 7u) {
       const auto geometry = curve_geometry->emit(scene, 1u, 0u, ray, 2.0f);
-      records.write(test,
-                    make_float4(geometry.intersection.u,
-                                geometry.intersection.v, geometry.intercept,
-                                geometry.length));
+      records.write(test, make_float4(geometry.intersection.u,
+                                      geometry.intersection.v,
+                                      geometry.intercept, geometry.length));
     };
     $if(test == 8u) {
       const auto geometry = curve_geometry->emit(scene, 1u, 0u, ray, 2.0f);
-      records.write(test,
-                    make_float4(geometry.thickness, geometry.random,
-                                geometry.tangent_normal.z,
-                                geometry.shading_normal.z));
+      records.write(test, make_float4(geometry.thickness, geometry.random,
+                                      geometry.tangent_normal.z,
+                                      geometry.shading_normal.z));
     };
     $if(test == 9u) {
       const auto geometry = curve_geometry->emit(scene, 1u, 0u, ray, 2.0f);
-      records.write(test,
-                    make_float4(geometry.position.x, geometry.position.y,
-                                geometry.position.z, geometry.dpdu.x));
+      records.write(test, make_float4(geometry.position.x, geometry.position.y,
+                                      geometry.position.z, geometry.dpdu.x));
     };
   };
   // This is also a compiler-pipeline regression. Bypass persistent shader
@@ -884,34 +926,30 @@ int main(int argc, char **argv) {
          << shadow_batch_output.copy_to(luisa::span{shadow_batch_actual})
          << synchronize();
 
-  constexpr std::array expected{luisa::float4{2.0f, 1.0f, 0.0f, 1.0f},
-                                luisa::float4{4.0f, 0.0f, 0.0f, 0.0f},
-                                luisa::float4{2.0f, 1.0f, 0.0f, 1.0f},
-                                luisa::float4{4.0f, 0.0f, 0.0f, 0.0f},
-                                luisa::float4{2.0f, 1.0f, 0.0f, 1.0f},
-                                luisa::float4{2.0f, 1.0f, 0.0f, 1.0f},
-                                luisa::float4{77.0f, 22.0f, 200.0f, 9.0f},
-                                luisa::float4{0.5f, 0.0f, 0.4f, 3.5f},
-                                luisa::float4{0.8f, 0.25f, -1.0f, -1.0f},
-                                luisa::float4{0.0f, 0.0f, 2.0f, 2.25f},
-                                luisa::float4{4.0f, 1936.0f, 100.0f, 3.0f},
-                                luisa::float4{4.0f, 489.0f, 100.0f, 2.0f},
-                                luisa::float4{0.0f, 1936.0f, 100.0f, 3.0f},
-                                luisa::float4{0.0f, 489.0f, 100.0f, 2.0f},
-                                luisa::float4{4.0f, 1936.0f, 100.0f, 3.0f},
-                                luisa::float4{4.0f, 489.0f, 100.0f, 2.0f},
-                                luisa::float4{1.6995198f, 2131.0f,
-                                              20474114.0f, 4.0f},
-                                luisa::float4{1.69952f, 2372.0f,
-                                              3396299.0f, 5.0f},
-                                luisa::float4{1.69952f, 2372.0f,
-                                              3396299.0f, 5.0f},
-                                luisa::float4{1.6995198f, 2131.0f,
-                                              20474114.0f, 4.0f},
-                                luisa::float4{5066.0f, 700000.0f, 0.0f,
-                                              4.4699316f},
-                                luisa::float4{3.0f, 0.0f, 0.0f, 4.0f},
-                                luisa::float4{0.0f, 1.0f, 0.0f, 4.0f}};
+  constexpr std::array expected{
+      luisa::float4{2.0f, 1.0f, 0.0f, 1.0f},
+      luisa::float4{4.0f, 0.0f, 0.0f, 0.0f},
+      luisa::float4{2.0f, 1.0f, 0.0f, 1.0f},
+      luisa::float4{4.0f, 0.0f, 0.0f, 0.0f},
+      luisa::float4{2.0f, 1.0f, 0.0f, 1.0f},
+      luisa::float4{2.0f, 1.0f, 0.0f, 1.0f},
+      luisa::float4{77.0f, 22.0f, 200.0f, 9.0f},
+      luisa::float4{0.5f, 0.0f, 0.4f, 3.5f},
+      luisa::float4{0.8f, 0.25f, -1.0f, -1.0f},
+      luisa::float4{0.0f, 0.0f, 2.0f, 2.25f},
+      luisa::float4{4.0f, 1936.0f, 100.0f, 3.0f},
+      luisa::float4{4.0f, 489.0f, 100.0f, 2.0f},
+      luisa::float4{0.0f, 1936.0f, 100.0f, 3.0f},
+      luisa::float4{0.0f, 489.0f, 100.0f, 2.0f},
+      luisa::float4{4.0f, 1936.0f, 100.0f, 3.0f},
+      luisa::float4{4.0f, 489.0f, 100.0f, 2.0f},
+      luisa::float4{1.6995198f, 2131.0f, 20474114.0f, 4.0f},
+      luisa::float4{1.69952f, 2372.0f, 3396299.0f, 5.0f},
+      luisa::float4{1.69952f, 2372.0f, 3396299.0f, 5.0f},
+      luisa::float4{1.6995198f, 2131.0f, 20474114.0f, 4.0f},
+      luisa::float4{5066.0f, 700000.0f, 0.0f, 4.4699316f},
+      luisa::float4{3.0f, 0.0f, 0.0f, 4.0f},
+      luisa::float4{0.0f, 1.0f, 0.0f, 4.0f}};
   auto failed = false;
   for (auto index = std::size_t{0u}; index < expected.size(); ++index) {
     if (!valid_backend_native_record(index, actual[index], expected[index])) {

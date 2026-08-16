@@ -16,23 +16,17 @@ private:
   ScenePrimitiveStagePlan _plan;
   std::shared_ptr<const TriangleGeometryComponent> _triangles;
   std::shared_ptr<const CurveGeometryComponent> _curves;
-  std::shared_ptr<const CyclesTriangleSurfaceComponent>
-      _triangle_surface;
+  std::shared_ptr<const CyclesTriangleSurfaceComponent> _triangle_surface;
 
 public:
-  explicit CyclesSurfacePrimitiveGeometryComponent(
-      ScenePrimitiveStagePlan plan)
+  explicit CyclesSurfacePrimitiveGeometryComponent(ScenePrimitiveStagePlan plan)
       : _plan{plan},
-        _triangles{plan.triangles
-                       ? make_triangle_geometry_component()
-                       : nullptr},
-        _curves{plan.curves
-                    ? make_curve_geometry_component()
-                    : nullptr},
-        _triangle_surface{
-            plan.triangles
-                ? make_cycles_triangle_surface_component()
-                : nullptr} {}
+        _triangles{plan.triangles ? make_triangle_geometry_component()
+                                  : nullptr},
+        _curves{plan.curves ? make_curve_geometry_component() : nullptr},
+        _triangle_surface{plan.triangles
+                              ? make_cycles_triangle_surface_component()
+                              : nullptr} {}
 
   SurfacePrimitiveGeometryContext
   emit(const std::shared_ptr<LuisaSceneData> &scene,
@@ -42,15 +36,12 @@ public:
        const SafeNormalizeCallable &safe_normalize) const noexcept override {
     Bool is_curve = false;
     if (_plan.curves) {
-      is_curve = _plan.triangles
-                     ? hit->is_procedural()
-                     : Bool{true};
+      is_curve = _plan.triangles ? hit->is_procedural() : Bool{true};
     }
     const auto object_to_world = scene->accel->instance_transform(hit->inst);
     const auto world_to_object = inverse(object_to_world);
     const auto normal_to_world = transpose(world_to_object);
-    const Float differential_radius =
-        ray_dP + hit->committed_ray_t * ray_dD;
+    const Float differential_radius = ray_dP + hit->committed_ray_t * ray_dD;
 
     Var<InstanceGpu> instance;
     Var<MaterialBindingGpu> material_binding;
@@ -106,8 +97,7 @@ public:
     Bool cycles_transform_applied = false;
     Bool triangle_smooth = false;
     UInt emission_sampling =
-        static_cast<std::uint32_t>(
-            contract::EmissionSampling::none);
+        static_cast<std::uint32_t>(contract::EmissionSampling::none);
     Float curve_intercept = 0.0f;
     Float curve_length = 0.0f;
     Float curve_thickness = 0.0f;
@@ -127,10 +117,10 @@ public:
     Bool volume_valid = false;
 
     const auto emit_curve = [&] {
-      const auto curve = _curves->emit(scene, hit->inst, hit->prim, ray,
-                                       hit->committed_ray_t);
+      const auto curve =
+          _curves->emit(scene, hit->inst, hit->prim, ray, hit->committed_ray_t);
       const auto volume = curve.primitive.volume_stack_entry();
-      instance = curve.primitive.curve.instance;
+      instance = curve.primitive.curve.metadata.instance;
       material_binding = curve.primitive.material_binding;
       object_position = curve.object_position;
       hit_position = curve.position;
@@ -149,8 +139,7 @@ public:
       cycles_surface_shader = curve.primitive.cycles_surface_shader;
       cycles_object_index = curve.primitive.cycles_object_index;
       cycles_primitive_index = curve.primitive.cycles_primitive_index;
-      emission_sampling =
-          curve.primitive.triangle_emission_sampling;
+      emission_sampling = curve.primitive.triangle_emission_sampling;
       surface_has_volume = curve.primitive.has_volume;
       volume_object = volume.object;
       volume_shader = volume.shader;
@@ -169,8 +158,7 @@ public:
       p0 = triangle.p0;
       p1 = triangle.p1;
       p2 = triangle.p2;
-      cycles_transform_applied =
-          instance.cycles_transform_applied != 0u;
+      cycles_transform_applied = instance.cycles_transform_applied != 0u;
       n0 = triangle.n0;
       n1 = triangle.n1;
       n2 = triangle.n2;
@@ -221,12 +209,12 @@ public:
       tangent_sign = packed_object_tangent.w;
       tangent = safe_normalize(
           (object_to_world * make_float4(object_tangent, 0.0f)).xyz(),
-          safe_normalize((wp1 - wp0) -
-                             geometric_normal * dot(wp1 - wp0, geometric_normal),
+          safe_normalize((wp1 - wp0) - geometric_normal *
+                                           dot(wp1 - wp0, geometric_normal),
                          make_float3(1.0f, 0.0f, 0.0f)));
-      generated = triangle_interpolate(
-          hit->bary, triangle.generated0, triangle.generated1,
-          triangle.generated2);
+      generated =
+          triangle_interpolate(hit->bary, triangle.generated0,
+                               triangle.generated1, triangle.generated2);
       generated0 = triangle.generated0;
       generated1 = triangle.generated1;
       generated2 = triangle.generated2;
@@ -254,12 +242,8 @@ public:
     };
 
     if (_plan.mixed()) {
-      $if(is_curve) {
-        emit_curve();
-      }
-      $else {
-        emit_triangle();
-      };
+      $if(is_curve) { emit_curve(); }
+      $else { emit_triangle(); };
     } else if (_plan.curves) {
       emit_curve();
     } else {
@@ -269,14 +253,14 @@ public:
     const auto normal_components_differ =
         (geometric_normal.x != geometric_normal.y) |
         (geometric_normal.x != geometric_normal.z);
-    Float3 compact_dx = select(
-        make_float3(geometric_normal.z - geometric_normal.y,
-                    geometric_normal.x + geometric_normal.z,
-                    -geometric_normal.y - geometric_normal.x),
-        make_float3(geometric_normal.z - geometric_normal.y,
-                    geometric_normal.x - geometric_normal.z,
-                    geometric_normal.y - geometric_normal.x),
-        normal_components_differ);
+    Float3 compact_dx =
+        select(make_float3(geometric_normal.z - geometric_normal.y,
+                           geometric_normal.x + geometric_normal.z,
+                           -geometric_normal.y - geometric_normal.x),
+               make_float3(geometric_normal.z - geometric_normal.y,
+                           geometric_normal.x - geometric_normal.z,
+                           geometric_normal.y - geometric_normal.x),
+               normal_components_differ);
     compact_dx = safe_normalize(compact_dx, tangent);
     const Float3 compact_dy = cross(geometric_normal, compact_dx);
     const Float3 dPdx = compact_dx * differential_radius;
@@ -289,8 +273,7 @@ public:
     Float3 undisplaced_position = hit_position;
     Float3 undisplaced_object_position = object_position;
     Float3 undisplaced_shading_normal = shading_normal;
-    Float3 undisplaced_object_shading_normal =
-        object_shading_normal;
+    Float3 undisplaced_object_shading_normal = object_shading_normal;
     Float3 undisplaced_object_tangent = object_tangent;
     Float undisplaced_tangent_sign = tangent_sign;
     Float3 undisplaced_dPdx = dPdx;
@@ -311,11 +294,10 @@ public:
       const auto barycentric_differential = [&](Float3 differential) noexcept {
         const Float projected1 = dot(differential, edge1);
         const Float projected2 = dot(differential, edge2);
-        auto delta = make_float2(
-            (projected1 * gram11 - projected2 * gram01) /
-                safe_gram_determinant,
-            (projected2 * gram00 - projected1 * gram01) /
-                safe_gram_determinant);
+        auto delta = make_float2((projected1 * gram11 - projected2 * gram01) /
+                                     safe_gram_determinant,
+                                 (projected2 * gram00 - projected1 * gram01) /
+                                     safe_gram_determinant);
         delta = select(make_float2(0.0f), delta, valid_gram);
         return select(delta, -delta, back_facing);
       };
@@ -325,81 +307,53 @@ public:
                      (generated2 - generated0) * barycentric_dx.y;
       generated_dy = (generated1 - generated0) * barycentric_dy.x +
                      (generated2 - generated0) * barycentric_dy.y;
-      uv_dx = (uv1 - uv0) * barycentric_dx.x +
-              (uv2 - uv0) * barycentric_dx.y;
-      uv_dy = (uv1 - uv0) * barycentric_dy.x +
-              (uv2 - uv0) * barycentric_dy.y;
+      uv_dx = (uv1 - uv0) * barycentric_dx.x + (uv2 - uv0) * barycentric_dx.y;
+      uv_dy = (uv1 - uv0) * barycentric_dy.x + (uv2 - uv0) * barycentric_dy.y;
 
       // Cycles NODE_ENTER_BUMP_EVAL interpolates ATTR_STD_POSITION_
       // UNDISPLACED with the hit's current barycentric differentials. It
       // restores P afterwards but deliberately keeps the bump result in N.
-      const auto undisplaced_object_geometric_normal = safe_normalize(
-          cross(undisplaced_p1 - undisplaced_p0,
-                undisplaced_p2 - undisplaced_p0),
-          make_float3(0.0f, 0.0f, 1.0f));
-      undisplaced_object_shading_normal = select(
-          undisplaced_object_geometric_normal,
-          triangle_interpolate(
-              barycentric,
-              undisplaced_n0,
-              undisplaced_n1,
-              undisplaced_n2),
-          triangle_smooth);
-      undisplaced_shading_normal = safe_normalize(
-          (normal_to_world *
-           make_float4(
-               undisplaced_object_shading_normal,
-               0.0f))
-              .xyz(),
-          geometric_normal);
+      const auto undisplaced_object_geometric_normal =
+          safe_normalize(cross(undisplaced_p1 - undisplaced_p0,
+                               undisplaced_p2 - undisplaced_p0),
+                         make_float3(0.0f, 0.0f, 1.0f));
+      undisplaced_object_shading_normal =
+          select(undisplaced_object_geometric_normal,
+                 triangle_interpolate(barycentric, undisplaced_n0,
+                                      undisplaced_n1, undisplaced_n2),
+                 triangle_smooth);
+      undisplaced_shading_normal =
+          safe_normalize((normal_to_world *
+                          make_float4(undisplaced_object_shading_normal, 0.0f))
+                             .xyz(),
+                         geometric_normal);
       undisplaced_shading_normal = select(
-          undisplaced_shading_normal,
-          -undisplaced_shading_normal,
-          back_facing);
+          undisplaced_shading_normal, -undisplaced_shading_normal, back_facing);
       undisplaced_object_position = triangle_interpolate(
-          barycentric,
-          undisplaced_p0,
-          undisplaced_p1,
-          undisplaced_p2);
+          barycentric, undisplaced_p0, undisplaced_p1, undisplaced_p2);
       undisplaced_position =
-          (object_to_world *
-           make_float4(undisplaced_object_position, 1.0f))
+          (object_to_world * make_float4(undisplaced_object_position, 1.0f))
               .xyz();
       undisplaced_object_dPdx =
-          (undisplaced_p1 - undisplaced_p0) *
-              barycentric_dx.x +
-          (undisplaced_p2 - undisplaced_p0) *
-              barycentric_dx.y;
+          (undisplaced_p1 - undisplaced_p0) * barycentric_dx.x +
+          (undisplaced_p2 - undisplaced_p0) * barycentric_dx.y;
       undisplaced_object_dPdy =
-          (undisplaced_p1 - undisplaced_p0) *
-              barycentric_dy.x +
-          (undisplaced_p2 - undisplaced_p0) *
-              barycentric_dy.y;
+          (undisplaced_p1 - undisplaced_p0) * barycentric_dy.x +
+          (undisplaced_p2 - undisplaced_p0) * barycentric_dy.y;
       undisplaced_dPdx =
-          (object_to_world *
-           make_float4(undisplaced_object_dPdx, 0.0f))
-              .xyz();
+          (object_to_world * make_float4(undisplaced_object_dPdx, 0.0f)).xyz();
       undisplaced_dPdy =
-          (object_to_world *
-           make_float4(undisplaced_object_dPdy, 0.0f))
-              .xyz();
+          (object_to_world * make_float4(undisplaced_object_dPdy, 0.0f)).xyz();
       const auto packed_undisplaced_tangent =
-          triangle_interpolate(
-              barycentric,
-              undisplaced_tangent0,
-              undisplaced_tangent1,
-              undisplaced_tangent2);
-      undisplaced_object_tangent =
-          packed_undisplaced_tangent.xyz();
-      undisplaced_tangent_sign =
-          packed_undisplaced_tangent.w;
+          triangle_interpolate(barycentric, undisplaced_tangent0,
+                               undisplaced_tangent1, undisplaced_tangent2);
+      undisplaced_object_tangent = packed_undisplaced_tangent.xyz();
+      undisplaced_tangent_sign = packed_undisplaced_tangent.w;
     };
 
     if (_plan.triangles) {
       if (_plan.curves) {
-        $if(!is_curve) {
-          emit_triangle_differentials();
-        };
+        $if(!is_curve) { emit_triangle_differentials(); };
       } else {
         emit_triangle_differentials();
       }
@@ -407,10 +361,9 @@ public:
 
     const auto transformed_object_hit_position =
         (world_to_object * make_float4(hit_position, 1.0f)).xyz();
-    const auto object_hit_position = select(
-        transformed_object_hit_position,
-        hit_position,
-        cycles_transform_applied);
+    const auto object_hit_position =
+        select(transformed_object_hit_position, hit_position,
+               cycles_transform_applied);
     SurfacePoint point{
         .position = hit_position,
         .object_position = object_position,
@@ -423,16 +376,11 @@ public:
         .object_tangent = object_tangent,
         .tangent_sign = tangent_sign,
         .undisplaced_position = undisplaced_position,
-        .undisplaced_object_position =
-            undisplaced_object_position,
-        .undisplaced_shading_normal =
-            undisplaced_shading_normal,
-        .undisplaced_object_shading_normal =
-            undisplaced_object_shading_normal,
-        .undisplaced_object_tangent =
-            undisplaced_object_tangent,
-        .undisplaced_tangent_sign =
-            undisplaced_tangent_sign,
+        .undisplaced_object_position = undisplaced_object_position,
+        .undisplaced_shading_normal = undisplaced_shading_normal,
+        .undisplaced_object_shading_normal = undisplaced_object_shading_normal,
+        .undisplaced_object_tangent = undisplaced_object_tangent,
+        .undisplaced_tangent_sign = undisplaced_tangent_sign,
         .normal_to_world_x =
             (normal_to_world * make_float4(1.0f, 0.0f, 0.0f, 0.0f)).xyz(),
         .normal_to_world_y =
@@ -447,10 +395,8 @@ public:
         .object_dPdy = object_dPdy,
         .undisplaced_dPdx = undisplaced_dPdx,
         .undisplaced_dPdy = undisplaced_dPdy,
-        .undisplaced_object_dPdx =
-            undisplaced_object_dPdx,
-        .undisplaced_object_dPdy =
-            undisplaced_object_dPdy,
+        .undisplaced_object_dPdx = undisplaced_object_dPdx,
+        .undisplaced_object_dPdy = undisplaced_object_dPdy,
         .generated_dx = generated_dx,
         .generated_dy = generated_dy,
         .incoming = -ray->direction(),
@@ -487,50 +433,48 @@ public:
             (material_binding.flags & material_flag_use_bump_map_correction) !=
             0u,
         .back_facing = back_facing};
-    return {.instance = std::move(instance),
-            .p0 = std::move(cycles_p0),
-            .p1 = std::move(cycles_p1),
-            .p2 = std::move(cycles_p2),
-            .n0 = std::move(cycles_n0),
-            .n1 = std::move(cycles_n1),
-            .n2 = std::move(cycles_n2),
-            .object_to_world = object_to_world,
-            .world_to_object = world_to_object,
-            .wp0 = std::move(wp0),
-            .wp1 = std::move(wp1),
-            .wp2 = std::move(wp2),
-            .hit_position = std::move(hit_position),
-            .object_hit_position = std::move(object_hit_position),
-            .differential_radius = differential_radius,
-            .is_curve = is_curve,
-            .cycles_transform_applied =
-                std::move(cycles_transform_applied),
-            .triangle_smooth = std::move(triangle_smooth),
-            .emission_sampling = std::move(emission_sampling),
-            .surface_tag = std::move(surface_tag),
-            .cycles_surface_shader = std::move(cycles_surface_shader),
-            .cycles_object_index = std::move(cycles_object_index),
-            .cycles_primitive_index = std::move(cycles_primitive_index),
-            .volume_stack_entry =
-                {.object = std::move(volume_object),
-                 .shader = std::move(volume_shader),
-                 .surface_tag = std::move(volume_surface_tag),
-                 .parameter_block = std::move(volume_parameter_block),
-                 .instance_id = std::move(volume_instance_id),
-                 .sample_method = std::move(volume_sample_method),
-                 .valid = std::move(volume_valid)},
-            .surface_has_volume = std::move(surface_has_volume),
-            .point = std::move(point)};
+    return {
+        .instance = std::move(instance),
+        .p0 = std::move(cycles_p0),
+        .p1 = std::move(cycles_p1),
+        .p2 = std::move(cycles_p2),
+        .n0 = std::move(cycles_n0),
+        .n1 = std::move(cycles_n1),
+        .n2 = std::move(cycles_n2),
+        .object_to_world = object_to_world,
+        .world_to_object = world_to_object,
+        .wp0 = std::move(wp0),
+        .wp1 = std::move(wp1),
+        .wp2 = std::move(wp2),
+        .hit_position = std::move(hit_position),
+        .object_hit_position = std::move(object_hit_position),
+        .differential_radius = differential_radius,
+        .is_curve = is_curve,
+        .cycles_transform_applied = std::move(cycles_transform_applied),
+        .triangle_smooth = std::move(triangle_smooth),
+        .emission_sampling = std::move(emission_sampling),
+        .surface_tag = std::move(surface_tag),
+        .cycles_surface_shader = std::move(cycles_surface_shader),
+        .cycles_object_index = std::move(cycles_object_index),
+        .cycles_primitive_index = std::move(cycles_primitive_index),
+        .volume_stack_entry = {.object = std::move(volume_object),
+                               .shader = std::move(volume_shader),
+                               .surface_tag = std::move(volume_surface_tag),
+                               .parameter_block =
+                                   std::move(volume_parameter_block),
+                               .instance_id = std::move(volume_instance_id),
+                               .sample_method = std::move(volume_sample_method),
+                               .valid = std::move(volume_valid)},
+        .surface_has_volume = std::move(surface_has_volume),
+        .point = std::move(point)};
   }
 };
 
 } // namespace
 
 std::shared_ptr<const SurfacePrimitiveGeometryComponent>
-make_surface_primitive_geometry_component(
-    ScenePrimitiveStagePlan plan) {
-  return std::make_shared<CyclesSurfacePrimitiveGeometryComponent>(
-      plan);
+make_surface_primitive_geometry_component(ScenePrimitiveStagePlan plan) {
+  return std::make_shared<CyclesSurfacePrimitiveGeometryComponent>(plan);
 }
 
 } // namespace psycles::luisa_backend::detail

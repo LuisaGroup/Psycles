@@ -7,12 +7,16 @@
 
 namespace psycles::luisa_backend::detail {
 
-struct CurveSegmentContext {
+struct CurveSegmentMetadata {
   UInt instance_id;
   UInt segment_id;
   Var<InstanceGpu> instance;
   Var<GeometryGpu> geometry;
   Var<CurveSegmentGpu> segment;
+};
+
+struct CurveSegmentContext {
+  CurveSegmentMetadata metadata;
   CurveControlPoints control_points;
 };
 
@@ -38,10 +42,22 @@ class CurvePrimitiveComponent {
 public:
   virtual ~CurvePrimitiveComponent() noexcept = default;
 
-  [[nodiscard]] virtual CurveSegmentContext
+  // Candidate identity is substantially cheaper than exact ribbon geometry.
+  // Keeping these stages explicit lets traversal reject self/light candidates
+  // before loading four control points and evaluating the ribbon polynomial.
+  [[nodiscard]] virtual CurveSegmentMetadata
+  emit_metadata(const std::shared_ptr<LuisaSceneData> &scene,
+                Expr<std::uint32_t> instance_id,
+                Expr<std::uint32_t> segment_id) const noexcept = 0;
+
+  [[nodiscard]] virtual CurveControlPoints
+  emit_control_points(const std::shared_ptr<LuisaSceneData> &scene,
+                      const CurveSegmentMetadata &metadata) const noexcept = 0;
+
+  [[nodiscard]] CurveSegmentContext
   emit_segment(const std::shared_ptr<LuisaSceneData> &scene,
                Expr<std::uint32_t> instance_id,
-               Expr<std::uint32_t> segment_id) const noexcept = 0;
+               Expr<std::uint32_t> segment_id) const noexcept;
 
   [[nodiscard]] virtual CurvePrimitiveContext
   emit(const std::shared_ptr<LuisaSceneData> &scene,
