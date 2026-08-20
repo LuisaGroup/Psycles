@@ -218,11 +218,11 @@ void write_dynamic_value(
     Var<luisa::uint4> instruction,
     UInt instruction_index,
     const SurfaceValueHeightCallable &height,
-    const BufferFloat &scalar_parameters,
-    const BufferFloat3 &vector_parameters,
-    const BufferFloat &cycles_bsdf_tables,
-    const BindlessVar &textures,
-    const BindlessVar &geometry_heap) noexcept {
+    Expr<Buffer<float>> scalar_parameters,
+    Expr<Buffer<luisa::float3>> vector_parameters,
+    Expr<Buffer<float>> cycles_bsdf_tables,
+    Expr<BindlessArray> textures,
+    Expr<BindlessArray> geometry_heap) noexcept {
     const auto configuration =
         decode_surface_bump_configuration(
             variant.instruction.static_u0);
@@ -288,11 +288,11 @@ void emit_surface_value_program(
     UInt program,
     const SurfaceValueLocals &locals,
     const SurfaceValueHeightCallable *height,
-    const BufferFloat &scalar_parameters,
-    const BufferFloat3 &vector_parameters,
-    const BufferFloat &cycles_bsdf_tables,
-    const BindlessVar &textures,
-    const BindlessVar &geometry_heap) noexcept {
+    Expr<Buffer<float>> scalar_parameters,
+    Expr<Buffer<luisa::float3>> vector_parameters,
+    Expr<Buffer<float>> cycles_bsdf_tables,
+    Expr<BindlessArray> textures,
+    Expr<BindlessArray> geometry_heap) noexcept {
     auto range = runtime.program_buffer->read(program);
     UInt instruction_index = range.x;
     const auto instruction_end = range.x + range.y;
@@ -808,9 +808,7 @@ void emit_surface_value_program(
     std::abort();
 }
 
-using SurfaceClosureBytecodeVisitor =
-    std::function<void(const TracedClosure &, UInt, UInt)>;
-
+template<typename Visitor>
 void emit_surface_closure_program(
     const SurfaceValueRuntime &runtime,
     const ShaderServices &services,
@@ -818,7 +816,7 @@ void emit_surface_closure_program(
     const SurfaceValueLocals &locals,
     UInt instruction_begin,
     UInt instruction_end,
-    const SurfaceClosureBytecodeVisitor &visit) noexcept {
+    Visitor &&visit) noexcept {
     UInt instruction_index = instruction_begin;
     $while(instruction_index < instruction_end) {
         Var<luisa::uint4> instruction =
@@ -881,26 +879,20 @@ void emit_surface_closure_program(
         .evaluation_scale = make_float3(1.0f)});
 }
 
-[[nodiscard]] SurfacePreparation prepare_surface_closure_program(
+template<typename PhysicalClosureSink>
+[[nodiscard]] SurfacePopulation execute_surface_closure_program(
     const SurfaceValueRuntime &runtime,
     const ShaderServices &services,
     const SurfacePoint &point,
     const SurfaceValueLocals &locals,
     UInt program,
-    const SurfacePreparationQuery &query,
-    const SurfaceClosureIdentityCallable &identity,
-    const SurfaceClosureAovCallable &aov_operation) noexcept {
+    Expr<bool> emission_reflective_caustics,
+    Expr<bool> reflective_caustics,
+    Expr<bool> refractive_caustics,
+    PhysicalClosureSink &&emit_physical) noexcept {
     const auto range = runtime.program_buffer->read(program);
     const auto closure_begin = range.z;
     const auto closure_end = range.z + range.w;
-    SurfacePreparationAccumulator accumulator{
-        point,
-        maximum_surface_closure_capacity,
-        query.glossy_filter_roughness,
-        query.include_runtime_flags,
-        query.include_aov,
-        identity,
-        aov_operation};
     const PrincipledLayerComponent principled_layers{services, point};
     Float3 emission = make_float3(0.0f);
     Float3 transparent_weight = make_float3(0.0f);
@@ -937,7 +929,7 @@ void emit_surface_closure_program(
                                               .evaluate_emission(
                                                   raw,
                                                   raw.principled_features,
-                                                  query.emission_reflective_caustics)
+                                                  emission_reflective_caustics)
                                               .radiance;
                 $if(emission_endpoint) {
                     emission += contribution;
@@ -953,8 +945,8 @@ void emit_surface_closure_program(
                     services,
                     point,
                     raw,
-                    query.reflective_caustics,
-                    query.refractive_caustics,
+                    reflective_caustics,
+                    refractive_caustics,
                     [&](const TracedClosure &physical) noexcept {
                         if (physical.operation ==
                             compiler::ClosureOperation::transparent) {
@@ -971,7 +963,7 @@ void emit_surface_closure_program(
                             return;
                         }
                         $if(!transparent_pending) {
-                            accumulator.add(
+                            emit_physical(
                                 canonical_surface_closure(physical));
                         };
                     });
@@ -979,7 +971,7 @@ void emit_surface_closure_program(
         });
 
     $if(transparent_pending) {
-        accumulator.add(merged_transparent_closure(
+        emit_physical(merged_transparent_closure(
             point,
             transparent_weight,
             transparent_sample_weight));
@@ -1012,8 +1004,8 @@ void emit_surface_closure_program(
                         services,
                         point,
                         raw,
-                        query.reflective_caustics,
-                        query.refractive_caustics,
+                        reflective_caustics,
+                        refractive_caustics,
                         [&](const TracedClosure &physical) noexcept {
                             if (physical.operation ==
                                 compiler::ClosureOperation::transparent) {
@@ -1023,15 +1015,49 @@ void emit_surface_closure_program(
                                 return;
                             }
                             $if(reached_first_transparent) {
-                                accumulator.add(
+                                emit_physical(
                                     canonical_surface_closure(physical));
                             };
                         });
                 };
             });
     };
+    return {
+        .emission = std::move(emission),
+        .shading_normal = point.shading_normal};
+}
+
+[[nodiscard]] SurfacePreparation prepare_surface_closure_program(
+    const SurfaceValueRuntime &runtime,
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    const SurfaceValueLocals &locals,
+    UInt program,
+    const SurfacePreparationQuery &query,
+    const SurfaceClosureIdentityCallable &identity,
+    const SurfaceClosureAovCallable &aov_operation) noexcept {
+    SurfacePreparationAccumulator accumulator{
+        point,
+        maximum_surface_closure_capacity,
+        query.glossy_filter_roughness,
+        query.include_runtime_flags,
+        query.include_aov,
+        identity,
+        aov_operation};
+    const auto population = execute_surface_closure_program(
+        runtime,
+        services,
+        point,
+        locals,
+        program,
+        query.emission_reflective_caustics,
+        query.reflective_caustics,
+        query.refractive_caustics,
+        [&](const SurfaceClosureRecord &closure) noexcept {
+            accumulator.add(closure);
+        });
     accumulator.finish();
-    return accumulator.preparation(std::move(emission));
+    return accumulator.preparation(population.emission);
 }
 
 [[nodiscard]] SurfacePoint automatic_normal_point(
@@ -1053,6 +1079,74 @@ void emit_surface_closure_program(
         result.object_dPdy = point.undisplaced_object_dPdy;
     };
     return result;
+}
+
+// Execute the exact dependency-union value schedule once and expose its
+// surface-local typed banks only to a continuation recorded in the same
+// lexical/device control-flow region. Locals never cross the population
+// boundary, and both preparation-only and populate-once routes therefore
+// share automatic-normal, Bump, and value-numbering semantics.
+template<typename Continuation>
+void emit_compact_surface_values(
+    const SurfaceValueRuntime &runtime,
+    const SurfaceValueNodes &nodes,
+    const ShaderServices &services,
+    UInt surface_tag,
+    SurfacePoint point,
+    const SurfaceValueHeightCallable &height,
+    Expr<Buffer<float>> scalar_parameters,
+    Expr<Buffer<luisa::float3>> vector_parameters,
+    Expr<Buffer<float>> cycles_bsdf_tables,
+    Expr<BindlessArray> textures,
+    Expr<BindlessArray> geometry_heap,
+    Continuation &&continuation) noexcept {
+    $if(surface_tag <
+        static_cast<luisa::uint>(runtime.topologies.size())) {
+        SurfaceValueLocals locals;
+        const auto normal_program =
+            surface_tag * SurfaceValueRuntime::programs_per_topology +
+            SurfaceValueRuntime::normal_program_offset;
+        const auto normal_output =
+            runtime.normal_output_address_buffer->read(surface_tag);
+        $if(normal_output !=
+            compiler::SurfaceValueAddress::invalid_value) {
+            const auto normal_point = automatic_normal_point(
+                runtime, surface_tag, point);
+            emit_surface_value_program(
+                runtime,
+                nodes,
+                services,
+                normal_point,
+                normal_program,
+                locals,
+                &height,
+                scalar_parameters,
+                vector_parameters,
+                cycles_bsdf_tables,
+                textures,
+                geometry_heap);
+            point.shading_normal = read_vector_dynamic(
+                services, normal_point, locals, normal_output);
+        };
+
+        const auto preparation_program =
+            surface_tag * SurfaceValueRuntime::programs_per_topology +
+            SurfaceValueRuntime::preparation_program_offset;
+        emit_surface_value_program(
+            runtime,
+            nodes,
+            services,
+            point,
+            preparation_program,
+            locals,
+            &height,
+            scalar_parameters,
+            vector_parameters,
+            cycles_bsdf_tables,
+            textures,
+            geometry_heap);
+        continuation(point, locals, preparation_program);
+    };
 }
 
 [[nodiscard]] std::vector<bool> dependency_mask(
@@ -1096,6 +1190,77 @@ void provide_dummy_if_empty(luisa::vector<T> &values, T dummy) {
     if (values.empty()) {
         values.emplace_back(std::move(dummy));
     }
+}
+
+[[nodiscard]] std::shared_ptr<SurfaceValueNodes>
+make_surface_value_nodes(
+    const SurfaceValueRuntime &runtime) noexcept {
+    auto nodes = std::make_shared<SurfaceValueNodes>();
+    nodes->reserve(
+        runtime.executable.executable.variants.size());
+    for (const auto &variant :
+         runtime.executable.executable.variants) {
+        nodes->emplace_back(
+            make_value_node(variant.instruction));
+    }
+    return nodes;
+}
+
+[[nodiscard]] SurfaceValueHeightCallable
+make_surface_value_height_callable(
+    const std::shared_ptr<LuisaSceneData> &scene,
+    const std::shared_ptr<SurfaceValueNodes> &nodes,
+    const Texture2DSamplingCallables &texture_sampling,
+    const SurfaceAttributeLookupCallable &attribute_lookup) noexcept {
+    SurfaceValueHeightCallable height =
+        [scene, nodes, texture_sampling, attribute_lookup](
+            BufferFloat scalar_parameters,
+            BufferFloat3 vector_parameters,
+            BufferFloat cycles_bsdf_tables,
+            BindlessVar textures,
+            BindlessVar geometry_heap,
+            Var<SurfacePointCall> packed_point,
+            UInt program) noexcept {
+            CallableTexture2DSamplingProvider texture_provider{
+                textures, texture_sampling};
+            CallableSurfaceAttributeLookupProvider attribute_provider{
+                geometry_heap, attribute_lookup};
+            BufferShaderServices services{
+                scalar_parameters,
+                vector_parameters,
+                cycles_bsdf_tables,
+                textures,
+                geometry_heap,
+                scene->attribute_binding_slot,
+                scene->attribute_range_slot,
+                scene->nishita_texture_bindings,
+                scene->shader_color_space,
+                nullptr,
+                &texture_provider,
+                &attribute_provider};
+            const auto point = unpack_surface_point(packed_point);
+            SurfaceValueLocals locals;
+            emit_surface_value_program(
+                *scene->surface_values,
+                *nodes,
+                services,
+                point,
+                program,
+                locals,
+                nullptr,
+                scalar_parameters,
+                vector_parameters,
+                cycles_bsdf_tables,
+                textures,
+                geometry_heap);
+            const auto output =
+                scene->surface_values->program_output_buffer->read(
+                    program);
+            return read_scalar_dynamic(
+                services, point, locals, output);
+        };
+    height.set_name("surface_value_height");
+    return height;
 }
 
 } // namespace
@@ -1413,6 +1578,101 @@ void upload_surface_value_runtime(
                   luisa::span{runtime.normal_undisplaced_flags});
 }
 
+namespace {
+
+class CompactSurfacePopulationProgramImpl final
+    : public SurfacePopulationProgram {
+
+  private:
+    std::shared_ptr<LuisaSceneData> _scene;
+    std::shared_ptr<SurfaceValueNodes> _nodes;
+    SurfaceValueHeightCallable _height;
+
+  public:
+    CompactSurfacePopulationProgramImpl(
+        std::shared_ptr<LuisaSceneData> scene,
+        std::shared_ptr<SurfaceValueNodes> nodes,
+        SurfaceValueHeightCallable height) noexcept
+        : _scene{std::move(scene)},
+          _nodes{std::move(nodes)},
+          _height{std::move(height)} {}
+
+    [[nodiscard]] SurfacePopulation populate(
+        Expr<std::uint32_t> surface_tag,
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        const SurfacePopulationQuery &query,
+        SurfaceClosureCollector &collector) const noexcept override {
+        SurfacePopulation result{
+            .emission = make_float3(0.0f),
+            .shading_normal = point.shading_normal};
+
+        // begin/finish form one transaction even for an invalid runtime tag.
+        // A valid compact program refines begin() with the automatic-normal
+        // result before emitting its first retained physical closure.
+        collector.begin(point.shading_normal);
+        emit_compact_surface_values(
+            *_scene->surface_values,
+            *_nodes,
+            services,
+            UInt{surface_tag},
+            point,
+            _height,
+            Expr<Buffer<float>>{_scene->scalar_parameter_buffer},
+            Expr<Buffer<luisa::float3>>{
+                _scene->vector_parameter_buffer},
+            Expr<Buffer<float>>{_scene->cycles_bsdf_table_buffer},
+            Expr<BindlessArray>{_scene->texture_heap},
+            Expr<BindlessArray>{_scene->heap},
+            [&](const SurfacePoint &evaluated_point,
+                const SurfaceValueLocals &locals,
+                UInt preparation_program) noexcept {
+                collector.begin(evaluated_point.shading_normal);
+                const auto population =
+                    execute_surface_closure_program(
+                        *_scene->surface_values,
+                        services,
+                        evaluated_point,
+                        locals,
+                        preparation_program,
+                        query.emission_reflective_caustics,
+                        query.reflective_caustics,
+                        query.refractive_caustics,
+                        [&](const SurfaceClosureRecord &closure) noexcept {
+                            collector.add(closure);
+                        });
+                result.emission = population.emission;
+                result.shading_normal = population.shading_normal;
+            });
+        collector.finish();
+        return result;
+    }
+};
+
+} // namespace
+
+std::shared_ptr<const SurfacePopulationProgram>
+make_compact_surface_population_program(
+    const std::shared_ptr<LuisaSceneData> &scene) noexcept {
+    if (!scene->surface_values ||
+        scene->surface_values->topologies.size() !=
+            scene->surfaces.size()) {
+        std::abort();
+    }
+    auto nodes = make_surface_value_nodes(*scene->surface_values);
+    const auto texture_sampling =
+        make_texture_2d_sampling_callables();
+    const auto attribute_lookup =
+        make_surface_attribute_lookup_callable(
+            scene->attribute_binding_slot,
+            scene->attribute_range_slot);
+    auto height = make_surface_value_height_callable(
+        scene, nodes, texture_sampling, attribute_lookup);
+    return std::make_shared<
+        CompactSurfacePopulationProgramImpl>(
+        scene, std::move(nodes), std::move(height));
+}
+
 SurfacePreparationCallable
 make_compact_surface_preparation_callable(
     const std::shared_ptr<LuisaSceneData> &scene) noexcept {
@@ -1422,14 +1682,7 @@ make_compact_surface_preparation_callable(
         std::abort();
     }
     const auto &runtime = *scene->surface_values;
-    auto nodes = std::make_shared<SurfaceValueNodes>();
-    nodes->reserve(
-        runtime.executable.executable.variants.size());
-    for (const auto &variant :
-         runtime.executable.executable.variants) {
-        nodes->emplace_back(
-            make_value_node(variant.instruction));
-    }
+    auto nodes = make_surface_value_nodes(runtime);
 
     const auto closure_setup =
         make_surface_closure_setup_callables();
@@ -1444,54 +1697,8 @@ make_compact_surface_preparation_callable(
             scene->attribute_binding_slot,
             scene->attribute_range_slot);
 
-    SurfaceValueHeightCallable height =
-        [scene, nodes, texture_sampling, attribute_lookup](
-            BufferFloat scalar_parameters,
-            BufferFloat3 vector_parameters,
-            BufferFloat cycles_bsdf_tables,
-            BindlessVar textures,
-            BindlessVar geometry_heap,
-            Var<SurfacePointCall> packed_point,
-            UInt program) noexcept {
-            CallableTexture2DSamplingProvider texture_provider{
-                textures, texture_sampling};
-            CallableSurfaceAttributeLookupProvider attribute_provider{
-                geometry_heap, attribute_lookup};
-            BufferShaderServices services{
-                scalar_parameters,
-                vector_parameters,
-                cycles_bsdf_tables,
-                textures,
-                geometry_heap,
-                scene->attribute_binding_slot,
-                scene->attribute_range_slot,
-                scene->nishita_texture_bindings,
-                scene->shader_color_space,
-                nullptr,
-                &texture_provider,
-                &attribute_provider};
-            const auto point = unpack_surface_point(packed_point);
-            SurfaceValueLocals locals;
-            emit_surface_value_program(
-                *scene->surface_values,
-                *nodes,
-                services,
-                point,
-                program,
-                locals,
-                nullptr,
-                scalar_parameters,
-                vector_parameters,
-                cycles_bsdf_tables,
-                textures,
-                geometry_heap);
-            const auto output =
-                scene->surface_values->program_output_buffer->read(
-                    program);
-            return read_scalar_dynamic(
-                services, point, locals, output);
-        };
-    height.set_name("surface_value_height");
+    auto height = make_surface_value_height_callable(
+        scene, nodes, texture_sampling, attribute_lookup);
 
     SurfacePreparationCallable preparation =
         [scene,
@@ -1533,74 +1740,34 @@ make_compact_surface_preparation_callable(
             Var<SurfacePreparationCall> result =
                 pack_surface_preparation(
                     SurfacePreparation::zero(point));
-            $if(surface_tag <
-                static_cast<luisa::uint>(
-                    scene->surface_values->topologies.size())) {
-                SurfaceValueLocals locals;
-                const auto normal_program =
-                    surface_tag *
-                        SurfaceValueRuntime::programs_per_topology +
-                    SurfaceValueRuntime::normal_program_offset;
-                const auto normal_output =
-                    scene->surface_values
-                        ->normal_output_address_buffer->read(
-                            surface_tag);
-                $if(normal_output !=
-                    compiler::SurfaceValueAddress::invalid_value) {
-                    const auto normal_point = automatic_normal_point(
-                        *scene->surface_values,
-                        surface_tag,
-                        point);
-                    emit_surface_value_program(
-                        *scene->surface_values,
-                        *nodes,
-                        services,
-                        normal_point,
-                        normal_program,
-                        locals,
-                        &height,
-                        scalar_parameters,
-                        vector_parameters,
-                        cycles_bsdf_tables,
-                        textures,
-                        geometry_heap);
-                    point.shading_normal = read_vector_dynamic(
-                        services,
-                        normal_point,
-                        locals,
-                        normal_output);
-                };
-
-                const auto preparation_program =
-                    surface_tag *
-                        SurfaceValueRuntime::programs_per_topology +
-                    SurfaceValueRuntime::preparation_program_offset;
-                emit_surface_value_program(
-                    *scene->surface_values,
-                    *nodes,
-                    services,
-                    point,
-                    preparation_program,
-                    locals,
-                    &height,
-                    scalar_parameters,
-                    vector_parameters,
-                    cycles_bsdf_tables,
-                    textures,
-                    geometry_heap);
-                const auto query =
-                    unpack_surface_preparation_query(packed_query);
-                result = pack_surface_preparation(
-                    prepare_surface_closure_program(
-                        *scene->surface_values,
-                        services,
-                        point,
-                        locals,
-                        preparation_program,
-                        query,
-                        closure_identity,
-                        closure_aov));
-            };
+            emit_compact_surface_values(
+                *scene->surface_values,
+                *nodes,
+                services,
+                surface_tag,
+                point,
+                height,
+                scalar_parameters,
+                vector_parameters,
+                cycles_bsdf_tables,
+                textures,
+                geometry_heap,
+                [&](const SurfacePoint &evaluated_point,
+                    const SurfaceValueLocals &locals,
+                    UInt preparation_program) noexcept {
+                    const auto query =
+                        unpack_surface_preparation_query(packed_query);
+                    result = pack_surface_preparation(
+                        prepare_surface_closure_program(
+                            *scene->surface_values,
+                            services,
+                            evaluated_point,
+                            locals,
+                            preparation_program,
+                            query,
+                            closure_identity,
+                            closure_aov));
+                });
             return result;
         };
     preparation.set_name("surface_prepare_compact_values");

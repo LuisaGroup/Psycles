@@ -4,6 +4,8 @@
 #include "principled_diffuse_component.h"
 #include "principled_metallic_component.h"
 
+#include <utility>
+
 namespace psycles::luisa_backend::detail {
 namespace {
 
@@ -216,9 +218,9 @@ make_surface_closure_setup_callables() noexcept {
 
 CallableSurfaceClosureSetupProvider::
     CallableSurfaceClosureSetupProvider(
-        const BufferFloat &cycles_bsdf_tables,
+        Expr<Buffer<float>> cycles_bsdf_tables,
         const SurfaceClosureSetupCallables &callables) noexcept
-    : _cycles_bsdf_tables{cycles_bsdf_tables},
+    : _cycles_bsdf_tables{std::move(cycles_bsdf_tables)},
       _callables{callables} {}
 
 PrincipledMetallicSetupResult

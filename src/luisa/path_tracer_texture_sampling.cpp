@@ -104,9 +104,9 @@ make_texture_2d_sampling_callables() noexcept {
 
 CallableTexture2DSamplingProvider::
     CallableTexture2DSamplingProvider(
-        const BindlessVar &textures,
+        Expr<BindlessArray> textures,
         const Texture2DSamplingCallables &callables) noexcept
-    : _textures{textures},
+    : _textures{std::move(textures)},
       _callables{callables} {}
 
 Float4 CallableTexture2DSamplingProvider::sample(

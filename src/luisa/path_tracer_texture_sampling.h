@@ -39,12 +39,12 @@ make_texture_2d_sampling_callables() noexcept;
 class CallableTexture2DSamplingProvider final {
 
 private:
-    const BindlessVar &_textures;
+    Expr<BindlessArray> _textures;
     const Texture2DSamplingCallables &_callables;
 
 public:
     CallableTexture2DSamplingProvider(
-        const BindlessVar &textures,
+        Expr<BindlessArray> textures,
         const Texture2DSamplingCallables &callables) noexcept;
 
     [[nodiscard]] Float4 sample(

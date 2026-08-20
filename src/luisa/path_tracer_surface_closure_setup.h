@@ -171,12 +171,14 @@ class CallableSurfaceClosureSetupProvider final
     : public SurfaceClosureSetupProvider {
 
 private:
-    const luisa::compute::BufferFloat &_cycles_bsdf_tables;
+    luisa::compute::Expr<
+        luisa::compute::Buffer<float>> _cycles_bsdf_tables;
     const SurfaceClosureSetupCallables &_callables;
 
 public:
     CallableSurfaceClosureSetupProvider(
-        const luisa::compute::BufferFloat &cycles_bsdf_tables,
+        luisa::compute::Expr<
+            luisa::compute::Buffer<float>> cycles_bsdf_tables,
         const SurfaceClosureSetupCallables &callables) noexcept;
 
     [[nodiscard]] PrincipledMetallicSetupResult
