@@ -61,6 +61,92 @@ template<typename Result, typename Callable, typename Invoke,
     return result;
 }
 
+[[nodiscard]] SurfacePreparationCallable
+make_expanded_surface_preparation_callable(
+    const std::shared_ptr<LuisaSceneData> &scene,
+    const SurfaceClosureSetupCallables &closure_setup,
+    const Texture2DSamplingCallables &texture_sampling,
+    const SurfaceAttributeLookupCallable &attribute_lookup) noexcept {
+    std::vector<SurfacePreparationImplementationCallable>
+        implementations;
+    implementations.reserve(scene->surfaces.size());
+    for (auto surface_index = std::size_t{0u};
+         surface_index < scene->surfaces.size(); ++surface_index) {
+        const auto *surface =
+            scene->surfaces.implementation(surface_index);
+        SurfacePreparationImplementationCallable implementation =
+            [scene, surface, closure_setup, texture_sampling, attribute_lookup](
+                BufferFloat scalar_parameters,
+                BufferFloat3 vector_parameters,
+                BufferFloat cycles_bsdf_tables,
+                BindlessVar textures,
+                BindlessVar geometry_heap,
+                Var<SurfacePointCall> packed_point,
+                Var<SurfacePreparationQueryCall> packed_query) noexcept {
+                CallableSurfaceClosureSetupProvider setup_provider{
+                    cycles_bsdf_tables, closure_setup};
+                CallableTexture2DSamplingProvider texture_provider{
+                    textures, texture_sampling};
+                CallableSurfaceAttributeLookupProvider attribute_provider{
+                    geometry_heap, attribute_lookup};
+                BufferShaderServices services{
+                    scalar_parameters,
+                    vector_parameters,
+                    cycles_bsdf_tables,
+                    textures,
+                    geometry_heap,
+                    scene->attribute_binding_slot,
+                    scene->attribute_range_slot,
+                    scene->nishita_texture_bindings,
+                    scene->shader_color_space,
+                    &setup_provider,
+                    &texture_provider,
+                    &attribute_provider};
+                return pack_surface_preparation(
+                    surface->prepare(
+                        services,
+                        unpack_surface_point(packed_point),
+                        unpack_surface_preparation_query(packed_query)));
+            };
+        implementation.set_name(
+            luisa::format(
+                "surface_prepare_topology_{}", surface_index));
+        implementations.emplace_back(std::move(implementation));
+    }
+    SurfacePreparationCallable result =
+        [implementations = std::move(implementations)](
+            BufferFloat scalar_parameters,
+            BufferFloat3 vector_parameters,
+            BufferFloat cycles_bsdf_tables,
+            BindlessVar textures,
+            BindlessVar geometry_heap,
+            UInt surface_tag,
+            Var<SurfacePointCall> packed_point,
+            Var<SurfacePreparationQueryCall> packed_query) noexcept {
+            const auto point = unpack_surface_point(packed_point);
+            return dispatch_surface_implementation<
+                SurfacePreparationCall>(
+                surface_tag,
+                implementations,
+                [&](const auto &implementation) noexcept {
+                    return implementation(
+                        scalar_parameters,
+                        vector_parameters,
+                        cycles_bsdf_tables,
+                        textures,
+                        geometry_heap,
+                        packed_point,
+                        packed_query);
+                },
+                [&]() noexcept {
+                    return pack_surface_preparation(
+                        SurfacePreparation::zero(point));
+                });
+        };
+    result.set_name("surface_prepare");
+    return result;
+}
+
 }// namespace
 
 SurfaceCallables
@@ -73,65 +159,13 @@ make_surface_callables(const std::shared_ptr<LuisaSceneData> &scene) noexcept {
     const auto texture_sampling = make_texture_2d_sampling_callables();
     const auto attribute_lookup = make_surface_attribute_lookup_callable(
         scene->attribute_binding_slot, scene->attribute_range_slot);
-    std::vector<SurfacePreparationImplementationCallable>
-        preparation_implementations;
-    preparation_implementations.reserve(scene->surfaces.size());
-    for (auto surface_index = std::size_t{0u};
-         surface_index < scene->surfaces.size(); surface_index++) {
-        const auto *surface = scene->surfaces.implementation(surface_index);
-        SurfacePreparationImplementationCallable implementation =
-            [scene, surface, closure_setup, texture_sampling, attribute_lookup](
-                BufferFloat scalar_parameters, BufferFloat3 vector_parameters,
-                BufferFloat cycles_bsdf_tables, BindlessVar textures,
-                BindlessVar geometry_heap, Var<SurfacePointCall> packed_point,
-                Var<SurfacePreparationQueryCall> packed_query) noexcept {
-                CallableSurfaceClosureSetupProvider setup_provider{cycles_bsdf_tables,
-                                                                   closure_setup};
-                CallableTexture2DSamplingProvider texture_provider{textures,
-                                                                   texture_sampling};
-                CallableSurfaceAttributeLookupProvider attribute_provider{
-                    geometry_heap, attribute_lookup};
-                BufferShaderServices services{scalar_parameters,
-                                              vector_parameters,
-                                              cycles_bsdf_tables,
-                                              textures,
-                                              geometry_heap,
-                                              scene->attribute_binding_slot,
-                                              scene->attribute_range_slot,
-                                              scene->nishita_texture_bindings,
-                                              scene->shader_color_space,
-                                              &setup_provider,
-                                              &texture_provider,
-                                              &attribute_provider};
-                return pack_surface_preparation(
-                    surface->prepare(services, unpack_surface_point(packed_point),
-                                     unpack_surface_preparation_query(packed_query)));
-            };
-        implementation.set_name(
-            luisa::format("surface_prepare_topology_{}", surface_index));
-        preparation_implementations.emplace_back(std::move(implementation));
-    }
-    SurfacePreparationCallable preparation =
-        [scene,
-         preparation_implementations = std::move(preparation_implementations)](
-            BufferFloat scalar_parameters, BufferFloat3 vector_parameters,
-            BufferFloat cycles_bsdf_tables, BindlessVar textures,
-            BindlessVar geometry_heap, UInt surface_tag,
-            Var<SurfacePointCall> packed_point,
-            Var<SurfacePreparationQueryCall> packed_query) noexcept {
-            const auto point = unpack_surface_point(packed_point);
-            return dispatch_surface_implementation<SurfacePreparationCall>(
-                surface_tag, preparation_implementations,
-                [&](const auto &implementation) noexcept {
-                    return implementation(scalar_parameters, vector_parameters,
-                                          cycles_bsdf_tables, textures, geometry_heap,
-                                          packed_point, packed_query);
-                },
-                [&]() noexcept {
-                    return pack_surface_preparation(SurfacePreparation::zero(point));
-                });
-        };
-    preparation.set_name("surface_prepare");
+    auto preparation = scene->surface_values
+                           ? make_compact_surface_preparation_callable(scene)
+                           : make_expanded_surface_preparation_callable(
+                                 scene,
+                                 closure_setup,
+                                 texture_sampling,
+                                 attribute_lookup);
     std::vector<SurfaceEvaluateLightImplementationCallable>
         evaluate_light_implementations;
     evaluate_light_implementations.reserve(scene->surfaces.size());

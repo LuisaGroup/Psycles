@@ -3,6 +3,7 @@
 #include <psycles/luisa/path_tracer.h>
 
 #include <psycles/compiler/material_library.h>
+#include <psycles/compiler/surface_execution_plan.h>
 #include <psycles/luisa/cycles_path_state.h>
 #include <psycles/luisa/cycles_sampler.h>
 #include <psycles/luisa/graph_surface.h>
@@ -12,6 +13,7 @@
 #include "path_kernel_executor.h"
 #include "path_tracer_volume_metadata.h"
 #include "volume_guiding_filter.h"
+#include "surface_math_constants.h"
 
 #include <algorithm>
 #include <array>
@@ -126,7 +128,6 @@ using luisa::compute::synchronize;
 using luisa::compute::transpose;
 using luisa::compute::triangle_interpolate;
 
-constexpr auto pi = 3.14159265358979323846f;
 constexpr auto ray_maximum = 1.0e30f;
 // Slot 9 stores the Cycles intersection representation of positions. It
 // aliases slot 1 for object-space geometry and points at host-transformed
@@ -280,11 +281,64 @@ struct NishitaEnvironmentRuntime {
     float angular_radius{};
 };
 
+// Scene-pruned typed value program used by the compact surface-population
+// path. The host image is retained because Luisa records one evaluator body
+// per exact semantic variant while the path kernel is constructed. Device
+// streams contain only program control, typed addresses, and late-bound table
+// parameter ids; authored material parameters remain in their existing SoA
+// buffers.
+struct SurfaceValueRuntimeTopology {
+    std::shared_ptr<const compiler::SurfaceProgram> program;
+    std::vector<std::uint32_t> preparation_addresses;
+    std::uint32_t normal_output_address{
+        compiler::SurfaceValueAddress::invalid_value};
+    bool automatic_bump_uses_undisplaced_geometry{};
+};
+
+struct SurfaceValueRuntime {
+    static constexpr std::uint32_t programs_per_topology = 2u;
+    static constexpr std::uint32_t normal_program_offset = 0u;
+    static constexpr std::uint32_t preparation_program_offset = 1u;
+    // These are execution capacities, not a weakly typed value ABI. The
+    // builder rejects the complete compact route when any exact liveness plan
+    // exceeds a bank, leaving the established expanded route intact.
+    static constexpr std::uint32_t scalar_capacity = 8u;
+    static constexpr std::uint32_t vector_capacity = 12u;
+    static constexpr std::uint32_t unsigned_integer_capacity = 1u;
+
+    compiler::SurfaceValueBumpExecutableScene executable;
+    std::vector<SurfaceValueRuntimeTopology> topologies;
+
+    luisa::vector<luisa::uint2> program_ranges;
+    luisa::vector<luisa::uint4> instructions;
+    luisa::vector<luisa::uint> operands;
+    luisa::vector<luisa::uint> instruction_variants;
+    luisa::vector<luisa::uint> metadata_parameters;
+    luisa::vector<luisa::uint> bump_height_programs;
+    luisa::vector<luisa::uint> program_outputs;
+    luisa::vector<luisa::uint> normal_output_addresses;
+    luisa::vector<luisa::uint> normal_undisplaced_flags;
+
+    Buffer<luisa::uint2> program_buffer;
+    Buffer<luisa::uint4> instruction_buffer;
+    Buffer<luisa::uint> operand_buffer;
+    Buffer<luisa::uint> instruction_variant_buffer;
+    Buffer<luisa::uint> metadata_parameter_buffer;
+    Buffer<luisa::uint> bump_height_program_buffer;
+    Buffer<luisa::uint> program_output_buffer;
+    Buffer<luisa::uint> normal_output_address_buffer;
+    Buffer<luisa::uint> normal_undisplaced_flag_buffer;
+};
+
 struct LuisaSceneData {
     luisa::compute::Device device;
     std::uint64_t revision{};
     MaterialLibrary materials;
     SurfaceDispatch surfaces;
+    // Enabled only by the explicit A/B route while its real-scene output and
+    // performance are validated. A failure builds no partial device image and
+    // therefore cannot mix expanded and compact value evaluation.
+    std::unique_ptr<SurfaceValueRuntime> surface_values;
     // Scene-level Cycles has_bssrdf_bump materials mapped onto the
     // structure-deduplicated SurfaceDispatch tags. Shared tags form the
     // conservative image of this exact material predicate; closures and

@@ -2,6 +2,8 @@
 
 #include "surface_math.h"
 
+#include <utility>
+
 namespace psycles::luisa_backend::detail {
 namespace {
 
@@ -39,6 +41,78 @@ namespace {
 }
 
 }// namespace
+
+SurfaceBumpConfiguration decode_surface_bump_configuration(
+    std::uint64_t encoded) noexcept {
+    return {.invert = (encoded & 1u) != 0u,
+            .normal_linked = (encoded & 2u) != 0u,
+            .object_space = (encoded & 4u) != 0u};
+}
+
+SurfaceBumpEvaluationDomain make_surface_bump_evaluation_domain(
+    const SurfacePoint &point,
+    Float filter_width_expression) noexcept {
+    auto filter_width = max(filter_width_expression, 0.0f);
+    auto point_x = point;
+    point_x.position = point.position + point.dPdx * filter_width;
+    point_x.object_position =
+        point.object_position + point.object_dPdx * filter_width;
+    point_x.generated = point.generated + point.generated_dx * filter_width;
+    point_x.uv = point.uv + point.uv_dx * filter_width;
+    point_x.barycentric =
+        point.barycentric + point.barycentric_dx * filter_width;
+
+    auto point_y = point;
+    point_y.position = point.position + point.dPdy * filter_width;
+    point_y.object_position =
+        point.object_position + point.object_dPdy * filter_width;
+    point_y.generated = point.generated + point.generated_dy * filter_width;
+    point_y.uv = point.uv + point.uv_dy * filter_width;
+    point_y.barycentric =
+        point.barycentric + point.barycentric_dy * filter_width;
+    return {.filter_width = std::move(filter_width),
+            .point_x = std::move(point_x),
+            .point_y = std::move(point_y)};
+}
+
+Float3 evaluate_surface_bump(
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    SurfaceBumpConfiguration configuration,
+    Float3 normal,
+    const SurfaceBumpEvaluationDomain &domain,
+    Float height_center,
+    Float height_x,
+    Float height_y,
+    Float distance_expression,
+    Float strength_expression) noexcept {
+    auto distance = configuration.invert
+                        ? -distance_expression
+                        : distance_expression;
+    const auto strength = max(strength_expression, 0.0f);
+    const auto input = SurfaceBumpInput{
+        .normal = std::move(normal),
+        .filter_width = domain.filter_width,
+        .dPdx = configuration.object_space
+                    ? point.object_dPdx
+                    : point.dPdx,
+        .dPdy = configuration.object_space
+                    ? point.object_dPdy
+                    : point.dPdy,
+        .height_center = std::move(height_center),
+        .height_x = std::move(height_x),
+        .height_y = std::move(height_y),
+        .distance = std::move(distance),
+        .strength = strength,
+        .normal_to_world_x = point.normal_to_world_x,
+        .normal_to_world_y = point.normal_to_world_y,
+        .normal_to_world_z = point.normal_to_world_z,
+        .object_shading_normal = point.object_shading_normal,
+        .shading_normal = point.shading_normal};
+    return configuration.object_space
+               ? bump_object(services, input)
+               : bump_world(services, input);
+}
 
 Float3 bump_world_inline(
     const SurfaceBumpInput &input) noexcept {

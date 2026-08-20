@@ -4,6 +4,39 @@
 
 namespace psycles::luisa_backend::detail {
 
+struct SurfaceBumpConfiguration {
+    bool invert{};
+    bool normal_linked{};
+    bool object_space{};
+};
+
+struct SurfaceBumpEvaluationDomain {
+    Float filter_width;
+    SurfacePoint point_x;
+    SurfacePoint point_y;
+};
+
+[[nodiscard]] SurfaceBumpConfiguration
+decode_surface_bump_configuration(
+    std::uint64_t encoded) noexcept;
+
+[[nodiscard]] SurfaceBumpEvaluationDomain
+make_surface_bump_evaluation_domain(
+    const SurfacePoint &point,
+    Float filter_width) noexcept;
+
+[[nodiscard]] Float3 evaluate_surface_bump(
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    SurfaceBumpConfiguration configuration,
+    Float3 normal,
+    const SurfaceBumpEvaluationDomain &domain,
+    Float height_center,
+    Float height_x,
+    Float height_y,
+    Float distance,
+    Float strength) noexcept;
+
 [[nodiscard]] Float3 bump_world_inline(
     const SurfaceBumpInput &input) noexcept;
 [[nodiscard]] Float3 bump_object_inline(

@@ -434,6 +434,14 @@ int main(int argc, char **argv) {
             return EXIT_FAILURE;
         }
         const auto &value_scene_image = value_executable_scene.values;
+        const auto value_bump_scene =
+            psycles::compiler::build_surface_value_bump_executable_scene(
+                value_execution_inputs);
+        if (!value_bump_scene.valid) {
+            std::cerr << "surface Bump bytecode aggregation failed: "
+                      << value_bump_scene.diagnostic << '\n';
+            return EXIT_FAILURE;
+        }
         std::map<ValueOperation, std::size_t> value_variants_by_operation;
         for (const auto &variant : value_executable_scene.variants) {
             ++value_variants_by_operation[variant.instruction.operation];
@@ -447,6 +455,23 @@ int main(int argc, char **argv) {
             value_bytecode_operand_bytes +
             value_bytecode_metadata_bytes +
             value_bytecode_static_bytes;
+        const auto &bump_values =
+            value_bump_scene.executable.values;
+        const auto value_bump_scene_image_bytes =
+            bump_values.programs.size() *
+                sizeof(psycles::compiler::SurfaceValueProgramDescriptor) +
+            bump_values.instructions.size() *
+                sizeof(psycles::compiler::SurfaceValueBytecodeInstruction) +
+            bump_values.operands.size() * sizeof(std::uint32_t) +
+            bump_values.metadata.size() *
+                sizeof(psycles::compiler::SurfaceValueBytecodeMetadata) +
+            bump_values.static_data.size() * sizeof(float) +
+            value_bump_scene.executable.instruction_variants.size() *
+                sizeof(std::uint32_t) +
+            value_bump_scene.bump_height_programs.size() *
+                sizeof(std::uint32_t) +
+            value_bump_scene.program_outputs.size() *
+                sizeof(std::uint32_t);
         const auto feature_count =
             [&](PrincipledClosureFeature feature) {
                 const auto iter = feature_occurrences.find(feature);
@@ -489,6 +514,17 @@ int main(int argc, char **argv) {
             << value_scene_descriptor_bytes
             << "\nvalue_scene_total_bytes "
             << value_scene_total_bytes
+            << "\nvalue_bump_height_subprograms "
+            << bump_values.programs.size() -
+                   value_bump_scene.root_program_count
+            << "\nvalue_bump_scene_programs "
+            << bump_values.programs.size()
+            << "\nvalue_bump_scene_instructions "
+            << bump_values.instructions.size()
+            << "\nvalue_bump_scene_variants "
+            << value_bump_scene.executable.variants.size()
+            << "\nvalue_bump_scene_image_bytes "
+            << value_bump_scene_image_bytes
             << "\nprincipled_alpha "
             << feature_count(PrincipledClosureFeature::alpha)
             << "\nprincipled_sheen "

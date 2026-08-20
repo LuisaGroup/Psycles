@@ -11,15 +11,13 @@
 #include "graph_surface_value_expression.h"
 #include "surface_color_transforms.h"
 #include "surface_math.h"
+#include "surface_math_constants.h"
 #include "surface_vector_mapping.h"
 
 #include <luisa/core/stl/vector.h>
 
 namespace psycles::luisa_backend::detail {
 
-inline constexpr float pi = 3.14159265358979323846f;
-inline constexpr float inverse_pi = 0.31830988618379067154f;
-inline constexpr float two_pi = 6.28318530717958647692f;
 inline constexpr std::uint32_t camera_ray_visibility = 1u << 0u;
 inline constexpr std::uint32_t diffuse_ray_visibility = 1u << 1u;
 inline constexpr std::uint32_t glossy_ray_visibility = 1u << 2u;
@@ -545,6 +543,11 @@ public:
     [[nodiscard]] SurfacePreparation prepare(
         const ShaderServices &services,
         const SurfacePoint &point,
+        const SurfacePreparationQuery &query) const noexcept;
+    [[nodiscard]] SurfacePreparation prepare_traced_values(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        const TracedValues &values,
         const SurfacePreparationQuery &query) const noexcept;
     [[nodiscard]] SurfaceClosureTrace closure_trace(
         const ShaderServices &services,

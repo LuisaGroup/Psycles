@@ -122,4 +122,8 @@ struct SurfaceCallables {
 [[nodiscard]] SurfaceCallables make_surface_callables(
     const std::shared_ptr<LuisaSceneData> &scene) noexcept;
 
+[[nodiscard]] SurfacePreparationCallable
+make_compact_surface_preparation_callable(
+    const std::shared_ptr<LuisaSceneData> &scene) noexcept;
+
 }// namespace psycles::luisa_backend::detail

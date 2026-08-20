@@ -13,6 +13,7 @@
 #include "path_tracer_shader_services.h"
 #include "path_tracer_subsurface_scene.h"
 #include "path_tracer_surfaces.h"
+#include "path_tracer_surface_values.h"
 #include "path_tracer_tangent_space.h"
 #include "path_tracer_volume_capabilities.h"
 #include "path_tracer_volume_majorant_scene.h"
@@ -22,8 +23,23 @@
 #include <psycles/contract/cycles_pointiness.h>
 #include <psycles/luisa/cycles_nishita.h>
 
+#include <cstdlib>
+#include <string_view>
+
 namespace psycles::luisa_backend {
 using namespace detail;
+
+namespace {
+
+[[nodiscard]] bool compact_surface_values_requested() noexcept {
+    const auto *value =
+        std::getenv("PSYCLES_COMPACT_SURFACE_VALUES");
+    return value != nullptr &&
+           std::string_view{value} != "0" &&
+           std::string_view{value} != "false";
+}
+
+} // namespace
 
 contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     const SceneSnapshot &snapshot) {
@@ -183,6 +199,12 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             .merge(compiler::analyze_surface_closure_plan(
                 program, material.parameters()));
     }
+    std::vector<std::shared_ptr<const compiler::SurfaceProgram>>
+        surface_programs_by_tag;
+    std::vector<compiler::SurfaceClosurePlan>
+        surface_closure_plans_by_tag;
+    surface_programs_by_tag.reserve(closure_plans_by_signature.size());
+    surface_closure_plans_by_tag.reserve(closure_plans_by_signature.size());
     std::set<std::uint32_t> surface_bssrdf_bump_tags;
     std::set<contract::MaterialId>
         pointiness_materials;
@@ -195,10 +217,21 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         auto [surface_iter, inserted] =
             surface_tags_by_signature.try_emplace(signature, 0u);
         if (inserted) {
-            surface_iter->second =
+            const auto tag =
                 data->surfaces.create<GraphSurface>(
                     material.surface_program(),
                     closure_plans_by_signature.at(signature));
+            if (tag != surface_programs_by_tag.size()) {
+                diagnose(
+                    result.diagnostics,
+                    "Surface runtime tags are not a dense insertion order.");
+                return result;
+            }
+            surface_iter->second = tag;
+            surface_programs_by_tag.emplace_back(
+                material.surface_program());
+            surface_closure_plans_by_tag.emplace_back(
+                closure_plans_by_signature.at(signature));
         }
         if (surface_bssrdf_bump_materials.contains(id)) {
             surface_bssrdf_bump_tags.emplace(surface_iter->second);
@@ -412,6 +445,20 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     if (!result.diagnostics.empty()) {
         return result;
     }
+    if (compact_surface_values_requested()) {
+        std::string diagnostic;
+        data->surface_values = build_surface_value_runtime(
+            data->device,
+            surface_programs_by_tag,
+            surface_closure_plans_by_tag,
+            diagnostic);
+        if (!data->surface_values) {
+            diagnose(
+                result.diagnostics,
+                "Compact surface value execution: " + diagnostic + ".");
+            return result;
+        }
+    }
     data->surface_bssrdf_bump_tags.reserve(
         surface_bssrdf_bump_tags.size());
     for (const auto tag : surface_bssrdf_bump_tags) {
@@ -550,6 +597,10 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                   luisa::span{cycles_bsdf_values})
            << data->volume_surface_flag_buffer.copy_from(
                   luisa::span{volume_surface_flags});
+    if (data->surface_values) {
+        upload_surface_value_runtime(
+            stream, *data->surface_values);
+    }
 
     std::size_t texture_slot_count = 1u;
     for (const auto &[image_id, image] : snapshot.images) {

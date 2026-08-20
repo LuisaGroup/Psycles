@@ -74,6 +74,11 @@ namespace {
   return {.valid = false, .diagnostic = std::move(diagnostic)};
 }
 
+[[nodiscard]] SurfaceValueBumpExecutableScene reject_bump_scene(
+    std::string diagnostic) {
+  return {.valid = false, .diagnostic = std::move(diagnostic)};
+}
+
 [[nodiscard]] bool encode_location(const SurfaceValueLocation &location,
                                    SurfaceValueAddress &address) noexcept {
   if (location.storage == SurfaceValueStorageClass::inactive ||
@@ -232,6 +237,25 @@ namespace {
     key.emplace_back(std::bit_cast<std::uint32_t>(value));
   }
   return key;
+}
+
+[[nodiscard]] std::vector<bool> transitive_value_mask(
+    const SurfaceProgram &program, ValueExpressionId root) {
+  std::vector<bool> active(program.value_instructions().size(), false);
+  std::vector<ValueExpressionId> pending;
+  pending.emplace_back(root);
+  while (!pending.empty()) {
+    const auto id = pending.back();
+    pending.pop_back();
+    if (!id.valid() || id.value >= active.size() || active[id.value]) {
+      continue;
+    }
+    active[id.value] = true;
+    for (const auto operand : program.value_instructions()[id.value].operands) {
+      pending.emplace_back(operand);
+    }
+  }
+  return active;
 }
 
 } // namespace
@@ -655,6 +679,138 @@ SurfaceValueExecutableScene build_surface_value_executable_scene(
       result.values.instructions.size()) {
     return reject_executable_scene(
         "the immutable-variant stream is not parallel to the instructions");
+  }
+  result.valid = true;
+  return result;
+}
+
+SurfaceValueBumpExecutableScene build_surface_value_bump_executable_scene(
+    std::span<const SurfaceValueExecutionInput> root_inputs) {
+  if (root_inputs.size() >
+      std::numeric_limits<std::uint32_t>::max()) {
+    return reject_bump_scene("the root program count exceeds device tags");
+  }
+
+  auto bump_count = std::size_t{0u};
+  for (const auto &[program, storage] : root_inputs) {
+    if (program == nullptr || storage == nullptr ||
+        !storage->compatible(*program)) {
+      return reject_bump_scene(
+          "a root execution input is incomplete or incompatible");
+    }
+    for (const auto id : storage->instructions) {
+      bump_count +=
+          program->value_instructions()[id.value].operation ==
+                  ValueOperation::bump
+              ? 1u
+              : 0u;
+    }
+  }
+
+  std::vector<SurfaceValueStoragePlan> height_storage;
+  std::vector<SurfaceValueExecutionInput> expanded_inputs;
+  height_storage.reserve(bump_count);
+  expanded_inputs.reserve(root_inputs.size() + bump_count);
+  expanded_inputs.insert(expanded_inputs.end(), root_inputs.begin(),
+                         root_inputs.end());
+
+  struct PendingBump {
+    std::uint32_t instruction{};
+    std::uint32_t program{};
+    std::uint32_t output{};
+  };
+  std::vector<PendingBump> pending_bumps;
+  pending_bumps.reserve(bump_count);
+  auto root_instruction_begin = std::size_t{0u};
+  for (auto root_index = std::size_t{0u};
+       root_index < root_inputs.size(); ++root_index) {
+    const auto &program = *root_inputs[root_index].program;
+    const auto &storage = *root_inputs[root_index].storage;
+    for (auto schedule_index = std::size_t{0u};
+         schedule_index < storage.instructions.size(); ++schedule_index) {
+      const auto id = storage.instructions[schedule_index];
+      const auto &instruction = program.value_instructions()[id.value];
+      if (instruction.operation != ValueOperation::bump) {
+        continue;
+      }
+      const auto height = instruction.operand(value_operand::bump::height);
+      if (!height.valid() || height.value >=
+                                 program.value_instructions().size()) {
+        return reject_bump_scene(
+            "a Bump instruction has an invalid height dependency");
+      }
+      auto active = transitive_value_mask(program, height);
+      for (auto value_index = std::size_t{0u};
+           value_index < active.size(); ++value_index) {
+        if (active[value_index] &&
+            program.value_instructions()[value_index].operation ==
+                ValueOperation::bump) {
+          return reject_bump_scene(
+              "a Bump height subprogram contains a nested Bump; "
+              "an additional evaluator stratum is required");
+        }
+      }
+      auto outputs = std::vector<bool>(active.size(), false);
+      outputs[height.value] = true;
+      auto subprogram_storage =
+          plan_surface_value_storage(program, active, outputs);
+      if (!subprogram_storage.compatible(program)) {
+        return reject_bump_scene(
+            "a Bump height subprogram cannot be planned: " +
+            subprogram_storage.diagnostic);
+      }
+      auto subprogram_image =
+          lower_surface_value_program(program, subprogram_storage);
+      if (!subprogram_image.valid ||
+          height.value >= subprogram_image.value_addresses.size() ||
+          subprogram_image.value_addresses[height.value] ==
+              SurfaceValueAddress::invalid_value) {
+        return reject_bump_scene(
+            "a Bump height subprogram has no typed output address");
+      }
+      if (root_instruction_begin + schedule_index >
+              std::numeric_limits<std::uint32_t>::max() ||
+          expanded_inputs.size() >
+              std::numeric_limits<std::uint32_t>::max()) {
+        return reject_bump_scene(
+            "Bump program references exceed device indices");
+      }
+      height_storage.emplace_back(std::move(subprogram_storage));
+      expanded_inputs.emplace_back(SurfaceValueExecutionInput{
+          .program = &program,
+          .storage = &height_storage.back()});
+      pending_bumps.emplace_back(PendingBump{
+          .instruction = static_cast<std::uint32_t>(
+              root_instruction_begin + schedule_index),
+          .program = static_cast<std::uint32_t>(
+              expanded_inputs.size() - 1u),
+          .output = subprogram_image.value_addresses[height.value]});
+    }
+    root_instruction_begin += storage.instructions.size();
+  }
+
+  auto executable = build_surface_value_executable_scene(expanded_inputs);
+  if (!executable.valid) {
+    return reject_bump_scene(executable.diagnostic);
+  }
+  SurfaceValueBumpExecutableScene result;
+  result.executable = std::move(executable);
+  result.root_program_count =
+      static_cast<std::uint32_t>(root_inputs.size());
+  result.bump_height_programs.assign(
+      result.executable.values.instructions.size(),
+      SurfaceValueAddress::invalid_value);
+  result.program_outputs.assign(
+      result.executable.values.programs.size(),
+      SurfaceValueAddress::invalid_value);
+  for (const auto &bump : pending_bumps) {
+    if (bump.instruction >= result.bump_height_programs.size() ||
+        bump.program >= result.program_outputs.size()) {
+      return reject_bump_scene(
+          "a relocated Bump program reference is out of range");
+    }
+    result.bump_height_programs[bump.instruction] = bump.program;
+    result.program_outputs[bump.program] = bump.output;
   }
   result.valid = true;
   return result;
