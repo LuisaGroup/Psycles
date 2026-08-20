@@ -11,12 +11,13 @@ This experiment separates three quantities that must not be reported as one
 3. the private working set and spills of one shader invocation.
 
 Only the first quantity has changed so far. The 189 unique Barbershop material
-topologies lower to 216,272 bytes of typed value bytecode. The preceding
+topologies lower to 216,272 bytes of typed value bytecode, or a 222,320-byte
+scene image after adding one 32-byte descriptor per runtime tag. The preceding
 topology-expanded surface code object is 22,554,128 bytes. Dividing those two
-numbers gives 104.3, but it is deliberately **not** claimed as the final code
-object compression ratio: the bytecode does not yet include the future shared
-device evaluator, closure population/evaluation, or non-material path-tracing
-code.
+value-program numbers gives 104.3 before descriptors and 101.4 after them, but
+neither is deliberately claimed as the final code object compression ratio:
+the bytecode does not yet include the future shared device evaluator, closure
+population/evaluation, or non-material path-tracing code.
 
 The result nevertheless proves that the current 22.55 MB module and 37,216-byte
 HIP private segment are not forced by the material graphs. The largest exact
@@ -114,7 +115,9 @@ time size and trivial-copyability checks.
 | Operand addresses | 41,256 |
 | Sparse metadata | 88,840 |
 | Static table data | 256 |
-| **Total** | **216,272** |
+| Value bytecode subtotal | 216,272 |
+| 189 runtime-tag descriptors | 6,048 |
+| **Scene value image total** | **222,320** |
 
 The intended structural change is one scene-pruned shared evaluator plus these
 program records, so generated code scales mainly with used opcode/closure
@@ -143,5 +146,5 @@ cmake --build build \
 ./build/bin/psycles_inspect_blender_material \
   /var/tmp/psycles-official-redownload-20260814/exports/barbershop-5.2 \
   '*' \
-  | rg '^(unique_|reachable_|value_opcode_kinds|preparation_|maximum_|topology_|value_bytecode_)'
+  | rg '^(unique_|reachable_|value_opcode_kinds|preparation_|maximum_|topology_|value_bytecode_|value_scene_)'
 ```

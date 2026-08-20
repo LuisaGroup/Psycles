@@ -63,6 +63,11 @@ namespace {
   return {.valid = false, .diagnostic = std::move(diagnostic)};
 }
 
+[[nodiscard]] SurfaceValueSceneImage reject_scene_image(
+    std::string diagnostic) {
+  return {.valid = false, .diagnostic = std::move(diagnostic)};
+}
+
 [[nodiscard]] bool encode_location(const SurfaceValueLocation &location,
                                    SurfaceValueAddress &address) noexcept {
   if (location.storage == SurfaceValueStorageClass::inactive ||
@@ -80,6 +85,108 @@ namespace {
            : 0u) |
       (bank << SurfaceValueAddress::bank_shift) | location.index};
   return address.valid();
+}
+
+[[nodiscard]] bool address_fits_program(
+    SurfaceValueAddress address, const SurfaceValueProgramImage &program,
+    bool allow_invalid) noexcept {
+  if (!address.valid()) {
+    return allow_invalid;
+  }
+  const auto bank = address.bank();
+  if (static_cast<std::uint32_t>(bank) >
+      static_cast<std::uint32_t>(SurfaceValueBank::unsigned_integer)) {
+    return false;
+  }
+  if (address.parameter()) {
+    return true;
+  }
+  switch (bank) {
+  case SurfaceValueBank::scalar:
+    return address.index() < program.scalar_slots;
+  case SurfaceValueBank::vector:
+    return address.index() < program.vector_slots;
+  case SurfaceValueBank::unsigned_integer:
+    return address.index() < program.unsigned_integer_slots;
+  }
+  return false;
+}
+
+[[nodiscard]] std::string validate_surface_value_program_image(
+    const SurfaceValueProgramImage &program) {
+  if (!program.valid) {
+    return "source value program is invalid: " + program.diagnostic;
+  }
+  if (program.scalar_slots > SurfaceValueAddress::index_mask + 1u ||
+      program.vector_slots > SurfaceValueAddress::index_mask + 1u ||
+      program.unsigned_integer_slots >
+          SurfaceValueAddress::index_mask + 1u) {
+    return "a typed local bank exceeds the address encoding";
+  }
+  for (const auto encoded : program.value_addresses) {
+    if (!address_fits_program(SurfaceValueAddress{encoded}, program, true)) {
+      return "a value address exceeds its typed local bank";
+    }
+  }
+
+  auto operand_cursor = std::size_t{0u};
+  for (const auto &instruction : program.instructions) {
+    if ((instruction.control & ~surface_value_control_mask) != 0u ||
+        static_cast<std::uint32_t>(surface_value_operation(instruction)) >
+            static_cast<std::uint32_t>(ValueOperation::nishita_sky)) {
+      return "an instruction has an invalid control word";
+    }
+    if (instruction.operand_begin != operand_cursor) {
+      return "the operand stream is not densely ordered";
+    }
+    const auto operand_count =
+        static_cast<std::size_t>(surface_value_operand_count(instruction));
+    if (operand_count > program.operands.size() - operand_cursor) {
+      return "an instruction operand range exceeds the stream";
+    }
+    const auto result = SurfaceValueAddress{instruction.result};
+    if (!address_fits_program(result, program, false) ||
+        result.parameter() ||
+        result.bank() != surface_value_result_bank(instruction)) {
+      return "an instruction result is inconsistent with its typed bank";
+    }
+    for (auto operand_index = std::size_t{0u};
+         operand_index < operand_count; ++operand_index) {
+      if (!address_fits_program(
+              SurfaceValueAddress{
+                  program.operands[operand_cursor + operand_index]},
+              program, false)) {
+        return "an instruction operand exceeds its typed bank";
+      }
+    }
+    if (instruction.metadata_index !=
+            SurfaceValueAddress::invalid_value &&
+        instruction.metadata_index >= program.metadata.size()) {
+      return "an instruction metadata index exceeds the side table";
+    }
+    operand_cursor += operand_count;
+  }
+  if (operand_cursor != program.operands.size()) {
+    return "the operand stream has an unreferenced suffix";
+  }
+  for (const auto &metadata : program.metadata) {
+    if (metadata.static_table_begin > program.static_data.size() ||
+        metadata.static_table_count >
+            program.static_data.size() - metadata.static_table_begin) {
+      return "a metadata static-table range exceeds the data stream";
+    }
+  }
+  return {};
+}
+
+[[nodiscard]] bool add_scene_extent(std::size_t &total, std::size_t count) {
+  constexpr auto limit =
+      static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max());
+  if (count > limit - total) {
+    return false;
+  }
+  total += count;
+  return true;
 }
 
 } // namespace
@@ -239,6 +346,8 @@ SurfaceValueProgramImage lower_surface_value_program(
   static_assert(std::is_trivially_copyable_v<SurfaceValueBytecodeMetadata>);
   static_assert(sizeof(SurfaceValueBytecodeInstruction) == 16u);
   static_assert(sizeof(SurfaceValueBytecodeMetadata) == 40u);
+  static_assert(static_cast<std::uint32_t>(ValueOperation::nishita_sky) <=
+                surface_value_opcode_mask);
   if (!storage.compatible(program)) {
     return reject_image("cannot lower an incompatible value storage plan");
   }
@@ -271,6 +380,10 @@ SurfaceValueProgramImage lower_surface_value_program(
     if (instruction.operation == ValueOperation::parameter) {
       return reject_image(
           "a parameter leaked into the runtime instruction stream");
+    }
+    if (instruction.operands.size() >
+        std::numeric_limits<std::uint8_t>::max()) {
+      return reject_image("an instruction exceeds the encoded operand count");
     }
     if (result.operands.size() >
             std::numeric_limits<std::uint32_t>::max() ||
@@ -336,10 +449,88 @@ SurfaceValueProgramImage lower_surface_value_program(
                                 instruction.static_table.end());
     }
     result.instructions.emplace_back(SurfaceValueBytecodeInstruction{
-        .operation = static_cast<std::uint32_t>(instruction.operation),
+        .control = make_surface_value_control(
+            instruction.operation,
+            static_cast<std::uint8_t>(instruction.operands.size()),
+            result_address.bank()),
         .result = result_address.encoded(),
         .operand_begin = operand_begin,
         .metadata_index = metadata_index});
+  }
+  result.valid = true;
+  return result;
+}
+
+SurfaceValueSceneImage build_surface_value_scene_image(
+    std::span<const SurfaceValueProgramImage> programs) {
+  static_assert(std::is_trivially_copyable_v<SurfaceValueProgramDescriptor>);
+  static_assert(sizeof(SurfaceValueProgramDescriptor) == 32u);
+
+  auto instruction_count = std::size_t{0u};
+  auto operand_count = std::size_t{0u};
+  auto metadata_count = std::size_t{0u};
+  auto static_data_count = std::size_t{0u};
+  for (auto program_index = std::size_t{0u};
+       program_index < programs.size(); ++program_index) {
+    const auto diagnostic =
+        validate_surface_value_program_image(programs[program_index]);
+    if (!diagnostic.empty()) {
+      return reject_scene_image(
+          "value program " + std::to_string(program_index) + ": " +
+          diagnostic);
+    }
+    if (!add_scene_extent(instruction_count,
+                          programs[program_index].instructions.size()) ||
+        !add_scene_extent(operand_count,
+                          programs[program_index].operands.size()) ||
+        !add_scene_extent(metadata_count,
+                          programs[program_index].metadata.size()) ||
+        !add_scene_extent(static_data_count,
+                          programs[program_index].static_data.size())) {
+      return reject_scene_image(
+          "the aggregate value program exceeds 32-bit device offsets");
+    }
+  }
+
+  SurfaceValueSceneImage result;
+  result.programs.reserve(programs.size());
+  result.instructions.reserve(instruction_count);
+  result.operands.reserve(operand_count);
+  result.metadata.reserve(metadata_count);
+  result.static_data.reserve(static_data_count);
+  for (const auto &program : programs) {
+    const auto instruction_begin =
+        static_cast<std::uint32_t>(result.instructions.size());
+    const auto operand_begin =
+        static_cast<std::uint32_t>(result.operands.size());
+    const auto metadata_begin =
+        static_cast<std::uint32_t>(result.metadata.size());
+    const auto static_data_begin =
+        static_cast<std::uint32_t>(result.static_data.size());
+    result.programs.emplace_back(SurfaceValueProgramDescriptor{
+        .instruction_begin = instruction_begin,
+        .instruction_count =
+            static_cast<std::uint32_t>(program.instructions.size()),
+        .scalar_slots = program.scalar_slots,
+        .vector_slots = program.vector_slots,
+        .unsigned_integer_slots = program.unsigned_integer_slots});
+    for (auto instruction : program.instructions) {
+      instruction.operand_begin += operand_begin;
+      if (instruction.metadata_index !=
+          SurfaceValueAddress::invalid_value) {
+        instruction.metadata_index += metadata_begin;
+      }
+      result.instructions.emplace_back(instruction);
+    }
+    result.operands.insert(result.operands.end(), program.operands.begin(),
+                           program.operands.end());
+    for (auto metadata : program.metadata) {
+      metadata.static_table_begin += static_data_begin;
+      result.metadata.emplace_back(metadata);
+    }
+    result.static_data.insert(result.static_data.end(),
+                              program.static_data.begin(),
+                              program.static_data.end());
   }
   result.valid = true;
   return result;
