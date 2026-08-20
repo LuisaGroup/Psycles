@@ -38,6 +38,8 @@ class SurfaceClosurePopulationCollector final
     SurfaceClosurePopulationCollector &operator=(
         const SurfaceClosurePopulationCollector &) = delete;
 
+    void begin(
+        Expr<luisa::float3> shading_normal) noexcept override;
     void add(
         const SurfaceClosureRecord &closure) noexcept override;
     void finish() noexcept override;

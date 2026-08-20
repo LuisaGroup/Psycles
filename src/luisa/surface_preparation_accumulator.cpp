@@ -41,6 +41,12 @@ SurfacePreparationAccumulator::SurfacePreparationAccumulator(
       _aov_roughness{0.0f},
       _aov_normal{make_float3(0.0f)} {}
 
+void SurfacePreparationAccumulator::set_shading_normal(
+    Expr<luisa::float3> shading_normal) noexcept {
+    _point.shading_normal = shading_normal;
+    _aov.normal = shading_normal;
+}
+
 void SurfacePreparationAccumulator::fold_retained(
     const SurfaceClosureRecord &closure) noexcept {
     $if(_include_runtime_flags) {

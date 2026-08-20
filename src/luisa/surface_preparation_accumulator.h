@@ -41,6 +41,13 @@ class SurfacePreparationAccumulator {
         const SurfaceClosureIdentityCallable &identity,
         const SurfaceClosureAovCallable &aov_operation) noexcept;
 
+    // SurfaceClosureCollector::begin supplies the final shader normal after
+    // automatic bump evaluation. Updating the fold state here makes that
+    // lifecycle contract observable by every collector consumer without
+    // re-running or baking any material node.
+    void set_shading_normal(
+        Expr<luisa::float3> shading_normal) noexcept;
+
     // Applies Cycles' allocation cutoff and source-order capacity transaction.
     void add(const SurfaceClosureRecord &closure) noexcept;
 
