@@ -133,3 +133,33 @@ Both tests pass, and `psycles_render_blender_scene` builds after the runtime
 ABI/upload change. No renderer performance or image claim is made until the
 fixed device interpreter replaces the topology switch and passes the
 fallback, HIP, and strict native-XIR Vulkan matrix.
+
+## Shared physical setup component
+
+The expanded graph route and the upcoming closure-bytecode interpreter now
+meet at `expand_physical_surface_closure`. This component accepts exactly one
+raw semantic closure and emits its fixed Cycles-compatible physical sequence.
+It owns the Principled, glass, glossy, diffuse, translucent, and BSSRDF setup
+math, but deliberately does not own graph traversal or cross-leaf transparent
+merging. Those are distinct sequence operations and keeping them outside the
+leaf handler makes the binding-time boundary explicit.
+
+The existing expanded route was reduced to closure traversal, calls to the
+shared component, and the unchanged global transparent fold. This removes the
+second copy of the setup implementation before the bytecode route is wired,
+so the two execution models cannot silently drift in material math. The
+following backend regressions all pass after the extraction:
+
+```text
+cmake --build build --parallel \
+  --target psycles_luisa_surface_population_tests \
+           psycles_luisa_surface_closure_collection_tests
+ctest --test-dir build --output-on-failure \
+  -R 'psycles\.luisa_surface_(closure_collection|population)_(fallback|hip|vk)$'
+```
+
+This is six tests total: closure collection and transactional population on
+fallback, HIP, and Vulkan. Vulkan uses the configured strict native
+XIR-to-SPIR-V route. This refactor alone makes no performance claim; its role
+is to establish one tested semantic handler before replacing the remaining
+per-material topology switch.
