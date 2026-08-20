@@ -120,10 +120,24 @@ struct TracedClosure {
     bool beckmann{};
 };
 
+using ClosureVisitor = std::function<void(const TracedClosure &)>;
+
 // Project a host-tagged setup closure into the canonical device-tagged
 // physical record consumed by every directional scattering component.
 [[nodiscard]] SurfaceClosureRecord canonical_surface_closure(
     const TracedClosure &closure) noexcept;
+
+// Fixed semantic expansion of one raw graph leaf into its Cycles-compatible
+// physical closure sequence. Closure-tree traversal and transparent merging
+// are deliberately outside this component so expanded graphs and the compact
+// bytecode interpreter share exactly one setup implementation.
+void expand_physical_surface_closure(
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    const TracedClosure &graph_closure,
+    Bool reflective_caustics,
+    Bool refractive_caustics,
+    const ClosureVisitor &emit) noexcept;
 
 struct GlassSample {
     Float3 direction;
@@ -405,7 +419,6 @@ public:
 [[nodiscard]] std::unique_ptr<ValueNode> try_make_procedural_value_node(
     const compiler::ValueInstruction &instruction) noexcept;
 
-using ClosureVisitor = std::function<void(const TracedClosure &)>;
 using VolumeVisitor =
     std::function<void(const compiler::VolumeInstruction &, Float)>;
 
