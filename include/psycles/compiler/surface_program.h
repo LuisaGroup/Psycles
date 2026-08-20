@@ -1146,6 +1146,13 @@ struct SurfaceValueDependencyPlan {
   std::vector<bool> physical;
   std::vector<bool> emission;
   std::vector<bool> preparation;
+  // Exact roots consumed after the topological value stream has finished.
+  // These are intentionally distinct from the transitive masks above: a
+  // value can feed both another value instruction and a closure, so value
+  // out-degree alone is not a sound last-use criterion for slot allocation.
+  std::vector<bool> physical_outputs;
+  std::vector<bool> emission_outputs;
+  std::vector<bool> preparation_outputs;
   // Closure-tree liveness is distinct from value liveness: a value may be
   // shared by physical and emission leaves even though each consumer must
   // visit only its own closure domain.
