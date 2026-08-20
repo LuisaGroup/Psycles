@@ -6,15 +6,15 @@ The compact surface program makes Barbershop's staged path practical at run
 time, but exposed a host-compiler complexity defect in Luisa's coroutine
 ray-query normalization. On the same Blender 5.2 Barbershop export, RX 9070 XT,
 8x8 image, 256 fixed spp, and one 64-sample dispatch, the complete shader-JIT
-interval fell from `99.7033--100.821 s` to `29.1316 s`. The final coroutine
-compilation interval is `27.9451 s`; ray-query normalization remains its largest
-phase at `16.8576 s` and is the next target.
+interval fell from `99.7033--100.821 s` to `20.3864 s`. The final coroutine
+compilation interval is `19.2882 s`; ray-query normalization remains its largest
+phase at `8.24251 s` and is the next target.
 
 The optimization changes host analysis only. The generated coroutine graph is
 unchanged at 9 subroutines, 212 frame fields, and 3,184 frame bytes. Render-only
-time remained in the same narrow range (`0.359723 s` before and `0.364140 s`
-after). The all-pass EXR comparison has RMS `1.98955e-8` and maximum absolute
-error `4.76838e-7`, with no pixel above `1e-6`; this is the normal
+time remained in the same narrow range (`0.359723 s` before and `0.360216 s`
+after). The final all-pass EXR comparison has RMS `2.18303e-8` and maximum
+absolute error `4.76838e-7`, with no pixel above `1e-6`; this is the normal
 non-deterministic floating-point accumulation envelope, not a structured image
 change.
 
@@ -69,11 +69,42 @@ swapping a second one.
 | dense effects | `99.7033--100.821 s` | not separately instrumented | not separately instrumented | not separately instrumented | `0.359723 s` |
 | sparse identity masks | `32.9784 s` | `20.9157 s` | `6.56713 s` | `1.64452 s` | `0.360227 s` |
 | cached provenance, pre-rebase | `28.7626 s` | `16.3784 s` | `6.59192 s` | `1.66676 s` | `0.364793 s` |
-| final `b1a969e23` on current `next` | `29.1316 s` | `16.8576 s` | `6.49122 s` | `1.69597 s` | `0.364140 s` |
+| sparse effects `b1a969e23`, rebased | `29.1316 s` | `16.8576 s` | `6.49122 s` | `1.69597 s` | `0.364140 s` |
+| dead selection proof removed, pre-rebase | `20.3212 s` | `8.20558 s` | `6.39471 s` | `1.68025 s` | `0.358903 s` |
+| final `933811bae` on current `next` | `20.3864 s` | `8.24251 s` | `6.53486 s` | `1.66747 s` | `0.360216 s` |
 
 The final whole-JIT reduction relative to the two dense observations is
-`3.42--3.46x` (`70.8--71.1%`). Frame layout takes `0.106 ms`, so frame layout
+`4.89--4.95x` (`79.6--79.8%`). Frame layout takes `0.107 ms`, so frame layout
 is not being mistaken for this host-analysis bottleneck.
+
+## Selection proof demand
+
+The remaining profile exposed a second, independent duplicate: handler-local
+scratch was proved once to estimate the callback capture count during loop
+selection, then proved again to perform the selected loop's ABI rewrite. Let
+`R` be raw input captures, `O` output captures, `L` the inputs localization can
+remove, and `B` the capture budget. Selection asks only
+
+```text
+R - L + O <= B, where 0 <= L <= R.
+```
+
+There are exactly three cases:
+
+```text
+O > B       : false for every L; the proof cannot change the result
+R + O <= B  : true for every L; the proof cannot change the result
+otherwise  : the result may depend on L; run the proof
+```
+
+Luisa commit `933811bae` implements this demand rule with overflow-free
+comparisons. The unbounded default is the second case, so the selection scan is
+removed while actual lowering still runs the complete definite-initialization
+proof once before changing the callback ABI. Relative to `b1a969e23`, this
+halves ray-query normalization (`16.8576 -> 8.24251 s`) and reduces whole JIT by
+30.0% (`29.1316 -> 20.3864 s`). A pass-report counter makes the control
+dependency testable: it is zero for an unbounded already-eligible candidate and
+one when a finite zero budget can be satisfied only by localizing scratch.
 
 The compact staged path is also a meaningful runtime boundary. Against the
 same compact-populate megakernel (`2.08996 s` render-only), the staged path at
@@ -105,6 +136,13 @@ aggregate and 8,192 unrelated arithmetic instructions before DCE. The full
 lowering must still localize the one real scratch aggregate. This makes the
 intended complexity property observable without timing thresholds.
 
+Commit `933811bae` extends that regression to require zero speculative
+selection-localization analyses under the default unbounded budget. A second
+finite-budget regression requires exactly one selection proof and confirms
+that the localized alloca does not consume the callback capture budget. These
+cover both sides of the demand condition rather than encoding a renderer or
+scene special case.
+
 The following checks passed after rebasing onto and pushing current Luisa
 `next`:
 
@@ -113,7 +151,7 @@ test_xir_aggregate_field_bitmask
   42 assertions in 8 tests
 
 test_xir_pass_lower_ray_query_to_pipeline
-  308 assertions in 31 tests
+  310 assertions in 31 tests
 
 cmake --build build --parallel
 
