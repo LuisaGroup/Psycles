@@ -205,11 +205,17 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
 
                 $while(active) {
                     $suspend(path_transition::intersect_shadow);
-                    _evaluator.intersect(task, invocation.parameters);
+                    // The four-hit batch is produced after INTERSECT_SHADOW
+                    // and consumed completely by SHADE_SHADOW. It is not part
+                    // of the invariant task state and therefore cannot leak
+                    // onto either adjacent coroutine edge.
+                    const auto shadow_batch =
+                        _evaluator.intersect(task, invocation.parameters);
 
                     $suspend(path_transition::shade_shadow);
                     const auto step =
-                        _evaluator.shade_shadow(task, invocation.parameters);
+                        _evaluator.shade_shadow(
+                            task, shadow_batch, invocation.parameters);
                     active = step.continue_shadow;
                     visible = visible | step.visible;
                 };

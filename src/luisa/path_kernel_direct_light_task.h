@@ -29,7 +29,6 @@ struct DirectLightTaskCall {
   luisa::float3 shadow_transmittance{};
   luisa::float3 diffuse_weight{};
   luisa::float3 glossy_weight{};
-  ShadowIntersectionBatchCall shadow_batch{};
   float ray_minimum{};
   float ray_maximum{};
   float ray_dP{};
@@ -52,7 +51,12 @@ struct DirectLightTaskCall {
 };
 
 static_assert(std::is_trivially_copyable_v<DirectLightTaskCall>);
-static_assert(sizeof(DirectLightTaskCall) == 320u);
+// This is the invariant shadow-path state. The four-hit traversal batch is
+// deliberately not a member: it is live only on the
+// INTERSECT_SHADOW -> SHADE_SHADOW edge, while a fused shadow consumer never
+// needs it at all. Keeping the types disjoint makes that lifetime true before
+// optimization instead of relying on aggregate DCE.
+static_assert(sizeof(DirectLightTaskCall) == 208u);
 
 struct DirectLightTaskFilm {
   const BufferFloat4 &combined;
@@ -97,10 +101,12 @@ struct DirectLightTaskEvaluator {
   [[nodiscard]] Bool
   shade_light_nee(Var<DirectLightTaskCall> &task,
                   const Var<RenderKernelParameters> &parameters) const noexcept;
-  void intersect(Var<DirectLightTaskCall> &task,
-                 const Var<RenderKernelParameters> &parameters) const noexcept;
+  [[nodiscard]] Var<ShadowIntersectionBatchCall>
+  intersect(const Var<DirectLightTaskCall> &task,
+            const Var<RenderKernelParameters> &parameters) const noexcept;
   [[nodiscard]] DirectLightShadowStep
   shade_shadow(Var<DirectLightTaskCall> &task,
+               const Var<ShadowIntersectionBatchCall> &shadow_batch,
                const Var<RenderKernelParameters> &parameters) const noexcept;
   [[nodiscard]] Float3
   contribution(const Var<DirectLightTaskCall> &task, Float3 transmittance,
@@ -131,7 +137,7 @@ public:
 LUISA_STRUCT(psycles::luisa_backend::detail::DirectLightTaskCall, ray_origin,
              ray_direction, unshadowed_contribution, nee_path_throughput,
              light_shader, shadow_transmittance, diffuse_weight, glossy_weight,
-             shadow_batch, ray_minimum, ray_maximum, ray_dP, ray_dD,
+             ray_minimum, ray_maximum, ray_dP, ray_dD,
              light_terminate_sample, source_object, source_primitive,
              light_object, light_primitive, constant_light_shader, shader_flags,
              pixel, path_depth, path_flags, path_visibility, diffuse_depth,

@@ -243,6 +243,18 @@ int main(int argc, char **argv) {
     // a host literal in the AST.
     using DirectLightTaskCall =
         psycles::luisa_backend::detail::DirectLightTaskCall;
+    // The queue payload contains only state invariant across the shadow path.
+    // ShadowIntersectionBatchCall is a transition-local value and must not be
+    // reintroduced into this aggregate: a fused auxiliary consumer never
+    // reads it, and a split coroutine needs it on exactly one edge.
+    if (luisa::compute::Type::of<DirectLightTaskCall>()->size() != 208u ||
+        luisa::compute::Type::of<DirectLightTaskCall>()->members().size() !=
+            27u) {
+      std::cerr << "Direct-light queue payload retained transition-local "
+                   "shadow state on "
+                << backend << '\n';
+      return EXIT_FAILURE;
+    }
     auto small_tasks = device.create_soa<DirectLightTaskCall>(7u);
     auto large_tasks = device.create_soa<DirectLightTaskCall>(19u);
     const auto make_runtime_soa_kernel = [](auto *tasks) {
