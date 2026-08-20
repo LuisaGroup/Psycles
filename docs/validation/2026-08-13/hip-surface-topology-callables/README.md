@@ -1,5 +1,10 @@
 # HIP surface-topology callable validation
 
+> Historical checkpoint: the generated-callable frontier and 500,000-
+> instruction boundary policy documented below were removed on 2026-08-20.
+> Generated callables now carry no manual inline directive; see
+> [`hip-generated-callable-inlining`](../../2026-08-20/hip-generated-callable-inlining/README.md).
+
 ## Result
 
 Psycles now records each reachable surface topology as a typed Luisa
