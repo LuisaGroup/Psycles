@@ -506,15 +506,17 @@ public:
                     if (instruction.static_table.size() != 33u) {
                         break;
                     }
+                    const auto table = [&](std::size_t index) noexcept {
+                        return value_static_table_entry(
+                            context, instruction, index);
+                    };
                     auto direction = safe_normalize(
                         vector(
                             instruction.operand(operand::sky::direction),
                             result),
                         make_float3(0.0f, 0.0f, 1.0f));
                     const auto sun_direction = make_float3(
-                        instruction.static_table[0u],
-                        instruction.static_table[1u],
-                        instruction.static_table[2u]);
+                        table(0u), table(1u), table(2u));
                     auto theta = min(
                         acos(clamp(direction.z, -1.0f, 1.0f)),
                         0.5f * pi - 0.001f);
@@ -523,9 +525,7 @@ public:
                         -1.0f,
                         1.0f));
                     const auto radiance = make_float3(
-                        instruction.static_table[3u],
-                        instruction.static_table[4u],
-                        instruction.static_table[5u]);
+                        table(3u), table(4u), table(5u));
                     const auto sky_channel =
                         [&](std::size_t channel) noexcept {
                             const auto offset =
@@ -533,8 +533,7 @@ public:
                             const auto ctheta = cos(theta);
                             const auto cgamma = cos(gamma);
                             const auto ray = cgamma * cgamma;
-                            const auto g = instruction.static_table[
-                                offset + 8u];
+                            const auto g = table(offset + 8u);
                             const auto mie =
                                 (1.0f + ray) /
                                 pow(
@@ -545,27 +544,20 @@ public:
                                     1.5f);
                             return
                                 (1.0f +
-                                 instruction.static_table[offset] *
+                                 table(offset) *
                                      exp(
-                                         instruction.static_table[
-                                             offset + 1u] /
+                                         table(offset + 1u) /
                                          (ctheta + 0.01f))) *
-                                (instruction.static_table[
-                                     offset + 2u] +
-                                 instruction.static_table[
-                                     offset + 3u] *
+                                (table(offset + 2u) +
+                                 table(offset + 3u) *
                                      exp(
-                                         instruction.static_table[
-                                             offset + 4u] *
+                                         table(offset + 4u) *
                                          gamma) +
-                                 instruction.static_table[
-                                     offset + 5u] *
+                                 table(offset + 5u) *
                                      ray +
-                                 instruction.static_table[
-                                     offset + 6u] *
+                                 table(offset + 6u) *
                                      mie +
-                                 instruction.static_table[
-                                     offset + 7u] *
+                                 table(offset + 7u) *
                                      sqrt(max(ctheta, 0.0f)));
                         };
                     const auto xyz = make_float3(

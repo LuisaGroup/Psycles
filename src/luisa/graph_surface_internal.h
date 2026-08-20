@@ -364,6 +364,11 @@ template <typename Id, typename Values>
     Float3 normal, Float2 random) noexcept;
 class GraphSurfaceImplementation;
 
+struct ValueStaticTableView {
+    Expr<luisa::compute::Buffer<float>> values;
+    Expr<std::uint32_t> begin;
+};
+
 struct ValueEvaluationContext {
     const ShaderServices &services;
     const SurfacePoint &point;
@@ -373,7 +378,25 @@ struct ValueEvaluationContext {
     // ordinary topology-expanded path leaves this null and uses the host IR
     // binding; both paths call the same node implementation.
     const Expr<std::uint32_t> *parameter_override{};
+    // Compact bytecode stores authored fixed-layout node data in a scene-wide
+    // immutable stream. The host variant retains the exact table length, so
+    // every constant index below is proven in range by lowering and semantic
+    // variant interning. Expanded evaluation leaves this null and reads the
+    // original instruction payload.
+    const ValueStaticTableView *static_table_override{};
 };
+
+[[nodiscard]] inline Float value_static_table_entry(
+    const ValueEvaluationContext &context,
+    const compiler::ValueInstruction &instruction,
+    std::size_t index) noexcept {
+    if (context.static_table_override != nullptr) {
+        return context.static_table_override->values->read(
+            context.static_table_override->begin +
+            static_cast<std::uint32_t>(index));
+    }
+    return instruction.static_table[index];
+}
 
 // Host-stage node interface. Implementations emit Luisa expressions
 // when evaluate() is called; no instance of this hierarchy reaches
