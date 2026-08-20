@@ -335,6 +335,10 @@ struct LuisaSceneData {
     std::uint64_t revision{};
     MaterialLibrary materials;
     SurfaceDispatch surfaces;
+    // Explicit real-renderer A/B route for Cycles-style single shader
+    // population. Kept separate from compact value bytecode so graph replay
+    // elimination and interpreter effects can be measured independently.
+    bool populate_surface_once{};
     // Enabled only by the explicit A/B route while its real-scene output and
     // performance are validated. A failure builds no partial device image and
     // therefore cannot mix expanded and compact value evaluation.

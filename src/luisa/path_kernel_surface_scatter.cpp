@@ -58,7 +58,8 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
                                         Float u_lobe,
                                         Float2 u_direction,
                                         const SurfaceQuery &query) noexcept {
-            return invocation.trace_sample_surface(
+            return context.shading.sample_trace(
+                invocation,
                 tag, surface_point, u_lobe, u_direction, query);
         };
         auto sample_surface = [&](UInt tag,
@@ -66,7 +67,8 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
                                   Float u_lobe,
                                   Float2 u_direction,
                                   const SurfaceQuery &query) noexcept {
-            return invocation.sample_surface(
+            return context.shading.sample(
+                invocation,
                 tag, surface_point, u_lobe, u_direction, query);
         };
         auto trace_write_event = [&](UInt event,

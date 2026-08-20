@@ -39,6 +39,15 @@ SurfaceClosureCollection GraphSurface::collect_closures(
         collector);
 }
 
+SurfacePopulation GraphSurface::populate(
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    const SurfacePopulationQuery &query,
+    SurfaceClosureCollector &collector) const noexcept {
+    return _implementation->populate(
+        services, point, query, collector);
+}
+
 SurfaceEvaluation GraphSurface::evaluate(
     const ShaderServices &services,
     const SurfacePoint &point,

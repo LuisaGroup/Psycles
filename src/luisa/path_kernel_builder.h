@@ -237,6 +237,12 @@ struct PathKernelInvocation {
   prepare_surface(UInt surface_tag, const SurfacePoint &point, Float3 outgoing,
                   const SurfaceQuery &query, Bool include_runtime_flags,
                     Bool include_aov) const noexcept;
+    [[nodiscard]] SurfacePreparationQuery surface_preparation_query(
+        const SurfacePoint &point,
+        Float3 outgoing,
+        const SurfaceQuery &query,
+        Bool include_runtime_flags,
+        Bool include_aov) const noexcept;
     [[nodiscard]] Float3 surface_emission(UInt surface_tag,
                                           const SurfacePoint &point,
                                           Float3 outgoing) const noexcept;
@@ -513,6 +519,32 @@ struct SurfaceGeometryContext {
 struct SurfaceShadingState {
     UInt cycles_surface_runtime_flags;
     Float3 bsdf_sample;
+    // Host-only ownership of device-local populated closures. It lives across
+    // the C++ AST-construction calls for NEE and scattering, but no pointer or
+    // closure record crosses a device coroutine suspension.
+    std::shared_ptr<PopulatedSurfaceShader> populated_surface;
+
+    [[nodiscard]] SurfaceEvaluation evaluate_light(
+        PathKernelInvocation &invocation,
+        UInt surface_tag,
+        const SurfacePoint &point,
+        Float3 outgoing,
+        const SurfaceQuery &query,
+        UInt shader_flags) const noexcept;
+    [[nodiscard]] SurfaceSample sample(
+        PathKernelInvocation &invocation,
+        UInt surface_tag,
+        const SurfacePoint &point,
+        Float u_lobe,
+        Float2 u_direction,
+        const SurfaceQuery &query) const noexcept;
+    [[nodiscard]] SurfaceSampleTrace sample_trace(
+        PathKernelInvocation &invocation,
+        UInt surface_tag,
+        const SurfacePoint &point,
+        Float u_lobe,
+        Float2 u_direction,
+        const SurfaceQuery &query) const noexcept;
 };
 
 struct DirectLightingContext {

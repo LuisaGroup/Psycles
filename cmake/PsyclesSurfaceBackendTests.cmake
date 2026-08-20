@@ -70,6 +70,12 @@ psycles_add_luisa_backend_test(
     LIBRARIES Psycles::luisa)
 
 psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_surface_population_tests
+    SOURCE tests/test_luisa_surface_population.cpp
+    TEST_STEM luisa_surface_population
+    LIBRARIES Psycles::luisa)
+
+psycles_add_luisa_backend_test(
     TARGET psycles_luisa_surface_closure_point_tests
     SOURCE tests/test_luisa_surface_closure_point.cpp
     TEST_STEM luisa_surface_closure_point

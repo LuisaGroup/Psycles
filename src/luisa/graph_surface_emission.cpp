@@ -5,6 +5,42 @@
 
 namespace psycles::luisa_backend::detail {
 
+[[nodiscard]] SurfacePopulation GraphSurfaceImplementation::populate(
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    const SurfacePopulationQuery &query,
+    SurfaceClosureCollector &collector) const noexcept {
+    if (!_program) {
+        collector.begin(point.shading_normal);
+        collector.finish();
+        return {
+            .emission = make_float3(0.0f),
+            .shading_normal = point.shading_normal};
+    }
+
+    // One topology-closed schedule dominates both consumers. The dependency
+    // plan is the exact union of emission and physical-closure endpoints, so a
+    // shared DAG input is evaluated once and every original closure parameter
+    // remains a typed Luisa expression until canonical closure construction.
+    const auto values = trace_surface_values(
+        services, point, &_value_dependency_plan.preparation);
+    const auto emitted = emission_traced(
+        services,
+        point,
+        values,
+        query.emission_reflective_caustics);
+    const auto collection = collect_traced_closures(
+        services,
+        point,
+        values,
+        query.reflective_caustics,
+        query.refractive_caustics,
+        collector);
+    return {
+        .emission = emitted,
+        .shading_normal = collection.shading_normal};
+}
+
 [[nodiscard]] Float3 GraphSurfaceImplementation::emission(
     const ShaderServices &services,
     const SurfacePoint &point,

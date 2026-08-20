@@ -4,14 +4,165 @@
 #include "path_tracer_surface_closure_evaluation.h"
 #include "path_tracer_surface_closure_sampling.h"
 #include "path_tracer_surface_closure_setup.h"
+#include "subsurface_exit_closure_component.h"
 
 #include <psycles/luisa/surface_closure_operations.h>
+#include <psycles/luisa/surface_closure_evaluator.h>
+#include <psycles/luisa/surface_closure_set.h>
 
 #include <utility>
 #include <vector>
 
 namespace psycles::luisa_backend::detail {
 namespace {
+
+using SceneSurfaceShaderServices = BufferShaderServices<
+    Buffer<float>, Buffer<luisa::float3>, Buffer<float>,
+    BindlessArray, BindlessArray>;
+
+class PopulatedSurfaceShaderImpl final
+    : public PopulatedSurfaceShader {
+
+  private:
+    std::shared_ptr<LuisaSceneData> _scene;
+    SurfacePoint _point;
+    SceneSurfaceShaderServices _services;
+    SurfaceClosureSet _closures;
+    Float3 _emission{make_float3(0.0f)};
+    Float3 _shading_normal{make_float3(0.0f, 0.0f, 1.0f)};
+    std::unique_ptr<SurfaceClosureEvaluator> _evaluator;
+
+  public:
+    PopulatedSurfaceShaderImpl(
+        std::shared_ptr<LuisaSceneData> scene,
+        Expr<std::uint32_t> surface_tag,
+        const SurfacePoint &point,
+        const SurfacePopulationQuery &query) noexcept
+        : _scene{std::move(scene)},
+          _point{point},
+          _services{
+              _scene->scalar_parameter_buffer,
+              _scene->vector_parameter_buffer,
+              _scene->cycles_bsdf_table_buffer,
+              _scene->texture_heap,
+              _scene->heap,
+              _scene->attribute_binding_slot,
+              _scene->attribute_range_slot,
+              _scene->nishita_texture_bindings,
+              _scene->shader_color_space},
+          _closures{
+              _scene->volume_metadata.closure_allocation_budget} {
+        const auto population = _scene->surfaces.populate(
+            surface_tag, _services, _point, query, _closures);
+        _emission = population.emission;
+        _shading_normal = population.shading_normal;
+        _evaluator = std::make_unique<SurfaceClosureEvaluator>(
+            _point, _closures, _shading_normal);
+    }
+
+    [[nodiscard]] SurfacePreparation preparation(
+        const SurfacePreparationQuery &query) const noexcept override {
+        auto result = SurfacePreparation::zero(_point);
+        result.emission = _emission;
+
+        const auto runtime_flags = _evaluator->runtime_flags(
+            Float{query.glossy_filter_roughness});
+        result.runtime_flags = select(
+            0u, runtime_flags, Bool{query.include_runtime_flags});
+
+        const auto evaluated_aov = _evaluator->aov();
+        const auto include_aov = Bool{query.include_aov};
+        result.aov.albedo = select(
+            result.aov.albedo, evaluated_aov.albedo, include_aov);
+        result.aov.glossy_albedo = select(
+            result.aov.glossy_albedo,
+            evaluated_aov.glossy_albedo,
+            include_aov);
+        result.aov.transmission_albedo = select(
+            result.aov.transmission_albedo,
+            evaluated_aov.transmission_albedo,
+            include_aov);
+        result.aov.roughness = select(
+            result.aov.roughness, evaluated_aov.roughness, include_aov);
+        result.aov.normal = select(
+            result.aov.normal, evaluated_aov.normal, include_aov);
+        result.aov.transparency = select(
+            result.aov.transparency,
+            evaluated_aov.transparency,
+            include_aov);
+        return result;
+    }
+
+    [[nodiscard]] SurfaceEvaluation evaluate_light(
+        Expr<luisa::float3> outgoing,
+        const SurfaceLightQuery &query) const noexcept override {
+        auto result = _evaluator->evaluate_light(
+            _services, outgoing, query);
+        $if(query.surface.subsurface_exit) {
+            result = SubsurfaceExitClosureComponent{}.evaluate_light(
+                _point, outgoing, query.surface, query.shader_flags);
+        };
+        return result;
+    }
+
+    [[nodiscard]] SurfaceClosureTrace closure_trace(
+        Expr<std::uint32_t> requested_index,
+        const SurfaceQuery &query) const noexcept override {
+        auto result = _evaluator->closure_trace(
+            UInt{requested_index});
+        $if(query.subsurface_exit) {
+            result = SubsurfaceExitClosureComponent{}.trace(
+                _point, query, requested_index);
+        };
+        return result;
+    }
+
+    [[nodiscard]] SurfaceSample sample(
+        Expr<float> u_lobe,
+        Expr<luisa::float2> u_direction,
+        const SurfaceQuery &query) const noexcept override {
+        auto result = _evaluator->sample(
+            _services, u_lobe, u_direction, query);
+        $if(query.subsurface_exit) {
+            result = SubsurfaceExitClosureComponent{}.sample(
+                _point, u_direction, query);
+        };
+        return result;
+    }
+
+    [[nodiscard]] SurfaceSampleTrace sample_trace(
+        Expr<float> u_lobe,
+        Expr<luisa::float2> u_direction,
+        const SurfaceQuery &query) const noexcept override {
+        auto result = _evaluator->sample_trace(
+            _services, u_lobe, u_direction, query);
+        $if(query.subsurface_exit) {
+            result = SubsurfaceExitClosureComponent{}.sample_trace(
+                _point, u_direction, query);
+        };
+        return result;
+    }
+};
+
+class SurfacePopulationComponentImpl final
+    : public SurfacePopulationComponent {
+
+  private:
+    std::shared_ptr<LuisaSceneData> _scene;
+
+  public:
+    explicit SurfacePopulationComponentImpl(
+        std::shared_ptr<LuisaSceneData> scene) noexcept
+        : _scene{std::move(scene)} {}
+
+    [[nodiscard]] std::shared_ptr<PopulatedSurfaceShader> populate(
+        Expr<std::uint32_t> surface_tag,
+        const SurfacePoint &point,
+        const SurfacePopulationQuery &query) const noexcept override {
+        return std::make_shared<PopulatedSurfaceShaderImpl>(
+            _scene, surface_tag, point, query);
+    }
+};
 
 using SurfacePreparationImplementationCallable =
     Callable<SurfacePreparationCall(
@@ -151,6 +302,11 @@ make_expanded_surface_preparation_callable(
 
 SurfaceCallables
 make_surface_callables(const std::shared_ptr<LuisaSceneData> &scene) noexcept {
+    std::shared_ptr<const SurfacePopulationComponent> population;
+    if (scene->populate_surface_once) {
+        population =
+            std::make_shared<SurfacePopulationComponentImpl>(scene);
+    }
     const auto closure_identity = make_surface_closure_identity_callable();
     const auto closure_evaluation =
         make_surface_closure_evaluation_callable(scene);
@@ -503,7 +659,8 @@ make_surface_callables(const std::shared_ptr<LuisaSceneData> &scene) noexcept {
                 surface_tag, services, unpack_surface_point(packed_point));
         };
     shading_normal.set_name("surface_shading_normal");
-    return {std::move(preparation),
+    return {std::move(population),
+            std::move(preparation),
             std::move(evaluate_light),
             std::move(constant_emission),
             std::move(emission),

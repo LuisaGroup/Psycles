@@ -65,7 +65,8 @@ class AnalyticLightingComponent final : public DirectLightingComponent {
                                           Float3 outgoing,
                                           const SurfaceQuery &query,
                                           UInt shader_flags) noexcept {
-            return invocation.evaluate_light_surface(
+            return context.shading.evaluate_light(
+                invocation,
                 tag, surface_point, outgoing, query, shader_flags);
         };
         $if(selected_light.kind ==

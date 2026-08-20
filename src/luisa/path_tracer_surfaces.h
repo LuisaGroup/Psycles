@@ -107,7 +107,47 @@ using SurfaceShadingNormalCallable = Callable<luisa::float3(
     luisa::uint,
     SurfacePointCall)>;
 
+// Host/JIT object whose device-local storage is populated exactly once for a
+// path hit. Every method is a consumer of the retained original closures; no
+// method is allowed to dispatch or replay the material graph.
+class PopulatedSurfaceShader {
+
+  public:
+    virtual ~PopulatedSurfaceShader() noexcept = default;
+
+    [[nodiscard]] virtual SurfacePreparation preparation(
+        const SurfacePreparationQuery &query) const noexcept = 0;
+    [[nodiscard]] virtual SurfaceEvaluation evaluate_light(
+        Expr<luisa::float3> outgoing,
+        const SurfaceLightQuery &query) const noexcept = 0;
+    [[nodiscard]] virtual SurfaceClosureTrace closure_trace(
+        Expr<std::uint32_t> requested_index,
+        const SurfaceQuery &query) const noexcept = 0;
+    [[nodiscard]] virtual SurfaceSample sample(
+        Expr<float> u_lobe,
+        Expr<luisa::float2> u_direction,
+        const SurfaceQuery &query) const noexcept = 0;
+    [[nodiscard]] virtual SurfaceSampleTrace sample_trace(
+        Expr<float> u_lobe,
+        Expr<luisa::float2> u_direction,
+        const SurfaceQuery &query) const noexcept = 0;
+};
+
+class SurfacePopulationComponent {
+
+  public:
+    virtual ~SurfacePopulationComponent() noexcept = default;
+
+    [[nodiscard]] virtual std::shared_ptr<PopulatedSurfaceShader> populate(
+        Expr<std::uint32_t> surface_tag,
+        const SurfacePoint &point,
+        const SurfacePopulationQuery &query) const noexcept = 0;
+};
+
 struct SurfaceCallables {
+    // Present only for the explicit populate-once A/B route until its storage
+    // layout and HIP performance have been validated on complete scenes.
+    std::shared_ptr<const SurfacePopulationComponent> population;
     SurfacePreparationCallable preparation;
     SurfaceEvaluateLightCallable evaluate_light;
     SurfaceConstantEmissionCallable constant_emission;
