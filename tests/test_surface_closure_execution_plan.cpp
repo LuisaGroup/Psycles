@@ -11,6 +11,7 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -372,6 +373,67 @@ void test_missing_live_address_rejected() {
           "missing live Mix address was not rejected transactionally");
 }
 
+void test_executable_scene_relocation() {
+  const auto compiled = compile_graph(make_domain_mix_graph(0.25f));
+  const auto planned = plan_program(compiled);
+  const auto storage = plan_surface_value_storage(
+      *compiled.program,
+      planned.dependencies.preparation,
+      planned.dependencies.preparation_outputs);
+  require(storage.valid, "scene-relocation value storage plan failed");
+
+  const auto inputs = std::vector{
+      SurfaceValueExecutionInput{
+          .program = compiled.program.get(),
+          .storage = &storage,
+          .closure_plan = &planned.closure_plan},
+      SurfaceValueExecutionInput{
+          .program = compiled.program.get(),
+          .storage = &storage,
+          .closure_plan = &planned.closure_plan}};
+  const auto executable = build_surface_value_executable_scene(inputs);
+  require(executable.valid,
+          "scene closure aggregation failed: " + executable.diagnostic);
+  const auto &scene = executable.values;
+  require(scene.programs.size() == 2u &&
+              scene.programs[0u].closure_begin == 0u &&
+              scene.programs[0u].closure_count == 2u &&
+              scene.programs[1u].closure_begin == 2u &&
+              scene.programs[1u].closure_count == 2u,
+          "closure ranges are not published in program descriptors");
+  require(scene.closure_instructions.size() == 4u &&
+              scene.closure_principled_features.size() == 4u &&
+              scene.closure_operands.size() == 10u &&
+              scene.closure_mix_terms.size() == 4u,
+          "parallel closure streams changed size during aggregation");
+  require(scene.closure_instructions[2u].operand_begin == 5u &&
+              scene.closure_instructions[2u].mix_term_begin == 2u,
+          "the second closure program was not rebased exactly once");
+  require(scene.maximum_closure_mix_depth == 1u &&
+              scene.used_closure_operations ==
+                  ((1u << static_cast<std::uint32_t>(
+                        ClosureOperation::diffuse)) |
+                   (1u << static_cast<std::uint32_t>(
+                        ClosureOperation::emission))),
+          "scene-wide closure specialization masks are inconsistent");
+
+  const auto inactive = std::vector<bool>(
+      compiled.program->value_instructions().size(), false);
+  const auto wrong_storage = plan_surface_value_storage(
+      *compiled.program, inactive, inactive);
+  require(wrong_storage.valid,
+          "empty diagnostic storage plan unexpectedly failed");
+  const auto mismatched = build_surface_value_executable_scene(
+      std::vector{SurfaceValueExecutionInput{
+          .program = compiled.program.get(),
+          .storage = &wrong_storage,
+          .closure_plan = &planned.closure_plan}});
+  require(!mismatched.valid &&
+              mismatched.diagnostic.find("closure lowering") !=
+                  std::string::npos,
+          "a closure plan paired with the wrong typed storage was accepted");
+}
+
 } // namespace
 
 int main() {
@@ -381,6 +443,7 @@ int main() {
     test_statically_pruned_mix();
     test_principled_static_contract();
     test_missing_live_address_rejected();
+    test_executable_scene_relocation();
   } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';
     return 1;

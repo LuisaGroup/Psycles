@@ -117,6 +117,228 @@ struct PendingClosure {
   std::vector<SurfaceClosureMixTerm> mix_path;
 };
 
+[[nodiscard]] bool closure_leaf_operation(
+    ClosureOperation operation) noexcept {
+  switch (operation) {
+  case ClosureOperation::diffuse:
+  case ClosureOperation::translucent:
+  case ClosureOperation::principled:
+  case ClosureOperation::glossy:
+  case ClosureOperation::glass:
+  case ClosureOperation::emission:
+  case ClosureOperation::transparent:
+  case ClosureOperation::subsurface:
+  case ClosureOperation::refraction:
+    return true;
+  case ClosureOperation::null_closure:
+  case ClosureOperation::add:
+  case ClosureOperation::mix:
+    return false;
+  }
+  return false;
+}
+
+[[nodiscard]] SurfaceValueBank closure_operand_bank(
+    ClosureOperation operation, std::size_t operand) noexcept {
+  switch (operation) {
+  case ClosureOperation::diffuse:
+  case ClosureOperation::glossy:
+    return operand == surface_closure_operand::diffuse::color ||
+                   operand == surface_closure_operand::diffuse::normal
+               ? SurfaceValueBank::vector
+               : SurfaceValueBank::scalar;
+  case ClosureOperation::translucent:
+    return SurfaceValueBank::vector;
+  case ClosureOperation::principled:
+    switch (operand) {
+    case surface_closure_operand::principled::color:
+    case surface_closure_operand::principled::normal:
+    case surface_closure_operand::principled::subsurface_radius:
+    case surface_closure_operand::principled::specular_tint:
+    case surface_closure_operand::principled::sheen_tint:
+    case surface_closure_operand::principled::coat_tint:
+    case surface_closure_operand::principled::coat_normal:
+    case surface_closure_operand::principled::emission_color:
+      return SurfaceValueBank::vector;
+    default:
+      return SurfaceValueBank::scalar;
+    }
+  case ClosureOperation::glass:
+  case ClosureOperation::refraction:
+    return operand == surface_closure_operand::glass::color ||
+                   operand == surface_closure_operand::glass::normal
+               ? SurfaceValueBank::vector
+               : SurfaceValueBank::scalar;
+  case ClosureOperation::emission:
+    return operand == surface_closure_operand::emission::color
+               ? SurfaceValueBank::vector
+               : SurfaceValueBank::scalar;
+  case ClosureOperation::transparent:
+    return SurfaceValueBank::vector;
+  case ClosureOperation::subsurface:
+    return operand == surface_closure_operand::subsurface::color ||
+                   operand == surface_closure_operand::subsurface::normal ||
+                   operand == surface_closure_operand::subsurface::radius
+               ? SurfaceValueBank::vector
+               : SurfaceValueBank::scalar;
+  case ClosureOperation::null_closure:
+  case ClosureOperation::add:
+  case ClosureOperation::mix:
+    return SurfaceValueBank::scalar;
+  }
+  return SurfaceValueBank::scalar;
+}
+
+[[nodiscard]] bool address_fits_value_program(
+    std::uint32_t encoded, SurfaceValueBank expected,
+    const SurfaceValueProgramImage &values, bool allow_invalid) noexcept {
+  const auto address = SurfaceValueAddress{encoded};
+  if (!address.valid()) {
+    return allow_invalid;
+  }
+  if (address.bank() != expected) {
+    return false;
+  }
+  if (address.parameter()) {
+    return true;
+  }
+  switch (address.bank()) {
+  case SurfaceValueBank::scalar:
+    return address.index() < values.scalar_slots;
+  case SurfaceValueBank::vector:
+    return address.index() < values.vector_slots;
+  case SurfaceValueBank::unsigned_integer:
+    return address.index() < values.unsigned_integer_slots;
+  }
+  return false;
+}
+
+[[nodiscard]] constexpr PrincipledClosureFeatureMask
+all_principled_closure_features() noexcept {
+  return principled_closure_feature_bit(PrincipledClosureFeature::alpha) |
+         principled_closure_feature_bit(PrincipledClosureFeature::sheen) |
+         principled_closure_feature_bit(PrincipledClosureFeature::coat) |
+         principled_closure_feature_bit(PrincipledClosureFeature::metallic) |
+         principled_closure_feature_bit(
+             PrincipledClosureFeature::thick_transmission) |
+         principled_closure_feature_bit(
+             PrincipledClosureFeature::thin_transmission) |
+         principled_closure_feature_bit(PrincipledClosureFeature::dielectric) |
+         principled_closure_feature_bit(
+             PrincipledClosureFeature::thick_subsurface) |
+         principled_closure_feature_bit(
+             PrincipledClosureFeature::thin_subsurface) |
+         principled_closure_feature_bit(PrincipledClosureFeature::diffuse) |
+         principled_closure_feature_bit(PrincipledClosureFeature::emission);
+}
+
+[[nodiscard]] std::string validate_surface_closure_program_image(
+    const SurfaceClosureProgramImage &closures,
+    const SurfaceValueProgramImage &values) {
+  if (!closures.valid) {
+    return closures.diagnostic.empty()
+               ? "the closure program is invalid"
+               : closures.diagnostic;
+  }
+  if (closures.principled_features.size() !=
+      closures.instructions.size()) {
+    return "the Principled feature stream is not parallel to closures";
+  }
+
+  auto expected_operations = std::uint32_t{};
+  auto expected_features = PrincipledClosureFeatureMask{};
+  auto expected_maximum_mix_depth = std::uint32_t{};
+  for (auto instruction_index = std::size_t{0u};
+       instruction_index < closures.instructions.size();
+       ++instruction_index) {
+    const auto &instruction = closures.instructions[instruction_index];
+    if ((instruction.control & ~surface_closure_control_mask) != 0u) {
+      return "a closure control word contains undefined bits";
+    }
+    const auto operation = surface_closure_operation(instruction);
+    if (!closure_leaf_operation(operation)) {
+      return "the closure stream contains a non-leaf or unknown opcode";
+    }
+    const auto endpoints = surface_closure_endpoints(instruction);
+    constexpr auto endpoint_mask =
+        surface_closure_endpoint_bit(SurfaceClosureEndpoint::physical) |
+        surface_closure_endpoint_bit(SurfaceClosureEndpoint::emission);
+    if (endpoints == 0u || (endpoints & ~endpoint_mask) != 0u) {
+      return "a closure leaf has an invalid endpoint mask";
+    }
+    if (static_cast<std::uint32_t>(
+            surface_closure_bssrdf_method(instruction)) >
+        static_cast<std::uint32_t>(BssrdfMethod::random_walk_skin)) {
+      return "a closure leaf has an unknown BSSRDF method";
+    }
+
+    const auto operand_count = surface_closure_operand_count(operation);
+    if (instruction.operand_begin > closures.operands.size() ||
+        operand_count >
+            closures.operands.size() - instruction.operand_begin) {
+      return "a closure leaf exceeds the operand stream";
+    }
+    for (auto operand = std::size_t{0u}; operand < operand_count;
+         ++operand) {
+      if (!address_fits_value_program(
+              closures.operands[instruction.operand_begin + operand],
+              closure_operand_bank(operation, operand), values, true)) {
+        return "a closure operand has the wrong type or exceeds its bank";
+      }
+    }
+    if (instruction.mix_term_begin > closures.mix_terms.size() ||
+        instruction.mix_term_count >
+            closures.mix_terms.size() - instruction.mix_term_begin) {
+      return "a closure leaf exceeds the Mix-term stream";
+    }
+    expected_maximum_mix_depth = std::max(
+        expected_maximum_mix_depth, instruction.mix_term_count);
+    expected_operations |= 1u << static_cast<std::uint32_t>(operation);
+
+    const auto features = closures.principled_features[instruction_index];
+    if ((features & ~all_principled_closure_features()) != 0u ||
+        (operation != ClosureOperation::principled && features != 0u)) {
+      return "a closure leaf has an invalid Principled feature mask";
+    }
+    expected_features |= features;
+  }
+  for (const auto &term : closures.mix_terms) {
+    if (!address_fits_value_program(
+            term.address, SurfaceValueBank::scalar, values, false) ||
+        (term.flags & ~surface_closure_mix_flags_mask) != 0u) {
+      return "a closure Mix term is invalid";
+    }
+  }
+  if (closures.maximum_mix_depth != expected_maximum_mix_depth) {
+    return "the maximum closure Mix depth is inconsistent";
+  }
+  if (closures.used_operations != expected_operations) {
+    return "the used closure-operation mask is inconsistent";
+  }
+  if (closures.used_principled_features != expected_features) {
+    return "the used Principled feature mask is inconsistent";
+  }
+  return {};
+}
+
+[[nodiscard]] bool add_scene_extent(
+    std::size_t &total, std::size_t count) noexcept {
+  constexpr auto limit =
+      static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max());
+  if (total > limit || count > limit - total) {
+    return false;
+  }
+  total += count;
+  return true;
+}
+
+[[nodiscard]] SurfaceValueSceneImage reject_scene(
+    std::string diagnostic) {
+  SurfaceValueSceneImage result;
+  result.diagnostic = std::move(diagnostic);
+  return result;
+}
+
 } // namespace
 
 SurfaceClosureProgramImage lower_surface_closure_program(
@@ -309,6 +531,84 @@ SurfaceClosureProgramImage lower_surface_closure_program(
     }
   }
   result.valid = true;
+  return result;
+}
+
+SurfaceValueSceneImage build_surface_execution_scene_image(
+    std::span<const SurfaceValueProgramImage> value_programs,
+    std::span<const SurfaceClosureProgramImage> closure_programs) {
+  if (value_programs.size() != closure_programs.size()) {
+    return reject_scene(
+        "value and closure programs do not form a bijection");
+  }
+
+  auto closure_instruction_count = std::size_t{0u};
+  auto closure_operand_count = std::size_t{0u};
+  auto closure_mix_term_count = std::size_t{0u};
+  for (auto program_index = std::size_t{0u};
+       program_index < value_programs.size(); ++program_index) {
+    const auto diagnostic = validate_surface_closure_program_image(
+        closure_programs[program_index], value_programs[program_index]);
+    if (!diagnostic.empty()) {
+      return reject_scene(
+          "closure program " + std::to_string(program_index) + ": " +
+          diagnostic);
+    }
+    if (!add_scene_extent(closure_instruction_count,
+                          closure_programs[program_index]
+                              .instructions.size()) ||
+        !add_scene_extent(closure_operand_count,
+                          closure_programs[program_index].operands.size()) ||
+        !add_scene_extent(closure_mix_term_count,
+                          closure_programs[program_index]
+                              .mix_terms.size())) {
+      return reject_scene(
+          "the aggregate closure program exceeds 32-bit device offsets");
+    }
+  }
+
+  auto result = build_surface_value_scene_image(value_programs);
+  if (!result.valid) {
+    return result;
+  }
+  result.closure_instructions.reserve(closure_instruction_count);
+  result.closure_principled_features.reserve(closure_instruction_count);
+  result.closure_operands.reserve(closure_operand_count);
+  result.closure_mix_terms.reserve(closure_mix_term_count);
+
+  for (auto program_index = std::size_t{0u};
+       program_index < closure_programs.size(); ++program_index) {
+    const auto &program = closure_programs[program_index];
+    auto &descriptor = result.programs[program_index];
+    descriptor.closure_begin = static_cast<std::uint32_t>(
+        result.closure_instructions.size());
+    descriptor.closure_count =
+        static_cast<std::uint32_t>(program.instructions.size());
+    const auto operand_begin =
+        static_cast<std::uint32_t>(result.closure_operands.size());
+    const auto mix_term_begin =
+        static_cast<std::uint32_t>(result.closure_mix_terms.size());
+    for (auto instruction : program.instructions) {
+      instruction.operand_begin += operand_begin;
+      instruction.mix_term_begin += mix_term_begin;
+      result.closure_instructions.emplace_back(instruction);
+    }
+    result.closure_principled_features.insert(
+        result.closure_principled_features.end(),
+        program.principled_features.begin(),
+        program.principled_features.end());
+    result.closure_operands.insert(
+        result.closure_operands.end(), program.operands.begin(),
+        program.operands.end());
+    result.closure_mix_terms.insert(
+        result.closure_mix_terms.end(), program.mix_terms.begin(),
+        program.mix_terms.end());
+    result.maximum_closure_mix_depth = std::max(
+        result.maximum_closure_mix_depth, program.maximum_mix_depth);
+    result.used_closure_operations |= program.used_operations;
+    result.used_principled_closure_features |=
+        program.used_principled_features;
+  }
   return result;
 }
 

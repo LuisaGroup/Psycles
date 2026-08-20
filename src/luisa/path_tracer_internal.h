@@ -309,21 +309,31 @@ struct SurfaceValueRuntime {
     compiler::SurfaceValueBumpExecutableScene executable;
     std::vector<SurfaceValueRuntimeTopology> topologies;
 
-    luisa::vector<luisa::uint2> program_ranges;
+    // [value begin, value count, closure begin, closure count]. Closure
+    // ranges are populated only for preparation programs.
+    luisa::vector<luisa::uint4> program_ranges;
     luisa::vector<luisa::uint4> instructions;
     luisa::vector<luisa::uint> operands;
     luisa::vector<luisa::uint> instruction_variants;
     luisa::vector<luisa::uint> metadata_parameters;
+    luisa::vector<luisa::uint4> closure_instructions;
+    luisa::vector<luisa::uint> closure_principled_features;
+    luisa::vector<luisa::uint> closure_operands;
+    luisa::vector<luisa::uint2> closure_mix_terms;
     luisa::vector<luisa::uint> bump_height_programs;
     luisa::vector<luisa::uint> program_outputs;
     luisa::vector<luisa::uint> normal_output_addresses;
     luisa::vector<luisa::uint> normal_undisplaced_flags;
 
-    Buffer<luisa::uint2> program_buffer;
+    Buffer<luisa::uint4> program_buffer;
     Buffer<luisa::uint4> instruction_buffer;
     Buffer<luisa::uint> operand_buffer;
     Buffer<luisa::uint> instruction_variant_buffer;
     Buffer<luisa::uint> metadata_parameter_buffer;
+    Buffer<luisa::uint4> closure_instruction_buffer;
+    Buffer<luisa::uint> closure_principled_feature_buffer;
+    Buffer<luisa::uint> closure_operand_buffer;
+    Buffer<luisa::uint2> closure_mix_term_buffer;
     Buffer<luisa::uint> bump_height_program_buffer;
     Buffer<luisa::uint> program_output_buffer;
     Buffer<luisa::uint> normal_output_address_buffer;
