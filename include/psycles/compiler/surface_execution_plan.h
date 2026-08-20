@@ -94,6 +94,233 @@ public:
   auto operator<=>(const SurfaceValueAddress &) const noexcept = default;
 };
 
+// Closure-tree topology becomes immutable scene data after the typed value
+// stream has been scheduled. A leaf can feed physical population, emission,
+// or both; endpoint bits are kept in the instruction so one traversal
+// preserves the source closure order for every consumer.
+enum class SurfaceClosureEndpoint : std::uint32_t {
+  physical = 1u << 0u,
+  emission = 1u << 1u
+};
+
+using SurfaceClosureEndpointMask = std::uint32_t;
+
+[[nodiscard]] constexpr SurfaceClosureEndpointMask
+surface_closure_endpoint_bit(SurfaceClosureEndpoint endpoint) noexcept {
+  return static_cast<SurfaceClosureEndpointMask>(endpoint);
+}
+
+// Semantic operand layouts for closure leaves. Inactive Principled features
+// retain invalid addresses; the shared handler supplies their Cycles defaults.
+// Named indices are part of the bytecode contract and avoid magic offsets in
+// either the host verifier or the Luisa interpreter.
+namespace surface_closure_operand {
+
+struct diffuse {
+  static constexpr std::size_t color = 0u;
+  static constexpr std::size_t normal = 1u;
+  static constexpr std::size_t roughness = 2u;
+  static constexpr std::size_t count = 3u;
+};
+
+struct translucent {
+  static constexpr std::size_t color = 0u;
+  static constexpr std::size_t normal = 1u;
+  static constexpr std::size_t count = 2u;
+};
+
+struct principled {
+  static constexpr std::size_t color = 0u;
+  static constexpr std::size_t normal = 1u;
+  static constexpr std::size_t roughness = 2u;
+  static constexpr std::size_t diffuse_roughness = 3u;
+  static constexpr std::size_t subsurface_weight = 4u;
+  static constexpr std::size_t subsurface_radius = 5u;
+  static constexpr std::size_t subsurface_scale = 6u;
+  static constexpr std::size_t subsurface_ior = 7u;
+  static constexpr std::size_t subsurface_anisotropy = 8u;
+  static constexpr std::size_t transmission_weight = 9u;
+  static constexpr std::size_t metallic = 10u;
+  static constexpr std::size_t ior = 11u;
+  static constexpr std::size_t specular_ior_level = 12u;
+  static constexpr std::size_t specular_tint = 13u;
+  static constexpr std::size_t alpha = 14u;
+  static constexpr std::size_t thin_wall = 15u;
+  static constexpr std::size_t sheen_weight = 16u;
+  static constexpr std::size_t sheen_roughness = 17u;
+  static constexpr std::size_t sheen_tint = 18u;
+  static constexpr std::size_t coat_weight = 19u;
+  static constexpr std::size_t coat_roughness = 20u;
+  static constexpr std::size_t coat_ior = 21u;
+  static constexpr std::size_t coat_tint = 22u;
+  static constexpr std::size_t coat_normal = 23u;
+  static constexpr std::size_t emission_color = 24u;
+  static constexpr std::size_t emission_strength = 25u;
+  static constexpr std::size_t count = 26u;
+};
+
+struct glossy {
+  static constexpr std::size_t color = 0u;
+  static constexpr std::size_t normal = 1u;
+  static constexpr std::size_t roughness = 2u;
+  static constexpr std::size_t count = 3u;
+};
+
+struct glass {
+  static constexpr std::size_t color = 0u;
+  static constexpr std::size_t normal = 1u;
+  static constexpr std::size_t roughness = 2u;
+  static constexpr std::size_t ior = 3u;
+  static constexpr std::size_t count = 4u;
+};
+
+struct emission {
+  static constexpr std::size_t color = 0u;
+  static constexpr std::size_t strength = 1u;
+  static constexpr std::size_t count = 2u;
+};
+
+struct transparent {
+  static constexpr std::size_t color = 0u;
+  static constexpr std::size_t count = 1u;
+};
+
+struct subsurface {
+  static constexpr std::size_t color = 0u;
+  static constexpr std::size_t normal = 1u;
+  static constexpr std::size_t roughness = 2u;
+  static constexpr std::size_t radius = 3u;
+  static constexpr std::size_t scale = 4u;
+  static constexpr std::size_t ior = 5u;
+  static constexpr std::size_t anisotropy = 6u;
+  static constexpr std::size_t count = 7u;
+};
+
+using refraction = glass;
+
+} // namespace surface_closure_operand
+
+[[nodiscard]] constexpr std::size_t
+surface_closure_operand_count(ClosureOperation operation) noexcept {
+  switch (operation) {
+  case ClosureOperation::null_closure:
+  case ClosureOperation::add:
+  case ClosureOperation::mix:
+    return 0u;
+  case ClosureOperation::diffuse:
+    return surface_closure_operand::diffuse::count;
+  case ClosureOperation::translucent:
+    return surface_closure_operand::translucent::count;
+  case ClosureOperation::principled:
+    return surface_closure_operand::principled::count;
+  case ClosureOperation::glossy:
+    return surface_closure_operand::glossy::count;
+  case ClosureOperation::glass:
+    return surface_closure_operand::glass::count;
+  case ClosureOperation::emission:
+    return surface_closure_operand::emission::count;
+  case ClosureOperation::transparent:
+    return surface_closure_operand::transparent::count;
+  case ClosureOperation::subsurface:
+    return surface_closure_operand::subsurface::count;
+  case ClosureOperation::refraction:
+    return surface_closure_operand::refraction::count;
+  }
+  return 0u;
+}
+
+// A Mix term multiplies the current leaf weight by either factor or
+// (1 - factor). Address and polarity are separate because the high address
+// bit already selects material-parameter storage.
+struct SurfaceClosureMixTerm {
+  std::uint32_t address{SurfaceValueAddress::invalid_value};
+  std::uint32_t flags{};
+};
+
+inline constexpr std::uint32_t surface_closure_mix_complement = 1u << 0u;
+inline constexpr std::uint32_t surface_closure_mix_flags_mask =
+    surface_closure_mix_complement;
+
+// The hot closure stream is one uint4. Operand arity is fixed by opcode;
+// feature masks are parallel data so ordinary non-Principled leaves do not
+// carry an extra word. Mix paths are flattened per leaf, avoiding a dynamic
+// traversal stack while preserving exact DFS source order.
+struct SurfaceClosureBytecodeInstruction {
+  std::uint32_t control{};
+  std::uint32_t operand_begin{};
+  std::uint32_t mix_term_begin{};
+  std::uint32_t mix_term_count{};
+};
+
+inline constexpr std::uint32_t surface_closure_opcode_mask = 0xffu;
+inline constexpr std::uint32_t surface_closure_endpoint_shift = 8u;
+inline constexpr std::uint32_t surface_closure_endpoint_mask =
+    0x3u << surface_closure_endpoint_shift;
+inline constexpr std::uint32_t surface_closure_bssrdf_method_shift = 10u;
+inline constexpr std::uint32_t surface_closure_bssrdf_method_mask =
+    0x3u << surface_closure_bssrdf_method_shift;
+inline constexpr std::uint32_t surface_closure_normal_uses_bump = 1u << 12u;
+inline constexpr std::uint32_t surface_closure_coat_normal_linked = 1u << 13u;
+inline constexpr std::uint32_t surface_closure_preserve_ggx_energy = 1u << 14u;
+inline constexpr std::uint32_t surface_closure_beckmann = 1u << 15u;
+inline constexpr std::uint32_t surface_closure_control_mask =
+    surface_closure_opcode_mask | surface_closure_endpoint_mask |
+    surface_closure_bssrdf_method_mask | surface_closure_normal_uses_bump |
+    surface_closure_coat_normal_linked |
+    surface_closure_preserve_ggx_energy | surface_closure_beckmann;
+
+[[nodiscard]] constexpr std::uint32_t make_surface_closure_control(
+    const ClosureInstruction &instruction,
+    SurfaceClosureEndpointMask endpoints) noexcept {
+  return static_cast<std::uint32_t>(instruction.operation) |
+         ((endpoints & 0x3u) << surface_closure_endpoint_shift) |
+         (static_cast<std::uint32_t>(instruction.subsurface_method)
+          << surface_closure_bssrdf_method_shift) |
+         (instruction.normal_uses_bump ? surface_closure_normal_uses_bump
+                                       : 0u) |
+         (instruction.coat_normal_linked
+              ? surface_closure_coat_normal_linked
+              : 0u) |
+         (instruction.preserve_ggx_energy
+              ? surface_closure_preserve_ggx_energy
+              : 0u) |
+         (instruction.beckmann ? surface_closure_beckmann : 0u);
+}
+
+[[nodiscard]] constexpr ClosureOperation surface_closure_operation(
+    const SurfaceClosureBytecodeInstruction &instruction) noexcept {
+  return static_cast<ClosureOperation>(instruction.control &
+                                       surface_closure_opcode_mask);
+}
+
+[[nodiscard]] constexpr SurfaceClosureEndpointMask surface_closure_endpoints(
+    const SurfaceClosureBytecodeInstruction &instruction) noexcept {
+  return (instruction.control & surface_closure_endpoint_mask) >>
+         surface_closure_endpoint_shift;
+}
+
+[[nodiscard]] constexpr BssrdfMethod surface_closure_bssrdf_method(
+    const SurfaceClosureBytecodeInstruction &instruction) noexcept {
+  return static_cast<BssrdfMethod>(
+      (instruction.control & surface_closure_bssrdf_method_mask) >>
+      surface_closure_bssrdf_method_shift);
+}
+
+// One exact flattened closure program. `principled_features` is parallel to
+// `instructions`; aggregate masks allow the JIT to omit handlers unused by the
+// complete scene without specializing on individual material topologies.
+struct SurfaceClosureProgramImage {
+  bool valid{};
+  std::string diagnostic;
+  std::vector<SurfaceClosureBytecodeInstruction> instructions;
+  std::vector<PrincipledClosureFeatureMask> principled_features;
+  std::vector<std::uint32_t> operands;
+  std::vector<SurfaceClosureMixTerm> mix_terms;
+  std::uint32_t maximum_mix_depth{};
+  std::uint32_t used_operations{};
+  PrincipledClosureFeatureMask used_principled_features{};
+};
+
 // The hot stream is deliberately 16 bytes. Operand arity is an opcode
 // invariant, and uncommon immutable fields live in a side table so ordinary
 // arithmetic does not fetch two uint64 values and a static-table descriptor.
@@ -264,6 +491,16 @@ plan_surface_value_storage(const SurfaceProgram &program,
 [[nodiscard]] SurfaceValueProgramImage lower_surface_value_program(
     const SurfaceProgram &program,
     const SurfaceValueStoragePlan &storage);
+
+// Flattens the reachable closure tree over an already-lowered preparation
+// value image. Add contributes no weight term; a Mix contributes factor or
+// (1 - factor) exactly when both of its closure-plan branches are reachable.
+// Leaves are emitted in the same depth-first source order as GraphSurface.
+[[nodiscard]] SurfaceClosureProgramImage lower_surface_closure_program(
+    const SurfaceProgram &program,
+    const SurfaceClosurePlan &closure_plan,
+    const SurfaceValueDependencyPlan &dependencies,
+    std::span<const std::uint32_t> value_addresses);
 
 // Concatenates topology programs in runtime-tag order and rebases every
 // operand, metadata, and static-table reference to the scene-wide streams.
