@@ -115,8 +115,7 @@ class PopulatedSurfaceShader {
   public:
     virtual ~PopulatedSurfaceShader() noexcept = default;
 
-    [[nodiscard]] virtual SurfacePreparation preparation(
-        const SurfacePreparationQuery &query) const noexcept = 0;
+    [[nodiscard]] virtual SurfacePreparation preparation() const noexcept = 0;
     [[nodiscard]] virtual SurfaceEvaluation evaluate_light(
         Expr<luisa::float3> outgoing,
         const SurfaceLightQuery &query) const noexcept = 0;
