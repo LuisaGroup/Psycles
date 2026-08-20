@@ -1,5 +1,14 @@
 # HIP effect-only RayQuery lowering
 
+> **2026-08-21 stability correction:** the gfx12 hardware-frontier
+> specialization documented below is historical and is no longer selected.
+> Multi-workgroup Monster launches exposed intermittent GPU faults and an
+> indirect-visibility disagreement. LuisaCompute `next` commit `619de7aac`
+> now selects HIPRT's static `hiprtGlobalStack` AnyHit traversal, matching the
+> public construction used by Cycles 5.2. The formal attribution, stress test,
+> real render, all-pass comparison, and triptychs are recorded in
+> [hip-effect-global-stack-stability](../../2026-08-21/hip-effect-global-stack-stability/README.md).
+
 ## Outcome
 
 Psycles' transparent-shadow collector now returns only a 12-byte
@@ -8,8 +17,8 @@ to invocation-owned SoA storage. Luisa's HIP backend also recognizes the more
 general `RayQueryAll` case whose handlers have externally visible effects but
 provably never commit. On an accel proven free of opaque instances, that case
 is lowered to one traversal instead of repeatedly restarting TLAS traversal.
-Pre-gfx12 devices use `hiprtSceneTraversalAnyHitCustomStack`; the gfx12
-follow-up below specializes Luisa's single-frontier BVH8 hardware traversal.
+Pre-gfx12 devices use HIPRT's dynamically assigned AnyHit stack; gfx12 now
+uses the same AnyHit traversal with a statically indexed global stack.
 
 The initial change is LuisaCompute commit `7b7275ca8`; the gfx12 specialization
 is commit `345d75757`, both on `next`. Neither is a Psycles material, scene, or
@@ -113,7 +122,11 @@ The complete profiled Psycles render took 3.68282 s. The previous 3.6533 s run
 is within run-to-run noise; no whole-frame speedup is claimed from a 0.31 ms
 kernel change.
 
-## gfx12 single-frontier specialization
+## Historical gfx12 single-frontier specialization (superseded)
+
+This section preserves the measured experiment and its original reasoning.
+It must not be read as the current backend selection; the correction linked at
+the top supersedes its correctness and performance conclusion.
 
 The native any-hit route still crossed HIPRT's intersect/filter callback
 machinery and used its global traversal stack. On gfx12 the exact Luisa query
