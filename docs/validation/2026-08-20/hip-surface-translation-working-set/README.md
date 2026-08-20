@@ -87,6 +87,7 @@ Barbershop produces:
 | Preparation-active values | 10,791 |
 | Direct parameter references | 5,421 |
 | Runtime instructions | 5,370 |
+| Exact shared evaluator variants | 105 |
 | Maximum scalar slots | 6 |
 | Maximum vector slots | 10 |
 | Maximum uint64 slots | 0 |
@@ -126,6 +127,17 @@ must measure the final code object, private segment/spills, image equivalence,
 and HIP render-only time. An interpreter can trade code size for indirect
 loads and opcode dispatch; the current byte count alone is not a performance
 claim.
+
+An exact, collision-free interning pass reduces the 5,370 scheduled runtime
+instructions to 105 immutable Luisa operation bodies. Its key contains opcode,
+result and operand socket types, every static integer/float bit pattern, and
+the complete static table. Shader-table `ParameterId` is intentionally not a
+body property: it remains per-instruction bytecode metadata and is passed as a
+device expression to the same Color Ramp/RGB Curves implementation. Before
+moving that address to the correct binding-time side there were 201 apparent
+variants; afterward Barbershop has three Color Ramp variants, one RGB Curves
+variant, and two Bump variants. This is the host/JIT work bound that the shared
+evaluator canary must now test against native HIP code generation.
 
 ## Regression and reproduction
 

@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <map>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -64,6 +65,11 @@ namespace {
 }
 
 [[nodiscard]] SurfaceValueSceneImage reject_scene_image(
+    std::string diagnostic) {
+  return {.valid = false, .diagnostic = std::move(diagnostic)};
+}
+
+[[nodiscard]] SurfaceValueExecutableScene reject_executable_scene(
     std::string diagnostic) {
   return {.valid = false, .diagnostic = std::move(diagnostic)};
 }
@@ -136,6 +142,11 @@ namespace {
             static_cast<std::uint32_t>(ValueOperation::nishita_sky)) {
       return "an instruction has an invalid control word";
     }
+    if (surface_value_operand_count(instruction) !=
+        value_operation_operand_count(
+            surface_value_operation(instruction))) {
+      return "an instruction arity disagrees with its opcode contract";
+    }
     if (instruction.operand_begin != operand_cursor) {
       return "the operand stream is not densely ordered";
     }
@@ -187,6 +198,40 @@ namespace {
   }
   total += count;
   return true;
+}
+
+[[nodiscard]] std::vector<std::uint64_t> make_static_variant_key(
+    const SurfaceProgram &program,
+    const ValueInstruction &instruction) {
+  std::vector<std::uint64_t> key;
+  key.reserve(8u + instruction.operands.size() +
+              instruction.static_table.size());
+  key.emplace_back(static_cast<std::uint64_t>(instruction.operation));
+  key.emplace_back(static_cast<std::uint64_t>(instruction.result_type));
+  key.emplace_back(instruction.static_u0);
+  key.emplace_back(instruction.static_u1);
+  key.emplace_back(std::bit_cast<std::uint32_t>(instruction.static_f0));
+  key.emplace_back(std::bit_cast<std::uint32_t>(instruction.static_f1));
+  // Shader-table ParameterId is a late-bound address already preserved in
+  // bytecode metadata. It changes which material data is read, not the Luisa
+  // operation body. All other current non-parameter operations have no
+  // ParameterId; retaining the field in their key catches future semantic use.
+  const auto dynamic_parameter =
+      instruction.operation == ValueOperation::color_ramp ||
+      instruction.operation == ValueOperation::rgb_curve;
+  key.emplace_back(!dynamic_parameter && instruction.parameter.valid()
+                       ? instruction.parameter.value
+                       : ~std::uint64_t{0u});
+  key.emplace_back(instruction.operands.size());
+  for (const auto operand : instruction.operands) {
+    key.emplace_back(static_cast<std::uint64_t>(
+        program.value_instructions()[operand.value].result_type));
+  }
+  key.emplace_back(instruction.static_table.size());
+  for (const auto value : instruction.static_table) {
+    key.emplace_back(std::bit_cast<std::uint32_t>(value));
+  }
+  return key;
 }
 
 } // namespace
@@ -381,6 +426,11 @@ SurfaceValueProgramImage lower_surface_value_program(
       return reject_image(
           "a parameter leaked into the runtime instruction stream");
     }
+    if (instruction.operands.size() !=
+        value_operation_operand_count(instruction.operation)) {
+      return reject_image(
+          "an instruction arity disagrees with its opcode contract");
+    }
     if (instruction.operands.size() >
         std::numeric_limits<std::uint8_t>::max()) {
       return reject_image("an instruction exceeds the encoded operand count");
@@ -531,6 +581,80 @@ SurfaceValueSceneImage build_surface_value_scene_image(
     result.static_data.insert(result.static_data.end(),
                               program.static_data.begin(),
                               program.static_data.end());
+  }
+  result.valid = true;
+  return result;
+}
+
+SurfaceValueExecutableScene build_surface_value_executable_scene(
+    std::span<const SurfaceValueExecutionInput> inputs) {
+  std::vector<SurfaceValueProgramImage> program_images;
+  program_images.reserve(inputs.size());
+  SurfaceValueExecutableScene result;
+  std::map<std::vector<std::uint64_t>, std::uint32_t> variant_indices;
+  for (auto input_index = std::size_t{0u}; input_index < inputs.size();
+       ++input_index) {
+    const auto &[program, storage] = inputs[input_index];
+    if (program == nullptr || storage == nullptr ||
+        !storage->compatible(*program)) {
+      return reject_executable_scene(
+          "value program " + std::to_string(input_index) +
+          ": execution input is incomplete or incompatible");
+    }
+    auto image = lower_surface_value_program(*program, *storage);
+    if (!image.valid) {
+      return reject_executable_scene(
+          "value program " + std::to_string(input_index) + ": " +
+          image.diagnostic);
+    }
+    program_images.emplace_back(std::move(image));
+    for (const auto id : storage->instructions) {
+      if (!id.valid() || id.value >= program->value_instructions().size()) {
+        return reject_executable_scene(
+            "value program " + std::to_string(input_index) +
+            ": storage schedule contains an invalid instruction");
+      }
+      const auto &instruction = program->value_instructions()[id.value];
+      auto key = make_static_variant_key(*program, instruction);
+      auto [iter, inserted] = variant_indices.try_emplace(
+          key, static_cast<std::uint32_t>(result.variants.size()));
+      if (inserted) {
+        if (result.variants.size() >=
+            std::numeric_limits<std::uint32_t>::max()) {
+          return reject_executable_scene(
+              "the scene has too many immutable value variants");
+        }
+        auto normalized = instruction;
+        if (normalized.operation == ValueOperation::color_ramp ||
+            normalized.operation == ValueOperation::rgb_curve) {
+          normalized.parameter = {};
+        }
+        std::vector<contract::SocketType> operand_types;
+        operand_types.reserve(normalized.operands.size());
+        for (auto operand_index = std::size_t{0u};
+             operand_index < normalized.operands.size(); ++operand_index) {
+          const auto source = normalized.operands[operand_index];
+          operand_types.emplace_back(
+              program->value_instructions()[source.value].result_type);
+          normalized.operands[operand_index] = ValueExpressionId{
+              static_cast<std::uint32_t>(operand_index)};
+        }
+        normalized.source_node = {};
+        result.variants.emplace_back(SurfaceValueStaticVariant{
+            .instruction = std::move(normalized),
+            .operand_types = std::move(operand_types)});
+      }
+      result.instruction_variants.emplace_back(iter->second);
+    }
+  }
+  result.values = build_surface_value_scene_image(program_images);
+  if (!result.values.valid) {
+    return reject_executable_scene(result.values.diagnostic);
+  }
+  if (result.instruction_variants.size() !=
+      result.values.instructions.size()) {
+    return reject_executable_scene(
+        "the immutable-variant stream is not parallel to the instructions");
   }
   result.valid = true;
   return result;
