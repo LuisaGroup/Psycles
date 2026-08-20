@@ -144,11 +144,16 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                  .reflective_caustics =
                      preparation_query.reflective_caustics,
                  .refractive_caustics =
-                     preparation_query.refractive_caustics});
+                     preparation_query.refractive_caustics,
+                 .glossy_filter_roughness =
+                     preparation_query.glossy_filter_roughness,
+                 .include_runtime_flags =
+                     preparation_query.include_runtime_flags,
+                 .include_aov =
+                     preparation_query.include_aov});
         }
         const auto preparation = populated_surface
-                                     ? populated_surface->preparation(
-                                           preparation_query)
+                                     ? populated_surface->preparation()
                                      : prepare_surface(
                                            surface_tag,
                                            point,

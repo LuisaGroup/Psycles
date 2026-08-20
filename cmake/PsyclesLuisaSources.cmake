@@ -11,6 +11,7 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/surface_closure_visitor.cpp
     src/luisa/surface_closure_operations.cpp
     src/luisa/surface_closure_evaluation.cpp
+    src/luisa/surface_closure_population.cpp
     src/luisa/surface_closure_set.cpp
     src/luisa/surface_closure_evaluator.cpp
     src/luisa/surface_closure_sampling_core.cpp

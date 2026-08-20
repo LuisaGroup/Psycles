@@ -812,6 +812,9 @@ struct SurfacePopulationQuery {
     Expr<bool> emission_reflective_caustics;
     Expr<bool> reflective_caustics;
     Expr<bool> refractive_caustics;
+    Expr<float> glossy_filter_roughness;
+    Expr<bool> include_runtime_flags;
+    Expr<bool> include_aov;
 };
 
 struct SurfaceEvaluation {

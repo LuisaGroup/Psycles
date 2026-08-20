@@ -37,7 +37,7 @@ using psycles::test_support::ParameterShaderServices;
 
 constexpr auto closure_slots = 8u;
 constexpr auto records_per_slot = 6u;
-constexpr auto storage_records_per_slot = 14u;
+constexpr auto storage_records_per_slot = 17u;
 constexpr auto evaluator_records_per_slot = 10u;
 constexpr auto scattering_records_per_slot = 6u;
 constexpr auto sampling_records_per_slot = 8u;
@@ -561,7 +561,22 @@ int main(int argc, char **argv) {
             make_float3(40.0f, 41.0f, 42.0f);
         glass_record.preserve_ggx_energy = true;
         glass_record.beckmann = true;
+        glass_record.bssrdf_method = static_cast<std::uint32_t>(
+            SurfaceBssrdfMethod::random_walk_skin);
+        glass_record.bssrdf_radius =
+            make_float3(43.0f, 44.0f, 45.0f);
+        glass_record.bssrdf_albedo =
+            make_float3(46.0f, 47.0f, 48.0f);
+        glass_record.bssrdf_ior = 1.49f;
+        glass_record.bssrdf_roughness = 0.51f;
+        glass_record.bssrdf_anisotropy = 0.52f;
         closures.add(glass_record);
+        SurfaceClosureSet physical_closures{
+            1u, SurfaceClosureStorageProfile::physical};
+        UInt physical_fold_mask = 0u;
+        physical_closures.append(glass_record, [&] {
+            physical_fold_mask |= 1u;
+        });
 
         auto overflow = SurfaceClosureRecord::zero();
         overflow.kind = static_cast<std::uint32_t>(
@@ -570,6 +585,9 @@ int main(int argc, char **argv) {
         overflow.allocation_weight = 0.9f;
         overflow.setup_valid = true;
         closures.add(overflow);
+        physical_closures.append(overflow, [&] {
+            physical_fold_mask |= 2u;
+        });
 
         const auto requested = dispatch_x();
         const auto write_closure = [&output](
@@ -632,6 +650,20 @@ int main(int argc, char **argv) {
                 make_float4(closure.reflection_tint, 0.0f));
             output.write(base + 12u,
                 make_float4(closure.transmission_tint, 0.0f));
+            output.write(base + 14u,
+                make_float4(
+                    closure.bssrdf_radius,
+                    closure.bssrdf_anisotropy));
+            output.write(base + 15u,
+                make_float4(
+                    closure.bssrdf_albedo,
+                    closure.bssrdf_roughness));
+            output.write(base + 16u,
+                make_float4(
+                    cast<float>(closure.bssrdf_method),
+                    closure.bssrdf_ior,
+                    0.0f,
+                    0.0f));
         };
         const auto closure = closures.entry(requested);
         const auto valid = requested < closures.count();
@@ -675,6 +707,20 @@ int main(int argc, char **argv) {
             output.write(
                 round_trip_base + 13u,
                 make_float4(0.0f));
+            constexpr auto physical_base =
+                4u * storage_records_per_slot;
+            write_closure(
+                physical_base,
+                physical_closures.count(),
+                true,
+                physical_closures.entry(0u));
+            output.write(
+                physical_base + 13u,
+                make_float4(
+                    cast<float>(physical_fold_mask),
+                    cast<float>(physical_closures.count()),
+                    0.0f,
+                    0.0f));
         };
     };
 
@@ -1339,7 +1385,7 @@ int main(int argc, char **argv) {
     auto retained_buffer =
         device.create_buffer<luisa::float4>(invocation_count * 3u);
     auto storage_buffer = device.create_buffer<luisa::float4>(
-        4u * storage_records_per_slot);
+        5u * storage_records_per_slot);
     auto shared_evaluator_buffer =
         device.create_buffer<luisa::float4>(
             invocation_count *
@@ -1399,7 +1445,7 @@ int main(int argc, char **argv) {
     std::array<luisa::float4, invocation_count * 3u> old{};
     std::array<luisa::float4, invocation_count * 3u> retained{};
     std::array<luisa::float4,
-        4u * storage_records_per_slot>
+        5u * storage_records_per_slot>
         stored{};
     std::array<luisa::float4,
         invocation_count * evaluator_records_per_slot>
@@ -1725,6 +1771,60 @@ int main(int argc, char **argv) {
             stored[3u * storage_records_per_slot + record],
             glass_storage_expected[record]);
     }
+    constexpr std::array bssrdf_storage_expected{
+        luisa::float4{43.0f, 44.0f, 45.0f, 0.52f},
+        luisa::float4{46.0f, 47.0f, 48.0f, 0.51f},
+        luisa::float4{
+            static_cast<float>(SurfaceBssrdfMethod::random_walk_skin),
+            1.49f,
+            0.0f,
+            0.0f}};
+    for (auto record = 0u;
+         record < bssrdf_storage_expected.size();
+         ++record) {
+        const auto offset = 14u + record;
+        glass_round_trip &= approximately_equal(
+            stored[storage_records_per_slot + offset],
+            bssrdf_storage_expected[record]);
+        callable_round_trip &= approximately_equal(
+            stored[3u * storage_records_per_slot + offset],
+            bssrdf_storage_expected[record]);
+    }
+    constexpr std::array physical_storage_expected{
+        luisa::float4{1.0f,
+            static_cast<float>(SurfaceClosureKind::glass),
+            static_cast<float>(SurfaceClosureLobe::transmission),
+            1.0f},
+        luisa::float4{1.0f, 2.0f, 3.0f, 0.4f},
+        luisa::float4{0.0f, 0.0f, 0.0f, 0.5f},
+        luisa::float4{0.0f, 0.0f, 0.0f, 0.19f},
+        luisa::float4{0.0f, 0.0f, 0.0f, 0.20f},
+        luisa::float4{13.0f, 14.0f, 15.0f, 0.21f},
+        luisa::float4{16.0f, 17.0f, 18.0f, 1.37f},
+        luisa::float4{23.0f, 24.0f, 25.0f, 0.0f},
+        luisa::float4{28.0f, 29.0f, 30.0f, 0.26f},
+        luisa::float4{31.0f, 32.0f, 33.0f, 0.27f},
+        luisa::float4{34.0f, 35.0f, 36.0f, 7.0f},
+        luisa::float4{37.0f, 38.0f, 39.0f, 0.0f},
+        luisa::float4{40.0f, 41.0f, 42.0f, 0.0f}};
+    auto physical_round_trip = true;
+    for (auto record = 0u;
+         record < physical_storage_expected.size();
+         ++record) {
+        physical_round_trip &= approximately_equal(
+            stored[4u * storage_records_per_slot + record],
+            physical_storage_expected[record]);
+    }
+    for (auto record = 0u;
+         record < bssrdf_storage_expected.size();
+         ++record) {
+        physical_round_trip &= approximately_equal(
+            stored[4u * storage_records_per_slot + 14u + record],
+            bssrdf_storage_expected[record]);
+    }
+    physical_round_trip &= approximately_equal(
+        stored[4u * storage_records_per_slot + 13u],
+        luisa::float4{1.0f, 1.0f, 0.0f, 0.0f});
     const auto overflow_truncated =
         approximately_equal(
             stored[2u * storage_records_per_slot],
@@ -1741,6 +1841,7 @@ int main(int argc, char **argv) {
     if (!invalid_setup_retained ||
         !glass_round_trip ||
         !callable_round_trip ||
+        !physical_round_trip ||
         !overflow_truncated) {
         std::cerr
             << "surface closure Local storage failed on "

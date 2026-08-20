@@ -7,6 +7,7 @@
 #include "subsurface_exit_closure_component.h"
 
 #include <psycles/luisa/surface_closure_operations.h>
+#include <psycles/luisa/surface_closure_population.h>
 #include <psycles/luisa/surface_closure_evaluator.h>
 #include <psycles/luisa/surface_closure_set.h>
 
@@ -27,8 +28,8 @@ class PopulatedSurfaceShaderImpl final
     std::shared_ptr<LuisaSceneData> _scene;
     SurfacePoint _point;
     SceneSurfaceShaderServices _services;
-    SurfaceClosureSet _closures;
-    Float3 _emission{make_float3(0.0f)};
+    SurfaceClosurePopulationCollector _population;
+    SurfacePreparation _preparation;
     Float3 _shading_normal{make_float3(0.0f, 0.0f, 1.0f)};
     std::unique_ptr<SurfaceClosureEvaluator> _evaluator;
 
@@ -37,7 +38,9 @@ class PopulatedSurfaceShaderImpl final
         std::shared_ptr<LuisaSceneData> scene,
         Expr<std::uint32_t> surface_tag,
         const SurfacePoint &point,
-        const SurfacePopulationQuery &query) noexcept
+        const SurfacePopulationQuery &query,
+        const SurfaceClosureIdentityCallable &identity,
+        const SurfaceClosureAovCallable &aov_operation) noexcept
         : _scene{std::move(scene)},
           _point{point},
           _services{
@@ -50,47 +53,24 @@ class PopulatedSurfaceShaderImpl final
               _scene->attribute_range_slot,
               _scene->nishita_texture_bindings,
               _scene->shader_color_space},
-          _closures{
-              _scene->volume_metadata.closure_allocation_budget} {
+          _population{
+              _point,
+              _scene->volume_metadata.closure_allocation_budget,
+              query,
+              identity,
+              aov_operation},
+          _preparation{SurfacePreparation::zero(_point)} {
         const auto population = _scene->surfaces.populate(
-            surface_tag, _services, _point, query, _closures);
-        _emission = population.emission;
+            surface_tag, _services, _point, query, _population);
+        _preparation = _population.preparation(population.emission);
         _shading_normal = population.shading_normal;
         _evaluator = std::make_unique<SurfaceClosureEvaluator>(
-            _point, _closures, _shading_normal);
+            _point, _population.closures(), _shading_normal);
     }
 
-    [[nodiscard]] SurfacePreparation preparation(
-        const SurfacePreparationQuery &query) const noexcept override {
-        auto result = SurfacePreparation::zero(_point);
-        result.emission = _emission;
-
-        const auto runtime_flags = _evaluator->runtime_flags(
-            Float{query.glossy_filter_roughness});
-        result.runtime_flags = select(
-            0u, runtime_flags, Bool{query.include_runtime_flags});
-
-        const auto evaluated_aov = _evaluator->aov();
-        const auto include_aov = Bool{query.include_aov};
-        result.aov.albedo = select(
-            result.aov.albedo, evaluated_aov.albedo, include_aov);
-        result.aov.glossy_albedo = select(
-            result.aov.glossy_albedo,
-            evaluated_aov.glossy_albedo,
-            include_aov);
-        result.aov.transmission_albedo = select(
-            result.aov.transmission_albedo,
-            evaluated_aov.transmission_albedo,
-            include_aov);
-        result.aov.roughness = select(
-            result.aov.roughness, evaluated_aov.roughness, include_aov);
-        result.aov.normal = select(
-            result.aov.normal, evaluated_aov.normal, include_aov);
-        result.aov.transparency = select(
-            result.aov.transparency,
-            evaluated_aov.transparency,
-            include_aov);
-        return result;
+    [[nodiscard]] SurfacePreparation preparation()
+        const noexcept override {
+        return _preparation;
     }
 
     [[nodiscard]] SurfaceEvaluation evaluate_light(
@@ -149,18 +129,29 @@ class SurfacePopulationComponentImpl final
 
   private:
     std::shared_ptr<LuisaSceneData> _scene;
+    SurfaceClosureIdentityCallable _identity;
+    SurfaceClosureAovCallable _aov_operation;
 
   public:
     explicit SurfacePopulationComponentImpl(
-        std::shared_ptr<LuisaSceneData> scene) noexcept
-        : _scene{std::move(scene)} {}
+        std::shared_ptr<LuisaSceneData> scene,
+        const SurfaceClosureIdentityCallable &identity,
+        const SurfaceClosureAovCallable &aov_operation) noexcept
+        : _scene{std::move(scene)},
+          _identity{identity},
+          _aov_operation{aov_operation} {}
 
     [[nodiscard]] std::shared_ptr<PopulatedSurfaceShader> populate(
         Expr<std::uint32_t> surface_tag,
         const SurfacePoint &point,
         const SurfacePopulationQuery &query) const noexcept override {
         return std::make_shared<PopulatedSurfaceShaderImpl>(
-            _scene, surface_tag, point, query);
+            _scene,
+            surface_tag,
+            point,
+            query,
+            _identity,
+            _aov_operation);
     }
 };
 
@@ -302,12 +293,13 @@ make_expanded_surface_preparation_callable(
 
 SurfaceCallables
 make_surface_callables(const std::shared_ptr<LuisaSceneData> &scene) noexcept {
+    const auto closure_identity = make_surface_closure_identity_callable();
     std::shared_ptr<const SurfacePopulationComponent> population;
     if (scene->populate_surface_once) {
-        population =
-            std::make_shared<SurfacePopulationComponentImpl>(scene);
+        const auto closure_aov = make_surface_closure_aov_callable();
+        population = std::make_shared<SurfacePopulationComponentImpl>(
+            scene, closure_identity, closure_aov);
     }
-    const auto closure_identity = make_surface_closure_identity_callable();
     const auto closure_evaluation =
         make_surface_closure_evaluation_callable(scene);
     const auto closure_sampling = make_surface_closure_sampling_callables(scene);
