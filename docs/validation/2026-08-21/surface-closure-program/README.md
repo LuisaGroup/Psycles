@@ -91,6 +91,35 @@ lowering. It verifies:
   feature mask, and BSSRDF method;
 - deleting a live Mix factor address rejects the image transactionally.
 
+## Scene aggregation and runtime upload
+
+`SurfaceValueExecutionInput` now optionally names the closure plan belonging
+to that exact value-storage plan. The executable-scene builder lowers closure
+bytecode from the freshly produced `value_addresses`; it never accepts an
+independently generated address image. A regression deliberately attaches a
+live closure plan to an empty value schedule and proves that the complete
+scene is rejected.
+
+For every valid program, aggregation verifies:
+
+- opcode, control flags, endpoints, feature masks, and BSSRDF method belong to
+  their closed enums;
+- every semantic operand has the expected scalar/vector bank and every local
+  address is within this program's liveness-derived capacity;
+- every Mix factor is a valid scalar address and every subrange is in bounds;
+- recomputed operation, feature, and maximum-depth summaries equal the stored
+  summaries;
+- all aggregate stream extents and relocations fit 32-bit device offsets.
+
+The runtime program descriptor is uploaded as
+`[value_begin, value_count, closure_begin, closure_count]`. Parallel
+`uint4` closure instructions, Principled feature masks, typed operands, and
+`uint2` Mix terms are now resident on fallback/HIP/Vulkan through the same
+transactional compact-surface runtime. Empty normal/Bump programs receive
+empty closure ranges. The existing expanded closure execution remains active
+until the fixed semantic handlers and transparent-allocation ordering have
+their own backend regressions.
+
 Commands:
 
 ```text
@@ -100,6 +129,7 @@ ctest --test-dir build --output-on-failure \
   -R 'psycles.surface_closure_execution_plan|psycles.surface_program_metadata'
 ```
 
-Both tests pass. This milestone is compiler-only; no renderer performance or
-image claim is made until the fixed device interpreter replaces the topology
-switch and passes the fallback, HIP, and strict native-XIR Vulkan matrix.
+Both tests pass, and `psycles_render_blender_scene` builds after the runtime
+ABI/upload change. No renderer performance or image claim is made until the
+fixed device interpreter replaces the topology switch and passes the
+fallback, HIP, and strict native-XIR Vulkan matrix.
