@@ -430,6 +430,13 @@ struct SurfaceValueSceneImage {
   std::vector<std::uint32_t> operands;
   std::vector<SurfaceValueBytecodeMetadata> metadata;
   std::vector<float> static_data;
+  std::vector<SurfaceClosureBytecodeInstruction> closure_instructions;
+  std::vector<PrincipledClosureFeatureMask> closure_principled_features;
+  std::vector<std::uint32_t> closure_operands;
+  std::vector<SurfaceClosureMixTerm> closure_mix_terms;
+  std::uint32_t maximum_closure_mix_depth{};
+  std::uint32_t used_closure_operations{};
+  PrincipledClosureFeatureMask used_principled_closure_features{};
 };
 
 // One AST body per exact immutable instruction configuration. Operands are
@@ -445,6 +452,10 @@ struct SurfaceValueStaticVariant {
 struct SurfaceValueExecutionInput {
   const SurfaceProgram *program{};
   const SurfaceValueStoragePlan *storage{};
+  // Optional only for non-preparation programs. When present, closure
+  // bytecode is lowered from the exact value-address image produced by this
+  // input; callers cannot accidentally pair it with a different slot plan.
+  const SurfaceClosurePlan *closure_plan{};
 };
 
 // `instruction_variants` is parallel to `values.instructions`. Interning is
@@ -508,6 +519,13 @@ plan_surface_value_storage(const SurfaceProgram &program,
 // unchanged.
 [[nodiscard]] SurfaceValueSceneImage build_surface_value_scene_image(
     std::span<const SurfaceValueProgramImage> programs);
+
+// Aggregates parallel value and closure programs. Closure operands keep their
+// invocation-local typed addresses, while all stream offsets are rebased into
+// the scene image and published through each value-program descriptor.
+[[nodiscard]] SurfaceValueSceneImage build_surface_execution_scene_image(
+    std::span<const SurfaceValueProgramImage> value_programs,
+    std::span<const SurfaceClosureProgramImage> closure_programs);
 
 // Builds the aggregate scene image and interns immutable instruction
 // configurations for a scene-pruned shared Luisa evaluator. Inputs and output

@@ -57,26 +57,36 @@ namespace {
 }
 
 [[nodiscard]] SurfaceValueStoragePlan reject(std::string diagnostic) {
-  return {.valid = false, .diagnostic = std::move(diagnostic)};
+  SurfaceValueStoragePlan result;
+  result.diagnostic = std::move(diagnostic);
+  return result;
 }
 
 [[nodiscard]] SurfaceValueProgramImage reject_image(std::string diagnostic) {
-  return {.valid = false, .diagnostic = std::move(diagnostic)};
+  SurfaceValueProgramImage result;
+  result.diagnostic = std::move(diagnostic);
+  return result;
 }
 
 [[nodiscard]] SurfaceValueSceneImage reject_scene_image(
     std::string diagnostic) {
-  return {.valid = false, .diagnostic = std::move(diagnostic)};
+  SurfaceValueSceneImage result;
+  result.diagnostic = std::move(diagnostic);
+  return result;
 }
 
 [[nodiscard]] SurfaceValueExecutableScene reject_executable_scene(
     std::string diagnostic) {
-  return {.valid = false, .diagnostic = std::move(diagnostic)};
+  SurfaceValueExecutableScene result;
+  result.diagnostic = std::move(diagnostic);
+  return result;
 }
 
 [[nodiscard]] SurfaceValueBumpExecutableScene reject_bump_scene(
     std::string diagnostic) {
-  return {.valid = false, .diagnostic = std::move(diagnostic)};
+  SurfaceValueBumpExecutableScene result;
+  result.diagnostic = std::move(diagnostic);
+  return result;
 }
 
 [[nodiscard]] bool encode_location(const SurfaceValueLocation &location,
@@ -372,8 +382,10 @@ plan_surface_value_storage(const SurfaceProgram &program,
       }
     }
 
-    SurfaceValueBank result_bank;
-    static_cast<void>(classify_value(instruction.result_type, result_bank));
+    auto result_bank = SurfaceValueBank::scalar;
+    if (!classify_value(instruction.result_type, result_bank)) {
+      return reject("an active value has no supported typed storage bank");
+    }
     const auto typed_index = bank_index(result_bank);
     auto slot = std::uint32_t{};
     if (free_slots[typed_index].empty()) {
@@ -614,11 +626,15 @@ SurfaceValueExecutableScene build_surface_value_executable_scene(
     std::span<const SurfaceValueExecutionInput> inputs) {
   std::vector<SurfaceValueProgramImage> program_images;
   program_images.reserve(inputs.size());
+  std::vector<SurfaceClosureProgramImage> closure_images;
+  closure_images.reserve(inputs.size());
   SurfaceValueExecutableScene result;
   std::map<std::vector<std::uint64_t>, std::uint32_t> variant_indices;
   for (auto input_index = std::size_t{0u}; input_index < inputs.size();
        ++input_index) {
-    const auto &[program, storage] = inputs[input_index];
+    const auto &input = inputs[input_index];
+    const auto *program = input.program;
+    const auto *storage = input.storage;
     if (program == nullptr || storage == nullptr ||
         !storage->compatible(*program)) {
       return reject_executable_scene(
@@ -631,6 +647,26 @@ SurfaceValueExecutableScene build_surface_value_executable_scene(
           "value program " + std::to_string(input_index) + ": " +
           image.diagnostic);
     }
+    SurfaceClosureProgramImage closure_image;
+    closure_image.valid = true;
+    if (input.closure_plan != nullptr) {
+      if (!input.closure_plan->compatible(*program)) {
+        return reject_executable_scene(
+            "value program " + std::to_string(input_index) +
+            ": closure plan is incompatible");
+      }
+      const auto dependencies = analyze_surface_value_dependencies(
+          *program, *input.closure_plan);
+      closure_image = lower_surface_closure_program(
+          *program, *input.closure_plan, dependencies,
+          image.value_addresses);
+      if (!closure_image.valid) {
+        return reject_executable_scene(
+            "value program " + std::to_string(input_index) +
+            ": closure lowering: " + closure_image.diagnostic);
+      }
+    }
+    closure_images.emplace_back(std::move(closure_image));
     program_images.emplace_back(std::move(image));
     for (const auto id : storage->instructions) {
       if (!id.valid() || id.value >= program->value_instructions().size()) {
@@ -671,7 +707,8 @@ SurfaceValueExecutableScene build_surface_value_executable_scene(
       result.instruction_variants.emplace_back(iter->second);
     }
   }
-  result.values = build_surface_value_scene_image(program_images);
+  result.values = build_surface_execution_scene_image(
+      program_images, closure_images);
   if (!result.values.valid) {
     return reject_executable_scene(result.values.diagnostic);
   }
@@ -692,7 +729,9 @@ SurfaceValueBumpExecutableScene build_surface_value_bump_executable_scene(
   }
 
   auto bump_count = std::size_t{0u};
-  for (const auto &[program, storage] : root_inputs) {
+  for (const auto &input : root_inputs) {
+    const auto *program = input.program;
+    const auto *storage = input.storage;
     if (program == nullptr || storage == nullptr ||
         !storage->compatible(*program)) {
       return reject_bump_scene(

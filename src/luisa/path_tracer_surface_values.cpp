@@ -645,7 +645,8 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
             .program = programs[topology].get(),
             .storage = &root_storage[
                 topology * SurfaceValueRuntime::programs_per_topology +
-                SurfaceValueRuntime::preparation_program_offset]});
+                SurfaceValueRuntime::preparation_program_offset],
+            .closure_plan = &closure_plans[topology]});
     }
     runtime->executable =
         compiler::build_surface_value_bump_executable_scene(roots);
@@ -665,9 +666,11 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
                          " requires typed slots beyond the 8 scalar / 12 vector / 1 uint64 validation capacity";
             return nullptr;
         }
-        runtime->program_ranges.emplace_back(luisa::make_uint2(
+        runtime->program_ranges.emplace_back(luisa::make_uint4(
             image.programs[index].instruction_begin,
-            image.programs[index].instruction_count));
+            image.programs[index].instruction_count,
+            image.programs[index].closure_begin,
+            image.programs[index].closure_count));
     }
     runtime->instructions.reserve(image.instructions.size());
     for (const auto &instruction : image.instructions) {
@@ -686,6 +689,26 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
     for (const auto &metadata : image.metadata) {
         runtime->metadata_parameters.emplace_back(metadata.parameter);
     }
+    runtime->closure_instructions.reserve(
+        image.closure_instructions.size());
+    for (const auto &instruction : image.closure_instructions) {
+        runtime->closure_instructions.emplace_back(luisa::make_uint4(
+            instruction.control,
+            instruction.operand_begin,
+            instruction.mix_term_begin,
+            instruction.mix_term_count));
+    }
+    runtime->closure_principled_features.assign(
+        image.closure_principled_features.begin(),
+        image.closure_principled_features.end());
+    runtime->closure_operands.assign(
+        image.closure_operands.begin(), image.closure_operands.end());
+    runtime->closure_mix_terms.reserve(
+        image.closure_mix_terms.size());
+    for (const auto &term : image.closure_mix_terms) {
+        runtime->closure_mix_terms.emplace_back(
+            luisa::make_uint2(term.address, term.flags));
+    }
     runtime->bump_height_programs.assign(
         runtime->executable.bump_height_programs.begin(),
         runtime->executable.bump_height_programs.end());
@@ -694,7 +717,7 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
         runtime->executable.program_outputs.end());
 
     provide_dummy_if_empty(
-        runtime->program_ranges, luisa::make_uint2(0u));
+        runtime->program_ranges, luisa::make_uint4(0u));
     provide_dummy_if_empty(
         runtime->instructions, luisa::make_uint4(0u));
     provide_dummy_if_empty(runtime->operands, 0u);
@@ -702,6 +725,14 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
     provide_dummy_if_empty(
         runtime->metadata_parameters,
         compiler::SurfaceValueAddress::invalid_value);
+    provide_dummy_if_empty(
+        runtime->closure_instructions, luisa::make_uint4(0u));
+    provide_dummy_if_empty(runtime->closure_principled_features, 0u);
+    provide_dummy_if_empty(
+        runtime->closure_operands,
+        compiler::SurfaceValueAddress::invalid_value);
+    provide_dummy_if_empty(
+        runtime->closure_mix_terms, luisa::make_uint2(0u));
     provide_dummy_if_empty(
         runtime->bump_height_programs,
         compiler::SurfaceValueAddress::invalid_value);
@@ -714,7 +745,7 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
     provide_dummy_if_empty(runtime->normal_undisplaced_flags, 0u);
 
     runtime->program_buffer =
-        device.create_buffer<luisa::uint2>(runtime->program_ranges.size());
+        device.create_buffer<luisa::uint4>(runtime->program_ranges.size());
     runtime->instruction_buffer =
         device.create_buffer<luisa::uint4>(runtime->instructions.size());
     runtime->operand_buffer =
@@ -725,6 +756,18 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
     runtime->metadata_parameter_buffer =
         device.create_buffer<luisa::uint>(
             runtime->metadata_parameters.size());
+    runtime->closure_instruction_buffer =
+        device.create_buffer<luisa::uint4>(
+            runtime->closure_instructions.size());
+    runtime->closure_principled_feature_buffer =
+        device.create_buffer<luisa::uint>(
+            runtime->closure_principled_features.size());
+    runtime->closure_operand_buffer =
+        device.create_buffer<luisa::uint>(
+            runtime->closure_operands.size());
+    runtime->closure_mix_term_buffer =
+        device.create_buffer<luisa::uint2>(
+            runtime->closure_mix_terms.size());
     runtime->bump_height_program_buffer =
         device.create_buffer<luisa::uint>(
             runtime->bump_height_programs.size());
@@ -752,6 +795,14 @@ void upload_surface_value_runtime(
                   luisa::span{runtime.instruction_variants})
            << runtime.metadata_parameter_buffer.copy_from(
                   luisa::span{runtime.metadata_parameters})
+           << runtime.closure_instruction_buffer.copy_from(
+                  luisa::span{runtime.closure_instructions})
+           << runtime.closure_principled_feature_buffer.copy_from(
+                  luisa::span{runtime.closure_principled_features})
+           << runtime.closure_operand_buffer.copy_from(
+                  luisa::span{runtime.closure_operands})
+           << runtime.closure_mix_term_buffer.copy_from(
+                  luisa::span{runtime.closure_mix_terms})
            << runtime.bump_height_program_buffer.copy_from(
                   luisa::span{runtime.bump_height_programs})
            << runtime.program_output_buffer.copy_from(
