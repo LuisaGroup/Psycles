@@ -117,6 +117,11 @@ public:
         const ShaderServices &services,
         const SurfacePoint &point) const noexcept override;
 
+    // Host/JIT integration boundary for scene-wide value scheduling. The
+    // implementation pointer is never exposed to device code.
+    [[nodiscard]] const detail::GraphSurfaceImplementation *
+    internal_implementation() const noexcept;
+
 };
 
 }// namespace psycles::luisa_backend

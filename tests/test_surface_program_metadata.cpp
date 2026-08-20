@@ -1084,6 +1084,88 @@ void test_surface_value_storage_plan() {
             "late-bound shader-table addresses changed the evaluator body "
             "or were lost from bytecode metadata");
 
+    std::vector<ParameterDesc> bump_parameters;
+    for (auto index = 0u; index < 4u; ++index) {
+        bump_parameters.emplace_back(make_parameter(index));
+    }
+    bump_parameters.emplace_back(ParameterDesc{
+        .id = ParameterId{4u},
+        .node = NodeId{5u},
+        .socket = "Normal",
+        .type = SocketType::normal,
+        .default_value = SocketValue::normal({0.0f, 0.0f, 1.0f}),
+        .source = ParameterSource::input});
+    std::vector<ValueInstruction> bump_values;
+    for (auto index = 0u; index < 4u; ++index) {
+        bump_values.emplace_back(make_parameter_value(index));
+    }
+    bump_values.emplace_back(ValueInstruction{
+        .operation = ValueOperation::parameter,
+        .source_node = NodeId{5u},
+        .result_type = SocketType::normal,
+        .parameter = ParameterId{4u}});
+    const auto make_bump_instruction =
+        [](ValueExpressionId height) {
+            return ValueInstruction{
+                .operation = ValueOperation::bump,
+                .result_type = SocketType::normal,
+                .operands = make_value_operands<value_operand::bump>({
+                    {value_operand::bump::height, height},
+                    {value_operand::bump::strength,
+                     ValueExpressionId{1u}},
+                    {value_operand::bump::distance,
+                     ValueExpressionId{2u}},
+                    {value_operand::bump::filter_width,
+                     ValueExpressionId{3u}},
+                    {value_operand::bump::normal,
+                     ValueExpressionId{4u}}}),
+                .static_u0 = 2u};
+        };
+    bump_values.emplace_back(
+        make_bump_instruction(ValueExpressionId{0u}));
+    const SurfaceProgram bump_program{
+        20u, bump_parameters, bump_values, {}, {}};
+    const auto bump_plan = plan_surface_value_storage(
+        bump_program, std::vector<bool>(6u, true),
+        std::vector<bool>{false, false, false, false, false, true});
+    const auto bump_scene = build_surface_value_bump_executable_scene(
+        std::vector{SurfaceValueExecutionInput{
+            .program = &bump_program, .storage = &bump_plan}});
+    require(bump_scene.valid && bump_scene.root_program_count == 1u &&
+                bump_scene.executable.values.programs.size() == 2u &&
+                bump_scene.executable.values.instructions.size() == 1u &&
+                bump_scene.bump_height_programs ==
+                    std::vector<std::uint32_t>{1u} &&
+                SurfaceValueAddress{
+                    bump_scene.program_outputs[1u]}.parameter() &&
+                SurfaceValueAddress{
+                    bump_scene.program_outputs[1u]}.index() == 0u,
+            "Bump height did not lower to an exact typed subprogram");
+
+    auto nested_values = bump_values;
+    nested_values.emplace_back(ValueInstruction{
+        .operation = ValueOperation::vector_to_scalar,
+        .result_type = SocketType::floating,
+        .operands = make_value_operands<value_operand::unary>({
+            {value_operand::unary::input, ValueExpressionId{5u}}})});
+    nested_values.emplace_back(
+        make_bump_instruction(ValueExpressionId{6u}));
+    const SurfaceProgram nested_bump_program{
+        21u, bump_parameters, std::move(nested_values), {}, {}};
+    const auto nested_bump_plan = plan_surface_value_storage(
+        nested_bump_program, std::vector<bool>(8u, true),
+        std::vector<bool>{false, false, false, false, false, false,
+                          false, true});
+    const auto nested_bump_scene =
+        build_surface_value_bump_executable_scene(
+            std::vector{SurfaceValueExecutionInput{
+                .program = &nested_bump_program,
+                .storage = &nested_bump_plan}});
+    require(!nested_bump_scene.valid &&
+                nested_bump_scene.diagnostic.find("stratum") !=
+                    std::string::npos,
+            "nested Bump silently entered a non-recursive evaluator layer");
+
     auto malformed_image = image;
     malformed_image.instructions.front().control |= 1u << 31u;
     const auto malformed_scene = build_surface_value_scene_image(

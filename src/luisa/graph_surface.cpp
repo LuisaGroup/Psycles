@@ -149,4 +149,9 @@ Float3 GraphSurface::shading_normal(
         services, point);
 }
 
+const detail::GraphSurfaceImplementation *
+GraphSurface::internal_implementation() const noexcept {
+    return _implementation.get();
+}
+
 }// namespace psycles::luisa_backend

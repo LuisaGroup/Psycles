@@ -136,51 +136,22 @@ public:
         auto &result = context.result;
         const auto &instruction = this->instruction();
 
+        const auto configuration =
+            decode_surface_bump_configuration(
+                instruction.static_u0);
         auto normal_in =
-            (instruction.static_u0 & 2u) != 0u
+            configuration.normal_linked
                 ? vector(
                       instruction.operand(operand::bump::normal),
                       result)
                 : result.shading_normal;
-        const auto use_object_space =
-            (instruction.static_u0 & 4u) != 0u;
-        auto filter_width = max(
-            scalar(
-                instruction.operand(operand::bump::filter_width),
-                result),
-            0.0f);
-
-        auto point_x = point;
-        point_x.position =
-            point.position +
-            point.dPdx * filter_width;
-        point_x.object_position =
-            point.object_position +
-            point.object_dPdx * filter_width;
-        point_x.generated =
-            point.generated +
-            point.generated_dx * filter_width;
-        point_x.uv =
-            point.uv + point.uv_dx * filter_width;
-        point_x.barycentric =
-            point.barycentric +
-            point.barycentric_dx * filter_width;
-
-        auto point_y = point;
-        point_y.position =
-            point.position +
-            point.dPdy * filter_width;
-        point_y.object_position =
-            point.object_position +
-            point.object_dPdy * filter_width;
-        point_y.generated =
-            point.generated +
-            point.generated_dy * filter_width;
-        point_y.uv =
-            point.uv + point.uv_dy * filter_width;
-        point_y.barycentric =
-            point.barycentric +
-            point.barycentric_dy * filter_width;
+        const auto domain =
+            make_surface_bump_evaluation_domain(
+                point,
+                scalar(
+                    instruction.operand(
+                        operand::bump::filter_width),
+                    result));
 
         if (context.surface == nullptr) {
             std::abort();
@@ -191,12 +162,12 @@ public:
         auto values_x =
             context.surface->trace_values(
                 services,
-                point_x,
+                domain.point_x,
                 &height_dependencies);
         auto values_y =
             context.surface->trace_values(
                 services,
-                point_y,
+                domain.point_y,
                 &height_dependencies);
         const auto height_center =
             scalar(
@@ -207,41 +178,23 @@ public:
         const auto height_y =
             scalar(
                 instruction.operand(operand::bump::height), values_y);
-        auto distance =
+        const auto distance =
             scalar(
                 instruction.operand(operand::bump::distance), result);
-        if ((instruction.static_u0 & 1u) != 0u) {
-            distance = -distance;
-        }
         const auto strength =
-            max(
-                scalar(
-                    instruction.operand(operand::bump::strength), result),
-                0.0f);
-        const auto bump_input = SurfaceBumpInput{
-            .normal = normal_in,
-            .filter_width = filter_width,
-            .dPdx = use_object_space
-                        ? point.object_dPdx
-                        : point.dPdx,
-            .dPdy = use_object_space
-                        ? point.object_dPdy
-                        : point.dPdy,
-            .height_center = height_center,
-            .height_x = height_x,
-            .height_y = height_y,
-            .distance = distance,
-            .strength = strength,
-            .normal_to_world_x = point.normal_to_world_x,
-            .normal_to_world_y = point.normal_to_world_y,
-            .normal_to_world_z = point.normal_to_world_z,
-            .object_shading_normal = point.object_shading_normal,
-            .shading_normal = point.shading_normal};
-        const auto normal_out = use_object_space
-                                    ? bump_object(
-                                          services, bump_input)
-                                    : bump_world(
-                                          services, bump_input);
+            scalar(
+                instruction.operand(operand::bump::strength), result);
+        const auto normal_out = evaluate_surface_bump(
+            services,
+            point,
+            configuration,
+            normal_in,
+            domain,
+            height_center,
+            height_x,
+            height_y,
+            distance,
+            strength);
         return SurfaceValueExpression::from_vector(
             Expr<luisa::float3>{normal_out.expression()});
     }
