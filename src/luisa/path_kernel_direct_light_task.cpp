@@ -44,8 +44,8 @@ Bool DirectLightTaskEvaluator::shade_light_nee(
   return any(task.unshadowed_contribution != 0.0f);
 }
 
-void DirectLightTaskEvaluator::intersect(
-    Var<DirectLightTaskCall> &task,
+Var<ShadowIntersectionBatchCall> DirectLightTaskEvaluator::intersect(
+    const Var<DirectLightTaskCall> &task,
     const Var<RenderKernelParameters> &parameters) const noexcept {
   LUISA_ASSERT(intersect_shadow != nullptr,
                "Split shadow traversal requires external hit storage.");
@@ -54,21 +54,21 @@ void DirectLightTaskEvaluator::intersect(
   const auto remaining =
       parameters.transparent_max_bounces -
       min(task.transparent_depth, parameters.transparent_max_bounces);
-  task.shadow_batch =
-      intersect_shadow->collect(
-          ray, task.source_object, task.source_primitive, task.light_object,
-          task.light_primitive, remaining, parameters.shadow_storage_capacity,
-          parameters.shadow_storage_block_size);
+  return intersect_shadow->collect(
+      ray, task.source_object, task.source_primitive, task.light_object,
+      task.light_primitive, remaining, parameters.shadow_storage_capacity,
+      parameters.shadow_storage_block_size);
 }
 
 DirectLightShadowStep DirectLightTaskEvaluator::shade_shadow(
     Var<DirectLightTaskCall> &task,
+    const Var<ShadowIntersectionBatchCall> &shadow_batch,
     const Var<RenderKernelParameters> &parameters) const noexcept {
   Bool continue_shadow = false;
   Bool visible = false;
 
-  $if(task.shadow_batch.blocked == 0u) {
-    auto ordered_batch = def(task.shadow_batch);
+  $if(shadow_batch.blocked == 0u) {
+    auto ordered_batch = def(shadow_batch);
     sort_shadow_intersection_batch(ordered_batch);
     Bool carries_light = true;
     Float last_distance = task.ray_minimum;
