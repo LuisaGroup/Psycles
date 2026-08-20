@@ -65,6 +65,20 @@ namespace psycles::luisa_backend::detail {
     // typed device array.
     const auto values = trace_surface_values(
         services, point, &_value_dependency_plan.preparation);
+    return prepare_traced_values(
+        services, point, values, query);
+}
+
+[[nodiscard]] SurfacePreparation
+GraphSurfaceImplementation::prepare_traced_values(
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    const TracedValues &values,
+    const SurfacePreparationQuery &query) const noexcept {
+    auto result = SurfacePreparation::zero(point);
+    if (!_program) {
+        return result;
+    }
     result.emission = emission_traced(
         services,
         point,
