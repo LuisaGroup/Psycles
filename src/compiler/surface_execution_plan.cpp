@@ -219,8 +219,7 @@ namespace {
     const SurfaceProgram &program,
     const ValueInstruction &instruction) {
   std::vector<std::uint64_t> key;
-  key.reserve(8u + instruction.operands.size() +
-              instruction.static_table.size());
+  key.reserve(9u + instruction.operands.size());
   key.emplace_back(static_cast<std::uint64_t>(instruction.operation));
   key.emplace_back(static_cast<std::uint64_t>(instruction.result_type));
   key.emplace_back(instruction.static_u0);
@@ -242,10 +241,13 @@ namespace {
     key.emplace_back(static_cast<std::uint64_t>(
         program.value_instructions()[operand.value].result_type));
   }
+  // Static-table values are bytecode data, just like a Cycles SVM node's
+  // constant payload. Only the shape can affect the host-recorded evaluator
+  // body: the two current consumers require fixed 16- and 33-float layouts.
+  // Keeping the length in the exact key proves that merged instructions use
+  // the same indexing domain while allowing authored transforms/sky data to
+  // share one semantic AST body.
   key.emplace_back(instruction.static_table.size());
-  for (const auto value : instruction.static_table) {
-    key.emplace_back(std::bit_cast<std::uint32_t>(value));
-  }
   return key;
 }
 
@@ -689,6 +691,12 @@ SurfaceValueExecutableScene build_surface_value_executable_scene(
             normalized.operation == ValueOperation::rgb_curve) {
           normalized.parameter = {};
         }
+        // Preserve the statically proven shape but erase authored payloads
+        // from the host AST representative. Compact execution must obtain
+        // every entry from the instruction metadata/static-data streams;
+        // zeroing here makes an accidental bake observable in regressions.
+        std::fill(normalized.static_table.begin(),
+                  normalized.static_table.end(), 0.0f);
         std::vector<contract::SocketType> operand_types;
         operand_types.reserve(normalized.operands.size());
         for (auto operand_index = std::size_t{0u};
