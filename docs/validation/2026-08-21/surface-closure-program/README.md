@@ -163,3 +163,62 @@ fallback, HIP, and Vulkan. Vulkan uses the configured strict native
 XIR-to-SPIR-V route. This refactor alone makes no performance claim; its role
 is to establish one tested semantic handler before replacing the remaining
 per-material topology switch.
+
+## Runtime closure execution and preparation fold
+
+The compact preparation route now executes the uploaded closure stream
+directly. Its generated AST has one case for each sorted unique static
+semantic variant used by the scene; material identity selects only a bytecode
+range. Endpoint membership and Mix factors remain device data. The static
+variant key contains exactly the fields which select a host/JIT algorithm:
+opcode, BSSRDF method, linked Coat Normal topology, GGX energy policy, and
+Beckmann selection.
+
+Preparation is a device-stage left fold over the retained physical sequence.
+For a raw closure sequence `R`, let `expand(r)` be the shared pure physical
+setup component, `allocated(c)` the Cycles weight-cutoff predicate, and `C=12`
+the capacity. The observable sequence is:
+
+```text
+P = concat(expand(r) for r in R)
+T = sum of every transparent contribution in P
+Q = P with all transparent elements removed, with T inserted at the position
+    of the first allocated transparent element (if one exists)
+retained = first C elements of Q satisfying allocated
+```
+
+The implementation realizes this without a per-thread closure arena. Its
+first pass folds the non-transparent prefix, accumulates `T`, and records the
+raw instruction containing the first allocated transparent result. It then
+folds `T` and replays physical setup from that instruction only to fold the
+non-transparent suffix. Pure setup plus the recorded first-transparent
+boundary proves the same source order; the accumulator applies allocation and
+capacity as one transaction. No value bytecode or texture input is replayed.
+
+Principled handlers are pruned with the scene-wide feature union, matching the
+Cycles kernel-feature binding boundary. Per-instruction operands excluded by a
+stronger closure plan decode to the algebraic neutral element for that layer
+(zero weight/emission, alpha one, or the corresponding identity parameter).
+The now-unused per-instruction feature buffer was therefore removed from the
+device ABI.
+
+The backend regression compares the expanded `GraphSurface::prepare` result
+with compact bytecode preparation for all output fields. It covers a minimal
+Principled under a richer scene feature union, a thin layered Principled with
+alpha/sheen/coat/metallic/transmission/subsurface/emission, linked Coat Normal,
+Beckmann glass, nested Mix factors, explicit emission, sub-cutoff and allocated
+transparent merging, non-transparent suffix replay, back-facing state,
+caustics switches, AOV/runtime-flag switches, glossy filtering, and the exact
+12-slot capacity boundary.
+
+```text
+cmake --build build --parallel \
+  --target psycles_luisa_compact_surface_preparation_tests
+ctest --test-dir build --output-on-failure \
+  -R '^psycles\.luisa_compact_surface_preparation_(fallback|hip|vk)$'
+```
+
+All three tests pass. The Vulkan registration explicitly sets
+`LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, so that result cannot silently use
+the DXC compatibility route. This validates the preparation boundary; complete
+scene image and performance measurements remain a separate next step.
