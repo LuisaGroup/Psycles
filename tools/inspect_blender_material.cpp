@@ -12,6 +12,7 @@
 #include <set>
 #include <stdexcept>
 #include <string_view>
+#include <vector>
 
 namespace {
 
@@ -335,9 +336,12 @@ int main(int argc, char **argv) {
         auto value_bytecode_operand_bytes = std::size_t{};
         auto value_bytecode_metadata_bytes = std::size_t{};
         auto value_bytecode_static_bytes = std::size_t{};
-        std::vector<psycles::compiler::SurfaceValueProgramImage>
-            value_program_images;
-        value_program_images.reserve(representative_programs.size());
+        std::vector<psycles::compiler::SurfaceValueStoragePlan>
+            value_storage_plans;
+        std::vector<psycles::compiler::SurfaceValueExecutionInput>
+            value_execution_inputs;
+        value_storage_plans.reserve(representative_programs.size());
+        value_execution_inputs.reserve(representative_programs.size());
         std::map<PrincipledClosureFeature, std::size_t>
             feature_occurrences;
         for (const auto &[signature, program] :
@@ -394,7 +398,11 @@ int main(int argc, char **argv) {
                 sizeof(psycles::compiler::SurfaceValueBytecodeMetadata);
             value_bytecode_static_bytes +=
                 image.static_data.size() * sizeof(float);
-            value_program_images.emplace_back(image);
+            value_storage_plans.emplace_back(storage);
+            value_execution_inputs.emplace_back(
+                psycles::compiler::SurfaceValueExecutionInput{
+                    .program = program,
+                    .storage = &value_storage_plans.back()});
             for (const auto &entry : plan.entries()) {
                 reachable_closures += entry.reachable ? 1u : 0u;
                 for (const auto feature : {
@@ -417,13 +425,18 @@ int main(int argc, char **argv) {
                 }
             }
         }
-        const auto value_scene_image =
-            psycles::compiler::build_surface_value_scene_image(
-                value_program_images);
-        if (!value_scene_image.valid) {
-            std::cerr << "surface scene bytecode aggregation failed: "
-                      << value_scene_image.diagnostic << '\n';
+        const auto value_executable_scene =
+            psycles::compiler::build_surface_value_executable_scene(
+                value_execution_inputs);
+        if (!value_executable_scene.valid) {
+            std::cerr << "surface executable bytecode aggregation failed: "
+                      << value_executable_scene.diagnostic << '\n';
             return EXIT_FAILURE;
+        }
+        const auto &value_scene_image = value_executable_scene.values;
+        std::map<ValueOperation, std::size_t> value_variants_by_operation;
+        for (const auto &variant : value_executable_scene.variants) {
+            ++value_variants_by_operation[variant.instruction.operation];
         }
         const auto value_scene_descriptor_bytes =
             value_scene_image.programs.size() *
@@ -448,6 +461,8 @@ int main(int argc, char **argv) {
             << "\nunique_closures " << unique_closures
             << "\nreachable_closures " << reachable_closures
             << "\nvalue_opcode_kinds " << value_operations.size()
+            << "\nvalue_static_variants "
+            << value_executable_scene.variants.size()
             << "\npreparation_active_values "
             << preparation_active_values
             << "\npreparation_parameter_references "
@@ -501,6 +516,12 @@ int main(int argc, char **argv) {
             << '\n';
         for (const auto &[operation, count] : value_operations) {
             std::cout << "value_opcode "
+                      << static_cast<unsigned>(operation)
+                      << ' ' << count << '\n';
+        }
+        for (const auto &[operation, count] :
+             value_variants_by_operation) {
+            std::cout << "value_variant "
                       << static_cast<unsigned>(operation)
                       << ' ' << count << '\n';
         }

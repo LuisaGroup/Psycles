@@ -205,6 +205,32 @@ struct SurfaceValueSceneImage {
   std::vector<float> static_data;
 };
 
+// One AST body per exact immutable instruction configuration. Operands are
+// renumbered to [0, arity), and their original socket types are retained so a
+// shared evaluator can load typed addresses before invoking the existing
+// Luisa node implementation. Source-node identity is deliberately absent: it
+// is provenance, not executable semantics.
+struct SurfaceValueStaticVariant {
+  ValueInstruction instruction;
+  std::vector<contract::SocketType> operand_types;
+};
+
+struct SurfaceValueExecutionInput {
+  const SurfaceProgram *program{};
+  const SurfaceValueStoragePlan *storage{};
+};
+
+// `instruction_variants` is parallel to `values.instructions`. Interning is
+// exact and bit-preserving (including NaN payloads and signed zero); it never
+// relies on a collision-prone hash equivalence.
+struct SurfaceValueExecutableScene {
+  bool valid{};
+  std::string diagnostic;
+  SurfaceValueSceneImage values;
+  std::vector<SurfaceValueStaticVariant> variants;
+  std::vector<std::uint32_t> instruction_variants;
+};
+
 // `active` must be transitively closed over ValueInstruction operands.
 // `outputs` names values consumed after the stream (normally closure roots),
 // and must be a subset of `active`.
@@ -226,5 +252,12 @@ plan_surface_value_storage(const SurfaceProgram &program,
 // unchanged.
 [[nodiscard]] SurfaceValueSceneImage build_surface_value_scene_image(
     std::span<const SurfaceValueProgramImage> programs);
+
+// Builds the aggregate scene image and interns immutable instruction
+// configurations for a scene-pruned shared Luisa evaluator. Inputs and output
+// descriptors remain in runtime surface-tag order.
+[[nodiscard]] SurfaceValueExecutableScene
+build_surface_value_executable_scene(
+    std::span<const SurfaceValueExecutionInput> inputs);
 
 } // namespace psycles::compiler

@@ -2,6 +2,8 @@
 #include "surface_bump.h"
 #include "surface_normal_map.h"
 
+#include <cstdlib>
+
 #include <luisa/dsl/sugar.h>
 
 namespace psycles::luisa_backend::detail {
@@ -180,16 +182,19 @@ public:
             point.barycentric +
             point.barycentric_dy * filter_width;
 
+        if (context.surface == nullptr) {
+            std::abort();
+        }
         const auto height_dependencies =
-            context.surface.value_dependency_mask(
+            context.surface->value_dependency_mask(
                 instruction.operand(operand::bump::height));
         auto values_x =
-            context.surface.trace_values(
+            context.surface->trace_values(
                 services,
                 point_x,
                 &height_dependencies);
         auto values_y =
-            context.surface.trace_values(
+            context.surface->trace_values(
                 services,
                 point_y,
                 &height_dependencies);

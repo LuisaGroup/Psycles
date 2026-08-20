@@ -21,11 +21,11 @@ inline constexpr std::uint64_t rgb_curve_sampled_bit = 1u;
 [[nodiscard]] SurfaceShaderTableView shader_table_view(
     const ShaderServices &services,
     const SurfacePoint &point,
-    compiler::ParameterId parameter) noexcept {
+    Expr<std::uint32_t> parameter) noexcept {
     const auto descriptor = services
                                 .parameter_float3(
                                     point.parameter_block,
-                                    parameter.value)
+                                    parameter)
                                 .template bitcast<luisa::uint3>();
     return {
         .offset = descriptor.x,
@@ -376,8 +376,13 @@ public:
                     const auto factor = scalar(
                         instruction.operand(operand::color_ramp::factor),
                         result);
+                    const auto parameter =
+                        context.parameter_override != nullptr
+                            ? *context.parameter_override
+                            : Expr<std::uint32_t>{
+                                  instruction.parameter.value};
                     const auto table = shader_table_view(
-                        services, point, instruction.parameter);
+                        services, point, parameter);
                     const auto sampled =
                         (instruction.static_u0 &
                          color_ramp_sampled_bit) != 0u;
@@ -411,8 +416,13 @@ public:
                     const auto factor = scalar(
                         instruction.operand(operand::rgb_curve::factor),
                         result);
+                    const auto parameter =
+                        context.parameter_override != nullptr
+                            ? *context.parameter_override
+                            : Expr<std::uint32_t>{
+                                  instruction.parameter.value};
                     const auto table = shader_table_view(
-                        services, point, instruction.parameter);
+                        services, point, parameter);
                     Float3 mapped;
                     if ((instruction.static_u0 &
                          rgb_curve_sampled_bit) != 0u) {

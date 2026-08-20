@@ -69,7 +69,7 @@ TracedValues GraphSurfaceImplementation::trace_value_stage(
         .services = services,
         .point = point,
         .result = result,
-        .surface = *this};
+        .surface = this};
     for (std::size_t instruction_index = 0u;
          instruction_index < instructions.size();
          ++instruction_index) {

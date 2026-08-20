@@ -1004,6 +1004,86 @@ void test_surface_value_storage_plan() {
                 scene_image.programs[1u].vector_slots == 1u,
             "scene value-program descriptors lost typed slot bounds");
 
+    const std::vector execution_inputs{
+        SurfaceValueExecutionInput{.program = &program, .storage = &plan},
+        SurfaceValueExecutionInput{.program = &metadata_program,
+                                   .storage = &metadata_plan},
+        SurfaceValueExecutionInput{.program = &program, .storage = &plan},
+        SurfaceValueExecutionInput{.program = &metadata_program,
+                                   .storage = &metadata_plan}};
+    const auto executable_scene =
+        build_surface_value_executable_scene(execution_inputs);
+    require(executable_scene.valid &&
+                executable_scene.variants.size() == 3u &&
+                executable_scene.instruction_variants ==
+                    std::vector<std::uint32_t>{0u, 1u, 0u, 2u,
+                                               0u, 1u, 0u, 2u},
+            "exact immutable variants were not interned in first-use order");
+    require(executable_scene.variants[0u].operand_types ==
+                    std::vector<SocketType>{SocketType::floating,
+                                            SocketType::floating} &&
+                executable_scene.variants[0u].instruction.operands ==
+                    std::vector<ValueExpressionId>{ValueExpressionId{0u},
+                                                   ValueExpressionId{1u}},
+            "an immutable variant lost its typed normalized operands");
+
+    auto positive_zero_values = metadata_program.value_instructions();
+    positive_zero_values.front().static_f1 = 0.0f;
+    const SurfaceProgram positive_zero_program{
+        4u, {}, std::move(positive_zero_values), {}, {}};
+    const auto positive_zero_plan = plan_surface_value_storage(
+        positive_zero_program, std::vector<bool>{true},
+        std::vector<bool>{true});
+    const std::vector zero_inputs{
+        SurfaceValueExecutionInput{.program = &metadata_program,
+                                   .storage = &metadata_plan},
+        SurfaceValueExecutionInput{.program = &positive_zero_program,
+                                   .storage = &positive_zero_plan}};
+    const auto signed_zero_scene =
+        build_surface_value_executable_scene(zero_inputs);
+    require(signed_zero_scene.valid &&
+                signed_zero_scene.variants.size() == 2u,
+            "exact immutable-variant interning merged signed zero");
+
+    const auto make_table_program = [&](std::uint32_t table_parameter) {
+        std::vector<ValueInstruction> table_values;
+        table_values.emplace_back(make_parameter_value(0u));
+        table_values.emplace_back(ValueInstruction{
+            .operation = ValueOperation::color_ramp,
+            .result_type = SocketType::color,
+            .parameter = ParameterId{table_parameter},
+            .operands = make_value_operands<value_operand::color_ramp>({
+                {value_operand::color_ramp::factor,
+                 ValueExpressionId{0u}}})});
+        return SurfaceProgram{
+            10u + table_parameter,
+            {make_parameter(0u)},
+            std::move(table_values),
+            {},
+            {}};
+    };
+    const auto table_program_a = make_table_program(3u);
+    const auto table_program_b = make_table_program(7u);
+    const auto table_plan_a = plan_surface_value_storage(
+        table_program_a, std::vector<bool>(2u, true),
+        std::vector<bool>{false, true});
+    const auto table_plan_b = plan_surface_value_storage(
+        table_program_b, std::vector<bool>(2u, true),
+        std::vector<bool>{false, true});
+    const std::vector table_inputs{
+        SurfaceValueExecutionInput{.program = &table_program_a,
+                                   .storage = &table_plan_a},
+        SurfaceValueExecutionInput{.program = &table_program_b,
+                                   .storage = &table_plan_b}};
+    const auto table_scene =
+        build_surface_value_executable_scene(table_inputs);
+    require(table_scene.valid && table_scene.variants.size() == 1u &&
+                table_scene.values.metadata.size() == 2u &&
+                table_scene.values.metadata[0u].parameter == 3u &&
+                table_scene.values.metadata[1u].parameter == 7u,
+            "late-bound shader-table addresses changed the evaluator body "
+            "or were lost from bytecode metadata");
+
     auto malformed_image = image;
     malformed_image.instructions.front().control |= 1u << 31u;
     const auto malformed_scene = build_surface_value_scene_image(
@@ -1014,6 +1094,16 @@ void test_surface_value_storage_plan() {
                     std::string::npos,
             "scene aggregation accepted or partially committed a malformed "
             "instruction stream");
+    auto malformed_arity = image;
+    malformed_arity.instructions.front().control ^=
+        1u << surface_value_operand_count_shift;
+    const auto malformed_arity_scene =
+        build_surface_value_scene_image(
+            std::vector{malformed_arity});
+    require(!malformed_arity_scene.valid &&
+                malformed_arity_scene.diagnostic.find("arity") !=
+                    std::string::npos,
+            "scene aggregation accepted an opcode/arity disagreement");
 
     std::vector<ValueInstruction> invalid_values;
     invalid_values.emplace_back(ValueInstruction{
