@@ -356,7 +356,11 @@ struct ValueEvaluationContext {
     const ShaderServices &services;
     const SurfacePoint &point;
     TracedValues &result;
-    const GraphSurfaceImplementation &surface;
+    const GraphSurfaceImplementation *surface{};
+    // Bytecode execution keeps table ParameterId as instruction data. The
+    // ordinary topology-expanded path leaves this null and uses the host IR
+    // binding; both paths call the same node implementation.
+    const Expr<std::uint32_t> *parameter_override{};
 };
 
 // Host-stage node interface. Implementations emit Luisa expressions
