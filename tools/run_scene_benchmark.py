@@ -41,6 +41,14 @@ _KNOWN_LUISA_BACKENDS = {
     "remote",
     "vk",
 }
+_KNOWN_PSYCLES_SCHEDULERS = (
+    "megakernel",
+    "megakernel-per-sample",
+    "wavefront",
+    "wavefront-graph",
+    "wavefront-staged",
+    "persistent",
+)
 _REPORT_PASSES = (
     "Combined",
     "Normal",
@@ -101,6 +109,52 @@ def _backend_list(value: str) -> tuple[str, ...]:
             "Psycles backends must not be repeated"
         )
     return result
+
+
+def _scheduler_list(value: str) -> tuple[str, ...]:
+    result = tuple(
+        scheduler.strip().lower()
+        for scheduler in value.split(",")
+        if scheduler.strip()
+    )
+    if not result:
+        raise argparse.ArgumentTypeError(
+            "at least one Psycles scheduler is required"
+        )
+    unknown = sorted(
+        set(result) - set(_KNOWN_PSYCLES_SCHEDULERS)
+    )
+    if unknown:
+        raise argparse.ArgumentTypeError(
+            "unknown Psycles scheduler(s): " + ", ".join(unknown)
+        )
+    if len(set(result)) != len(result):
+        raise argparse.ArgumentTypeError(
+            "Psycles schedulers must not be repeated"
+        )
+    return result
+
+
+def _wavefront_block_size(value: str) -> int:
+    result = _positive_integer(value)
+    if result > 1024 or result % 32 != 0:
+        raise argparse.ArgumentTypeError(
+            "wavefront block size must be a multiple of 32 in [32, 1024]"
+        )
+    return result
+
+
+def _psycles_run_matrix(
+    backends: tuple[str, ...],
+    schedulers: tuple[str, ...],
+) -> tuple[tuple[str, str, str | None], ...]:
+    if not schedulers:
+        return tuple((backend, backend, None) for backend in backends)
+    return tuple(
+        (f"{backend}-{scheduler}", backend, scheduler)
+        for backend in backends
+        for scheduler in schedulers
+    )
 
 
 def _device_key(device: str) -> str:
@@ -185,6 +239,21 @@ def _arguments() -> argparse.Namespace:
             "comma-separated Luisa backends "
             "(default: fallback,hip,vk)"
         ),
+    )
+    parser.add_argument(
+        "--psycles-schedulers",
+        type=_scheduler_list,
+        default=(),
+        help=(
+            "optional comma-separated scheduler matrix; when omitted, "
+            "the renderer's legacy default scheduler is used"
+        ),
+    )
+    parser.add_argument(
+        "--wavefront-execution-block-size",
+        type=_wavefront_block_size,
+        default=32,
+        help="wavefront execution block size (default: 32)",
     )
     parser.add_argument(
         "--width",
@@ -299,8 +368,10 @@ def _psycles_command(
     height: int,
     samples: int,
     max_samples_per_dispatch: int,
+    scheduler: str | None = None,
+    wavefront_execution_block_size: int = 32,
 ) -> list[str]:
-    return [
+    command = [
         str(renderer),
         str(bundle),
         str(preview),
@@ -310,6 +381,21 @@ def _psycles_command(
         str(samples),
         str(max_samples_per_dispatch),
     ]
+    if scheduler is not None:
+        command.extend([
+            "-",
+            str(width // 2),
+            str(height // 2),
+            "0",
+            "0",
+            str(samples),
+            "-",
+            "1",
+            "0",
+            scheduler,
+            str(wavefront_execution_block_size),
+        ])
+    return command
 
 
 def _comparison_command(
@@ -714,6 +800,11 @@ def _main() -> int:
         if not arguments.skip_cycles_cpu
         else [gpu_key]
     )
+    psycles_runs = _psycles_run_matrix(
+        arguments.psycles_backends,
+        arguments.psycles_schedulers,
+    )
+    psycles_matrix = [run_key for run_key, _, _ in psycles_runs]
     bundle = (
         arguments.bundle.resolve()
         if arguments.bundle is not None
@@ -732,7 +823,7 @@ def _main() -> int:
         "status": "running",
         "matrix": {
             "cycles": cycles_matrix,
-            "psycles": list(arguments.psycles_backends),
+            "psycles": psycles_matrix,
         },
         "scene": {
             "blend": str(blend),
@@ -758,6 +849,15 @@ def _main() -> int:
         "commands": {},
         "comparisons": {},
     }
+    if arguments.psycles_schedulers:
+        fresh_manifest["settings"].update({
+            "psycles_schedulers": list(
+                arguments.psycles_schedulers
+            ),
+            "wavefront_execution_block_size": (
+                arguments.wavefront_execution_block_size
+            ),
+        })
     resumed_existing_manifest = arguments.resume and manifest_path.is_file()
     if resumed_existing_manifest:
         try:
@@ -917,12 +1017,12 @@ def _main() -> int:
         else:
             manifest["commands"].pop("export", None)
             if resumed_existing_manifest:
-                for backend in arguments.psycles_backends:
+                for run_key, _, _ in psycles_runs:
                     manifest["commands"].pop(
-                        f"psycles_{backend}", None
+                        f"psycles_{run_key}", None
                     )
                     manifest["renderers"]["psycles"].pop(
-                        backend, None
+                        run_key, None
                     )
             _write_manifest(manifest_path, manifest)
             export_record = _run_logged(
@@ -964,9 +1064,10 @@ def _main() -> int:
         _write_manifest(manifest_path, manifest)
 
         psycles_outputs: dict[str, pathlib.Path] = {}
-        for backend in arguments.psycles_backends:
+        psycles_labels: dict[str, str] = {}
+        for run_key, backend, scheduler in psycles_runs:
             preview = (
-                output_root / "psycles" / f"{backend}.ppm"
+                output_root / "psycles" / f"{run_key}.ppm"
             )
             preview.parent.mkdir(parents=True, exist_ok=True)
             command = _psycles_command(
@@ -980,14 +1081,18 @@ def _main() -> int:
                 max_samples_per_dispatch=(
                     arguments.max_samples_per_dispatch
                 ),
+                scheduler=scheduler,
+                wavefront_execution_block_size=(
+                    arguments.wavefront_execution_block_size
+                ),
             )
             exr = preview.with_suffix(".exr")
-            stage = f"psycles_{backend}"
+            stage = f"psycles_{run_key}"
             if arguments.resume and _can_resume_render(
                 manifest,
                 command_key=stage,
                 renderer_group="psycles",
-                renderer_key=backend,
+                renderer_key=run_key,
                 expected_command=command,
                 expected_output=exr,
                 required_timings=(
@@ -1000,11 +1105,11 @@ def _main() -> int:
                 print(f"Reusing validated benchmark stage: {stage}")
             else:
                 manifest["commands"].pop(stage, None)
-                manifest["renderers"]["psycles"].pop(backend, None)
+                manifest["renderers"]["psycles"].pop(run_key, None)
                 _write_manifest(manifest_path, manifest)
                 record = _run_logged(
                     command,
-                    output_root / "logs" / f"psycles-{backend}.log",
+                    output_root / "logs" / f"psycles-{run_key}.log",
                     environment=environment,
                 )
                 _require_output(exr)
@@ -1012,13 +1117,24 @@ def _main() -> int:
                 manifest["commands"][stage] = (
                     _public_process_record(record)
                 )
-                manifest["renderers"]["psycles"][backend] = {
+                renderer_record = {
                     "output": str(exr),
                     "sha256": _sha256(exr),
+                    "backend": backend,
                     **timings,
                     "process_wall_seconds": record["wall_seconds"],
                 }
-            psycles_outputs[backend] = exr
+                if scheduler is not None:
+                    renderer_record["scheduler"] = scheduler
+                manifest["renderers"]["psycles"][run_key] = (
+                    renderer_record
+                )
+            psycles_outputs[run_key] = exr
+            psycles_labels[run_key] = (
+                f"Psycles {backend}"
+                if scheduler is None
+                else f"Psycles {backend} ({scheduler})"
+            )
             _write_manifest(manifest_path, manifest)
 
         manifest["relative_performance"] = (
@@ -1027,11 +1143,11 @@ def _main() -> int:
 
         if not arguments.skip_comparisons:
             candidates = {
-                f"psycles-{backend}": (
+                f"psycles-{run_key}": (
                     output,
-                    f"Psycles {backend}",
+                    psycles_labels[run_key],
                 )
-                for backend, output in psycles_outputs.items()
+                for run_key, output in psycles_outputs.items()
             }
             if "cpu" in cycles_outputs:
                 candidates["cycles-cpu"] = (
@@ -1109,7 +1225,7 @@ def _main() -> int:
     print(
         "Completed Cycles/Psycles benchmark "
         f"({', '.join(cycles_matrix)} vs "
-        f"{', '.join(arguments.psycles_backends)}): "
+        f"{', '.join(psycles_matrix)}): "
         f"{manifest_path}"
     )
     return 0

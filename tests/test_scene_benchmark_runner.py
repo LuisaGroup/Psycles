@@ -55,6 +55,54 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
         ):
             self.runner._backend_list("fallback,metal,metal")
 
+    def test_scheduler_matrix_is_validated(self) -> None:
+        schedulers = (
+            "megakernel",
+            "megakernel-per-sample",
+            "wavefront",
+            "wavefront-graph",
+            "wavefront-staged",
+            "persistent",
+        )
+        self.assertEqual(
+            self.runner._scheduler_list(",".join(schedulers)),
+            schedulers,
+        )
+        with self.assertRaises(
+            self.runner.argparse.ArgumentTypeError
+        ):
+            self.runner._scheduler_list("wavefront,wavefront")
+        with self.assertRaises(
+            self.runner.argparse.ArgumentTypeError
+        ):
+            self.runner._scheduler_list("unknown")
+
+    def test_scheduler_matrix_crosses_backends_and_schedulers(self) -> None:
+        self.assertEqual(
+            self.runner._psycles_run_matrix(
+                ("fallback", "metal"),
+                ("megakernel", "wavefront-graph"),
+            ),
+            (
+                ("fallback-megakernel", "fallback", "megakernel"),
+                (
+                    "fallback-wavefront-graph",
+                    "fallback",
+                    "wavefront-graph",
+                ),
+                ("metal-megakernel", "metal", "megakernel"),
+                (
+                    "metal-wavefront-graph",
+                    "metal",
+                    "wavefront-graph",
+                ),
+            ),
+        )
+        self.assertEqual(
+            self.runner._psycles_run_matrix(("metal",), ()),
+            (("metal", "metal", None),),
+        )
+
     def test_cycles_commands_select_cpu_and_named_hip(self) -> None:
         common = {
             "blender": pathlib.Path("/opt/blender"),
@@ -106,6 +154,41 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
             command[3:],
             ["fallback", "640", "480", "64", "8"],
         )
+
+    def test_psycles_command_selects_scheduler_positionally(self) -> None:
+        command = self.runner._psycles_command(
+            pathlib.Path("/build/psycles_render_blender_scene"),
+            pathlib.Path("/out/export"),
+            pathlib.Path("/out/metal-wavefront-graph.ppm"),
+            "metal",
+            width=640,
+            height=480,
+            samples=64,
+            max_samples_per_dispatch=1,
+            scheduler="wavefront-graph",
+            wavefront_execution_block_size=64,
+        )
+        self.assertEqual(
+            command[8:],
+            [
+                "-",
+                "320",
+                "240",
+                "0",
+                "0",
+                "64",
+                "-",
+                "1",
+                "0",
+                "wavefront-graph",
+                "64",
+            ],
+        )
+        self.assertEqual(self.runner._wavefront_block_size("32"), 32)
+        with self.assertRaises(
+            self.runner.argparse.ArgumentTypeError
+        ):
+            self.runner._wavefront_block_size("48")
 
     def test_comparison_labels_each_renderer(self) -> None:
         command = self.runner._comparison_command(
@@ -188,7 +271,9 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
                 },
                 "psycles": {
                     "fallback": {"render_seconds": 24.0},
-                    "metal": {"render_seconds": 6.0},
+                    "metal-wavefront-graph": {
+                        "render_seconds": 6.0
+                    },
                 },
             }
         }
@@ -200,7 +285,9 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
             2.0,
         )
         self.assertEqual(
-            result["metal"]["speedup_over_cycles_metal"],
+            result["metal-wavefront-graph"][
+                "speedup_over_cycles_metal"
+            ],
             2.0,
         )
         self.assertNotIn("cycles_cpu", result)
