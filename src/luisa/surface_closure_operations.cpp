@@ -594,9 +594,10 @@ SurfaceAovVisitor::SurfaceAovVisitor(
 void SurfaceAovVisitor::visit(
     Expr<luisa::float3> shading_normal,
     const luisa::vector<SurfaceClosureExpression> &closures) noexcept {
-    static_cast<void>(shading_normal);
+    auto point = _point;
+    point.shading_normal = shading_normal;
     _result = reduce_closures<false, true>(
-                  _point,
+                  point,
                   Expr<float>{0.0f},
                   Expr<bool>{false},
                   Expr<bool>{true},
@@ -634,9 +635,10 @@ SurfacePreparationVisitor::SurfacePreparationVisitor(
 void SurfacePreparationVisitor::visit(
     Expr<luisa::float3> shading_normal,
     const luisa::vector<SurfaceClosureExpression> &closures) noexcept {
-    static_cast<void>(shading_normal);
+    auto point = _point;
+    point.shading_normal = shading_normal;
     const auto reductions = reduce_closures<true, true>(
-        _point,
+        point,
         _glossy_filter_roughness,
         _include_runtime_flags,
         _include_aov,

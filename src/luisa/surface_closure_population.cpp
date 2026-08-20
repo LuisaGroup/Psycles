@@ -45,6 +45,11 @@ SurfaceClosurePopulationCollector::SurfaceClosurePopulationCollector(
 SurfaceClosurePopulationCollector::~SurfaceClosurePopulationCollector()
     noexcept = default;
 
+void SurfaceClosurePopulationCollector::begin(
+    Expr<luisa::float3> shading_normal) noexcept {
+    _impl->preparation.set_shading_normal(shading_normal);
+}
+
 void SurfaceClosurePopulationCollector::add(
     const SurfaceClosureRecord &closure) noexcept {
     // Storage and both reductions are recorded inside one canonical retained

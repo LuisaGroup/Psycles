@@ -1,5 +1,7 @@
 #include "path_tracer_attribute_lookup.h"
 
+#include <utility>
+
 namespace psycles::luisa_backend::detail {
 
 namespace {
@@ -132,9 +134,9 @@ make_surface_attribute_lookup_callable(
 
 CallableSurfaceAttributeLookupProvider::
     CallableSurfaceAttributeLookupProvider(
-        const BindlessVar &geometry_heap,
+        Expr<BindlessArray> geometry_heap,
         const SurfaceAttributeLookupCallable &callable) noexcept
-    : _geometry_heap{geometry_heap},
+    : _geometry_heap{std::move(geometry_heap)},
       _callable{callable} {}
 
 ShaderAttribute CallableSurfaceAttributeLookupProvider::lookup(

@@ -132,6 +132,23 @@ class PopulatedSurfaceShader {
         const SurfaceQuery &query) const noexcept = 0;
 };
 
+// Host/JIT material execution strategy. A strategy emits exactly one original
+// closure population into the supplied collector. Implementations may use the
+// topology-expanded graph or a scene-pruned bytecode interpreter, but every
+// downstream BSDF consumer is deliberately outside this boundary.
+class SurfacePopulationProgram {
+
+  public:
+    virtual ~SurfacePopulationProgram() noexcept = default;
+
+    [[nodiscard]] virtual SurfacePopulation populate(
+        Expr<std::uint32_t> surface_tag,
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        const SurfacePopulationQuery &query,
+        SurfaceClosureCollector &collector) const noexcept = 0;
+};
+
 class SurfacePopulationComponent {
 
   public:
@@ -163,6 +180,10 @@ struct SurfaceCallables {
 
 [[nodiscard]] SurfacePreparationCallable
 make_compact_surface_preparation_callable(
+    const std::shared_ptr<LuisaSceneData> &scene) noexcept;
+
+[[nodiscard]] std::shared_ptr<const SurfacePopulationProgram>
+make_compact_surface_population_program(
     const std::shared_ptr<LuisaSceneData> &scene) noexcept;
 
 }// namespace psycles::luisa_backend::detail

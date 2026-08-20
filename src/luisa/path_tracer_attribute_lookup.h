@@ -70,12 +70,12 @@ make_surface_attribute_lookup_callable(
 class CallableSurfaceAttributeLookupProvider final {
 
 private:
-    const BindlessVar &_geometry_heap;
+    Expr<BindlessArray> _geometry_heap;
     const SurfaceAttributeLookupCallable &_callable;
 
 public:
     CallableSurfaceAttributeLookupProvider(
-        const BindlessVar &geometry_heap,
+        Expr<BindlessArray> geometry_heap,
         const SurfaceAttributeLookupCallable &callable) noexcept;
 
     [[nodiscard]] ShaderAttribute lookup(
