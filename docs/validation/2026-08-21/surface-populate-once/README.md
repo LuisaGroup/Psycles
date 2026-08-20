@@ -1,70 +1,100 @@
-# Single-evaluation surface population
+# Single-evaluation surface population and physical projection
 
-## Question and model
+## Model
 
-This experiment removes the production path tracer's three independent
-material-graph replays (preparation, next-event BSDF evaluation, and BSDF
-sampling). Behind `PSYCLES_POPULATE_SURFACE_ONCE=1`, a surface hit now executes
-the typed graph once, populates the original post-setup closures, and lets every
-surface consumer read that same set. The legacy callables remain available as
-an exact A/B route. No host material evaluation, closure baking, or Cycles
-kernel translation is involved.
+`PSYCLES_POPULATE_SURFACE_ONCE=1` now executes a hit's original typed material
+graph once and makes every surface consumer observe that one population. It
+does not evaluate materials on the host, bake closures, or delegate material
+evaluation to Blender/Cycles.
 
-For a material value DAG `G = (V, E)` and consumer endpoint sets `P` (physical
-closures) and `M` (emission), population evaluates the topologically closed
-dependency union
+Let the material emit source-ordered closure candidates
+`C = (c_0, ..., c_m)` and let `K` be the Cycles-compatible closure capacity.
+The retained subsequence is defined by the recurrence
+
+```text
+n_0 = 0
+keep_i = scattering(c_i)
+         and allocation_weight(c_i) >= closure_weight_cutoff
+         and n_i < K
+n_(i + 1) = n_i + (keep_i ? 1 : 0)
+S = (c_i | keep_i), preserving source order
+```
+
+For each retained closure, one device conditional now performs the following
+transaction in order:
+
+```text
+store physical(c_i); fold runtime_flags(c_i); fold camera_aov(c_i); ++n
+```
+
+The callback is recorded inside the same `$if(keep_i)` as storage and count
+advancement. This is important at the exact-capacity boundary: returning a
+predicate and materializing it after `++n` caused the final accepted closure
+to be stored but omitted from the reductions. The implementation now has one
+predicate evaluation and no independently mutable snapshot.
+
+The arena retains the exact `SurfaceClosurePhysicalRecord` projection in three
+`float4x4` blocks. Setup-only albedo fields are reduced while their expressions
+are live and do not cross the dependency cut. Directional BSDF evaluation and
+sampling still consume the original closure parameters; no response is
+precomputed. The population query is captured by the collector, and
+`PopulatedSurfaceShader::preparation()` takes no second query, so population
+and reduction policies cannot diverge.
+
+For a material value DAG `G = (V, E)` and endpoint sets `P` (physical closures)
+and `M` (emission), graph population evaluates the topologically closed union
 
 ```text
 D = ancestors(P union M)
 ```
 
-once. A device value is therefore evaluated at most once per hit. Closure
-allocation retains source order and the same Cycles-compatible capacity and
-weight-cutoff predicates. The populated set is constructed and consumed in
-the shade-surface segment before any shadow or path continuation suspend, so
-its local state is not part of the coroutine frame.
+once per hit. A scheduled value node is therefore recorded once even when it
+feeds several closures or emission.
 
-This is the dataflow used by Cycles 5.2: `svm_eval_nodes` executes one
-sequential bytecode program, fills `ShaderData::closure[]`, and
-`integrate_surface` consumes that set for passes, direct-light evaluation, and
-sampling. Psycles keeps its own Luisa DSL implementations of every node and
-closure; only the execution boundary is aligned.
+## Correctness fixes and regressions
 
-## Regression coverage
+The work found a pre-existing ABI defect: the complete closure profile packed
+all BSSRDF fields but `SurfaceClosureSet::entry()` never decoded them. Random
+walk method, radius, albedo, IOR, roughness, and anisotropy are now restored.
+The old full-render images in this directory's previous revision are not valid
+semantic references because they exercised that loss.
 
-`psycles_luisa_surface_population_tests` uses two materials: a layered
-Principled graph whose one Image Texture feeds both Base Color and Emission,
-and a Beckmann glass graph. Eight dynamic query scenarios compare the populated
-and legacy routes across 32 `float4` records per invocation:
+The focused regressions cover:
 
-- emission, shading normal, runtime closure flags, and closure trace;
-- Combined-related BSDF evaluation, sampled-light evaluation, and sampling;
-- Normal, Albedo, glossy/transmission albedo, roughness, and transparency;
-- selection identity and all BSSRDF sample fields.
+- complete and physical round trips with distinct BSSRDF sentinels;
+- a capacity-one transactional append, proving that the accepted closure folds
+  once and the overflow closure neither stores nor folds;
+- two complex materials over eight dynamic query scenarios, comparing 32
+  output records for emission, flags, every camera AOV, evaluation, light
+  evaluation, sampling, BSSRDF selection, and closure identity;
+- a shared Image Texture input feeding multiple endpoints, whose graph-record
+  counter must remain one;
+- disabled runtime-flags and AOV queries, including the zero roughness result.
 
-The test also counts host/JIT graph recording and proves that the image node is
-recorded exactly once even though it has both physical and emission consumers.
-It passed on fallback, HIP, and strict native Vulkan XIR to SPIR-V. Existing
-surface-program metadata and closure-collection regressions also passed on all
-three backends.
+Final matrix:
 
-Focused generated-test kernels show that the new boundary removes duplicated
-shader AST independently of the full renderer:
+```text
+ctest --test-dir build -j6 --output-on-failure \
+  -R 'psycles\.luisa_surface_(closure_collection|population)_(fallback|hip|vk)$'
+```
 
-| Backend | Legacy | Populate once | Reduction |
+All six fallback, HIP, and Vulkan tests pass. The Vulkan test is the configured
+strict native XIR to SPIR-V canary, not DXC.
+
+Focused generated kernels independently demonstrate the smaller dependency
+cut:
+
+| Backend | Complete closure arena | Transactional physical arena | Reduction |
 |---|---:|---:|---:|
-| HIP code object | 113,856 B | 72,896 B | 36.0% |
-| Vulkan SPIR-V | 133,486 words | 54,260 words | 59.4% |
+| HIP code object | 114,368 B | 73,664 B | 35.6% |
+| native-XIR SPIR-V | 133,701 words | 63,967 words | 52.2% |
 
 ## Real Barbershop HIP result
 
-The real Blender 5.2 Barbershop export contains 1,055 geometries, 1,109
-instances, and 564 deduplicated material topologies. Both measurements use the
-same revision, RX 9070 XT (`gfx1201`), megakernel scheduler, 8x8 image, 256 spp,
-and one sample per dispatch. The small launch is intentional: the present giant
-megakernel's dynamic private stack faults the HIP driver at a 64x64 launch, on
-both the legacy and populated routes; that launch-capacity defect is separate
-and remains open.
+The Blender 5.2 Barbershop export used here reports 1,649 geometries, 2,565
+instances, and 564 deduplicated material topologies. Both routes use the same
+revision and RX 9070 XT (`gfx1201`), with an 8x8 image, 256 spp, megakernel
+scheduler, and one sample per dispatch:
 
 ```text
 psycles_render_blender_scene <barbershop-export> <output.exr> hip \
@@ -72,52 +102,90 @@ psycles_render_blender_scene <barbershop-export> <output.exr> hip \
   32 32768 32 1 1 0 4 2 4096 0 0 0 1 1048576
 ```
 
-The populated side additionally sets `PSYCLES_POPULATE_SURFACE_ONCE=1`.
+The physical route additionally sets `PSYCLES_POPULATE_SURFACE_ONCE=1`. The
+small launch isolates compiler and per-path work: the current giant
+megakernel's dynamic private stack still faults the HIP driver at 64x64 on
+both routes, which is a separate open defect.
 
-| Measurement | Legacy replay | Populate once | Result |
+| Measurement | Legacy replay, BSSRDF fixed | Transactional physical | Result |
 |---|---:|---:|---:|
-| Render-only | 2.16454 s | 1.06493 s | **2.0326x faster** |
-| Warm render repeat | - | 1.07902 s | stable |
-| Main HIP code object | 15,861,328 B | 4,965,768 B | 68.7% smaller |
-| Luisa to HIP LLVM | 30.7604 s | 34.7412 s | 1.129x slower |
-| LLVM to AMDGPU code object | 93.9196 s | 498.008 s | **5.303x slower** |
-| Full cold shader JIT | - | 541.736 s | compiler blocker |
-| Fixed private segment | 36,512 B | 7,664 B | 79.0% smaller |
+| warm render-only | 1.91992 s | 1.00731 s | **1.906x faster** |
+| cold render-only | 2.07340 s | 1.13257 s | **1.831x faster** |
+| Luisa to HIP LLVM | 25.668 s | 31.072 s | 1.211x slower |
+| HIP LLVM input | 14,906,832 B | 5,169,352 B | 65.3% smaller |
+| LLVM to AMDGPU object | 85.886 s | 470.331 s | **5.476x slower** |
+| main HIP code object | 15,861,328 B | 5,162,760 B | 67.5% smaller |
+| full cold shader JIT | 120.427 s | 511.043 s | **4.244x slower** |
+| fixed private segment | 36,512 B | 7,088 B | 80.6% smaller |
 | SGPR / VGPR | 108 / 256 | 107 / 256 | effectively unchanged |
+| peak host RSS | 12,764,064 KiB | 12,764,980 KiB | effectively unchanged |
 
-The runtime result validates the execution model: eliminating graph replay
-more than doubles this surface-heavy render and drastically reduces machine
-code and fixed private storage. The cold-compile result rejects the current
-closure representation as a production endpoint. It stores every closure as
-four unconditional `float4x4` blocks (256 B), whereas Cycles uses an
-approximately 80 B tagged base slot and allocates extra typed payload only for
-closure families that need it. Profiling the 498-second phase found 64.4% of
-samples in one stripped AMD COMGR optimizer routine. This is consistent with
-an optimization-complexity problem around the dynamically indexed, fully
-flattened local arena, not with source-code volume: the input bitcode is already
-66.5% smaller.
+Relative to the preceding complete populate-once implementation, the
+transactional projection reduces the COMGR phase from 498.008 s to 470.331 s
+(5.6%) but grows the object from 4,965,768 B to 5,162,760 B (4.0%). This is a
+useful runtime and private-state boundary, but it does not solve cold
+compilation.
 
-The next step is therefore a semantics-preserving closure ABI change: reduce
-runtime flags and camera AOVs at population, retain only the physical projection
-needed by later BSDF consumers, and use tagged family payloads rather than a
-maximal record. The graph is still evaluated once and original closures remain
-intact.
+A ten-second `perf` sample of the earlier 534-second physical-arena experiment
+placed 64.4% of samples in one stripped AMD COMGR optimizer routine. COMGR used
+one CPU core at roughly 97% and about 11.8 GiB RSS. Together with the already
+65% smaller LLVM input, this identifies optimizer complexity in the expanded,
+dynamically indexed material arena rather than host source-file size.
 
 ## Numerical and visual inspection
 
-The complete 46-channel report is [report.json](report.json). The two populated
-runs are byte-identical. Against legacy replay, Combined has RMSE
-`2.3483e-7`, maximum absolute error `2.5779e-6`, and mean-luminance ratio
-`1.00000012`. Normal has RMSE `5.1448e-9` and maximum absolute error
-`5.9605e-8`. The largest all-channel error reported by `idiff` is
-`1.0521e-5` in Glossy Indirect; it is non-structural floating-point scheduling
-noise.
+[report.json](report.json) compares a BSSRDF-fixed legacy run with the final
+transactional physical run over all available light passes. Combined has RMSE
+`0.00304417`, maximum absolute error `0.0242121`, and mean-luminance ratio
+`1.0014517`. Normal has RMSE `0.000120299` and maximum absolute error
+`0.00128938`. Emission and Environment are equal to approximately `2e-8` and
+`2e-10` maximum error respectively.
 
-The triptychs below were opened and inspected at native nearest-neighbor scale.
-Both left/right render panels have the same geometry, material, texture, and
-lighting structure; only the deliberately amplified difference panels reveal
-the numerical noise.
+This full render is not deterministic after enabling the formerly lost BSSRDF
+payload. Across all 46 channels, two physical runs differ by RMS `0.00480429`
+and maximum `0.0888361`; legacy versus physical differs by RMS `0.00534452`
+and maximum `0.109413`. A repeated legacy pair previously measured RMS
+`0.00385356` and maximum `0.109393`. The cross-route residual is therefore in
+the same stochastic envelope, while deterministic focused tests compare every
+closure field and consumer directly. The nondeterministic full-render path is
+tracked separately and is not described as exact-hash equivalence.
 
-![Legacy replay, populated surface, and Combined difference](triptychs/combined.png)
+The regenerated triptychs were opened at native nearest-neighbor scale.
+Legacy and physical panels have the same geometry, material regions, normals,
+and lighting structure. Visible residuals are sparse stochastic direct and
+indirect samples; no coherent topology, texture, or transform difference was
+found. The 8x8 image is a compiler-focused canary, not a quality benchmark.
 
-![Legacy replay, populated surface, and Normal difference](triptychs/normal.png)
+![BSSRDF-fixed legacy, physical projection, and Combined difference](triptychs/combined.png)
+
+![BSSRDF-fixed legacy, physical projection, and Normal difference](triptychs/normal.png)
+
+![BSSRDF-fixed legacy, physical projection, and Glossy Direct difference](triptychs/glossdir.png)
+
+## Why Cycles still compiles differently
+
+Cycles 5.2 does not instantiate one giant control-flow copy per material
+topology. `svm_eval_nodes` interprets a fixed sequential instruction stream;
+the scene compiler uploads node words and jump offsets, assigns and reuses
+stack slots per material, and allocates tagged `ShaderClosure` records from a
+compact base-slot arena with typed tail payloads. Scene-wide feature constants
+remove unused opcode and closure families from the interpreter.
+
+Psycles currently deduplicates equal topologies and schedules each value DAG in
+topological order, but still expands all 564 distinct Barbershop topologies into
+one shader AST. Its asymptotic kernel construction remains
+
+```text
+O(sum of material-topology AST sizes)
+```
+
+The next production translation route must instead make topology and parameters
+data, with kernel IR bounded by
+
+```text
+O(interpreter implementation + closure families used by the scene).
+```
+
+The typed expanded route remains as an exact diagnostic and small-scene
+specialization. The SVM route will reuse Psycles' Luisa DSL node and closure
+implementations rather than copy or text-translate Cycles kernels.

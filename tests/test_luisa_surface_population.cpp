@@ -4,6 +4,7 @@
 #include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/graph_surface.h>
 #include <psycles/luisa/surface_closure_evaluator.h>
+#include <psycles/luisa/surface_closure_population.h>
 #include <psycles/luisa/surface_closure_set.h>
 
 #include "luisa_surface_test_support.h"
@@ -411,6 +412,9 @@ int main(int argc, char **argv) {
         parameters.end(),
         glass_parameters.begin(),
         glass_parameters.end());
+    const auto closure_identity =
+        make_surface_closure_identity_callable();
+    const auto closure_aov = make_surface_closure_aov_callable();
 
     Kernel1D write_legacy = [&](BufferFloat4 parameter_buffer,
                                 BufferFloat4 output) noexcept {
@@ -425,6 +429,8 @@ int main(int argc, char **argv) {
         const auto tag = select(
             UInt{principled_tag}, UInt{glass_tag}, material != 0u);
         const auto inputs = invocation_inputs(scenario);
+        const auto include_runtime_flags = scenario != 4u;
+        const auto include_aov = (scenario & 1u) == 0u;
         const auto preparation = surfaces.prepare(
             tag,
             services,
@@ -438,8 +444,8 @@ int main(int argc, char **argv) {
                  inputs.query.reflective_caustics,
              .refractive_caustics =
                  inputs.query.refractive_caustics,
-             .include_runtime_flags = true,
-             .include_aov = true});
+             .include_runtime_flags = include_runtime_flags,
+             .include_aov = include_aov});
         const auto closure = surfaces.closure_trace(
             tag,
             services,
@@ -493,23 +499,35 @@ int main(int argc, char **argv) {
         const auto tag = select(
             UInt{principled_tag}, UInt{glass_tag}, material != 0u);
         const auto inputs = invocation_inputs(scenario);
-        SurfaceClosureSet closures{closure_capacity};
+        const auto include_runtime_flags = scenario != 4u;
+        const auto include_aov = (scenario & 1u) == 0u;
+        const auto population_query = SurfacePopulationQuery{
+            .emission_reflective_caustics =
+                inputs.query.reflective_caustics,
+            .reflective_caustics =
+                inputs.query.reflective_caustics,
+            .refractive_caustics =
+                inputs.query.refractive_caustics,
+            .glossy_filter_roughness =
+                inputs.query.glossy_filter_roughness,
+            .include_runtime_flags = include_runtime_flags,
+            .include_aov = include_aov};
+        SurfaceClosurePopulationCollector closures{
+            point,
+            closure_capacity,
+            population_query,
+            closure_identity,
+            closure_aov};
         const auto population = surfaces.populate(
             tag,
             services,
             point,
-            {.emission_reflective_caustics =
-                 inputs.query.reflective_caustics,
-             .reflective_caustics =
-                 inputs.query.reflective_caustics,
-             .refractive_caustics =
-                 inputs.query.refractive_caustics},
+            population_query,
             closures);
+        const auto preparation = closures.preparation(
+            population.emission);
         const SurfaceClosureEvaluator evaluator{
-            point, closures, population.shading_normal};
-        const auto runtime_flags = evaluator.runtime_flags(
-            inputs.query.glossy_filter_roughness);
-        const auto aov = evaluator.aov();
+            point, closures.closures(), population.shading_normal};
         const auto closure = evaluator.closure_trace(scenario);
         const auto regular = evaluator.evaluate(
             services, inputs.outgoing, inputs.query);
@@ -526,10 +544,10 @@ int main(int argc, char **argv) {
         write_results(
             output,
             invocation * ResultLayout::count,
-            population.emission,
+            preparation.emission,
             population.shading_normal,
-            runtime_flags,
-            aov,
+            preparation.runtime_flags,
+            preparation.aov,
             closure,
             regular,
             light,

@@ -4,6 +4,7 @@
 
 #include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/surface_closure_blocks.h>
+#include <psycles/luisa/surface_closure_physical_blocks.h>
 
 #include <luisa/dsl/sugar.h>
 
@@ -35,6 +36,9 @@ enum class StorageField : std::uint32_t {
     StorageField field) noexcept {
     if (profile == SurfaceClosureStorageProfile::complete) {
         return true;
+    }
+    if (profile == SurfaceClosureStorageProfile::physical) {
+        return false;
     }
     switch (field) {
         case StorageField::identity:
@@ -77,6 +81,14 @@ enum class StorageField : std::uint32_t {
                : std::size_t{1u};
 }
 
+[[nodiscard]] std::size_t physical_storage_size(
+    SurfaceClosureStorageProfile profile,
+    std::size_t capacity) noexcept {
+    return profile == SurfaceClosureStorageProfile::physical
+               ? capacity
+               : std::size_t{1u};
+}
+
 }// namespace
 
 SurfaceClosureSet::SurfaceClosureSet(
@@ -92,6 +104,9 @@ SurfaceClosureSet::SurfaceClosureSet(
       _complete_1{complete_storage_size(profile, _capacity)},
       _complete_2{complete_storage_size(profile, _capacity)},
       _complete_3{complete_storage_size(profile, _capacity)},
+      _physical_0{physical_storage_size(profile, _capacity)},
+      _physical_1{physical_storage_size(profile, _capacity)},
+      _physical_2{physical_storage_size(profile, _capacity)},
       _identity{storage_size(
           profile, StorageField::identity, _capacity)},
       _weight{storage_size(
@@ -126,6 +141,13 @@ SurfaceClosureSet::SurfaceClosureSet(
         _complete_1.write(0u, packed.block_1);
         _complete_2.write(0u, packed.block_2);
         _complete_3.write(0u, packed.block_3);
+        return;
+    }
+    if (_profile == SurfaceClosureStorageProfile::physical) {
+        const auto packed = pack_surface_closure_physical(zero);
+        _physical_0.write(0u, packed.block_0);
+        _physical_1.write(0u, packed.block_1);
+        _physical_2.write(0u, packed.block_2);
         return;
     }
     _identity.write(0u,
@@ -198,6 +220,12 @@ SurfaceClosureSet::SurfaceClosureSet(
 
 void SurfaceClosureSet::add(
     const SurfaceClosureRecord &closure) noexcept {
+    append_impl(closure, nullptr);
+}
+
+void SurfaceClosureSet::append_impl(
+    const SurfaceClosureRecord &closure,
+    const std::function<void()> *on_retained) noexcept {
     const auto scattering =
         closure.kind != static_cast<std::uint32_t>(
                             SurfaceClosureKind::none);
@@ -215,6 +243,13 @@ void SurfaceClosureSet::add(
             _complete_1.write(_count, packed.block_1);
             _complete_2.write(_count, packed.block_2);
             _complete_3.write(_count, packed.block_3);
+        } else if (
+            _profile == SurfaceClosureStorageProfile::physical) {
+            const auto packed = pack_surface_closure_physical(
+                static_cast<SurfaceClosurePhysicalRecord>(closure));
+            _physical_0.write(_count, packed.block_0);
+            _physical_1.write(_count, packed.block_1);
+            _physical_2.write(_count, packed.block_2);
         } else {
             UInt flags = 0u;
             flags |= select(
@@ -265,8 +300,17 @@ void SurfaceClosureSet::add(
                         closure.ior));
             }
         }
+        if (on_retained != nullptr) {
+            (*on_retained)();
+        }
         _count += 1u;
     };
+}
+
+void SurfaceClosureSet::append(
+    const SurfaceClosureRecord &closure,
+    const std::function<void()> &on_retained) noexcept {
+    append_impl(closure, &on_retained);
 }
 
 std::size_t SurfaceClosureSet::capacity() const noexcept {
@@ -311,7 +355,11 @@ SurfaceClosureRecord SurfaceClosureSet::entry(
     auto reflection_tint = make_float4(
         zero.reflection_tint, 0.0f);
     auto transmission_tint = make_float4(
-        zero.transmission_tint, 0.0f);
+        zero.transmission_tint, zero.bssrdf_ior);
+    auto bssrdf_radius = make_float4(
+        zero.bssrdf_radius, zero.bssrdf_anisotropy);
+    auto bssrdf_albedo = make_float4(
+        zero.bssrdf_albedo, zero.bssrdf_roughness);
     if (_profile == SurfaceClosureStorageProfile::complete) {
         const auto block_0 = _complete_0.read(safe_index);
         const auto block_1 = _complete_1.read(safe_index);
@@ -330,6 +378,60 @@ SurfaceClosureRecord SurfaceClosureSet::entry(
         fresnel_f90 = block_2[2u];
         reflection_tint = block_2[3u];
         transmission_tint = block_3[0u];
+        bssrdf_radius = block_3[1u];
+        bssrdf_albedo = block_3[2u];
+    } else if (
+        _profile == SurfaceClosureStorageProfile::physical) {
+        const auto physical = unpack_surface_closure_physical(
+            Expr<luisa::float4x4>{
+                _physical_0.read(safe_index).expression()},
+            Expr<luisa::float4x4>{
+                _physical_1.read(safe_index).expression()},
+            Expr<luisa::float4x4>{
+                _physical_2.read(safe_index).expression()});
+        UInt physical_flags = 0u;
+        physical_flags |= select(
+            0u, setup_valid_bit, physical.setup_valid);
+        physical_flags |= select(
+            0u,
+            preserve_ggx_energy_bit,
+            physical.preserve_ggx_energy);
+        physical_flags |= select(
+            0u, beckmann_bit, physical.beckmann);
+        identity = make_uint4(
+            physical.kind,
+            physical.lobe,
+            physical_flags,
+            physical.bssrdf_method);
+        weight = make_float4(
+            physical.weight, physical.allocation_weight);
+        albedo = make_float4(zero.albedo, physical.sample_weight);
+        reflection_albedo = make_float4(
+            zero.reflection_albedo, physical.roughness);
+        transmission_albedo = make_float4(
+            zero.transmission_albedo, physical.diffuse_roughness);
+        color = make_float4(physical.color, physical.metallic);
+        normal = make_float4(physical.normal, physical.ior);
+        specular_tint = make_float4(
+            physical.specular_tint, zero.specular_ior_level);
+        evaluation_scale = make_float4(
+            physical.evaluation_scale,
+            physical.sheen_transform_a);
+        fresnel_f0 = make_float4(
+            physical.fresnel_f0,
+            physical.sheen_transform_b);
+        fresnel_f90 = make_float4(physical.fresnel_f90, 0.0f);
+        reflection_tint = make_float4(
+            physical.reflection_tint, 0.0f);
+        transmission_tint = make_float4(
+            physical.transmission_tint,
+            physical.bssrdf_ior);
+        bssrdf_radius = make_float4(
+            physical.bssrdf_radius,
+            physical.bssrdf_anisotropy);
+        bssrdf_albedo = make_float4(
+            physical.bssrdf_albedo,
+            physical.bssrdf_roughness);
     } else {
         identity = _identity.read(safe_index);
         if (stores(_profile, StorageField::weight)) {
@@ -372,7 +474,8 @@ SurfaceClosureRecord SurfaceClosureSet::entry(
     // predicate.
     auto allocation_weight =
         scalar_or_zero(weight.w);
-    if (!stores(_profile, StorageField::weight)) {
+    if (_profile != SurfaceClosureStorageProfile::physical &&
+        !stores(_profile, StorageField::weight)) {
         allocation_weight = select(
             0.0f,
             cycles_closure::closure_weight_cutoff,
@@ -429,7 +532,19 @@ SurfaceClosureRecord SurfaceClosureSet::entry(
             valid &
             ((flags & preserve_ggx_energy_bit) != 0u),
         .beckmann =
-            valid & ((flags & beckmann_bit) != 0u)};
+            valid & ((flags & beckmann_bit) != 0u),
+        .bssrdf_method = select(
+            static_cast<std::uint32_t>(
+                SurfaceBssrdfMethod::random_walk),
+            identity.w,
+            valid),
+        .bssrdf_radius = vector_or_zero(bssrdf_radius.xyz()),
+        .bssrdf_albedo = vector_or_zero(bssrdf_albedo.xyz()),
+        .bssrdf_ior = select(
+            zero.bssrdf_ior, transmission_tint.w, valid),
+        .bssrdf_roughness = select(
+            zero.bssrdf_roughness, bssrdf_albedo.w, valid),
+        .bssrdf_anisotropy = scalar_or_zero(bssrdf_radius.w)};
 }
 
 }// namespace psycles::luisa_backend

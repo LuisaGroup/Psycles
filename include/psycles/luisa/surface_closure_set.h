@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 
 #include <psycles/luisa/surface.h>
 
@@ -19,6 +20,10 @@ namespace psycles::luisa_backend {
 // used by scattering and round-trip diagnostics.
 enum class SurfaceClosureStorageProfile : std::uint32_t {
     complete,
+    // Exact dependency cut consumed by BSDF evaluation and sampling after
+    // runtime flags and camera AOVs have already been reduced. This is a
+    // lossless SurfaceClosurePhysicalRecord, not a baked BSDF response.
+    physical,
     runtime_flags,
     closure_trace,
     aov,
@@ -40,6 +45,9 @@ class SurfaceClosureSet final : public SurfaceClosureCollector {
     luisa::compute::Local<luisa::float4x4> _complete_1;
     luisa::compute::Local<luisa::float4x4> _complete_2;
     luisa::compute::Local<luisa::float4x4> _complete_3;
+    luisa::compute::Local<luisa::float4x4> _physical_0;
+    luisa::compute::Local<luisa::float4x4> _physical_1;
+    luisa::compute::Local<luisa::float4x4> _physical_2;
     luisa::compute::Local<luisa::uint4> _identity;
     luisa::compute::Local<luisa::float4> _weight;
     luisa::compute::Local<luisa::float4> _albedo;
@@ -55,6 +63,10 @@ class SurfaceClosureSet final : public SurfaceClosureCollector {
     luisa::compute::Local<luisa::float4> _transmission_tint;
     UInt _count;
 
+    void append_impl(
+        const SurfaceClosureRecord &closure,
+        const std::function<void()> *on_retained) noexcept;
+
   public:
     explicit SurfaceClosureSet(
         std::size_t capacity,
@@ -68,6 +80,14 @@ class SurfaceClosureSet final : public SurfaceClosureCollector {
 
     void add(
         const SurfaceClosureRecord &closure) noexcept override;
+
+    // Transactionally appends and records on_retained in the same device
+    // conditional. Storage, the streaming fold, and count advancement thus
+    // observe exactly the same retained source-order subsequence without a
+    // second predicate or a mutable-count snapshot.
+    void append(
+        const SurfaceClosureRecord &closure,
+        const std::function<void()> &on_retained) noexcept;
 
     [[nodiscard]] std::size_t capacity() const noexcept;
     [[nodiscard]] SurfaceClosureStorageProfile profile() const noexcept;
