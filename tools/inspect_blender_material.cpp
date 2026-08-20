@@ -331,6 +331,10 @@ int main(int argc, char **argv) {
         auto maximum_unsigned_integer_slots = std::uint32_t{};
         auto maximum_typed_payload_bytes = std::size_t{};
         auto topology_typed_payload_bytes = std::size_t{};
+        auto value_bytecode_instruction_bytes = std::size_t{};
+        auto value_bytecode_operand_bytes = std::size_t{};
+        auto value_bytecode_metadata_bytes = std::size_t{};
+        auto value_bytecode_static_bytes = std::size_t{};
         std::map<PrincipledClosureFeature, std::size_t>
             feature_occurrences;
         for (const auto &[signature, program] :
@@ -356,6 +360,14 @@ int main(int argc, char **argv) {
                           << signature << ": " << storage.diagnostic << '\n';
                 return EXIT_FAILURE;
             }
+            const auto image =
+                psycles::compiler::lower_surface_value_program(
+                    *program, storage);
+            if (!image.valid) {
+                std::cerr << "surface bytecode lowering failed for topology "
+                          << signature << ": " << image.diagnostic << '\n';
+                return EXIT_FAILURE;
+            }
             preparation_active_values += storage.active_values;
             preparation_parameter_references += storage.parameter_values;
             preparation_runtime_instructions += storage.instructions.size();
@@ -369,6 +381,16 @@ int main(int argc, char **argv) {
             maximum_typed_payload_bytes = std::max(
                 maximum_typed_payload_bytes, storage.payload_bytes());
             topology_typed_payload_bytes += storage.payload_bytes();
+            value_bytecode_instruction_bytes +=
+                image.instructions.size() *
+                sizeof(psycles::compiler::SurfaceValueBytecodeInstruction);
+            value_bytecode_operand_bytes +=
+                image.operands.size() * sizeof(std::uint32_t);
+            value_bytecode_metadata_bytes +=
+                image.metadata.size() *
+                sizeof(psycles::compiler::SurfaceValueBytecodeMetadata);
+            value_bytecode_static_bytes +=
+                image.static_data.size() * sizeof(float);
             for (const auto &entry : plan.entries()) {
                 reachable_closures += entry.reachable ? 1u : 0u;
                 for (const auto feature : {
@@ -419,6 +441,14 @@ int main(int argc, char **argv) {
             << maximum_typed_payload_bytes
             << "\ntopology_typed_payload_bytes "
             << topology_typed_payload_bytes
+            << "\nvalue_bytecode_instruction_bytes "
+            << value_bytecode_instruction_bytes
+            << "\nvalue_bytecode_operand_bytes "
+            << value_bytecode_operand_bytes
+            << "\nvalue_bytecode_metadata_bytes "
+            << value_bytecode_metadata_bytes
+            << "\nvalue_bytecode_static_bytes "
+            << value_bytecode_static_bytes
             << "\nprincipled_alpha "
             << feature_count(PrincipledClosureFeature::alpha)
             << "\nprincipled_sheen "
