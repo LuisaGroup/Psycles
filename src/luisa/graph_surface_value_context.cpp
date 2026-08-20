@@ -210,12 +210,14 @@ public:
       value = make_float4(point.object_position, 1.0f);
       break;
     case compiler::ValueOperation::object_position_with_transform: {
-      const auto &m = instruction.static_table;
+      const auto m = [&](std::size_t index) noexcept {
+        return value_static_table_entry(context, instruction, index);
+      };
       const auto world_to_object =
-          make_float4x4(make_float4(m[0u], m[1u], m[2u], m[3u]),
-                        make_float4(m[4u], m[5u], m[6u], m[7u]),
-                        make_float4(m[8u], m[9u], m[10u], m[11u]),
-                        make_float4(m[12u], m[13u], m[14u], m[15u]));
+          make_float4x4(make_float4(m(0u), m(1u), m(2u), m(3u)),
+                        make_float4(m(4u), m(5u), m(6u), m(7u)),
+                        make_float4(m(8u), m(9u), m(10u), m(11u)),
+                        make_float4(m(12u), m(13u), m(14u), m(15u)));
       value = world_to_object * make_float4(point.position, 1.0f);
       break;
     }

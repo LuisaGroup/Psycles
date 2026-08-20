@@ -1045,6 +1045,49 @@ void test_surface_value_storage_plan() {
                 signed_zero_scene.variants.size() == 2u,
             "exact immutable-variant interning merged signed zero");
 
+    auto translated_transform = transform;
+    translated_transform[12u] = 3.5f;
+    translated_transform[13u] = -2.25f;
+    auto translated_values = metadata_program.value_instructions();
+    translated_values.front().static_table = translated_transform;
+    const SurfaceProgram translated_program{
+        5u, {}, std::move(translated_values), {}, {}};
+    const auto translated_plan = plan_surface_value_storage(
+        translated_program, std::vector<bool>{true},
+        std::vector<bool>{true});
+    const std::vector transform_inputs{
+        SurfaceValueExecutionInput{.program = &metadata_program,
+                                   .storage = &metadata_plan},
+        SurfaceValueExecutionInput{.program = &translated_program,
+                                   .storage = &translated_plan}};
+    const auto transform_scene =
+        build_surface_value_executable_scene(transform_inputs);
+    require(transform_scene.valid &&
+                transform_scene.variants.size() == 1u &&
+                transform_scene.instruction_variants ==
+                    std::vector<std::uint32_t>{0u, 0u},
+            "equal-shape static tables did not share one semantic evaluator");
+    require(transform_scene.values.metadata.size() == 2u &&
+                transform_scene.values.metadata[0u].static_table_begin == 0u &&
+                transform_scene.values.metadata[0u].static_table_count == 16u &&
+                transform_scene.values.metadata[1u].static_table_begin == 16u &&
+                transform_scene.values.metadata[1u].static_table_count == 16u &&
+                transform_scene.values.static_data ==
+                    [&] {
+                        auto data = transform;
+                        data.insert(data.end(), translated_transform.begin(),
+                                    translated_transform.end());
+                        return data;
+                    }(),
+            "semantic interning lost distinct static-table bytecode payloads");
+    require(
+        transform_scene.variants[0u].instruction.static_table.size() == 16u &&
+            std::all_of(
+                transform_scene.variants[0u].instruction.static_table.begin(),
+                transform_scene.variants[0u].instruction.static_table.end(),
+                [](float value) noexcept { return value == 0.0f; }),
+        "a semantic evaluator retained an authored static-table payload");
+
     const auto make_table_program = [&](std::uint32_t table_parameter) {
         std::vector<ValueInstruction> table_values;
         table_values.emplace_back(make_parameter_value(0u));

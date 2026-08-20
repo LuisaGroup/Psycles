@@ -453,6 +453,52 @@ struct FixtureProgram {
     return graph;
 }
 
+[[nodiscard]] ShaderGraph make_transformed_emission_graph(
+    const std::array<float, 16u> &world_to_object,
+    std::string_view label) {
+    ShaderGraph graph;
+    const auto coordinates = graph.add_node(
+        node_type::texture_coordinate,
+        std::string{label} + " coordinates");
+    Mat4f transform;
+    transform.elements = world_to_object;
+    const auto conversion = graph.add_node(
+        node_type::vector_to_color,
+        std::string{label} + " vector to color");
+    const auto emission = graph.add_node(
+        node_type::emission,
+        std::string{label} + " emission");
+    const auto configured =
+        graph.set_property(
+            coordinates,
+            "ObjectUseTransform",
+            SocketValue::boolean(true)) &&
+        graph.set_property(
+            coordinates,
+            "ObjectWorldToObject",
+            SocketValue::transform(transform)) &&
+        graph.connect(
+            {.node = coordinates, .socket = "Object"},
+            conversion,
+            "Vector") &&
+        graph.connect(
+            {.node = conversion, .socket = "Color"},
+            emission,
+            "Color") &&
+        graph.set_input(
+            emission,
+            "Strength",
+            SocketValue::floating(1.0f));
+    if (!configured) {
+        throw std::runtime_error{
+            "failed to configure transformed emission graph"};
+    }
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = emission, .socket = "Closure"});
+    return graph;
+}
+
 [[nodiscard]] FixtureProgram compile_fixture(
     ShaderCompiler &compiler,
     ShaderGraph graph) {
@@ -911,6 +957,22 @@ int main(int argc, char **argv) {
     fixtures.emplace_back(compile_fixture(
         compiler,
         make_capacity_transparency_graph()));
+    fixtures.emplace_back(compile_fixture(
+        compiler,
+        make_transformed_emission_graph(
+            {1.0f, 0.0f, 0.0f, 0.0f,
+             0.0f, 1.0f, 0.0f, 0.0f,
+             0.0f, 0.0f, 1.0f, 0.0f,
+             0.15f, 0.25f, 0.35f, 1.0f},
+            "transform A")));
+    fixtures.emplace_back(compile_fixture(
+        compiler,
+        make_transformed_emission_graph(
+            {2.0f, 0.0f, 0.0f, 0.0f,
+             0.0f, 0.5f, 0.0f, 0.0f,
+             0.0f, 0.0f, 1.5f, 0.0f,
+             1.25f, 0.75f, 0.5f, 1.0f},
+            "transform B")));
 
     std::vector<std::shared_ptr<const SurfaceProgram>> programs;
     std::vector<SurfaceClosurePlan> closure_plans;
@@ -951,6 +1013,26 @@ int main(int argc, char **argv) {
     if (!scene->surface_values) {
         std::cerr << "failed to build compact surface runtime on "
                   << backend << ": " << diagnostic << '\n';
+        return EXIT_FAILURE;
+    }
+    const auto transform_variant_count = std::count_if(
+        scene->surface_values->executable.executable.variants.begin(),
+        scene->surface_values->executable.executable.variants.end(),
+        [](const auto &variant) noexcept {
+            return variant.instruction.operation ==
+                   ValueOperation::object_position_with_transform;
+        });
+    const auto transform_payload_count = std::count_if(
+        scene->surface_values->executable.executable.values.metadata.begin(),
+        scene->surface_values->executable.executable.values.metadata.end(),
+        [](const auto &metadata) noexcept {
+            return metadata.static_table_count == 16u;
+        });
+    if (transform_variant_count != 1u || transform_payload_count != 2u) {
+        std::cerr
+            << "compact runtime did not share one transform evaluator over "
+               "two distinct table payloads on "
+            << backend << '\n';
         return EXIT_FAILURE;
     }
 

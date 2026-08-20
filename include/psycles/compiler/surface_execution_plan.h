@@ -448,11 +448,12 @@ struct SurfaceValueSceneImage {
   PrincipledClosureFeatureMask used_principled_closure_features{};
 };
 
-// One AST body per exact immutable instruction configuration. Operands are
+// One AST body per exact semantic instruction configuration. Operands are
 // renumbered to [0, arity), and their original socket types are retained so a
 // shared evaluator can load typed addresses before invoking the existing
-// Luisa node implementation. Source-node identity is deliberately absent: it
-// is provenance, not executable semantics.
+// Luisa node implementation. Source-node identity and static-table payloads
+// are deliberately absent: they are provenance/runtime data, not executable
+// semantics. Static-table shape remains part of the variant contract.
 struct SurfaceValueStaticVariant {
   ValueInstruction instruction;
   std::vector<contract::SocketType> operand_types;
@@ -467,9 +468,11 @@ struct SurfaceValueExecutionInput {
   const SurfaceClosurePlan *closure_plan{};
 };
 
-// `instruction_variants` is parallel to `values.instructions`. Interning is
-// exact and bit-preserving (including NaN payloads and signed zero); it never
-// relies on a collision-prone hash equivalence.
+// `instruction_variants` is parallel to `values.instructions`. Semantic
+// interning is exact and bit-preserving for every control field (including
+// NaN payloads and signed zero); it never relies on a collision-prone hash
+// equivalence. Authored static-table payloads remain in `values.static_data`
+// and are addressed by the per-instruction metadata stream.
 struct SurfaceValueExecutableScene {
   bool valid{};
   std::string diagnostic;

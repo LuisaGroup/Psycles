@@ -322,6 +322,8 @@ struct SurfaceValueRuntime {
     luisa::vector<luisa::uint> operands;
     luisa::vector<luisa::uint> instruction_variants;
     luisa::vector<luisa::uint> metadata_parameters;
+    luisa::vector<luisa::uint2> metadata_static_ranges;
+    luisa::vector<float> static_data;
     luisa::vector<luisa::uint4> closure_instructions;
     luisa::vector<luisa::uint> closure_operands;
     luisa::vector<luisa::uint2> closure_mix_terms;
@@ -335,6 +337,8 @@ struct SurfaceValueRuntime {
     Buffer<luisa::uint> operand_buffer;
     Buffer<luisa::uint> instruction_variant_buffer;
     Buffer<luisa::uint> metadata_parameter_buffer;
+    Buffer<luisa::uint2> metadata_static_range_buffer;
+    Buffer<float> static_data_buffer;
     Buffer<luisa::uint4> closure_instruction_buffer;
     Buffer<luisa::uint> closure_operand_buffer;
     Buffer<luisa::uint2> closure_mix_term_buffer;

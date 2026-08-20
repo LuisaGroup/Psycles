@@ -19,6 +19,7 @@
 #include <memory>
 #include <utility>
 
+#include <luisa/core/logging.h>
 #include <luisa/dsl/local.h>
 #include <luisa/dsl/sugar.h>
 
@@ -188,17 +189,28 @@ void write_dynamic_value(
             compiler::ValueOperation::color_ramp ||
         variant.instruction.operation ==
             compiler::ValueOperation::rgb_curve;
-    if (table_parameter) {
+    const auto static_table = !variant.instruction.static_table.empty();
+    if (table_parameter || static_table) {
         auto parameter = runtime.metadata_parameter_buffer->read(
             instruction.w);
+        auto static_range =
+            runtime.metadata_static_range_buffer->read(instruction.w);
         const Expr<std::uint32_t> parameter_expression{
             parameter.expression()};
+        const ValueStaticTableView static_table_view{
+            .values = Expr<Buffer<float>>{runtime.static_data_buffer},
+            .begin = Expr<std::uint32_t>{static_range.x.expression()}};
         ValueEvaluationContext context{
             .services = services,
             .point = point,
             .result = operands,
             .surface = nullptr,
-            .parameter_override = &parameter_expression};
+            .parameter_override = table_parameter
+                                      ? &parameter_expression
+                                      : nullptr,
+            .static_table_override = static_table
+                                         ? &static_table_view
+                                         : nullptr};
         return node.evaluate(context);
     }
     ValueEvaluationContext context{
@@ -1460,9 +1472,15 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
         runtime->executable.executable.instruction_variants.begin(),
         runtime->executable.executable.instruction_variants.end());
     runtime->metadata_parameters.reserve(image.metadata.size());
+    runtime->metadata_static_ranges.reserve(image.metadata.size());
     for (const auto &metadata : image.metadata) {
         runtime->metadata_parameters.emplace_back(metadata.parameter);
+        runtime->metadata_static_ranges.emplace_back(luisa::make_uint2(
+            metadata.static_table_begin,
+            metadata.static_table_count));
     }
+    runtime->static_data.assign(
+        image.static_data.begin(), image.static_data.end());
     runtime->closure_instructions.reserve(
         image.closure_instructions.size());
     for (const auto &instruction : image.closure_instructions) {
@@ -1497,6 +1515,9 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
         runtime->metadata_parameters,
         compiler::SurfaceValueAddress::invalid_value);
     provide_dummy_if_empty(
+        runtime->metadata_static_ranges, luisa::make_uint2(0u));
+    provide_dummy_if_empty(runtime->static_data, 0.0f);
+    provide_dummy_if_empty(
         runtime->closure_instructions, luisa::make_uint4(0u));
     provide_dummy_if_empty(
         runtime->closure_operands,
@@ -1514,6 +1535,35 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
         compiler::SurfaceValueAddress::invalid_value);
     provide_dummy_if_empty(runtime->normal_undisplaced_flags, 0u);
 
+    auto maximum_instruction_count = std::uint32_t{0u};
+    auto maximum_scalar_slots = std::uint32_t{0u};
+    auto maximum_vector_slots = std::uint32_t{0u};
+    auto maximum_unsigned_integer_slots = std::uint32_t{0u};
+    for (const auto &program : image.programs) {
+        maximum_instruction_count = std::max(
+            maximum_instruction_count, program.instruction_count);
+        maximum_scalar_slots = std::max(
+            maximum_scalar_slots, program.scalar_slots);
+        maximum_vector_slots = std::max(
+            maximum_vector_slots, program.vector_slots);
+        maximum_unsigned_integer_slots = std::max(
+            maximum_unsigned_integer_slots,
+            program.unsigned_integer_slots);
+    }
+    LUISA_INFO(
+        "Built compact surface runtime: {} root programs, {} total programs, "
+        "{} instructions, {} operands, {} metadata records, {} static floats, "
+        "{} semantic variants, {} closure instructions, maximum program "
+        "length {}, typed slots {}/{}/{}.",
+        runtime->executable.root_program_count,
+        image.programs.size(), image.instructions.size(),
+        image.operands.size(), image.metadata.size(),
+        image.static_data.size(),
+        runtime->executable.executable.variants.size(),
+        image.closure_instructions.size(), maximum_instruction_count,
+        maximum_scalar_slots, maximum_vector_slots,
+        maximum_unsigned_integer_slots);
+
     runtime->program_buffer =
         device.create_buffer<luisa::uint4>(runtime->program_ranges.size());
     runtime->instruction_buffer =
@@ -1526,6 +1576,11 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
     runtime->metadata_parameter_buffer =
         device.create_buffer<luisa::uint>(
             runtime->metadata_parameters.size());
+    runtime->metadata_static_range_buffer =
+        device.create_buffer<luisa::uint2>(
+            runtime->metadata_static_ranges.size());
+    runtime->static_data_buffer =
+        device.create_buffer<float>(runtime->static_data.size());
     runtime->closure_instruction_buffer =
         device.create_buffer<luisa::uint4>(
             runtime->closure_instructions.size());
@@ -1562,6 +1617,10 @@ void upload_surface_value_runtime(
                   luisa::span{runtime.instruction_variants})
            << runtime.metadata_parameter_buffer.copy_from(
                   luisa::span{runtime.metadata_parameters})
+           << runtime.metadata_static_range_buffer.copy_from(
+                  luisa::span{runtime.metadata_static_ranges})
+           << runtime.static_data_buffer.copy_from(
+                  luisa::span{runtime.static_data})
            << runtime.closure_instruction_buffer.copy_from(
                   luisa::span{runtime.closure_instructions})
            << runtime.closure_operand_buffer.copy_from(
