@@ -5,6 +5,7 @@
 #include <psycles/contract/scene.h>
 
 #include <algorithm>
+#include <bit>
 #include <cstdlib>
 #include <iostream>
 #include <limits>
@@ -913,6 +914,67 @@ void test_surface_value_storage_plan() {
                     plan.locations[index].index == 0u,
                 "a linear scalar chain did not share its single live slot");
     }
+    const auto image = lower_surface_value_program(program, plan);
+    require(image.valid,
+            "typed value program lowering failed: " + image.diagnostic);
+    require(image.instructions.size() == 3u && image.operands.size() == 5u &&
+                image.metadata.empty() && image.static_data.empty() &&
+                image.value_addresses.size() == 5u,
+            "compact value program has an unexpected stream extent");
+    for (auto index = std::size_t{0u}; index < 2u; ++index) {
+        const auto address = SurfaceValueAddress{image.value_addresses[index]};
+        require(address.valid() && address.parameter() &&
+                    address.bank() == SurfaceValueBank::scalar &&
+                    address.index() == index,
+                "compact value program lost a parameter address");
+    }
+    for (auto index = std::size_t{2u}; index < 5u; ++index) {
+        const auto address = SurfaceValueAddress{image.value_addresses[index]};
+        require(address.valid() && !address.parameter() &&
+                    address.bank() == SurfaceValueBank::scalar &&
+                    address.index() == 0u,
+                "compact value program lost a reused local address");
+    }
+    require(image.instructions[0u].operand_begin == 0u &&
+                image.instructions[1u].operand_begin == 2u &&
+                image.instructions[2u].operand_begin == 3u &&
+                image.instructions[0u].operation ==
+                    static_cast<std::uint32_t>(ValueOperation::add) &&
+                image.instructions[1u].operation ==
+                    static_cast<std::uint32_t>(ValueOperation::absolute),
+            "compact value program changed topological instruction order");
+
+    std::vector<float> transform(16u, 0.0f);
+    for (auto diagonal = std::size_t{0u}; diagonal < 4u; ++diagonal) {
+        transform[diagonal * 5u] = 1.0f;
+    }
+    const SurfaceProgram metadata_program{
+        3u,
+        {},
+        {ValueInstruction{
+            .operation = ValueOperation::object_position_with_transform,
+            .result_type = SocketType::point,
+            .static_u0 = 7u,
+            .static_f0 = 0.25f,
+            .static_f1 = -0.0f,
+            .static_table = transform}},
+        {},
+        {}};
+    const auto metadata_plan = plan_surface_value_storage(
+        metadata_program, std::vector<bool>{true},
+        std::vector<bool>{true});
+    const auto metadata_image =
+        lower_surface_value_program(metadata_program, metadata_plan);
+    require(metadata_image.valid && metadata_image.instructions.size() == 1u &&
+                metadata_image.metadata.size() == 1u &&
+                metadata_image.static_data == transform &&
+                metadata_image.metadata[0u].static_u0 == 7u &&
+                metadata_image.metadata[0u].static_f0 == 0.25f &&
+                std::bit_cast<std::uint32_t>(
+                    metadata_image.metadata[0u].static_f1) == 0x80000000u &&
+                metadata_image.metadata[0u].static_table_begin == 0u &&
+                metadata_image.metadata[0u].static_table_count == 16u,
+            "compact value program lost immutable instruction metadata");
 
     std::vector<ValueInstruction> invalid_values;
     invalid_values.emplace_back(ValueInstruction{
