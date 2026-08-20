@@ -124,7 +124,8 @@ class EmissiveMeshLightingComponent final
                                     light);
                     };
                     const auto evaluation =
-                        invocation.evaluate_light_surface(
+                        context.shading.evaluate_light(
+                            invocation,
                             surface.surface_tag,
                             surface.point,
                             light.light.direction,

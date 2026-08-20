@@ -22,7 +22,7 @@ using namespace luisa::compute;
 using namespace psycles::compiler;
 using namespace psycles::luisa_backend;
 
-class ParameterShaderServices final : public ShaderServices {
+class ParameterShaderServices : public ShaderServices {
 
 private:
     const BufferFloat4 &_parameters;

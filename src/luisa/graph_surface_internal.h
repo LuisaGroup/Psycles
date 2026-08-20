@@ -525,6 +525,11 @@ public:
         Expr<bool> reflective_caustics,
         Expr<bool> refractive_caustics,
         SurfaceClosureCollector &collector) const noexcept;
+    [[nodiscard]] SurfacePopulation populate(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        const SurfacePopulationQuery &query,
+        SurfaceClosureCollector &collector) const noexcept;
     [[nodiscard]] SurfaceEvaluation evaluate(
         const ShaderServices &services,
         const SurfacePoint &point,

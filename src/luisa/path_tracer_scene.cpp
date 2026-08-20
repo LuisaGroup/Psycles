@@ -39,6 +39,14 @@ namespace {
            std::string_view{value} != "false";
 }
 
+[[nodiscard]] bool populate_surface_once_requested() noexcept {
+    const auto *value =
+        std::getenv("PSYCLES_POPULATE_SURFACE_ONCE");
+    return value != nullptr &&
+           std::string_view{value} != "0" &&
+           std::string_view{value} != "false";
+}
+
 } // namespace
 
 contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
@@ -96,6 +104,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     data->device =
         luisa::compute::Device{_device.impl_shared()};
     data->revision = snapshot.revision;
+    data->populate_surface_once =
+        populate_surface_once_requested();
     data->camera = camera_iter->second;
     data->volume_metadata = volume_metadata;
     data->shader_color_space = snapshot.shader_color_space;

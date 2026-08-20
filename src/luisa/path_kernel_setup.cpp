@@ -261,8 +261,52 @@ SurfaceEvaluation PathKernelInvocation::evaluate_light_surface(
     return result;
 }
 
+SurfaceEvaluation SurfaceShadingState::evaluate_light(
+    PathKernelInvocation &invocation,
+    UInt surface_tag,
+    const SurfacePoint &point,
+    Float3 outgoing,
+    const SurfaceQuery &query,
+    UInt shader_flags) const noexcept {
+    if (populated_surface) {
+        return populated_surface->evaluate_light(
+            Expr<luisa::float3>{outgoing.expression()},
+            {.surface = query, .shader_flags = shader_flags});
+    }
+    return invocation.evaluate_light_surface(
+        std::move(surface_tag),
+        point,
+        std::move(outgoing),
+        query,
+        std::move(shader_flags));
+}
+
 SurfacePreparation PathKernelInvocation::prepare_surface(
     UInt surface_tag,
+    const SurfacePoint &point,
+    Float3 outgoing,
+    const SurfaceQuery &query,
+    Bool include_runtime_flags,
+    Bool include_aov) const noexcept {
+    const auto preparation_query = surface_preparation_query(
+        point,
+        std::move(outgoing),
+        query,
+        std::move(include_runtime_flags),
+        std::move(include_aov));
+    return unpack_surface_preparation(
+        config.surfaces.preparation(
+            config.scene->scalar_parameter_buffer,
+            config.scene->vector_parameter_buffer,
+            config.scene->cycles_bsdf_table_buffer,
+            config.scene->texture_heap,
+            config.scene->heap,
+            surface_tag,
+            pack_surface_point(point),
+            pack_surface_preparation_query(preparation_query)));
+}
+
+SurfacePreparationQuery PathKernelInvocation::surface_preparation_query(
     const SurfacePoint &point,
     Float3 outgoing,
     const SurfaceQuery &query,
@@ -274,8 +318,8 @@ SurfacePreparation PathKernelInvocation::prepare_surface(
              contract::visibility_bit(
                  contract::RayVisibility::diffuse)) ==
             0u);
-    const auto preparation_query = SurfacePreparationQuery{
-        .outgoing = outgoing,
+    return SurfacePreparationQuery{
+        .outgoing = std::move(outgoing),
         .glossy_filter_roughness =
             query.glossy_filter_roughness,
         .emission_reflective_caustics =
@@ -284,16 +328,6 @@ SurfacePreparation PathKernelInvocation::prepare_surface(
         .refractive_caustics = query.refractive_caustics,
         .include_runtime_flags = include_runtime_flags,
         .include_aov = include_aov};
-    return unpack_surface_preparation(
-        config.surfaces.preparation(
-            config.scene->scalar_parameter_buffer,
-            config.scene->vector_parameter_buffer,
-            config.scene->cycles_bsdf_table_buffer,
-            config.scene->texture_heap,
-            config.scene->heap,
-            surface_tag,
-            pack_surface_point(point),
-            pack_surface_preparation_query(preparation_query)));
 }
 
 Float3 PathKernelInvocation::surface_emission(UInt surface_tag,
@@ -354,6 +388,27 @@ PathKernelInvocation::sample_surface(UInt surface_tag,
     return result;
 }
 
+SurfaceSample SurfaceShadingState::sample(
+    PathKernelInvocation &invocation,
+    UInt surface_tag,
+    const SurfacePoint &point,
+    Float u_lobe,
+    Float2 u_direction,
+    const SurfaceQuery &query) const noexcept {
+    if (populated_surface) {
+        return populated_surface->sample(
+            Expr<float>{u_lobe.expression()},
+            Expr<luisa::float2>{u_direction.expression()},
+            query);
+    }
+    return invocation.sample_surface(
+        std::move(surface_tag),
+        point,
+        std::move(u_lobe),
+        std::move(u_direction),
+        query);
+}
+
 SurfaceClosureTrace PathKernelInvocation::trace_surface_closure(
     UInt surface_tag,
     const SurfacePoint &point,
@@ -399,6 +454,27 @@ SurfaceSampleTrace PathKernelInvocation::trace_sample_surface(
             point, u_direction, query);
     };
     return result;
+}
+
+SurfaceSampleTrace SurfaceShadingState::sample_trace(
+    PathKernelInvocation &invocation,
+    UInt surface_tag,
+    const SurfacePoint &point,
+    Float u_lobe,
+    Float2 u_direction,
+    const SurfaceQuery &query) const noexcept {
+    if (populated_surface) {
+        return populated_surface->sample_trace(
+            Expr<float>{u_lobe.expression()},
+            Expr<luisa::float2>{u_direction.expression()},
+            query);
+    }
+    return invocation.trace_sample_surface(
+        std::move(surface_tag),
+        point,
+        std::move(u_lobe),
+        std::move(u_direction),
+        query);
 }
 
 Float3 PathKernelInvocation::surface_bssrdf_normal(

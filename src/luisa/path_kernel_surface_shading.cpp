@@ -68,6 +68,7 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
             config.light_transport.forward_light_weight;
         const auto next_event_estimation = config.next_event_estimation;
         const auto path_trace_enabled = config.path_trace_enabled;
+        std::shared_ptr<PopulatedSurfaceShader> populated_surface;
         auto prepare_surface = [&](UInt tag,
                                    const SurfacePoint &surface_point,
                                    Float3 outgoing,
@@ -93,6 +94,15 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                                          UInt requested_index,
                                          Bool reflective_caustics,
                                          Bool refractive_caustics) noexcept {
+            if (populated_surface) {
+                static_cast<void>(tag);
+                static_cast<void>(surface_point);
+                static_cast<void>(reflective_caustics);
+                static_cast<void>(refractive_caustics);
+                return populated_surface->closure_trace(
+                    requested_index,
+                    surface.path_surface_query);
+            }
             return invocation.trace_surface_closure(
                 tag,
                 surface_point,
@@ -114,13 +124,38 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         auto trace_uint32 = [&](UInt value) noexcept {
             return sample.trace_uint32(value);
         };
-        const auto preparation = prepare_surface(
-            surface_tag,
-            point,
-            point.incoming,
-            surface.path_surface_query,
-            Bool{next_event_estimation || path_trace_enabled},
-            (!bounce.subsurface_exit) & (path_depth == 0u));
+        const auto include_runtime_flags =
+            Bool{next_event_estimation || path_trace_enabled};
+        const auto include_aov =
+            (!bounce.subsurface_exit) & (path_depth == 0u);
+        const auto preparation_query =
+            invocation.surface_preparation_query(
+                point,
+                point.incoming,
+                surface.path_surface_query,
+                include_runtime_flags,
+                include_aov);
+        if (config.surfaces.population) {
+            populated_surface = config.surfaces.population->populate(
+                surface_tag,
+                point,
+                {.emission_reflective_caustics =
+                     preparation_query.emission_reflective_caustics,
+                 .reflective_caustics =
+                     preparation_query.reflective_caustics,
+                 .refractive_caustics =
+                     preparation_query.refractive_caustics});
+        }
+        const auto preparation = populated_surface
+                                     ? populated_surface->preparation(
+                                           preparation_query)
+                                     : prepare_surface(
+                                           surface_tag,
+                                           point,
+                                           point.incoming,
+                                           surface.path_surface_query,
+                                           include_runtime_flags,
+                                           include_aov);
         Float3 emitted = preparation.emission;
         emitted = select(
             emitted, make_float3(0.0f), bounce.subsurface_exit);
@@ -406,7 +441,8 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         }
 
         return {std::move(cycles_surface_runtime_flags),
-                std::move(bsdf_sample)};
+                std::move(bsdf_sample),
+                std::move(populated_surface)};
     }
 };
 
