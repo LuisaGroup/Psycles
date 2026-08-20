@@ -1,6 +1,7 @@
 #include <psycles/adapter/blender_scene.h>
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/compiler/material_library.h>
+#include <psycles/compiler/surface_execution_plan.h>
 #include <psycles/contract/cycles_pointiness.h>
 
 #include <algorithm>
@@ -322,6 +323,14 @@ int main(int argc, char **argv) {
         auto unique_values = std::size_t{};
         auto unique_closures = std::size_t{};
         auto reachable_closures = std::size_t{};
+        auto preparation_active_values = std::size_t{};
+        auto preparation_parameter_references = std::size_t{};
+        auto preparation_runtime_instructions = std::size_t{};
+        auto maximum_scalar_slots = std::uint32_t{};
+        auto maximum_vector_slots = std::uint32_t{};
+        auto maximum_unsigned_integer_slots = std::uint32_t{};
+        auto maximum_typed_payload_bytes = std::size_t{};
+        auto topology_typed_payload_bytes = std::size_t{};
         std::map<PrincipledClosureFeature, std::size_t>
             feature_occurrences;
         for (const auto &[signature, program] :
@@ -334,6 +343,32 @@ int main(int argc, char **argv) {
                 value_operations[instruction.operation] += 1u;
             }
             const auto &plan = closure_plans.at(signature);
+            const auto dependencies =
+                psycles::compiler::analyze_surface_value_dependencies(
+                    *program, plan);
+            const auto storage =
+                psycles::compiler::plan_surface_value_storage(
+                    *program,
+                    dependencies.preparation,
+                    dependencies.preparation_outputs);
+            if (!storage.valid) {
+                std::cerr << "surface execution planning failed for topology "
+                          << signature << ": " << storage.diagnostic << '\n';
+                return EXIT_FAILURE;
+            }
+            preparation_active_values += storage.active_values;
+            preparation_parameter_references += storage.parameter_values;
+            preparation_runtime_instructions += storage.instructions.size();
+            maximum_scalar_slots =
+                std::max(maximum_scalar_slots, storage.scalar_slots);
+            maximum_vector_slots =
+                std::max(maximum_vector_slots, storage.vector_slots);
+            maximum_unsigned_integer_slots = std::max(
+                maximum_unsigned_integer_slots,
+                storage.unsigned_integer_slots);
+            maximum_typed_payload_bytes = std::max(
+                maximum_typed_payload_bytes, storage.payload_bytes());
+            topology_typed_payload_bytes += storage.payload_bytes();
             for (const auto &entry : plan.entries()) {
                 reachable_closures += entry.reachable ? 1u : 0u;
                 for (const auto feature : {
@@ -370,6 +405,20 @@ int main(int argc, char **argv) {
             << "\nunique_closures " << unique_closures
             << "\nreachable_closures " << reachable_closures
             << "\nvalue_opcode_kinds " << value_operations.size()
+            << "\npreparation_active_values "
+            << preparation_active_values
+            << "\npreparation_parameter_references "
+            << preparation_parameter_references
+            << "\npreparation_runtime_instructions "
+            << preparation_runtime_instructions
+            << "\nmaximum_scalar_slots " << maximum_scalar_slots
+            << "\nmaximum_vector_slots " << maximum_vector_slots
+            << "\nmaximum_unsigned_integer_slots "
+            << maximum_unsigned_integer_slots
+            << "\nmaximum_typed_payload_bytes "
+            << maximum_typed_payload_bytes
+            << "\ntopology_typed_payload_bytes "
+            << topology_typed_payload_bytes
             << "\nprincipled_alpha "
             << feature_count(PrincipledClosureFeature::alpha)
             << "\nprincipled_sheen "

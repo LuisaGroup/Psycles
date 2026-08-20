@@ -1,5 +1,6 @@
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/compiler/shader_program.h>
+#include <psycles/compiler/surface_execution_plan.h>
 #include <psycles/compiler/surface_program.h>
 #include <psycles/contract/scene.h>
 
@@ -414,6 +415,30 @@ void test_surface_closure_plan() {
         *base_program, union_plan);
     require(base_dependencies.compatible(*base_program),
             "surface value dependency plan is incompatible with its program");
+    const auto require_outputs_closed = [&](const std::vector<bool> &active_mask,
+                                             const std::vector<bool> &outputs,
+                                             const std::string &domain) {
+        require(outputs.size() == active_mask.size(),
+                domain + " output mask has the wrong size");
+        for (auto index = std::size_t{0u}; index < outputs.size(); ++index) {
+            require(!outputs[index] || active_mask[index],
+                    domain + " output is absent from its active value mask");
+        }
+    };
+    require_outputs_closed(base_dependencies.physical,
+                           base_dependencies.physical_outputs, "physical");
+    require_outputs_closed(base_dependencies.emission,
+                           base_dependencies.emission_outputs, "emission");
+    require_outputs_closed(base_dependencies.preparation,
+                           base_dependencies.preparation_outputs,
+                           "preparation");
+    auto output_union = base_dependencies.physical_outputs;
+    for (auto index = std::size_t{0u}; index < output_union.size(); ++index) {
+        output_union[index] = output_union[index] ||
+                              base_dependencies.emission_outputs[index];
+    }
+    require(base_dependencies.preparation_outputs == output_union,
+            "preparation outputs are not the physical/emission union");
     require(
         closure_active(base_dependencies.physical_closures,
                        base_program->root()) &&
@@ -428,6 +453,12 @@ void test_surface_closure_plan() {
     require_topology_closed(
         *base_program, base_dependencies.preparation, "preparation");
     const auto &base_closure = principled_instruction(*base_program);
+    require(
+        active(base_dependencies.physical_outputs, base_closure.color) &&
+            active(base_dependencies.physical_outputs, base_closure.normal) &&
+            active(base_dependencies.physical_outputs,
+                   base_closure.roughness),
+        "physical closure roots were not recorded as terminal outputs");
     require(
         active(base_dependencies.physical, base_closure.color) &&
             active(base_dependencies.physical, base_closure.normal) &&
@@ -462,6 +493,12 @@ void test_surface_closure_plan() {
                      [](bool value) noexcept { return value; }) &&
             base_dependencies.preparation == base_dependencies.physical,
         "non-emissive preparation retained an emission-only value schedule");
+    const auto base_storage = plan_surface_value_storage(
+        *base_program, base_dependencies.preparation,
+        base_dependencies.preparation_outputs);
+    require(base_storage.compatible(*base_program),
+            "base surface value storage plan is invalid: " +
+                base_storage.diagnostic);
 
     const auto [diffuse_shader, diffuse_program] = compile(
         make_closure_plan_principled(
@@ -807,12 +844,106 @@ void test_surface_closure_plan() {
             "non-finite Mix factor was incorrectly treated as a proof");
 }
 
+void test_surface_value_storage_plan() {
+    const auto make_parameter = [](std::uint32_t index) {
+        return ParameterDesc{
+            .id = ParameterId{index},
+            .node = NodeId{index + 1u},
+            .socket = "Value",
+            .type = SocketType::floating,
+            .default_value = SocketValue::floating(0.0f),
+            .source = ParameterSource::input};
+    };
+    const auto make_parameter_value = [](std::uint32_t index) {
+        return ValueInstruction{
+            .operation = ValueOperation::parameter,
+            .source_node = NodeId{index + 1u},
+            .result_type = SocketType::floating,
+            .parameter = ParameterId{index}};
+    };
+
+    std::vector<ValueInstruction> values;
+    values.emplace_back(make_parameter_value(0u));
+    values.emplace_back(make_parameter_value(1u));
+    values.emplace_back(ValueInstruction{
+        .operation = ValueOperation::add,
+        .result_type = SocketType::floating,
+        .operands = make_value_operands<value_operand::binary>({
+            {value_operand::binary::a, ValueExpressionId{0u}},
+            {value_operand::binary::b, ValueExpressionId{1u}}})});
+    values.emplace_back(ValueInstruction{
+        .operation = ValueOperation::absolute,
+        .result_type = SocketType::floating,
+        .operands = make_value_operands<value_operand::unary>({
+            {value_operand::unary::input, ValueExpressionId{2u}}})});
+    values.emplace_back(ValueInstruction{
+        .operation = ValueOperation::add,
+        .result_type = SocketType::floating,
+        .operands = make_value_operands<value_operand::binary>({
+            {value_operand::binary::a, ValueExpressionId{3u}},
+            {value_operand::binary::b, ValueExpressionId{1u}}})});
+    const SurfaceProgram program{
+        1u,
+        {make_parameter(0u), make_parameter(1u)},
+        std::move(values),
+        {},
+        {}};
+    const std::vector<bool> active(5u, true);
+    auto outputs = std::vector<bool>(5u, false);
+    outputs[4u] = true;
+    const auto plan = plan_surface_value_storage(program, active, outputs);
+    require(plan.compatible(program),
+            "typed value storage plan failed: " + plan.diagnostic);
+    require(plan.active_values == 5u && plan.parameter_values == 2u &&
+                plan.instructions.size() == 3u,
+            "typed value storage plan did not elide parameter instructions");
+    require(plan.scalar_slots == 1u && plan.vector_slots == 0u &&
+                plan.unsigned_integer_slots == 0u &&
+                plan.payload_bytes() == sizeof(float),
+            "read-before-write liveness did not reuse a dying scalar slot");
+    require(plan.locations[0u].storage ==
+                    SurfaceValueStorageClass::parameter &&
+                plan.locations[1u].storage ==
+                    SurfaceValueStorageClass::parameter,
+            "parameter expressions were copied into local slots");
+    for (auto index = std::size_t{2u}; index < 5u; ++index) {
+        require(plan.locations[index].storage ==
+                        SurfaceValueStorageClass::local_slot &&
+                    plan.locations[index].bank == SurfaceValueBank::scalar &&
+                    plan.locations[index].index == 0u,
+                "a linear scalar chain did not share its single live slot");
+    }
+
+    std::vector<ValueInstruction> invalid_values;
+    invalid_values.emplace_back(ValueInstruction{
+        .operation = ValueOperation::add,
+        .result_type = SocketType::floating,
+        .operands = make_value_operands<value_operand::binary>({
+            {value_operand::binary::a, ValueExpressionId{1u}},
+            {value_operand::binary::b, ValueExpressionId{1u}}})});
+    invalid_values.emplace_back(make_parameter_value(0u));
+    const SurfaceProgram invalid_program{
+        2u,
+        {make_parameter(0u)},
+        std::move(invalid_values),
+        {},
+        {}};
+    const auto invalid_plan = plan_surface_value_storage(
+        invalid_program, std::vector<bool>(2u, true),
+        std::vector<bool>{true, false});
+    require(!invalid_plan.valid &&
+                invalid_plan.diagnostic.find("topological") !=
+                    std::string::npos,
+            "storage planning accepted a forward value dependency");
+}
+
 }// namespace
 
 int main() {
     try {
         test_cycles_surface_bssrdf_metadata();
         test_surface_closure_plan();
+        test_surface_value_storage_plan();
         return EXIT_SUCCESS;
     } catch (const std::exception &error) {
         std::cerr << "Surface-program metadata test failure: "

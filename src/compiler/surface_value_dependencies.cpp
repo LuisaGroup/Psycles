@@ -12,13 +12,19 @@ class ValueDependencyMask {
 private:
   const SurfaceProgram &_program;
   std::vector<bool> _mask;
+  std::vector<bool> _outputs;
 
 public:
   explicit ValueDependencyMask(const SurfaceProgram &program)
-      : _program{program}, _mask(program.value_instructions().size(), false) {}
+      : _program{program}, _mask(program.value_instructions().size(), false),
+        _outputs(program.value_instructions().size(), false) {}
 
   void include(ValueExpressionId root) noexcept {
     const auto &instructions = _program.value_instructions();
+    if (!root.valid() || root.value >= instructions.size()) {
+      return;
+    }
+    _outputs[root.value] = true;
     std::vector<ValueExpressionId> pending;
     pending.emplace_back(root);
     while (!pending.empty()) {
@@ -36,8 +42,14 @@ public:
     }
   }
 
-  [[nodiscard]] std::vector<bool> finish() && noexcept {
-    return std::move(_mask);
+  struct Result {
+    std::vector<bool> active;
+    std::vector<bool> outputs;
+  };
+
+  [[nodiscard]] Result finish() && noexcept {
+    return {.active = std::move(_mask),
+            .outputs = std::move(_outputs)};
   }
 };
 
@@ -294,6 +306,9 @@ bool SurfaceValueDependencyPlan::compatible(
   const auto closure_size = program.closure_instructions().size();
   return physical.size() == size && emission.size() == size &&
          preparation.size() == size &&
+         physical_outputs.size() == size &&
+         emission_outputs.size() == size &&
+         preparation_outputs.size() == size &&
          physical_closures.size() == closure_size &&
          emission_closures.size() == closure_size;
 }
@@ -307,6 +322,9 @@ SurfaceValueDependencyPlan analyze_surface_value_dependencies(
     return {.physical = std::vector<bool>(size, true),
             .emission = std::vector<bool>(size, true),
             .preparation = std::vector<bool>(size, true),
+            .physical_outputs = std::vector<bool>(size, true),
+            .emission_outputs = std::vector<bool>(size, true),
+            .preparation_outputs = std::vector<bool>(size, true),
             .physical_closures = std::vector<bool>(closure_size, true),
             .emission_closures = std::vector<bool>(closure_size, true)};
   }
@@ -317,7 +335,7 @@ SurfaceValueDependencyPlan analyze_surface_value_dependencies(
   static_cast<void>(include_closure_subtree(program, closure_plan, physical,
                                             physical_closures, program.root(),
                                             include_physical_leaf));
-  auto physical_mask = std::move(physical).finish();
+  auto physical_result = std::move(physical).finish();
 
   ValueDependencyMask emission{program};
   std::vector<bool> emission_closures(program.closure_instructions().size(),
@@ -325,12 +343,18 @@ SurfaceValueDependencyPlan analyze_surface_value_dependencies(
   static_cast<void>(include_closure_subtree(program, closure_plan, emission,
                                             emission_closures, program.root(),
                                             include_emission_leaf));
-  auto emission_mask = std::move(emission).finish();
+  auto emission_result = std::move(emission).finish();
 
-  auto preparation_mask = merge_masks(physical_mask, emission_mask);
-  return {.physical = std::move(physical_mask),
-          .emission = std::move(emission_mask),
+  auto preparation_mask = merge_masks(
+      physical_result.active, emission_result.active);
+  auto preparation_outputs = merge_masks(
+      physical_result.outputs, emission_result.outputs);
+  return {.physical = std::move(physical_result.active),
+          .emission = std::move(emission_result.active),
           .preparation = std::move(preparation_mask),
+          .physical_outputs = std::move(physical_result.outputs),
+          .emission_outputs = std::move(emission_result.outputs),
+          .preparation_outputs = std::move(preparation_outputs),
           .physical_closures = std::move(physical_closures),
           .emission_closures = std::move(emission_closures)};
 }
