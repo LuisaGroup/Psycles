@@ -269,6 +269,15 @@ inline constexpr std::uint32_t surface_closure_control_mask =
     surface_closure_coat_normal_linked |
     surface_closure_preserve_ggx_energy | surface_closure_beckmann;
 
+// Host-selected semantic handler identity. Endpoint membership and Bump
+// provenance are data/control-flow properties outside raw closure setup; the
+// remaining bits select C++-stage types or algorithms and therefore form the
+// finite Luisa AST variant key.
+inline constexpr std::uint32_t surface_closure_static_variant_mask =
+    surface_closure_opcode_mask | surface_closure_bssrdf_method_mask |
+    surface_closure_coat_normal_linked |
+    surface_closure_preserve_ggx_energy | surface_closure_beckmann;
+
 [[nodiscard]] constexpr std::uint32_t make_surface_closure_control(
     const ClosureInstruction &instruction,
     SurfaceClosureEndpointMask endpoints) noexcept {

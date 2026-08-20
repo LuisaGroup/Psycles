@@ -6,9 +6,12 @@
 #include "path_tracer_surface_closure_setup.h"
 #include "path_tracer_surfaces.h"
 #include "path_tracer_texture_sampling.h"
+#include "principled_layer_component.h"
 #include "surface_bump.h"
+#include "surface_preparation_accumulator.h"
 
 #include <psycles/luisa/graph_surface.h>
+#include <psycles/luisa/cycles_closure.h>
 
 #include <algorithm>
 #include <cstdlib>
@@ -366,80 +369,669 @@ void emit_surface_value_program(
     };
 }
 
-[[nodiscard]] SurfaceValueExpression read_static_value(
-    contract::SocketType type,
+[[nodiscard]] Float read_closure_scalar_or(
+    const SurfaceValueRuntime &runtime,
     const ShaderServices &services,
     const SurfacePoint &point,
     const SurfaceValueLocals &locals,
-    std::uint32_t encoded) noexcept {
-    const compiler::SurfaceValueAddress address{encoded};
-    if (!address.valid()) {
-        return SurfaceValueExpression::zero(type);
-    }
-    if (address.parameter()) {
-        switch (surface_value_category(type)) {
-            case SurfaceValueCategory::scalar: {
-                const auto value = services.parameter_float(
-                    point.parameter_block, address.index());
-                return SurfaceValueExpression::from_scalar(
-                    Expr<float>{value.expression()});
-            }
-            case SurfaceValueCategory::vector: {
-                const auto value = services.parameter_float3(
-                    point.parameter_block, address.index());
-                return SurfaceValueExpression::from_vector(
-                    Expr<luisa::float3>{value.expression()});
-            }
-            case SurfaceValueCategory::unsigned_integer: {
-                const auto value = services.parameter_uint64(
-                    point.parameter_block, address.index());
-                return SurfaceValueExpression::from_unsigned_integer(
-                    Expr<luisa::ulong>{value.expression()});
-            }
+    Var<luisa::uint4> instruction,
+    std::size_t operand_index,
+    Float fallback) noexcept {
+    const auto address = runtime.closure_operand_buffer->read(
+        instruction.y + static_cast<std::uint32_t>(operand_index));
+    Float result = fallback;
+    $if(address != compiler::SurfaceValueAddress::invalid_value) {
+        result = read_scalar_dynamic(
+            services, point, locals, address);
+    };
+    return result;
+}
+
+[[nodiscard]] Float3 read_closure_vector_or(
+    const SurfaceValueRuntime &runtime,
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    const SurfaceValueLocals &locals,
+    Var<luisa::uint4> instruction,
+    std::size_t operand_index,
+    Float3 fallback) noexcept {
+    const auto address = runtime.closure_operand_buffer->read(
+        instruction.y + static_cast<std::uint32_t>(operand_index));
+    Float3 result = fallback;
+    $if(address != compiler::SurfaceValueAddress::invalid_value) {
+        result = read_vector_dynamic(
+            services, point, locals, address);
+    };
+    return result;
+}
+
+[[nodiscard]] Float closure_mix_weight(
+    const SurfaceValueRuntime &runtime,
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    const SurfaceValueLocals &locals,
+    Var<luisa::uint4> instruction) noexcept {
+    Float weight = 1.0f;
+    UInt term_index = instruction.z;
+    const auto term_end = instruction.z + instruction.w;
+    $while(term_index < term_end) {
+        const auto term = runtime.closure_mix_term_buffer->read(
+            term_index);
+        const auto factor = clamp(
+            read_scalar_dynamic(
+                services, point, locals, term.x),
+            0.0f,
+            1.0f);
+        const auto complement =
+            (term.y & compiler::surface_closure_mix_complement) != 0u;
+        weight *= select(factor, 1.0f - factor, complement);
+        term_index += 1u;
+    };
+    return weight;
+}
+
+[[nodiscard]] TracedClosure decode_surface_closure(
+    std::uint32_t static_variant,
+    compiler::PrincipledClosureFeatureMask scene_features,
+    const SurfaceValueRuntime &runtime,
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    const SurfaceValueLocals &locals,
+    Var<luisa::uint4> instruction,
+    Float mix_weight) noexcept {
+    namespace operand = compiler::surface_closure_operand;
+    const auto operation = static_cast<compiler::ClosureOperation>(
+        static_variant & compiler::surface_closure_opcode_mask);
+    const auto bssrdf_method = static_cast<compiler::BssrdfMethod>(
+        (static_variant & compiler::surface_closure_bssrdf_method_mask) >>
+        compiler::surface_closure_bssrdf_method_shift);
+    const auto coat_normal_linked =
+        (static_variant &
+         compiler::surface_closure_coat_normal_linked) != 0u;
+    const auto preserve_ggx_energy =
+        (static_variant &
+         compiler::surface_closure_preserve_ggx_energy) != 0u;
+    const auto beckmann =
+        (static_variant & compiler::surface_closure_beckmann) != 0u;
+
+    switch (operation) {
+        case compiler::ClosureOperation::diffuse:
+        case compiler::ClosureOperation::glossy: {
+            const auto glossy =
+                operation == compiler::ClosureOperation::glossy;
+            const auto color = read_closure_vector_or(
+                runtime,
+                services,
+                point,
+                locals,
+                instruction,
+                operand::diffuse::color,
+                make_float3(0.0f));
+            const auto roughness = read_closure_scalar_or(
+                runtime,
+                services,
+                point,
+                locals,
+                instruction,
+                operand::diffuse::roughness,
+                0.0f);
+            return TracedClosure{
+                .operation = operation,
+                .weight = bsdf_allocated_weight(color * mix_weight),
+                .color = color,
+                .normal = safe_normalize(
+                    read_closure_vector_or(
+                        runtime,
+                        services,
+                        point,
+                        locals,
+                        instruction,
+                        operand::diffuse::normal,
+                        point.shading_normal),
+                    point.shading_normal),
+                .roughness = roughness,
+                .diffuse_roughness = roughness,
+                .metallic = glossy ? 1.0f : 0.0f,
+                .ior = 1.5f,
+                .specular_ior_level = 0.5f,
+                .specular_tint = make_float3(1.0f),
+                .preserve_ggx_energy =
+                    glossy && preserve_ggx_energy,
+                .beckmann = glossy && beckmann};
         }
-        std::abort();
-    }
-    switch (surface_value_category(type)) {
-        case SurfaceValueCategory::scalar: {
-            const auto value = locals.scalars.read(address.index());
-            return SurfaceValueExpression::from_scalar(
-                Expr<float>{value.expression()});
+        case compiler::ClosureOperation::translucent: {
+            const auto color = read_closure_vector_or(
+                runtime,
+                services,
+                point,
+                locals,
+                instruction,
+                operand::translucent::color,
+                make_float3(0.0f));
+            return TracedClosure{
+                .operation = operation,
+                .weight = bsdf_allocated_weight(color * mix_weight),
+                .color = color,
+                .normal = safe_normalize(
+                    read_closure_vector_or(
+                        runtime,
+                        services,
+                        point,
+                        locals,
+                        instruction,
+                        operand::translucent::normal,
+                        point.shading_normal),
+                    point.shading_normal),
+                .roughness = 0.0f,
+                .diffuse_roughness = 0.0f,
+                .metallic = 0.0f,
+                .ior = 1.0f,
+                .specular_ior_level = 0.0f,
+                .specular_tint = make_float3(1.0f)};
         }
-        case SurfaceValueCategory::vector: {
-            const auto value = locals.vectors.read(address.index());
-            return SurfaceValueExpression::from_vector(
-                Expr<luisa::float3>{value.expression()});
+        case compiler::ClosureOperation::principled: {
+            const auto scalar = [&](std::size_t index, float fallback) noexcept {
+                return read_closure_scalar_or(
+                    runtime,
+                    services,
+                    point,
+                    locals,
+                    instruction,
+                    index,
+                    Float{fallback});
+            };
+            const auto vector = [&](std::size_t index,
+                                    luisa::float3 fallback) noexcept {
+                return read_closure_vector_or(
+                    runtime,
+                    services,
+                    point,
+                    locals,
+                    instruction,
+                    index,
+                    Float3{fallback});
+            };
+            const auto emission_color = vector(
+                operand::principled::emission_color,
+                luisa::make_float3(0.0f));
+            const auto emission_strength = scalar(
+                operand::principled::emission_strength, 0.0f);
+            return TracedClosure{
+                .operation = operation,
+                .principled_features = scene_features,
+                .weight = make_float3(mix_weight),
+                .color = vector(
+                    operand::principled::color,
+                    luisa::make_float3(0.0f)),
+                .normal = safe_normalize(
+                    vector(
+                        operand::principled::normal,
+                        luisa::make_float3(0.0f)),
+                    point.shading_normal),
+                .roughness = scalar(
+                    operand::principled::roughness, 0.0f),
+                .diffuse_roughness = scalar(
+                    operand::principled::diffuse_roughness, 0.0f),
+                .subsurface_weight = scalar(
+                    operand::principled::subsurface_weight, 0.0f),
+                .subsurface_radius = vector(
+                    operand::principled::subsurface_radius,
+                    luisa::make_float3(0.0f)),
+                .subsurface_scale = scalar(
+                    operand::principled::subsurface_scale, 0.0f),
+                .subsurface_method = bssrdf_method,
+                .subsurface_ior = scalar(
+                    operand::principled::subsurface_ior, 1.4f),
+                .subsurface_anisotropy = scalar(
+                    operand::principled::subsurface_anisotropy, 0.0f),
+                .transmission_weight = scalar(
+                    operand::principled::transmission_weight, 0.0f),
+                .metallic = clamp(
+                    scalar(operand::principled::metallic, 0.0f),
+                    0.0f,
+                    1.0f),
+                .ior = max(
+                    scalar(operand::principled::ior, 1.0f),
+                    1.0e-5f),
+                .specular_ior_level = max(
+                    scalar(
+                        operand::principled::specular_ior_level,
+                        0.0f),
+                    0.0f),
+                .specular_tint = max(
+                    vector(
+                        operand::principled::specular_tint,
+                        luisa::make_float3(1.0f)),
+                    make_float3(0.0f)),
+                .alpha = scalar(operand::principled::alpha, 1.0f),
+                .thin_wall =
+                    scalar(operand::principled::thin_wall, 0.0f) != 0.0f,
+                .sheen_weight = scalar(
+                    operand::principled::sheen_weight, 0.0f),
+                .sheen_roughness = scalar(
+                    operand::principled::sheen_roughness, 0.5f),
+                .sheen_tint = vector(
+                    operand::principled::sheen_tint,
+                    luisa::make_float3(1.0f)),
+                .coat_weight = scalar(
+                    operand::principled::coat_weight, 0.0f),
+                .coat_roughness = scalar(
+                    operand::principled::coat_roughness, 0.03f),
+                .coat_ior = scalar(
+                    operand::principled::coat_ior, 1.5f),
+                .coat_tint = vector(
+                    operand::principled::coat_tint,
+                    luisa::make_float3(1.0f)),
+                .coat_normal = vector(
+                    operand::principled::coat_normal,
+                    luisa::make_float3(0.0f)),
+                .coat_normal_linked = coat_normal_linked,
+                .emission = emission_color * emission_strength,
+                .preserve_ggx_energy = preserve_ggx_energy,
+                .beckmann = false};
         }
-        case SurfaceValueCategory::unsigned_integer: {
-            const auto value =
-                locals.unsigned_integers.read(address.index());
-            return SurfaceValueExpression::from_unsigned_integer(
-                Expr<luisa::ulong>{value.expression()});
+        case compiler::ClosureOperation::glass:
+        case compiler::ClosureOperation::refraction: {
+            const auto glass =
+                operation == compiler::ClosureOperation::glass;
+            const auto color = max(
+                read_closure_vector_or(
+                    runtime,
+                    services,
+                    point,
+                    locals,
+                    instruction,
+                    operand::glass::color,
+                    make_float3(0.0f)),
+                make_float3(0.0f));
+            return TracedClosure{
+                .operation = operation,
+                .weight = glass ? make_float3(mix_weight)
+                                : color * mix_weight,
+                .color = color,
+                .normal = safe_normalize(
+                    read_closure_vector_or(
+                        runtime,
+                        services,
+                        point,
+                        locals,
+                        instruction,
+                        operand::glass::normal,
+                        point.shading_normal),
+                    point.shading_normal),
+                .roughness = read_closure_scalar_or(
+                    runtime,
+                    services,
+                    point,
+                    locals,
+                    instruction,
+                    operand::glass::roughness,
+                    0.0f),
+                .diffuse_roughness = 0.0f,
+                .metallic = 0.0f,
+                .ior = max(
+                    read_closure_scalar_or(
+                        runtime,
+                        services,
+                        point,
+                        locals,
+                        instruction,
+                        operand::glass::ior,
+                        1.0f),
+                    1.0e-5f),
+                .specular_ior_level = 0.5f,
+                .specular_tint = make_float3(1.0f),
+                .preserve_ggx_energy =
+                    glass && preserve_ggx_energy,
+                .beckmann = beckmann};
         }
+        case compiler::ClosureOperation::emission: {
+            const auto color = read_closure_vector_or(
+                runtime,
+                services,
+                point,
+                locals,
+                instruction,
+                operand::emission::color,
+                make_float3(0.0f));
+            return TracedClosure{
+                .operation = operation,
+                .weight = color *
+                          read_closure_scalar_or(
+                              runtime,
+                              services,
+                              point,
+                              locals,
+                              instruction,
+                              operand::emission::strength,
+                              0.0f) *
+                          mix_weight,
+                .color = color,
+                .normal = make_float3(0.0f, 0.0f, 1.0f),
+                .roughness = 0.0f,
+                .metallic = 0.0f,
+                .ior = 1.0f};
+        }
+        case compiler::ClosureOperation::transparent: {
+            const auto color = read_closure_vector_or(
+                runtime,
+                services,
+                point,
+                locals,
+                instruction,
+                operand::transparent::color,
+                make_float3(0.0f));
+            return TracedClosure{
+                .operation = operation,
+                .weight = color * mix_weight,
+                .color = color,
+                .normal = point.shading_normal,
+                .roughness = 0.0f,
+                .metallic = 0.0f,
+                .ior = 1.0f};
+        }
+        case compiler::ClosureOperation::subsurface: {
+            const auto color = read_closure_vector_or(
+                runtime,
+                services,
+                point,
+                locals,
+                instruction,
+                operand::subsurface::color,
+                make_float3(0.0f));
+            return TracedClosure{
+                .operation = operation,
+                .weight = color * mix_weight,
+                .color = color,
+                .normal = safe_normalize(
+                    read_closure_vector_or(
+                        runtime,
+                        services,
+                        point,
+                        locals,
+                        instruction,
+                        operand::subsurface::normal,
+                        point.shading_normal),
+                    point.shading_normal),
+                .roughness = read_closure_scalar_or(
+                    runtime,
+                    services,
+                    point,
+                    locals,
+                    instruction,
+                    operand::subsurface::roughness,
+                    0.0f),
+                .subsurface_radius = max(
+                    read_closure_vector_or(
+                        runtime,
+                        services,
+                        point,
+                        locals,
+                        instruction,
+                        operand::subsurface::radius,
+                        make_float3(0.0f)),
+                    make_float3(0.0f)),
+                .subsurface_scale = max(
+                    read_closure_scalar_or(
+                        runtime,
+                        services,
+                        point,
+                        locals,
+                        instruction,
+                        operand::subsurface::scale,
+                        0.0f),
+                    0.0f),
+                .subsurface_method = bssrdf_method,
+                .subsurface_ior = read_closure_scalar_or(
+                    runtime,
+                    services,
+                    point,
+                    locals,
+                    instruction,
+                    operand::subsurface::ior,
+                    1.4f),
+                .subsurface_anisotropy = read_closure_scalar_or(
+                    runtime,
+                    services,
+                    point,
+                    locals,
+                    instruction,
+                    operand::subsurface::anisotropy,
+                    0.0f),
+                .ior = 1.0f};
+        }
+        case compiler::ClosureOperation::null_closure:
+        case compiler::ClosureOperation::add:
+        case compiler::ClosureOperation::mix:
+            break;
     }
     std::abort();
 }
 
-[[nodiscard]] TracedValues materialize_preparation_values(
-    const SurfaceValueRuntimeTopology &topology,
+using SurfaceClosureBytecodeVisitor =
+    std::function<void(const TracedClosure &, UInt, UInt)>;
+
+void emit_surface_closure_program(
+    const SurfaceValueRuntime &runtime,
     const ShaderServices &services,
     const SurfacePoint &point,
-    const SurfaceValueLocals &locals) noexcept {
-    TracedValues values;
-    values.shading_normal = point.shading_normal;
-    const auto &instructions =
-        topology.program->value_instructions();
-    values.values.reserve(instructions.size());
-    for (auto index = std::size_t{0u}; index < instructions.size();
-         ++index) {
-        values.values.emplace_back(read_static_value(
-            instructions[index].result_type,
+    const SurfaceValueLocals &locals,
+    UInt instruction_begin,
+    UInt instruction_end,
+    const SurfaceClosureBytecodeVisitor &visit) noexcept {
+    UInt instruction_index = instruction_begin;
+    $while(instruction_index < instruction_end) {
+        Var<luisa::uint4> instruction =
+            runtime.closure_instruction_buffer->read(
+                instruction_index);
+        const auto static_variant =
+            instruction.x &
+            compiler::surface_closure_static_variant_mask;
+        const auto endpoints =
+            (instruction.x &
+             compiler::surface_closure_endpoint_mask) >>
+            compiler::surface_closure_endpoint_shift;
+        const auto mix_weight = closure_mix_weight(
+            runtime,
             services,
             point,
             locals,
-            topology.preparation_addresses[index]));
-    }
-    return values;
+            instruction);
+        luisa::compute::detail::SwitchStmtBuilder{static_variant} % [&] {
+            for (const auto variant :
+                 runtime.closure_static_variants) {
+                luisa::compute::detail::SwitchCaseStmtBuilder{variant} %
+                    [&, variant] {
+                        const auto closure = decode_surface_closure(
+                            variant,
+                            runtime.used_principled_closure_features,
+                            runtime,
+                            services,
+                            point,
+                            locals,
+                            instruction,
+                            mix_weight);
+                        visit(closure, endpoints, instruction_index);
+                    };
+            }
+            luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
+                luisa::compute::dsl::unreachable(
+                    "invalid compact surface closure variant");
+            };
+        };
+        instruction_index += 1u;
+    };
+}
+
+[[nodiscard]] SurfaceClosureRecord merged_transparent_closure(
+    const SurfacePoint &point,
+    Float3 weight,
+    Float sample_weight_value) noexcept {
+    return canonical_surface_closure(TracedClosure{
+        .operation = compiler::ClosureOperation::transparent,
+        .weight = weight,
+        .allocation_weight = sample_weight_value,
+        .sample_weight = sample_weight_value,
+        .setup_valid = true,
+        .albedo = weight,
+        .color = make_float3(1.0f),
+        .normal = point.shading_normal,
+        .roughness = 0.0f,
+        .ior = 1.0f,
+        .evaluation_scale = make_float3(1.0f)});
+}
+
+[[nodiscard]] SurfacePreparation prepare_surface_closure_program(
+    const SurfaceValueRuntime &runtime,
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    const SurfaceValueLocals &locals,
+    UInt program,
+    const SurfacePreparationQuery &query,
+    const SurfaceClosureIdentityCallable &identity,
+    const SurfaceClosureAovCallable &aov_operation) noexcept {
+    const auto range = runtime.program_buffer->read(program);
+    const auto closure_begin = range.z;
+    const auto closure_end = range.z + range.w;
+    SurfacePreparationAccumulator accumulator{
+        point,
+        maximum_surface_closure_capacity,
+        query.glossy_filter_roughness,
+        query.include_runtime_flags,
+        query.include_aov,
+        identity,
+        aov_operation};
+    const PrincipledLayerComponent principled_layers{services, point};
+    Float3 emission = make_float3(0.0f);
+    Float3 transparent_weight = make_float3(0.0f);
+    Float transparent_sample_weight = 0.0f;
+    Bool transparent_pending = false;
+    UInt replay_begin = closure_end;
+
+    emit_surface_closure_program(
+        runtime,
+        services,
+        point,
+        locals,
+        closure_begin,
+        closure_end,
+        [&](const TracedClosure &raw,
+            UInt endpoints,
+            UInt instruction_index) noexcept {
+            const auto emission_endpoint =
+                (endpoints & compiler::surface_closure_endpoint_bit(
+                                 compiler::SurfaceClosureEndpoint::emission)) !=
+                0u;
+            if (raw.operation ==
+                compiler::ClosureOperation::emission) {
+                $if(emission_endpoint) {
+                    emission += raw.weight;
+                };
+            } else if (
+                raw.operation ==
+                    compiler::ClosureOperation::principled &&
+                (runtime.used_principled_closure_features &
+                 compiler::principled_closure_feature_bit(
+                     compiler::PrincipledClosureFeature::emission)) != 0u) {
+                const auto contribution = principled_layers
+                                              .evaluate_emission(
+                                                  raw,
+                                                  raw.principled_features,
+                                                  query.emission_reflective_caustics)
+                                              .radiance;
+                $if(emission_endpoint) {
+                    emission += contribution;
+                };
+            }
+
+            const auto physical_endpoint =
+                (endpoints & compiler::surface_closure_endpoint_bit(
+                                 compiler::SurfaceClosureEndpoint::physical)) !=
+                0u;
+            $if(physical_endpoint) {
+                expand_physical_surface_closure(
+                    services,
+                    point,
+                    raw,
+                    query.reflective_caustics,
+                    query.refractive_caustics,
+                    [&](const TracedClosure &physical) noexcept {
+                        if (physical.operation ==
+                            compiler::ClosureOperation::transparent) {
+                            transparent_weight += physical.weight;
+                            transparent_sample_weight +=
+                                physical.sample_weight;
+                            const auto allocated =
+                                physical.sample_weight >=
+                                cycles_closure::closure_weight_cutoff;
+                            $if(!transparent_pending & allocated) {
+                                replay_begin = instruction_index;
+                            };
+                            transparent_pending |= allocated;
+                            return;
+                        }
+                        $if(!transparent_pending) {
+                            accumulator.add(
+                                canonical_surface_closure(physical));
+                        };
+                    });
+            };
+        });
+
+    $if(transparent_pending) {
+        accumulator.add(merged_transparent_closure(
+            point,
+            transparent_weight,
+            transparent_sample_weight));
+    };
+
+    // The first pass has already evaluated values and found the exact raw
+    // instruction containing the first allocated transparent output. Replaying
+    // only from that leaf reconstructs the non-transparent suffix in source
+    // order without retaining a per-thread physical closure arena. Pure setup
+    // is deterministic, so the retained sequence and left-fold order are
+    // identical to the expanded route.
+    Bool reached_first_transparent = false;
+    $if(transparent_pending) {
+        emit_surface_closure_program(
+            runtime,
+            services,
+            point,
+            locals,
+            replay_begin,
+            closure_end,
+            [&](const TracedClosure &raw,
+                UInt endpoints,
+                UInt) noexcept {
+                const auto physical_endpoint =
+                    (endpoints & compiler::surface_closure_endpoint_bit(
+                                     compiler::SurfaceClosureEndpoint::physical)) !=
+                    0u;
+                $if(physical_endpoint) {
+                    expand_physical_surface_closure(
+                        services,
+                        point,
+                        raw,
+                        query.reflective_caustics,
+                        query.refractive_caustics,
+                        [&](const TracedClosure &physical) noexcept {
+                            if (physical.operation ==
+                                compiler::ClosureOperation::transparent) {
+                                reached_first_transparent |=
+                                    physical.sample_weight >=
+                                    cycles_closure::closure_weight_cutoff;
+                                return;
+                            }
+                            $if(reached_first_transparent) {
+                                accumulator.add(
+                                    canonical_surface_closure(physical));
+                            };
+                        });
+                };
+            });
+    };
+    accumulator.finish();
+    return accumulator.preparation(std::move(emission));
 }
 
 [[nodiscard]] SurfacePoint automatic_normal_point(
@@ -659,6 +1251,23 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
         return nullptr;
     }
     const auto &image = runtime->executable.executable.values;
+    runtime->used_principled_closure_features =
+        image.used_principled_closure_features;
+    runtime->closure_static_variants.reserve(
+        image.closure_instructions.size());
+    for (const auto &instruction : image.closure_instructions) {
+        const auto key = instruction.control &
+                         compiler::surface_closure_static_variant_mask;
+        if (std::find(
+                runtime->closure_static_variants.begin(),
+                runtime->closure_static_variants.end(),
+                key) == runtime->closure_static_variants.end()) {
+            runtime->closure_static_variants.emplace_back(key);
+        }
+    }
+    std::sort(
+        runtime->closure_static_variants.begin(),
+        runtime->closure_static_variants.end());
     for (auto index = std::size_t{0u}; index < image.programs.size();
          ++index) {
         if (!fits_runtime_capacity(image.programs[index])) {
@@ -698,9 +1307,6 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
             instruction.mix_term_begin,
             instruction.mix_term_count));
     }
-    runtime->closure_principled_features.assign(
-        image.closure_principled_features.begin(),
-        image.closure_principled_features.end());
     runtime->closure_operands.assign(
         image.closure_operands.begin(), image.closure_operands.end());
     runtime->closure_mix_terms.reserve(
@@ -727,7 +1333,6 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
         compiler::SurfaceValueAddress::invalid_value);
     provide_dummy_if_empty(
         runtime->closure_instructions, luisa::make_uint4(0u));
-    provide_dummy_if_empty(runtime->closure_principled_features, 0u);
     provide_dummy_if_empty(
         runtime->closure_operands,
         compiler::SurfaceValueAddress::invalid_value);
@@ -759,9 +1364,6 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
     runtime->closure_instruction_buffer =
         device.create_buffer<luisa::uint4>(
             runtime->closure_instructions.size());
-    runtime->closure_principled_feature_buffer =
-        device.create_buffer<luisa::uint>(
-            runtime->closure_principled_features.size());
     runtime->closure_operand_buffer =
         device.create_buffer<luisa::uint>(
             runtime->closure_operands.size());
@@ -797,8 +1399,6 @@ void upload_surface_value_runtime(
                   luisa::span{runtime.metadata_parameters})
            << runtime.closure_instruction_buffer.copy_from(
                   luisa::span{runtime.closure_instructions})
-           << runtime.closure_principled_feature_buffer.copy_from(
-                  luisa::span{runtime.closure_principled_features})
            << runtime.closure_operand_buffer.copy_from(
                   luisa::span{runtime.closure_operands})
            << runtime.closure_mix_term_buffer.copy_from(
@@ -833,6 +1433,10 @@ make_compact_surface_preparation_callable(
 
     const auto closure_setup =
         make_surface_closure_setup_callables();
+    const auto closure_identity =
+        make_surface_closure_identity_callable();
+    const auto closure_aov =
+        make_surface_closure_aov_callable();
     const auto texture_sampling =
         make_texture_2d_sampling_callables();
     const auto attribute_lookup =
@@ -889,24 +1493,13 @@ make_compact_surface_preparation_callable(
         };
     height.set_name("surface_value_height");
 
-    std::vector<const GraphSurfaceImplementation *> implementations;
-    implementations.reserve(scene->surfaces.size());
-    for (auto topology = std::size_t{0u};
-         topology < scene->surfaces.size(); ++topology) {
-        // compile_scene is the sole producer of this dispatch and registers
-        // GraphSurface for every dense tag before constructing callables.
-        const auto *surface = static_cast<const GraphSurface *>(
-            scene->surfaces.implementation(topology));
-        implementations.emplace_back(
-            surface->internal_implementation());
-    }
-
     SurfacePreparationCallable preparation =
         [scene,
          nodes,
-         implementations = std::move(implementations),
          height = std::move(height),
          closure_setup,
+         closure_identity,
+         closure_aov,
          texture_sampling,
          attribute_lookup](
             BufferFloat scalar_parameters,
@@ -941,7 +1534,8 @@ make_compact_surface_preparation_callable(
                 pack_surface_preparation(
                     SurfacePreparation::zero(point));
             $if(surface_tag <
-                static_cast<luisa::uint>(implementations.size())) {
+                static_cast<luisa::uint>(
+                    scene->surface_values->topologies.size())) {
                 SurfaceValueLocals locals;
                 const auto normal_program =
                     surface_tag *
@@ -996,45 +1590,16 @@ make_compact_surface_preparation_callable(
                     geometry_heap);
                 const auto query =
                     unpack_surface_preparation_query(packed_query);
-                if (implementations.size() == 1u) {
-                    const auto values =
-                        materialize_preparation_values(
-                            scene->surface_values->topologies.front(),
-                            services,
-                            point,
-                            locals);
-                    result = pack_surface_preparation(
-                        implementations.front()->prepare_traced_values(
-                            services, point, values, query));
-                } else {
-                    luisa::compute::detail::SwitchStmtBuilder{surface_tag} % [&] {
-                        for (auto topology = std::size_t{0u};
-                             topology < implementations.size(); ++topology) {
-                            luisa::compute::detail::SwitchCaseStmtBuilder{
-                                static_cast<luisa::uint>(topology)} %
-                                [&, topology] {
-                                    const auto values =
-                                        materialize_preparation_values(
-                                            scene->surface_values
-                                                ->topologies[topology],
-                                            services,
-                                            point,
-                                            locals);
-                                    result = pack_surface_preparation(
-                                        implementations[topology]
-                                            ->prepare_traced_values(
-                                                services,
-                                                point,
-                                                values,
-                                                query));
-                                };
-                        }
-                        luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
-                            luisa::compute::dsl::unreachable(
-                                "invalid compact surface topology tag");
-                        };
-                    };
-                }
+                result = pack_surface_preparation(
+                    prepare_surface_closure_program(
+                        *scene->surface_values,
+                        services,
+                        point,
+                        locals,
+                        preparation_program,
+                        query,
+                        closure_identity,
+                        closure_aov));
             };
             return result;
         };
