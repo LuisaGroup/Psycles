@@ -798,6 +798,22 @@ struct SurfaceClosureCollection {
     Float3 shading_normal;
 };
 
+// Result of the single path-hit shader execution. Emission and the canonical
+// physical closure sequence are produced from one shared value schedule; the
+// latter is streamed into the caller-provided SurfaceClosureCollector. This is
+// the Luisa host/JIT analogue of Cycles populating one local ShaderData before
+// any BSDF consumer runs.
+struct SurfacePopulation {
+    Float3 emission;
+    Float3 shading_normal;
+};
+
+struct SurfacePopulationQuery {
+    Expr<bool> emission_reflective_caustics;
+    Expr<bool> reflective_caustics;
+    Expr<bool> refractive_caustics;
+};
+
 struct SurfaceEvaluation {
     Float3 f;
     Float pdf;
@@ -1086,6 +1102,30 @@ public:
         return {.shading_normal = point.shading_normal};
     }
 
+    // Production graph surfaces override this boundary to share one value
+    // trace between emission and closure population. The conservative default
+    // keeps custom/test surfaces source-compatible; it preserves semantics but
+    // does not claim the single-evaluation property.
+    [[nodiscard]] virtual SurfacePopulation populate(
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        const SurfacePopulationQuery &query,
+        SurfaceClosureCollector &collector) const noexcept {
+        const auto collection = collect_closures(
+            services,
+            point,
+            query.reflective_caustics,
+            query.refractive_caustics,
+            collector);
+        return {
+            .emission = emission(
+                services,
+                point,
+                point.incoming,
+                query.emission_reflective_caustics),
+            .shading_normal = collection.shading_normal};
+    }
+
     [[nodiscard]] virtual SurfaceEvaluation evaluate(
         const ShaderServices &services,
         const SurfacePoint &point,
@@ -1227,6 +1267,22 @@ public:
                 reflective_caustics,
                 refractive_caustics,
                 collector);
+        });
+        return result;
+    }
+
+    [[nodiscard]] SurfacePopulation populate(
+        Expr<std::uint32_t> tag,
+        const ShaderServices &services,
+        const SurfacePoint &point,
+        const SurfacePopulationQuery &query,
+        SurfaceClosureCollector &collector) const noexcept {
+        auto result = SurfacePopulation{
+            .emission = make_float3(0.0f),
+            .shading_normal = point.shading_normal};
+        _surfaces.dispatch(tag, [&](const Surface *surface) noexcept {
+            result = surface->populate(
+                services, point, query, collector);
         });
         return result;
     }
