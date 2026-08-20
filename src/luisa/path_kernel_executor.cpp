@@ -98,6 +98,25 @@ void validate_surface_queue_hint_abi(
         path_transition::scheduler_hint);
 }
 
+template<typename SchedulerConfig>
+[[nodiscard]] bool configure_surface_queue_hint(
+    const PathKernelConfig &path, const RenderCoroutine &coroutine,
+    SchedulerConfig &scheduler_config) noexcept {
+    const auto surface_count = path.scene->surfaces.size();
+    const auto enabled = path.staged_surface_sorting &&
+                         surface_count != 0u &&
+                         (!path.scene->geometries.empty() ||
+                          !path.scene->curve_geometries.empty());
+    if (!enabled) { return false; }
+    validate_surface_queue_hint_abi(coroutine);
+    LUISA_ASSERT(surface_count <= std::numeric_limits<std::uint32_t>::max(),
+                 "Surface queue key range {} exceeds the uint32 scheduler ABI.",
+                 surface_count);
+    scheduler_config.hint_range = static_cast<std::uint32_t>(surface_count);
+    scheduler_config.hint_fields = {path_transition::shade_surface};
+    return true;
+}
+
 void validate_cycles_stage_partition_abi(
     const RenderCoroutine &coroutine,
     const PathKernelSceneStagePlan &plan,
@@ -381,6 +400,10 @@ build_path_kernel_executor(luisa::compute::Device &device,
                     1u : config.wavefront_counter_readback_pipeline_depth;
             scheduler_config.tail_megakernel_threshold =
                 config.wavefront_tail_megakernel_threshold;
+            const auto has_surface_queue_hint =
+                config.wavefront_graph_selective_scheduling &&
+                configure_surface_queue_hint(
+                    shadow_path.path, coroutine, scheduler_config);
             scheduler_config.shader_option = config.shader_option;
             auto scheduler =
                 std::make_unique<RenderSchedulers::GraphWavefront>(
@@ -390,7 +413,7 @@ build_path_kernel_executor(luisa::compute::Device &device,
                 "frame_fields={} frame_bytes={} capacity={} block={} "
                 "workers={} selective={} refill_threshold={} "
                 "readback_batch={} readback_depth={} "
-                "tail_threshold={}.",
+                "tail_threshold={} surface_hint_sort={} surface_keys={}.",
                 coroutine.subroutine_count(),
                 coroutine.frame().frame_field_count(),
                 coroutine.frame().frame_type()->size(),
@@ -401,7 +424,9 @@ build_path_kernel_executor(luisa::compute::Device &device,
                 config.wavefront_graph_refill_threshold,
                 config.wavefront_counter_readback_batch_size,
                 config.wavefront_counter_readback_pipeline_depth,
-                config.wavefront_tail_megakernel_threshold);
+                config.wavefront_tail_megakernel_threshold,
+                has_surface_queue_hint,
+                path.scene->surfaces.size());
             return PathKernelExecutor{std::make_unique<CoroutineExecutor>(
                 config.scheduler, std::move(scheduler),
                 std::move(shadow_path.storage), shadow_path.capacity,
@@ -430,13 +455,6 @@ build_path_kernel_executor(luisa::compute::Device &device,
             auto coroutine =
                 build_cycles_stage_coroutine(staged_path, config.scheduler);
     const auto surface_count = path.scene->surfaces.size();
-    const auto has_surface_queue_hint = path.staged_surface_sorting &&
-                surface_count != 0u &&
-                (!path.scene->geometries.empty() ||
-                 !path.scene->curve_geometries.empty());
-            if (has_surface_queue_hint) {
-                validate_surface_queue_hint_abi(coroutine);
-            }
     LUISA_INFO("Psycles staged wavefront path coroutine: "
                 "subroutines={} frame_fields={} frame_bytes={} capacity={}.",
                 coroutine.subroutine_count(),
@@ -451,14 +469,8 @@ build_path_kernel_executor(luisa::compute::Device &device,
             scheduler_config.incremental_continuation_counts = true;
             scheduler_config.refill_continuations = {
                 path_transition::intersect_closest};
-            if (has_surface_queue_hint) {
-      LUISA_ASSERT(surface_count <= std::numeric_limits<std::uint32_t>::max(),
-                    "Surface queue key range {} exceeds the uint32 "
-                    "scheduler ABI.",
-                    surface_count);
-      scheduler_config.hint_range = static_cast<std::uint32_t>(surface_count);
-      scheduler_config.hint_fields = {path_transition::shade_surface};
-    }
+            const auto has_surface_queue_hint = configure_surface_queue_hint(
+                staged_path, coroutine, scheduler_config);
     scheduler_config.shader_option = config.shader_option;
     auto scheduler = std::make_unique<RenderSchedulers::Wavefront>(
                     device, coroutine, scheduler_config);
