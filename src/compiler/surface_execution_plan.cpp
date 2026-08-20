@@ -1,10 +1,12 @@
 #include <psycles/compiler/surface_execution_plan.h>
 
 #include <array>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -55,6 +57,29 @@ namespace {
 
 [[nodiscard]] SurfaceValueStoragePlan reject(std::string diagnostic) {
   return {.valid = false, .diagnostic = std::move(diagnostic)};
+}
+
+[[nodiscard]] SurfaceValueProgramImage reject_image(std::string diagnostic) {
+  return {.valid = false, .diagnostic = std::move(diagnostic)};
+}
+
+[[nodiscard]] bool encode_location(const SurfaceValueLocation &location,
+                                   SurfaceValueAddress &address) noexcept {
+  if (location.storage == SurfaceValueStorageClass::inactive ||
+      location.index > SurfaceValueAddress::index_mask) {
+    return false;
+  }
+  const auto bank = static_cast<std::uint32_t>(location.bank);
+  if (bank > static_cast<std::uint32_t>(
+                 SurfaceValueBank::unsigned_integer)) {
+    return false;
+  }
+  address = SurfaceValueAddress{
+      (location.storage == SurfaceValueStorageClass::parameter
+           ? SurfaceValueAddress::parameter_bit
+           : 0u) |
+      (bank << SurfaceValueAddress::bank_shift) | location.index};
+  return address.valid();
 }
 
 } // namespace
@@ -139,6 +164,10 @@ plan_surface_value_storage(const SurfaceProgram &program,
       ++remaining_uses[operand.value];
     }
     if (outputs[index]) {
+      if (remaining_uses[index] ==
+          std::numeric_limits<std::uint32_t>::max()) {
+        return reject("the value use count exceeds the plan encoding");
+      }
       ++remaining_uses[index];
     }
   }
@@ -199,6 +228,119 @@ plan_surface_value_storage(const SurfaceProgram &program,
   result.scalar_slots = slot_counts[0u];
   result.vector_slots = slot_counts[1u];
   result.unsigned_integer_slots = slot_counts[2u];
+  result.valid = true;
+  return result;
+}
+
+SurfaceValueProgramImage lower_surface_value_program(
+    const SurfaceProgram &program,
+    const SurfaceValueStoragePlan &storage) {
+  static_assert(std::is_trivially_copyable_v<SurfaceValueBytecodeInstruction>);
+  static_assert(std::is_trivially_copyable_v<SurfaceValueBytecodeMetadata>);
+  static_assert(sizeof(SurfaceValueBytecodeInstruction) == 16u);
+  static_assert(sizeof(SurfaceValueBytecodeMetadata) == 40u);
+  if (!storage.compatible(program)) {
+    return reject_image("cannot lower an incompatible value storage plan");
+  }
+
+  const auto &values = program.value_instructions();
+  SurfaceValueProgramImage result;
+  result.instructions.reserve(storage.instructions.size());
+  result.value_addresses.resize(
+      values.size(), SurfaceValueAddress::invalid_value);
+  result.scalar_slots = storage.scalar_slots;
+  result.vector_slots = storage.vector_slots;
+  result.unsigned_integer_slots = storage.unsigned_integer_slots;
+  for (auto index = std::size_t{0u}; index < storage.locations.size();
+       ++index) {
+    if (storage.locations[index].storage ==
+        SurfaceValueStorageClass::inactive) {
+      continue;
+    }
+    SurfaceValueAddress address;
+    if (!encode_location(storage.locations[index], address)) {
+      return reject_image("a planned value address cannot be encoded");
+    }
+    result.value_addresses[index] = address.encoded();
+  }
+  for (const auto id : storage.instructions) {
+    if (!id.valid() || id.value >= values.size()) {
+      return reject_image("the storage schedule contains an invalid value");
+    }
+    const auto &instruction = values[id.value];
+    if (instruction.operation == ValueOperation::parameter) {
+      return reject_image(
+          "a parameter leaked into the runtime instruction stream");
+    }
+    if (result.operands.size() >
+            std::numeric_limits<std::uint32_t>::max() ||
+        instruction.operands.size() >
+            std::numeric_limits<std::uint32_t>::max() -
+                result.operands.size()) {
+      return reject_image("the operand stream exceeds the device encoding");
+    }
+    const auto result_address =
+        SurfaceValueAddress{result.value_addresses[id.value]};
+    if (!result_address.valid() || result_address.parameter()) {
+      return reject_image("an instruction result has no local typed address");
+    }
+
+    const auto operand_begin =
+        static_cast<std::uint32_t>(result.operands.size());
+    for (const auto operand : instruction.operands) {
+      if (!operand.valid() || operand.value >= storage.locations.size()) {
+        return reject_image("an instruction operand has no planned address");
+      }
+      const auto operand_address =
+          SurfaceValueAddress{result.value_addresses[operand.value]};
+      if (!operand_address.valid()) {
+        return reject_image("an instruction operand address cannot be encoded");
+      }
+      result.operands.emplace_back(operand_address.encoded());
+    }
+
+    auto metadata_index = ~std::uint32_t{0u};
+    const auto has_metadata = instruction.static_u0 != 0u ||
+                              instruction.static_u1 != 0u ||
+                              std::bit_cast<std::uint32_t>(
+                                  instruction.static_f0) != 0u ||
+                              std::bit_cast<std::uint32_t>(
+                                  instruction.static_f1) != 0u ||
+                              instruction.parameter.valid() ||
+                              !instruction.static_table.empty();
+    if (has_metadata) {
+      if (result.metadata.size() >=
+              std::numeric_limits<std::uint32_t>::max() ||
+          result.static_data.size() >
+              std::numeric_limits<std::uint32_t>::max() ||
+          instruction.static_table.size() >
+              std::numeric_limits<std::uint32_t>::max() -
+                  result.static_data.size()) {
+        return reject_image("value metadata exceeds the device encoding");
+      }
+      metadata_index = static_cast<std::uint32_t>(result.metadata.size());
+      result.metadata.emplace_back(SurfaceValueBytecodeMetadata{
+          .static_u0 = instruction.static_u0,
+          .static_u1 = instruction.static_u1,
+          .static_f0 = instruction.static_f0,
+          .static_f1 = instruction.static_f1,
+          .parameter = instruction.parameter.valid()
+                           ? instruction.parameter.value
+                           : ~std::uint32_t{0u},
+          .static_table_begin =
+              static_cast<std::uint32_t>(result.static_data.size()),
+          .static_table_count = static_cast<std::uint32_t>(
+              instruction.static_table.size())});
+      result.static_data.insert(result.static_data.end(),
+                                instruction.static_table.begin(),
+                                instruction.static_table.end());
+    }
+    result.instructions.emplace_back(SurfaceValueBytecodeInstruction{
+        .operation = static_cast<std::uint32_t>(instruction.operation),
+        .result = result_address.encoded(),
+        .operand_begin = operand_begin,
+        .metadata_index = metadata_index});
+  }
   result.valid = true;
   return result;
 }
