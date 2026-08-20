@@ -335,6 +335,9 @@ int main(int argc, char **argv) {
         auto value_bytecode_operand_bytes = std::size_t{};
         auto value_bytecode_metadata_bytes = std::size_t{};
         auto value_bytecode_static_bytes = std::size_t{};
+        std::vector<psycles::compiler::SurfaceValueProgramImage>
+            value_program_images;
+        value_program_images.reserve(representative_programs.size());
         std::map<PrincipledClosureFeature, std::size_t>
             feature_occurrences;
         for (const auto &[signature, program] :
@@ -391,6 +394,7 @@ int main(int argc, char **argv) {
                 sizeof(psycles::compiler::SurfaceValueBytecodeMetadata);
             value_bytecode_static_bytes +=
                 image.static_data.size() * sizeof(float);
+            value_program_images.emplace_back(image);
             for (const auto &entry : plan.entries()) {
                 reachable_closures += entry.reachable ? 1u : 0u;
                 for (const auto feature : {
@@ -413,6 +417,23 @@ int main(int argc, char **argv) {
                 }
             }
         }
+        const auto value_scene_image =
+            psycles::compiler::build_surface_value_scene_image(
+                value_program_images);
+        if (!value_scene_image.valid) {
+            std::cerr << "surface scene bytecode aggregation failed: "
+                      << value_scene_image.diagnostic << '\n';
+            return EXIT_FAILURE;
+        }
+        const auto value_scene_descriptor_bytes =
+            value_scene_image.programs.size() *
+            sizeof(psycles::compiler::SurfaceValueProgramDescriptor);
+        const auto value_scene_total_bytes =
+            value_scene_descriptor_bytes +
+            value_bytecode_instruction_bytes +
+            value_bytecode_operand_bytes +
+            value_bytecode_metadata_bytes +
+            value_bytecode_static_bytes;
         const auto feature_count =
             [&](PrincipledClosureFeature feature) {
                 const auto iter = feature_occurrences.find(feature);
@@ -449,6 +470,10 @@ int main(int argc, char **argv) {
             << value_bytecode_metadata_bytes
             << "\nvalue_bytecode_static_bytes "
             << value_bytecode_static_bytes
+            << "\nvalue_scene_descriptor_bytes "
+            << value_scene_descriptor_bytes
+            << "\nvalue_scene_total_bytes "
+            << value_scene_total_bytes
             << "\nprincipled_alpha "
             << feature_count(PrincipledClosureFeature::alpha)
             << "\nprincipled_sheen "

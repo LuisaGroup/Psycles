@@ -938,10 +938,14 @@ void test_surface_value_storage_plan() {
     require(image.instructions[0u].operand_begin == 0u &&
                 image.instructions[1u].operand_begin == 2u &&
                 image.instructions[2u].operand_begin == 3u &&
-                image.instructions[0u].operation ==
-                    static_cast<std::uint32_t>(ValueOperation::add) &&
-                image.instructions[1u].operation ==
-                    static_cast<std::uint32_t>(ValueOperation::absolute),
+                surface_value_operation(image.instructions[0u]) ==
+                    ValueOperation::add &&
+                surface_value_operand_count(image.instructions[0u]) == 2u &&
+                surface_value_result_bank(image.instructions[0u]) ==
+                    SurfaceValueBank::scalar &&
+                surface_value_operation(image.instructions[1u]) ==
+                    ValueOperation::absolute &&
+                surface_value_operand_count(image.instructions[1u]) == 1u,
             "compact value program changed topological instruction order");
 
     std::vector<float> transform(16u, 0.0f);
@@ -975,6 +979,41 @@ void test_surface_value_storage_plan() {
                 metadata_image.metadata[0u].static_table_begin == 0u &&
                 metadata_image.metadata[0u].static_table_count == 16u,
             "compact value program lost immutable instruction metadata");
+
+    const std::vector scene_programs{
+        image, metadata_image, image, metadata_image};
+    const auto scene_image =
+        build_surface_value_scene_image(scene_programs);
+    require(scene_image.valid && scene_image.programs.size() == 4u &&
+                scene_image.instructions.size() == 8u &&
+                scene_image.operands.size() == 10u &&
+                scene_image.metadata.size() == 2u &&
+                scene_image.static_data.size() == 32u,
+            "scene value-program aggregation changed a stream extent");
+    require(scene_image.programs[0u].instruction_begin == 0u &&
+                scene_image.programs[0u].instruction_count == 3u &&
+                scene_image.programs[1u].instruction_begin == 3u &&
+                scene_image.programs[2u].instruction_begin == 4u &&
+                scene_image.programs[3u].instruction_begin == 7u,
+            "scene value-program descriptors do not preserve tag order");
+    require(scene_image.instructions[4u].operand_begin == 5u &&
+                scene_image.instructions[7u].metadata_index == 1u &&
+                scene_image.metadata[1u].static_table_begin == 16u,
+            "scene value-program aggregation did not rebase a global stream");
+    require(scene_image.programs[0u].scalar_slots == 1u &&
+                scene_image.programs[1u].vector_slots == 1u,
+            "scene value-program descriptors lost typed slot bounds");
+
+    auto malformed_image = image;
+    malformed_image.instructions.front().control |= 1u << 31u;
+    const auto malformed_scene = build_surface_value_scene_image(
+        std::vector{malformed_image, metadata_image});
+    require(!malformed_scene.valid && malformed_scene.programs.empty() &&
+                malformed_scene.instructions.empty() &&
+                malformed_scene.diagnostic.find("control word") !=
+                    std::string::npos,
+            "scene aggregation accepted or partially committed a malformed "
+            "instruction stream");
 
     std::vector<ValueInstruction> invalid_values;
     invalid_values.emplace_back(ValueInstruction{

@@ -3,6 +3,7 @@
 #include <compare>
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -97,11 +98,55 @@ public:
 // invariant, and uncommon immutable fields live in a side table so ordinary
 // arithmetic does not fetch two uint64 values and a static-table descriptor.
 struct SurfaceValueBytecodeInstruction {
-  std::uint32_t operation{};
+  // Packed as [reserved:14 | result bank:2 | operand count:8 | opcode:8].
+  // ValueOperation is a closed uint8_t enum and every operation has a fixed
+  // arity. Keeping those facts in the stream makes a serialized image
+  // independently verifiable without enlarging the hot 16-byte record.
+  std::uint32_t control{};
   std::uint32_t result{};
   std::uint32_t operand_begin{};
   std::uint32_t metadata_index{~std::uint32_t{0u}};
 };
+
+inline constexpr std::uint32_t surface_value_opcode_mask = 0xffu;
+inline constexpr std::uint32_t surface_value_operand_count_shift = 8u;
+inline constexpr std::uint32_t surface_value_operand_count_mask =
+    0xffu << surface_value_operand_count_shift;
+inline constexpr std::uint32_t surface_value_result_bank_shift = 16u;
+inline constexpr std::uint32_t surface_value_result_bank_mask =
+    0x3u << surface_value_result_bank_shift;
+inline constexpr std::uint32_t surface_value_control_mask =
+    surface_value_opcode_mask | surface_value_operand_count_mask |
+    surface_value_result_bank_mask;
+
+[[nodiscard]] constexpr std::uint32_t make_surface_value_control(
+    ValueOperation operation, std::uint8_t operand_count,
+    SurfaceValueBank result_bank) noexcept {
+  return static_cast<std::uint32_t>(operation) |
+         (static_cast<std::uint32_t>(operand_count)
+          << surface_value_operand_count_shift) |
+         (static_cast<std::uint32_t>(result_bank)
+          << surface_value_result_bank_shift);
+}
+
+[[nodiscard]] constexpr ValueOperation surface_value_operation(
+    const SurfaceValueBytecodeInstruction &instruction) noexcept {
+  return static_cast<ValueOperation>(instruction.control &
+                                     surface_value_opcode_mask);
+}
+
+[[nodiscard]] constexpr std::uint32_t surface_value_operand_count(
+    const SurfaceValueBytecodeInstruction &instruction) noexcept {
+  return (instruction.control & surface_value_operand_count_mask) >>
+         surface_value_operand_count_shift;
+}
+
+[[nodiscard]] constexpr SurfaceValueBank surface_value_result_bank(
+    const SurfaceValueBytecodeInstruction &instruction) noexcept {
+  return static_cast<SurfaceValueBank>(
+      (instruction.control & surface_value_result_bank_mask) >>
+      surface_value_result_bank_shift);
+}
 
 // Ordered largest-to-smallest alignment. A metadata record exists only when
 // at least one field differs from its canonical zero/invalid default.
@@ -131,6 +176,35 @@ struct SurfaceValueProgramImage {
   std::uint32_t unsigned_integer_slots{};
 };
 
+// One entry per runtime surface tag. All offsets in the aggregate streams are
+// absolute, while typed local addresses remain relative to an invocation's
+// small scalar/vector/uint64 banks. Eight uint32 fields keep the descriptor a
+// naturally aligned 32-byte device record and leave named extension fields for
+// the subsequent closure-program lowering.
+struct SurfaceValueProgramDescriptor {
+  std::uint32_t instruction_begin{};
+  std::uint32_t instruction_count{};
+  std::uint32_t scalar_slots{};
+  std::uint32_t vector_slots{};
+  std::uint32_t unsigned_integer_slots{};
+  std::uint32_t closure_begin{};
+  std::uint32_t closure_count{};
+  std::uint32_t flags{};
+};
+
+// Scene-wide immutable image consumed by one shared device evaluator. The
+// builder is transactional: any malformed source program rejects the complete
+// image, so a runtime tag can never observe a partially relocated stream.
+struct SurfaceValueSceneImage {
+  bool valid{};
+  std::string diagnostic;
+  std::vector<SurfaceValueProgramDescriptor> programs;
+  std::vector<SurfaceValueBytecodeInstruction> instructions;
+  std::vector<std::uint32_t> operands;
+  std::vector<SurfaceValueBytecodeMetadata> metadata;
+  std::vector<float> static_data;
+};
+
 // `active` must be transitively closed over ValueInstruction operands.
 // `outputs` names values consumed after the stream (normally closure roots),
 // and must be a subset of `active`.
@@ -145,5 +219,12 @@ plan_surface_value_storage(const SurfaceProgram &program,
 [[nodiscard]] SurfaceValueProgramImage lower_surface_value_program(
     const SurfaceProgram &program,
     const SurfaceValueStoragePlan &storage);
+
+// Concatenates topology programs in runtime-tag order and rebases every
+// operand, metadata, and static-table reference to the scene-wide streams.
+// Local typed addresses and material ParameterId references are intentionally
+// unchanged.
+[[nodiscard]] SurfaceValueSceneImage build_surface_value_scene_image(
+    std::span<const SurfaceValueProgramImage> programs);
 
 } // namespace psycles::compiler
