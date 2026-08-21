@@ -736,6 +736,7 @@ void write_population_results(
     float tolerance) noexcept {
     return actual.runtime_flags == expected.runtime_flags &&
            finite(actual.emission) &&
+           finite(actual.shading_normal) &&
            finite(actual.albedo) &&
            finite(actual.glossy_albedo) &&
            finite(actual.transmission_albedo) &&
@@ -743,6 +744,10 @@ void write_population_results(
            finite(actual.transparency) &&
            finite(actual.roughness) &&
            equal(actual.emission, expected.emission, tolerance) &&
+           equal(
+               actual.shading_normal,
+               expected.shading_normal,
+               tolerance) &&
            equal(actual.albedo, expected.albedo, tolerance) &&
            equal(
                actual.glossy_albedo,
@@ -902,6 +907,10 @@ void report_mismatch(
     print(actual.emission);
     std::cerr << ", expanded emission=";
     print(expected.emission);
+    std::cerr << '\n' << "  compact shading normal=";
+    print(actual.shading_normal);
+    std::cerr << ", expanded shading normal=";
+    print(expected.shading_normal);
     std::cerr << '\n' << "  compact albedo=";
     print(actual.albedo);
     std::cerr << ", expanded albedo=";

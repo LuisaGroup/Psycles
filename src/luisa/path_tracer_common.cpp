@@ -441,6 +441,7 @@ unpack_surface_preparation_query(
     const SurfacePreparation &preparation) noexcept {
     Var<SurfacePreparationCall> result;
     result.emission = preparation.emission;
+    result.shading_normal = preparation.shading_normal;
     result.albedo = preparation.aov.albedo;
     result.glossy_albedo = preparation.aov.glossy_albedo;
     result.transmission_albedo =
@@ -456,6 +457,7 @@ unpack_surface_preparation_query(
     const Var<SurfacePreparationCall> &preparation) noexcept {
     return {
         .emission = preparation.emission,
+        .shading_normal = preparation.shading_normal,
         .runtime_flags = preparation.runtime_flags,
         .aov = {
             .albedo = preparation.albedo,

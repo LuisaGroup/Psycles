@@ -161,6 +161,8 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                                            surface.path_surface_query,
                                            include_runtime_flags,
                                            include_aov);
+        surface.set_evaluated_shadow_shading_normal(
+            preparation.shading_normal);
         Float3 emitted = preparation.emission;
         emitted = select(
             emitted, make_float3(0.0f), bounce.subsurface_exit);
@@ -398,7 +400,7 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                               point.geometric_normal);
             trace_write_event(path_step,
                               path_trace_schema::EventSlot::surface_n,
-                              point.shading_normal);
+                              preparation.shading_normal);
             trace_write_event(
                 path_step,
                 path_trace_schema::EventSlot::random_scalars,
@@ -447,6 +449,7 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
 
         return {std::move(cycles_surface_runtime_flags),
                 std::move(bsdf_sample),
+                preparation.shading_normal,
                 std::move(populated_surface)};
     }
 };

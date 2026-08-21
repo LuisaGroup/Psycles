@@ -138,6 +138,7 @@ GraphSurfaceImplementation::prepare_traced_values(
         query.refractive_caustics,
         visitor));
     result.runtime_flags = visitor.runtime_flags();
+    result.shading_normal = visitor.shading_normal();
     result.aov = visitor.aov();
     return result;
 }

@@ -1170,6 +1170,54 @@ template<typename PhysicalClosureSink>
     return result;
 }
 
+[[nodiscard]] Float3 evaluate_compact_surface_normal(
+    const SurfaceValueRuntime &runtime,
+    const SurfaceValueNodes &nodes,
+    const ShaderServices &services,
+    UInt surface_tag,
+    const SurfacePoint &point,
+    const SurfaceValueLocals &locals,
+    const SurfaceValueHeightCallable &height,
+    Expr<Buffer<float>> scalar_parameters,
+    Expr<Buffer<luisa::float3>> vector_parameters,
+    Expr<Buffer<float>> cycles_bsdf_tables,
+    Expr<BindlessArray> textures,
+    Expr<BindlessArray> geometry_heap) noexcept {
+    Float3 result = point.shading_normal;
+    $if(surface_tag <
+        static_cast<luisa::uint>(runtime.topologies.size())) {
+        const auto normal_output =
+            surface_value_runtime_buffer<luisa::uint>(
+                runtime,
+                SurfaceValueRuntimeBufferSlot::normal_output_address)
+                .read(surface_tag);
+        $if(normal_output !=
+            compiler::SurfaceValueAddress::invalid_value) {
+            const auto normal_point = automatic_normal_point(
+                runtime, surface_tag, point);
+            const auto normal_program =
+                surface_tag * SurfaceValueRuntime::programs_per_topology +
+                SurfaceValueRuntime::normal_program_offset;
+            emit_surface_value_program(
+                runtime,
+                nodes,
+                services,
+                normal_point,
+                normal_program,
+                locals,
+                &height,
+                scalar_parameters,
+                vector_parameters,
+                cycles_bsdf_tables,
+                textures,
+                geometry_heap);
+            result = read_vector_dynamic(
+                services, normal_point, locals, normal_output);
+        };
+    };
+    return result;
+}
+
 // Execute the exact dependency-union value schedule once and expose its
 // surface-local typed banks only to a continuation recorded in the same
 // lexical/device control-flow region. Locals never cross the population
@@ -1196,34 +1244,19 @@ void emit_compact_surface_values(
         if (bank_definition == SurfaceValueBankDefinition::full_bank) {
             locals.define_all();
         }
-        const auto normal_program =
-            surface_tag * SurfaceValueRuntime::programs_per_topology +
-            SurfaceValueRuntime::normal_program_offset;
-        const auto normal_output =
-            surface_value_runtime_buffer<luisa::uint>(
-                runtime,
-                SurfaceValueRuntimeBufferSlot::normal_output_address)
-                .read(surface_tag);
-        $if(normal_output !=
-            compiler::SurfaceValueAddress::invalid_value) {
-            const auto normal_point = automatic_normal_point(
-                runtime, surface_tag, point);
-            emit_surface_value_program(
-                runtime,
-                nodes,
-                services,
-                normal_point,
-                normal_program,
-                locals,
-                &height,
-                scalar_parameters,
-                vector_parameters,
-                cycles_bsdf_tables,
-                textures,
-                geometry_heap);
-            point.shading_normal = read_vector_dynamic(
-                services, normal_point, locals, normal_output);
-        };
+        point.shading_normal = evaluate_compact_surface_normal(
+            runtime,
+            nodes,
+            services,
+            surface_tag,
+            point,
+            locals,
+            height,
+            scalar_parameters,
+            vector_parameters,
+            cycles_bsdf_tables,
+            textures,
+            geometry_heap);
 
         const auto preparation_program =
             surface_tag * SurfaceValueRuntime::programs_per_topology +

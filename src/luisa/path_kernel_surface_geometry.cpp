@@ -59,23 +59,6 @@ public:
     point.transmission_depth = transmission_depth;
 
     Float3 shadow_shading_normal = point.shading_normal;
-    const auto record_shadow_terminator = [&] {
-      $if((!bounce.subsurface_exit) &
-          primitive.triangle_smooth &
-          (primitive.instance.shadow_terminator_geometry_offset > 0.0f)) {
-        shadow_shading_normal =
-            invocation.surface_shading_normal(primitive.surface_tag, point);
-      };
-    };
-    if (_primitive_plan.triangles) {
-      if (_primitive_plan.curves) {
-        $if(!primitive.is_curve) {
-          record_shadow_terminator();
-        };
-      } else {
-        record_shadow_terminator();
-      }
-    }
 
     UInt path_lobe_mask = surface_query.lobe_mask;
     const Bool previous_ray_was_diffuse =
@@ -164,6 +147,25 @@ public:
 };
 
 } // namespace
+
+void SurfaceGeometryContext::set_evaluated_shadow_shading_normal(
+    Float3 evaluated_normal) noexcept {
+  const auto record_shadow_terminator = [&] {
+    $if((!bounce.subsurface_exit) & triangle_smooth &
+        (instance.shadow_terminator_geometry_offset > 0.0f)) {
+      shadow_shading_normal = evaluated_normal;
+    };
+  };
+  if (primitive_plan.triangles) {
+    if (primitive_plan.curves) {
+      $if(!is_curve) {
+        record_shadow_terminator();
+      };
+    } else {
+      record_shadow_terminator();
+    }
+  }
+}
 
 Float3 SurfaceGeometryContext::make_ray_origin(Float3 direction) const noexcept {
   Float3 origin = hit_position;

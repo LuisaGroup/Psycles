@@ -163,7 +163,7 @@ class AnalyticLightingComponent final : public DirectLightingComponent {
                 $if(spot) {
                     finite_sample = analytic_light_sampling::sample_spot_light(
                         hit_position,
-                        point.shading_normal,
+                        context.shading.shading_normal,
                         has_transmission,
                         light.position,
                         light.radius,
@@ -180,7 +180,7 @@ class AnalyticLightingComponent final : public DirectLightingComponent {
                 $else {
                     finite_sample = analytic_light_sampling::sample_point_light(
                         hit_position,
-                        point.shading_normal,
+                        context.shading.shading_normal,
                         has_transmission,
                         light.position,
                         light.radius,

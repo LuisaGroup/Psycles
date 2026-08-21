@@ -132,6 +132,7 @@ SurfacePreparation SurfacePreparationAccumulator::preparation(
     Float3 emission) const noexcept {
     return {
         .emission = std::move(emission),
+        .shading_normal = _point.shading_normal,
         .runtime_flags = _runtime_flags,
         .aov = _aov};
 }

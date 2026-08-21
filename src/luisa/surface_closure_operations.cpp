@@ -630,6 +630,7 @@ SurfacePreparationVisitor::SurfacePreparationVisitor(
       _include_aov{include_aov},
       _identity{identity},
       _aov_operation{aov_operation},
+      _shading_normal{point.shading_normal},
       _aov{zero_aov(point)} {}
 
 void SurfacePreparationVisitor::visit(
@@ -637,6 +638,7 @@ void SurfacePreparationVisitor::visit(
     const luisa::vector<SurfaceClosureExpression> &closures) noexcept {
     auto point = _point;
     point.shading_normal = shading_normal;
+    _shading_normal = shading_normal;
     const auto reductions = reduce_closures<true, true>(
         point,
         _glossy_filter_roughness,
@@ -656,6 +658,11 @@ void SurfacePreparationVisitor::visit(
 Expr<std::uint32_t>
 SurfacePreparationVisitor::runtime_flags() const noexcept {
     return Expr<std::uint32_t>{_runtime_flags.expression()};
+}
+
+Expr<luisa::float3>
+SurfacePreparationVisitor::shading_normal() const noexcept {
+    return Expr<luisa::float3>{_shading_normal.expression()};
 }
 
 const SurfaceAov &SurfacePreparationVisitor::aov() const noexcept {

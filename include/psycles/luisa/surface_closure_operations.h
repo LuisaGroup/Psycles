@@ -185,6 +185,7 @@ class SurfacePreparationVisitor final
     const SurfaceClosureIdentityCallable &_identity;
     const SurfaceClosureAovCallable &_aov_operation;
     UInt _runtime_flags{0u};
+    Float3 _shading_normal;
     SurfaceAov _aov;
 
   protected:
@@ -205,6 +206,8 @@ class SurfacePreparationVisitor final
 
     [[nodiscard]] Expr<std::uint32_t>
     runtime_flags() const noexcept;
+    [[nodiscard]] Expr<luisa::float3>
+    shading_normal() const noexcept;
     [[nodiscard]] const SurfaceAov &aov() const noexcept;
 };
 
