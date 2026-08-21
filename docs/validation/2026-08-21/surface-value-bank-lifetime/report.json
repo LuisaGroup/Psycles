@@ -1,0 +1,62 @@
+{
+  "schema": "psycles.surface-value-bank-lifetime-validation.v1",
+  "date": "2026-08-21",
+  "revision": "516138f",
+  "device": {
+    "name": "AMD Radeon RX 9070 XT",
+    "architecture": "gfx1201",
+    "rocm": "7.2.53211"
+  },
+  "scene": {
+    "name": "barbershop",
+    "extent": [640, 480],
+    "samples": 64,
+    "samples_per_dispatch": 64,
+    "scheduler": "wavefront-staged",
+    "frame_capacity": 1048576
+  },
+  "formal_contract": {
+    "host": "every observed typed-bank read is dominated by a write in the topological surface program",
+    "device_root": "every element of every typed bank has a reaching definition before dynamic interpretation",
+    "callables": "program-defined prefix; already synchronous and frame-local"
+  },
+  "profile": {
+    "before": {
+      "frame_fields": 179,
+      "frame_bytes": 1072,
+      "shade_surface_private_bytes": 6720,
+      "shade_surface_gpu_ms": 2824.95,
+      "render_seconds": 4.17583
+    },
+    "root_scoped_definition": {
+      "frame_fields": 176,
+      "frame_bytes": 848,
+      "shade_surface_private_bytes": 6496,
+      "shade_surface_gpu_ms": 2549.211,
+      "render_seconds": 3.97421,
+      "hot_code_object_bytes": 1024400
+    },
+    "expanded_baseline": {
+      "frame_fields": 176,
+      "frame_bytes": 848,
+      "shade_surface_private_bytes": 5264,
+      "shade_surface_gpu_ms": 2021.08,
+      "render_seconds": 3.50017
+    }
+  },
+  "tests": {
+    "surface_population_and_preparation": {"passed": 6, "total": 6},
+    "sample_film_and_mapping": {"passed": 8, "total": 8}
+  },
+  "visual": {
+    "combined_luminance_mean_ratio": 0.9988939448877346,
+    "invalid_pixels": 0,
+    "structured_scene_change": false,
+    "semantic_oracle": "in-process regression fixtures",
+    "triptych": "combined.png"
+  },
+  "commands": {
+    "render": "env PSYCLES_COMPACT_SURFACE_VALUES=1 PSYCLES_POPULATE_SURFACE_ONCE=1 ./build/bin/psycles_render_blender_scene /home/mike/Projects/psycles-benchmarks/barbershop-480p-64spp/export OUTPUT.exr hip 640 480 64 64 - 0 0 0 0 64 - 1 0 wavefront-staged 32 32768 32 1 1 0 4 2 4096 0 0 0 1 1048576",
+    "profiler": "rocprofv3 --kernel-trace --scratch-memory-trace --stats -f rocpd -o scoped_init -d PROFILE_DIR -- RENDER_COMMAND"
+  }
+}
