@@ -1,0 +1,106 @@
+{
+  "actual_label": "Stable frame slots",
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.DiffCol.R",
+    "ViewLayer.DiffCol.G",
+    "ViewLayer.DiffCol.B",
+    "ViewLayer.DiffDir.R",
+    "ViewLayer.DiffDir.G",
+    "ViewLayer.DiffDir.B",
+    "ViewLayer.DiffInd.R",
+    "ViewLayer.DiffInd.G",
+    "ViewLayer.DiffInd.B",
+    "ViewLayer.Emit.R",
+    "ViewLayer.Emit.G",
+    "ViewLayer.Emit.B",
+    "ViewLayer.Env.R",
+    "ViewLayer.Env.G",
+    "ViewLayer.Env.B",
+    "ViewLayer.GlossCol.R",
+    "ViewLayer.GlossCol.G",
+    "ViewLayer.GlossCol.B",
+    "ViewLayer.GlossDir.R",
+    "ViewLayer.GlossDir.G",
+    "ViewLayer.GlossDir.B",
+    "ViewLayer.GlossInd.R",
+    "ViewLayer.GlossInd.G",
+    "ViewLayer.GlossInd.B",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.TransCol.R",
+    "ViewLayer.TransCol.G",
+    "ViewLayer.TransCol.B",
+    "ViewLayer.TransDir.R",
+    "ViewLayer.TransDir.G",
+    "ViewLayer.TransDir.B",
+    "ViewLayer.TransInd.R",
+    "ViewLayer.TransInd.G",
+    "ViewLayer.TransInd.B",
+    "ViewLayer.VolumeDir.R",
+    "ViewLayer.VolumeDir.G",
+    "ViewLayer.VolumeDir.B",
+    "ViewLayer.VolumeInd.R",
+    "ViewLayer.VolumeInd.G",
+    "ViewLayer.VolumeInd.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        1.0550206899642944,
+        1.0532275438308716,
+        1.0501877069473267
+      ],
+      "cycles": "/var/tmp/psycles-stable-frame-compact-warm-3.exr",
+      "cycles_channel_mean": [
+        0.0444369912147522,
+        0.03105129487812519,
+        0.022539902478456497
+      ],
+      "cycles_luminance_mean": 0.033283721655607224,
+      "cycles_rms": 0.1324278712272644,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0535816597424084,
+      "maximum_absolute_error": 1.3071521520614624,
+      "mean_absolute_error": 0.0028358884155750275,
+      "orientation_rmse": {
+        "flip_x": 0.1759834736585617,
+        "flip_xy": 0.17940574884414673,
+        "flip_y": 0.17718033492565155,
+        "identity": 0.020138276740908623
+      },
+      "p95_pixel_rmse": 0.006993371527642012,
+      "p99_pixel_rmse": 0.09238436818122864,
+      "psycles": "/var/tmp/psycles-stable-frame-candidate-warm-3.exr",
+      "psycles_channel_mean": [
+        0.04688194394111633,
+        0.032704077661037445,
+        0.02367112971842289
+      ],
+      "psycles_luminance_mean": 0.035067118704319,
+      "psycles_rms": 0.1338770500492739,
+      "relative_rmse": 0.15206977620555853,
+      "rmse": 0.020138276740908623,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 6.72242581738364,
+        "display_scale": 1.2877666768383742,
+        "mapping": "shared_linear_srgb",
+        "path": "/tmp/psycles-cycles-model-bkuvgi/docs/validation/2026-08-21/stable-frame-wavefront/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    }
+  },
+  "reference_label": "Compacted active prefix",
+  "schema": "psycles.cycles-differential.v1"
+}

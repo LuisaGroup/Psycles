@@ -1,0 +1,95 @@
+{
+  "schema": "psycles.stable-frame-wavefront-validation.v1",
+  "date": "2026-08-21",
+  "psycles_base_revision": "eec52d2",
+  "luisa_revision": "12c07e556415fc9e96b50532a32875e16a211354",
+  "device": {
+    "name": "AMD Radeon RX 9070 XT",
+    "architecture": "gfx1201",
+    "rocm": "7.2.53211"
+  },
+  "scene": {
+    "name": "barbershop",
+    "extent": [640, 480],
+    "samples": 64,
+    "scheduler": "wavefront-staged",
+    "frame_capacity": 1048576,
+    "frame_fields": 176,
+    "frame_bytes": 848
+  },
+  "model": {
+    "stable_physical_slots": true,
+    "free_token": 0,
+    "nonterminal_counts_incremental": true,
+    "free_count_derived_by_conservation": true,
+    "generation_and_publication_share_index_mapping": true,
+    "initial_free_index_mapping": "identity",
+    "frame_relocation": false
+  },
+  "performance": {
+    "compact_active_prefix": {
+      "render_seconds": [3.76797, 3.71415, 3.71212],
+      "median_render_seconds": 3.71415,
+      "scheduler_elapsed_ms": [3681.660, 3674.539, 3673.976],
+      "median_scheduler_elapsed_ms": 3674.539,
+      "gather_scan": [1030694590, 1020848400, 1040167970],
+      "median_gather_scan": 1030694590,
+      "compact_scan": [15503270, 15499435, 15373013],
+      "median_compact_scan": 15499435
+    },
+    "stable_frame_slots": {
+      "render_seconds": [3.87328, 3.86064, 3.87231],
+      "median_render_seconds": 3.87231,
+      "scheduler_elapsed_ms": [3833.815, 3822.427, 3832.014],
+      "median_scheduler_elapsed_ms": 3832.014,
+      "gather_scan": [1202655232, 1182859264, 1181863936],
+      "median_gather_scan": 1182859264,
+      "compact_scan": [0, 0, 0],
+      "median_compact_scan": 0
+    },
+    "stable_regression_percent": {
+      "render": 4.258309,
+      "scheduler_elapsed": 4.285572,
+      "gather_scan": 14.763314
+    },
+    "production_selection": "compact_active_prefix"
+  },
+  "tests": {
+    "luisa_fallback_full": {
+      "passed_tests": 28,
+      "total_tests": 28,
+      "assertions": 782,
+      "queue_verifier": true
+    },
+    "luisa_targeted": {
+      "fallback_assertions": 2,
+      "hip_assertions": 2,
+      "vk_assertions": 2,
+      "vk_route": "strict native XIR to SPIR-V; DXC disabled"
+    },
+    "psycles_regression_matrix": {
+      "passed": 14,
+      "total": 14
+    }
+  },
+  "visual": {
+    "reference": "compact active prefix",
+    "actual": "stable frame slots",
+    "combined_rmse": 0.020138276740908623,
+    "combined_mean_absolute_error": 0.0028358884155750275,
+    "combined_luminance_mean_ratio": 1.0535816597424084,
+    "invalid_pixels": 0,
+    "identity_orientation_rmse": 0.020138276740908623,
+    "next_best_orientation_rmse": 0.1759834736585617,
+    "compact_repeat_rmse": 0.01340456586331129,
+    "structured_scene_change": false,
+    "triptych": "combined.png",
+    "triptych_sha256": "a4a93ccafbe404e03c177bc13e10cadeacaa50311889f0f700f6ddc2575e7d8a",
+    "compact_exr_sha256": "5a16d25a8cfb7ee3a9ae7707e063d7891d0faae9acf324025c6f278b4e8a2251",
+    "stable_exr_sha256": "5793659963d959efa1d3d5fee15c9f3255ab5b271b211e3165697a62a4b2744d"
+  },
+  "commands": {
+    "renderer": "env LUISA_CORO_WAVEFRONT_STATS=1 PSYCLES_COMPACT_SURFACE_VALUES=1 PSYCLES_POPULATE_SURFACE_ONCE=1 ./build/bin/psycles_render_blender_scene /home/mike/Projects/psycles-benchmarks/barbershop-480p-64spp/export OUTPUT.exr hip 640 480 64 64 - 0 0 0 0 64 - 1 0 wavefront-staged 32 32768 32 1 1 0 4 2 4096 0 0 0 1 1048576",
+    "visual": "python3 tools/compare_cycles.py COMPACT.exr visual-report.json --triptych-dir . --reference-label 'Compacted active prefix' --actual-label 'Stable frame slots' Combined=STABLE.exr"
+  }
+}
