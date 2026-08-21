@@ -73,6 +73,7 @@ swapping a second one.
 | dead selection proof removed, pre-rebase | `20.3212 s` | `8.20558 s` | `6.39471 s` | `1.68025 s` | `0.358903 s` |
 | selection proof demand `933811bae` | `20.3864 s` | `8.24251 s` | `6.53486 s` | `1.66747 s` | `0.360216 s` |
 | final sparse pointer support `ef07fb841` | `15.6040 s` | `3.62191 s` | `6.45809 s` | `1.65430 s` | `0.360176 s` |
+| demand-sparse coroutine lifetimes `e213b46b5` | `11.1738 s` | `3.55809 s` | `1.98082 s` | `1.66059 s` | `0.329078 s` |
 
 The final whole-JIT reduction relative to the two dense observations is
 `6.39--6.46x` (`84.3--84.5%`). Frame layout takes `0.099 ms`, so frame layout
@@ -138,6 +139,76 @@ same compact-populate megakernel (`2.08996 s` render-only), the staged path at
 because it issued 256 host dispatch chunks; the accepted result uses
 `samples_per_dispatch=64`, as required by the per-(pixel, sample) topology.
 
+## Demand-sparse coroutine lifetime proofs
+
+Once ray-query normalization ceased to dominate, a pass trace showed that
+`coro-alloca-scope` consumed `5.70 s` of a `6.67 s` pre-distill pipeline. The
+real Barbershop module has 68,341 post-SROA locals. Of these, 60,637 use the
+single-definition motion rule, 7,682 pass the general Must proof, and only 12
+are rejected. The former implementation nevertheless explored 2,530,940
+guarded abstract states for those 12 rejected candidates.
+
+The guarded domain is a forward May partition of predicate cubes paired with
+a Must fact vector. State merging intersects facts, and predicate widening
+admits paths but never adds a definite fact. Therefore, once a reached read
+lacks a fact, no later fixed-point update can make that same abstract state
+definitely initialized. Commit `e213b46b5` checks reads during propagation and
+conservatively rejects at this monotone failure point. It retains the
+SCCP-like correlated-predicate proof: both correlated success regressions
+still pass. Guarded evaluations on the real module fall from 2,530,940 to
+133,483 and widenings fall from 9,702 to 178.
+
+The next profile split the remaining proof construction time:
+
+```text
+problem construction  2.72 s
+  reverse slice       0.026 s
+  fact layout         0.009 s
+  event transfer      2.68 s
+unconditional solve   0.083 s
+guarded solve         0.15 s
+```
+
+Event construction now projects directly onto the candidate's ordered pointer
+users. A once-per-function instruction-location index supplies deterministic
+block and instruction order; unrelated instructions and empty CFG blocks do
+not enter the per-candidate event domain. This is exact because the lifetime
+transfer function changes only at explicit uses in the proven pointer closure.
+
+The `2.68 s` event transfer was then traced to one reference summary for
+`path_volume_segment`: 21,666 discovered pointer views, 47 requested reference
+coordinates, and 2,248 reachable blocks. The underlying pointer-usage product
+is separable by pointer root. Two views rooted at distinct allocas or formal
+references cannot overlap in XIR; possible aliasing between call-site actuals
+is handled by the caller's read-before-all-Must-writes rule. Pointer discovery
+and malformed-use validation remain whole-function, while access projection
+now indexes only result coordinates with the same root.
+
+Finally, pointer-usage transfer storage and scheduling were corrected without
+changing the lattice equations. Two type-shaped scratch states are reused
+instead of allocating a map and one heap-owned `PointerUsage` per coordinate
+at every block evaluation. Forward changes enqueue only successors; backward
+changes enqueue only predecessors. With the same top/bottom initialization,
+meet operators, and monotone transfer functions, this chaotic worklist reaches
+the same fixed points as round-robin iteration. On `path_volume_segment`:
+
+| Pointer-usage phase | Round-robin | Sparse worklist |
+|---|---:|---:|
+| Forward evaluations | 101,160 (45 full rounds) | 7,369 |
+| Forward time | `561.104 ms` | `40.721 ms` |
+| Backward evaluations | 92,168 (41 full rounds) | 21,293 |
+| Backward time | `355.527 ms` | `78.910 ms` |
+| Complete reference summary | `~2.74 s` before storage reuse | `158.510 ms` |
+
+The complete Barbershop shader JIT is 28.4% lower than `ef07fb841`
+(`15.6040 -> 11.1738 s`), while pre-distill is 69.3% lower
+(`6.45809 -> 1.98082 s`). Coroutine structure is unchanged at 9 subroutines,
+212 frame fields, and 3,184 bytes. The comparison report
+`/var/tmp/psycles-compact-populate-20260821/barbershop-pointer-worklist-comparison.json`
+covers all 15 film passes: maximum absolute error is `4.76837e-7`, maximum RMS
+is `5.01295e-8`, and maximum relative RMS is `1.36393e-7`. This is the existing
+floating atomic-order noise, not a structured image difference.
+
 ## Rejected register-bank experiment
 
 A diagnostic scalarized the compact value banks behind generated switch
@@ -173,6 +244,16 @@ Commit `ef07fb841` adds 8,192 unrelated shared-root GEP/load chains to the same
 pre-DCE fixture. The real scratch must still localize, making sparse pointer
 support part of the regression rather than only a timing observation.
 
+Commit `e213b46b5` adds two further structural regressions. A predicate-rich
+suffix after an already failing read must be rejected after exactly one
+guarded state evaluation, while the correlated-predicate success cases remain
+accepted. A projected pointer analysis with 48 requested reference roots and
+4,096 unrelated local roots must discover and validate all 4,144 pointers,
+materialize exactly 48 coordinates, and retain each reference's live-in fact.
+Existing cyclic-CFG, branch-intersection, full-product equivalence, malformed
+projection, aliasing, reference-call, and ray-query lifetime tests continue to
+pass.
+
 The following checks passed after rebasing onto and pushing current Luisa
 `next`:
 
@@ -182,6 +263,15 @@ test_xir_aggregate_field_bitmask
 
 test_xir_pass_lower_ray_query_to_pipeline
   310 assertions in 31 tests
+
+test_xir_pass_pointer_usage
+  221 assertions in 12 tests
+
+test_xir_pass_coro_alloca_scope
+  169 assertions in 24 tests
+
+test_coro_compile_trigger
+  passed
 
 cmake --build build --parallel
 
