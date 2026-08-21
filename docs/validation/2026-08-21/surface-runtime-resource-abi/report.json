@@ -1,0 +1,103 @@
+{
+  "schema": "psycles.surface-runtime-resource-abi-validation.v1",
+  "date": "2026-08-21",
+  "source_revision": "47a2c97",
+  "device": {
+    "name": "AMD Radeon RX 9070 XT",
+    "architecture": "gfx1201",
+    "rocm": "7.2.53211"
+  },
+  "scene": {
+    "name": "barbershop",
+    "extent": [640, 480],
+    "samples": 64,
+    "samples_per_dispatch": 64,
+    "scheduler": "wavefront-staged",
+    "frame_capacity": 1048576
+  },
+  "resource_abi": {
+    "direct_buffers_before": 14,
+    "fixed_bindless_views_after": 1,
+    "semantic_slots": 14,
+    "slot_index_uniform": true,
+    "shader_element_type_preserved": true,
+    "host_buffer_ownership_preserved": true,
+    "largest_callable_argument_bytes_before": 328,
+    "largest_callable_argument_bytes_after": 184
+  },
+  "profile": {
+    "scoped_direct_buffers": {
+      "frame_fields": 176,
+      "frame_bytes": 848,
+      "shade_surface_private_bytes": 6496,
+      "shade_surface_gpu_ms": 2549.211,
+      "render_seconds": 3.97421,
+      "hot_code_object_cache_bytes": 1024400
+    },
+    "partial_bindless_view": {
+      "frame_fields": 176,
+      "frame_bytes": 848,
+      "largest_callable_argument_bytes": 200,
+      "shade_surface_private_bytes": 6208,
+      "shade_surface_gpu_ms": 2525.156,
+      "render_seconds": 3.86068,
+      "hot_code_object_cache_bytes": 1015104
+    },
+    "fixed_bindless_view": {
+      "frame_fields": 176,
+      "frame_bytes": 848,
+      "largest_callable_argument_bytes": 184,
+      "shade_surface_kernel": "kernel_0a9dfc2c02200d7a",
+      "shade_surface_calls": 414,
+      "shade_surface_private_bytes": 6160,
+      "shade_surface_gpu_ms": 2386.216826,
+      "render_seconds": 3.72942,
+      "hot_code_object_cache_bytes": 1013671
+    },
+    "expanded_baseline": {
+      "frame_fields": 176,
+      "frame_bytes": 848,
+      "largest_callable_argument_bytes": 160,
+      "shade_surface_private_bytes": 5264,
+      "shade_surface_gpu_ms": 2021.08,
+      "render_seconds": 3.50017
+    },
+    "fixed_view_improvement_percent": {
+      "render_vs_scoped_direct": 6.1595,
+      "shade_surface_vs_scoped_direct": 6.3939,
+      "render_vs_initial_1072_byte_frame": 10.6903,
+      "shade_surface_vs_initial_1072_byte_frame": 15.5307
+    },
+    "fixed_view_gap_to_expanded_percent": {
+      "render": 6.5497,
+      "shade_surface": 18.0664
+    }
+  },
+  "tests": {
+    "surface_population_and_preparation": {"passed": 6, "total": 6},
+    "sample_film_and_mapping": {"passed": 8, "total": 8},
+    "vulkan_route": "strict native XIR to SPIR-V"
+  },
+  "visual": {
+    "reference": "scoped direct buffers",
+    "actual": "fixed bindless ABI",
+    "shape": [480, 640, 3],
+    "luminance_mean_ratio": 1.0356340284295318,
+    "rmse": 0.02030138298869133,
+    "mean_absolute_error": 0.002401116071268916,
+    "invalid_pixels": 0,
+    "identity_orientation_rmse": 0.02030138298869133,
+    "next_best_orientation_rmse": 0.15767893195152283,
+    "structured_scene_change": false,
+    "semantic_oracle": "in-process regression fixtures",
+    "triptych": "combined.png",
+    "triptych_sha256": "d77cb74684da2c524736645dee8ffeebe3f0548e66fc761fa4e887ced2aa70b5",
+    "reference_exr_sha256": "0726245bd2d261972b4442115d10d1879930c9079962d67c25d5ce25a5bbcbd7",
+    "actual_exr_sha256": "825a56867cf73ef63303797bd0a6b183a45e410d3b5f5acb0b6dc37f20a1b79f"
+  },
+  "commands": {
+    "render": "env PSYCLES_COMPACT_SURFACE_VALUES=1 PSYCLES_POPULATE_SURFACE_ONCE=1 ./build/bin/psycles_render_blender_scene /home/mike/Projects/psycles-benchmarks/barbershop-480p-64spp/export OUTPUT.exr hip 640 480 64 64 - 0 0 0 0 64 - 1 0 wavefront-staged 32 32768 32 1 1 0 4 2 4096 0 0 0 1 1048576",
+    "profiler": "rocprofv3 --kernel-trace --scratch-memory-trace --stats -f rocpd -o bindless_runtime_uniform -d PROFILE_DIR -- RENDER_COMMAND",
+    "visual": "python3 tools/compare_cycles.py SCOPED_DIRECT.exr VISUAL_REPORT.json --triptych-dir TRIPTYCH_DIR --reference-label 'Scoped direct buffers' --actual-label 'Fixed bindless ABI' Combined=FIXED_VIEW.exr"
+  }
+}
