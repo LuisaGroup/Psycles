@@ -21,20 +21,14 @@ namespace {
 SurfaceClosureSamplingCallables make_surface_closure_sampling_callables(
     const std::shared_ptr<LuisaSceneData> &scene) noexcept {
     SurfaceClosureSelectionCallable selection =
-        [](Float3 geometric_normal, Float3 incoming, UInt lobe_mask,
-           Float glossy_filter_roughness, Bool use_bump_map_correction, UInt kind,
-           UInt lobe, UInt bssrdf_method, Float allocation_weight,
-           Float sample_weight, Bool setup_valid, Float3 normal, Float roughness,
+        [](UInt lobe_mask, Float glossy_filter_roughness, UInt kind, UInt lobe,
+           UInt bssrdf_method, Float allocation_weight, Float sample_weight,
+           Bool setup_valid, Float3 normal, Float roughness,
            Bool preserve_ggx_energy, Bool beckmann) noexcept {
             const auto context = SurfaceClosureSelectionContext{
-                .geometric_normal =
-                    Expr<luisa::float3>{geometric_normal.expression()},
-                .incoming = Expr<luisa::float3>{incoming.expression()},
                 .lobe_mask = Expr<std::uint32_t>{lobe_mask.expression()},
                 .glossy_filter_roughness =
-                    Expr<float>{glossy_filter_roughness.expression()},
-                .use_bump_map_correction =
-                    Expr<bool>{use_bump_map_correction.expression()}};
+                    Expr<float>{glossy_filter_roughness.expression()}};
             const auto closure = SurfaceClosureSelectionInput{
                 .kind = Expr<std::uint32_t>{kind.expression()},
                 .lobe = Expr<std::uint32_t>{lobe.expression()},
@@ -100,13 +94,9 @@ CallableSurfaceClosureSamplingOperation::
       _vector_parameters{vector_parameters},
       _cycles_bsdf_tables{cycles_bsdf_tables}, _textures{textures},
       _geometry_heap{geometry_heap}, _point{packed_point},
-      _selection_context{make_surface_closure_selection_context(
-          point,
-          Expr<luisa::float3>{
-              make_surface_closure_sampling_incoming(point).expression()},
-          query)},
+      _selection_context{make_surface_closure_selection_context(query)},
       _callables{callables} {
-    _query.incoming = Float3{_selection_context.incoming};
+    _query.incoming = make_surface_closure_sampling_incoming(point);
     _query.lobe_mask = query.lobe_mask;
     _query.transport_mode = query.transport_mode;
     _query.glossy_filter_roughness = query.glossy_filter_roughness;
@@ -118,11 +108,10 @@ luisa::compute::Var<SurfaceClosureSelectionCall>
 CallableSurfaceClosureSamplingOperation::selection(
     const SurfaceClosureExpression &closure) const noexcept {
     return _callables.selection(
-        _selection_context.geometric_normal, _selection_context.incoming,
         _selection_context.lobe_mask, _selection_context.glossy_filter_roughness,
-        _selection_context.use_bump_map_correction, closure.kind, closure.lobe,
-        closure.bssrdf_method, closure.allocation_weight, closure.sample_weight,
-        closure.setup_valid, closure.normal, closure.roughness,
+        closure.kind, closure.lobe, closure.bssrdf_method,
+        closure.allocation_weight, closure.sample_weight, closure.setup_valid,
+        closure.normal, closure.roughness,
         closure.preserve_ggx_energy, closure.beckmann);
 }
 
