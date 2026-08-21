@@ -742,3 +742,108 @@ Fallback and HIP traversal canaries pass. The Vulkan canary was run with
 `LUISA_VULKAN_USE_XIR=1`, `LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, and
 `LUISA_VULKAN_DISABLE_DXC=1`; its log contains native XIR/SPIR-V translation
 and no DXC load.
+
+## Exact incremental selection-exit relations
+
+After the post-dominance update, `selection_exit_build_relations` was the next
+largest repeated analysis inside `drain_selection_exits`. The production
+Barbershop continuation performed 48 selection-exit rewrites: 46 on `IfInst`
+and two on `SwitchInst`. Of the `IfInst` rewrites, three changed only the
+declared merge, 11 inserted a one-target funnel, and 32 emitted a multi-target
+state dispatch. The previous implementation rebuilt all loop-boundary,
+structured-role, and lexical-context relations after every rewrite.
+
+The replacement treats the relation as three formally separate values of an
+executable CFG `G` and dominator tree `D`:
+
+```text
+R(G, D) = (B, O, C)
+
+B = set of physically lowerable loop-boundary IfInst headers
+O = reference-counted multiset of structured merge/continue block roles
+C = lexical Loop/Switch context chains observed by selections and BreakInsts
+```
+
+For a metadata-only `IfInst` merge reassignment, `G` and `D` are unchanged.
+The transform replaces exactly one merge role in `O` and reclassifies that
+header in `B`; `C` is unchanged. For a one-target `IfInst` funnel, no
+Loop/Switch terminator is created or mutated, so the finite descriptor set from
+which `C` is derived is invariant. Ordinary continuation blocks can gain or
+lose dominance, as the production oracle demonstrated, so the implementation
+does not assume their contexts are stable: it rebuilds the exact observable
+selection/Break context maps from the stable descriptors and the new `D`, then
+reruns non-local Switch-break normalization.
+
+Only the rewritten `IfInst` can change membership in `B`. Any other physical
+loop-boundary arm is, by definition, an exclusive chain of trivial,
+single-predecessor `BranchInst` blocks. Such a chain cannot cross the rewritten
+`IfInst` header, and it cannot share a rewritten exit-cut source without
+violating single-predecessor exclusivity. Multi-target dispatches do not have
+this property and still invalidate the complete relation. A `SwitchInst` merge
+is also its lexical break target, so even a metadata-only Switch rewrite also
+falls back to a fresh relation build.
+
+Structured roles are stored once as reference counts rather than as a set plus
+a parallel count map. This makes role replacement exact when multiple
+constructs temporarily name the same physical block and avoids duplicate hash
+lookups. Block-level contexts are materialized only for `BreakInst`, their sole
+consumer; selection contexts remain complete for every `IfInst` and
+`SwitchInst`.
+
+`LUISA_XIR_VERIFY_SELECTION_EXIT_RELATION_UPDATES=1` is the differential
+oracle. After every incremental update it independently rebuilds `R(G, D)` and
+compares the complete boundary set, every role count, and every observable
+context chain by semantic targets rather than allocation-dependent context
+IDs. The full Barbershop module passed this oracle for all 14 incremental
+updates. A 65-funnel regression enables the same oracle and proves that the
+drain reuses one relation version instead of rebuilding it per local rewrite.
+
+Production counters changed as follows:
+
+```text
+selection relation builds                72 -> 58
+incremental relation updates              0 -> 14
+loop-boundary dataflow solves           372 -> 348
+boundary blocks visited              115,319 -> 112,918
+boundary edges visited               219,865 -> 213,982
+boundary classifications             63,264 -> 61,916
+```
+
+The verbose full compiler trace reduced
+`selection_exit_build_relations` from `131.958 ms` to `115.209 ms` (12.7%).
+The context component fell from `25.205 ms` over 138 full relation builds to
+`10.490 ms` over 135 full or context-only builds, including the 11 exact local
+context refreshes. End-to-end continuation restructuring remained noisy across
+process launches (`773.913--925.891 ms`) and overlaps the preceding
+`770.739--815.607 ms` range, so the isolated pass timer and eliminated analysis
+counts are the defensible performance result; no larger wall-clock speedup is
+claimed from this sample.
+
+After rebasing the Luisa change onto `next` at `320bfff757`, the final
+production-oracle run completed continuation restructuring in `757.374 ms`.
+Its 15 film/light/volume pass images were bit-identical to the pre-rebase
+incremental result.
+
+All 15 Combined/Normal/Albedo/light/volume outputs were compared with the
+previous committed compiler baseline. Maximum absolute error was
+`1.78814e-7`, maximum RMS error was `3.85553e-8`, Environment and both volume
+passes were bit-identical, and every pass satisfied the `1e-5` comparison
+threshold. The enlarged compiler-canary triptych below shows the baseline,
+incremental result, and absolute difference multiplied by one million. Visual
+inspection found no structural or shading difference; this 8x8 image is a
+compiler identity check, not a replacement for the previously recorded
+full-resolution scene-quality triptychs.
+
+![Barbershop selection-exit relation triptych](assets/selection-exit-triptych.png)
+
+Validation completed with the full Luisa and Psycles builds, 1,489 assertions
+in 80 restructure tests, and the post-dominance, mutation-safety, generic-pass,
+coroutine restructure, materialization, pipeline, and XIR-to-AST suites. The
+fallback and HIP traversal canaries passed. Vulkan passed with
+`LUISA_VULKAN_USE_XIR=1`, `LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, and
+`LUISA_VULKAN_DISABLE_DXC=1`; its log contains native SPIR-V optimization and
+compilation records and no DXC reference.
+
+The production oracle, normal/trace runs, pass comparison, and backend canary
+logs are under `/var/tmp/psycles-compact-populate-20260821` with the
+`barbershop-selection-exit-*` and `selection-exit-*-canary.log` prefixes.
