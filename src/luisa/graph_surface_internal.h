@@ -365,7 +365,8 @@ template <typename Id, typename Values>
 class GraphSurfaceImplementation;
 
 struct ValueStaticTableView {
-    Expr<luisa::compute::Buffer<float>> values;
+    Expr<luisa::compute::BindlessArray> resources;
+    std::uint32_t buffer_slot{};
     Expr<std::uint32_t> begin;
 };
 
@@ -391,9 +392,13 @@ struct ValueEvaluationContext {
     const compiler::ValueInstruction &instruction,
     std::size_t index) noexcept {
     if (context.static_table_override != nullptr) {
-        return context.static_table_override->values->read(
-            context.static_table_override->begin +
-            static_cast<std::uint32_t>(index));
+        return context.static_table_override->resources
+            ->buffer<float>(
+                context.static_table_override->buffer_slot,
+                false,
+                true)
+            .read(context.static_table_override->begin +
+                  static_cast<std::uint32_t>(index));
     }
     return instruction.static_table[index];
 }

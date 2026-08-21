@@ -295,6 +295,37 @@ struct SurfaceValueRuntimeTopology {
     bool automatic_bump_uses_undisplaced_geometry{};
 };
 
+// Fixed semantic slots in the compact surface program's private bindless
+// device view. The view has scene-independent shape, so adding material
+// programs changes data only; it does not grow the path-kernel resource ABI.
+enum class SurfaceValueRuntimeBufferSlot : std::uint32_t {
+    program,
+    instruction,
+    operand,
+    instruction_variant,
+    metadata_parameter,
+    metadata_static_range,
+    static_data,
+    closure_instruction,
+    closure_operand,
+    closure_mix_term,
+    bump_height_program,
+    program_output,
+    normal_output_address,
+    normal_undisplaced_flag,
+    count,
+};
+
+[[nodiscard]] constexpr std::uint32_t
+surface_value_runtime_buffer_slot(
+    SurfaceValueRuntimeBufferSlot slot) noexcept {
+    return static_cast<std::uint32_t>(slot);
+}
+
+inline constexpr auto surface_value_runtime_buffer_slot_count =
+    surface_value_runtime_buffer_slot(
+        SurfaceValueRuntimeBufferSlot::count);
+
 struct SurfaceValueRuntime {
     static constexpr std::uint32_t programs_per_topology = 2u;
     static constexpr std::uint32_t normal_program_offset = 0u;
@@ -346,6 +377,9 @@ struct SurfaceValueRuntime {
     Buffer<luisa::uint> program_output_buffer;
     Buffer<luisa::uint> normal_output_address_buffer;
     Buffer<luisa::uint> normal_undisplaced_flag_buffer;
+    // Declared after the bound buffers so reverse member destruction releases
+    // the descriptor view before its resources.
+    BindlessArray device_view;
 };
 
 struct LuisaSceneData {

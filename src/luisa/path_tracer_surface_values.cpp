@@ -64,6 +64,14 @@ enum class SurfaceValueBankDefinition {
     full_bank,
 };
 
+template<typename T>
+[[nodiscard]] auto surface_value_runtime_buffer(
+    const SurfaceValueRuntime &runtime,
+    SurfaceValueRuntimeBufferSlot slot) noexcept {
+    return runtime.device_view->buffer<T>(
+        surface_value_runtime_buffer_slot(slot), false, true);
+}
+
 using SurfaceValueHeightCallable = Callable<float(
     Buffer<float>, Buffer<luisa::float3>, Buffer<float>, BindlessArray,
     BindlessArray, SurfacePointCall, luisa::uint)>;
@@ -191,7 +199,10 @@ void write_dynamic_value(
     operands.values.reserve(variant.operand_types.size());
     for (auto operand_index = std::size_t{0u};
          operand_index < variant.operand_types.size(); ++operand_index) {
-        auto address = runtime.operand_buffer->read(
+        auto address = surface_value_runtime_buffer<luisa::uint>(
+                           runtime,
+                           SurfaceValueRuntimeBufferSlot::operand)
+                           .read(
             instruction.z + static_cast<std::uint32_t>(operand_index));
         operands.values.emplace_back(read_dynamic_value(
             variant.operand_types[operand_index],
@@ -218,14 +229,21 @@ void write_dynamic_value(
             compiler::ValueOperation::rgb_curve;
     const auto static_table = !variant.instruction.static_table.empty();
     if (table_parameter || static_table) {
-        auto parameter = runtime.metadata_parameter_buffer->read(
-            instruction.w);
+        auto parameter = surface_value_runtime_buffer<luisa::uint>(
+                             runtime,
+                             SurfaceValueRuntimeBufferSlot::metadata_parameter)
+                             .read(instruction.w);
         auto static_range =
-            runtime.metadata_static_range_buffer->read(instruction.w);
+            surface_value_runtime_buffer<luisa::uint2>(
+                runtime,
+                SurfaceValueRuntimeBufferSlot::metadata_static_range)
+                .read(instruction.w);
         const Expr<std::uint32_t> parameter_expression{
             parameter.expression()};
         const ValueStaticTableView static_table_view{
-            .values = Expr<Buffer<float>>{runtime.static_data_buffer},
+            .resources = Expr<BindlessArray>{runtime.device_view},
+            .buffer_slot = surface_value_runtime_buffer_slot(
+                SurfaceValueRuntimeBufferSlot::static_data),
             .begin = Expr<std::uint32_t>{static_range.x.expression()}};
         ValueEvaluationContext context{
             .services = services,
@@ -278,7 +296,10 @@ void write_dynamic_value(
                 value_operand::bump::filter_width),
             operands));
     const auto height_program =
-        runtime.bump_height_program_buffer->read(instruction_index);
+        surface_value_runtime_buffer<luisa::uint>(
+            runtime,
+            SurfaceValueRuntimeBufferSlot::bump_height_program)
+            .read(instruction_index);
     const auto height_x = height(
         scalar_parameters,
         vector_parameters,
@@ -332,15 +353,23 @@ void emit_surface_value_program(
     Expr<Buffer<float>> cycles_bsdf_tables,
     Expr<BindlessArray> textures,
     Expr<BindlessArray> geometry_heap) noexcept {
-    auto range = runtime.program_buffer->read(program);
+    auto range = surface_value_runtime_buffer<luisa::uint4>(
+                     runtime,
+                     SurfaceValueRuntimeBufferSlot::program)
+                     .read(program);
     UInt instruction_index = range.x;
     const auto instruction_end = range.x + range.y;
     $while(instruction_index < instruction_end) {
         Var<luisa::uint4> instruction =
-            runtime.instruction_buffer->read(instruction_index);
+            surface_value_runtime_buffer<luisa::uint4>(
+                runtime,
+                SurfaceValueRuntimeBufferSlot::instruction)
+                .read(instruction_index);
         auto variant_index =
-            runtime.instruction_variant_buffer->read(
-                instruction_index);
+            surface_value_runtime_buffer<luisa::uint>(
+                runtime,
+                SurfaceValueRuntimeBufferSlot::instruction_variant)
+                .read(instruction_index);
         luisa::compute::detail::SwitchStmtBuilder{variant_index} % [&] {
             for (auto index = std::size_t{0u}; index < nodes.size();
                  ++index) {
@@ -416,8 +445,13 @@ void emit_surface_value_program(
     Var<luisa::uint4> instruction,
     std::size_t operand_index,
     Float fallback) noexcept {
-    const auto address = runtime.closure_operand_buffer->read(
-        instruction.y + static_cast<std::uint32_t>(operand_index));
+    const auto address =
+        surface_value_runtime_buffer<luisa::uint>(
+            runtime,
+            SurfaceValueRuntimeBufferSlot::closure_operand)
+            .read(
+                instruction.y +
+                static_cast<std::uint32_t>(operand_index));
     Float result = fallback;
     $if(address != compiler::SurfaceValueAddress::invalid_value) {
         result = read_scalar_dynamic(
@@ -434,8 +468,13 @@ void emit_surface_value_program(
     Var<luisa::uint4> instruction,
     std::size_t operand_index,
     Float3 fallback) noexcept {
-    const auto address = runtime.closure_operand_buffer->read(
-        instruction.y + static_cast<std::uint32_t>(operand_index));
+    const auto address =
+        surface_value_runtime_buffer<luisa::uint>(
+            runtime,
+            SurfaceValueRuntimeBufferSlot::closure_operand)
+            .read(
+                instruction.y +
+                static_cast<std::uint32_t>(operand_index));
     Float3 result = fallback;
     $if(address != compiler::SurfaceValueAddress::invalid_value) {
         result = read_vector_dynamic(
@@ -454,8 +493,11 @@ void emit_surface_value_program(
     UInt term_index = instruction.z;
     const auto term_end = instruction.z + instruction.w;
     $while(term_index < term_end) {
-        const auto term = runtime.closure_mix_term_buffer->read(
-            term_index);
+        const auto term =
+            surface_value_runtime_buffer<luisa::uint2>(
+                runtime,
+                SurfaceValueRuntimeBufferSlot::closure_mix_term)
+                .read(term_index);
         const auto factor = clamp(
             read_scalar_dynamic(
                 services, point, locals, term.x),
@@ -859,8 +901,10 @@ void emit_surface_closure_program(
     UInt instruction_index = instruction_begin;
     $while(instruction_index < instruction_end) {
         Var<luisa::uint4> instruction =
-            runtime.closure_instruction_buffer->read(
-                instruction_index);
+            surface_value_runtime_buffer<luisa::uint4>(
+                runtime,
+                SurfaceValueRuntimeBufferSlot::closure_instruction)
+                .read(instruction_index);
         const auto static_variant =
             instruction.x &
             compiler::surface_closure_static_variant_mask;
@@ -929,7 +973,10 @@ template<typename PhysicalClosureSink>
     Expr<bool> reflective_caustics,
     Expr<bool> refractive_caustics,
     PhysicalClosureSink &&emit_physical) noexcept {
-    const auto range = runtime.program_buffer->read(program);
+    const auto range = surface_value_runtime_buffer<luisa::uint4>(
+                           runtime,
+                           SurfaceValueRuntimeBufferSlot::program)
+                           .read(program);
     const auto closure_begin = range.z;
     const auto closure_end = range.z + range.w;
     const PrincipledLayerComponent principled_layers{services, point};
@@ -1105,7 +1152,10 @@ template<typename PhysicalClosureSink>
     const SurfacePoint &point) noexcept {
     auto result = point;
     const auto use_undisplaced =
-        runtime.normal_undisplaced_flag_buffer->read(surface_tag);
+        surface_value_runtime_buffer<luisa::uint>(
+            runtime,
+            SurfaceValueRuntimeBufferSlot::normal_undisplaced_flag)
+            .read(surface_tag);
     $if(use_undisplaced != 0u) {
         result.position = point.undisplaced_position;
         result.object_position = point.undisplaced_object_position;
@@ -1150,7 +1200,10 @@ void emit_compact_surface_values(
             surface_tag * SurfaceValueRuntime::programs_per_topology +
             SurfaceValueRuntime::normal_program_offset;
         const auto normal_output =
-            runtime.normal_output_address_buffer->read(surface_tag);
+            surface_value_runtime_buffer<luisa::uint>(
+                runtime,
+                SurfaceValueRuntimeBufferSlot::normal_output_address)
+                .read(surface_tag);
         $if(normal_output !=
             compiler::SurfaceValueAddress::invalid_value) {
             const auto normal_point = automatic_normal_point(
@@ -1303,8 +1356,10 @@ make_surface_value_height_callable(
                 textures,
                 geometry_heap);
             const auto output =
-                scene->surface_values->program_output_buffer->read(
-                    program);
+                surface_value_runtime_buffer<luisa::uint>(
+                    *scene->surface_values,
+                    SurfaceValueRuntimeBufferSlot::program_output)
+                    .read(program);
             return read_scalar_dynamic(
                 services, point, locals, output);
         };
@@ -1652,12 +1707,47 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
     runtime->normal_undisplaced_flag_buffer =
         device.create_buffer<luisa::uint>(
             runtime->normal_undisplaced_flags.size());
+    runtime->device_view = device.create_bindless_array(
+        surface_value_runtime_buffer_slot_count);
+    const auto bind = [&](SurfaceValueRuntimeBufferSlot slot,
+                          const auto &buffer) noexcept {
+        runtime->device_view.emplace_on_update(
+            surface_value_runtime_buffer_slot(slot), buffer);
+    };
+    bind(SurfaceValueRuntimeBufferSlot::program,
+         runtime->program_buffer);
+    bind(SurfaceValueRuntimeBufferSlot::instruction,
+         runtime->instruction_buffer);
+    bind(SurfaceValueRuntimeBufferSlot::operand,
+         runtime->operand_buffer);
+    bind(SurfaceValueRuntimeBufferSlot::instruction_variant,
+         runtime->instruction_variant_buffer);
+    bind(SurfaceValueRuntimeBufferSlot::metadata_parameter,
+         runtime->metadata_parameter_buffer);
+    bind(SurfaceValueRuntimeBufferSlot::metadata_static_range,
+         runtime->metadata_static_range_buffer);
+    bind(SurfaceValueRuntimeBufferSlot::static_data,
+         runtime->static_data_buffer);
+    bind(SurfaceValueRuntimeBufferSlot::closure_instruction,
+         runtime->closure_instruction_buffer);
+    bind(SurfaceValueRuntimeBufferSlot::closure_operand,
+         runtime->closure_operand_buffer);
+    bind(SurfaceValueRuntimeBufferSlot::closure_mix_term,
+         runtime->closure_mix_term_buffer);
+    bind(SurfaceValueRuntimeBufferSlot::bump_height_program,
+         runtime->bump_height_program_buffer);
+    bind(SurfaceValueRuntimeBufferSlot::program_output,
+         runtime->program_output_buffer);
+    bind(SurfaceValueRuntimeBufferSlot::normal_output_address,
+         runtime->normal_output_address_buffer);
+    bind(SurfaceValueRuntimeBufferSlot::normal_undisplaced_flag,
+         runtime->normal_undisplaced_flag_buffer);
     return runtime;
 }
 
 void upload_surface_value_runtime(
     Stream &stream,
-    const SurfaceValueRuntime &runtime) noexcept {
+    SurfaceValueRuntime &runtime) noexcept {
     stream << runtime.program_buffer.copy_from(
                   luisa::span{runtime.program_ranges})
            << runtime.instruction_buffer.copy_from(
@@ -1685,7 +1775,8 @@ void upload_surface_value_runtime(
            << runtime.normal_output_address_buffer.copy_from(
                   luisa::span{runtime.normal_output_addresses})
            << runtime.normal_undisplaced_flag_buffer.copy_from(
-                  luisa::span{runtime.normal_undisplaced_flags});
+                  luisa::span{runtime.normal_undisplaced_flags})
+           << runtime.device_view.update();
 }
 
 namespace {
