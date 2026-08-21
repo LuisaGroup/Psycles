@@ -150,6 +150,20 @@ struct GlassSample {
     Bool valid;
 };
 
+// A directional microfacet query has one shared geometric measure. Returning
+// the BSDF value and PDF together keeps the half-vector, distribution, and
+// masking-shadowing terms in one expression DAG, matching Cycles' eval ABI.
+struct MicrofacetEvaluation {
+    Float3 intensity;
+    Float pdf;
+};
+
+struct MicrofacetDistributionTerms {
+    Float distribution;
+    Float lambda_incoming;
+    Float lambda_outgoing;
+};
+
 // Result of sampling a reflection-only microfacet closure. Regular samples
 // are evaluated by the aggregate evaluator so competing closures share one
 // balance-heuristic denominator. Delta samples carry the selected closure's
@@ -308,16 +322,14 @@ template <typename Id, typename Values>
 [[nodiscard]] Float3 diffuse_intensity(const SurfaceClosurePhysicalRecord &closure,
     Float3 incoming,
     Float3 outgoing) noexcept;
-// Distribution-family operations shared by reflection, glass, and
-// refraction. The physical closure selects the concrete Cycles model while
-// every consumer retains the same D/Lambda measure contract.
-[[nodiscard]] Float microfacet_distribution(
+// Evaluate the distribution-specific D and masking-shadowing terms under one
+// device branch. This is the dynamic counterpart of Cycles' static
+// MicrofacetType specialization: a lane executes exactly one model.
+[[nodiscard]] MicrofacetDistributionTerms microfacet_distribution_terms(
     const SurfaceClosurePhysicalRecord &closure,
     Float n_dot_h,
-    Float alpha) noexcept;
-[[nodiscard]] Float microfacet_lambda(
-    const SurfaceClosurePhysicalRecord &closure,
-    Float n_dot_v,
+    Float n_dot_incoming,
+    Float n_dot_outgoing,
     Float alpha) noexcept;
 [[nodiscard]] Float microfacet_alpha(const SurfaceClosurePhysicalRecord &closure,
     Float glossy_filter_roughness) noexcept;
@@ -334,14 +346,9 @@ template <typename Id, typename Values>
 [[nodiscard]] Float3 microfacet_reflection_fresnel(
     const SurfaceClosurePhysicalRecord &closure,
     Float cosine) noexcept;
-[[nodiscard]] Float3 microfacet_intensity(
+[[nodiscard]] MicrofacetEvaluation microfacet_evaluate(
     const ShaderServices &services,
     const SurfaceClosurePhysicalRecord &closure,
-    Float3 incoming,
-    Float3 outgoing,
-    Float3 glossy_normal,
-    Float glossy_filter_roughness) noexcept;
-[[nodiscard]] Float microfacet_pdf(const SurfaceClosurePhysicalRecord &closure,
     Float3 incoming,
     Float3 outgoing,
     Float3 glossy_normal,

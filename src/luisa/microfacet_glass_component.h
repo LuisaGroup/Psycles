@@ -42,14 +42,7 @@ public:
     [[nodiscard]] TracedClosure
     setup(const MicrofacetGlassSetup &parameters) const noexcept;
 
-    [[nodiscard]] Float3 intensity(
-        const SurfaceClosurePhysicalRecord &closure,
-        Float3 incoming,
-        Float3 outgoing,
-        Float3 glossy_normal,
-        Float glossy_filter_roughness) const noexcept;
-
-    [[nodiscard]] Float pdf(
+    [[nodiscard]] MicrofacetEvaluation evaluate(
         const SurfaceClosurePhysicalRecord &closure,
         Float3 incoming,
         Float3 outgoing,

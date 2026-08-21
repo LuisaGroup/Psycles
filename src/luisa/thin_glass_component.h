@@ -35,13 +35,7 @@ public:
         Bool reflective_caustics,
         Bool refractive_caustics) const noexcept;
 
-    [[nodiscard]] Float3 intensity(
-        const SurfaceClosurePhysicalRecord &closure,
-        Float3 incoming,
-        Float3 outgoing,
-        Float glossy_filter_roughness) const noexcept;
-
-    [[nodiscard]] Float pdf(
+    [[nodiscard]] MicrofacetEvaluation evaluate(
         const SurfaceClosurePhysicalRecord &closure,
         Float3 incoming,
         Float3 outgoing,
