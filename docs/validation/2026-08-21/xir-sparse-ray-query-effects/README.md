@@ -7,17 +7,17 @@ time, but exposed a host-compiler complexity defect in Luisa's coroutine
 ray-query normalization. On the same Blender 5.2 Barbershop export, RX 9070 XT,
 8x8 image, 256 fixed spp, and one 64-sample dispatch, the complete shader-JIT
 interval fell from `99.7033--100.821 s` to `7.50286--7.77417 s`. The final
-warm shader-JIT interval is now `5.83266--5.96071 s`; coroutine compilation is
-`4.71652--4.83497 s`, pre-distill optimization is `1.17985--1.29784 s`, CFG
-distillation is `0.675203--0.710138 s`, and ray-query normalization is
-`0.357776--0.392472 s` instead of the original dominant host-compiler path.
+warm shader-JIT interval is now `5.66486--5.71842 s`; coroutine compilation is
+`4.54592--4.59991 s`, pre-distill optimization is `1.19746--1.25465 s`, CFG
+distillation is `0.690376--0.698305 s`, and ray-query normalization is
+`0.114010--0.116820 s` instead of the original dominant host-compiler path.
 
 The optimization changes host analysis only. The generated coroutine graph is
 unchanged at 9 subroutines, 212 frame fields, and 3,184 frame bytes. Render-only
 time remained in the same narrow range (`0.359723 s` before and
-`0.328770--0.329317 s` after). Across the final 15-pass EXR comparison, the
-maximum RMS is `3.58471e-8`, maximum relative RMS is `1.33829e-7`, and maximum
-absolute error is `2.38419e-7`; this is the normal non-deterministic
+`0.327541--0.328972 s` after). Across the final 15-pass EXR comparison, the
+maximum RMS is `3.38836e-8`, maximum relative RMS is `1.43289e-7`, and maximum
+absolute error is `1.78814e-7`; this is the normal non-deterministic
 floating-point accumulation envelope, not a structured image change.
 
 ## Root cause and formal model
@@ -81,9 +81,10 @@ swapping a second one.
 | projected scope dataflow and RPO `b0f235f0f` | `6.51264--7.19622 s` | `0.363771--0.381739 s` | `1.94524--2.08270 s` | `0.691603--0.729620 s` | `0.328954--0.329396 s` |
 | demand-projected reaching values `ab63c926b` | `6.03530--6.24901 s` | `0.390374--0.395700 s` | `1.46225--1.50582 s` | `0.689384--0.703952 s` | `0.329001--0.329528 s` |
 | snapshot instruction order `76be1a09f` | `5.83266--5.96071 s` | `0.357776--0.392472 s` | `1.17985--1.29784 s` | `0.675203--0.710138 s` | `0.328770--0.329317 s` |
+| dense immutable handler graph `41d676501` | `5.66486--5.71842 s` | `0.114010--0.116820 s` | `1.19746--1.25465 s` | `0.690376--0.698305 s` | `0.327541--0.328972 s` |
 
 The final whole-JIT reduction relative to the two dense observations is
-`16.73--17.29x` (`94.0--94.2%`). Frame layout takes approximately `0.1 ms`, so
+`17.44--17.80x` (`94.27--94.38%`). Frame layout takes approximately `0.1 ms`, so
 frame layout is not being mistaken for this host-analysis bottleneck.
 
 ## Selection proof demand
@@ -495,6 +496,77 @@ are `barbershop-alloca-order-final-a.log`,
 `barbershop-alloca-order-rebased-b.log`, and
 `barbershop-alloca-order-oracle.log` in the same directory.
 
+## Dense immutable handler graph
+
+The next profile found another independent representation defect inside
+ray-query scratch localization. The CFG and textual instruction order of a
+surface or procedural handler are immutable while every candidate alloca is
+analyzed, but the old implementation rebuilt pointer-keyed block states,
+pointer-keyed queued sets, successor traversals, and linear instruction scans
+for each candidate. Barbershop performed 13,168 candidate analyses over only
+44,099 indexed handler instructions. Their exact pointer supports contained
+31,987 relevant instruction events, yet the old ordering queries walked
+58,628,418 handler instructions.
+
+Let a handler graph be
+
+```text
+G = (B, E, entry, order),
+```
+
+where `order(B)` is the strict textual order of instructions in block `B`.
+The snapshot constructs a bijection `phi: B -> [0, |B|)` and replaces every
+block-keyed dataflow coordinate `state[B]` with `state[phi(B)]`. Every internal
+edge occurrence `(B, C)` is represented by `(phi(B), phi(C))`; successor order
+and multiplicity are preserved, and external successor occurrences are
+counted separately. Transfer functions, joins, entry initialization, and exit
+classification are unchanged. Thus the dense solver is an isomorphic
+coordinate renaming of the same finite monotone equation system, and chaotic
+worklist iteration reaches the same least fixed point.
+
+For a candidate pointer support `S`, the sparse event schedule groups the
+instruction uses in `S` by block and sorts each group by its frozen ordinal.
+Because ordinal assignment is a bijection onto a block's intrusive-list order,
+sorting `S` by ordinal is exactly the same sequence as filtering the full block
+walk by membership in `S`. Graph construction occurs only when at least one
+captured local alloca exists. Its one-time cost is
+`O(|B| + |E| + |I|)`; subsequent schedule construction depends on the exact
+pointer support rather than unrelated handler instructions. Per-candidate
+block state and queued membership are dense vectors, and successor IDs are
+read from the immutable graph instead of rebuilding hash tables and traversing
+the CFG again. The real shader still performs 582,538 semantic block
+evaluations; only lookup and reconstruction overhead disappeared.
+
+Commit `41d676501`, rebased onto Luisa `next` at `ce63eb9e0`, reduces warm
+ray-query normalization by 67.3--71.0%, from `0.357776--0.392472 s` to
+`0.114010--0.116820 s`. The complete shader JIT falls to
+`5.66486--5.71842 s`, while render-only time remains
+`0.327541--0.328972 s`. In the rebased flat profile, handler-scratch analyzer
+symbols are below the 0.1% reporting threshold. The implementation is a real
+component split: `lower_ray_query_to_pipeline.cpp` is 1,982 lines, while the
+new graph implementation and interface are 130 and 73 lines; no `.inl`
+fragment was introduced.
+
+`LowerRayQueryToPipelineOptions::verify_handler_scratch_graph` retains two
+independent semantic checks. First, the dense graph is compared against every
+live immutable block, instruction ordinal, internal successor-ID occurrence,
+and external successor count. Second, every sparse candidate schedule is
+compared with the original linear block-filter oracle. The coroutine pipeline
+maps `LUISA_CORO_VERIFY_HANDLER_SCRATCH_GRAPH=1` to this option. The full
+Barbershop production module passed both checks for all 13,168 analyses; the
+oracle raises normalization to `0.320007 s` because it intentionally executes
+the removed scans.
+
+The rebased result preserves the generated coroutine at 9 subroutines, 212
+frame fields, and 3,184 bytes. The final 15-pass report is
+`/var/tmp/psycles-compact-populate-20260821/barbershop-handler-graph-rebased-comparison.json`;
+its maximum absolute error is `1.7881393e-7`, maximum RMS is
+`3.3883591e-8`, and maximum relative RMS is `1.4328853e-7`. The measured logs
+are `barbershop-handler-graph-rebased-a.log`,
+`barbershop-handler-graph-rebased-b.log`,
+`barbershop-handler-graph-rebased-profile.log`, and
+`barbershop-handler-graph-rebased-oracle.log` in the same directory.
+
 ## Rejected register-bank experiment
 
 A diagnostic scalarized the compact value banks behind generated switch
@@ -586,6 +658,17 @@ exactly 256 order queries and 128 user inspections, proving that the normal
 algorithm depends on candidate uses rather than the 4,096-instruction block
 body. The complete alloca-scope suite now passes 304 assertions in 25 tests.
 
+Commit `41d676501` extends the 8,192-instruction handler regression to enable
+the dense-graph oracle, require exactly two relevant events, and require more
+than 8,192 avoided linear instruction visits. A separate cyclic handler has a
+backedge definition and a direct entry-to-read path; the backedge definition
+must not turn the path-union into a Must-definition. This directly covers the
+fixed-point join property rather than merely timing an acyclic fixture. The
+null-module PassReport contract was expanded from four to nine zero-valued
+entries so the five new structural counters have the same public schema on
+empty and populated modules. The complete lower-ray-query suite now passes
+319 assertions in 32 tests.
+
 The following checks passed after rebasing onto and pushing current Luisa
 `next`:
 
@@ -594,7 +677,7 @@ test_xir_aggregate_field_bitmask
   42 assertions in 8 tests
 
 test_xir_pass_lower_ray_query_to_pipeline
-  311 assertions in 31 tests
+  319 assertions in 32 tests
 
 test_xir_pass_pointer_usage
   221 assertions in 12 tests
@@ -624,7 +707,7 @@ test_xir_pass_mutation_safety
   185 assertions in 28 tests
 
 test_xir_passes
-  2452 assertions in 392 tests
+  2457 assertions in 392 tests
 
 cmake --build build-luisa-tests --parallel
 cmake --build build --parallel
@@ -633,6 +716,7 @@ cmake --build build --parallel
 ./build/bin/psycles_luisa_scene_traversal_tests hip
 LUISA_VULKAN_USE_XIR=1 \
 LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1 \
+LUISA_VULKAN_DISABLE_DXC=1 \
 ./build/bin/psycles_luisa_scene_traversal_tests vk
 ```
 
@@ -654,7 +738,7 @@ PSYCLES_POPULATE_SURFACE_ONCE=1 \
 Raw logs, EXRs, and `perf` captures remain under
 `/var/tmp/psycles-compact-populate-20260821` and
 `/var/tmp/psycles-barbershop-coro-host*.perf.data`. The final profile is
-`/var/tmp/psycles-barbershop-coro-host-alloca-order.perf.data`. This is a
+`/var/tmp/psycles-barbershop-coro-host-handler-graph-rebased.perf.data`. This is a
 compiler-focused 8x8 canary, so no enlarged visual triptych is presented as a
 scene-quality claim. The previously committed full-resolution scene triptychs
 remain the quality oracle; the numerical all-pass comparison here is stronger
