@@ -955,6 +955,10 @@ struct SurfacePreparationQuery {
 // Only the reductions consumed before BSDF sampling cross this boundary.
 struct SurfacePreparation {
     Float3 emission;
+    // Final ShaderData::N-equivalent after the graph's Bump/Set Normal
+    // domain. This is deliberately distinct from the closure-weighted Normal
+    // AOV so downstream geometry and BSSRDF consumers never replay the graph.
+    Float3 shading_normal;
     UInt runtime_flags;
     SurfaceAov aov;
 
@@ -962,6 +966,7 @@ struct SurfacePreparation {
         const SurfacePoint &point) noexcept {
         return {
             .emission = make_float3(0.0f),
+            .shading_normal = point.shading_normal,
             .runtime_flags = 0u,
             .aov = {
                 .albedo = make_float3(0.0f),

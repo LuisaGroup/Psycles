@@ -1,0 +1,33 @@
+{
+  "scene": "Blender 5.2 Barbershop export",
+  "device": "AMD Radeon RX 9070 XT (gfx1201)",
+  "render": {
+    "resolution": [640, 480],
+    "spp": 64,
+    "scheduler": "wavefront-staged",
+    "warm_render_seconds": [3.68535, 3.62595],
+    "profiled_render_seconds": 3.65664
+  },
+  "baseline": {
+    "path_kernel_invocations": 67971392,
+    "path_kernel_total_ms": 2406.222,
+    "path_kernel_ns_per_invocation": 35.400509,
+    "private_segment_bytes": 6160,
+    "main_hip_object_bytes": 998144
+  },
+  "single_evaluation": {
+    "path_kernel_invocations": 67980128,
+    "path_kernel_total_ms": 2313.428,
+    "path_kernel_ns_per_invocation": 34.030946,
+    "private_segment_bytes": 6000,
+    "main_hip_object_bytes": 639456,
+    "metadata_sgpr_count": 98,
+    "metadata_vgpr_count": 256,
+    "wavefront_size": 32
+  },
+  "rejected_duplicate_interpreter": {
+    "warm_render_seconds": [3.99209, 3.99277],
+    "main_hip_object_bytes": 783360,
+    "normal_callable_bytes": 146352
+  }
+}

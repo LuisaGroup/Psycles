@@ -238,7 +238,7 @@ void PathKernelPipeline::emit(
         bounce.random().selected_light =
             sample.invocation.config.light_tree.surface_sample(
                 bounce.random().light_sample.z, surface.hit_position,
-                surface.point.shading_normal, 0.0f,
+                shading.shading_normal, 0.0f,
                 (shading.cycles_surface_runtime_flags &
                  cycles_closure::runtime_bsdf_has_transmission) != 0u);
       }

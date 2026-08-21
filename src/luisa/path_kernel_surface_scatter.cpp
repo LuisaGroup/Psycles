@@ -238,7 +238,7 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
                 minimum_bsdf_pdf,
                 transparent);
             previous_mis_origin_normal = select(
-                point.shading_normal,
+                context.shading.shading_normal,
                 previous_mis_origin_normal,
                 transparent);
             const auto normalized_surface_direction =

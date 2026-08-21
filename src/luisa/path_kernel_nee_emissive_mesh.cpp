@@ -90,7 +90,7 @@ class EmissiveMeshLightingComponent final
                 const auto is_transmission =
                     dot(
                         light.light.direction,
-                        surface.point.shading_normal) <
+                        context.shading.shading_normal) <
                     0.0f;
                 const auto same_primitive =
                     (emitter.cycles_primitive_index !=

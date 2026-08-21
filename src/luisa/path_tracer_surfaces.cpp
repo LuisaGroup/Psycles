@@ -703,32 +703,6 @@ make_surface_callables(const std::shared_ptr<LuisaSceneData> &scene) noexcept {
             return Float3{visitor.result()};
         };
     bssrdf_normal.set_name("surface_bssrdf_normal");
-    SurfaceShadingNormalCallable shading_normal =
-        [scene, texture_sampling, attribute_lookup](
-            BufferFloat scalar_parameters, BufferFloat3 vector_parameters,
-            BufferFloat cycles_bsdf_tables, BindlessVar textures,
-            BindlessVar geometry_heap, UInt surface_tag,
-            Var<SurfacePointCall> packed_point) noexcept {
-            CallableTexture2DSamplingProvider texture_provider{textures,
-                                                               texture_sampling};
-            CallableSurfaceAttributeLookupProvider attribute_provider{
-                geometry_heap, attribute_lookup};
-            BufferShaderServices services{scalar_parameters,
-                                          vector_parameters,
-                                          cycles_bsdf_tables,
-                                          textures,
-                                          geometry_heap,
-                                          scene->attribute_binding_slot,
-                                          scene->attribute_range_slot,
-                                          scene->nishita_texture_bindings,
-                                          scene->shader_color_space,
-                                          nullptr,
-                                          &texture_provider,
-                                          &attribute_provider};
-            return scene->surfaces.shading_normal(
-                surface_tag, services, unpack_surface_point(packed_point));
-        };
-    shading_normal.set_name("surface_shading_normal");
     return {std::move(population),
             std::move(preparation),
             std::move(evaluate_light),
@@ -737,8 +711,7 @@ make_surface_callables(const std::shared_ptr<LuisaSceneData> &scene) noexcept {
             std::move(sample),
             std::move(closure_trace),
             std::move(sample_trace),
-            std::move(bssrdf_normal),
-            std::move(shading_normal)};
+            std::move(bssrdf_normal)};
 }
 
 }// namespace psycles::luisa_backend::detail

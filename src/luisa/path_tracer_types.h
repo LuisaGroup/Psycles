@@ -488,6 +488,8 @@ inline constexpr luisa::uint include_aov = 1u << 4u;
 // surface hit, so avoid padding holes between the vector reductions.
 struct SurfacePreparationCall {
     luisa::float3 emission{};
+    // ShaderData::N-equivalent. `normal` below is the closure-weighted AOV.
+    luisa::float3 shading_normal{};
     luisa::float3 albedo{};
     luisa::float3 glossy_albedo{};
     luisa::float3 transmission_albedo{};
@@ -863,6 +865,7 @@ LUISA_STRUCT(
 LUISA_STRUCT(
     psycles::luisa_backend::detail::SurfacePreparationCall,
     emission,
+    shading_normal,
     albedo,
     glossy_albedo,
     transmission_albedo,

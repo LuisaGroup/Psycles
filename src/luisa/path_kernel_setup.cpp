@@ -494,18 +494,6 @@ Float3 PathKernelInvocation::surface_bssrdf_normal(
         refractive_caustics);
 }
 
-Float3 PathKernelInvocation::surface_shading_normal(
-    UInt surface_tag, const SurfacePoint &point) const noexcept {
-    return config.surfaces.shading_normal(
-        config.scene->scalar_parameter_buffer,
-        config.scene->vector_parameter_buffer,
-        config.scene->cycles_bsdf_table_buffer,
-        config.scene->texture_heap,
-        config.scene->heap,
-        surface_tag,
-        pack_surface_point(point));
-}
-
 Float3 PathKernelInvocation::evaluate_environment(
     Float3 direction,
     const cycles_path_state::ShaderEvaluationState &shader_state)

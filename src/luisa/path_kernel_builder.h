@@ -264,9 +264,6 @@ struct PathKernelInvocation {
   surface_bssrdf_normal(UInt surface_tag, const SurfacePoint &point,
                           Bool reflective_caustics,
                           Bool refractive_caustics) const noexcept;
-    [[nodiscard]] Float3
-    surface_shading_normal(UInt surface_tag,
-                           const SurfacePoint &point) const noexcept;
   [[nodiscard]] Float3 constant_environment() const noexcept;
     [[nodiscard]] Float3
     evaluate_environment(Float3 direction,
@@ -511,6 +508,9 @@ struct SurfaceGeometryContext {
     SurfacePoint point;
     SurfaceQuery path_surface_query;
 
+    // Retain the one graph evaluation's ShaderData::N-equivalent for the
+    // shadow-terminator geometry consumer without replaying the graph.
+    void set_evaluated_shadow_shading_normal(Float3 normal) noexcept;
     [[nodiscard]] Float3 make_ray_origin(Float3 direction) const noexcept;
     [[nodiscard]] surface_ray::ShadowOrigin
     make_shadow_origin(Float3 direction) const noexcept;
@@ -519,6 +519,9 @@ struct SurfaceGeometryContext {
 struct SurfaceShadingState {
     UInt cycles_surface_runtime_flags;
     Float3 bsdf_sample;
+    // Final graph-level shading normal. The raw SurfacePoint remains intact
+    // for the legacy replay route, so it cannot apply Bump twice.
+    Float3 shading_normal;
     // Host-only ownership of device-local populated closures. It lives across
     // the C++ AST-construction calls for NEE and scattering, but no pointer or
     // closure record crosses a device coroutine suspension.

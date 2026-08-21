@@ -160,8 +160,7 @@ public:
                 surface.point, closure_sample, entry_random);
             entry_direction = entry.direction;
             valid = entry.valid;
-            transport_normal = invocation.surface_shading_normal(
-                surface.surface_tag, surface.point);
+            transport_normal = context.shading.shading_normal;
         };
 
         path.ray = make_ray(surface.point.position,

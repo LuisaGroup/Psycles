@@ -98,15 +98,6 @@ using SurfaceBssrdfNormalCallable = Callable<luisa::float3(
     SurfacePointCall,
     bool,
     bool)>;
-using SurfaceShadingNormalCallable = Callable<luisa::float3(
-    Buffer<float>,
-    Buffer<luisa::float3>,
-    Buffer<float>,
-    BindlessArray,
-    BindlessArray,
-    luisa::uint,
-    SurfacePointCall)>;
-
 // Host/JIT object whose device-local storage is populated exactly once for a
 // path hit. Every method is a consumer of the retained original closures; no
 // method is allowed to dispatch or replay the material graph.
@@ -172,7 +163,6 @@ struct SurfaceCallables {
     SurfaceClosureTraceCallable closure_trace;
     SurfaceSampleTraceCallable sample_trace;
     SurfaceBssrdfNormalCallable bssrdf_normal;
-    SurfaceShadingNormalCallable shading_normal;
 };
 
 [[nodiscard]] SurfaceCallables make_surface_callables(
