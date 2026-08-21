@@ -248,48 +248,7 @@ TracedClosure MicrofacetGlassComponent::setup(
     return closure;
 }
 
-Float3 MicrofacetGlassComponent::intensity(
-    const SurfaceClosurePhysicalRecord &closure,
-    Float3 incoming, Float3 outgoing,
-    Float3 glossy_normal, Float glossy_filter_roughness) const noexcept {
-    static_cast<void>(_services);
-    static_cast<void>(_point);
-    const auto geometry =
-        glass_geometry(closure, incoming, outgoing, glossy_normal);
-    const auto setup_alpha =
-        microfacet_alpha(closure, glossy_filter_roughness);
-    const auto alpha = max(setup_alpha, 1.0e-7f);
-    const auto distribution = microfacet_distribution(
-        closure, geometry.cosine_normal_half, alpha);
-    const auto lambda_incoming =
-        microfacet_lambda(closure, geometry.cosine_incoming, alpha);
-    const auto lambda_outgoing =
-        microfacet_lambda(closure, geometry.cosine_outgoing, alpha);
-    const auto fresnel = glass_fresnel(closure, geometry.cosine_half_incoming);
-    const auto lobe =
-        select(fresnel.reflection, fresnel.transmission, geometry.transmission);
-    const auto transmission_jacobian =
-        closure.ior * closure.ior * geometry.inverse_half_length *
-        geometry.inverse_half_length *
-        abs(geometry.cosine_half_incoming * geometry.cosine_half_outgoing);
-    const auto common =
-        distribution / geometry.cosine_incoming *
-        select(0.25f, transmission_jacobian, geometry.transmission);
-    const auto value = lobe * common /
-                       (1.0f + lambda_incoming + lambda_outgoing) *
-                       closure.evaluation_scale;
-    // Cycles orients the refractive half-vector by eta, not by N. For an
-    // inverse-eta (backface) configuration both N.H and H.I may therefore be
-    // negative. D, Fresnel, and the Jacobian are defined for that orientation;
-    // the incoming hemisphere is the only directional validity condition.
-    const auto valid =
-        (geometry.cosine_incoming > 0.0f) &
-        (setup_alpha * setup_alpha >
-         cycles_closure::microfacet_singular_alpha_product);
-    return select(make_float3(0.0f), value, valid);
-}
-
-Float MicrofacetGlassComponent::pdf(
+MicrofacetEvaluation MicrofacetGlassComponent::evaluate(
     const SurfaceClosurePhysicalRecord &closure,
     Float3 incoming, Float3 outgoing,
     Float3 glossy_normal, Bool reflection_allowed, Bool transmission_allowed,
@@ -301,34 +260,56 @@ Float MicrofacetGlassComponent::pdf(
     const auto setup_alpha =
         microfacet_alpha(closure, glossy_filter_roughness);
     const auto alpha = max(setup_alpha, 1.0e-7f);
-    const auto distribution = microfacet_distribution(
-        closure, geometry.cosine_normal_half, alpha);
-    const auto fresnel = masked_fresnel(closure, geometry.cosine_half_incoming,
-                                        reflection_allowed, transmission_allowed);
-    const auto probability = reflection_probability(fresnel);
-    const auto lobe_probability =
-        select(probability, 1.0f - probability, geometry.transmission);
-    // Both GGX and Beckmann use visible-normal sampling in Cycles, so their
-    // evaluation PDFs share D / (N.I) / (1 + Lambda(I)); only D and Lambda
-    // differ by distribution.
-    const auto lambda_incoming =
-        microfacet_lambda(closure, geometry.cosine_incoming, alpha);
+    const auto terms = microfacet_distribution_terms(
+        closure,
+        geometry.cosine_normal_half,
+        geometry.cosine_incoming,
+        geometry.cosine_outgoing,
+        alpha);
+    const auto fresnel = glass_fresnel(
+        closure, geometry.cosine_half_incoming);
+    const auto intensity_lobe = select(
+        fresnel.reflection, fresnel.transmission, geometry.transmission);
     const auto transmission_jacobian =
         closure.ior * closure.ior * geometry.inverse_half_length *
         geometry.inverse_half_length *
         abs(geometry.cosine_half_incoming * geometry.cosine_half_outgoing);
     const auto common =
-        distribution / geometry.cosine_incoming *
+        terms.distribution / geometry.cosine_incoming *
         select(0.25f, transmission_jacobian, geometry.transmission);
-    const auto directional_pdf = common / (1.0f + lambda_incoming);
-    const auto lobe_energy =
-        select(sample_weight(fresnel.reflection),
-               sample_weight(fresnel.transmission), geometry.transmission);
-    const auto valid =
-        (geometry.cosine_incoming > 0.0f) & (lobe_energy > 0.0f) &
+    const auto value = intensity_lobe * common /
+                       (1.0f + terms.lambda_incoming +
+                           terms.lambda_outgoing) *
+                       closure.evaluation_scale;
+    // Cycles orients the refractive half-vector by eta, not by N. For an
+    // inverse-eta (backface) configuration both N.H and H.I may therefore be
+    // negative. D, Fresnel, and the Jacobian are defined for that orientation;
+    // the incoming hemisphere is the only directional validity condition.
+    const auto intensity_valid =
+        (geometry.cosine_incoming > 0.0f) &
         (setup_alpha * setup_alpha >
          cycles_closure::microfacet_singular_alpha_product);
-    return select(0.0f, directional_pdf * lobe_probability, valid);
+    auto pdf_fresnel = fresnel;
+    pdf_fresnel.reflection = select(
+        make_float3(0.0f), pdf_fresnel.reflection, reflection_allowed);
+    pdf_fresnel.transmission = select(
+        make_float3(0.0f), pdf_fresnel.transmission, transmission_allowed);
+    const auto probability = reflection_probability(pdf_fresnel);
+    const auto lobe_probability =
+        select(probability, 1.0f - probability, geometry.transmission);
+    // Both GGX and Beckmann use visible-normal sampling in Cycles, so their
+    // evaluation PDFs share D / (N.I) / (1 + Lambda(I)); only D and Lambda
+    // differ by distribution.
+    const auto directional_pdf =
+        common / (1.0f + terms.lambda_incoming);
+    const auto lobe_energy =
+        select(sample_weight(pdf_fresnel.reflection),
+               sample_weight(pdf_fresnel.transmission), geometry.transmission);
+    const auto pdf_valid = intensity_valid & (lobe_energy > 0.0f);
+    return {
+        .intensity = select(make_float3(0.0f), value, intensity_valid),
+        .pdf = select(
+            0.0f, directional_pdf * lobe_probability, pdf_valid)};
 }
 
 GlassSample MicrofacetGlassComponent::sample(

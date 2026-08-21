@@ -523,10 +523,10 @@ template<typename Closure>
     return select(oren_nayar, lambert, use_lambert);
 }
 
-[[nodiscard]] Float microfacet_distribution(
-    const SurfaceClosurePhysicalRecord &closure,
-    Float n_dot_h,
-    Float alpha) noexcept {
+namespace {
+
+[[nodiscard]] Float microfacet_ggx_distribution(
+    Float n_dot_h, Float alpha) noexcept {
     const auto alpha2 = alpha * alpha;
     // Keep the Cycles form: at normal incidence `1 + (alpha2 - 1)`
     // catastrophically cancels when alpha2 is below float epsilon, while
@@ -535,33 +535,73 @@ template<typename Closure>
     const auto one_minus_cosine2 = 1.0f - cosine2;
     const auto ggx_denominator =
         one_minus_cosine2 + alpha2 * cosine2;
-    const auto ggx = alpha2 /
-                     max(pi * ggx_denominator * ggx_denominator,
-                         1.0e-20f);
+    return alpha2 /
+           max(pi * ggx_denominator * ggx_denominator, 1.0e-20f);
+}
+
+[[nodiscard]] Float microfacet_beckmann_distribution(
+    Float n_dot_h, Float alpha) noexcept {
+    const auto alpha2 = alpha * alpha;
+    const auto cosine2 = min(n_dot_h * n_dot_h, 1.0f);
+    const auto one_minus_cosine2 = 1.0f - cosine2;
     const auto beckmann_exponent =
         one_minus_cosine2 / (cosine2 * alpha2);
     const auto beckmann_denominator =
         exp(beckmann_exponent) * pi * alpha2 * cosine2 * cosine2;
-    const auto beckmann = 1.0f / beckmann_denominator;
-    return select(ggx, beckmann, closure.beckmann);
+    return 1.0f / beckmann_denominator;
 }
 
-[[nodiscard]] Float microfacet_lambda(
-    const SurfaceClosurePhysicalRecord &closure,
-    Float n_dot_v,
-    Float alpha) noexcept {
+[[nodiscard]] Float microfacet_ggx_lambda(
+    Float n_dot_v, Float alpha) noexcept {
     const auto cosine2 = n_dot_v * n_dot_v;
     const auto squared_alpha_tangent =
         alpha * alpha * max(1.0f / cosine2 - 1.0f, 0.0f);
-    const auto ggx =
-        0.5f * (sqrt(1.0f + squared_alpha_tangent) - 1.0f);
+    return 0.5f * (sqrt(1.0f + squared_alpha_tangent) - 1.0f);
+}
+
+[[nodiscard]] Float microfacet_beckmann_lambda(
+    Float n_dot_v, Float alpha) noexcept {
+    const auto cosine2 = n_dot_v * n_dot_v;
+    const auto squared_alpha_tangent =
+        alpha * alpha * max(1.0f / cosine2 - 1.0f, 0.0f);
     const auto a = rsqrt(squared_alpha_tangent);
     const auto approximation =
         ((0.396f * a - 1.259f) * a + 1.0f) /
         ((2.181f * a + 3.535f) * a);
-    const auto beckmann = select(
+    return select(
         approximation, 0.0f, squared_alpha_tangent < 0.39f);
-    return select(ggx, beckmann, closure.beckmann);
+}
+
+}// namespace
+
+[[nodiscard]] MicrofacetDistributionTerms microfacet_distribution_terms(
+    const SurfaceClosurePhysicalRecord &closure,
+    Float n_dot_h,
+    Float n_dot_incoming,
+    Float n_dot_outgoing,
+    Float alpha) noexcept {
+    Float distribution = 0.0f;
+    Float lambda_incoming = 0.0f;
+    Float lambda_outgoing = 0.0f;
+    $if(closure.beckmann) {
+        distribution = microfacet_beckmann_distribution(
+            n_dot_h, alpha);
+        lambda_incoming = microfacet_beckmann_lambda(
+            n_dot_incoming, alpha);
+        lambda_outgoing = microfacet_beckmann_lambda(
+            n_dot_outgoing, alpha);
+    }
+    $else {
+        distribution = microfacet_ggx_distribution(n_dot_h, alpha);
+        lambda_incoming = microfacet_ggx_lambda(
+            n_dot_incoming, alpha);
+        lambda_outgoing = microfacet_ggx_lambda(
+            n_dot_outgoing, alpha);
+    };
+    return {
+        .distribution = distribution,
+        .lambda_incoming = lambda_incoming,
+        .lambda_outgoing = lambda_outgoing};
 }
 
 [[nodiscard]] Float microfacet_alpha(
@@ -650,6 +690,9 @@ template<typename Closure>
 [[nodiscard]] Float3 microfacet_reflection_fresnel(
     const SurfaceClosurePhysicalRecord &closure,
     Float cosine) noexcept {
+    // Cycles' standalone Glossy closure uses MicrofacetFresnel::NONE:
+    // Color is already baked into ShaderClosure::weight, so the remaining
+    // directional factor is constant one (plus optional MULTI_GGX scale).
     const auto f0 = specular_f0(closure);
     const auto generic =
         f0 + (make_float3(1.0f) - f0) *
@@ -669,9 +712,6 @@ template<typename Closure>
     const auto shaded = select(generic,
         principled,
         has_kind(closure, SurfaceClosureKind::principled));
-    // Cycles' standalone Glossy closure uses MicrofacetFresnel::NONE:
-    // Color is already baked into ShaderClosure::weight, so the remaining
-    // directional factor is constant one (plus optional MULTI_GGX scale).
     return select(shaded,
         closure.evaluation_scale,
         has_kind(closure, SurfaceClosureKind::glossy) |
@@ -680,7 +720,7 @@ template<typename Closure>
                 SurfaceClosureKind::thin_glass_transmission));
 }
 
-[[nodiscard]] Float3 microfacet_intensity(
+[[nodiscard]] MicrofacetEvaluation microfacet_evaluate(
     const ShaderServices &services,
     const SurfaceClosurePhysicalRecord &closure,
     Float3 incoming,
@@ -698,44 +738,24 @@ template<typename Closure>
         closure, glossy_filter_roughness);
     auto alpha = max(
         microfacet_alpha(closure, glossy_filter_roughness), 1.0e-10f);
-    auto distribution = microfacet_distribution(
-        closure, n_dot_h, alpha);
-    auto lambda_v = microfacet_lambda(closure, n_dot_v, alpha);
-    auto lambda_l = microfacet_lambda(closure, n_dot_l, alpha);
-    auto geometry = 1.0f / (1.0f + lambda_v + lambda_l);
+    const auto terms = microfacet_distribution_terms(
+        closure, n_dot_h, n_dot_v, n_dot_l, alpha);
+    auto geometry = 1.0f /
+                    (1.0f + terms.lambda_incoming +
+                        terms.lambda_outgoing);
     const auto fresnel = microfacet_reflection_fresnel(
         closure, v_dot_h);
-    auto intensity = fresnel * distribution * geometry /
+    auto intensity = fresnel * terms.distribution * geometry /
                      max(4.0f * n_dot_v, 1.0e-20f);
-    return select(make_float3(0.0f),
-        intensity,
-        (n_dot_v > 0.0f) & (n_dot_l > 0.0f) & (n_dot_h > 0.0f) &
-            (v_dot_h > 0.0f) & !singular);
-}
-
-[[nodiscard]] Float microfacet_pdf(
-    const SurfaceClosurePhysicalRecord &closure,
-    Float3 incoming,
-    Float3 outgoing,
-    Float3 glossy_normal,
-    Float glossy_filter_roughness) noexcept {
-    auto half_vector =
-        safe_normalize(incoming + outgoing, glossy_normal);
-    auto n_dot_h = max(dot(glossy_normal, half_vector), 0.0f);
-    auto v_dot_h = max(dot(incoming, half_vector), 0.0f);
-    const auto singular = microfacet_is_singular(
-        closure, glossy_filter_roughness);
-    auto alpha = max(
-        microfacet_alpha(closure, glossy_filter_roughness), 1.0e-10f);
-    auto n_dot_v = max(dot(glossy_normal, incoming), 0.0f);
-    auto n_dot_l = max(dot(glossy_normal, outgoing), 0.0f);
-    auto pdf = microfacet_distribution(closure, n_dot_h, alpha) /
+    auto pdf = terms.distribution /
                max(4.0f * n_dot_v, 1.0e-20f) /
-               (1.0f + microfacet_lambda(closure, n_dot_v, alpha));
-    return select(0.0f,
-        pdf,
+               (1.0f + terms.lambda_incoming);
+    const auto valid =
         (n_dot_v > 0.0f) & (n_dot_l > 0.0f) & (n_dot_h > 0.0f) &
-            (v_dot_h > 0.0f) & !singular);
+        (v_dot_h > 0.0f) & !singular;
+    return {
+        .intensity = select(make_float3(0.0f), intensity, valid),
+        .pdf = select(0.0f, pdf, valid)};
 }
 
 [[nodiscard]] MicrofacetReflectionSample sample_microfacet_reflection(

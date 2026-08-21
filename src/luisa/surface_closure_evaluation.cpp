@@ -271,22 +271,18 @@ surface_closure_evaluation_contribution(
                     !selected_sample);
             const auto bump_pdf_valid =
                 (bump_shadowing != 0.0f) | selected_sample;
-            auto pdf = detail::microfacet_pdf(
+            const auto evaluation = detail::microfacet_evaluate(
+                services,
                 closure,
                 incoming,
                 outgoing,
                 glossy_normal,
                 query.glossy_filter_roughness);
-            pdf = select(0.0f, pdf, bump_pdf_valid);
+            const auto pdf = select(
+                0.0f, evaluation.pdf, bump_pdf_valid);
             const auto value =
                 closure.weight *
-                detail::microfacet_intensity(
-                    services,
-                    closure,
-                    incoming,
-                    outgoing,
-                    glossy_normal,
-                    query.glossy_filter_roughness) *
+                evaluation.intensity *
                 bump_shadowing;
             const auto contributes = policy.glossy_included;
             const auto eligible_value = select(
@@ -347,7 +343,7 @@ surface_closure_evaluation_contribution(
                 selected_sample & glass_is_transmission);
             const auto bump_pdf_valid =
                 (bump_shadowing != 0.0f) | selected_sample;
-            auto pdf = microfacet_glass.pdf(
+            const auto evaluation = microfacet_glass.evaluate(
                 closure,
                 incoming,
                 outgoing,
@@ -355,17 +351,13 @@ surface_closure_evaluation_contribution(
                 glossy_enabled,
                 transmission_enabled,
                 query.glossy_filter_roughness);
-            pdf = select(0.0f, pdf, bump_pdf_valid);
+            auto pdf = select(
+                0.0f, evaluation.pdf, bump_pdf_valid);
             pdf = select(
                 pdf, 0.0f, selected_unit_ior_glass_delta);
             auto value =
                 closure.weight *
-                microfacet_glass.intensity(
-                    closure,
-                    incoming,
-                    outgoing,
-                    glossy_normal,
-                    query.glossy_filter_roughness) *
+                evaluation.intensity *
                 bump_shadowing;
             value = select(
                 value,
@@ -433,19 +425,16 @@ surface_closure_evaluation_contribution(
                 selected_sample);
             const auto bump_pdf_valid =
                 (bump_shadowing != 0.0f) | selected_sample;
-            auto pdf = thin_glass.pdf(
+            const auto evaluation = thin_glass.evaluate(
                 closure,
                 incoming,
                 outgoing,
                 query.glossy_filter_roughness);
-            pdf = select(0.0f, pdf, bump_pdf_valid);
+            const auto pdf = select(
+                0.0f, evaluation.pdf, bump_pdf_valid);
             const auto value =
                 closure.weight *
-                thin_glass.intensity(
-                    closure,
-                    incoming,
-                    outgoing,
-                    query.glossy_filter_roughness) *
+                evaluation.intensity *
                 bump_shadowing;
             const auto contributes =
                 policy.transmission_included;

@@ -247,28 +247,14 @@ ThinGlassSetupResult ThinGlassComponent::setup(
         .transparency = transparency};
 }
 
-Float3 ThinGlassComponent::intensity(
+MicrofacetEvaluation ThinGlassComponent::evaluate(
     const SurfaceClosurePhysicalRecord &closure,
     Float3 incoming,
     Float3 outgoing,
     Float glossy_filter_roughness) const noexcept {
     const auto transformed_incoming = mirror(incoming, closure.normal);
-    return microfacet_intensity(
+    return microfacet_evaluate(
         _services,
-        closure,
-        transformed_incoming,
-        outgoing,
-        closure.normal,
-        glossy_filter_roughness);
-}
-
-Float ThinGlassComponent::pdf(
-    const SurfaceClosurePhysicalRecord &closure,
-    Float3 incoming,
-    Float3 outgoing,
-    Float glossy_filter_roughness) const noexcept {
-    const auto transformed_incoming = mirror(incoming, closure.normal);
-    return microfacet_pdf(
         closure,
         transformed_incoming,
         outgoing,
