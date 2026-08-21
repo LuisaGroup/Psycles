@@ -1456,8 +1456,6 @@ if(PSYCLES_ENABLE_LUISA)
                             vk)
                 endif()
 
-                include(cmake/PsyclesSurfaceBackendTests.cmake)
-
                 include(cmake/PsyclesCurveTests.cmake)
 
                 add_executable(
@@ -1632,6 +1630,11 @@ if(PSYCLES_ENABLE_LUISA)
                             vk)
                 endif()
             endif()
+
+            # These fixtures register independently for every enabled Luisa
+            # backend. Keep them outside the fallback-only block so a native
+            # Metal/HIP/Vulkan build does not silently lose surface coverage.
+            include(cmake/PsyclesSurfaceBackendTests.cmake)
 
             add_executable(
                 psycles_blender_import_tests
