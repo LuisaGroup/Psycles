@@ -15,10 +15,16 @@ PSYCLES_COMPACT_SURFACE_VALUES=1
 PSYCLES_POPULATE_SURFACE_ONCE=1
 ```
 
-Validated revisions:
+The cache and staged-render measurements below were produced at:
 
 - Psycles `23786b055700b1ea5e6b4845484d8d070e3d37cc`
 - LuisaCompute `a317b9e1fff987fb1fe4e8646da2a492f229f7f6`
+
+Before the formal cross-scheduler runs, Luisa `next` advanced to
+`41d676501bdfdbb7d66e541e8a9e4da7fe00d24b`. That revision contains the two
+Metal fixes above and adds indexed XIR ray-query handler analysis. Psycles was
+rebuilt against it; the formal scheduler rows appended below use that newer
+revision.
 
 ## Configuration boundary
 
@@ -51,6 +57,8 @@ The following Metal suites passed at the recorded Luisa revision:
 
 | Target | Reported result |
 | --- | ---: |
+| `test_xir_pass_lower_ray_query_to_pipeline` | 319 assertions / 32 tests |
+| `test_xir_passes` | 2,457 assertions / 392 tests |
 | `test_metal_codegen_regressions metal` | 6 cases passed |
 | `test_timeline_event metal` | 11 cases passed |
 | `test_coro_soa_layout metal` | 122 assertions / 12 tests |
