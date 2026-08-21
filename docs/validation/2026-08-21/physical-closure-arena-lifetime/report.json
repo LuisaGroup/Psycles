@@ -1,0 +1,52 @@
+{
+  "schema": "psycles.render-differential.v1",
+  "scene": "barbershop-5.2",
+  "resolution": [640, 480],
+  "sample_range": [0, 64],
+  "reference": "partial physical arena initialization",
+  "candidate": "fully defined bounded physical arena",
+  "frame": {
+    "reference_bytes": 2960,
+    "candidate_bytes": 848,
+    "removed_bytes": 2112,
+    "capacity": 1048576
+  },
+  "render_seconds": {
+    "reference": [7.83783, 7.81259],
+    "candidate": [3.97309, 3.97982],
+    "reference_median": 7.825210,
+    "candidate_median": 3.976455,
+    "speedup": 1.967886
+  },
+  "combined": {
+    "valid_pixels": 307200,
+    "invalid_pixels": 0,
+    "mean_absolute_error": 2.751366601216887e-08,
+    "rmse": 1.6529715139768086e-05,
+    "relative_rmse": 0.00010194886459463855,
+    "p99_pixel_rmse": 8.603189272093914e-09,
+    "maximum_absolute_error": 0.013920903205871582,
+    "luminance_mean_ratio": 0.9999996735994506,
+    "pixels_over_1e-6": 4
+  },
+  "same_route_repeatability": {
+    "reference_combined_rmse": 6.14698e-05,
+    "reference_combined_maximum_absolute_error": 0.0355442,
+    "candidate_combined_rmse": 5.92104e-05,
+    "candidate_combined_maximum_absolute_error": 0.0355442
+  },
+  "hip_profile_ms": {
+    "shade_surface": {
+      "reference": 6647.268705,
+      "candidate": 2893.754359
+    },
+    "frame_compaction": {
+      "reference": 141.040238,
+      "candidate": 53.725103
+    },
+    "intersect_closest": {
+      "reference": 321.644768,
+      "candidate": 322.992938
+    }
+  }
+}
