@@ -53,7 +53,8 @@ and requires the second compilation to reuse the first in-memory shader.
 
 ## Luisa validation
 
-The following Metal suites passed at the recorded Luisa revision:
+The following focused suites passed at the recorded Luisa revision. The two
+XIR rows are host-only; the scheduler/runtime rows use Metal:
 
 | Target | Reported result |
 | --- | ---: |
@@ -107,13 +108,43 @@ The two Psycles images are numerically equivalent apart from floating-point
 accumulation order: Combined RMSE `1.42155e-5`, p99 pixel RMSE `9.73e-8`, and
 maximum absolute error `0.030159`.
 
-## Preliminary Cycles comparison and image inspection
+## Formal scheduler and Cycles Metal comparison
 
-The currently retained matched Blender 5.2 Cycles Metal reference rendered in
-19.5079225 s. Against that reference, the 1-spp-dispatch compact staged run is
-12.46x slower in render-only time. A fresh Cycles process rerun and the graph,
-ordinary-wavefront, and persistent scheduler rows will be appended after their
-current Metal compilation/cache warm-up completes.
+The formal scheduler rows use Psycles `f68c88f` with Luisa `41d676501`, the two
+compact environment flags above, one sample per dispatch, a warm shader cache,
+and no scheduler-stat logging. Cycles is a fresh Blender 5.2.0 LTS process on
+the same Apple M1 Max with the same image dimensions, 64 fixed samples,
+tabulated Sobol, seed 1, adaptive sampling disabled, and denoising disabled.
+
+| Renderer / scheduler | Scene compile | Shader JIT | Render-only | Process wall | Maximum RSS | Psycles / Cycles |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Cycles Metal | - | - | 15.5552 s | 17.53 s | 3,182,723,072 B | 1.000x |
+| Psycles tuned graph, selective + hint sort + tail | 1.43832 s | 2.31652 s | 199.188 s | 207.44 s | 3,037,200,384 B | 12.805x |
+| Psycles ordinary wavefront | 1.44286 s | 3.30121 s | 239.207 s | 246.45 s | 3,010,101,248 B | 15.378x |
+| Psycles staged wavefront | 1.54275 s | 2.48400 s | 242.992 s | 249.68 s | 3,086,860,288 B | 15.621x |
+| Psycles default graph | 1.44229 s | 2.33971 s | 247.616 s | 253.90 s | 3,047,505,920 B | 15.919x |
+| Psycles tuned graph, tail disabled | 1.45357 s | 2.21276 s | 248.393 s | 254.58 s | 3,016,359,936 B | 15.969x |
+
+Tuned graph is the fastest tested Psycles Metal scheduler on this workload. It
+is 18.03% lower than staged, 16.73% lower than ordinary wavefront, and 19.56%
+lower than default graph. The nonzero tail state-machine drain reduces the
+tuned graph render by 19.81% relative to the otherwise matched `tail=0` run.
+
+The tradeoff is cold compilation. The first graph run took about 1,693 seconds
+to construct the graph scheduler and compile its large Metal kernels; the
+optional tail kernel accounted for the later long compiler phase. Once cached,
+all graph formal runs report about 2.2-2.3 seconds of total shader JIT. This is
+why zero versus nonzero tail remains structural, while the magnitude of a
+nonzero threshold remains host policy.
+
+Persistent was also exercised rather than silently omitted. Even the 64x64,
+1-spp smoke failed while creating the giant persistent Metal pipeline:
+`MTLCompilerService` ran for about 97 seconds, repeatedly interrupted its XPC
+connection, and the process exited with status 134 before rendering. This is
+recorded as an Apple Metal compiler scalability failure, not a performance
+number and not a Psycles-side fallback.
+
+## Image inspection
 
 Combined comparison metrics are:
 
@@ -123,7 +154,13 @@ Combined comparison metrics are:
 - p99 pixel RMSE `0.0459147`;
 - maximum absolute error `0.884907`.
 
-Native-resolution inspection of the Psycles image confirms that the Classroom
+The tuned graph and staged Psycles Combined images have identical channel and
+luminance means. Their RMSE is `3.25234e-6`, with zero p99 pixel RMSE; the
+sparse maximum absolute difference is `0.00598046` from atomic accumulation
+order. Thus the scheduler speed ranking does not exchange image semantics for
+throughput.
+
+Native-resolution inspection of the tuned graph image confirms that the Classroom
 window panes have no coherent purple lines, the clock face/digits/hands are
 visible, and the transom above the door is translucent rather than black. The
 amplified difference panel contains sparse magenta/green residuals around
