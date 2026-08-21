@@ -89,6 +89,13 @@ def _positive_integer(value: str) -> int:
     return result
 
 
+def _nonnegative_integer(value: str) -> int:
+    result = int(value)
+    if result < 0:
+        raise argparse.ArgumentTypeError("value must be non-negative")
+    return result
+
+
 def _backend_list(value: str) -> tuple[str, ...]:
     result = tuple(
         backend.strip().lower()
@@ -256,6 +263,84 @@ def _arguments() -> argparse.Namespace:
         help="wavefront execution block size (default: 32)",
     )
     parser.add_argument(
+        "--persistent-worker-count",
+        type=_positive_integer,
+        default=32768,
+        help="persistent scheduler worker count (default: 32768)",
+    )
+    parser.add_argument(
+        "--persistent-block-size",
+        type=_wavefront_block_size,
+        default=32,
+        help="persistent scheduler block size (default: 32)",
+    )
+    parser.add_argument(
+        "--persistent-fetch-size",
+        type=_positive_integer,
+        default=1,
+        help="persistent scheduler fetch size (default: 1)",
+    )
+    parser.add_argument(
+        "--staged-surface-sorting",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="enable staged scheduler surface sorting",
+    )
+    parser.add_argument(
+        "--staged-direct-light-queue",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="enable the staged scheduler direct-light queue",
+    )
+    parser.add_argument(
+        "--wavefront-counter-readback-batch-size",
+        type=_positive_integer,
+        default=4,
+        help="graph counter readback batch size (default: 4)",
+    )
+    parser.add_argument(
+        "--wavefront-counter-readback-pipeline-depth",
+        type=_positive_integer,
+        default=2,
+        help="graph counter readback pipeline depth (default: 2)",
+    )
+    parser.add_argument(
+        "--wavefront-tail-megakernel-threshold",
+        type=_nonnegative_integer,
+        default=4096,
+        help="graph tail-megakernel threshold (default: 4096)",
+    )
+    parser.add_argument(
+        "--wavefront-graph-worker-count",
+        type=_nonnegative_integer,
+        default=0,
+        help="graph worker count, or zero for automatic (default: 0)",
+    )
+    parser.add_argument(
+        "--wavefront-graph-selective",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="enable graph selective scheduling",
+    )
+    parser.add_argument(
+        "--wavefront-graph-refill-threshold",
+        type=_nonnegative_integer,
+        default=0,
+        help="graph selective refill threshold (default: 0)",
+    )
+    parser.add_argument(
+        "--fast-math",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="enable Psycles fast math",
+    )
+    parser.add_argument(
+        "--wavefront-frame-capacity",
+        type=_positive_integer,
+        default=1048576,
+        help="wavefront frame capacity (default: 1048576)",
+    )
+    parser.add_argument(
         "--width",
         type=_positive_integer,
         default=640,
@@ -370,6 +455,19 @@ def _psycles_command(
     max_samples_per_dispatch: int,
     scheduler: str | None = None,
     wavefront_execution_block_size: int = 32,
+    persistent_worker_count: int = 32768,
+    persistent_block_size: int = 32,
+    persistent_fetch_size: int = 1,
+    staged_surface_sorting: bool = True,
+    staged_direct_light_queue: bool = False,
+    wavefront_counter_readback_batch_size: int = 4,
+    wavefront_counter_readback_pipeline_depth: int = 2,
+    wavefront_tail_megakernel_threshold: int = 4096,
+    wavefront_graph_worker_count: int = 0,
+    wavefront_graph_selective: bool = False,
+    wavefront_graph_refill_threshold: int = 0,
+    fast_math: bool = True,
+    wavefront_frame_capacity: int = 1048576,
 ) -> list[str]:
     command = [
         str(renderer),
@@ -394,6 +492,19 @@ def _psycles_command(
             "0",
             scheduler,
             str(wavefront_execution_block_size),
+            str(persistent_worker_count),
+            str(persistent_block_size),
+            str(persistent_fetch_size),
+            str(int(staged_surface_sorting)),
+            str(int(staged_direct_light_queue)),
+            str(wavefront_counter_readback_batch_size),
+            str(wavefront_counter_readback_pipeline_depth),
+            str(wavefront_tail_megakernel_threshold),
+            str(wavefront_graph_worker_count),
+            str(int(wavefront_graph_selective)),
+            str(wavefront_graph_refill_threshold),
+            str(int(fast_math)),
+            str(wavefront_frame_capacity),
         ])
     return command
 
@@ -841,6 +952,13 @@ def _main() -> int:
             "cycles_gpu_device_name": (
                 arguments.cycles_gpu_device_name
             ),
+            "psycles_environment": {
+                name: os.environ.get(name)
+                for name in (
+                    "PSYCLES_COMPACT_SURFACE_VALUES",
+                    "PSYCLES_POPULATE_SURFACE_ONCE",
+                )
+            },
         },
         "renderers": {
             "cycles": {},
@@ -854,9 +972,42 @@ def _main() -> int:
             "psycles_schedulers": list(
                 arguments.psycles_schedulers
             ),
-            "wavefront_execution_block_size": (
-                arguments.wavefront_execution_block_size
-            ),
+            "psycles_scheduler_config": {
+                "wavefront_execution_block_size": (
+                    arguments.wavefront_execution_block_size
+                ),
+                "persistent_worker_count": (
+                    arguments.persistent_worker_count
+                ),
+                "persistent_block_size": arguments.persistent_block_size,
+                "persistent_fetch_size": arguments.persistent_fetch_size,
+                "staged_surface_sorting": arguments.staged_surface_sorting,
+                "staged_direct_light_queue": (
+                    arguments.staged_direct_light_queue
+                ),
+                "wavefront_counter_readback_batch_size": (
+                    arguments.wavefront_counter_readback_batch_size
+                ),
+                "wavefront_counter_readback_pipeline_depth": (
+                    arguments.wavefront_counter_readback_pipeline_depth
+                ),
+                "wavefront_tail_megakernel_threshold": (
+                    arguments.wavefront_tail_megakernel_threshold
+                ),
+                "wavefront_graph_worker_count": (
+                    arguments.wavefront_graph_worker_count
+                ),
+                "wavefront_graph_selective": (
+                    arguments.wavefront_graph_selective
+                ),
+                "wavefront_graph_refill_threshold": (
+                    arguments.wavefront_graph_refill_threshold
+                ),
+                "fast_math": arguments.fast_math,
+                "wavefront_frame_capacity": (
+                    arguments.wavefront_frame_capacity
+                ),
+            },
         })
     resumed_existing_manifest = arguments.resume and manifest_path.is_file()
     if resumed_existing_manifest:
@@ -1085,6 +1236,33 @@ def _main() -> int:
                 wavefront_execution_block_size=(
                     arguments.wavefront_execution_block_size
                 ),
+                persistent_worker_count=arguments.persistent_worker_count,
+                persistent_block_size=arguments.persistent_block_size,
+                persistent_fetch_size=arguments.persistent_fetch_size,
+                staged_surface_sorting=arguments.staged_surface_sorting,
+                staged_direct_light_queue=(
+                    arguments.staged_direct_light_queue
+                ),
+                wavefront_counter_readback_batch_size=(
+                    arguments.wavefront_counter_readback_batch_size
+                ),
+                wavefront_counter_readback_pipeline_depth=(
+                    arguments.wavefront_counter_readback_pipeline_depth
+                ),
+                wavefront_tail_megakernel_threshold=(
+                    arguments.wavefront_tail_megakernel_threshold
+                ),
+                wavefront_graph_worker_count=(
+                    arguments.wavefront_graph_worker_count
+                ),
+                wavefront_graph_selective=(
+                    arguments.wavefront_graph_selective
+                ),
+                wavefront_graph_refill_threshold=(
+                    arguments.wavefront_graph_refill_threshold
+                ),
+                fast_math=arguments.fast_math,
+                wavefront_frame_capacity=arguments.wavefront_frame_capacity,
             )
             exr = preview.with_suffix(".exr")
             stage = f"psycles_{run_key}"
