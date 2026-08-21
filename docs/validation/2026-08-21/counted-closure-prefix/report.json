@@ -1,0 +1,96 @@
+{
+  "schema": "psycles.counted-array-prefix-validation.v1",
+  "date": "2026-08-21",
+  "revisions": {
+    "psycles": "abaf744d3ad7c47edc1224f60ef105266d9c4d71",
+    "luisa_compute": "d8e9298387674caedd7d8090e5e6c1ebb8791d47"
+  },
+  "device": {
+    "name": "AMD Radeon RX 9070 XT",
+    "architecture": "gfx1201",
+    "rocm": "7.2.53211",
+    "vulkan_driver": "RADV GFX1201"
+  },
+  "formal_contract": {
+    "invariant": "forall i in [0, C), A[i] is initialized",
+    "establish": "C = 0",
+    "extend": "A[C] = whole_element; C = C + 1",
+    "join": "must-intersect facts and maximize finite counter upper bound",
+    "unsupported_behavior": "reject before mutation"
+  },
+  "compiler": {
+    "focused_surface_population": {
+      "allocas": 3061,
+      "contracted": 3061,
+      "definite_proofs": 646,
+      "initialized_prefix_proofs": 3,
+      "rejected_prior_lifetime": 0,
+      "initialized_prefix_block_evaluations": 120,
+      "logical_frame_values": 0
+    },
+    "barbershop_frame": {
+      "historical_prefix_without_proof_bytes": 2960,
+      "full_zero_bytes": 848,
+      "initialized_prefix_proof_bytes": 848,
+      "removed_regression_bytes": 2112,
+      "frame_capacity": 1048576,
+      "saved_capacity_bytes": 2214592512
+    }
+  },
+  "tests": {
+    "xir_alloca_scope": {"tests": 31, "assertions": 338},
+    "unit_xir": {"passed": 57, "total": 57},
+    "counted_local_array_hip": {"assertions": 1028, "passed": true},
+    "counted_local_array_fallback": {"assertions": 1028, "passed": true},
+    "psycles_surface_backend_matrix": {"passed": 6, "total": 6},
+    "psycles_film_scheduler_matrix": {
+      "hip": true,
+      "fallback": true,
+      "vulkan": true
+    },
+    "vulkan_native_xir_spirv_guard": {
+      "assertions": 3,
+      "passed": true,
+      "dxc_compatibility": false
+    }
+  },
+  "hip_render_seconds": {
+    "classroom_640x480_64spp": {
+      "full_zero": 2.35860,
+      "initialized_prefix": 2.35255,
+      "prefix_over_full_ratio": 0.9974349190197574,
+      "frame_bytes": 440
+    },
+    "barbershop_640x480_64spp": {
+      "full_zero": [3.44885, 3.44772, 3.44689],
+      "initialized_prefix": [3.59001, 3.44690, 3.45195],
+      "full_zero_mean": 3.44782,
+      "initialized_prefix_steady_mean": 3.449425,
+      "steady_prefix_over_full_ratio": 1.0004655115406256,
+      "frame_bytes": 848
+    }
+  },
+  "classroom_640x480_64spp_passes": {
+    "Combined": {"rmse": 1.8499216603018453e-9, "max_abs": 2.384185791015625e-7, "invalid_pixels": 0, "luminance_mean_ratio": 1.0},
+    "Normal": {"rmse": 5.364785504724523e-9, "max_abs": 2.384185791015625e-7, "invalid_pixels": 0},
+    "DiffCol": {"rmse": 6.845090272378229e-9, "max_abs": 2.980232238769531e-7, "invalid_pixels": 0},
+    "DiffDir": {"rmse": 1.6302255545497246e-8, "max_abs": 1.430511474609375e-6, "invalid_pixels": 0},
+    "DiffInd": {"rmse": 2.3662460879592118e-9, "max_abs": 4.76837158203125e-7, "invalid_pixels": 0},
+    "GlossCol": {"rmse": 6.28209428921167e-10, "max_abs": 1.1920928955078125e-7, "invalid_pixels": 0},
+    "GlossDir": {"rmse": 1.1967855151340245e-8, "max_abs": 9.5367431640625e-7, "invalid_pixels": 0},
+    "GlossInd": {"rmse": 1.9852866017799897e-9, "max_abs": 3.5762786865234375e-7, "invalid_pixels": 0},
+    "TransCol": {"rmse": 2.1858541643382523e-9, "max_abs": 1.7881393432617188e-7, "invalid_pixels": 0},
+    "TransDir": {"rmse": 2.717098474286115e-18, "max_abs": 8.881784197001252e-16, "invalid_pixels": 0},
+    "TransInd": {"rmse": 5.574947725683899e-10, "max_abs": 8.940696716308594e-8, "invalid_pixels": 0},
+    "Emit": {"rmse": 0.0, "max_abs": 0.0, "invalid_pixels": 0},
+    "Env": {"rmse": 0.0, "max_abs": 0.0, "invalid_pixels": 0},
+    "Volume Direct": {"rmse": 0.0, "max_abs": 0.0, "invalid_pixels": 0},
+    "Volume Indirect": {"rmse": 0.0, "max_abs": 0.0, "invalid_pixels": 0}
+  },
+  "visual_inspection": {
+    "combined": "no visible difference at native resolution",
+    "normal": "only low-order arithmetic noise visible after 1.51e7 amplification",
+    "structured_difference": false,
+    "triptychs": ["combined.png", "normal.png"]
+  }
+}
