@@ -659,3 +659,86 @@ compiler-focused 8x8 canary, so no enlarged visual triptych is presented as a
 scene-quality claim. The previously committed full-resolution scene triptychs
 remain the quality oracle; the numerical all-pass comparison here is stronger
 evidence for this analysis-only change.
+
+## Exact incremental post-dominance during CFG restructuring
+
+After the remaining-divergent candidate index removed repeated full-CFG scans,
+the next trace attributed most of the drain to rebuilding post-dominance after
+each rewrite. Barbershop performed 180 rewrites; 173 of them inserted a fresh
+one-successor structural merge immediately before an existing merge. The old
+implementation consequently ran 270 complete postdom analyses and spent
+`1.146280 s` in continuation restructuring even after the dominance overlay.
+
+The replacement is a dynamic update with an explicit proof obligation. Let
+`m` be the old merge, `s` the fresh block with sole successor `m`, and `T_m`
+the old strict postdom subtree below `m`. The transformation changes no old
+edge except within `T_m`, where a subset of old edges to `m` is redirected to
+`s`.
+Therefore no node outside `T_m` can acquire `s` as a postdominator. Inside
+`T_m`, define
+
+```text
+F(X) = {v in T_m | every active successor of v is in X or is s}.
+```
+
+The blocks newly postdominated by `s` are exactly the greatest fixed point of
+`F`. The greatest, rather than least, fixed point is required for a cyclic
+region whose only finite exit passes through `s`; this is the same finite-path
+semantics used by the Cooper-Harvey-Kennedy solve. The implementation starts at
+the top element `T_m`, removes blocks with an outside successor, and propagates
+removal through predecessors. The surviving set is upward-closed in the old
+postdom tree. Thus `s` is inserted directly below `m`, exactly the surviving
+children of `m` are reparented under `s`, and their intact subtrees gain one in
+depth. Every executable incoming edge to `s` replaces an old `u -> m` edge,
+so its predecessor was already in the active domain. If none exists, `s` is
+referenced only by `ControlFlowMerge::merge_block`; that declaration is not an
+executable CFG operand, so `s` remains outside the fresh CHK domain and no tree
+edit is required.
+
+`LUISA_XIR_VERIFY_REMAINING_DIVERGENT_INDEX=1` is the production differential
+oracle. After every rewrite it independently solves fresh CHK and compares the
+complete node domain, immediate-postdominator relation, and depth against the
+dynamic tree. It also retains the independent fresh dominance-query and
+candidate-index checks. The full Barbershop module passed the oracle for all
+180 rewrites. Its production counts are:
+
+```text
+postdom analyses                         97   (was 270)
+postdom incremental updates             173
+postdom full rebuilds                    0
+update candidate blocks                 19,570
+update block evaluations                19,693--19,903
+update edge visits                      26,339--26,659
+update covered blocks                   4,024
+update reparented roots                 408
+```
+
+Normal runs measured continuation restructuring at `770.739--815.607 ms`,
+28.8--32.8% below the `1.146280 s` dominance-overlay checkpoint and
+43.5--46.6% below the original `1.442566 s` baseline. A verbose pass trace
+measured `add_header_to_remaining_divergent` at only `3.340 ms`; the remaining
+large nested regions were `post_restructure_fixed_point` (`527.294 ms`) and
+selection-exit draining (`173.099 ms`). Diagnostic oracle runs took
+`1.814133--1.951953 s`, as expected because they deliberately retain a fresh
+CHK solve after every local update.
+
+The regression suite now includes both extremes. A 63-conditional binary tree
+proves that virtual-exit rewrites require neither a dynamic update nor a full
+rebuild, while a reachable shared-successor CFG must exercise the incremental
+path and match fresh CHK without fallback. The final results were 1,487
+assertions in 80 restructure tests, 58 assertions in 9 postdom tests, 185
+assertions in 28 mutation-safety tests, 2,477 assertions in 392 generic pass
+tests, and the coroutine pipeline/materialization/XIR-to-AST validation suites.
+
+The all-pass comparison is
+`/var/tmp/psycles-compact-populate-20260821/barbershop-restructure-postdom-update-rebased-final-comparison.json`.
+Across Combined, Normal, Albedo/closure colors, every direct and indirect light
+pass, emission, environment, transmission, and both volume passes, its maximum
+absolute error is `2.3841858e-7`, maximum RMS is `4.2270905e-8`, maximum
+relative RMS is `1.3052366e-7`, and there are no invalid pixels. The oracle,
+normal-run, and verbose-trace logs use the
+`barbershop-restructure-postdom-update-*` prefix in the same directory.
+Fallback and HIP traversal canaries pass. The Vulkan canary was run with
+`LUISA_VULKAN_USE_XIR=1`, `LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, and
+`LUISA_VULKAN_DISABLE_DXC=1`; its log contains native XIR/SPIR-V translation
+and no DXC load.
