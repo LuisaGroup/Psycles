@@ -6,15 +6,15 @@ The compact surface program makes Barbershop's staged path practical at run
 time, but exposed a host-compiler complexity defect in Luisa's coroutine
 ray-query normalization. On the same Blender 5.2 Barbershop export, RX 9070 XT,
 8x8 image, 256 fixed spp, and one 64-sample dispatch, the complete shader-JIT
-interval fell from `99.7033--100.821 s` to `20.3864 s`. The final coroutine
-compilation interval is `19.2882 s`; ray-query normalization remains its largest
-phase at `8.24251 s` and is the next target.
+interval fell from `99.7033--100.821 s` to `15.6040 s`. The final coroutine
+compilation interval is `14.4915 s`; pre-distill optimization is now the largest
+phase at `6.45809 s`, ahead of ray-query normalization at `3.62191 s`.
 
 The optimization changes host analysis only. The generated coroutine graph is
 unchanged at 9 subroutines, 212 frame fields, and 3,184 frame bytes. Render-only
-time remained in the same narrow range (`0.359723 s` before and `0.360216 s`
-after). The final all-pass EXR comparison has RMS `2.18303e-8` and maximum
-absolute error `4.76838e-7`, with no pixel above `1e-6`; this is the normal
+time remained in the same narrow range (`0.359723 s` before and `0.360176 s`
+after). The final all-pass EXR comparison has RMS `1.61556e-8` and maximum
+absolute error `2.38419e-7`, with no pixel above `1e-6`; this is the normal
 non-deterministic floating-point accumulation envelope, not a structured image
 change.
 
@@ -71,10 +71,11 @@ swapping a second one.
 | cached provenance, pre-rebase | `28.7626 s` | `16.3784 s` | `6.59192 s` | `1.66676 s` | `0.364793 s` |
 | sparse effects `b1a969e23`, rebased | `29.1316 s` | `16.8576 s` | `6.49122 s` | `1.69597 s` | `0.364140 s` |
 | dead selection proof removed, pre-rebase | `20.3212 s` | `8.20558 s` | `6.39471 s` | `1.68025 s` | `0.358903 s` |
-| final `933811bae` on current `next` | `20.3864 s` | `8.24251 s` | `6.53486 s` | `1.66747 s` | `0.360216 s` |
+| selection proof demand `933811bae` | `20.3864 s` | `8.24251 s` | `6.53486 s` | `1.66747 s` | `0.360216 s` |
+| final sparse pointer support `ef07fb841` | `15.6040 s` | `3.62191 s` | `6.45809 s` | `1.65430 s` | `0.360176 s` |
 
 The final whole-JIT reduction relative to the two dense observations is
-`4.89--4.95x` (`79.6--79.8%`). Frame layout takes `0.107 ms`, so frame layout
+`6.39--6.46x` (`84.3--84.5%`). Frame layout takes `0.099 ms`, so frame layout
 is not being mistaken for this host-analysis bottleneck.
 
 ## Selection proof demand
@@ -106,6 +107,31 @@ halves ray-query normalization (`16.8576 -> 8.24251 s`) and reduces whole JIT by
 dependency testable: it is zero for an unbounded already-eligible candidate and
 one when a finite zero budget can be satisfied only by localizing scratch.
 
+## Sparse pointer support
+
+After duplicate selection work was removed, `perf` still placed the largest
+normalization symbol in `RayQueryHandlerScratchAnalyzer::resolve_pointer`.
+Each candidate alloca was resolving every other lvalue in the handler even
+though the earlier ownership proof had already computed the candidate's exact
+pointer support.
+
+For a root `p`, let `support(p)` be the transitive use-list closure through GEP
+base edges. XIR has no implicit pointer casts or hidden alias-producing
+instructions: a use outside load/store, GEP-base, or an explicit reference
+call rejects localization. Therefore, after the ownership proof succeeds, a
+parent-function instruction whose lvalue operands are outside `support(p)` has
+the identity effect in `p`'s product-lattice coordinate. A related reference
+call is the boundary: its callable is analyzed without the parent support
+filter after binding the formal reference to the actual pointer view.
+
+Commit `ef07fb841` carries the proven use-list closure into the field-sensitive
+dataflow and filters unsupported lvalues before provenance lookup. It also
+shares one immutable provenance memo across block visits and fixed-point
+iterations; provenance is a function of the environment and value graph, not
+of the current need/define fact. Relative to `933811bae`, normalization falls
+56.1% (`8.24251 -> 3.62191 s`) and whole JIT falls 23.5%
+(`20.3864 -> 15.6040 s`).
+
 The compact staged path is also a meaningful runtime boundary. Against the
 same compact-populate megakernel (`2.08996 s` render-only), the staged path at
 `0.359723 s` is `5.81x` faster. A prior one-sample dispatch took `6.743 s`
@@ -133,8 +159,8 @@ storage lifetime, and fixed interpreter structure instead.
 
 Luisa commit `b1a969e23` adds a complexity regression with a 4,096-leaf
 aggregate and 8,192 unrelated arithmetic instructions before DCE. The full
-lowering must still localize the one real scratch aggregate. This makes the
-intended complexity property observable without timing thresholds.
+lowering must still localize the one real scratch aggregate, making sparse
+effect complexity observable without timing thresholds.
 
 Commit `933811bae` extends that regression to require zero speculative
 selection-localization analyses under the default unbounded budget. A second
@@ -142,6 +168,10 @@ finite-budget regression requires exactly one selection proof and confirms
 that the localized alloca does not consume the callback capture budget. These
 cover both sides of the demand condition rather than encoding a renderer or
 scene special case.
+
+Commit `ef07fb841` adds 8,192 unrelated shared-root GEP/load chains to the same
+pre-DCE fixture. The real scratch must still localize, making sparse pointer
+support part of the regression rather than only a timing observation.
 
 The following checks passed after rebasing onto and pushing current Luisa
 `next`:
