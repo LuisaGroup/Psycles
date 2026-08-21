@@ -161,16 +161,20 @@ surface_closure_selection(
                 Bool{closure.setup_valid};
 
     luisa::compute::Var<SurfaceClosureSelectionCall> result;
-    result.weight = 0.0f;
+    // Selection is a pure projection. Express its only conditional field as
+    // data flow so the three consumers (measure, inversion, chosen closure)
+    // do not each introduce a pair of control-flow blocks into the generated
+    // sampler. The value is exactly 0 or sample_weight under the same
+    // predicate; no closure operation is speculated by this select.
+    result.weight = select(
+        0.0f,
+        Float{closure.sample_weight},
+        eligible);
     result.glossy_normal = closure.normal;
     result.runtime_flags = detail::cycles_runtime_flags(
         identity, Float{context.glossy_filter_roughness});
     result.closure_type = detail::cycles_closure_type(identity);
     result.closure_sample_weight = Float{closure.sample_weight};
-    $if(eligible) {
-        result.weight = Float{closure.sample_weight};
-        result.glossy_normal = closure.normal;
-    };
     return result;
 }
 

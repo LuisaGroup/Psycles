@@ -1,0 +1,106 @@
+{
+  "actual_label": "branchless selection",
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.DiffCol.R",
+    "ViewLayer.DiffCol.G",
+    "ViewLayer.DiffCol.B",
+    "ViewLayer.DiffDir.R",
+    "ViewLayer.DiffDir.G",
+    "ViewLayer.DiffDir.B",
+    "ViewLayer.DiffInd.R",
+    "ViewLayer.DiffInd.G",
+    "ViewLayer.DiffInd.B",
+    "ViewLayer.Emit.R",
+    "ViewLayer.Emit.G",
+    "ViewLayer.Emit.B",
+    "ViewLayer.Env.R",
+    "ViewLayer.Env.G",
+    "ViewLayer.Env.B",
+    "ViewLayer.GlossCol.R",
+    "ViewLayer.GlossCol.G",
+    "ViewLayer.GlossCol.B",
+    "ViewLayer.GlossDir.R",
+    "ViewLayer.GlossDir.G",
+    "ViewLayer.GlossDir.B",
+    "ViewLayer.GlossInd.R",
+    "ViewLayer.GlossInd.G",
+    "ViewLayer.GlossInd.B",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.TransCol.R",
+    "ViewLayer.TransCol.G",
+    "ViewLayer.TransCol.B",
+    "ViewLayer.TransDir.R",
+    "ViewLayer.TransDir.G",
+    "ViewLayer.TransDir.B",
+    "ViewLayer.TransInd.R",
+    "ViewLayer.TransInd.G",
+    "ViewLayer.TransInd.B",
+    "ViewLayer.VolumeDir.R",
+    "ViewLayer.VolumeDir.G",
+    "ViewLayer.VolumeDir.B",
+    "ViewLayer.VolumeInd.R",
+    "ViewLayer.VolumeInd.G",
+    "ViewLayer.VolumeInd.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        1.0274306535720825,
+        1.0376559495925903,
+        1.0511889457702637
+      ],
+      "cycles": "/var/tmp/psycles-population-flags-baseline-current-640x480-64.exr",
+      "cycles_channel_mean": [
+        0.04418058320879936,
+        0.030982621014118195,
+        0.022535398602485657
+      ],
+      "cycles_luminance_mean": 0.03317974880337715,
+      "cycles_rms": 0.1320021003484726,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.035424320850747,
+      "maximum_absolute_error": 21.870529174804688,
+      "mean_absolute_error": 0.007854967378079891,
+      "orientation_rmse": {
+        "flip_x": 0.16526742279529572,
+        "flip_xy": 0.16963791847229004,
+        "flip_y": 0.16690024733543396,
+        "identity": 0.056386712938547134
+      },
+      "p95_pixel_rmse": 0.038535889238119125,
+      "p99_pixel_rmse": 0.13598577678203583,
+      "psycles": "/var/tmp/psycles-selection-branchless-profile.exr",
+      "psycles_channel_mean": [
+        0.045392487198114395,
+        0.0321492999792099,
+        0.023688962683081627
+      ],
+      "psycles_luminance_mean": 0.03435511887073517,
+      "psycles_rms": 0.12083513577805022,
+      "relative_rmse": 0.4271652707774478,
+      "rmse": 0.056386712938547134,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 4.619870068687683,
+        "display_scale": 1.3034426713769425,
+        "mapping": "shared_linear_srgb",
+        "path": "/tmp/psycles-cycles-model-bkuvgi/docs/validation/2026-08-22/surface-selection-branchless/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    }
+  },
+  "reference_label": "conditional selection",
+  "schema": "psycles.cycles-differential.v1"
+}
