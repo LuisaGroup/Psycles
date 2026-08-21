@@ -6,17 +6,18 @@ The compact surface program makes Barbershop's staged path practical at run
 time, but exposed a host-compiler complexity defect in Luisa's coroutine
 ray-query normalization. On the same Blender 5.2 Barbershop export, RX 9070 XT,
 8x8 image, 256 fixed spp, and one 64-sample dispatch, the complete shader-JIT
-interval fell from `99.7033--100.821 s` to `8.7816 s`. The final coroutine
-compilation interval is `7.23847 s`; ray-query normalization is now `0.500144 s`
-instead of the original dominant host-compiler path.
+interval fell from `99.7033--100.821 s` to `7.50286--7.77417 s`. The final
+coroutine compilation interval is `6.38855--6.65823 s`; ray-query
+normalization is now `0.371753--0.395625 s` instead of the original dominant
+host-compiler path.
 
 The optimization changes host analysis only. The generated coroutine graph is
 unchanged at 9 subroutines, 212 frame fields, and 3,184 frame bytes. Render-only
-time remained in the same narrow range (`0.359723 s` before and `0.332590 s`
-after). Across the final 15-pass EXR comparison, the maximum RMS is
-`4.34352e-8`, maximum relative RMS is `1.50384e-7`, and maximum absolute error
-is `2.38419e-7`; this is the normal non-deterministic floating-point
-accumulation envelope, not a structured image change.
+time remained in the same narrow range (`0.359723 s` before and
+`0.328332--0.329465 s` after). Across the final 15-pass EXR comparison, the
+maximum RMS is `5.02054e-8`, maximum relative RMS is `1.27865e-7`, and maximum
+absolute error is `4.76837e-7`; this is the normal non-deterministic
+floating-point accumulation envelope, not a structured image change.
 
 ## Root cause and formal model
 
@@ -75,9 +76,10 @@ swapping a second one.
 | final sparse pointer support `ef07fb841` | `15.6040 s` | `3.62191 s` | `6.45809 s` | `1.65430 s` | `0.360176 s` |
 | demand-sparse coroutine lifetimes `e213b46b5` | `11.1738 s` | `3.55809 s` | `1.98082 s` | `1.66059 s` | `0.329078 s` |
 | sparse handler event domain `d32a3f93b` | `8.7816 s` | `0.500144 s` | `2.24290 s` | `1.48968 s` | `0.332590 s` |
+| demand-driven restructure frontiers `3d2c322f1` | `7.50286--7.77417 s` | `0.371753--0.395625 s` | `1.96247--2.19189 s` | `1.64413--1.66490 s` | `0.328332--0.329465 s` |
 
 The final whole-JIT reduction relative to the two dense observations is
-`11.35--11.48x` (`91.2--91.3%`). Frame layout takes approximately `0.1 ms`, so
+`12.83--13.44x` (`92.2--92.6%`). Frame layout takes approximately `0.1 ms`, so
 frame layout is not being mistaken for this host-analysis bottleneck.
 
 ## Selection proof demand
@@ -269,6 +271,56 @@ emission, environment, transmission, and volume passes. Maximum absolute
 error is `2.38419e-7`, maximum RMS is `4.34352e-8`, and maximum relative RMS is
 `1.50384e-7`.
 
+## Demand-driven restructure dominance frontiers
+
+The next profile put `restructure_cfg_on_definition_in_place` at 6.77% of the
+whole process and `compute_dom_tree` at 2.30%. Dominance-frontier construction
+alone was 1.02%, even though a complete consumer audit found exactly one
+semantic client in `restructure_cfg`: the sparse post-merge selection re-entry
+witness search. Loop recovery, if recovery, construct-entry repair, selection
+exit repair, and all intermediate CFG refreshes consume only immediate
+dominators, ancestry, or depth.
+
+For an immutable CFG version `G`, let `D(G)` be its immediate-dominator tree
+and `DF(D(G))` its dominance-frontier relation. `DF` is a pure derivative of
+`D`; it does not participate in computing `D`. If an analysis observes only
+`dominates`, `immediate_dominator`, or dominator depth, replacing
+
+```text
+build D(G); build DF(D(G)); run ancestry consumer
+```
+
+with
+
+```text
+build D(G); run ancestry consumer
+```
+
+is observationally exact. The re-entry theorem still explicitly materializes
+`DF` immediately before it enumerates `DF(merge)`, so its candidate set and
+all CFG fixed-point equations are unchanged. Public `compute_dom_tree` defaults
+are unchanged; only the restructure pass uses an ancestry-only construction
+helper.
+
+Commit `3d2c322f1` applies this demand contract to every dominance refresh in
+the pass and moves frontier materialization to the re-entry analyzer. The
+regression counter must equal one materialization per transform re-entry query
+plus the final audit; a loop-continue rewrite can no longer manufacture an
+eager frontier as a side effect. Across three Barbershop canaries, including a
+final run rebased onto upstream `89f9da8e2`, continuation restructuring is
+stable at `1409.643--1435.250 ms`, down 23.1--24.5% from `1865.846 ms`.
+Complete coroutine compilation falls to `6.38855--6.65823 s`, and shader JIT
+falls to `7.50286--7.77417 s`.
+
+The generated coroutine remains 9 subroutines, 212 frame fields, and 3,184
+bytes. The 15-pass comparison at
+`/var/tmp/psycles-compact-populate-20260821/barbershop-demand-frontiers-rebased-comparison.json`
+has maximum absolute error `4.76837e-7`, maximum RMS `5.02054e-8`, and maximum
+relative RMS `1.27865e-7`. Raw runs are
+`barbershop-demand-frontiers.log` and
+`barbershop-demand-frontiers-repeat.log`, with the pushed-upstream validation
+in `barbershop-demand-frontiers-rebased.log`, in the same directory.
+
 ## Rejected register-bank experiment
 
 A diagnostic scalarized the compact value banks behind generated switch
@@ -320,6 +372,12 @@ exactly two. All existing field-sensitive aggregate, conditional Must-write,
 cross-handler duplication, callable-reference, cyclic/malformed pointer, and
 transactional rejection cases continue to pass.
 
+Commit `3d2c322f1` requires a mutating 16-loop continuation fixture to report
+exactly one dominance-frontier materialization for each post-merge re-entry
+transform query plus its final audit. The same fixture retains its dense CHK
+idom accounting, proving that the optimization removes an unobserved derived
+relation rather than skipping dominance maintenance.
+
 The following checks passed after rebasing onto and pushing current Luisa
 `next`:
 
@@ -338,6 +396,18 @@ test_xir_pass_coro_alloca_scope
 
 test_coro_compile_trigger
   passed
+
+test_xir_pass_restructure_cfg
+  1466 assertions in 79 tests
+
+test_xir_pass_post_dom_tree
+  58 assertions in 9 tests
+
+test_xir_pass_mutation_safety
+  185 assertions in 28 tests
+
+test_xir_passes
+  2452 assertions in 392 tests
 
 cmake --build build --parallel
 
