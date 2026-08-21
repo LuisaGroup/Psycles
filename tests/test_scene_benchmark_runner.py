@@ -182,6 +182,19 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
                 "0",
                 "wavefront-graph",
                 "64",
+                "32768",
+                "32",
+                "1",
+                "1",
+                "0",
+                "4",
+                "2",
+                "4096",
+                "0",
+                "0",
+                "0",
+                "1",
+                "1048576",
             ],
         )
         self.assertEqual(self.runner._wavefront_block_size("32"), 32)
@@ -189,6 +202,41 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
             self.runner.argparse.ArgumentTypeError
         ):
             self.runner._wavefront_block_size("48")
+        self.assertEqual(self.runner._nonnegative_integer("0"), 0)
+        with self.assertRaises(
+            self.runner.argparse.ArgumentTypeError
+        ):
+            self.runner._nonnegative_integer("-1")
+
+    def test_psycles_command_tracks_tuned_graph_policy(self) -> None:
+        command = self.runner._psycles_command(
+            pathlib.Path("/build/psycles_render_blender_scene"),
+            pathlib.Path("/out/export"),
+            pathlib.Path("/out/metal-wavefront-graph.ppm"),
+            "metal",
+            width=1920,
+            height=1080,
+            samples=64,
+            max_samples_per_dispatch=1,
+            scheduler="wavefront-graph",
+            wavefront_counter_readback_batch_size=1,
+            wavefront_counter_readback_pipeline_depth=1,
+            wavefront_graph_worker_count=131072,
+            wavefront_graph_selective=True,
+        )
+        self.assertEqual(
+            command[-8:],
+            [
+                "1",
+                "1",
+                "4096",
+                "131072",
+                "1",
+                "0",
+                "1",
+                "1048576",
+            ],
+        )
 
     def test_comparison_labels_each_renderer(self) -> None:
         command = self.runner._comparison_command(
