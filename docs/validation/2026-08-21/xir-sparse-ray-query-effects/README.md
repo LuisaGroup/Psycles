@@ -7,16 +7,16 @@ time, but exposed a host-compiler complexity defect in Luisa's coroutine
 ray-query normalization. On the same Blender 5.2 Barbershop export, RX 9070 XT,
 8x8 image, 256 fixed spp, and one 64-sample dispatch, the complete shader-JIT
 interval fell from `99.7033--100.821 s` to `7.50286--7.77417 s`. The final
-shader-JIT interval is now `6.51264--7.19622 s`; coroutine compilation is
-`5.40508--6.03597 s`, CFG distillation is `0.691603--0.729620 s`, and
-ray-query normalization is `0.363771--0.381739 s` instead of the original
-dominant host-compiler path.
+warm shader-JIT interval is now `6.03530--6.24901 s`; coroutine compilation is
+`4.91388--5.11661 s`, pre-distill optimization is `1.46225--1.50582 s`, CFG
+distillation is `0.689384--0.703952 s`, and ray-query normalization is
+`0.390374--0.395700 s` instead of the original dominant host-compiler path.
 
 The optimization changes host analysis only. The generated coroutine graph is
 unchanged at 9 subroutines, 212 frame fields, and 3,184 frame bytes. Render-only
 time remained in the same narrow range (`0.359723 s` before and
-`0.328954--0.329396 s` after). Across the final 15-pass EXR comparison, the
-maximum RMS is `4.16432e-8`, maximum relative RMS is `1.07432e-7`, and maximum
+`0.329001--0.329528 s` after). Across the final 15-pass EXR comparison, the
+maximum RMS is `4.00163e-8`, maximum relative RMS is `1.55572e-7`, and maximum
 absolute error is `4.76837e-7`; this is the normal non-deterministic
 floating-point accumulation envelope, not a structured image change.
 
@@ -79,9 +79,10 @@ swapping a second one.
 | sparse handler event domain `d32a3f93b` | `8.7816 s` | `0.500144 s` | `2.24290 s` | `1.48968 s` | `0.332590 s` |
 | demand-driven restructure frontiers `3d2c322f1` | `7.50286--7.77417 s` | `0.371753--0.395625 s` | `1.96247--2.19189 s` | `1.64413--1.66490 s` | `0.328332--0.329465 s` |
 | projected scope dataflow and RPO `b0f235f0f` | `6.51264--7.19622 s` | `0.363771--0.381739 s` | `1.94524--2.08270 s` | `0.691603--0.729620 s` | `0.328954--0.329396 s` |
+| demand-projected reaching values `ab63c926b` | `6.03530--6.24901 s` | `0.390374--0.395700 s` | `1.46225--1.50582 s` | `0.689384--0.703952 s` | `0.329001--0.329528 s` |
 
 The final whole-JIT reduction relative to the two dense observations is
-`13.85--15.48x` (`92.8--93.5%`). Frame layout takes approximately `0.1 ms`, so
+`15.96--16.70x` (`93.7--94.0%`). Frame layout takes approximately `0.1 ms`, so
 frame layout is not being mistaken for this host-analysis bottleneck.
 
 ## Selection proof demand
@@ -377,6 +378,69 @@ and maximum relative RMS is `1.0743231e-7`. Raw runs are
 `barbershop-scope-rpo-final-a.log`, `barbershop-scope-rpo-final-b.log`, and
 `barbershop-scope-rpo-profile.log` in the same directory.
 
+## Demand-projected reaching values
+
+The next profile identified `resolve_reaching_values` at 1.95% self time. The
+cause was again a product-domain mismatch, but for a different analysis:
+Barbershop has 2,676 multi-store local-state candidates and a 4,747-block
+semantic CFG. The pass independently allocated and solved the complete CFG for
+every candidate, performing 25,041,416 block transfers even though most
+candidate loads are separated from most blocks by an overwriting store.
+
+For one candidate, let `last(B)` be the last whole-object store in block `B`.
+Its original equations are
+
+```text
+in(entry) = undefined
+in(B)     = meet(edge(P, B, out(P))) for every predecessor P
+out(B)    = unique(value(last(B))) if last(B) exists, otherwise in(B).
+```
+
+Only a load before the first store in its block observes `in(B)`; later loads
+are resolved directly by the preceding local store. Let `D` be those
+input-demanding blocks, and let `A` be the least set containing `D` such that,
+for every non-entry `B` in `A`, each predecessor without a store is also in
+`A`. A predecessor with a store is an exact boundary because its transfer is a
+constant function of no incoming state. Thus every dependency of every
+demanded `in(B)` is either another coordinate in `A` or a known boundary
+constant. Restricting the equations to `A` and substituting those constants is
+therefore isomorphic to the demanded projection of the full least fixed point.
+No path or value is approximated. Suspend-edge state is applied at the same
+boundary edge, and cycles inside `A` retain the monotone worklist fixed point.
+
+The implementation discovers `A` with a reverse walk that stops at
+overwriting-store blocks, then solves the projected graph in semantic-CFG
+reverse postorder. A workspace shared across candidates retains sparse event
+storage and resets only blocks touched by the previous coordinate; it no
+longer constructs 4,747 empty event vectors 2,676 times.
+
+On Barbershop, the projected domains contain 166,638 active blocks in total,
+an average of 62.27 per candidate and 1.31% of the full
+`2,676 * 4,747 = 12,702,972` product. Worklist evaluations fall 99.28%, from
+25,041,416 to 180,101 (`139.0x`). Pre-distill optimization falls
+22.6--29.8%, from `1.94524--2.08270 s` to `1.46225--1.50582 s`. The old
+resolver disappears below the flat profile reporting threshold; the complete
+rematerialization pass has only about 0.03% self time. Warm coroutine
+compilation is `4.91388--5.11661 s`, and shader JIT is
+`6.03530--6.24901 s`.
+
+The optional dense product solver remains available as a semantic oracle
+through `CoroRematerializeOptions::verify_dense_reaching_values`; the normal
+coroutine pipeline maps
+`LUISA_CORO_VERIFY_DENSE_REACHING_VALUES=1` to that option. It compares the
+unresolved count, reaching SSA value, and crossed-suspend bit for every load.
+Unlike the pointer-set oracle discussed below, this compact lattice oracle
+completed successfully on the full Barbershop shader as well as the unit
+suite.
+
+Commit `ab63c926b` preserves the generated coroutine at 9 subroutines, 212
+frame fields, and 3,184 bytes. The final report is
+`/var/tmp/psycles-compact-populate-20260821/barbershop-reaching-projection-final-comparison.json`;
+across all 15 passes its maximum absolute error is `4.7683716e-7`, maximum RMS
+is `4.0016332e-8`, and maximum relative RMS is `1.5557180e-7`. The warm logs
+are `barbershop-reaching-projection-profile.log` and
+`barbershop-reaching-projection-final.log` in the same directory.
+
 ## Rejected register-bank experiment
 
 A diagnostic scalarized the compact value banks behind generated switch
@@ -452,6 +516,14 @@ Equivalence on the production module is instead checked by the unchanged
 9/212/3,184 coroutine ABI and the complete 15-pass EXR comparison above. The
 bounded CFG oracle remains the direct semantic differential test.
 
+Commit `ab63c926b` extends the rematerialization suite with a 512-block
+root-reachable arm unrelated to the only demanded load. Two stores force the
+general solver, but the structural counters must report exactly one active
+block and one evaluation. Branch-conflict, loop-backedge, phased suspension,
+and projection fixtures invoke the dense oracle directly through the public
+options object, so CI exercises both solvers without relying on process
+environment mutation. The suite now passes 163 assertions in 24 tests.
+
 The following checks passed after rebasing onto and pushing current Luisa
 `next`:
 
@@ -467,6 +539,9 @@ test_xir_pass_pointer_usage
 
 test_xir_pass_coro_alloca_scope
   169 assertions in 24 tests
+
+test_xir_pass_coro_rematerialize
+  163 assertions in 24 tests
 
 test_xir_coro_cfg_distill
   380 assertions in 49 tests
@@ -517,7 +592,7 @@ PSYCLES_POPULATE_SURFACE_ONCE=1 \
 Raw logs, EXRs, and `perf` captures remain under
 `/var/tmp/psycles-compact-populate-20260821` and
 `/var/tmp/psycles-barbershop-coro-host*.perf.data`. The final profile is
-`/var/tmp/psycles-barbershop-coro-host-scope-rpo.perf.data`. This is a
+`/var/tmp/psycles-barbershop-coro-host-reaching-projection.perf.data`. This is a
 compiler-focused 8x8 canary, so no enlarged visual triptych is presented as a
 scene-quality claim. The previously committed full-resolution scene triptychs
 remain the quality oracle; the numerical all-pass comparison here is stronger
