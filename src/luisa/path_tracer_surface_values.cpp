@@ -36,6 +36,32 @@ struct SurfaceValueLocals {
         SurfaceValueRuntime::vector_capacity};
     luisa::compute::Local<luisa::ulong> unsigned_integers{
         SurfaceValueRuntime::unsigned_integer_capacity};
+
+    void define_all() const noexcept {
+        // The host compiler proves that every legal bytecode operand reads a
+        // slot written earlier in the same program. Materialize the stronger
+        // device-local invariant only where the bank is in coroutine root
+        // scope: it is fully defined at its lexical lifetime boundary. This
+        // lets the alloca-scope proof move the bank below shade_surface
+        // without depending on immutable buffer contents that are
+        // intentionally opaque to XIR. Callable-local banks already have the
+        // smaller lexical lifetime and do not need these stores.
+        for (auto i = 0u; i < SurfaceValueRuntime::scalar_capacity; ++i) {
+            scalars.write(i, 0.0f);
+        }
+        for (auto i = 0u; i < SurfaceValueRuntime::vector_capacity; ++i) {
+            vectors.write(i, make_float3(0.0f));
+        }
+        for (auto i = 0u;
+             i < SurfaceValueRuntime::unsigned_integer_capacity; ++i) {
+            unsigned_integers.write(i, 0ull);
+        }
+    }
+};
+
+enum class SurfaceValueBankDefinition {
+    program_prefix,
+    full_bank,
 };
 
 using SurfaceValueHeightCallable = Callable<float(
@@ -1112,10 +1138,14 @@ void emit_compact_surface_values(
     Expr<Buffer<float>> cycles_bsdf_tables,
     Expr<BindlessArray> textures,
     Expr<BindlessArray> geometry_heap,
+    SurfaceValueBankDefinition bank_definition,
     Continuation &&continuation) noexcept {
     $if(surface_tag <
         static_cast<luisa::uint>(runtime.topologies.size())) {
         SurfaceValueLocals locals;
+        if (bank_definition == SurfaceValueBankDefinition::full_bank) {
+            locals.define_all();
+        }
         const auto normal_program =
             surface_tag * SurfaceValueRuntime::programs_per_topology +
             SurfaceValueRuntime::normal_program_offset;
@@ -1704,6 +1734,7 @@ class CompactSurfacePopulationProgramImpl final
             Expr<Buffer<float>>{_scene->cycles_bsdf_table_buffer},
             Expr<BindlessArray>{_scene->texture_heap},
             Expr<BindlessArray>{_scene->heap},
+            SurfaceValueBankDefinition::full_bank,
             [&](const SurfacePoint &evaluated_point,
                 const SurfaceValueLocals &locals,
                 UInt preparation_program) noexcept {
@@ -1834,6 +1865,7 @@ make_compact_surface_preparation_callable(
                 cycles_bsdf_tables,
                 textures,
                 geometry_heap,
+                SurfaceValueBankDefinition::program_prefix,
                 [&](const SurfacePoint &evaluated_point,
                     const SurfaceValueLocals &locals,
                     UInt preparation_program) noexcept {

@@ -159,7 +159,7 @@ struct LuisaPathTracerOptions {
     // Maximum number of live global frames in the wavefront scheduler. More
     // logical pixel/sample instances are admitted by backpressured refills.
     // Cycles' production wavefront benchmark admits at most 2^20 path states;
-    // this is also a practical 864 MiB frame budget at the current 864-byte
+    // this is also a practical 848 MiB frame budget at the current 848-byte
     // Psycles frame. Callers can still request the GPU Coroutines paper's
     // 2^24 configuration explicitly when device memory permits it.
     std::uint32_t wavefront_frame_capacity{1u << 20u};
