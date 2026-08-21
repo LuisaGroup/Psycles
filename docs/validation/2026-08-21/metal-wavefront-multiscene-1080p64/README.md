@@ -12,10 +12,12 @@ PSYCLES_COMPACT_SURFACE_VALUES=1
 PSYCLES_POPULATE_SURFACE_ONCE=1
 ```
 
-The Psycles runs use `main` at `9c92b24` and the LuisaCompute submodule `next`
-at `9c5ae75dc`. The benchmark runner records the complete scheduler command,
-environment, output hashes, render-only and process-wall timings, and all-pass
-comparisons in each scene's `benchmark.json`.
+The Lone Monk and Monster render kernels use `main` at `9c92b24`; the later
+`d93c011` change only removes an unconditional displacement debug print and
+does not change rendered values. All rows use the LuisaCompute submodule
+`next` at `9c5ae75dc`. The benchmark runner records the complete scheduler
+command, environment, output hashes, render-only and process-wall timings,
+and all-pass comparisons in each scene's `benchmark.json`.
 
 ## Scheduler policy
 
@@ -48,9 +50,12 @@ are not folded into throughput.
 | Scene | Cycles Metal | Psycles graph | Slowdown | Scene compile | Shader JIT | Psycles wall |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | Lone Monk | 15.945 s | 203.364 s | 12.754x | 2.887 s | 134.115 s | 345.109 s |
+| Monster Under the Bed | 21.915 s | 203.652 s | 9.293x | 2.413 s | 278.250 s | 487.081 s |
 
 Lone Monk artifacts are under
 `build-macos-shader-translation-plan/benchmarks/2026-08-21/lone-monk-1080p64-compact-metal`.
+Monster artifacts are under
+`build-macos-shader-translation-plan/benchmarks/2026-08-21/monster-under-the-bed-1080p64-compact-metal`.
 
 ## Image validation
 
@@ -61,4 +66,13 @@ shows matching scene orientation, materials, lighting, and exposure; the
 amplified difference panel is dominated by finite-sample noise and high-
 contrast edges.
 
-The remaining formal rows are Monster Under the Bed and Barbershop Interior.
+Monster Under the Bed also has no invalid pixels. Its luminance mean ratio is
+`1.003331`, RMSE is `0.021641`, relative RMSE is `0.135429`, and the 99th-
+percentile per-pixel RMSE is `0.089521`. The relative metric is amplified by
+the deliberately dark scene and high-variance 64-sample BSSRDF/direct-light
+paths. Original-resolution inspection shows the same monster skin, child,
+bed, geometry, and lighting structure. Diffuse and glossy color passes agree
+closely (`0.058%` and `0.084%` relative RMSE respectively), while the noisy
+direct and indirect lighting passes dominate the Combined difference.
+
+The remaining formal row is Barbershop Interior.
