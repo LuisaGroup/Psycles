@@ -6,17 +6,17 @@ The compact surface program makes Barbershop's staged path practical at run
 time, but exposed a host-compiler complexity defect in Luisa's coroutine
 ray-query normalization. On the same Blender 5.2 Barbershop export, RX 9070 XT,
 8x8 image, 256 fixed spp, and one 64-sample dispatch, the complete shader-JIT
-interval fell from `99.7033--100.821 s` to `15.6040 s`. The final coroutine
-compilation interval is `14.4915 s`; pre-distill optimization is now the largest
-phase at `6.45809 s`, ahead of ray-query normalization at `3.62191 s`.
+interval fell from `99.7033--100.821 s` to `8.7816 s`. The final coroutine
+compilation interval is `7.23847 s`; ray-query normalization is now `0.500144 s`
+instead of the original dominant host-compiler path.
 
 The optimization changes host analysis only. The generated coroutine graph is
 unchanged at 9 subroutines, 212 frame fields, and 3,184 frame bytes. Render-only
-time remained in the same narrow range (`0.359723 s` before and `0.360176 s`
-after). The final all-pass EXR comparison has RMS `1.61556e-8` and maximum
-absolute error `2.38419e-7`, with no pixel above `1e-6`; this is the normal
-non-deterministic floating-point accumulation envelope, not a structured image
-change.
+time remained in the same narrow range (`0.359723 s` before and `0.332590 s`
+after). Across the final 15-pass EXR comparison, the maximum RMS is
+`4.34352e-8`, maximum relative RMS is `1.50384e-7`, and maximum absolute error
+is `2.38419e-7`; this is the normal non-deterministic floating-point
+accumulation envelope, not a structured image change.
 
 ## Root cause and formal model
 
@@ -74,10 +74,11 @@ swapping a second one.
 | selection proof demand `933811bae` | `20.3864 s` | `8.24251 s` | `6.53486 s` | `1.66747 s` | `0.360216 s` |
 | final sparse pointer support `ef07fb841` | `15.6040 s` | `3.62191 s` | `6.45809 s` | `1.65430 s` | `0.360176 s` |
 | demand-sparse coroutine lifetimes `e213b46b5` | `11.1738 s` | `3.55809 s` | `1.98082 s` | `1.66059 s` | `0.329078 s` |
+| sparse handler event domain `d32a3f93b` | `8.7816 s` | `0.500144 s` | `2.24290 s` | `1.48968 s` | `0.332590 s` |
 
 The final whole-JIT reduction relative to the two dense observations is
-`6.39--6.46x` (`84.3--84.5%`). Frame layout takes `0.099 ms`, so frame layout
-is not being mistaken for this host-analysis bottleneck.
+`11.35--11.48x` (`91.2--91.3%`). Frame layout takes approximately `0.1 ms`, so
+frame layout is not being mistaken for this host-analysis bottleneck.
 
 ## Selection proof demand
 
@@ -209,6 +210,65 @@ covers all 15 film passes: maximum absolute error is `4.76837e-7`, maximum RMS
 is `5.01295e-8`, and maximum relative RMS is `1.36393e-7`. This is the existing
 floating atomic-order noise, not a structured image difference.
 
+## Sparse handler event domain
+
+The next whole-process `perf` capture showed that the remaining
+`3.55809 s` ray-query phase was still evaluating every handler instruction for
+every candidate root. The earlier pointer-support filter made unrelated
+lvalues cheap, but the implementation still called `instruction_effect` and
+queried that support for all scalar and unrelated-pointer operands. On the
+profiled workload, `instruction_effect` was 11.18% inclusive process time and
+general pointer hashing alone was 3.59% self time.
+
+Let `S(p)` be the already-proven GEP-closed pointer support for root `p`, and
+let
+
+```text
+R(p, b) = [i in instructions(b) | operands(i) intersects S(p)]
+```
+
+retain source order. For an instruction outside `R(p, b)`, every operand is
+outside `S(p)`. The provenance language has only GEP as an address-preserving
+instruction, so the instruction's effect in root coordinate `p` is exactly
+the path-effect identity `(empty, empty)`. Removing those identity elements
+from sequential composition is therefore semantics preserving:
+
+```text
+fold(effect, instructions(b)) = fold(effect, R(p, b)).
+```
+
+The implementation now constructs `R` from XIR use lists and scans only blocks
+that contain a relevant use to recover instruction order. Pointer-keyed
+temporary tables use address identity rather than the general byte-content
+hash. The CFG equations are unchanged. In addition, a block's ordered effect
+is a pure function of the immutable pointer environment, so it is computed
+lazily on first reach and memoized; subsequent fixed-point visits apply the
+same block transfer instead of reinterpreting its instructions. Lazy creation
+preserves the prior treatment of malformed instructions in unreachable
+blocks.
+
+The complexity regression exposes the number of semantic instruction-effect
+evaluations through `PassReport`. A handler containing 8,192 unrelated scalar
+operations and 8,192 unrelated GEP/load chains must evaluate exactly the two
+events on its real scratch root. This is an algorithmic assertion, not a wall
+clock threshold.
+
+On the same Barbershop command, ray-query normalization falls 85.9%
+(`3.55809 -> 0.500144 s`), complete coroutine compilation falls 28.2%
+(`10.08268 -> 7.23847 s`), and shader JIT falls 21.4%
+(`11.1738 -> 8.7816 s`). The follow-up `perf` capture contains no sample for
+`instruction_effect` above the 0.05% reporting threshold; the remaining
+scratch-summary construction is 0.80% self time. Coroutine structure remains
+9 subroutines, 212 frame fields, and 3,184 bytes.
+
+The all-pass comparison report is
+`/var/tmp/psycles-compact-populate-20260821/barbershop-ray-sparse-events-comparison.json`.
+It compares the new EXR against the immediately preceding compiler-only
+checkpoint across Combined, Normal, Albedo/color, all direct/indirect light,
+emission, environment, transmission, and volume passes. Maximum absolute
+error is `2.38419e-7`, maximum RMS is `4.34352e-8`, and maximum relative RMS is
+`1.50384e-7`.
+
 ## Rejected register-bank experiment
 
 A diagnostic scalarized the compact value banks behind generated switch
@@ -254,6 +314,12 @@ Existing cyclic-CFG, branch-intersection, full-product equivalence, malformed
 projection, aliasing, reference-call, and ray-query lifetime tests continue to
 pass.
 
+Commit `d32a3f93b` additionally requires the pre-DCE
+16,384-instruction unrelated suffix to leave the semantic event count at
+exactly two. All existing field-sensitive aggregate, conditional Must-write,
+cross-handler duplication, callable-reference, cyclic/malformed pointer, and
+transactional rejection cases continue to pass.
+
 The following checks passed after rebasing onto and pushing current Luisa
 `next`:
 
@@ -262,7 +328,7 @@ test_xir_aggregate_field_bitmask
   42 assertions in 8 tests
 
 test_xir_pass_lower_ray_query_to_pipeline
-  310 assertions in 31 tests
+  311 assertions in 31 tests
 
 test_xir_pass_pointer_usage
   221 assertions in 12 tests
@@ -299,8 +365,9 @@ PSYCLES_POPULATE_SURFACE_ONCE=1 \
 
 Raw logs, EXRs, and `perf` captures remain under
 `/var/tmp/psycles-compact-populate-20260821` and
-`/var/tmp/psycles-barbershop-coro-host*.perf.data`. This is a compiler-focused
-8x8 canary, so no enlarged visual triptych is presented as a scene-quality
-claim. The previously committed full-resolution scene triptychs remain the
-quality oracle; the numerical all-pass comparison here is stronger evidence
-for this analysis-only change.
+`/var/tmp/psycles-barbershop-coro-host*.perf.data`. The final profile is
+`/var/tmp/psycles-barbershop-coro-host-ray-sparse-events.perf.data`. This is a
+compiler-focused 8x8 canary, so no enlarged visual triptych is presented as a
+scene-quality claim. The previously committed full-resolution scene triptychs
+remain the quality oracle; the numerical all-pass comparison here is stronger
+evidence for this analysis-only change.
