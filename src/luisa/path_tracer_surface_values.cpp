@@ -17,6 +17,7 @@
 #include <cstdlib>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include <luisa/core/logging.h>
@@ -1223,9 +1224,15 @@ make_surface_value_height_callable(
     const std::shared_ptr<LuisaSceneData> &scene,
     const std::shared_ptr<SurfaceValueNodes> &nodes,
     const Texture2DSamplingCallables &texture_sampling,
-    const SurfaceAttributeLookupCallable &attribute_lookup) noexcept {
-    SurfaceValueHeightCallable height =
+    const SurfaceAttributeLookupCallable &attribute_lookup,
+    std::uint32_t maximum_bump_depth) noexcept {
+    const auto make_stratum =
         [scene, nodes, texture_sampling, attribute_lookup](
+            std::optional<SurfaceValueHeightCallable> lower,
+            std::uint32_t stratum) noexcept {
+      SurfaceValueHeightCallable height =
+        [scene, nodes, texture_sampling, attribute_lookup,
+         lower = std::move(lower)](
             BufferFloat scalar_parameters,
             BufferFloat3 vector_parameters,
             BufferFloat cycles_bsdf_tables,
@@ -1259,7 +1266,7 @@ make_surface_value_height_callable(
                 point,
                 program,
                 locals,
-                nullptr,
+                lower ? &*lower : nullptr,
                 scalar_parameters,
                 vector_parameters,
                 cycles_bsdf_tables,
@@ -1271,7 +1278,18 @@ make_surface_value_height_callable(
             return read_scalar_dynamic(
                 services, point, locals, output);
         };
-    height.set_name("surface_value_height");
+      const auto name = luisa::format(
+          "surface_value_height_stratum_{}", stratum);
+      height.set_name(name);
+      return height;
+    };
+    const auto stratum_count = std::max(maximum_bump_depth, 1u);
+    auto height = make_stratum(std::nullopt, 0u);
+    for (auto stratum = std::uint32_t{1u}; stratum < stratum_count;
+         ++stratum) {
+        height = make_stratum(
+            std::optional<SurfaceValueHeightCallable>{height}, stratum);
+    }
     return height;
 }
 
@@ -1553,14 +1571,17 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
     LUISA_INFO(
         "Built compact surface runtime: {} root programs, {} total programs, "
         "{} instructions, {} operands, {} metadata records, {} static floats, "
-        "{} semantic variants, {} closure instructions, maximum program "
+        "{} semantic variants, {} closure instructions, {} Bump evaluator "
+        "strata, maximum program "
         "length {}, typed slots {}/{}/{}.",
         runtime->executable.root_program_count,
         image.programs.size(), image.instructions.size(),
         image.operands.size(), image.metadata.size(),
         image.static_data.size(),
         runtime->executable.executable.variants.size(),
-        image.closure_instructions.size(), maximum_instruction_count,
+        image.closure_instructions.size(),
+        runtime->executable.maximum_bump_depth,
+        maximum_instruction_count,
         maximum_scalar_slots, maximum_vector_slots,
         maximum_unsigned_integer_slots);
 
@@ -1726,7 +1747,8 @@ make_compact_surface_population_program(
             scene->attribute_binding_slot,
             scene->attribute_range_slot);
     auto height = make_surface_value_height_callable(
-        scene, nodes, texture_sampling, attribute_lookup);
+        scene, nodes, texture_sampling, attribute_lookup,
+        scene->surface_values->executable.maximum_bump_depth);
     return std::make_shared<
         CompactSurfacePopulationProgramImpl>(
         scene, std::move(nodes), std::move(height));
@@ -1757,7 +1779,8 @@ make_compact_surface_preparation_callable(
             scene->attribute_range_slot);
 
     auto height = make_surface_value_height_callable(
-        scene, nodes, texture_sampling, attribute_lookup);
+        scene, nodes, texture_sampling, attribute_lookup,
+        runtime.executable.maximum_bump_depth);
 
     SurfacePreparationCallable preparation =
         [scene,
