@@ -7,17 +7,17 @@ time, but exposed a host-compiler complexity defect in Luisa's coroutine
 ray-query normalization. On the same Blender 5.2 Barbershop export, RX 9070 XT,
 8x8 image, 256 fixed spp, and one 64-sample dispatch, the complete shader-JIT
 interval fell from `99.7033--100.821 s` to `7.50286--7.77417 s`. The final
-warm shader-JIT interval is now `6.03530--6.24901 s`; coroutine compilation is
-`4.91388--5.11661 s`, pre-distill optimization is `1.46225--1.50582 s`, CFG
-distillation is `0.689384--0.703952 s`, and ray-query normalization is
-`0.390374--0.395700 s` instead of the original dominant host-compiler path.
+warm shader-JIT interval is now `5.83266--5.96071 s`; coroutine compilation is
+`4.71652--4.83497 s`, pre-distill optimization is `1.17985--1.29784 s`, CFG
+distillation is `0.675203--0.710138 s`, and ray-query normalization is
+`0.357776--0.392472 s` instead of the original dominant host-compiler path.
 
 The optimization changes host analysis only. The generated coroutine graph is
 unchanged at 9 subroutines, 212 frame fields, and 3,184 frame bytes. Render-only
 time remained in the same narrow range (`0.359723 s` before and
-`0.329001--0.329528 s` after). Across the final 15-pass EXR comparison, the
-maximum RMS is `4.00163e-8`, maximum relative RMS is `1.55572e-7`, and maximum
-absolute error is `4.76837e-7`; this is the normal non-deterministic
+`0.328770--0.329317 s` after). Across the final 15-pass EXR comparison, the
+maximum RMS is `3.58471e-8`, maximum relative RMS is `1.33829e-7`, and maximum
+absolute error is `2.38419e-7`; this is the normal non-deterministic
 floating-point accumulation envelope, not a structured image change.
 
 ## Root cause and formal model
@@ -80,9 +80,10 @@ swapping a second one.
 | demand-driven restructure frontiers `3d2c322f1` | `7.50286--7.77417 s` | `0.371753--0.395625 s` | `1.96247--2.19189 s` | `1.64413--1.66490 s` | `0.328332--0.329465 s` |
 | projected scope dataflow and RPO `b0f235f0f` | `6.51264--7.19622 s` | `0.363771--0.381739 s` | `1.94524--2.08270 s` | `0.691603--0.729620 s` | `0.328954--0.329396 s` |
 | demand-projected reaching values `ab63c926b` | `6.03530--6.24901 s` | `0.390374--0.395700 s` | `1.46225--1.50582 s` | `0.689384--0.703952 s` | `0.329001--0.329528 s` |
+| snapshot instruction order `76be1a09f` | `5.83266--5.96071 s` | `0.357776--0.392472 s` | `1.17985--1.29784 s` | `0.675203--0.710138 s` | `0.328770--0.329317 s` |
 
 The final whole-JIT reduction relative to the two dense observations is
-`15.96--16.70x` (`93.7--94.0%`). Frame layout takes approximately `0.1 ms`, so
+`16.73--17.29x` (`94.0--94.2%`). Frame layout takes approximately `0.1 ms`, so
 frame layout is not being mistaken for this host-analysis bottleneck.
 
 ## Selection proof demand
@@ -441,6 +442,59 @@ is `4.0016332e-8`, and maximum relative RMS is `1.5557180e-7`. The warm logs
 are `barbershop-reaching-projection-profile.log` and
 `barbershop-reaching-projection-final.log` in the same directory.
 
+## Snapshot instruction-order queries
+
+The next flat profile attributed approximately 0.62% of the complete process
+to `find_latest_insertion_point` and another 0.61% to
+`instruction_strictly_precedes`. Both helpers repeatedly walked a basic
+block's intrusive instruction list. This is a structural mismatch for
+Barbershop: the alloca-scope pass considers 68,341 local allocas, while most
+queries need the relative order of only an alloca, its unique whole-object
+definition, and its actual observations.
+
+The replacement is based on an explicit mutation invariant. Before the first
+contraction, the pass freezes both its candidate set and an immutable
+`(block_id, ordinal)` location for every instruction. Processing a candidate
+moves only that candidate's alloca and, when the single-definition proof
+applies, its unique whole-object store. Neither moved instruction can be an
+observation or definition of a different valid candidate. Therefore earlier
+contractions cannot change the relative order of any observation, definition,
+SSA value, terminator, or insertion instruction queried for an unprocessed
+candidate. Snapshot ordinal comparison is exactly equivalent to walking the
+current list for those strict-order questions. Immediate adjacency is the one
+property that can change when an unrelated moved node enters a gap, so it is
+kept as a live intrusive-list `next()` query.
+
+The latest insertion point is likewise the minimum snapshot ordinal among the
+candidate's users in the target block and the terminator. Its cost is now
+proportional to the candidate's actual use set, not to every unrelated
+instruction in the block. Public counters report 186,042 order queries and
+120,277 user inspections on the full shader. Relative to the preceding build,
+first-definition planning falls from `311.574 ms` to
+`30.046--35.266 ms` (`88.7--90.4%`) and general placement falls from
+`31.017 ms` to `2.890--3.361 ms` (`89.2--90.7%`). Pre-distill optimization
+falls another `11.2--21.7%`, from `1.46225--1.50582 s` to
+`1.17985--1.29784 s`. The two formerly visible linear-search symbols disappear
+from the flat profile; the complete alloca-scope pass accounts for
+approximately 0.16% self time.
+
+`CoroAllocaScopeOptions::verify_instruction_order` retains the original linear
+walk as a semantic oracle, and the coroutine pipeline maps
+`LUISA_CORO_VERIFY_ALLOCA_ORDER=1` to it. Every snapshot result is compared
+with the current intrusive list. The oracle passed on the complete Barbershop
+shader after all 68,329 accepted contractions, not only on a reduced fixture.
+
+Commit `76be1a09f`, rebased over upstream's independent unity-build fix,
+preserves the generated coroutine at 9 subroutines, 212 frame fields, and
+3,184 bytes. The final 15-pass report is
+`/var/tmp/psycles-compact-populate-20260821/barbershop-alloca-order-rebased-comparison.json`;
+its maximum absolute error is `2.3841858e-7`, maximum RMS is
+`3.5847062e-8`, and maximum relative RMS is `1.3382906e-7`. The measured logs
+are `barbershop-alloca-order-final-a.log`,
+`barbershop-alloca-order-profile.log`,
+`barbershop-alloca-order-rebased-b.log`, and
+`barbershop-alloca-order-oracle.log` in the same directory.
+
 ## Rejected register-bank experiment
 
 A diagnostic scalarized the compact value banks behind generated switch
@@ -524,6 +578,14 @@ and projection fixtures invoke the dense oracle directly through the public
 options object, so CI exercises both solvers without relying on process
 environment mutation. The suite now passes 163 assertions in 24 tests.
 
+Commit `76be1a09f` adds a same-block complexity regression with 128 independent
+alloca/store/load candidates and 4,096 unrelated arithmetic instructions.
+With the linear oracle enabled, all 128 candidates must move and verification
+must succeed after every prior mutation. Structural counters must remain
+exactly 256 order queries and 128 user inspections, proving that the normal
+algorithm depends on candidate uses rather than the 4,096-instruction block
+body. The complete alloca-scope suite now passes 304 assertions in 25 tests.
+
 The following checks passed after rebasing onto and pushing current Luisa
 `next`:
 
@@ -538,7 +600,7 @@ test_xir_pass_pointer_usage
   221 assertions in 12 tests
 
 test_xir_pass_coro_alloca_scope
-  169 assertions in 24 tests
+  304 assertions in 25 tests
 
 test_xir_pass_coro_rematerialize
   163 assertions in 24 tests
@@ -592,7 +654,7 @@ PSYCLES_POPULATE_SURFACE_ONCE=1 \
 Raw logs, EXRs, and `perf` captures remain under
 `/var/tmp/psycles-compact-populate-20260821` and
 `/var/tmp/psycles-barbershop-coro-host*.perf.data`. The final profile is
-`/var/tmp/psycles-barbershop-coro-host-reaching-projection.perf.data`. This is a
+`/var/tmp/psycles-barbershop-coro-host-alloca-order.perf.data`. This is a
 compiler-focused 8x8 canary, so no enlarged visual triptych is presented as a
 scene-quality claim. The previously committed full-resolution scene triptychs
 remain the quality oracle; the numerical all-pass comparison here is stronger
