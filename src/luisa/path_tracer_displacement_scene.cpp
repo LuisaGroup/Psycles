@@ -658,10 +658,6 @@ MeshDisplacementSceneComponent::build(
                 upload.positions[vertex] = host_add(
                     upload.positions[vertex], output[index]);
             }
-            std::cerr << "[psycles-debug] geometry=" << geometry.name
-                      << " evaluations=" << evaluations.size()
-                      << " first_out=(" << output[0].x << ", "
-                      << output[0].y << ", " << output[0].z << ")\n";
         }
         recompute_cycles_displaced_normals(
             upload, plan, pre_displacement_vertex_normals);
