@@ -7,15 +7,16 @@ time, but exposed a host-compiler complexity defect in Luisa's coroutine
 ray-query normalization. On the same Blender 5.2 Barbershop export, RX 9070 XT,
 8x8 image, 256 fixed spp, and one 64-sample dispatch, the complete shader-JIT
 interval fell from `99.7033--100.821 s` to `7.50286--7.77417 s`. The final
-coroutine compilation interval is `6.38855--6.65823 s`; ray-query
-normalization is now `0.371753--0.395625 s` instead of the original dominant
-host-compiler path.
+shader-JIT interval is now `6.51264--7.19622 s`; coroutine compilation is
+`5.40508--6.03597 s`, CFG distillation is `0.691603--0.729620 s`, and
+ray-query normalization is `0.363771--0.381739 s` instead of the original
+dominant host-compiler path.
 
 The optimization changes host analysis only. The generated coroutine graph is
 unchanged at 9 subroutines, 212 frame fields, and 3,184 frame bytes. Render-only
 time remained in the same narrow range (`0.359723 s` before and
-`0.328332--0.329465 s` after). Across the final 15-pass EXR comparison, the
-maximum RMS is `5.02054e-8`, maximum relative RMS is `1.27865e-7`, and maximum
+`0.328954--0.329396 s` after). Across the final 15-pass EXR comparison, the
+maximum RMS is `4.16432e-8`, maximum relative RMS is `1.07432e-7`, and maximum
 absolute error is `4.76837e-7`; this is the normal non-deterministic
 floating-point accumulation envelope, not a structured image change.
 
@@ -77,9 +78,10 @@ swapping a second one.
 | demand-sparse coroutine lifetimes `e213b46b5` | `11.1738 s` | `3.55809 s` | `1.98082 s` | `1.66059 s` | `0.329078 s` |
 | sparse handler event domain `d32a3f93b` | `8.7816 s` | `0.500144 s` | `2.24290 s` | `1.48968 s` | `0.332590 s` |
 | demand-driven restructure frontiers `3d2c322f1` | `7.50286--7.77417 s` | `0.371753--0.395625 s` | `1.96247--2.19189 s` | `1.64413--1.66490 s` | `0.328332--0.329465 s` |
+| projected scope dataflow and RPO `b0f235f0f` | `6.51264--7.19622 s` | `0.363771--0.381739 s` | `1.94524--2.08270 s` | `0.691603--0.729620 s` | `0.328954--0.329396 s` |
 
 The final whole-JIT reduction relative to the two dense observations is
-`12.83--13.44x` (`92.2--92.6%`). Frame layout takes approximately `0.1 ms`, so
+`13.85--15.48x` (`92.8--93.5%`). Frame layout takes approximately `0.1 ms`, so
 frame layout is not being mistaken for this host-analysis bottleneck.
 
 ## Selection proof demand
@@ -321,6 +323,60 @@ relative RMS `1.27865e-7`. Raw runs are
 `barbershop-demand-frontiers-repeat.log`, with the pushed-upstream validation
 in `barbershop-demand-frontiers-rebased.log`, in the same directory.
 
+## Projected scope dataflow and RPO scheduling
+
+The next profile showed that CFG distillation still solved every coroutine
+scope over the complete global atom domain. Barbershop has 255,078 global
+atoms and 9 scopes, although most atoms are absent from most scopes. For block
+`B`, define three local generators: `K_B` is its must-kill set, `T_B` its
+may-touch set, and `E_B` its use-before-local-kill set. The exact active
+universe of scope `s` is
+
+```text
+U_s = union over B in s of (K_B union T_B union E_B).
+```
+
+The forward Must/May equations are coordinate-wise over a product lattice.
+For an atom outside `U_s`, every local generator is zero. Scope construction
+includes only root-reachable blocks, the entry boundary is empty, and
+therefore induction on path length gives zero for that coordinate at every
+block. Solving on `U_s` and zero-extending the result is consequently
+isomorphic to solving the global product; this is an exact domain projection,
+not a scene heuristic. Cross-scope relationships are expanded once before
+projection into immutable global atom numbers.
+
+Sparse block-effect discovery uses three marker bits per global atom plus
+compact vectors, avoiding one hash allocation per block. The fixed-point
+solver visits blocks in DFS reverse postorder. RPO changes no equation and no
+fixed point; on an acyclic scope every predecessor is visited before its
+consumer, so each block is evaluated exactly once. Cyclic scopes retain the
+same monotone worklist and revisit only blocks affected through backedges.
+
+On Barbershop, projection reduces the scope product from 2,295,702 atom
+coordinates to 274,190 (`11.94%`, or `8.37x` smaller). Total Must/May block
+evaluations fall from 126,083 to 28,394 (`77.5%`). The largest material scope
+still contains 237,456 atoms, so the measurement does not hide the genuinely
+dense case. CFG distillation falls from `1.64413--1.66490 s` to
+`0.691603--0.729620 s` (`55.6--58.5%`), while the fixed-point solver's self
+time falls from 3.11% to 0.54% of the complete process. Projection collection
+itself accounts for 0.05%. The new leading host-compiler opportunity is
+`resolve_reaching_values` in pre-distillation, at approximately 1.95%.
+
+This work also moves the dataflow model and solver into
+`coro_cfg_dataflow.h/.cpp`: the pass driver is now 1,652 lines and the new
+implementation unit is 892 lines after formatting. This is a real C++ API and
+implementation split rather than textual inclusion. Optional public stats
+make the domain sizes and iteration counts observable without introducing a
+timing threshold.
+
+Commit `b0f235f0f` preserves the generated program at 9 subroutines, 212 frame
+fields, and 3,184 bytes. The final 15-pass comparison is
+`/var/tmp/psycles-compact-populate-20260821/barbershop-scope-rpo-final-comparison.json`;
+its maximum absolute error is `4.7683716e-7`, maximum RMS is `4.1643165e-8`,
+and maximum relative RMS is `1.0743231e-7`. Raw runs are
+`barbershop-scope-rpo-final-a.log`, `barbershop-scope-rpo-final-b.log`, and
+`barbershop-scope-rpo-profile.log` in the same directory.
+
 ## Rejected register-bank experiment
 
 A diagnostic scalarized the compact value banks behind generated switch
@@ -378,6 +434,24 @@ transform query plus its final audit. The same fixture retains its dense CHK
 idom accounting, proving that the optimization removes an unobserved derived
 relation rather than skipping dominance maintenance.
 
+Commit `b0f235f0f` adds a separate scope-dataflow regression. It constructs
+two acyclic scopes containing a diamond, a resume-only 256-block chain, and
+local frame state. The test runs the independent dense pointer-set oracle,
+requires the projected domain to be strictly smaller than the global product,
+and requires each RPO Must and May solver to evaluate every acyclic block
+exactly once. Invalid input must also reset the optional statistics rather
+than exposing stale observations. The complete existing CFG-distillation
+suite passes under `LUISA_CORO_VERIFY_DENSE_DATAFLOW=1` (380 assertions in 49
+tests), and the new regression contributes 17 assertions in 2 tests.
+
+The independent oracle deliberately stores a pointer set per block and is not
+intended to scale to production modules. Enabling it on the complete
+Barbershop shader reached approximately 57 GB RSS after two minutes, so that
+diagnostic run was terminated before host OOM; it is not reported as a pass.
+Equivalence on the production module is instead checked by the unchanged
+9/212/3,184 coroutine ABI and the complete 15-pass EXR comparison above. The
+bounded CFG oracle remains the direct semantic differential test.
+
 The following checks passed after rebasing onto and pushing current Luisa
 `next`:
 
@@ -394,6 +468,12 @@ test_xir_pass_pointer_usage
 test_xir_pass_coro_alloca_scope
   169 assertions in 24 tests
 
+test_xir_coro_cfg_distill
+  380 assertions in 49 tests
+
+test_xir_coro_cfg_dataflow
+  17 assertions in 2 tests
+
 test_coro_compile_trigger
   passed
 
@@ -409,6 +489,7 @@ test_xir_pass_mutation_safety
 test_xir_passes
   2452 assertions in 392 tests
 
+cmake --build build-luisa-tests --parallel
 cmake --build build --parallel
 
 ./build/bin/psycles_luisa_scene_traversal_tests fallback
@@ -436,7 +517,7 @@ PSYCLES_POPULATE_SURFACE_ONCE=1 \
 Raw logs, EXRs, and `perf` captures remain under
 `/var/tmp/psycles-compact-populate-20260821` and
 `/var/tmp/psycles-barbershop-coro-host*.perf.data`. The final profile is
-`/var/tmp/psycles-barbershop-coro-host-ray-sparse-events.perf.data`. This is a
+`/var/tmp/psycles-barbershop-coro-host-scope-rpo.perf.data`. This is a
 compiler-focused 8x8 canary, so no enlarged visual triptych is presented as a
 scene-quality claim. The previously committed full-resolution scene triptychs
 remain the quality oracle; the numerical all-pass comparison here is stronger
