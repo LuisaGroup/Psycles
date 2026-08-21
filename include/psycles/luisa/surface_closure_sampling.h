@@ -27,15 +27,13 @@ struct SurfaceClosureSelectionInput {
     Expr<bool> beckmann;
 };
 
-// The exact surface/query projection needed by closure selection. Keeping
-// this independent of SurfacePoint and SurfaceQuery prevents unrelated graph
-// attributes and resources from becoming part of the callable ABI.
+// The exact query projection needed by closure selection. Surface closure
+// setup has already converted the authored normal into the final Cycles
+// ShaderClosure normal before this boundary, so categorical selection must
+// not observe geometry or repeat normal correction.
 struct SurfaceClosureSelectionContext {
-    Expr<luisa::float3> geometric_normal;
-    Expr<luisa::float3> incoming;
     Expr<std::uint32_t> lobe_mask;
     Expr<float> glossy_filter_roughness;
-    Expr<bool> use_bump_map_correction;
 };
 
 // The complete device-stage projection needed before categorical inversion.
@@ -121,24 +119,13 @@ make_surface_closure_selection_input(
 
 [[nodiscard]] SurfaceClosureSelectionContext
 make_surface_closure_selection_context(
-    const SurfaceClosurePoint &point,
-    Expr<luisa::float3> incoming,
     const SurfaceQuery &query) noexcept;
 
-// Canonical p(i) state. `incoming` must be normalized once by the caller.
+// Canonical p(i) state over an already populated physical closure.
 [[nodiscard]] luisa::compute::Var<SurfaceClosureSelectionCall>
 surface_closure_selection(
     const SurfaceClosureSelectionContext &context,
     const SurfaceClosureSelectionInput &closure) noexcept;
-
-// Convenience overload for regression paths. Full storage records narrow to
-// this physical type at the call boundary, before selection can observe them.
-[[nodiscard]] luisa::compute::Var<SurfaceClosureSelectionCall>
-surface_closure_selection(
-    const SurfaceClosurePoint &point,
-    const SurfaceClosurePhysicalRecord &closure,
-    Expr<luisa::float3> incoming,
-    const SurfaceQuery &query) noexcept;
 
 // Canonical conditional sampler p(w_i | i). It must only be invoked under the
 // categorical `choose` predicate. In particular, this function never decides
@@ -313,6 +300,7 @@ class DirectSurfaceClosureSamplingOperation final
     const ShaderServices &_services;
     SurfaceClosurePoint _point;
     const SurfaceQuery &_query;
+    SurfaceClosureSelectionContext _selection_context;
     Float3 _incoming{make_float3(0.0f)};
 
   public:

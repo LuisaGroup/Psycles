@@ -274,10 +274,8 @@ public:
             ++*_selection_recordings;
         }
         return surface_closure_selection(
-            _point,
-            closure.reference(),
-            Expr<luisa::float3>{_incoming.expression()},
-            _query);
+            make_surface_closure_selection_context(_query),
+            make_surface_closure_selection_input(closure));
     }
 
     [[nodiscard]] luisa::compute::Var<
@@ -1372,6 +1370,40 @@ int main(int argc, char **argv) {
                     cast<float>(retained_mask)));
         };
 
+    // Population owns every Cycles closure-setup transform. Selection is a
+    // pure observer of the resulting ShaderClosure base and must therefore
+    // preserve its stored normal even for values that a second bump-normal
+    // correction would change.
+    Kernel1D selection_observes_populated_normal =
+        [](BufferFloat4 output) noexcept {
+            constexpr auto stored_normal =
+                luisa::float3{0.75f, -0.5f, 0.125f};
+            const auto context = SurfaceClosureSelectionContext{
+                .lobe_mask = ~std::uint32_t{0u},
+                .glossy_filter_roughness = 0.0f};
+            const auto closure = SurfaceClosureSelectionInput{
+                .kind = static_cast<std::uint32_t>(
+                    SurfaceClosureKind::diffuse),
+                .lobe = static_cast<std::uint32_t>(
+                    SurfaceClosureLobe::none),
+                .bssrdf_method = static_cast<std::uint32_t>(
+                    SurfaceBssrdfMethod::random_walk),
+                .allocation_weight = 0.7f,
+                .sample_weight = 0.7f,
+                .setup_valid = true,
+                .normal = stored_normal,
+                .roughness = 0.25f,
+                .preserve_ggx_energy = false,
+                .beckmann = false};
+            const auto selection = surface_closure_selection(
+                context, closure);
+            output.write(
+                0u,
+                make_float4(
+                    selection.glossy_normal,
+                    selection.weight));
+        };
+
     Context context{argv[0]};
     auto device = context.create_device(backend);
     auto stream = device.create_stream();
@@ -1412,6 +1444,8 @@ int main(int argc, char **argv) {
         device.create_buffer<luisa::float4>(
             categorical_invocation_count *
             categorical_records_per_invocation);
+    auto selection_normal_buffer =
+        device.create_buffer<luisa::float4>(1u);
     auto collect_kernel = device.compile(collect);
     auto legacy_kernel = device.compile(legacy);
     auto retain_kernel = device.compile(retain);
@@ -1441,6 +1475,8 @@ int main(int argc, char **argv) {
         device.compile(sample_legacy);
     auto predicated_categorical_kernel =
         device.compile(predicated_categorical);
+    auto selection_normal_kernel =
+        device.compile(selection_observes_populated_normal);
     std::array<luisa::float4, invocation_count * records_per_slot> collected{};
     std::array<luisa::float4, invocation_count * 3u> old{};
     std::array<luisa::float4, invocation_count * 3u> retained{};
@@ -1469,6 +1505,7 @@ int main(int argc, char **argv) {
         categorical_invocation_count *
             categorical_records_per_invocation>
         categorical{};
+    std::array<luisa::float4, 1u> selection_normal{};
     stream << parameter_buffer.copy_from(luisa::span{parameters})
            << collect_kernel(parameter_buffer, collected_buffer)
                   .dispatch(invocation_count)
@@ -1522,7 +1559,24 @@ int main(int argc, char **argv) {
                   .dispatch(categorical_invocation_count)
            << categorical_buffer.copy_to(
                   luisa::span{categorical})
+           << selection_normal_kernel(
+                  selection_normal_buffer)
+                  .dispatch(1u)
+           << selection_normal_buffer.copy_to(
+                  luisa::span{selection_normal})
            << synchronize();
+
+    if (!approximately_equal(
+            selection_normal[0u],
+            luisa::float4{0.75f, -0.5f, 0.125f, 0.7f})) {
+        const auto observed = selection_normal[0u];
+        std::cerr
+            << "surface closure selection changed the populated normal on "
+            << backend << ": {" << observed.x << ", "
+            << observed.y << ", " << observed.z << ", "
+            << observed.w << "}\n";
+        return EXIT_FAILURE;
+    }
 
     constexpr std::array categorical_weights{
         0.2f, 0.0f, 0.5f, 0.3f};

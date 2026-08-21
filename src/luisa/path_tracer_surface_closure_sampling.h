@@ -24,9 +24,8 @@ LUISA_STRUCT(psycles::luisa_backend::detail::SurfaceClosureSamplingQueryCall,
 namespace psycles::luisa_backend::detail {
 
 using SurfaceClosureSelectionCallable = Callable<SurfaceClosureSelectionCall(
-    luisa::float3, luisa::float3, luisa::uint, float, bool, luisa::uint,
-    luisa::uint, luisa::uint, float, float, bool, luisa::float3, float, bool,
-    bool)>;
+    luisa::uint, float, luisa::uint, luisa::uint, luisa::uint, float, float,
+    bool, luisa::float3, float, bool, bool)>;
 
 using SurfaceClosureConditionalSampleCallable =
     Callable<SurfaceClosureConditionalSampleCall(

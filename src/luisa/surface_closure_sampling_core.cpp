@@ -80,19 +80,12 @@ make_surface_closure_selection_input(
 
 SurfaceClosureSelectionContext
 make_surface_closure_selection_context(
-    const SurfaceClosurePoint &point,
-    Expr<luisa::float3> incoming,
     const SurfaceQuery &query) noexcept {
     return {
-        .geometric_normal = Expr<luisa::float3>{
-            point.geometric_normal.expression()},
-        .incoming = incoming,
         .lobe_mask =
             Expr<std::uint32_t>{query.lobe_mask.expression()},
         .glossy_filter_roughness = Expr<float>{
-            query.glossy_filter_roughness.expression()},
-        .use_bump_map_correction = Expr<bool>{
-            point.use_bump_map_correction.expression()}};
+            query.glossy_filter_roughness.expression()}};
 }
 
 luisa::compute::Var<SurfaceClosureSelectionCall>
@@ -175,38 +168,10 @@ surface_closure_selection(
     result.closure_type = detail::cycles_closure_type(identity);
     result.closure_sample_weight = Float{closure.sample_weight};
     $if(eligible) {
-        const Float3 geometric_normal{context.geometric_normal};
-        const Float3 incoming{context.incoming};
-        const Float3 normal{closure.normal};
-        const auto correction_enabled =
-            Bool{context.use_bump_map_correction} &
-            !all(geometric_normal == normal);
-        const auto corrected_normal = select(
-            normal,
-            detail::ensure_valid_specular_reflection(
-                geometric_normal, incoming, normal),
-            correction_enabled);
-        const auto glossy_normal =
-            select(corrected_normal,
-                normal,
-                is_sheen | is_rough_translucent |
-                    is_thin_glass_transmission);
         result.weight = Float{closure.sample_weight};
-        result.glossy_normal = glossy_normal;
+        result.glossy_normal = closure.normal;
     };
     return result;
-}
-
-luisa::compute::Var<SurfaceClosureSelectionCall>
-surface_closure_selection(
-    const SurfaceClosurePoint &point,
-    const SurfaceClosurePhysicalRecord &closure,
-    Expr<luisa::float3> incoming,
-    const SurfaceQuery &query) noexcept {
-    return surface_closure_selection(
-        make_surface_closure_selection_context(
-            point, incoming, query),
-        make_surface_closure_selection_input(closure));
 }
 
 luisa::compute::Var<SurfaceClosureConditionalSampleCall>
@@ -724,16 +689,15 @@ DirectSurfaceClosureSamplingOperation::
     : _services{services},
       _point{point},
       _query{query},
+      _selection_context{make_surface_closure_selection_context(query)},
       _incoming{make_surface_closure_sampling_incoming(point)} {}
 
 luisa::compute::Var<SurfaceClosureSelectionCall>
 DirectSurfaceClosureSamplingOperation::selection(
     const SurfaceClosureExpression &closure) const noexcept {
     return surface_closure_selection(
-        _point,
-        closure.reference(),
-        Expr<luisa::float3>{_incoming.expression()},
-        _query);
+        _selection_context,
+        make_surface_closure_selection_input(closure));
 }
 
 luisa::compute::Var<SurfaceClosureConditionalSampleCall>

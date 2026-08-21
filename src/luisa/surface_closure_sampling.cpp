@@ -17,6 +17,8 @@ SurfaceSampleTrace SurfaceClosureEvaluator::sample_impl(
     const SurfaceClosurePoint closure_point{_point};
     const auto incoming = detail::safe_normalize(
         _point.incoming, _point.shading_normal);
+    const auto selection_context =
+        make_surface_closure_selection_context(query);
 
     // Pass one constructs exactly the finite Cycles closure-selection
     // measure. The Local evaluator remains only as a storage-form regression;
@@ -26,10 +28,10 @@ SurfaceSampleTrace SurfaceClosureEvaluator::sample_impl(
     UInt index = 0u;
     $while(index < _closures.count()) {
         measure.add(surface_closure_selection(
-            closure_point,
-            _closures.entry(index),
-            Expr<luisa::float3>{incoming.expression()},
-            query));
+            selection_context,
+            make_surface_closure_selection_input(
+                static_cast<SurfaceClosurePhysicalRecord>(
+                    _closures.entry(index)))));
         index += 1u;
     };
 
@@ -42,10 +44,10 @@ SurfaceSampleTrace SurfaceClosureEvaluator::sample_impl(
     index = 0u;
     $while(index < _closures.count()) {
         const auto selection = surface_closure_selection(
-            closure_point,
-            _closures.entry(index),
-            Expr<luisa::float3>{incoming.expression()},
-            query);
+            selection_context,
+            make_surface_closure_selection_input(
+                static_cast<SurfaceClosurePhysicalRecord>(
+                    _closures.entry(index))));
         const auto choice = inversion.consider(selection);
         selected_index = select(
             selected_index, index, choice.choose);
@@ -60,10 +62,9 @@ SurfaceSampleTrace SurfaceClosureEvaluator::sample_impl(
     $if(inversion.selected()) {
         const auto closure = _closures.entry(selected_index);
         const auto selection = surface_closure_selection(
-            closure_point,
-            closure,
-            Expr<luisa::float3>{incoming.expression()},
-            query);
+            selection_context,
+            make_surface_closure_selection_input(
+                static_cast<SurfaceClosurePhysicalRecord>(closure)));
         const auto sample = surface_closure_conditional_sample(
             services,
             closure_point,
