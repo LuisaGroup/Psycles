@@ -145,18 +145,14 @@ SurfaceClosureSet::SurfaceClosureSet(
     }
     if (_profile == SurfaceClosureStorageProfile::physical) {
         const auto packed = pack_surface_closure_physical(zero);
-        // Physical closures are consumed through a runtime index. Define the
-        // complete bounded arena before the first append so every indexed
-        // observation has a value independent of storage from an earlier
-        // surface iteration. Besides making the container's initialization
-        // contract explicit, this lets coroutine lifetime analysis place the
-        // arena inside the synchronous shade-surface segment instead of
-        // preserving its old contents across unrelated continuations.
-        for (auto i = std::size_t{0u}; i < _capacity; ++i) {
-            _physical_0.write(i, packed.block_0);
-            _physical_1.write(i, packed.block_1);
-            _physical_2.write(i, packed.block_2);
-        }
+        // Keep the empty-set fallback at slot zero. append_impl writes every
+        // field of slot count before publishing count + 1, and every consumer
+        // indexes only [0, count) (or selects slot zero for an invalid index).
+        // Thus [0, count) is the exact initialized prefix; clearing the unused
+        // suffix would add stores without changing any observable value.
+        _physical_0.write(0u, packed.block_0);
+        _physical_1.write(0u, packed.block_1);
+        _physical_2.write(0u, packed.block_2);
         return;
     }
     _identity.write(0u,
