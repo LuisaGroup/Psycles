@@ -20,6 +20,6 @@ build_surface_value_runtime(
 
 void upload_surface_value_runtime(
     Stream &stream,
-    const SurfaceValueRuntime &runtime) noexcept;
+    SurfaceValueRuntime &runtime) noexcept;
 
 } // namespace psycles::luisa_backend::detail
