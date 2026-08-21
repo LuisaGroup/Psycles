@@ -19,6 +19,7 @@
 #include <vector>
 
 #include <luisa/luisa-compute.h>
+#include <luisa/dsl/coro_func.h>
 
 namespace {
 
@@ -377,11 +378,107 @@ void write_results(
            std::isfinite(value.z) && std::isfinite(value.w);
 }
 
+[[nodiscard]] bool physical_closure_arena_is_continuation_local() {
+    Coroutine<void(Buffer<luisa::float4>)> coroutine{
+        [](BufferFloat4 values) noexcept {
+            $suspend("shade-surface");
+
+            SurfaceClosureSet closures{
+                closure_capacity,
+                SurfaceClosureStorageProfile::physical};
+            for (auto index = std::size_t{};
+                 index < closure_capacity;
+                 ++index) {
+                const auto source = values.read(
+                    static_cast<std::uint32_t>(index));
+                auto closure = SurfaceClosureRecord::zero();
+                closure.kind = static_cast<std::uint32_t>(
+                    SurfaceClosureKind::diffuse);
+                closure.weight = source.xyz();
+                closure.allocation_weight = source.w;
+                closure.sample_weight = source.x;
+                closure.setup_valid = source.y > 0.0f;
+                closure.color = source.yzx();
+                closure.normal = source.zxy();
+                closure.roughness = source.x;
+                closure.diffuse_roughness = source.y;
+                closure.metallic = source.z;
+                closure.ior = source.w;
+                closure.specular_tint = source.zxy();
+                closure.sheen_transform_a = source.y;
+                closure.sheen_transform_b = source.z;
+                closure.evaluation_scale = source.xyz();
+                closure.fresnel_f0 = source.yzx();
+                closure.fresnel_f90 = source.zxy();
+                closure.reflection_tint = source.xyz();
+                closure.transmission_tint = source.yzx();
+                closure.preserve_ggx_energy = source.z > 0.0f;
+                closure.beckmann = source.w > 0.0f;
+                closure.bssrdf_radius = source.zxy();
+                closure.bssrdf_albedo = source.xyz();
+                closure.bssrdf_ior = source.x;
+                closure.bssrdf_roughness = source.y;
+                closure.bssrdf_anisotropy = source.z;
+                closures.add(closure);
+            }
+
+            Float3 weight_sum = make_float3(0.0f);
+            $for(index, closures.count()) {
+                const auto closure = closures.entry(index);
+                weight_sum +=
+                    closure.weight + closure.color + closure.normal +
+                    closure.specular_tint + closure.evaluation_scale +
+                    closure.fresnel_f0 + closure.fresnel_f90 +
+                    closure.reflection_tint +
+                    closure.transmission_tint + closure.bssrdf_radius +
+                    closure.bssrdf_albedo;
+                weight_sum += make_float3(
+                    closure.allocation_weight +
+                    closure.sample_weight + closure.roughness +
+                    closure.diffuse_roughness + closure.metallic +
+                    closure.ior + closure.sheen_transform_a +
+                    closure.sheen_transform_b + closure.bssrdf_ior +
+                    closure.bssrdf_roughness +
+                    closure.bssrdf_anisotropy +
+                    select(0.0f, 1.0f, closure.setup_valid) +
+                    select(
+                        0.0f, 1.0f, closure.preserve_ggx_energy) +
+                    select(0.0f, 1.0f, closure.beckmann));
+            };
+            values.write(
+                closure_capacity,
+                make_float4(
+                    weight_sum,
+                    cast<float>(closures.count())));
+
+            $suspend("after-surface");
+            values.write(closure_capacity + 1u, make_float4(1.0f));
+        }};
+
+    // The physical arena is created, populated, and consumed entirely in
+    // the shade-surface continuation. Its runtime-indexed slots must not
+    // become payload fields merely because Luisa records Local declarations
+    // at function scope. Before the bounded arena was fully initialized, the
+    // conservative incoming-value model leaked 33 float4x4 elements into the
+    // frame here.
+    if (coroutine.frame().field_count() != 0u) {
+        std::cerr
+            << "physical closure arena escaped its synchronous coroutine "
+               "segment:\n"
+            << coroutine.frame().dump();
+        return false;
+    }
+    return true;
+}
+
 }// namespace
 
 int main(int argc, char **argv) {
     const auto backend = std::string_view{
         argc > 1 ? argv[1] : "fallback"};
+    if (!physical_closure_arena_is_continuation_local()) {
+        return EXIT_FAILURE;
+    }
     ShaderCompiler compiler{make_core_node_registry()};
     const auto compile = [&](ShaderGraph graph) {
         auto shader = compiler.compile(graph);
