@@ -1175,6 +1175,7 @@ void test_surface_value_storage_plan() {
         std::vector{SurfaceValueExecutionInput{
             .program = &bump_program, .storage = &bump_plan}});
     require(bump_scene.valid && bump_scene.root_program_count == 1u &&
+                bump_scene.maximum_bump_depth == 1u &&
                 bump_scene.executable.values.programs.size() == 2u &&
                 bump_scene.executable.values.instructions.size() == 1u &&
                 bump_scene.bump_height_programs ==
@@ -1204,10 +1205,23 @@ void test_surface_value_storage_plan() {
             std::vector{SurfaceValueExecutionInput{
                 .program = &nested_bump_program,
                 .storage = &nested_bump_plan}});
-    require(!nested_bump_scene.valid &&
-                nested_bump_scene.diagnostic.find("stratum") !=
-                    std::string::npos,
-            "nested Bump silently entered a non-recursive evaluator layer");
+    const auto invalid_address = SurfaceValueAddress::invalid_value;
+    require(nested_bump_scene.valid &&
+                nested_bump_scene.maximum_bump_depth == 2u &&
+                nested_bump_scene.executable.values.programs.size() == 3u &&
+                nested_bump_scene.executable.values.instructions.size() == 5u &&
+                nested_bump_scene.bump_height_programs ==
+                    std::vector<std::uint32_t>{
+                        1u, invalid_address, 2u, 1u, invalid_address} &&
+                SurfaceValueAddress{
+                    nested_bump_scene.program_outputs[1u]}.parameter() &&
+                !SurfaceValueAddress{
+                    nested_bump_scene.program_outputs[2u]}.parameter() &&
+                SurfaceValueAddress{
+                    nested_bump_scene.program_outputs[2u]}.bank() ==
+                    SurfaceValueBank::scalar,
+            "nested Bump did not lower to a shared finite-strata evaluator "
+            "DAG");
 
     auto malformed_image = image;
     malformed_image.instructions.front().control |= 1u << 31u;

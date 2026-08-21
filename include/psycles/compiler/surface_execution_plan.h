@@ -481,17 +481,17 @@ struct SurfaceValueExecutableScene {
   std::vector<std::uint32_t> instruction_variants;
 };
 
-// Exact two-level execution plan for authored Bump. Root programs may contain
-// Bump instructions. Each such instruction names a topologically closed
-// height subprogram evaluated at the X/Y offset points; height subprograms are
-// formally required to be Bump-free, so the shared device callable graph is
-// finite and non-recursive. Deeper valid graphs can be generalized to more
-// strata without changing bytecode semantics.
+// Exact finite-strata execution plan for authored Bump. Root programs may
+// contain Bump instructions. Each such instruction names a topologically
+// closed height subprogram evaluated at the X/Y offset points. Nested Bump
+// dependencies share height subprograms, and `maximum_bump_depth` records the
+// number of non-recursive device-callable strata required by the scene.
 struct SurfaceValueBumpExecutableScene {
   bool valid{};
   std::string diagnostic;
   SurfaceValueExecutableScene executable;
   std::uint32_t root_program_count{};
+  std::uint32_t maximum_bump_depth{};
   // Parallel to executable.values.instructions. Non-Bump instructions retain
   // SurfaceValueAddress::invalid_value.
   std::vector<std::uint32_t> bump_height_programs;
