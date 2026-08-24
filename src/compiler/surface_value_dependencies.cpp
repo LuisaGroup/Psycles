@@ -298,7 +298,167 @@ template <typename LeafFunction>
   return result;
 }
 
+[[nodiscard]] bool
+active_values_observe_shading_normal(const SurfaceProgram &program,
+                                     const std::vector<bool> &active) noexcept {
+  const auto &instructions = program.value_instructions();
+  for (auto index = std::size_t{0u}; index < instructions.size(); ++index) {
+    if (active[index] &&
+        value_instruction_observes_shading_normal(instructions[index])) {
+      return true;
+    }
+  }
+  return false;
+}
+
+[[nodiscard]] bool emission_closures_observe_shading_normal(
+    const SurfaceProgram &program, const SurfaceClosurePlan &plan,
+    const std::vector<bool> &active) noexcept {
+  const auto &closures = program.closure_instructions();
+  for (auto index = std::size_t{0u}; index < closures.size(); ++index) {
+    if (!active[index] ||
+        closures[index].operation != ClosureOperation::principled) {
+      continue;
+    }
+    const auto &entry =
+        plan.entry(ClosureExpressionId{static_cast<std::uint32_t>(index)});
+    // Alpha and direct emission are independent of ShaderData::N. Sheen and
+    // Coat attenuation each use the current normal as an unlinked/degenerate
+    // fallback, so even linked normals retain a formal dependence.
+    if (has_feature(entry, PrincipledClosureFeature::sheen) ||
+        has_feature(entry, PrincipledClosureFeature::coat)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 } // namespace
+
+bool value_instruction_observes_shading_normal(
+    const ValueInstruction &instruction) noexcept {
+  switch (instruction.operation) {
+  case ValueOperation::shading_normal:
+  case ValueOperation::normal_map:
+    return true;
+  case ValueOperation::fresnel:
+  case ValueOperation::layer_weight_fresnel:
+  case ValueOperation::layer_weight_facing:
+    // static_u0 is the exact "Normal socket linked" bit for these nodes.
+    return instruction.static_u0 == 0u;
+  case ValueOperation::image_color:
+  case ValueOperation::image_alpha:
+    // Box projection computes axis weights from the current ShaderData normal.
+    return ((instruction.static_u1 >> 12u) & 0x3u) == 1u;
+  case ValueOperation::bump: {
+    const auto normal_linked = (instruction.static_u0 & 2u) != 0u;
+    const auto object_space = (instruction.static_u0 & 4u) != 0u;
+    // An unlinked Bump consumes the current normal as its input. Object-space
+    // Bump additionally uses it as the exact zero-vector transform fallback.
+    return !normal_linked || object_space;
+  }
+  case ValueOperation::parameter:
+  case ValueOperation::passthrough:
+  case ValueOperation::scalar_to_color:
+  case ValueOperation::scalar_to_boolean:
+  case ValueOperation::color_to_scalar:
+  case ValueOperation::vector_to_scalar:
+  case ValueOperation::add:
+  case ValueOperation::subtract:
+  case ValueOperation::multiply:
+  case ValueOperation::divide:
+  case ValueOperation::minimum:
+  case ValueOperation::maximum:
+  case ValueOperation::power:
+  case ValueOperation::math:
+  case ValueOperation::absolute:
+  case ValueOperation::clamp01:
+  case ValueOperation::clamp_range:
+  case ValueOperation::map_range_float:
+  case ValueOperation::map_range_vector:
+  case ValueOperation::vector_math_value:
+  case ValueOperation::vector_math_vector:
+  case ValueOperation::mix_float:
+  case ValueOperation::mix_vector:
+  case ValueOperation::mix:
+  case ValueOperation::multiply_color:
+  case ValueOperation::hue_saturation:
+  case ValueOperation::invert:
+  case ValueOperation::gamma:
+  case ValueOperation::brightness_contrast:
+  case ValueOperation::blackbody:
+  case ValueOperation::wavelength:
+  case ValueOperation::surface_position:
+  case ValueOperation::geometric_normal:
+  case ValueOperation::incoming:
+  case ValueOperation::tangent:
+  case ValueOperation::uv:
+  case ValueOperation::generated:
+  case ValueOperation::object_position:
+  case ValueOperation::object_position_with_transform:
+  case ValueOperation::object_location:
+  case ValueOperation::object_random:
+  case ValueOperation::particle_index:
+  case ValueOperation::particle_random:
+  case ValueOperation::back_facing:
+  case ValueOperation::pointiness:
+  case ValueOperation::random_per_island:
+  case ValueOperation::curve_is_strand:
+  case ValueOperation::curve_intercept:
+  case ValueOperation::curve_length:
+  case ValueOperation::curve_thickness:
+  case ValueOperation::curve_tangent_normal:
+  case ValueOperation::curve_random:
+  case ValueOperation::path_is_camera:
+  case ValueOperation::path_is_shadow:
+  case ValueOperation::path_is_diffuse:
+  case ValueOperation::path_is_glossy:
+  case ValueOperation::path_is_singular:
+  case ValueOperation::path_is_reflection:
+  case ValueOperation::path_is_transmission:
+  case ValueOperation::path_is_volume_scatter:
+  case ValueOperation::path_ray_length:
+  case ValueOperation::path_ray_depth:
+  case ValueOperation::path_diffuse_depth:
+  case ValueOperation::path_glossy_depth:
+  case ValueOperation::path_transparent_depth:
+  case ValueOperation::path_transmission_depth:
+  case ValueOperation::mapping:
+  case ValueOperation::environment_color:
+  case ValueOperation::environment_alpha:
+  case ValueOperation::attribute_color:
+  case ValueOperation::attribute_factor:
+  case ValueOperation::attribute_alpha:
+  case ValueOperation::noise_factor:
+  case ValueOperation::noise_color:
+  case ValueOperation::white_noise_value:
+  case ValueOperation::white_noise_color:
+  case ValueOperation::checker_color:
+  case ValueOperation::checker_factor:
+  case ValueOperation::brick_color:
+  case ValueOperation::brick_factor:
+  case ValueOperation::magic_color:
+  case ValueOperation::magic_factor:
+  case ValueOperation::wave_color:
+  case ValueOperation::wave_factor:
+  case ValueOperation::voronoi_distance:
+  case ValueOperation::voronoi_color:
+  case ValueOperation::voronoi_position:
+  case ValueOperation::voronoi_w:
+  case ValueOperation::voronoi_radius:
+  case ValueOperation::gradient:
+  case ValueOperation::color_ramp:
+  case ValueOperation::rgb_curve:
+  case ValueOperation::separate_r:
+  case ValueOperation::separate_g:
+  case ValueOperation::separate_b:
+  case ValueOperation::combine_color:
+  case ValueOperation::hosek_wilkie_sky:
+  case ValueOperation::nishita_sky:
+    return false;
+  }
+  std::abort();
+}
 
 bool SurfaceValueDependencyPlan::compatible(
     const SurfaceProgram &program) const noexcept {
@@ -326,7 +486,9 @@ SurfaceValueDependencyPlan analyze_surface_value_dependencies(
             .emission_outputs = std::vector<bool>(size, true),
             .preparation_outputs = std::vector<bool>(size, true),
             .physical_closures = std::vector<bool>(closure_size, true),
-            .emission_closures = std::vector<bool>(closure_size, true)};
+            .emission_closures = std::vector<bool>(closure_size, true),
+            .emission_values_observe_shading_normal = true,
+            .emission_closures_observe_shading_normal = true};
   }
 
   ValueDependencyMask physical{program};
@@ -349,6 +511,11 @@ SurfaceValueDependencyPlan analyze_surface_value_dependencies(
       physical_result.active, emission_result.active);
   auto preparation_outputs = merge_masks(
       physical_result.outputs, emission_result.outputs);
+  const auto emission_values_observe_normal =
+      active_values_observe_shading_normal(program, emission_result.active);
+  const auto emission_closures_observe_normal =
+      emission_closures_observe_shading_normal(program, closure_plan,
+                                               emission_closures);
   return {.physical = std::move(physical_result.active),
           .emission = std::move(emission_result.active),
           .preparation = std::move(preparation_mask),
@@ -356,7 +523,11 @@ SurfaceValueDependencyPlan analyze_surface_value_dependencies(
           .emission_outputs = std::move(emission_result.outputs),
           .preparation_outputs = std::move(preparation_outputs),
           .physical_closures = std::move(physical_closures),
-          .emission_closures = std::move(emission_closures)};
+          .emission_closures = std::move(emission_closures),
+          .emission_values_observe_shading_normal =
+              emission_values_observe_normal,
+          .emission_closures_observe_shading_normal =
+              emission_closures_observe_normal};
 }
 
 } // namespace psycles::compiler

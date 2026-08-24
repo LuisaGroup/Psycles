@@ -20,16 +20,22 @@ namespace {
 
 [[nodiscard]] bool closure_active(
     const SurfaceValueDependencyPlan &dependencies,
-    ClosureExpressionId id) noexcept {
+    ClosureExpressionId id,
+    SurfaceClosureEndpointMask selected_endpoints) noexcept {
   return id.valid() &&
          id.value < dependencies.physical_closures.size() &&
-         (dependencies.physical_closures[id.value] ||
-          dependencies.emission_closures[id.value]);
+         (((selected_endpoints & surface_closure_endpoint_bit(
+                                     SurfaceClosureEndpoint::physical)) != 0u &&
+           dependencies.physical_closures[id.value]) ||
+          ((selected_endpoints & surface_closure_endpoint_bit(
+                                     SurfaceClosureEndpoint::emission)) != 0u &&
+           dependencies.emission_closures[id.value]));
 }
 
 [[nodiscard]] SurfaceClosureEndpointMask closure_endpoints(
     const SurfaceValueDependencyPlan &dependencies,
-    ClosureExpressionId id) noexcept {
+    ClosureExpressionId id,
+    SurfaceClosureEndpointMask selected_endpoints) noexcept {
   auto result = SurfaceClosureEndpointMask{};
   if (dependencies.physical_closures[id.value]) {
     result |= surface_closure_endpoint_bit(
@@ -39,8 +45,29 @@ namespace {
     result |= surface_closure_endpoint_bit(
         SurfaceClosureEndpoint::emission);
   }
-  return result;
+  return result & selected_endpoints;
 }
+
+[[nodiscard]] bool value_active(
+    const SurfaceValueDependencyPlan &dependencies,
+    ValueExpressionId id,
+    SurfaceClosureEndpointMask selected_endpoints) noexcept {
+  if (!id.valid() || id.value >= dependencies.preparation.size()) {
+    return false;
+  }
+  return ((selected_endpoints & surface_closure_endpoint_bit(
+                                    SurfaceClosureEndpoint::physical)) != 0u &&
+          dependencies.physical[id.value]) ||
+         ((selected_endpoints & surface_closure_endpoint_bit(
+                                    SurfaceClosureEndpoint::emission)) != 0u &&
+          dependencies.emission[id.value]);
+}
+
+inline constexpr auto emission_principled_features =
+    principled_closure_feature_bit(PrincipledClosureFeature::alpha) |
+    principled_closure_feature_bit(PrincipledClosureFeature::sheen) |
+    principled_closure_feature_bit(PrincipledClosureFeature::coat) |
+    principled_closure_feature_bit(PrincipledClosureFeature::emission);
 
 [[nodiscard]] std::vector<ValueExpressionId> closure_operands(
     const ClosureInstruction &closure) {
@@ -345,7 +372,8 @@ SurfaceClosureProgramImage lower_surface_closure_program(
     const SurfaceProgram &program,
     const SurfaceClosurePlan &closure_plan,
     const SurfaceValueDependencyPlan &dependencies,
-    std::span<const std::uint32_t> value_addresses) {
+    std::span<const std::uint32_t> value_addresses,
+    SurfaceClosureEndpointMask selected_endpoints) {
   static_assert(
       std::is_trivially_copyable_v<SurfaceClosureBytecodeInstruction>);
   static_assert(std::is_trivially_copyable_v<SurfaceClosureMixTerm>);
@@ -361,6 +389,10 @@ SurfaceClosureProgramImage lower_surface_closure_program(
   }
   if (!dependencies.compatible(program)) {
     return reject("the closure dependency plan is incompatible");
+  }
+  if (selected_endpoints == 0u ||
+      (selected_endpoints & ~all_surface_closure_endpoints) != 0u) {
+    return reject("the closure endpoint projection is empty or invalid");
   }
   if (value_addresses.size() != program.value_instructions().size()) {
     return reject("the typed value-address image has the wrong size");
@@ -386,7 +418,7 @@ SurfaceClosureProgramImage lower_surface_closure_program(
     if (value.value >= value_addresses.size()) {
       return false;
     }
-    if (!dependencies.preparation[value.value]) {
+    if (!value_active(dependencies, value, selected_endpoints)) {
       return !required;
     }
     const auto address = SurfaceValueAddress{value_addresses[value.value]};
@@ -405,7 +437,7 @@ SurfaceClosureProgramImage lower_surface_closure_program(
   while (!pending.empty()) {
     auto current = std::move(pending.back());
     pending.pop_back();
-    if (!closure_active(dependencies, current.id) ||
+    if (!closure_active(dependencies, current.id, selected_endpoints) ||
         !closure_plan.entry(current.id).reachable) {
       continue;
     }
@@ -424,9 +456,11 @@ SurfaceClosureProgramImage lower_surface_closure_program(
       const auto b_reachable =
           closure_plan.entry(closure.b).reachable;
       const auto a_active =
-          a_reachable && closure_active(dependencies, closure.a);
+          a_reachable &&
+          closure_active(dependencies, closure.a, selected_endpoints);
       const auto b_active =
-          b_reachable && closure_active(dependencies, closure.b);
+          b_reachable &&
+          closure_active(dependencies, closure.b, selected_endpoints);
 
       auto a_path = current.mix_path;
       auto b_path = std::move(current.mix_path);
@@ -463,7 +497,8 @@ SurfaceClosureProgramImage lower_surface_closure_program(
       continue;
     }
 
-    const auto endpoints = closure_endpoints(dependencies, current.id);
+    const auto endpoints =
+        closure_endpoints(dependencies, current.id, selected_endpoints);
     if (endpoints == 0u) {
       continue;
     }
@@ -488,8 +523,7 @@ SurfaceClosureProgramImage lower_surface_closure_program(
     for (const auto operand : operands) {
       std::uint32_t address{};
       const auto required =
-          operand.valid() && operand.value < dependencies.preparation.size() &&
-          dependencies.preparation[operand.value];
+          value_active(dependencies, operand, selected_endpoints);
       if (!encoded_address(operand, required, address)) {
         return reject("a live closure operand has no typed value address");
       }
@@ -504,10 +538,13 @@ SurfaceClosureProgramImage lower_surface_closure_program(
         result.maximum_mix_depth,
         static_cast<std::uint32_t>(current.mix_path.size()));
 
-    const auto features =
-        closure.operation == ClosureOperation::principled
-            ? closure_plan.entry(current.id).principled_features
-            : PrincipledClosureFeatureMask{};
+    auto features = closure.operation == ClosureOperation::principled
+        ? closure_plan.entry(current.id).principled_features
+        : PrincipledClosureFeatureMask{};
+    if ((endpoints & surface_closure_endpoint_bit(
+                         SurfaceClosureEndpoint::physical)) == 0u) {
+      features &= emission_principled_features;
+    }
     result.instructions.emplace_back(SurfaceClosureBytecodeInstruction{
         .control = make_surface_closure_control(closure, endpoints),
         .operand_begin = operand_begin,

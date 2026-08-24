@@ -141,6 +141,20 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
                          preparation_image.diagnostic;
             return nullptr;
         }
+    auto emission_storage = compiler::plan_surface_value_storage(
+        program, dependencies.emission, dependencies.emission_outputs);
+    if (!emission_storage.valid) {
+      diagnostic = "surface topology " + std::to_string(topology) +
+                   " emission plan: " + emission_storage.diagnostic;
+      return nullptr;
+    }
+    const auto emission_image =
+        compiler::lower_surface_value_program(program, emission_storage);
+    if (!emission_image.valid) {
+      diagnostic = "surface topology " + std::to_string(topology) +
+                   " emission lowering: " + emission_image.diagnostic;
+      return nullptr;
+    }
 
         auto normal_output =
             compiler::SurfaceValueAddress::invalid_value;
@@ -178,9 +192,18 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
         runtime->topology_flags.emplace_back(
             uses_undisplaced_geometry ? surface_value_runtime_topology_flag(
                                             SurfaceValueRuntimeTopologyFlag::
-                                                automatic_bump_uses_undisplaced_geometry) : 0u);
+                                                automatic_bump_uses_undisplaced_geometry)
+                                      : 0u);
+        if (dependencies.emission_observes_shading_normal() &&
+            program.surface_normal_root().valid()) {
+            runtime->topology_flags.back() |=
+                surface_value_runtime_topology_flag(
+                    SurfaceValueRuntimeTopologyFlag::
+                        emission_uses_automatic_normal);
+        }
         root_storage.emplace_back(std::move(normal_storage));
         root_storage.emplace_back(std::move(preparation_storage));
+    root_storage.emplace_back(std::move(emission_storage));
     }
 
     std::vector<compiler::SurfaceValueExecutionInput> roots;
@@ -198,6 +221,15 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
                 topology * SurfaceValueRuntime::programs_per_topology +
                 SurfaceValueRuntime::preparation_program_offset],
             .closure_plan = &closure_plans[topology]});
+    roots.emplace_back(compiler::SurfaceValueExecutionInput{
+        .program = programs[topology].get(),
+        .storage =
+            &root_storage[topology *
+                              SurfaceValueRuntime::programs_per_topology +
+                          SurfaceValueRuntime::emission_program_offset],
+        .closure_plan = &closure_plans[topology],
+        .closure_endpoints = compiler::surface_closure_endpoint_bit(
+            compiler::SurfaceClosureEndpoint::emission)});
     }
     runtime->executable =
         compiler::build_surface_value_bump_executable_scene(roots);
@@ -227,8 +259,166 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
     std::sort(
         runtime->closure_static_variants.begin(),
         runtime->closure_static_variants.end());
-    for (auto index = std::size_t{0u}; index < image.programs.size();
-         ++index) {
+  if (runtime->executable.executable.instruction_variants.size() !=
+          image.instructions.size() ||
+      runtime->executable.bump_height_programs.size() !=
+          image.instructions.size() ||
+      image.closure_principled_features.size() !=
+          image.closure_instructions.size()) {
+    diagnostic = "compact surface semantic side streams are not parallel";
+    return nullptr;
+  }
+  const auto append_unique = [](auto &values, auto value) noexcept {
+    if (std::find(values.begin(), values.end(), value) == values.end()) {
+      values.emplace_back(value);
+    }
+  };
+  const auto valid_program_range = [&image](std::uint32_t program) noexcept {
+    if (program >= image.programs.size()) {
+      return false;
+    }
+    const auto &range = image.programs[program];
+    return range.instruction_begin <= image.instructions.size() &&
+           range.instruction_count <=
+               image.instructions.size() - range.instruction_begin &&
+           range.closure_begin <= image.closure_instructions.size() &&
+           range.closure_count <=
+               image.closure_instructions.size() - range.closure_begin;
+  };
+  const auto collect_direct_values =
+      [&](std::uint32_t program, std::vector<std::uint32_t> &variants,
+          std::vector<std::uint32_t> &pending_height_programs) noexcept {
+        if (!valid_program_range(program)) {
+          return false;
+        }
+        const auto &range = image.programs[program];
+        for (auto offset = std::uint32_t{0u}; offset < range.instruction_count;
+             ++offset) {
+          const auto instruction = range.instruction_begin + offset;
+          append_unique(
+              variants,
+              runtime->executable.executable.instruction_variants[instruction]);
+          const auto height_program =
+              runtime->executable.bump_height_programs[instruction];
+          if (height_program != compiler::SurfaceValueAddress::invalid_value) {
+            pending_height_programs.emplace_back(height_program);
+          }
+        }
+        return true;
+      };
+  const auto close_height_domain =
+      [&](std::vector<std::uint32_t> pending,
+          std::vector<std::uint32_t> &variants) noexcept {
+        std::vector<bool> visited(image.programs.size(), false);
+        while (!pending.empty()) {
+          const auto program = pending.back();
+          pending.pop_back();
+          if (!valid_program_range(program)) {
+            return false;
+          }
+          if (visited[program]) {
+            continue;
+          }
+          visited[program] = true;
+          const auto &range = image.programs[program];
+          // Bump height programs are scalar value subroutines. A
+          // closure range here would violate the finite-strata call
+          // graph and make endpoint-local reachability ill-defined.
+          if (range.closure_count != 0u) {
+            return false;
+          }
+          for (auto offset = std::uint32_t{0u};
+               offset < range.instruction_count; ++offset) {
+            const auto instruction = range.instruction_begin + offset;
+            append_unique(variants, runtime->executable.executable
+                                        .instruction_variants[instruction]);
+            const auto child =
+                runtime->executable.bump_height_programs[instruction];
+            if (child != compiler::SurfaceValueAddress::invalid_value) {
+              pending.emplace_back(child);
+            }
+          }
+        }
+        return true;
+      };
+
+  std::vector<std::uint32_t> pending_preparation_height_programs;
+  std::vector<std::uint32_t> pending_emission_height_programs;
+  pending_preparation_height_programs.reserve(programs.size() * 2u);
+  pending_emission_height_programs.reserve(programs.size() * 2u);
+  for (auto topology = std::size_t{0u}; topology < programs.size();
+       ++topology) {
+    const auto base = static_cast<std::uint32_t>(
+        topology * SurfaceValueRuntime::programs_per_topology);
+    const auto normal_program =
+        base + SurfaceValueRuntime::normal_program_offset;
+    const auto preparation_program =
+        base + SurfaceValueRuntime::preparation_program_offset;
+    const auto emission_program =
+        base + SurfaceValueRuntime::emission_program_offset;
+    if (!collect_direct_values(normal_program,
+                               runtime->normal_value_static_variants,
+                               pending_preparation_height_programs) ||
+        !collect_direct_values(preparation_program,
+                               runtime->preparation_value_static_variants,
+                               pending_preparation_height_programs) ||
+        !collect_direct_values(emission_program,
+                               runtime->emission_value_static_variants,
+                               pending_emission_height_programs)) {
+      diagnostic = "surface root program range exceeds its stream";
+      return nullptr;
+    }
+    if ((runtime->topology_flags[topology] &
+         surface_value_runtime_topology_flag(
+             SurfaceValueRuntimeTopologyFlag::
+                 emission_uses_automatic_normal)) != 0u &&
+        !collect_direct_values(normal_program,
+                               runtime->emission_normal_value_static_variants,
+                               pending_emission_height_programs)) {
+      diagnostic = "emission automatic-normal program range exceeds its stream";
+      return nullptr;
+    }
+    const auto &range = image.programs[emission_program];
+    for (auto offset = std::uint32_t{0u}; offset < range.closure_count;
+         ++offset) {
+      const auto closure = range.closure_begin + offset;
+      const auto &instruction = image.closure_instructions[closure];
+      const auto endpoints = compiler::surface_closure_endpoints(instruction);
+      const auto operation = compiler::surface_closure_operation(instruction);
+      if (endpoints != compiler::surface_closure_endpoint_bit(
+                           compiler::SurfaceClosureEndpoint::emission) ||
+          (operation != compiler::ClosureOperation::emission &&
+           operation != compiler::ClosureOperation::principled)) {
+        diagnostic = "emission projection retained a non-emission closure";
+        return nullptr;
+      }
+      append_unique(runtime->emission_closure_static_variants,
+                    instruction.control &
+                        compiler::surface_closure_emission_static_variant_mask);
+      runtime->emission_principled_closure_features |=
+          image.closure_principled_features[closure];
+    }
+  }
+  if (!close_height_domain(std::move(pending_preparation_height_programs),
+                           runtime->height_value_static_variants) ||
+      !close_height_domain(std::move(pending_emission_height_programs),
+                           runtime->emission_height_value_static_variants)) {
+    diagnostic = "compact surface Bump-height call graph is malformed";
+    return nullptr;
+  }
+  const auto sort_variants = [](auto &variants) noexcept {
+    std::sort(variants.begin(), variants.end());
+  };
+  sort_variants(runtime->preparation_value_static_variants);
+  sort_variants(runtime->normal_value_static_variants);
+  sort_variants(runtime->height_value_static_variants);
+  sort_variants(runtime->emission_value_static_variants);
+  sort_variants(runtime->emission_normal_value_static_variants);
+  sort_variants(runtime->emission_height_value_static_variants);
+  std::sort(runtime->emission_closure_static_variants.begin(),
+            runtime->emission_closure_static_variants.end());
+
+  for (auto index = std::size_t{0u}; index < image.programs.size(); ++index) {
         if (!fits_runtime_capacity(image.programs[index])) {
             diagnostic = "compact surface program " + std::to_string(index) +
                          " requires typed slots beyond the 8 scalar / 12 vector / 1 "
@@ -336,17 +526,23 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
     LUISA_INFO(
         "Built compact surface runtime: {} root programs, {} total programs, "
         "{} instructions, {} operands, {} metadata records, {} static floats, "
-        "{} semantic variants, {} closure instructions, {} Bump evaluator "
+      "{} semantic variants (root/normal/height domains "
+      "{}/{}/{}, emission {}/{}/{}), {} closure instructions "
+      "({} emission variants), {} Bump evaluator "
         "strata, maximum program "
         "length {}, typed slots {}/{}/{}.",
-        runtime->executable.root_program_count,
-        image.programs.size(), image.instructions.size(),
-        image.operands.size(), image.metadata.size(),
-        image.static_data.size(),
-        runtime->executable.executable.variants.size(),
-        image.closure_instructions.size(),
-        runtime->executable.maximum_bump_depth,
-        maximum_instruction_count,
+      runtime->executable.root_program_count, image.programs.size(),
+      image.instructions.size(), image.operands.size(), image.metadata.size(),
+      image.static_data.size(), runtime->executable.executable.variants.size(),
+      runtime->preparation_value_static_variants.size(),
+      runtime->normal_value_static_variants.size(),
+      runtime->height_value_static_variants.size(),
+      runtime->emission_value_static_variants.size(),
+      runtime->emission_normal_value_static_variants.size(),
+      runtime->emission_height_value_static_variants.size(),
+      image.closure_instructions.size(),
+      runtime->emission_closure_static_variants.size(),
+      runtime->executable.maximum_bump_depth, maximum_instruction_count,
         maximum_scalar_slots, maximum_vector_slots,
         maximum_unsigned_integer_slots);
 

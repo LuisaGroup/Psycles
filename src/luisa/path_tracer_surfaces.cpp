@@ -403,6 +403,126 @@ make_expanded_surface_bssrdf_normal_callable(
     return result;
 }
 
+[[nodiscard]] SurfaceEmissionCallable make_expanded_surface_emission_callable(
+    const std::shared_ptr<LuisaSceneData> &scene,
+    const Texture2DSamplingCallables &texture_sampling,
+    const SurfaceAttributeLookupCallable &attribute_lookup) noexcept {
+  SurfaceEmissionCallable result =
+      [scene, texture_sampling, attribute_lookup](
+          BufferFloat scalar_parameters, BufferFloat3 vector_parameters,
+          BufferFloat cycles_bsdf_tables, BindlessVar textures,
+          BindlessVar geometry_heap, UInt surface_tag,
+          Var<SurfacePointCall> packed_point, Float3 outgoing,
+          Bool reflective_caustics) noexcept {
+        CallableTexture2DSamplingProvider texture_provider{textures,
+                                                           texture_sampling};
+        CallableSurfaceAttributeLookupProvider attribute_provider{
+            geometry_heap, attribute_lookup};
+        BufferShaderServices services{scalar_parameters,
+                                      vector_parameters,
+                                      cycles_bsdf_tables,
+                                      textures,
+                                      geometry_heap,
+                                      scene->attribute_binding_slot,
+                                      scene->attribute_range_slot,
+                                      scene->nishita_texture_bindings,
+                                      scene->shader_color_space,
+                                      nullptr,
+                                      &texture_provider,
+                                      &attribute_provider};
+        return scene->surfaces.emission(surface_tag, services,
+                                        unpack_surface_point(packed_point),
+                                        outgoing, reflective_caustics);
+      };
+  result.set_name("surface_emission");
+  return result;
+}
+
+[[nodiscard]] SurfaceConstantEmissionCallable
+make_surface_constant_emission_callable(
+    const std::shared_ptr<LuisaSceneData> &scene) noexcept {
+  SurfaceConstantEmissionCallable result =
+      [scene](BufferFloat scalar_parameters, BufferFloat3 vector_parameters,
+              UInt surface_tag, UInt parameter_block) noexcept {
+        BufferSurfaceParameterServices services{scalar_parameters,
+                                                vector_parameters};
+        return scene->surfaces.constant_emission(surface_tag, services,
+                                                 parameter_block);
+      };
+  result.set_name("surface_constant_emission");
+  return result;
+}
+
+struct SurfaceReplayCallables {
+  SurfacePreparationCallable preparation;
+  SurfaceEvaluateLightCallable evaluate_light;
+  SurfaceSampleCallable sample;
+  SurfaceClosureTraceCallable closure_trace;
+  SurfaceSampleTraceCallable sample_trace;
+};
+
+// These roots make the invariant executable: once the host/JIT selected a
+// populated surface, no downstream shader consumer may replay the graph. The
+// roots remain in SurfaceCallables only to keep the diagnostic ABI uniform;
+// they contain neither a topology dispatcher nor material-node callables.
+[[nodiscard]] SurfaceReplayCallables
+make_unreachable_surface_replay_callables() noexcept {
+  SurfacePreparationCallable preparation =
+      [](BufferFloat, BufferFloat3, BufferFloat, BindlessVar, BindlessVar, UInt,
+         Var<SurfacePointCall> packed_point,
+         Var<SurfacePreparationQueryCall>) noexcept {
+        luisa::compute::dsl::unreachable(
+            "surface preparation replay after population");
+        return pack_surface_preparation(
+            SurfacePreparation::zero(unpack_surface_point(packed_point)));
+      };
+  preparation.set_name("surface_prepare_after_population_unreachable");
+
+  SurfaceEvaluateLightCallable evaluate_light =
+      [](BufferFloat, BufferFloat3, BufferFloat, BindlessVar, BindlessVar, UInt,
+         Var<SurfacePointCall>, Float3, UInt, UInt, Float, Bool, Bool,
+         UInt) noexcept {
+        luisa::compute::dsl::unreachable(
+            "surface evaluation replay after population");
+        return pack_surface_evaluation(SurfaceEvaluation::zero());
+      };
+  evaluate_light.set_name(
+      "surface_evaluate_light_after_population_unreachable");
+
+  SurfaceSampleCallable sample = [](BufferFloat, BufferFloat3, BufferFloat,
+                                    BindlessVar, BindlessVar, UInt,
+                                    Var<SurfacePointCall>, Float, Float2, UInt,
+                                    UInt, Float, Bool, Bool) noexcept {
+    luisa::compute::dsl::unreachable(
+        "surface sampling replay after population");
+    return pack_surface_sample(SurfaceSample::zero());
+  };
+  sample.set_name("surface_sample_after_population_unreachable");
+
+  SurfaceClosureTraceCallable closure_trace =
+      [](BufferFloat, BufferFloat3, BufferFloat, BindlessVar, BindlessVar, UInt,
+         Var<SurfacePointCall>, UInt requested_index, Bool, Bool) noexcept {
+        luisa::compute::dsl::unreachable(
+            "surface closure trace replay after population");
+        return pack_surface_closure_trace(
+            SurfaceClosureTrace::zero(requested_index));
+      };
+  closure_trace.set_name("surface_closure_trace_after_population_unreachable");
+
+  SurfaceSampleTraceCallable sample_trace =
+      [](BufferFloat, BufferFloat3, BufferFloat, BindlessVar, BindlessVar, UInt,
+         Var<SurfacePointCall>, Float, Float2, UInt, UInt, Float, Bool,
+         Bool) noexcept {
+        luisa::compute::dsl::unreachable(
+            "surface sample trace replay after population");
+        return pack_surface_sample_trace(SurfaceSampleTrace::zero());
+      };
+  sample_trace.set_name("surface_sample_trace_after_population_unreachable");
+
+  return {std::move(preparation), std::move(evaluate_light), std::move(sample),
+          std::move(closure_trace), std::move(sample_trace)};
+}
+
 }// namespace
 
 SurfaceCallables
@@ -431,6 +551,34 @@ make_surface_callables(const std::shared_ptr<LuisaSceneData> &scene) noexcept {
             texture_sampling,
             attribute_lookup);
     }
+  auto emission = scene->surface_values
+                      ? make_compact_surface_emission_callable(scene)
+                      : make_expanded_surface_emission_callable(
+                            scene, texture_sampling, attribute_lookup);
+  auto constant_emission = make_surface_constant_emission_callable(scene);
+  auto bssrdf_normal =
+      scene->surface_values
+          ? make_compact_surface_bssrdf_normal_callable(scene)
+          : make_expanded_surface_bssrdf_normal_callable(
+                scene, closure_setup, texture_sampling, attribute_lookup);
+
+  // This is a host/JIT branch, not a device scheduler predicate. In the
+  // Cycles-style route all surface consumers are emitted against the one
+  // PopulatedSurfaceShader object, so constructing topology-expanded replay
+  // callables would add dead scene-sized ASTs and weaken that invariant.
+  if (population) {
+    auto replay = make_unreachable_surface_replay_callables();
+    return {std::move(population),
+            std::move(replay.preparation),
+            std::move(replay.evaluate_light),
+            std::move(constant_emission),
+            std::move(emission),
+            std::move(replay.sample),
+            std::move(replay.closure_trace),
+            std::move(replay.sample_trace),
+            std::move(bssrdf_normal)};
+  }
+
     const auto closure_evaluation =
         make_surface_closure_evaluation_callable(scene);
     const auto closure_sampling = make_surface_closure_sampling_callables(scene);
@@ -529,43 +677,6 @@ make_surface_callables(const std::shared_ptr<LuisaSceneData> &scene) noexcept {
                 });
         };
     evaluate_light.set_name("surface_evaluate_light");
-    SurfaceEmissionCallable emission =
-        [scene, texture_sampling, attribute_lookup](
-            BufferFloat scalar_parameters, BufferFloat3 vector_parameters,
-            BufferFloat cycles_bsdf_tables, BindlessVar textures,
-            BindlessVar geometry_heap, UInt surface_tag,
-            Var<SurfacePointCall> packed_point, Float3 outgoing,
-            Bool reflective_caustics) noexcept {
-            CallableTexture2DSamplingProvider texture_provider{textures,
-                                                               texture_sampling};
-            CallableSurfaceAttributeLookupProvider attribute_provider{
-                geometry_heap, attribute_lookup};
-            BufferShaderServices services{scalar_parameters,
-                                          vector_parameters,
-                                          cycles_bsdf_tables,
-                                          textures,
-                                          geometry_heap,
-                                          scene->attribute_binding_slot,
-                                          scene->attribute_range_slot,
-                                          scene->nishita_texture_bindings,
-                                          scene->shader_color_space,
-                                          nullptr,
-                                          &texture_provider,
-                                          &attribute_provider};
-            return scene->surfaces.emission(surface_tag, services,
-                                            unpack_surface_point(packed_point),
-                                            outgoing, reflective_caustics);
-        };
-    emission.set_name("surface_emission");
-    SurfaceConstantEmissionCallable constant_emission =
-        [scene](BufferFloat scalar_parameters, BufferFloat3 vector_parameters,
-                UInt surface_tag, UInt parameter_block) noexcept {
-            BufferSurfaceParameterServices services{scalar_parameters,
-                                                    vector_parameters};
-            return scene->surfaces.constant_emission(surface_tag, services,
-                                                     parameter_block);
-        };
-    constant_emission.set_name("surface_constant_emission");
     std::vector<SurfaceSampleImplementationCallable> sample_implementations;
     sample_implementations.reserve(scene->surfaces.size());
     for (auto surface_index = std::size_t{0u};
@@ -718,13 +829,6 @@ make_surface_callables(const std::shared_ptr<LuisaSceneData> &scene) noexcept {
                 Expr<luisa::float2>{u_direction.expression()}, query, true));
         };
     sample_trace.set_name("surface_sample_trace");
-    auto bssrdf_normal = scene->surface_values
-                             ? make_compact_surface_bssrdf_normal_callable(scene)
-                             : make_expanded_surface_bssrdf_normal_callable(
-                                   scene,
-                                   closure_setup,
-                                   texture_sampling,
-                                   attribute_lookup);
     return {std::move(population),
             std::move(preparation),
             std::move(evaluate_light),

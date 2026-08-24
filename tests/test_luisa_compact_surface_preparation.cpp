@@ -336,6 +336,44 @@ struct FixtureProgram {
     return graph;
 }
 
+[[nodiscard]] ShaderGraph make_nested_bump_graph() {
+  ShaderGraph graph;
+  const auto inner = graph.add_node(node_type::bump, "Nested height Bump");
+  const auto normal_to_vector = graph.add_node(node_type::normal_to_vector,
+                                               "Nested Bump normal to vector");
+  const auto vector_to_scalar = graph.add_node(node_type::vector_to_scalar,
+                                               "Nested Bump vector to height");
+  const auto outer = graph.add_node(node_type::bump, "Root Bump");
+  const auto diffuse =
+      graph.add_node(node_type::diffuse_bsdf, "Nested Bump diffuse");
+  const auto configured =
+      graph.set_input(inner, "Height", SocketValue::floating(0.37f)) &&
+      graph.set_input(inner, "Strength", SocketValue::floating(0.61f)) &&
+      graph.set_input(inner, "Distance", SocketValue::floating(0.29f)) &&
+      graph.set_property(inner, "Invert", SocketValue::boolean(false)) &&
+      graph.set_property(inner, "NormalLinked", SocketValue::boolean(false)) &&
+      graph.set_input(outer, "Strength", SocketValue::floating(0.73f)) &&
+      graph.set_input(outer, "Distance", SocketValue::floating(0.41f)) &&
+      graph.set_property(outer, "Invert", SocketValue::boolean(true)) &&
+      graph.set_property(outer, "NormalLinked", SocketValue::boolean(false)) &&
+      graph.set_input(diffuse, "Color",
+                      SocketValue::color({0.27f, 0.53f, 0.81f})) &&
+      graph.set_input(diffuse, "Roughness", SocketValue::floating(0.19f)) &&
+      graph.connect({.node = inner, .socket = "Normal"}, normal_to_vector,
+                    "Normal") &&
+      graph.connect({.node = normal_to_vector, .socket = "Vector"},
+                    vector_to_scalar, "Vector") &&
+      graph.connect({.node = vector_to_scalar, .socket = "Value"}, outer,
+                    "Height") &&
+      graph.connect({.node = outer, .socket = "Normal"}, diffuse, "Normal");
+  if (!configured) {
+    throw std::runtime_error{"failed to configure nested Bump graph"};
+  }
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = diffuse, .socket = "Closure"});
+  return graph;
+}
+
 [[nodiscard]] ShaderGraph make_mixed_glass_emission_graph() {
     ShaderGraph graph;
     const auto diffuse = graph.add_node(
@@ -1046,6 +1084,7 @@ int main(int argc, char **argv) {
              0.0f, 0.0f, 1.5f, 0.0f,
              1.25f, 0.75f, 0.5f, 1.0f},
             "transform B")));
+  fixtures.emplace_back(compile_fixture(compiler, make_nested_bump_graph()));
 
     std::vector<std::shared_ptr<const SurfaceProgram>> programs;
     std::vector<SurfaceClosurePlan> closure_plans;
@@ -1092,6 +1131,48 @@ int main(int argc, char **argv) {
                   << backend << ": " << diagnostic << '\n';
         return EXIT_FAILURE;
     }
+  const auto find_bump_variant = [&](std::uint32_t static_control) noexcept {
+    const auto &variants =
+        scene->surface_values->executable.executable.variants;
+    for (auto index = std::size_t{0u}; index < variants.size(); ++index) {
+      const auto &instruction = variants[index].instruction;
+      if (instruction.operation == ValueOperation::bump &&
+          instruction.static_u0 == static_control) {
+        return static_cast<std::uint32_t>(index);
+      }
+    }
+    return SurfaceValueAddress::invalid_value;
+  };
+  const auto root_bump_variant = find_bump_variant(1u);
+  const auto height_bump_variant = find_bump_variant(0u);
+  const auto contains_variant = [](const auto &domain,
+                                   std::uint32_t variant) noexcept {
+    return std::find(domain.begin(), domain.end(), variant) != domain.end();
+  };
+  // This controlled graph proves the program-role partition rather than
+  // merely comparing its final pixels. The root evaluates both Bumps to
+  // obtain the centre height, while the offset-height subprogram reaches
+  // only the inner Bump. Thus the height domain is a strict subset of the
+  // direct preparation domain; replacing it by the scene-wide/root union
+  // must fail this assertion.
+  if (scene->surface_values->executable.maximum_bump_depth != 2u ||
+      root_bump_variant == SurfaceValueAddress::invalid_value ||
+      height_bump_variant == SurfaceValueAddress::invalid_value ||
+      !contains_variant(
+          scene->surface_values->preparation_value_static_variants,
+          root_bump_variant) ||
+      contains_variant(scene->surface_values->height_value_static_variants,
+                       root_bump_variant) ||
+      !contains_variant(
+          scene->surface_values->preparation_value_static_variants,
+          height_bump_variant) ||
+      !contains_variant(scene->surface_values->height_value_static_variants,
+                        height_bump_variant)) {
+    std::cerr << "compact runtime did not preserve the exact root/height "
+                 "call-graph partition on "
+              << backend << '\n';
+    return EXIT_FAILURE;
+  }
     const auto transform_variant_count = std::count_if(
         scene->surface_values->executable.executable.variants.begin(),
         scene->surface_values->executable.executable.variants.end(),
@@ -1105,11 +1186,16 @@ int main(int argc, char **argv) {
         [](const auto &metadata) noexcept {
             return metadata.static_table_count == 16u;
         });
-    if (transform_variant_count != 1u || transform_payload_count != 2u) {
+    // Preparation and emission are independent invocation domains, so each
+    // exact program keeps its own metadata record. The executable semantic
+    // variant is still interned once across both projections and both authored
+    // table payloads.
+    if (transform_variant_count != 1u || transform_payload_count != 4u) {
         std::cerr
             << "compact runtime did not share one transform evaluator over "
-               "two distinct table payloads on "
-            << backend << '\n';
+               "the preparation/emission projections on "
+            << backend << " (variants=" << transform_variant_count
+            << ", payloads=" << transform_payload_count << ")\n";
         return EXIT_FAILURE;
     }
 
@@ -1134,6 +1220,10 @@ int main(int argc, char **argv) {
         device.create_buffer<SurfacePreparationCall>(invocation_count);
     auto compact_buffer =
         device.create_buffer<SurfacePreparationCall>(invocation_count);
+  auto expanded_emission_buffer =
+      device.create_buffer<luisa::float3>(invocation_count);
+  auto compact_emission_buffer =
+      device.create_buffer<luisa::float3>(invocation_count);
 
     const auto closure_setup =
         make_surface_closure_setup_callables();
@@ -1261,6 +1351,66 @@ int main(int argc, char **argv) {
                     pack_surface_preparation_query(
                         invocation_query(scenario, point))));
         };
+
+  Kernel1D expanded_emission =
+      [scene, texture_sampling, attribute_lookup](
+          BufferFloat scalar_buffer, BufferFloat3 vector_buffer,
+          BufferFloat cycles_buffer, BindlessVar textures,
+          BindlessVar geometry_heap, BufferUInt parameter_base_buffer,
+          BufferFloat3 output) noexcept {
+        const auto invocation = dispatch_x();
+        const auto topology = invocation / scenario_count;
+        const auto scenario = invocation % scenario_count;
+        auto point = make_surface_point();
+        point.parameter_block = parameter_base_buffer.read(topology);
+        point.back_facing = (scenario & 4u) != 0u;
+        point.incoming = normalize(make_float3(
+            0.21f, -0.13f, select(0.969f, -0.969f, scenario == 7u)));
+        CallableTexture2DSamplingProvider texture_provider{textures,
+                                                           texture_sampling};
+        CallableSurfaceAttributeLookupProvider attribute_provider{
+            geometry_heap, attribute_lookup};
+        BufferShaderServices services{scalar_buffer,
+                                      vector_buffer,
+                                      cycles_buffer,
+                                      textures,
+                                      geometry_heap,
+                                      0u,
+                                      1u,
+                                      scene->nishita_texture_bindings,
+                                      scene->shader_color_space,
+                                      nullptr,
+                                      &texture_provider,
+                                      &attribute_provider};
+        const auto query = invocation_query(scenario, point);
+        output.write(invocation, scene->surfaces.emission(
+                                     topology, services, point, point.incoming,
+                                     query.emission_reflective_caustics));
+      };
+
+  const auto compact_emission_callable =
+      make_compact_surface_emission_callable(scene);
+  Kernel1D compact_emission =
+      [compact_emission_callable](
+          BufferFloat scalar_buffer, BufferFloat3 vector_buffer,
+          BufferFloat cycles_buffer, BindlessVar textures,
+          BindlessVar geometry_heap, BufferUInt parameter_base_buffer,
+          BufferFloat3 output) noexcept {
+        const auto invocation = dispatch_x();
+        const auto topology = invocation / scenario_count;
+        const auto scenario = invocation % scenario_count;
+        auto point = make_surface_point();
+        point.parameter_block = parameter_base_buffer.read(topology);
+        point.back_facing = (scenario & 4u) != 0u;
+        point.incoming = normalize(make_float3(
+            0.21f, -0.13f, select(0.969f, -0.969f, scenario == 7u)));
+        const auto query = invocation_query(scenario, point);
+        output.write(invocation,
+                     compact_emission_callable(
+                         scalar_buffer, vector_buffer, cycles_buffer, textures,
+                         geometry_heap, topology, pack_surface_point(point),
+                         point.incoming, query.emission_reflective_caustics));
+      };
 
     Kernel1D expanded_bssrdf_normal =
         [scene, weighted_bssrdf_topology, zero_bssrdf_topology, closure_setup,
@@ -1496,6 +1646,16 @@ int main(int argc, char **argv) {
             device,
             "surface_prepare_compact_bytecode",
             compact);
+    auto expanded_emission_shader =
+        psycles::test_support::compile_named_kernel(
+            device,
+            "surface_emission_expanded_reference",
+            expanded_emission);
+    auto compact_emission_shader =
+        psycles::test_support::compile_named_kernel(
+            device,
+            "surface_emission_compact_bytecode",
+            compact_emission);
     auto expanded_bssrdf_normal_shader =
         psycles::test_support::compile_named_kernel(
             device, "surface_bssrdf_normal_expanded_reference",
@@ -1545,6 +1705,8 @@ int main(int argc, char **argv) {
         device.create_buffer<luisa::float3>(1u);
     std::vector<SurfacePreparationCall> expected(invocation_count);
     std::vector<SurfacePreparationCall> actual(invocation_count);
+    std::vector<luisa::float3> expected_emission(invocation_count);
+    std::vector<luisa::float3> actual_emission(invocation_count);
     std::vector<SurfacePreparationCall>
         population_expected_preparation(invocation_count);
     std::vector<SurfacePreparationCall>
@@ -1592,6 +1754,16 @@ int main(int argc, char **argv) {
                   compact_buffer)
                   .dispatch(invocation_count)
            << compact_buffer.copy_to(luisa::span{actual})
+         << expanded_emission_shader(
+                scalar_buffer, vector_buffer, cycles_buffer, textures,
+                geometry_heap, parameter_base_buffer, expanded_emission_buffer)
+                .dispatch(invocation_count)
+         << expanded_emission_buffer.copy_to(luisa::span{expected_emission})
+         << compact_emission_shader(
+                scalar_buffer, vector_buffer, cycles_buffer, textures,
+                geometry_heap, parameter_base_buffer, compact_emission_buffer)
+                .dispatch(invocation_count)
+         << compact_emission_buffer.copy_to(luisa::span{actual_emission})
            << expanded_bssrdf_normal_shader(scalar_buffer, vector_buffer,
                                             cycles_buffer, textures,
                                             geometry_heap, parameter_base_buffer,
@@ -1678,6 +1850,14 @@ int main(int argc, char **argv) {
                 expected[invocation]);
             return EXIT_FAILURE;
         }
+    if (!finite(actual_emission[invocation]) ||
+        !equal(actual_emission[invocation], expected_emission[invocation],
+               tolerance)) {
+      std::cerr << "compact emission projection mismatch on " << backend
+                << ", topology " << invocation / scenario_count << ", scenario "
+                << invocation % scenario_count << '\n';
+      return EXIT_FAILURE;
+    }
         if (!finite(actual_bssrdf_normals[invocation]) ||
             !equal(actual_bssrdf_normals[invocation],
                    expected_bssrdf_normals[invocation], tolerance)) {

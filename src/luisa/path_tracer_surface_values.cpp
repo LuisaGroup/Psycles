@@ -64,6 +64,11 @@ enum class SurfaceValueBankDefinition {
     full_bank,
 };
 
+enum class SurfaceValueProgramDomain {
+  preparation,
+  emission,
+};
+
 template<typename T>
 [[nodiscard]] auto surface_value_runtime_buffer(
     const SurfaceValueRuntime &runtime,
@@ -343,6 +348,7 @@ void write_dynamic_value(
 void emit_surface_value_program(
     const SurfaceValueRuntime &runtime,
     const SurfaceValueNodes &nodes,
+    const std::vector<std::uint32_t> &active_variants,
     const ShaderServices &services,
     const SurfacePoint &point,
     UInt program,
@@ -371,8 +377,11 @@ void emit_surface_value_program(
                 SurfaceValueRuntimeBufferSlot::instruction_variant)
                 .read(instruction_index);
         luisa::compute::detail::SwitchStmtBuilder{variant_index} % [&] {
-            for (auto index = std::size_t{0u}; index < nodes.size();
-                 ++index) {
+            for (const auto index : active_variants) {
+                if (index >= nodes.size() ||
+                    index >= runtime.executable.executable.variants.size()) {
+                    std::abort();
+                }
                 luisa::compute::detail::SwitchCaseStmtBuilder{
                     static_cast<luisa::uint>(index)} %
                     [&, index] {
@@ -944,6 +953,31 @@ void emit_surface_closure_program(
     };
 }
 
+void accumulate_surface_emission(
+    const SurfaceValueRuntime &runtime,
+    const PrincipledLayerComponent &principled_layers,
+    const TracedClosure &raw,
+    UInt endpoints,
+    Expr<bool> reflective_caustics,
+    Float3 &emission) noexcept {
+    const auto emission_endpoint =
+        (endpoints & compiler::surface_closure_endpoint_bit(
+                         compiler::SurfaceClosureEndpoint::emission)) != 0u;
+    if (raw.operation == compiler::ClosureOperation::emission) {
+        $if(emission_endpoint) { emission += raw.weight; };
+    } else if (raw.operation == compiler::ClosureOperation::principled &&
+               (runtime.used_principled_closure_features &
+                compiler::principled_closure_feature_bit(
+                    compiler::PrincipledClosureFeature::emission)) != 0u) {
+        const auto contribution =
+            principled_layers
+                .evaluate_emission(raw, raw.principled_features,
+                                   reflective_caustics)
+                .radiance;
+        $if(emission_endpoint) { emission += contribution; };
+    }
+}
+
 [[nodiscard]] SurfaceClosureRecord merged_transparent_closure(
     const SurfacePoint &point,
     Float3 weight,
@@ -996,31 +1030,13 @@ template<typename PhysicalClosureSink>
         [&](const TracedClosure &raw,
             UInt endpoints,
             UInt instruction_index) noexcept {
-            const auto emission_endpoint =
-                (endpoints & compiler::surface_closure_endpoint_bit(
-                                 compiler::SurfaceClosureEndpoint::emission)) !=
-                0u;
-            if (raw.operation ==
-                compiler::ClosureOperation::emission) {
-                $if(emission_endpoint) {
-                    emission += raw.weight;
-                };
-            } else if (
-                raw.operation ==
-                    compiler::ClosureOperation::principled &&
-                (runtime.used_principled_closure_features &
-                 compiler::principled_closure_feature_bit(
-                     compiler::PrincipledClosureFeature::emission)) != 0u) {
-                const auto contribution = principled_layers
-                                              .evaluate_emission(
-                                                  raw,
-                                                  raw.principled_features,
-                                                  emission_reflective_caustics)
-                                              .radiance;
-                $if(emission_endpoint) {
-                    emission += contribution;
-                };
-            }
+            accumulate_surface_emission(
+                runtime,
+                principled_layers,
+                raw,
+                endpoints,
+                emission_reflective_caustics,
+                emission);
 
             const auto physical_endpoint =
                 (endpoints & compiler::surface_closure_endpoint_bit(
@@ -1113,6 +1129,130 @@ template<typename PhysicalClosureSink>
         .shading_normal = point.shading_normal};
 }
 
+[[nodiscard]] Float3 evaluate_surface_emission_variant(
+    std::uint32_t static_variant, const SurfaceValueRuntime &runtime,
+    const ShaderServices &services, const SurfacePoint &point,
+    const SurfaceValueLocals &locals, Var<luisa::uint4> instruction,
+    Float mix_weight, Expr<bool> reflective_caustics) noexcept {
+  namespace operand = compiler::surface_closure_operand;
+  const auto operation = static_cast<compiler::ClosureOperation>(
+      static_variant & compiler::surface_closure_opcode_mask);
+  if (operation == compiler::ClosureOperation::emission) {
+    const auto color =
+        read_closure_vector_or(runtime, services, point, locals, instruction,
+                               operand::emission::color, make_float3(0.0f));
+    return color *
+           read_closure_scalar_or(runtime, services, point, locals, instruction,
+                                  operand::emission::strength, 0.0f) *
+           mix_weight;
+  }
+  if (operation == compiler::ClosureOperation::principled) {
+    const auto scalar = [&](std::size_t index, float fallback) noexcept {
+      return read_closure_scalar_or(runtime, services, point, locals,
+                                    instruction, index, Float{fallback});
+    };
+    const auto vector = [&](std::size_t index,
+                            luisa::float3 fallback) noexcept {
+      return read_closure_vector_or(runtime, services, point, locals,
+                                    instruction, index, Float3{fallback});
+    };
+    const auto features = runtime.emission_principled_closure_features;
+    const auto enabled =
+        [features](compiler::PrincipledClosureFeature feature) noexcept {
+          return (features &
+                  compiler::principled_closure_feature_bit(feature)) != 0u;
+        };
+
+    TracedClosure raw;
+    raw.operation = compiler::ClosureOperation::principled;
+    raw.principled_features = features;
+    raw.weight = make_float3(mix_weight);
+    raw.normal = point.shading_normal;
+    raw.alpha = 1.0f;
+    raw.sheen_weight = 0.0f;
+    raw.sheen_roughness = 0.5f;
+    raw.sheen_tint = make_float3(1.0f);
+    raw.coat_weight = 0.0f;
+    raw.coat_roughness = 0.03f;
+    raw.coat_ior = 1.5f;
+    raw.coat_tint = make_float3(1.0f);
+    raw.coat_normal = make_float3(0.0f);
+    raw.coat_normal_linked =
+        (static_variant & compiler::surface_closure_coat_normal_linked) != 0u;
+    if (enabled(compiler::PrincipledClosureFeature::alpha)) {
+      raw.alpha = scalar(operand::principled::alpha, 1.0f);
+    }
+    if (enabled(compiler::PrincipledClosureFeature::sheen)) {
+      raw.normal = safe_normalize(
+          vector(operand::principled::normal, luisa::make_float3(0.0f)),
+          point.shading_normal);
+      raw.sheen_weight = scalar(operand::principled::sheen_weight, 0.0f);
+      raw.sheen_roughness = scalar(operand::principled::sheen_roughness, 0.5f);
+      raw.sheen_tint =
+          vector(operand::principled::sheen_tint, luisa::make_float3(1.0f));
+      raw.coat_weight = scalar(operand::principled::coat_weight, 0.0f);
+    }
+    if (enabled(compiler::PrincipledClosureFeature::coat)) {
+      raw.coat_weight = scalar(operand::principled::coat_weight, 0.0f);
+      raw.coat_roughness = scalar(operand::principled::coat_roughness, 0.03f);
+      raw.coat_ior = scalar(operand::principled::coat_ior, 1.5f);
+      raw.coat_tint =
+          vector(operand::principled::coat_tint, luisa::make_float3(1.0f));
+    }
+    if (raw.coat_normal_linked &&
+        (enabled(compiler::PrincipledClosureFeature::sheen) ||
+         enabled(compiler::PrincipledClosureFeature::coat))) {
+      raw.coat_normal =
+          vector(operand::principled::coat_normal, luisa::make_float3(0.0f));
+    }
+    raw.emission =
+        vector(operand::principled::emission_color, luisa::make_float3(0.0f)) *
+        scalar(operand::principled::emission_strength, 0.0f);
+    return PrincipledLayerComponent{services, point}
+        .evaluate_emission(raw, features, reflective_caustics)
+        .radiance;
+  }
+  std::abort();
+}
+
+[[nodiscard]] Float3 execute_surface_emission_program(
+    const SurfaceValueRuntime &runtime, const ShaderServices &services,
+    const SurfacePoint &point, const SurfaceValueLocals &locals, UInt program,
+    Expr<bool> reflective_caustics) noexcept {
+  const auto range = surface_value_runtime_buffer<luisa::uint4>(
+                         runtime, SurfaceValueRuntimeBufferSlot::program)
+                         .read(program);
+  const auto closure_begin = range.z;
+  const auto closure_end = range.z + range.w;
+  Float3 emission = make_float3(0.0f);
+  UInt instruction_index = closure_begin;
+  $while(instruction_index < closure_end) {
+    Var<luisa::uint4> instruction =
+        surface_value_runtime_buffer<luisa::uint4>(
+            runtime, SurfaceValueRuntimeBufferSlot::closure_instruction)
+            .read(instruction_index);
+    const auto static_variant =
+        instruction.x & compiler::surface_closure_emission_static_variant_mask;
+    const auto mix_weight =
+        closure_mix_weight(runtime, services, point, locals, instruction);
+    luisa::compute::detail::SwitchStmtBuilder{static_variant} % [&] {
+      for (const auto variant : runtime.emission_closure_static_variants) {
+        luisa::compute::detail::SwitchCaseStmtBuilder{variant} % [&, variant] {
+          emission += evaluate_surface_emission_variant(
+              variant, runtime, services, point, locals, instruction,
+              mix_weight, reflective_caustics);
+        };
+      }
+      luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
+        luisa::compute::dsl::unreachable(
+            "invalid compact emission closure variant");
+      };
+    };
+    instruction_index += 1u;
+  };
+  return emission;
+}
+
 [[nodiscard]] SurfacePreparation prepare_surface_closure_program(
     const SurfaceValueRuntime &runtime,
     const ShaderServices &services,
@@ -1176,6 +1316,8 @@ template<typename PhysicalClosureSink>
 [[nodiscard]] Float3 evaluate_compact_surface_normal(
     const SurfaceValueRuntime &runtime,
     const SurfaceValueNodes &nodes,
+    const std::vector<std::uint32_t> &active_variants,
+    SurfaceValueProgramDomain domain,
     const ShaderServices &services,
     UInt surface_tag,
     const SurfacePoint &point,
@@ -1194,8 +1336,20 @@ template<typename PhysicalClosureSink>
                 runtime,
                 SurfaceValueRuntimeBufferSlot::normal_output_address)
                 .read(surface_tag);
-        $if(normal_output !=
-            compiler::SurfaceValueAddress::invalid_value) {
+        Bool evaluate_normal =
+            normal_output != compiler::SurfaceValueAddress::invalid_value;
+        if (domain == SurfaceValueProgramDomain::emission) {
+            const auto flags =
+                surface_value_runtime_buffer<luisa::uint>(
+                    runtime,
+                    SurfaceValueRuntimeBufferSlot::topology_flag)
+                    .read(surface_tag);
+            evaluate_normal &=
+                (flags & surface_value_runtime_topology_flag(
+                             SurfaceValueRuntimeTopologyFlag::
+                                 emission_uses_automatic_normal)) != 0u;
+        }
+        $if(evaluate_normal) {
             const auto normal_point = automatic_normal_point(
                 runtime, surface_tag, point);
             const auto normal_program =
@@ -1204,6 +1358,7 @@ template<typename PhysicalClosureSink>
             emit_surface_value_program(
                 runtime,
                 nodes,
+                active_variants,
                 services,
                 normal_point,
                 normal_program,
@@ -1230,6 +1385,7 @@ template<typename Continuation>
 void emit_compact_surface_values(
     const SurfaceValueRuntime &runtime,
     const SurfaceValueNodes &nodes,
+    SurfaceValueProgramDomain domain,
     const ShaderServices &services,
     UInt surface_tag,
     SurfacePoint point,
@@ -1250,6 +1406,10 @@ void emit_compact_surface_values(
         point.shading_normal = evaluate_compact_surface_normal(
             runtime,
             nodes,
+            domain == SurfaceValueProgramDomain::emission
+                ? runtime.emission_normal_value_static_variants
+                : runtime.normal_value_static_variants,
+            domain,
             services,
             surface_tag,
             point,
@@ -1261,15 +1421,24 @@ void emit_compact_surface_values(
             textures,
             geometry_heap);
 
-        const auto preparation_program =
+        const auto program_offset =
+            domain == SurfaceValueProgramDomain::emission
+                ? SurfaceValueRuntime::emission_program_offset
+                : SurfaceValueRuntime::preparation_program_offset;
+        const auto program =
             surface_tag * SurfaceValueRuntime::programs_per_topology +
-            SurfaceValueRuntime::preparation_program_offset;
+            program_offset;
+        const auto &active_variants =
+            domain == SurfaceValueProgramDomain::emission
+                ? runtime.emission_value_static_variants
+                : runtime.preparation_value_static_variants;
         emit_surface_value_program(
             runtime,
             nodes,
+            active_variants,
             services,
             point,
-            preparation_program,
+            program,
             locals,
             &height,
             scalar_parameters,
@@ -1277,7 +1446,7 @@ void emit_compact_surface_values(
             cycles_bsdf_tables,
             textures,
             geometry_heap);
-        continuation(point, locals, preparation_program);
+        continuation(point, locals, program);
     };
 }
 
@@ -1301,13 +1470,14 @@ make_surface_value_height_callable(
     const std::shared_ptr<SurfaceValueNodes> &nodes,
     const Texture2DSamplingCallables &texture_sampling,
     const SurfaceAttributeLookupCallable &attribute_lookup,
+    std::vector<std::uint32_t> active_variants,
     std::uint32_t maximum_bump_depth) noexcept {
     const auto make_stratum =
-        [scene, nodes, texture_sampling, attribute_lookup](
+        [scene, nodes, texture_sampling, attribute_lookup, active_variants](
             std::optional<SurfaceValueHeightCallable> lower,
             std::uint32_t stratum) noexcept {
       SurfaceValueHeightCallable height =
-        [scene, nodes, texture_sampling, attribute_lookup,
+        [scene, nodes, texture_sampling, attribute_lookup, active_variants,
          lower = std::move(lower)](
             BufferFloat scalar_parameters,
             BufferFloat3 vector_parameters,
@@ -1338,6 +1508,7 @@ make_surface_value_height_callable(
             emit_surface_value_program(
                 *scene->surface_values,
                 *nodes,
+                active_variants,
                 services,
                 point,
                 program,
@@ -1409,6 +1580,7 @@ class CompactSurfacePopulationProgramImpl final
         emit_compact_surface_values(
             *_scene->surface_values,
             *_nodes,
+            SurfaceValueProgramDomain::preparation,
             services,
             UInt{surface_tag},
             point,
@@ -1464,10 +1636,100 @@ make_compact_surface_population_program(
             scene->attribute_range_slot);
     auto height = make_surface_value_height_callable(
         scene, nodes, texture_sampling, attribute_lookup,
+        scene->surface_values->height_value_static_variants,
         scene->surface_values->executable.maximum_bump_depth);
     return std::make_shared<
         CompactSurfacePopulationProgramImpl>(
         scene, std::move(nodes), std::move(height));
+}
+
+SurfaceEmissionCallable make_compact_surface_emission_callable(
+    const std::shared_ptr<LuisaSceneData> &scene) noexcept {
+    if (!scene->surface_values ||
+        scene->surface_values->topologies.size() !=
+            scene->surfaces.size()) {
+        std::abort();
+    }
+    const auto *runtime = scene->surface_values.get();
+    auto nodes = make_surface_value_nodes(*runtime);
+    const auto texture_sampling =
+        make_texture_2d_sampling_callables();
+    const auto attribute_lookup =
+        make_surface_attribute_lookup_callable(
+            scene->attribute_binding_slot,
+            scene->attribute_range_slot);
+    auto height = make_surface_value_height_callable(
+        scene,
+        nodes,
+        texture_sampling,
+        attribute_lookup,
+        runtime->emission_height_value_static_variants,
+        runtime->executable.maximum_bump_depth);
+
+    SurfaceEmissionCallable emission =
+        [scene,
+         runtime,
+         nodes,
+         height = std::move(height),
+         texture_sampling,
+         attribute_lookup](
+            BufferFloat scalar_parameters,
+            BufferFloat3 vector_parameters,
+            BufferFloat cycles_bsdf_tables,
+            BindlessVar textures,
+            BindlessVar geometry_heap,
+            UInt surface_tag,
+            Var<SurfacePointCall> packed_point,
+            Float3,
+            Bool reflective_caustics) noexcept {
+            CallableTexture2DSamplingProvider texture_provider{
+                textures, texture_sampling};
+        CallableSurfaceAttributeLookupProvider attribute_provider{
+            geometry_heap, attribute_lookup};
+            BufferShaderServices services{
+                scalar_parameters,
+                vector_parameters,
+                cycles_bsdf_tables,
+                textures,
+                geometry_heap,
+                scene->attribute_binding_slot,
+                scene->attribute_range_slot,
+                scene->nishita_texture_bindings,
+                scene->shader_color_space,
+                nullptr,
+                &texture_provider,
+                &attribute_provider};
+            const auto point = unpack_surface_point(packed_point);
+            Float3 result = make_float3(0.0f);
+            emit_compact_surface_values(
+                *runtime,
+                *nodes,
+                SurfaceValueProgramDomain::emission,
+                services,
+                surface_tag,
+                point,
+                height,
+                scalar_parameters,
+                vector_parameters,
+                cycles_bsdf_tables,
+                textures,
+                geometry_heap,
+                SurfaceValueBankDefinition::program_prefix,
+                [&](const SurfacePoint &evaluated_point,
+                    const SurfaceValueLocals &locals,
+                    UInt emission_program) noexcept {
+                    result = execute_surface_emission_program(
+                        *runtime,
+                        services,
+                        evaluated_point,
+                        locals,
+                        emission_program,
+                        reflective_caustics);
+                });
+            return result;
+        };
+    emission.set_name("surface_emission_compact_values");
+    return emission;
 }
 
 SurfacePreparationCallable
@@ -1496,6 +1758,7 @@ make_compact_surface_preparation_callable(
 
     auto height = make_surface_value_height_callable(
         scene, nodes, texture_sampling, attribute_lookup,
+      runtime.height_value_static_variants,
         runtime.executable.maximum_bump_depth);
 
     SurfacePreparationCallable preparation =
@@ -1541,6 +1804,7 @@ make_compact_surface_preparation_callable(
             emit_compact_surface_values(
                 *scene->surface_values,
                 *nodes,
+                SurfaceValueProgramDomain::preparation,
                 services,
                 surface_tag,
                 point,
@@ -1587,6 +1851,7 @@ SurfaceBssrdfNormalCallable make_compact_surface_bssrdf_normal_callable(
         scene->attribute_binding_slot, scene->attribute_range_slot);
     auto height = make_surface_value_height_callable(
         scene, nodes, texture_sampling, attribute_lookup,
+      runtime.height_value_static_variants,
         runtime.executable.maximum_bump_depth);
 
     SurfaceBssrdfNormalCallable bssrdf_normal =
@@ -1621,8 +1886,9 @@ SurfaceBssrdfNormalCallable make_compact_surface_bssrdf_normal_callable(
                 $if (surface_tag < static_cast<luisa::uint>(
                                        scene->surface_values->topologies.size())) {
                     emit_compact_surface_values(
-                        *scene->surface_values, *nodes, services, surface_tag, point,
-                        height, scalar_parameters, vector_parameters,
+                *scene->surface_values, *nodes,
+                SurfaceValueProgramDomain::preparation, services, surface_tag,
+                point, height, scalar_parameters, vector_parameters,
                         cycles_bsdf_tables, textures, geometry_heap,
                         SurfaceValueBankDefinition::program_prefix,
                         [&](const SurfacePoint &evaluated_point,

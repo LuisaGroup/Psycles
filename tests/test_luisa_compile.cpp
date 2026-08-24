@@ -420,7 +420,7 @@ public:
     static_cast<void>(scene->surfaces.create<GraphSurface>(first));
     static_cast<void>(scene->surfaces.create<GraphSurface>(second));
 
-    const auto callables =
+    const auto expanded =
         psycles::luisa_backend::detail::make_surface_callables(scene);
     const auto count_named = [](const auto &root,
                                 std::string_view prefix) noexcept {
@@ -433,15 +433,35 @@ public:
         return count;
     };
 
-    // The outer dispatcher must directly reference one typed leaf per distinct
-    // topology. This asserts the host/JIT structural boundary, not a brittle
-    // total callable count: helpers remain free to deduplicate by full hash.
-    return count_named(callables.preparation,
-                       "surface_prepare_topology_") == 2u &&
-           count_named(callables.evaluate_light,
-                       "surface_evaluate_light_topology_") == 2u &&
-           count_named(callables.sample,
-                       "surface_sample_topology_") == 2u;
+    // The explicit expanded oracle directly references one typed leaf per
+    // distinct topology. This asserts the host/JIT structural boundary, not a
+    // brittle total callable count: helpers remain free to deduplicate by full
+    // hash.
+    const auto expanded_is_typed =
+        count_named(expanded.preparation,
+                    "surface_prepare_topology_") == 2u &&
+        count_named(expanded.evaluate_light,
+                    "surface_evaluate_light_topology_") == 2u &&
+        count_named(expanded.sample,
+                    "surface_sample_topology_") == 2u;
+
+    // A populated surface is the unique ShaderGraph evaluation. Its legacy
+    // ABI roots are unreachable sentinels and must not retain any scene-sized
+    // topology leaf. This is the compile-time counterpart of Cycles keeping
+    // eval/sample consumers on ShaderData::closure[] rather than replaying
+    // svm_eval_nodes().
+    scene->populate_surface_once = true;
+    const auto populated =
+        psycles::luisa_backend::detail::make_surface_callables(scene);
+    const auto population_isolated =
+        populated.population != nullptr &&
+        count_named(populated.preparation,
+                    "surface_prepare_topology_") == 0u &&
+        count_named(populated.evaluate_light,
+                    "surface_evaluate_light_topology_") == 0u &&
+        count_named(populated.sample,
+                    "surface_sample_topology_") == 0u;
+    return expanded_is_typed && population_isolated;
 }
 
 [[nodiscard]] bool attribute_lookup_cfg_is_bounded() {

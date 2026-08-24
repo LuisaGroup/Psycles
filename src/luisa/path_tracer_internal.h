@@ -322,6 +322,7 @@ enum class SurfaceValueRuntimeBufferSlot : std::uint32_t {
 // device expressions evaluated at the hit point.
 enum class SurfaceValueRuntimeTopologyFlag : std::uint32_t {
     automatic_bump_uses_undisplaced_geometry = 1u << 0u,
+  emission_uses_automatic_normal = 1u << 1u,
 };
 
 [[nodiscard]] constexpr std::uint32_t
@@ -341,9 +342,10 @@ inline constexpr auto surface_value_runtime_buffer_slot_count =
         SurfaceValueRuntimeBufferSlot::count);
 
 struct SurfaceValueRuntime {
-    static constexpr std::uint32_t programs_per_topology = 2u;
+  static constexpr std::uint32_t programs_per_topology = 3u;
     static constexpr std::uint32_t normal_program_offset = 0u;
     static constexpr std::uint32_t preparation_program_offset = 1u;
+  static constexpr std::uint32_t emission_program_offset = 2u;
     // These are execution capacities, not a weakly typed value ABI. The
     // builder rejects the complete compact route when any exact liveness plan
     // exceeds a bank, leaving the established expanded route intact.
@@ -359,9 +361,26 @@ struct SurfaceValueRuntime {
     std::vector<std::uint32_t> closure_static_variants;
     compiler::PrincipledClosureFeatureMask
         used_principled_closure_features{};
+    // Exact semantic domains induced by the bytecode call graph. Root,
+    // automatic-normal, and transitive Bump-height programs are invoked by
+    // different evaluator bodies; assigning the scene-wide variant union to
+    // each body would multiply dead switch cases without changing behavior.
+    std::vector<std::uint32_t> preparation_value_static_variants;
+    std::vector<std::uint32_t> normal_value_static_variants;
+    std::vector<std::uint32_t> height_value_static_variants;
+    // Emission is a separately projected consumer and therefore has its own
+    // three exact domains. These sets are host/JIT metadata only; material
+    // data and the device program id remain runtime values.
+    std::vector<std::uint32_t> emission_value_static_variants;
+    std::vector<std::uint32_t> emission_normal_value_static_variants;
+    std::vector<std::uint32_t> emission_height_value_static_variants;
+    std::vector<std::uint32_t> emission_closure_static_variants;
+    compiler::PrincipledClosureFeatureMask
+        emission_principled_closure_features{};
 
     // [value begin, value count, closure begin, closure count]. Closure
-    // ranges are populated only for preparation programs.
+  // ranges are populated for endpoint-projected preparation and emission
+  // root programs; normal/Bump-height programs remain value-only.
     luisa::vector<luisa::uint4> program_ranges;
     luisa::vector<luisa::uint4> instructions;
     luisa::vector<luisa::uint> operands;
@@ -401,13 +420,13 @@ struct LuisaSceneData {
     std::uint64_t revision{};
     MaterialLibrary materials;
     SurfaceDispatch surfaces;
-    // Explicit real-renderer A/B route for Cycles-style single shader
-    // population. Kept separate from compact value bytecode so graph replay
-    // elimination and interpreter effects can be measured independently.
+  // Production Cycles-style single shader population. The independent
+  // environment opt-out is retained only as an exact expanded-graph A/B
+  // oracle for diagnosing interpreter and population effects separately.
     bool populate_surface_once{};
-    // Enabled only by the explicit A/B route while its real-scene output and
-    // performance are validated. A failure builds no partial device image and
-    // therefore cannot mix expanded and compact value evaluation.
+  // Production scene-pruned ShaderGraph -> SVM image. A transactional build
+  // failure produces no partial device image; an explicit environment
+  // opt-out selects the established expanded diagnostic implementation.
     std::unique_ptr<SurfaceValueRuntime> surface_values;
     // Scene-level Cycles has_bssrdf_bump materials mapped onto the
     // structure-deduplicated SurfaceDispatch tags. Shared tags form only the
