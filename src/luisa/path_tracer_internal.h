@@ -342,10 +342,10 @@ inline constexpr auto surface_value_runtime_buffer_slot_count =
         SurfaceValueRuntimeBufferSlot::count);
 
 struct SurfaceValueRuntime {
-  static constexpr std::uint32_t programs_per_topology = 3u;
+    static constexpr std::uint32_t programs_per_topology = 3u;
     static constexpr std::uint32_t normal_program_offset = 0u;
     static constexpr std::uint32_t preparation_program_offset = 1u;
-  static constexpr std::uint32_t emission_program_offset = 2u;
+    static constexpr std::uint32_t emission_program_offset = 2u;
     // These are execution capacities, not a weakly typed value ABI. The
     // builder rejects the complete compact route when any exact liveness plan
     // exceeds a bank, leaving the established expanded route intact.
@@ -377,10 +377,22 @@ struct SurfaceValueRuntime {
     std::vector<std::uint32_t> emission_closure_static_variants;
     compiler::PrincipledClosureFeatureMask
         emission_principled_closure_features{};
+    // BSSRDF exit reconstruction can only be invoked for the conservative
+    // topology-tag set derived from Cycles' has_bssrdf_bump capability. Its
+    // interpreter domains are the exact call-graph image of that set. Closure
+    // variants still include every physical leaf in each selected topology:
+    // non-BSSRDF leaves consume the same finite Cycles closure budget and
+    // therefore cannot be erased independently.
+    std::vector<std::uint32_t> bssrdf_value_static_variants;
+    std::vector<std::uint32_t> bssrdf_normal_value_static_variants;
+    std::vector<std::uint32_t> bssrdf_height_value_static_variants;
+    std::vector<std::uint32_t> bssrdf_closure_static_variants;
+    compiler::PrincipledClosureFeatureMask
+        bssrdf_principled_closure_features{};
 
     // [value begin, value count, closure begin, closure count]. Closure
-  // ranges are populated for endpoint-projected preparation and emission
-  // root programs; normal/Bump-height programs remain value-only.
+    // ranges are populated for endpoint-projected preparation and emission
+    // root programs; normal/Bump-height programs remain value-only.
     luisa::vector<luisa::uint4> program_ranges;
     luisa::vector<luisa::uint4> instructions;
     luisa::vector<luisa::uint> operands;

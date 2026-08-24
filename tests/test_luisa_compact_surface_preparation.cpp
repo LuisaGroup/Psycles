@@ -1121,10 +1121,25 @@ int main(int argc, char **argv) {
     }
 
     std::string diagnostic;
+    const std::array invalid_bssrdf_tags{
+        static_cast<std::uint32_t>(programs.size())};
+    auto invalid_bssrdf_runtime = build_surface_value_runtime(
+        device,
+        std::span<const std::shared_ptr<const SurfaceProgram>>{programs},
+        std::span<const SurfaceClosurePlan>{closure_plans},
+        invalid_bssrdf_tags,
+        diagnostic);
+    if (invalid_bssrdf_runtime ||
+        diagnostic.find("BSSRDF-bump topology tag") == std::string::npos) {
+        std::cerr << "compact runtime accepted an out-of-range BSSRDF tag on "
+                  << backend << '\n';
+        return EXIT_FAILURE;
+    }
     scene->surface_values = build_surface_value_runtime(
         device,
         std::span<const std::shared_ptr<const SurfaceProgram>>{programs},
         std::span<const SurfaceClosurePlan>{closure_plans},
+        scene->surface_bssrdf_bump_tags,
         diagnostic);
     if (!scene->surface_values) {
         std::cerr << "failed to build compact surface runtime on "
@@ -1170,6 +1185,45 @@ int main(int argc, char **argv) {
                         height_bump_variant)) {
     std::cerr << "compact runtime did not preserve the exact root/height "
                  "call-graph partition on "
+              << backend << '\n';
+    return EXIT_FAILURE;
+  }
+  const auto closure_domain_has = [](const auto &domain,
+                                     ClosureOperation operation) noexcept {
+    return std::any_of(
+        domain.begin(), domain.end(), [operation](std::uint32_t variant) {
+          return static_cast<ClosureOperation>(
+                     variant & surface_closure_opcode_mask) == operation;
+        });
+  };
+  // The BSSRDF callable is induced only by its two capability-tagged
+  // topologies. The controlled non-BSSRDF nested Bumps and Glass closure must
+  // therefore be absent. Diffuse must remain beside Subsurface: even though it
+  // does not contribute to the exit normal, it consumes Cycles closure
+  // capacity before later BSSRDF leaves and cannot be erased independently.
+  if (scene->surface_bssrdf_bump_tags.size() != 2u ||
+      scene->surface_values->bssrdf_value_static_variants.empty() ||
+      scene->surface_values->bssrdf_normal_value_static_variants.empty() ||
+      !scene->surface_values->bssrdf_height_value_static_variants.empty() ||
+      scene->surface_values->bssrdf_value_static_variants.size() >=
+          scene->surface_values->preparation_value_static_variants.size() ||
+      scene->surface_values->bssrdf_closure_static_variants.size() >=
+          scene->surface_values->closure_static_variants.size() ||
+      contains_variant(scene->surface_values->bssrdf_value_static_variants,
+                       root_bump_variant) ||
+      contains_variant(scene->surface_values->bssrdf_value_static_variants,
+                       height_bump_variant) ||
+      !closure_domain_has(
+          scene->surface_values->bssrdf_closure_static_variants,
+          ClosureOperation::subsurface) ||
+      !closure_domain_has(
+          scene->surface_values->bssrdf_closure_static_variants,
+          ClosureOperation::diffuse) ||
+      closure_domain_has(
+          scene->surface_values->bssrdf_closure_static_variants,
+          ClosureOperation::glass)) {
+    std::cerr << "compact runtime did not preserve the exact BSSRDF "
+                 "topology domain on "
               << backend << '\n';
     return EXIT_FAILURE;
   }

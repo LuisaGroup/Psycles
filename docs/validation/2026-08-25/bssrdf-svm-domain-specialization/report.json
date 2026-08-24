@@ -1,0 +1,101 @@
+{
+  "date": "2026-08-25",
+  "device": "AMD Radeon RX 9070 XT",
+  "scene": {
+    "name": "Monster Under the Bed",
+    "source_sha256": "9463082f8d365ad8ae19c1ba86429deb3b532c5a2d0db0b9492c3c759f64d28d",
+    "blender": "5.2.0 LTS",
+    "resolution": [640, 480],
+    "spp": 64,
+    "scheduler": "wavefront-staged",
+    "bssrdf_topology_tags": 1,
+    "global_value_domains": {
+      "preparation": 41,
+      "normal": 11,
+      "height": 23
+    },
+    "global_closure_variants": 4,
+    "bssrdf_value_domains": {
+      "preparation": 9,
+      "normal": 0,
+      "height": 2,
+      "closure_variants": 1
+    }
+  },
+  "cold_compile": {
+    "baseline": {
+      "generated_amdgpu_bytes": 481148,
+      "hip_code_object_bytes": 451008,
+      "llvm_codegen_ms": 898.061363,
+      "comgr_link_ms": 2751.062852,
+      "all_shader_jit_s": 11.9615
+    },
+    "exact_bssrdf_domain": {
+      "generated_amdgpu_bytes": 394120,
+      "hip_code_object_bytes": 335808,
+      "llvm_codegen_ms": 704.708534,
+      "comgr_link_ms": 2076.119655,
+      "all_shader_jit_s": 10.5959
+    },
+    "relative_change_percent": {
+      "generated_amdgpu_bytes": -18.087574,
+      "hip_code_object_bytes": -25.542784,
+      "llvm_codegen_ms": -21.530024,
+      "comgr_link_ms": -24.533907,
+      "all_shader_jit_s": -11.416628
+    }
+  },
+  "warm_render_seconds": {
+    "baseline": [2.02369, 2.02578, 2.02439, 2.02479, 2.02754],
+    "exact_bssrdf_domain": [1.93671, 1.93806, 1.93327, 1.93540, 1.93697],
+    "baseline_median": 2.02479,
+    "exact_bssrdf_domain_median": 1.93671,
+    "median_change_percent": -4.350081
+  },
+  "image_comparison": {
+    "Combined": {
+      "rmse": 0.000218109866,
+      "relative_rmse": 0.000420217339,
+      "p99_pixel_rmse": 0.000066518790,
+      "max_component_error": 0.085153729
+    },
+    "Normal": {
+      "rmse": 0.000000219681,
+      "relative_rmse": 0.000000385361,
+      "p99_pixel_rmse": 0.000001093153,
+      "max_component_error": 0.000011705677
+    },
+    "Diffuse Direct": {
+      "rmse": 0.000024959891,
+      "relative_rmse": 0.000070829830,
+      "p99_pixel_rmse": 0.000000906494,
+      "max_component_error": 0.015387148
+    },
+    "Diffuse Indirect": {
+      "rmse": 0.000799970148,
+      "relative_rmse": 0.007365200920,
+      "p99_pixel_rmse": 0.000237289140,
+      "max_component_error": 0.263402879
+    },
+    "Glossy Indirect": {
+      "rmse": 0.000691488934,
+      "relative_rmse": 0.005043630536,
+      "p99_pixel_rmse": 0.000137944991,
+      "max_component_error": 0.195714265
+    }
+  },
+  "negative_control": {
+    "scene": "Barbershop",
+    "bssrdf_topology_tags": 0,
+    "generated_amdgpu_bytes_before": 609808,
+    "generated_amdgpu_bytes_after": 609808,
+    "hip_code_object_bytes_before": 572384,
+    "hip_code_object_bytes_after": 572384
+  },
+  "focused_tests": {
+    "passed": 20,
+    "failed": 0,
+    "seconds": 38.21,
+    "vulkan_route": "native XIR to SPIR-V; DXC disabled"
+  }
+}
