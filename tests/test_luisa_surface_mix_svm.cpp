@@ -42,6 +42,32 @@ constexpr auto case_count = operation_count * flag_count;
 }
 
 inline constexpr auto immediate_domain = make_immediate_domain();
+inline constexpr std::array<std::uint16_t, 1u> mix_only_domain{0u};
+
+[[nodiscard]] Kernel1D<Buffer<luisa::float4>, Buffer<luisa::float3>>
+make_callable_reuse_shape(bool include_distinct_domain) {
+    return [include_distinct_domain](BufferFloat4 parameters,
+                                     BufferFloat3 output) noexcept {
+        ParameterShaderServices services{parameters};
+        const auto first =
+            evaluate_surface_mix_svm(services,
+                                     0u,
+                                     immediate_domain,
+                                     0.25f,
+                                     make_float3(0.1f),
+                                     make_float3(0.9f));
+        const auto second = evaluate_surface_mix_svm(
+            services,
+            0u,
+            include_distinct_domain
+                ? std::span<const std::uint16_t>{mix_only_domain}
+                : std::span<const std::uint16_t>{immediate_domain},
+            0.75f,
+            make_float3(0.2f),
+            make_float3(0.8f));
+        output.write(0u, first + second);
+    };
+}
 
 [[nodiscard]] Kernel1D<Buffer<luisa::float4>, Buffer<luisa::float3>>
 make_runtime_kernel() {
@@ -106,12 +132,28 @@ int main(int argc, char **argv) {
     auto device = context.create_device(backend);
     auto stream = device.create_stream();
 
+    const auto reused_callable = make_callable_reuse_shape(false);
+    if (reused_callable.function()->function().custom_callables().size() != 1u) {
+        std::cerr << "independently constructed Mix SVM callables were not "
+                     "deduplicated by complete AST hash\n";
+        return EXIT_FAILURE;
+    }
+    const auto distinct_callable = make_callable_reuse_shape(true);
+    if (distinct_callable.function()->function().custom_callables().size() !=
+        2u) {
+        std::cerr << "Mix SVM callable hashing omitted its reachable-operation "
+                     "domain\n";
+        return EXIT_FAILURE;
+    }
+
     const auto runtime_kernel = make_runtime_kernel();
     if (!require_bounded_xir("surface Mix SVM", runtime_kernel, 4096u)) {
         return EXIT_FAILURE;
     }
-    auto runtime_shader = device.compile(runtime_kernel);
-    auto reference_shader = device.compile(make_static_reference_kernel());
+    const ShaderOption uncached{.enable_cache = false};
+    auto runtime_shader = device.compile(runtime_kernel, uncached);
+    auto reference_shader =
+        device.compile(make_static_reference_kernel(), uncached);
     auto parameters = device.create_buffer<luisa::float4>(1u);
     auto actual_buffer = device.create_buffer<luisa::float3>(case_count);
     auto expected_buffer = device.create_buffer<luisa::float3>(case_count);
