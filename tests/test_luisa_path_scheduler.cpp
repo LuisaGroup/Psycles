@@ -95,7 +95,8 @@ int main() {
   static_assert(options.wavefront_graph_refill_threshold == 0u);
   static_assert(options.wavefront_counter_readback_batch_size == 4u);
   static_assert(options.wavefront_counter_readback_pipeline_depth == 2u);
-  static_assert(options.wavefront_tail_megakernel_threshold == 4096u);
+  static_assert(options.wavefront_tail_megakernel_threshold ==
+                psycles::luisa_backend::luisa_wavefront_auto_tail_threshold);
   static_assert(options.staged_surface_sorting);
   static_assert(!options.staged_direct_light_queue);
   static_assert(!valid_luisa_wavefront_execution_block_size(0u));

@@ -218,7 +218,8 @@ render(luisa::compute::Context &context, std::string_view backend,
        std::uint32_t samples_per_dispatch, bool split_request,
        bool staged_surface_sorting = true, bool path_trace_enabled = true,
        bool staged_direct_light_queue = false,
-       std::uint32_t wavefront_tail_megakernel_threshold = 4096u,
+       std::uint32_t wavefront_tail_megakernel_threshold =
+           psycles::luisa_backend::luisa_wavefront_auto_tail_threshold,
        std::uint32_t wavefront_counter_readback_batch_size = 4u,
        std::uint32_t wavefront_counter_readback_pipeline_depth = 2u,
        std::uint32_t wavefront_frame_capacity = 128u) {

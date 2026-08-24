@@ -26,7 +26,8 @@ struct PathKernelExecutorConfig {
     std::uint32_t wavefront_graph_refill_threshold{0u};
     std::uint32_t wavefront_counter_readback_batch_size{4u};
     std::uint32_t wavefront_counter_readback_pipeline_depth{2u};
-    std::uint32_t wavefront_tail_megakernel_threshold{4096u};
+    std::uint32_t wavefront_tail_megakernel_threshold{
+        luisa_wavefront_auto_tail_threshold};
     bool staged_direct_light_queue{false};
     std::uint32_t persistent_worker_count{1u << 15u};
     std::uint32_t persistent_block_size{32u};
