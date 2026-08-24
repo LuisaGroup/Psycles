@@ -255,10 +255,80 @@ void PathKernelPipeline::emit(
             (shading.cycles_surface_runtime_flags &
              cycles_closure::runtime_bsdf_has_eval) != 0u;
         $if(has_evaluable_bsdf) {
-          auto transport = DirectLightTransportState::empty();
+          auto direct_light = DirectLightSampleState::empty();
+          std::vector<std::unique_ptr<DirectLightProvider>> light_providers;
+          light_providers.reserve(_impl->direct_lighting.size());
           for (const auto &component : _impl->direct_lighting) {
-            component->prepare(lighting, transport);
+            light_providers.emplace_back(
+                component->make_light_provider(lighting, direct_light));
           }
+          for (const auto &provider : light_providers) {
+            provider->sample();
+          }
+
+          // Every proposal predicate refines a distinct emitter-kind value,
+          // so direct_light is a one-hot phi. Keeping this evaluator after the
+          // merge records the closure/SVM walk once instead of once per
+          // environment, emissive-mesh, and analytic-light branch.
+          auto evaluation = SurfaceEvaluation::zero();
+          $if(direct_light.valid) {
+            evaluation = shading.evaluate_light(
+                sample.invocation,
+                surface.surface_tag,
+                surface.point,
+                direct_light.direction,
+                surface.path_surface_query,
+                direct_light.shader_flags);
+          };
+          const auto receiving_nonzero =
+              direct_light.valid & any(evaluation.f != 0.0f);
+          for (const auto &provider : light_providers) {
+            provider->evaluate_deferred_emission(receiving_nonzero);
+          }
+
+          auto transport = DirectLightTransportState::empty();
+          $if(direct_light.valid) {
+            const auto cycles_mis_weight =
+                sample.invocation.config.light_transport.nee_light_weight(
+                    direct_light.pdf, evaluation.pdf);
+            _impl->direct_light_trace->record_evaluation(
+                bounce,
+                {.distance = direct_light.distance,
+                 .bsdf_pdf = evaluation.pdf,
+                 .mis_weight = cycles_mis_weight,
+                 .bsdf = evaluation.f,
+                 .diffuse = evaluation.diffuse_f,
+                 .glossy = evaluation.glossy_f});
+            const auto mis_weight = select(
+                1.0f, cycles_mis_weight, direct_light.apply_mis);
+            const auto constant_emission_factor = select(
+                make_float3(1.0f),
+                direct_light.light_shader,
+                direct_light.constant_light_shader);
+            const auto weighted_bsdf =
+                evaluation.f * direct_light.radiometric_weight *
+                constant_emission_factor *
+                (mis_weight / direct_light.normalization_pdf);
+            _impl->direct_light_trace->record_weighted_bsdf(
+                bounce, weighted_bsdf);
+            $if(any(weighted_bsdf != 0.0f)) {
+              const auto deferred_light_shader = select(
+                  direct_light.light_shader,
+                  make_float3(1.0f),
+                  direct_light.constant_light_shader);
+              transport.accept(
+                  evaluation,
+                  weighted_bsdf,
+                  deferred_light_shader,
+                  direct_light.direction,
+                  direct_light.target_position,
+                  direct_light.distant,
+                  direct_light.light_object,
+                  direct_light.light_primitive,
+                  direct_light.shader_flags,
+                  direct_light.constant_light_shader);
+            };
+          };
           *direct_light_preparation =
               _impl->direct_light_transport->prepare(lighting, transport);
         };

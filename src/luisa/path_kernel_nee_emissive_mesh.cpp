@@ -9,34 +9,29 @@
 namespace psycles::luisa_backend::detail {
 namespace {
 
-class EmissiveMeshLightingComponent final
-    : public DirectLightingComponent {
+class EmissiveMeshDirectLightProvider final : public DirectLightProvider {
 
   private:
-    std::shared_ptr<
-        const EmissiveTriangleComponent>
-        _emissive_triangle{
-            make_emissive_triangle_component()};
-    std::shared_ptr<const DirectLightTraceRecorder>
-        _trace;
+    DirectLightingContext &_context;
+    DirectLightSampleState &_result;
+    std::shared_ptr<const EmissiveTriangleComponent> _emissive_triangle;
+    std::shared_ptr<const DirectLightTraceRecorder> _trace;
 
   public:
-    explicit EmissiveMeshLightingComponent(
-        std::shared_ptr<const DirectLightTraceRecorder> trace)
-        : _trace{std::move(trace)} {}
-
-    void prepare(
+    EmissiveMeshDirectLightProvider(
         DirectLightingContext &context,
-        DirectLightTransportState &transport)
-        const noexcept override {
-        auto &bounce = context.bounce;
+        DirectLightSampleState &result,
+        std::shared_ptr<const EmissiveTriangleComponent> emissive_triangle,
+        std::shared_ptr<const DirectLightTraceRecorder> trace)
+        : _context{context}, _result{result},
+          _emissive_triangle{std::move(emissive_triangle)},
+          _trace{std::move(trace)} {}
+
+    void sample() const noexcept override {
+        auto &bounce = _context.bounce;
         auto &sample = bounce.sample;
-        auto &invocation =
-            sample.invocation;
-        const auto &config =
-            invocation.config;
-        auto &surface =
-            context.surface;
+        const auto &config = sample.invocation.config;
+        auto &surface = _context.surface;
         auto &selected_light =
             bounce.random().selected_light;
         const auto selected_mesh =
@@ -90,7 +85,7 @@ class EmissiveMeshLightingComponent final
                 const auto is_transmission =
                     dot(
                         light.light.direction,
-                        context.shading.shading_normal) <
+                        _context.shading.shading_normal) <
                     0.0f;
                 const auto same_primitive =
                     (emitter.cycles_primitive_index !=
@@ -113,75 +108,38 @@ class EmissiveMeshLightingComponent final
                 $if(!reject_self) {
                     const auto constant_emission =
                         emitter.emission_is_constant != 0u;
-                    Float3 radiance = make_float3(0.0f);
+                    Float3 light_shader = make_float3(0.0f);
                     // Cycles' constant factor is evaluated after geometric
                     // rejection but before the receiving BSDF.
                     $if(constant_emission) {
-                        radiance =
+                        light_shader =
                             _emissive_triangle
                                 ->evaluate_constant_emission(
                                     sample,
                                     light);
                     };
-                    const auto evaluation =
-                        context.shading.evaluate_light(
-                            invocation,
-                            surface.surface_tag,
-                            surface.point,
-                            light.light.direction,
-                            surface.path_surface_query,
-                            emitter.cycles_shader_flags);
-                    // A non-constant light shader is the deferred
-                    // SHADE_LIGHT_NEE phase: after receiving-surface
-                    // evaluation and before shadow traversal.
-                    const auto bsdf_nonzero =
-                        any(evaluation.f != 0.0f);
-                    $if((!constant_emission) & bsdf_nonzero) {
-                        radiance =
-                            _emissive_triangle
-                                ->evaluate_emission(
-                                    sample,
-                                    light);
-                    };
-                    const auto mis_weight =
-                        config.light_transport
-                            .nee_light_weight(
-                                light.pdf,
-                                evaluation.pdf);
-                    _trace->record_evaluation(
-                        bounce,
-                        {.distance = light.light.distance,
-                         .bsdf_pdf = evaluation.pdf,
-                         .mis_weight = mis_weight,
-                         .bsdf = evaluation.f,
-                         .diffuse = evaluation.diffuse_f,
-                         .glossy = evaluation.glossy_f});
-                    const auto weighted_light = select(
-                        make_float3(1.0f),
-                        radiance,
-                        constant_emission);
-                    const auto light_shader_factor = select(
-                        radiance,
-                        make_float3(1.0f),
-                        constant_emission);
-                    const auto weighted_bsdf =
-                        evaluation.f * weighted_light *
-                        (mis_weight / light.pdf);
-                    _trace->record_weighted_bsdf(
-                        bounce, weighted_bsdf);
-                    $if(any(weighted_bsdf != 0.0f)) {
-                        transport.accept(
-                            evaluation,
-                            weighted_bsdf,
-                            light_shader_factor,
-                            light.light.direction,
-                            light.light.position,
-                            false,
-                            emitter.cycles_object_index,
-                            emitter.cycles_primitive_index,
-                            emitter.cycles_shader_flags,
-                            constant_emission);
-                    };
+                    _result.accept(
+                        {.direction = light.light.direction,
+                         .target_position = light.light.position,
+                         .light_normal = light.geometry.geometric_normal,
+                         .light_uv = make_float2(0.0f),
+                         .barycentric = light.light.barycentric,
+                         .radiometric_weight = make_float3(1.0f),
+                         .light_shader = light_shader,
+                         .pdf = light.pdf,
+                         .normalization_pdf = light.pdf,
+                         .distance = light.light.distance,
+                         .emitter_kind = static_cast<std::uint32_t>(
+                             sampling::LightDistributionEmitterKind::
+                                 emissive_triangle),
+                         .emitter_index = selected_light.index,
+                         .light_object = emitter.cycles_object_index,
+                         .light_primitive = emitter.cycles_primitive_index,
+                         .shader_flags = emitter.cycles_shader_flags,
+                         .apply_mis = true,
+                         .constant_light_shader = constant_emission,
+                         .distant = false,
+                         .valid = true});
                 };
             }
             $else {
@@ -189,6 +147,46 @@ class EmissiveMeshLightingComponent final
                     bounce);
             };
         };
+    }
+
+    void evaluate_deferred_emission(
+        Bool receiving_nonzero) const noexcept override {
+        const auto owns_sample =
+            _result.valid &
+            (_result.emitter_kind ==
+             static_cast<std::uint32_t>(
+                 sampling::LightDistributionEmitterKind::emissive_triangle));
+        $if(owns_sample & !_result.constant_light_shader & receiving_nonzero) {
+            _result.light_shader =
+                _emissive_triangle->evaluate_emission_from_sample(
+                    _context.bounce.sample,
+                    _result.emitter_index,
+                    _result.target_position,
+                    _result.barycentric,
+                    _result.direction,
+                    _result.distance);
+        };
+    }
+};
+
+class EmissiveMeshLightingComponent final
+    : public DirectLightingComponent {
+
+  private:
+    std::shared_ptr<const EmissiveTriangleComponent> _emissive_triangle{
+        make_emissive_triangle_component()};
+    std::shared_ptr<const DirectLightTraceRecorder> _trace;
+
+  public:
+    explicit EmissiveMeshLightingComponent(
+        std::shared_ptr<const DirectLightTraceRecorder> trace)
+        : _trace{std::move(trace)} {}
+
+    [[nodiscard]] std::unique_ptr<DirectLightProvider>
+    make_light_provider(DirectLightingContext &context,
+                        DirectLightSampleState &sample) const override {
+        return std::make_unique<EmissiveMeshDirectLightProvider>(
+            context, sample, _emissive_triangle, _trace);
     }
 };
 

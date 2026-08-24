@@ -1,0 +1,139 @@
+{
+  "date": "2026-08-25",
+  "device": "AMD Radeon RX 9070 XT",
+  "architecture": "gfx1201",
+  "scene": {
+    "name": "Monster Under the Bed",
+    "source_sha256": "9463082f8d365ad8ae19c1ba86429deb3b532c5a2d0db0b9492c3c759f64d28d",
+    "blender": "5.2.0 LTS",
+    "resolution": [640, 480],
+    "spp": 64,
+    "sample_range": [0, 64],
+    "scheduler": "wavefront-staged"
+  },
+  "accepted_representation": {
+    "model": "typed one-hot direct-light sample sum",
+    "receiving_evaluator_record_count": 1,
+    "raw_closures": true,
+    "material_baking": false,
+    "shader_hash": "484043ee276065db"
+  },
+  "cold_compile": {
+    "baseline": {
+      "generated_amdgpu_bytes": 394120,
+      "hip_code_object_bytes": 335808,
+      "largest_callable_bytes": 213512,
+      "llvm_codegen_ms": 704.708534,
+      "comgr_link_ms": 2076.119655,
+      "all_shader_jit_s": 10.5959,
+      "private_segment_bytes": 7248,
+      "coroutine_frame_bytes": 496,
+      "coroutine_physical_fields": 120
+    },
+    "receiving_svm_merge": {
+      "generated_amdgpu_bytes": 379912,
+      "hip_code_object_bytes": 323776,
+      "largest_callable_bytes": 201552,
+      "llvm_codegen_ms": 670.985594,
+      "comgr_link_ms": 1882.737574,
+      "all_shader_jit_s": 9.78857,
+      "private_segment_bytes": 7216,
+      "coroutine_frame_bytes": 496,
+      "coroutine_physical_fields": 120
+    },
+    "relative_change_percent": {
+      "generated_amdgpu_bytes": -3.604993,
+      "hip_code_object_bytes": -3.583000,
+      "largest_callable_bytes": -5.601559,
+      "llvm_codegen_ms": -4.785374,
+      "comgr_link_ms": -9.314592,
+      "all_shader_jit_s": -7.619268,
+      "private_segment_bytes": -0.441501,
+      "coroutine_frame_bytes": 0.0
+    },
+    "final_reproduction": {
+      "generated_amdgpu_bytes": 379912,
+      "hip_code_object_bytes": 323776,
+      "largest_callable_bytes": 201552,
+      "llvm_codegen_ms": 693.131039,
+      "comgr_link_ms": 1894.642410,
+      "all_shader_jit_s": 10.3305,
+      "private_segment_bytes": 7216,
+      "shader_hash": "484043ee276065db"
+    }
+  },
+  "cumulative_from_global_domain_svm_percent": {
+    "hip_code_object_bytes": -28.210586,
+    "llvm_codegen_ms": -25.285106,
+    "comgr_link_ms": -31.563266,
+    "all_shader_jit_s": -18.166033
+  },
+  "negative_experiments": {
+    "full_provider_proposals": {
+      "hip_code_object_bytes": 348736,
+      "llvm_codegen_ms": 731.671,
+      "comgr_link_ms": 2817.282,
+      "all_shader_jit_s": 11.2430,
+      "private_segment_bytes": 8864,
+      "coroutine_frame_bytes": 904,
+      "coroutine_physical_fields": 221
+    },
+    "explicit_emitter_switch": {
+      "generated_amdgpu_bytes": 380428,
+      "hip_code_object_bytes": 324032,
+      "llvm_codegen_ms": 717.619,
+      "comgr_link_ms": 1954.656,
+      "all_shader_jit_s": 10.2336,
+      "warm_render_median_s": 1.95356
+    }
+  },
+  "warm_render_seconds": {
+    "baseline": [1.93671, 1.93806, 1.93327, 1.93540, 1.93697],
+    "receiving_svm_merge": [1.95178, 1.95113, 1.94965, 1.94894, 1.95157],
+    "baseline_median": 1.93671,
+    "receiving_svm_merge_median": 1.95113,
+    "baseline_mean": 1.936082,
+    "receiving_svm_merge_mean": 1.950614,
+    "median_change_percent": 0.744562
+  },
+  "image_comparison": {
+    "all_46_channels": {
+      "mean_error": 1.42745e-9,
+      "rms_error": 8.45294e-9,
+      "max_error": 2.38419e-6,
+      "pixels_over_1e_6": 3,
+      "pixels_over_1e_4": 0
+    },
+    "Combined": {
+      "mean_error": 2.69777e-9,
+      "rms_error": 7.45603e-9,
+      "max_error": 4.76837e-7
+    },
+    "Normal": {
+      "mean_error": 8.25675e-10,
+      "rms_error": 7.18299e-9,
+      "max_error": 2.38419e-7
+    },
+    "Diffuse Direct": {
+      "mean_error": 7.40832e-9,
+      "rms_error": 1.83848e-8,
+      "max_error": 9.53674e-7
+    },
+    "visual_inspection": "pass: no coherent material, UV, lighting, normal, topology, or BSSRDF difference",
+    "difference_amplification": 1000000
+  },
+  "focused_tests": {
+    "passed": 23,
+    "failed": 0,
+    "seconds": 4.23,
+    "vulkan_route": "native XIR to SPIR-V; DXC disabled"
+  },
+  "extended_light_tests": {
+    "passed": 14,
+    "failed": 1,
+    "failure": "pre-existing strict-XIR Vulkan area-light absolute oracle",
+    "baseline_commit": "8701501",
+    "baseline_reproduced_identical_values": true,
+    "tolerance_changed": false
+  }
+}

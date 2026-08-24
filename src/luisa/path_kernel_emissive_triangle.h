@@ -81,6 +81,19 @@ class EmissiveTriangleComponent {
         const EmissiveTriangleLightProposal
             &proposal) const noexcept = 0;
 
+    // Cycles' shade-light stage reconstructs emitter ShaderData from compact
+    // light identity and ray state instead of carrying triangle attributes
+    // across the receiving-BSDF stage. This operation gives surface NEE the
+    // same lifetime boundary while retaining the raw emission closure.
+    [[nodiscard]] virtual Float3
+    evaluate_emission_from_sample(
+        PathSampleContext &sample,
+        UInt emitter_index,
+        Float3 position,
+        Float2 barycentric,
+        Float3 direction,
+        Float distance) const noexcept = 0;
+
     // Forward-hit MIS starts from an already committed primitive. Its exact
     // effective material supplies emission_sampling directly. The caller
     // supplies the selection probability from either the legacy distribution

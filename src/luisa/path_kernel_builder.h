@@ -557,6 +557,43 @@ struct DirectLightingContext {
     SurfaceShadingState &shading;
 };
 
+// Cycles' LightSample-equivalent state after one emitter-specific proposal
+// has been accepted. This is a host/JIT aggregate of typed Luisa variables,
+// not a device ABI. All proposal predicates refine distinct values of
+// LightDistributionEmitterKind, so their writes are pairwise disjoint. That
+// invariant permits the three emitter implementations to merge here before
+// recording the receiving BSDF evaluator exactly once.
+struct DirectLightSampleState {
+    Float3 direction;
+    Float3 target_position;
+    Float3 light_normal;
+    Float2 light_uv;
+    Float2 barycentric;
+    // Radiometric factors known without evaluating the emitter shader (for
+    // example analytic-lamp strength and sampling normalization).
+    Float3 radiometric_weight;
+    // Constant emission is populated before receiving-BSDF evaluation;
+    // non-constant emission is populated afterwards by the owning provider.
+    Float3 light_shader;
+    Float pdf;
+    // Preserve the existing per-emitter normalization contract independently
+    // from the PDF reported to MIS and tracing.
+    Float normalization_pdf;
+    Float distance;
+    UInt emitter_kind;
+    UInt emitter_index;
+    UInt light_object;
+    UInt light_primitive;
+    UInt shader_flags;
+    Bool apply_mis;
+    Bool constant_light_shader;
+    Bool distant;
+    Bool valid;
+
+    [[nodiscard]] static DirectLightSampleState empty() noexcept;
+    void accept(const DirectLightSampleState &proposal) noexcept;
+};
+
 // Canonical continuation state produced by one emitter-specific NEE proposal
 // stage and consumed by the single common shadow-transport stage. These are
 // typed Luisa DSL variables, not a packed device ABI or a weak float-register
@@ -585,6 +622,20 @@ struct DirectLightTransportState {
                 Bool proposal_distant, UInt proposal_light_object,
                 UInt proposal_light_primitive, UInt proposal_shader_flags,
                 Bool proposal_constant_light_shader) noexcept;
+};
+
+// Per-emitter host/JIT protocol matching Cycles' light-sample state machine:
+// sample geometry and constant emission, evaluate the receiving BSDF once at
+// the common merge, then evaluate non-constant emitter emission only when the
+// receiving response is non-zero. Implementations retain typed light state;
+// no closure is baked or serialized through this interface.
+class DirectLightProvider {
+
+  public:
+    virtual ~DirectLightProvider() noexcept = default;
+    virtual void sample() const noexcept = 0;
+    virtual void evaluate_deferred_emission(
+        Bool receiving_nonzero) const noexcept = 0;
 };
 
 class PathBounceSetupStage {
@@ -655,8 +706,9 @@ class DirectLightingComponent {
 
   public:
     virtual ~DirectLightingComponent() noexcept = default;
-  virtual void prepare(DirectLightingContext &context,
-        DirectLightTransportState &transport) const noexcept = 0;
+    [[nodiscard]] virtual std::unique_ptr<DirectLightProvider>
+    make_light_provider(DirectLightingContext &context,
+                        DirectLightSampleState &sample) const = 0;
 };
 
 class DirectLightTransportStage {
