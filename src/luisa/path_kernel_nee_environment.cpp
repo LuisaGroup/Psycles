@@ -10,50 +10,31 @@
 namespace psycles::luisa_backend::detail {
 namespace {
 
-class EnvironmentLightingComponent final : public DirectLightingComponent {
+class EnvironmentDirectLightProvider final : public DirectLightProvider {
 
   private:
-    std::shared_ptr<
-        const EnvironmentLightComponent>
-        _environment_light{
-            make_environment_light_component()};
-    std::shared_ptr<const DirectLightTraceRecorder>
-        _trace;
+    DirectLightingContext &_context;
+    DirectLightSampleState &_result;
+    std::shared_ptr<const EnvironmentLightComponent> _environment_light;
+    std::shared_ptr<const DirectLightTraceRecorder> _trace;
 
   public:
-    explicit EnvironmentLightingComponent(
-        std::shared_ptr<const DirectLightTraceRecorder> trace)
-        : _trace{std::move(trace)} {}
-
-    void prepare(
+    EnvironmentDirectLightProvider(
         DirectLightingContext &context,
-        DirectLightTransportState &transport)
-        const noexcept override {
-        auto &bounce = context.bounce;
+        DirectLightSampleState &result,
+        std::shared_ptr<const EnvironmentLightComponent> environment_light,
+        std::shared_ptr<const DirectLightTraceRecorder> trace)
+        : _context{context}, _result{result},
+          _environment_light{std::move(environment_light)},
+          _trace{std::move(trace)} {}
+
+    void sample() const noexcept override {
+        auto &bounce = _context.bounce;
         auto &sample = bounce.sample;
-        auto &invocation = sample.invocation;
-        const auto &config = invocation.config;
-        auto &surface = context.surface;
+        const auto &config = sample.invocation.config;
+        auto &surface = _context.surface;
         auto &selected_light = bounce.random().selected_light;
         auto &light_sample = bounce.random().light_sample;
-        auto &surface_tag = surface.surface_tag;
-        auto &point = surface.point;
-        auto &path_surface_query = surface.path_surface_query;
-        auto &path_depth = sample.path_depth;
-        auto &diffuse_depth = sample.diffuse_depth;
-        auto &glossy_depth = sample.glossy_depth;
-        auto &transparent_depth = sample.transparent_depth;
-        auto &transmission_depth = sample.transmission_depth;
-        const auto &nee_light_weight = config.light_transport.nee_light_weight;
-        auto evaluate_light_surface = [&](UInt tag,
-                                          const SurfacePoint &surface_point,
-                                          Float3 outgoing,
-                                          const SurfaceQuery &query,
-                                          UInt shader_flags) noexcept {
-            return context.shading.evaluate_light(
-                invocation,
-                tag, surface_point, outgoing, query, shader_flags);
-        };
         $if(selected_light.kind ==
             static_cast<std::uint32_t>(
                 sampling::LightDistributionEmitterKind::environment)) {
@@ -67,7 +48,7 @@ class EnvironmentLightingComponent final : public DirectLightingComponent {
                             .selection_pdf);
             const auto reached_max_bounces =
                 cycles_light::select_reached_max_bounces(
-                    path_depth,
+                    sample.path_depth,
                     config.scene->world_max_bounces);
             $if(!reached_max_bounces & light.valid) {
                 _trace->record_sample(
@@ -95,84 +76,89 @@ class EnvironmentLightingComponent final : public DirectLightingComponent {
                      .geometric_normal =
                          -light.direction,
                      .distance = ray_maximum});
-                Float3 radiance = make_float3(0.0f);
+                Float3 light_shader = make_float3(0.0f);
+                const auto constant_emission =
+                    config.scene->environment_emission_is_constant;
                 if (config.scene
                         ->environment_emission_is_constant) {
-                    radiance =
+                    light_shader =
                         _environment_light
                             ->evaluate_constant_emission(
                                 sample);
                 }
-                const auto evaluation =
-                    evaluate_light_surface(
-                        surface_tag,
-                        point,
-                        light.direction,
-                        path_surface_query,
-                        config.scene
-                            ->cycles_background_shader_flags);
-                if (!config.scene
-                         ->environment_emission_is_constant) {
-                    $if(any(evaluation.f != 0.0f)) {
-                        radiance =
-                            _environment_light
-                                ->evaluate_emission(
-                                    sample,
-                                    light.direction,
-                                    cycles_path_state::
-                                        light_emission_shader_state(
-                                            path_depth,
-                                            diffuse_depth,
-                                            glossy_depth,
-                                            transparent_depth,
-                                            transmission_depth));
-                    };
-                }
-                const auto mis_weight =
-                    nee_light_weight(
-                        light.pdf,
-                        evaluation.pdf);
-                _trace->record_evaluation(
-                    bounce,
-                    {.distance = ray_maximum,
-                     .bsdf_pdf = evaluation.pdf,
-                     .mis_weight = mis_weight,
-                     .bsdf = evaluation.f,
-                     .diffuse = evaluation.diffuse_f,
-                     .glossy = evaluation.glossy_f});
-                const auto constant_emission =
-                    config.scene->environment_emission_is_constant;
-                Float3 weighted_light = make_float3(1.0f);
-                Float3 light_shader_factor = radiance;
-                if (constant_emission) {
-                    weighted_light = radiance;
-                    light_shader_factor = make_float3(1.0f);
-                }
-                const auto weighted_bsdf =
-                    evaluation.f * weighted_light *
-                    (mis_weight / light.pdf);
-                _trace->record_weighted_bsdf(
-                    bounce, weighted_bsdf);
-                $if(any(weighted_bsdf != 0.0f)) {
-                    transport.accept(
-                        evaluation,
-                        weighted_bsdf,
-                        light_shader_factor,
-                        light.direction,
-                        -light.direction,
-                        true,
-                        surface_ray::invalid_primitive,
-                        surface_ray::invalid_primitive,
-                        config.scene
-                            ->cycles_background_shader_flags,
-                        Bool{constant_emission});
-                };
+                _result.accept(
+                    {.direction = light.direction,
+                     .target_position = -light.direction,
+                     .light_normal = -light.direction,
+                     .light_uv = make_float2(0.5f),
+                     .barycentric = make_float2(0.0f),
+                     .radiometric_weight = make_float3(1.0f),
+                     .light_shader = light_shader,
+                     .pdf = light.pdf,
+                     .normalization_pdf = light.pdf,
+                     .distance = ray_maximum,
+                     .emitter_kind = static_cast<std::uint32_t>(
+                         sampling::LightDistributionEmitterKind::environment),
+                     .emitter_index = selected_light.index,
+                     .light_object = surface_ray::invalid_primitive,
+                     .light_primitive = surface_ray::invalid_primitive,
+                     .shader_flags =
+                         config.scene->cycles_background_shader_flags,
+                     .apply_mis = true,
+                     .constant_light_shader = Bool{constant_emission},
+                     .distant = true,
+                     .valid = true});
             }
             $else {
                 _trace->record_failed_sample(
                     bounce);
             };
         };
+    }
+
+    void evaluate_deferred_emission(
+        Bool receiving_nonzero) const noexcept override {
+        auto &sample = _context.bounce.sample;
+        if (!sample.invocation.config.scene
+                 ->environment_emission_is_constant) {
+            const auto owns_sample =
+                _result.valid &
+                (_result.emitter_kind ==
+                 static_cast<std::uint32_t>(
+                     sampling::LightDistributionEmitterKind::environment));
+            $if(owns_sample & receiving_nonzero) {
+                _result.light_shader =
+                    _environment_light->evaluate_emission(
+                        sample,
+                        _result.direction,
+                        cycles_path_state::light_emission_shader_state(
+                            sample.path_depth,
+                            sample.diffuse_depth,
+                            sample.glossy_depth,
+                            sample.transparent_depth,
+                            sample.transmission_depth));
+            };
+        }
+    }
+};
+
+class EnvironmentLightingComponent final : public DirectLightingComponent {
+
+  private:
+    std::shared_ptr<const EnvironmentLightComponent> _environment_light{
+        make_environment_light_component()};
+    std::shared_ptr<const DirectLightTraceRecorder> _trace;
+
+  public:
+    explicit EnvironmentLightingComponent(
+        std::shared_ptr<const DirectLightTraceRecorder> trace)
+        : _trace{std::move(trace)} {}
+
+    [[nodiscard]] std::unique_ptr<DirectLightProvider>
+    make_light_provider(DirectLightingContext &context,
+                        DirectLightSampleState &sample) const override {
+        return std::make_unique<EnvironmentDirectLightProvider>(
+            context, sample, _environment_light, _trace);
     }
 };
 

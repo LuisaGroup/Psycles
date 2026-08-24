@@ -577,6 +577,27 @@ class PathEmissiveTriangleComponent final
             proposal.light);
     }
 
+    Float3 evaluate_emission_from_sample(
+        PathSampleContext &sample,
+        UInt emitter_index,
+        Float3 position,
+        Float2 barycentric,
+        Float3 direction,
+        Float distance) const noexcept override {
+        auto geometry = _geometry(
+            sample.invocation.config.scene,
+            std::move(emitter_index));
+        TriangleLightSample light{
+            .position = std::move(position),
+            .barycentric = std::move(barycentric),
+            .direction = std::move(direction),
+            .distance = std::move(distance),
+            .conditional_pdf = 0.0f,
+            .uses_solid_angle = false,
+            .valid = true};
+        return _evaluate_emission(sample, geometry, light);
+    }
+
     Float3 evaluate_constant_emission(
         PathSampleContext &sample,
         const EmissiveTriangleLightProposal

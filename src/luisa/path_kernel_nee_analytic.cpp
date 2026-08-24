@@ -12,63 +12,34 @@
 namespace psycles::luisa_backend::detail {
 namespace {
 
-class AnalyticLightingComponent final : public DirectLightingComponent {
+class AnalyticDirectLightProvider final : public DirectLightProvider {
 
   private:
+    DirectLightingContext &_context;
+    DirectLightSampleState &_result;
     AreaLightSampling _area_sampling;
-    std::shared_ptr<const DirectLightTraceRecorder>
-        _trace;
+    std::shared_ptr<const DirectLightTraceRecorder> _trace;
 
   public:
-    explicit AnalyticLightingComponent(
-        std::shared_ptr<const DirectLightTraceRecorder> trace)
-        : _trace{std::move(trace)} {}
-
-    void prepare(
+    AnalyticDirectLightProvider(
         DirectLightingContext &context,
-        DirectLightTransportState &transport)
-        const noexcept override {
-        auto &bounce = context.bounce;
+        DirectLightSampleState &result,
+        std::shared_ptr<const DirectLightTraceRecorder> trace)
+        : _context{context}, _result{result}, _trace{std::move(trace)} {}
+
+    void sample() const noexcept override {
+        auto &bounce = _context.bounce;
         auto &sample = bounce.sample;
         auto &invocation = sample.invocation;
         const auto &config = invocation.config;
         const auto &scene = config.scene;
-        auto &surface = context.surface;
+        auto &surface = _context.surface;
         auto &selected_light = bounce.random().selected_light;
         auto &light_sample = bounce.random().light_sample;
         auto &hit_position = surface.hit_position;
-        auto &surface_tag = surface.surface_tag;
-        auto &point = surface.point;
-        auto &path_surface_query = surface.path_surface_query;
         auto &cycles_surface_runtime_flags =
-            context.shading.cycles_surface_runtime_flags;
+            _context.shading.cycles_surface_runtime_flags;
         auto &path_depth = sample.path_depth;
-        const auto &safe_normalize = config.light_transport.safe_normalize;
-        const auto &nee_light_weight = config.light_transport.nee_light_weight;
-        auto analytic_light_shader = [&](Var<LightGpu> light,
-                                         UInt light_index,
-                                         Float3 light_position,
-                                         Float3 light_normal,
-                                         Float2 light_uv,
-                                         Float3 incoming,
-                                         Float light_distance) noexcept {
-            return sample.analytic_light_shader(light,
-                                                light_index,
-                                                light_position,
-                                                light_normal,
-                                                light_uv,
-                                                incoming,
-                                                light_distance);
-        };
-        auto evaluate_light_surface = [&](UInt tag,
-                                          const SurfacePoint &surface_point,
-                                          Float3 outgoing,
-                                          const SurfaceQuery &query,
-                                          UInt shader_flags) noexcept {
-            return context.shading.evaluate_light(
-                invocation,
-                tag, surface_point, outgoing, query, shader_flags);
-        };
         $if(selected_light.kind ==
             static_cast<std::uint32_t>(
                 sampling::LightDistributionEmitterKind::analytic_light)) {
@@ -163,7 +134,7 @@ class AnalyticLightingComponent final : public DirectLightingComponent {
                 $if(spot) {
                     finite_sample = analytic_light_sampling::sample_spot_light(
                         hit_position,
-                        context.shading.shading_normal,
+                        _context.shading.shading_normal,
                         has_transmission,
                         light.position,
                         light.radius,
@@ -180,7 +151,7 @@ class AnalyticLightingComponent final : public DirectLightingComponent {
                 $else {
                     finite_sample = analytic_light_sampling::sample_point_light(
                         hit_position,
-                        context.shading.shading_normal,
+                        _context.shading.shading_normal,
                         has_transmission,
                         light.position,
                         light.radius,
@@ -224,68 +195,82 @@ class AnalyticLightingComponent final : public DirectLightingComponent {
                 const auto constant_emission =
                     (light.flags &
                      light_flag_constant_emission) != 0u;
-                Float3 light_shader_factor = make_float3(1.0f);
+                Float3 light_shader = make_float3(0.0f);
                 $if(constant_emission) {
-                    light_radiance *= sample
-                                          .analytic_light_constant_shader(
-                                              light);
+                    light_shader =
+                        sample.analytic_light_constant_shader(light);
                 };
-                const auto evaluation = evaluate_light_surface(
-                    surface_tag,
-                    point,
-                    wi,
-                    path_surface_query,
-                    light.cycles_shader_flags);
-                const auto bsdf_nonzero =
-                    any(evaluation.f != 0.0f);
-                $if((!constant_emission) & bsdf_nonzero) {
-                    light_shader_factor = analytic_light_shader(
-                        light,
-                        light_index,
-                        light_position,
-                        light_normal,
-                        light_uv,
-                        -wi,
-                        light_distance);
-                };
-                const auto cycles_mis_weight =
-                    nee_light_weight(light_pdf, evaluation.pdf);
-                _trace->record_evaluation(
-                    bounce,
-                    {.distance = light_distance,
-                     .bsdf_pdf = evaluation.pdf,
-                     .mis_weight = cycles_mis_weight,
-                     .bsdf = evaluation.f,
-                     .diffuse = evaluation.diffuse_f,
-                     .glossy = evaluation.glossy_f});
                 const auto forward_intersectable =
                     (light.flags & light_flag_forward_intersectable) != 0u;
-                const auto mis_weight =
-                    select(1.0f, cycles_mis_weight, forward_intersectable);
-                const auto weighted_bsdf =
-                    evaluation.f * light_radiance *
-                    (mis_weight / max(light_pdf, 1.0e-20f));
-                _trace->record_weighted_bsdf(
-                    bounce, weighted_bsdf);
-                $if(any(weighted_bsdf != 0.0f)) {
-                    transport.accept(
-                        evaluation,
-                        weighted_bsdf,
-                        light_shader_factor,
-                        wi,
-                        light_position,
-                        light.type == static_cast<std::uint32_t>(
-                                          LightType::distant),
-                        light.cycles_object_index,
-                        surface_ray::invalid_primitive,
-                        light.cycles_shader_flags,
-                        constant_emission);
-                };
+                _result.accept(
+                    {.direction = wi,
+                     .target_position = light_position,
+                     .light_normal = light_normal,
+                     .light_uv = light_uv,
+                     .barycentric = make_float2(0.0f),
+                     .radiometric_weight = light_radiance,
+                     .light_shader = light_shader,
+                     .pdf = light_pdf,
+                     .normalization_pdf = max(light_pdf, 1.0e-20f),
+                     .distance = light_distance,
+                     .emitter_kind = static_cast<std::uint32_t>(
+                         sampling::LightDistributionEmitterKind::analytic_light),
+                     .emitter_index = light_index,
+                     .light_object = light.cycles_object_index,
+                     .light_primitive = surface_ray::invalid_primitive,
+                     .shader_flags = light.cycles_shader_flags,
+                     .apply_mis = forward_intersectable,
+                     .constant_light_shader = constant_emission,
+                     .distant =
+                         light.type == static_cast<std::uint32_t>(
+                                           LightType::distant),
+                     .valid = true});
             }
             $else {
                 _trace->record_failed_sample(bounce);
             };
         };
+    }
+
+    void evaluate_deferred_emission(
+        Bool receiving_nonzero) const noexcept override {
+        const auto owns_sample =
+            _result.valid &
+            (_result.emitter_kind ==
+             static_cast<std::uint32_t>(
+                 sampling::LightDistributionEmitterKind::analytic_light));
+        $if(owns_sample & !_result.constant_light_shader & receiving_nonzero) {
+            Var<LightGpu> light =
+                _context.bounce.sample.invocation.config.scene
+                    ->light_buffer->read(_result.emitter_index);
+            _result.light_shader =
+                _context.bounce.sample.analytic_light_shader(
+                    light,
+                    _result.emitter_index,
+                    _result.target_position,
+                    _result.light_normal,
+                    _result.light_uv,
+                    -_result.direction,
+                    _result.distance);
+        };
+    }
+};
+
+class AnalyticLightingComponent final : public DirectLightingComponent {
+
+  private:
+    std::shared_ptr<const DirectLightTraceRecorder> _trace;
+
+  public:
+    explicit AnalyticLightingComponent(
+        std::shared_ptr<const DirectLightTraceRecorder> trace)
+        : _trace{std::move(trace)} {}
+
+    [[nodiscard]] std::unique_ptr<DirectLightProvider>
+    make_light_provider(DirectLightingContext &context,
+                        DirectLightSampleState &sample) const override {
+        return std::make_unique<AnalyticDirectLightProvider>(
+            context, sample, _trace);
     }
 };
 

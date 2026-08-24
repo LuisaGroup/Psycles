@@ -14,6 +14,56 @@
 
 namespace psycles::luisa_backend::detail {
 
+DirectLightSampleState DirectLightSampleState::empty() noexcept {
+    return {.direction = make_float3(0.0f, 0.0f, 1.0f),
+            .target_position = make_float3(0.0f),
+            .light_normal = make_float3(0.0f, 0.0f, 1.0f),
+            .light_uv = make_float2(0.0f),
+            .barycentric = make_float2(0.0f),
+            .radiometric_weight = make_float3(0.0f),
+            .light_shader = make_float3(0.0f),
+            .pdf = 0.0f,
+            .normalization_pdf = 1.0f,
+            .distance = ray_maximum,
+            .emitter_kind = static_cast<std::uint32_t>(
+                sampling::LightDistributionEmitterKind::sentinel),
+            .emitter_index = surface_ray::invalid_primitive,
+            .light_object = surface_ray::invalid_primitive,
+            .light_primitive = surface_ray::invalid_primitive,
+            .shader_flags = 0u,
+            .apply_mis = false,
+            .constant_light_shader = false,
+            .distant = false,
+            .valid = false};
+}
+
+void DirectLightSampleState::accept(
+    const DirectLightSampleState &proposal) noexcept {
+    // Every caller is guarded by equality with a distinct
+    // LightDistributionEmitterKind value. Consequently accepted writes are
+    // pairwise disjoint and this is a phi-like merge, not last-writer-wins
+    // conflict resolution.
+    direction = proposal.direction;
+    target_position = proposal.target_position;
+    light_normal = proposal.light_normal;
+    light_uv = proposal.light_uv;
+    barycentric = proposal.barycentric;
+    radiometric_weight = proposal.radiometric_weight;
+    light_shader = proposal.light_shader;
+    pdf = proposal.pdf;
+    normalization_pdf = proposal.normalization_pdf;
+    distance = proposal.distance;
+    emitter_kind = proposal.emitter_kind;
+    emitter_index = proposal.emitter_index;
+    light_object = proposal.light_object;
+    light_primitive = proposal.light_primitive;
+    shader_flags = proposal.shader_flags;
+    apply_mis = proposal.apply_mis;
+    constant_light_shader = proposal.constant_light_shader;
+    distant = proposal.distant;
+    valid = proposal.valid;
+}
+
 DirectLightTransportState DirectLightTransportState::empty() noexcept {
     return {.weighted_bsdf = make_float3(0.0f),
             .light_shader = make_float3(0.0f),

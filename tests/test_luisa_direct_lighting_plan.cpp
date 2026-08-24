@@ -18,6 +18,7 @@ namespace {
 
 using namespace luisa::compute;
 using psycles::luisa_backend::detail::can_stage_direct_light_queue;
+using psycles::luisa_backend::detail::DirectLightSampleState;
 using psycles::luisa_backend::detail::DirectLightingStagePlan;
 using psycles::luisa_backend::detail::finalize_direct_light_sample;
 using psycles::luisa_backend::detail::LightSampleRouletteCallable;
@@ -186,6 +187,87 @@ int main(int argc, char **argv) {
            << synchronize();
     if (!std::equal(actual.begin(), actual.end(), expected.begin())) {
         std::cerr << "Device-visible direct-light plan changed on " << backend
+                  << '\n';
+        return EXIT_FAILURE;
+    }
+
+    // Three equality predicates over one emitter-kind discriminant are
+    // pairwise disjoint. They may therefore populate one typed LightSample-
+    // equivalent state before a single post-merge receiving evaluator. The
+    // host counter is structural: it proves the evaluator body was recorded
+    // once, rather than once in every proposal arm.
+    std::uint32_t recorded_receiving_evaluators = 0u;
+    Kernel1D write_merged_light_sample =
+        [&recorded_receiving_evaluators](BufferFloat4 values) noexcept {
+            const auto kind = dispatch_x();
+            auto light = DirectLightSampleState::empty();
+            const auto accept = [&](Float3 direction,
+                                    std::uint32_t shader_flags) noexcept {
+                light.accept(
+                    {.direction = direction,
+                     .target_position = direction,
+                     .light_normal = -direction,
+                     .light_uv = make_float2(0.0f),
+                     .barycentric = make_float2(0.0f),
+                     .radiometric_weight = make_float3(1.0f),
+                     .light_shader = make_float3(1.0f),
+                     .pdf = 1.0f,
+                     .normalization_pdf = 1.0f,
+                     .distance = 1.0f,
+                     .emitter_kind = kind,
+                     .emitter_index = shader_flags,
+                     .light_object = shader_flags,
+                     .light_primitive = shader_flags + 1u,
+                     .shader_flags = shader_flags,
+                     .apply_mis = true,
+                     .constant_light_shader = true,
+                     .distant = false,
+                     .valid = true});
+            };
+            $if(kind == 0u) {
+                accept(make_float3(1.0f, 2.0f, 3.0f), 10u);
+            };
+            $if(kind == 1u) {
+                accept(make_float3(4.0f, 5.0f, 6.0f), 20u);
+            };
+            $if(kind == 2u) {
+                accept(make_float3(7.0f, 8.0f, 9.0f), 30u);
+            };
+            Float3 evaluated = make_float3(0.0f);
+            $if(light.valid) {
+                ++recorded_receiving_evaluators;
+                evaluated = light.direction +
+                            make_float3(cast<float>(light.shader_flags));
+            };
+            values.write(kind,
+                         make_float4(evaluated,
+                                     select(0.0f, 1.0f, light.valid)));
+        };
+    if (recorded_receiving_evaluators != 1u) {
+        std::cerr << "Direct-light receiving evaluator was recorded "
+                  << recorded_receiving_evaluators << " times on " << backend
+                  << '\n';
+        return EXIT_FAILURE;
+    }
+    auto merged_values = device.create_buffer<luisa::float4>(4u);
+    auto merged_shader = device.compile(write_merged_light_sample);
+    std::array<luisa::float4, 4u> merged_actual{};
+    stream << merged_shader(merged_values).dispatch(4u)
+           << merged_values.copy_to(luisa::span{merged_actual})
+           << synchronize();
+    constexpr auto merged_expected = std::array{
+        luisa::float4{11.0f, 12.0f, 13.0f, 1.0f},
+        luisa::float4{24.0f, 25.0f, 26.0f, 1.0f},
+        luisa::float4{37.0f, 38.0f, 39.0f, 1.0f},
+        luisa::float4{0.0f, 0.0f, 0.0f, 0.0f}};
+    if (!std::equal(
+            merged_actual.begin(), merged_actual.end(),
+            merged_expected.begin(),
+            [](const auto &lhs, const auto &rhs) noexcept {
+                return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z &&
+                       lhs.w == rhs.w;
+            })) {
+        std::cerr << "One-hot direct-light sample merge changed on " << backend
                   << '\n';
         return EXIT_FAILURE;
     }
