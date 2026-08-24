@@ -33,6 +33,7 @@ struct SurfacePrimitiveGeometryContext {
   UInt cycles_primitive_index;
   VolumeStackEntry volume_stack_entry;
   Bool surface_has_volume;
+  Bool surface_has_bssrdf_bump;
   SurfacePoint point;
 };
 

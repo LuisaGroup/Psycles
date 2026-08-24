@@ -262,6 +262,7 @@ struct PathKernelInvocation {
                          const SurfaceQuery &query) const noexcept;
     [[nodiscard]] Float3
   surface_bssrdf_normal(UInt surface_tag, const SurfacePoint &point,
+                          Bool has_bssrdf_bump,
                           Bool reflective_caustics,
                           Bool refractive_caustics) const noexcept;
   [[nodiscard]] Float3 constant_environment() const noexcept;

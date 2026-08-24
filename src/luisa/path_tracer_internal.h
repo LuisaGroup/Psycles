@@ -312,9 +312,23 @@ enum class SurfaceValueRuntimeBufferSlot : std::uint32_t {
     bump_height_program,
     program_output,
     normal_output_address,
-    normal_undisplaced_flag,
+    topology_flag,
     count,
 };
+
+// Per-topology control is device data, not a host/JIT branch. Multiple
+// material parameter blocks can share one topology, so every bit is the
+// conservative union over that equivalence class. Linked values remain
+// device expressions evaluated at the hit point.
+enum class SurfaceValueRuntimeTopologyFlag : std::uint32_t {
+    automatic_bump_uses_undisplaced_geometry = 1u << 0u,
+};
+
+[[nodiscard]] constexpr std::uint32_t
+surface_value_runtime_topology_flag(
+    SurfaceValueRuntimeTopologyFlag flag) noexcept {
+    return static_cast<std::uint32_t>(flag);
+}
 
 [[nodiscard]] constexpr std::uint32_t
 surface_value_runtime_buffer_slot(
@@ -361,7 +375,7 @@ struct SurfaceValueRuntime {
     luisa::vector<luisa::uint> bump_height_programs;
     luisa::vector<luisa::uint> program_outputs;
     luisa::vector<luisa::uint> normal_output_addresses;
-    luisa::vector<luisa::uint> normal_undisplaced_flags;
+    luisa::vector<luisa::uint> topology_flags;
 
     Buffer<luisa::uint4> program_buffer;
     Buffer<luisa::uint4> instruction_buffer;
@@ -376,7 +390,7 @@ struct SurfaceValueRuntime {
     Buffer<luisa::uint> bump_height_program_buffer;
     Buffer<luisa::uint> program_output_buffer;
     Buffer<luisa::uint> normal_output_address_buffer;
-    Buffer<luisa::uint> normal_undisplaced_flag_buffer;
+    Buffer<luisa::uint> topology_flag_buffer;
     // Declared after the bound buffers so reverse member destruction releases
     // the descriptor view before its resources.
     BindlessArray device_view;
@@ -396,8 +410,9 @@ struct LuisaSceneData {
     // therefore cannot mix expanded and compact value evaluation.
     std::unique_ptr<SurfaceValueRuntime> surface_values;
     // Scene-level Cycles has_bssrdf_bump materials mapped onto the
-    // structure-deduplicated SurfaceDispatch tags. Shared tags form the
-    // conservative image of this exact material predicate; closures and
+    // structure-deduplicated SurfaceDispatch tags. Shared tags form only the
+    // conservative host/JIT dispatch image; MaterialBindingGpu keeps the
+    // exact per-parameter-block predicate used at runtime. Closures and
     // parameters remain device expressions.
     luisa::vector<luisa::uint> surface_bssrdf_bump_tags;
     // Host-stage scene capability used to decide whether the production path

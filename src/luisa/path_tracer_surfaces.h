@@ -97,6 +97,7 @@ using SurfaceBssrdfNormalCallable = Callable<luisa::float3(
     luisa::uint,
     SurfacePointCall,
     bool,
+    bool,
     bool)>;
 // Host/JIT object whose device-local storage is populated exactly once for a
 // path hit. Every method is a consumer of the retained original closures; no
@@ -170,6 +171,10 @@ struct SurfaceCallables {
 
 [[nodiscard]] SurfacePreparationCallable
 make_compact_surface_preparation_callable(
+    const std::shared_ptr<LuisaSceneData> &scene) noexcept;
+
+[[nodiscard]] SurfaceBssrdfNormalCallable
+make_compact_surface_bssrdf_normal_callable(
     const std::shared_ptr<LuisaSceneData> &scene) noexcept;
 
 [[nodiscard]] std::shared_ptr<const SurfacePopulationProgram>

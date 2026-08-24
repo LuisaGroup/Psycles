@@ -354,6 +354,55 @@ make_expanded_surface_preparation_callable(
     return result;
 }
 
+[[nodiscard]] SurfaceBssrdfNormalCallable
+make_expanded_surface_bssrdf_normal_callable(
+    const std::shared_ptr<LuisaSceneData> &scene,
+    const SurfaceClosureSetupCallables &closure_setup,
+    const Texture2DSamplingCallables &texture_sampling,
+    const SurfaceAttributeLookupCallable &attribute_lookup) noexcept {
+    SurfaceBssrdfNormalCallable result =
+        [scene, closure_setup, texture_sampling, attribute_lookup](
+            BufferFloat scalar_parameters, BufferFloat3 vector_parameters,
+            BufferFloat cycles_bsdf_tables, BindlessVar textures,
+            BindlessVar geometry_heap, UInt surface_tag,
+            Var<SurfacePointCall> packed_point, Bool has_bssrdf_bump,
+            Bool reflective_caustics, Bool refractive_caustics) noexcept {
+            CallableSurfaceClosureSetupProvider setup_provider{cycles_bsdf_tables,
+                                                               closure_setup};
+            CallableTexture2DSamplingProvider texture_provider{textures,
+                                                               texture_sampling};
+            CallableSurfaceAttributeLookupProvider attribute_provider{
+                geometry_heap, attribute_lookup};
+            BufferShaderServices services{scalar_parameters,
+                                          vector_parameters,
+                                          cycles_bsdf_tables,
+                                          textures,
+                                          geometry_heap,
+                                          scene->attribute_binding_slot,
+                                          scene->attribute_range_slot,
+                                          scene->nishita_texture_bindings,
+                                          scene->shader_color_space,
+                                          &setup_provider,
+                                          &texture_provider,
+                                          &attribute_provider};
+            const auto point = unpack_surface_point(packed_point);
+            SurfaceBssrdfNormalVisitor visitor{
+                scene->volume_metadata.closure_allocation_budget};
+            $if (has_bssrdf_bump) {
+                static_cast<void>(scene->surfaces.collect_bssrdf_bump_closures(
+                    surface_tag, scene->surface_bssrdf_bump_tags, services, point,
+                    reflective_caustics, refractive_caustics, visitor));
+            }
+            $else {
+                visitor.begin(point.shading_normal);
+                visitor.finish();
+            };
+            return Float3{visitor.result()};
+        };
+    result.set_name("surface_bssrdf_normal");
+    return result;
+}
+
 }// namespace
 
 SurfaceCallables
@@ -669,40 +718,13 @@ make_surface_callables(const std::shared_ptr<LuisaSceneData> &scene) noexcept {
                 Expr<luisa::float2>{u_direction.expression()}, query, true));
         };
     sample_trace.set_name("surface_sample_trace");
-    SurfaceBssrdfNormalCallable bssrdf_normal =
-        [scene, closure_setup, texture_sampling, attribute_lookup](
-            BufferFloat scalar_parameters, BufferFloat3 vector_parameters,
-            BufferFloat cycles_bsdf_tables, BindlessVar textures,
-            BindlessVar geometry_heap, UInt surface_tag,
-            Var<SurfacePointCall> packed_point, Bool reflective_caustics,
-            Bool refractive_caustics) noexcept {
-            CallableSurfaceClosureSetupProvider setup_provider{cycles_bsdf_tables,
-                                                               closure_setup};
-            CallableTexture2DSamplingProvider texture_provider{textures,
-                                                               texture_sampling};
-            CallableSurfaceAttributeLookupProvider attribute_provider{
-                geometry_heap, attribute_lookup};
-            BufferShaderServices services{scalar_parameters,
-                                          vector_parameters,
-                                          cycles_bsdf_tables,
-                                          textures,
-                                          geometry_heap,
-                                          scene->attribute_binding_slot,
-                                          scene->attribute_range_slot,
-                                          scene->nishita_texture_bindings,
-                                          scene->shader_color_space,
-                                          &setup_provider,
-                                          &texture_provider,
-                                          &attribute_provider};
-            const auto point = unpack_surface_point(packed_point);
-            SurfaceBssrdfNormalVisitor visitor{
-                scene->volume_metadata.closure_allocation_budget};
-            static_cast<void>(scene->surfaces.collect_bssrdf_bump_closures(
-                surface_tag, scene->surface_bssrdf_bump_tags, services, point,
-                reflective_caustics, refractive_caustics, visitor));
-            return Float3{visitor.result()};
-        };
-    bssrdf_normal.set_name("surface_bssrdf_normal");
+    auto bssrdf_normal = scene->surface_values
+                             ? make_compact_surface_bssrdf_normal_callable(scene)
+                             : make_expanded_surface_bssrdf_normal_callable(
+                                   scene,
+                                   closure_setup,
+                                   texture_sampling,
+                                   attribute_lookup);
     return {std::move(population),
             std::move(preparation),
             std::move(evaluate_light),

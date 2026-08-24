@@ -287,6 +287,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                          : 0u) |
                     (capabilities.may_be_transparent
                          ? material_flag_may_be_transparent
+                         : 0u) |
+                    (surface_bssrdf_bump_materials.contains(id)
+                         ? material_flag_has_bssrdf_bump
                          : 0u),
                 .emission_sampling =
                     snapshot.materials.at(id).emission_sampling,
@@ -455,6 +458,11 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     if (!result.diagnostics.empty()) {
         return result;
     }
+    data->surface_bssrdf_bump_tags.reserve(
+        surface_bssrdf_bump_tags.size());
+    for (const auto tag : surface_bssrdf_bump_tags) {
+        data->surface_bssrdf_bump_tags.emplace_back(tag);
+    }
     if (compact_surface_values_requested()) {
         std::string diagnostic;
         data->surface_values = build_surface_value_runtime(
@@ -468,11 +476,6 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 "Compact surface value execution: " + diagnostic + ".");
             return result;
         }
-    }
-    data->surface_bssrdf_bump_tags.reserve(
-        surface_bssrdf_bump_tags.size());
-    for (const auto tag : surface_bssrdf_bump_tags) {
-        data->surface_bssrdf_bump_tags.emplace_back(tag);
     }
     if (snapshot.world_shader) {
         auto iter =

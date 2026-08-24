@@ -3,6 +3,7 @@
 #include <psycles/compiler/surface_program.h>
 #include <psycles/luisa/graph_surface.h>
 #include <psycles/luisa/surface_closure_evaluator.h>
+#include <psycles/luisa/surface_closure_operations.h>
 #include <psycles/luisa/surface_closure_population.h>
 
 #include "luisa_surface_test_support.h"
@@ -276,6 +277,62 @@ struct FixtureProgram {
     graph.set_root(
         ShaderDomain::surface_normal,
         OutputRef{.node = normal, .socket = "Normal"});
+    return graph;
+}
+
+[[nodiscard]] ShaderGraph make_bssrdf_bump_graph(bool zero_weight) {
+    ShaderGraph graph;
+    const auto first_normal =
+        graph.add_node(node_type::normal_map, "First BSSRDF bump normal");
+    const auto second_normal =
+        graph.add_node(node_type::normal_map, "Second BSSRDF bump normal");
+    const auto shader_normal =
+        graph.add_node(node_type::normal_map, "BSSRDF ShaderData normal");
+    const auto first =
+        graph.add_node(node_type::subsurface_scattering, "First BSSRDF closure");
+    const auto second =
+        graph.add_node(node_type::subsurface_scattering, "Second BSSRDF closure");
+    const auto diffuse =
+        graph.add_node(node_type::diffuse_bsdf, "Ignored diffuse closure");
+    const auto bssrdf_sum =
+        graph.add_node(node_type::add_closure, "BSSRDF closure sum");
+    const auto root =
+        graph.add_node(node_type::add_closure, "BSSRDF plus diffuse");
+    const auto first_color = zero_weight ? Vec3f{} : Vec3f{0.24f, 0.24f, 0.24f};
+    const auto second_color = zero_weight ? Vec3f{} : Vec3f{0.71f, 0.71f, 0.71f};
+    const auto configured =
+        graph.set_input(first_normal, "Strength", SocketValue::floating(0.91f)) &&
+        graph.set_input(first_normal, "Color",
+                        SocketValue::color({0.78f, 0.29f, 0.91f})) &&
+        graph.set_input(second_normal, "Strength",
+                        SocketValue::floating(0.73f)) &&
+        graph.set_input(second_normal, "Color",
+                        SocketValue::color({0.23f, 0.81f, 0.67f})) &&
+        graph.set_input(shader_normal, "Strength",
+                        SocketValue::floating(0.62f)) &&
+        graph.set_input(shader_normal, "Color",
+                        SocketValue::color({0.62f, 0.34f, 0.88f})) &&
+        graph.set_input(first, "Color", SocketValue::color(first_color)) &&
+        graph.set_input(first, "Scale", SocketValue::floating(0.83f)) &&
+        graph.set_input(second, "Color", SocketValue::color(second_color)) &&
+        graph.set_input(second, "Scale", SocketValue::floating(1.17f)) &&
+        graph.set_input(diffuse, "Color",
+                        SocketValue::color({0.19f, 0.31f, 0.47f})) &&
+        graph.connect({.node = first_normal, .socket = "Normal"}, first,
+                      "Normal") &&
+        graph.connect({.node = second_normal, .socket = "Normal"}, second,
+                      "Normal") &&
+        graph.connect({.node = first, .socket = "Closure"}, bssrdf_sum, "A") &&
+        graph.connect({.node = second, .socket = "Closure"}, bssrdf_sum, "B") &&
+        graph.connect({.node = bssrdf_sum, .socket = "Closure"}, root, "A") &&
+        graph.connect({.node = diffuse, .socket = "Closure"}, root, "B");
+    if (!configured) {
+        throw std::runtime_error{"failed to configure BSSRDF bump graph"};
+    }
+    graph.set_root(ShaderDomain::surface,
+                   OutputRef{.node = root, .socket = "Closure"});
+    graph.set_root(ShaderDomain::surface_normal,
+                   OutputRef{.node = shader_normal, .socket = "Normal"});
     return graph;
 }
 
@@ -960,6 +1017,13 @@ int main(int argc, char **argv) {
     fixtures.emplace_back(compile_fixture(
         compiler,
         make_automatic_normal_graph()));
+    const auto weighted_bssrdf_topology =
+        static_cast<std::uint32_t>(fixtures.size());
+    fixtures.emplace_back(
+        compile_fixture(compiler, make_bssrdf_bump_graph(false)));
+    const auto zero_bssrdf_topology = static_cast<std::uint32_t>(fixtures.size());
+    fixtures.emplace_back(
+        compile_fixture(compiler, make_bssrdf_bump_graph(true)));
     fixtures.emplace_back(compile_fixture(
         compiler,
         make_mixed_glass_emission_graph()));
@@ -1010,6 +1074,10 @@ int main(int argc, char **argv) {
         if (tag + 1u != programs.size()) {
             throw std::runtime_error{
                 "compact preparation fixture tags are not dense"};
+        }
+        if (cycles_surface_has_bssrdf_bump(*fixture.program, fixture.parameters,
+                                           DisplacementMethod::bump)) {
+            scene->surface_bssrdf_bump_tags.emplace_back(tag);
         }
     }
 
@@ -1194,6 +1262,85 @@ int main(int argc, char **argv) {
                         invocation_query(scenario, point))));
         };
 
+    Kernel1D expanded_bssrdf_normal =
+        [scene, weighted_bssrdf_topology, zero_bssrdf_topology, closure_setup,
+         texture_sampling, attribute_lookup](
+            BufferFloat scalar_buffer, BufferFloat3 vector_buffer,
+            BufferFloat cycles_buffer, BindlessVar textures,
+            BindlessVar geometry_heap, BufferUInt parameter_base_buffer,
+            BufferFloat3 output) noexcept {
+            const auto invocation = dispatch_x();
+            const auto topology = invocation / scenario_count;
+            const auto scenario = invocation % scenario_count;
+            auto point = make_surface_point();
+            point.parameter_block = parameter_base_buffer.read(topology);
+            point.back_facing = (scenario & 4u) != 0u;
+            point.incoming = normalize(make_float3(
+                0.21f, -0.13f, select(0.969f, -0.969f, scenario == 7u)));
+            CallableSurfaceClosureSetupProvider setup_provider{cycles_buffer,
+                                                               closure_setup};
+            CallableTexture2DSamplingProvider texture_provider{textures,
+                                                               texture_sampling};
+            CallableSurfaceAttributeLookupProvider attribute_provider{
+                geometry_heap, attribute_lookup};
+            BufferShaderServices services{scalar_buffer,
+                                          vector_buffer,
+                                          cycles_buffer,
+                                          textures,
+                                          geometry_heap,
+                                          0u,
+                                          1u,
+                                          scene->nishita_texture_bindings,
+                                          scene->shader_color_space,
+                                          &setup_provider,
+                                          &texture_provider,
+                                          &attribute_provider};
+            const auto query = invocation_query(scenario, point);
+            const auto has_bssrdf_bump = ((topology == weighted_bssrdf_topology) |
+                                          (topology == zero_bssrdf_topology)) &
+                                         (scenario != 7u);
+            SurfaceBssrdfNormalVisitor visitor{population_closure_capacity};
+            $if (has_bssrdf_bump) {
+                static_cast<void>(scene->surfaces.collect_bssrdf_bump_closures(
+                    topology, scene->surface_bssrdf_bump_tags, services, point,
+                    query.reflective_caustics, query.refractive_caustics, visitor));
+            }
+            $else {
+                visitor.begin(point.shading_normal);
+                visitor.finish();
+            };
+            output.write(invocation, visitor.result());
+        };
+
+    const auto compact_bssrdf_normal_callable =
+        make_compact_surface_bssrdf_normal_callable(scene);
+    Kernel1D compact_bssrdf_normal =
+        [compact_bssrdf_normal_callable, weighted_bssrdf_topology,
+         zero_bssrdf_topology](
+            BufferFloat scalar_buffer, BufferFloat3 vector_buffer,
+            BufferFloat cycles_buffer, BindlessVar textures,
+            BindlessVar geometry_heap, BufferUInt parameter_base_buffer,
+            BufferFloat3 output) noexcept {
+            const auto invocation = dispatch_x();
+            const auto topology = invocation / scenario_count;
+            const auto scenario = invocation % scenario_count;
+            auto point = make_surface_point();
+            point.parameter_block = parameter_base_buffer.read(topology);
+            point.back_facing = (scenario & 4u) != 0u;
+            point.incoming = normalize(make_float3(
+                0.21f, -0.13f, select(0.969f, -0.969f, scenario == 7u)));
+            const auto query = invocation_query(scenario, point);
+            const auto has_bssrdf_bump = ((topology == weighted_bssrdf_topology) |
+                                          (topology == zero_bssrdf_topology)) &
+                                         (scenario != 7u);
+            output.write(invocation,
+                         compact_bssrdf_normal_callable(
+                             scalar_buffer, vector_buffer, cycles_buffer, textures,
+                             geometry_heap, topology, pack_surface_point(point),
+                             has_bssrdf_bump, query.reflective_caustics,
+                             query.refractive_caustics));
+        };
+
     const auto compact_population_program =
         make_compact_surface_population_program(scene);
     Kernel1D expanded_population =
@@ -1349,6 +1496,14 @@ int main(int argc, char **argv) {
             device,
             "surface_prepare_compact_bytecode",
             compact);
+    auto expanded_bssrdf_normal_shader =
+        psycles::test_support::compile_named_kernel(
+            device, "surface_bssrdf_normal_expanded_reference",
+            expanded_bssrdf_normal);
+    auto compact_bssrdf_normal_shader =
+        psycles::test_support::compile_named_kernel(
+            device, "surface_bssrdf_normal_compact_bytecode",
+            compact_bssrdf_normal);
     auto collector_begin_shader =
         psycles::test_support::compile_named_kernel(
             device,
@@ -1382,6 +1537,10 @@ int main(int argc, char **argv) {
         device.create_buffer<SurfaceSampleTraceCall>(invocation_count);
     auto compact_population_sample_buffer =
         device.create_buffer<SurfaceSampleTraceCall>(invocation_count);
+    auto expanded_bssrdf_normal_buffer =
+        device.create_buffer<luisa::float3>(invocation_count);
+    auto compact_bssrdf_normal_buffer =
+        device.create_buffer<luisa::float3>(invocation_count);
     auto collector_begin_buffer =
         device.create_buffer<luisa::float3>(1u);
     std::vector<SurfacePreparationCall> expected(invocation_count);
@@ -1402,6 +1561,8 @@ int main(int argc, char **argv) {
         population_expected_samples(invocation_count);
     std::vector<SurfaceSampleTraceCall>
         population_actual_samples(invocation_count);
+    std::vector<luisa::float3> expected_bssrdf_normals(invocation_count);
+    std::vector<luisa::float3> actual_bssrdf_normals(invocation_count);
     auto collector_begin_normal = luisa::make_float3(0.0f);
     stream << scalar_buffer.copy_from(luisa::span{scalar_parameters})
            << vector_buffer.copy_from(luisa::span{vector_parameters})
@@ -1431,6 +1592,20 @@ int main(int argc, char **argv) {
                   compact_buffer)
                   .dispatch(invocation_count)
            << compact_buffer.copy_to(luisa::span{actual})
+           << expanded_bssrdf_normal_shader(scalar_buffer, vector_buffer,
+                                            cycles_buffer, textures,
+                                            geometry_heap, parameter_base_buffer,
+                                            expanded_bssrdf_normal_buffer)
+                  .dispatch(invocation_count)
+           << expanded_bssrdf_normal_buffer.copy_to(
+                  luisa::span{expected_bssrdf_normals})
+           << compact_bssrdf_normal_shader(scalar_buffer, vector_buffer,
+                                           cycles_buffer, textures, geometry_heap,
+                                           parameter_base_buffer,
+                                           compact_bssrdf_normal_buffer)
+                  .dispatch(invocation_count)
+           << compact_bssrdf_normal_buffer.copy_to(
+                  luisa::span{actual_bssrdf_normals})
            << expanded_population_shader(
                   scalar_buffer,
                   vector_buffer,
@@ -1503,6 +1678,25 @@ int main(int argc, char **argv) {
                 expected[invocation]);
             return EXIT_FAILURE;
         }
+        if (!finite(actual_bssrdf_normals[invocation]) ||
+            !equal(actual_bssrdf_normals[invocation],
+                   expected_bssrdf_normals[invocation], tolerance)) {
+            std::cerr << "compact BSSRDF exit normal mismatch on " << backend
+                      << ", topology " << invocation / scenario_count << ", scenario "
+                      << invocation % scenario_count << '\n';
+            return EXIT_FAILURE;
+        }
+    }
+    const auto first_invocation = [](std::uint32_t topology) noexcept {
+        return static_cast<std::size_t>(topology) * scenario_count;
+    };
+    if (equal(actual_bssrdf_normals[first_invocation(weighted_bssrdf_topology)],
+              actual_bssrdf_normals[first_invocation(zero_bssrdf_topology)],
+              tolerance)) {
+        std::cerr << "BSSRDF compact regression did not distinguish the weighted "
+                     "normal from the exact-zero ShaderData::N fallback on "
+                  << backend << '\n';
+        return EXIT_FAILURE;
     }
     for (auto invocation = std::size_t{0u};
          invocation < invocation_count;

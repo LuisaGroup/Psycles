@@ -466,6 +466,8 @@ public:
                                .sample_method = std::move(volume_sample_method),
                                .valid = std::move(volume_valid)},
         .surface_has_volume = std::move(surface_has_volume),
+        .surface_has_bssrdf_bump =
+            (material_binding.flags & material_flag_has_bssrdf_bump) != 0u,
         .point = std::move(point)};
   }
 };

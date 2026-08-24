@@ -91,6 +91,7 @@ public:
       subsurface_normal = invocation.surface_bssrdf_normal(
           primitive.surface_tag,
           point,
+          primitive.surface_has_bssrdf_bump,
           path_reflective_caustics,
           path_refractive_caustics);
     };

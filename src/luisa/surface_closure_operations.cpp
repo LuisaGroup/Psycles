@@ -4,6 +4,8 @@
 
 #include <psycles/luisa/cycles_closure.h>
 
+#include <algorithm>
+
 #include <luisa/dsl/sugar.h>
 
 namespace psycles::luisa_backend {
@@ -543,38 +545,59 @@ const SurfaceClosureTrace &SurfaceClosureTraceVisitor::result() const noexcept {
 
 SurfaceBssrdfNormalVisitor::SurfaceBssrdfNormalVisitor(
     std::size_t capacity) noexcept
-    : SurfaceClosureExpressionVisitor{capacity} {}
+    : SurfaceClosureExpressionVisitor{capacity}, _capacity{capacity} {}
+
+detail::SurfaceBssrdfNormalAccumulator::SurfaceBssrdfNormalAccumulator(
+    Expr<luisa::float3> shading_normal, std::size_t capacity) noexcept
+    : _capacity{std::clamp(
+          capacity, std::size_t{1u},
+          static_cast<std::size_t>(maximum_surface_closure_capacity))},
+      _shading_normal{shading_normal} {}
+
+void detail::SurfaceBssrdfNormalAccumulator::add(
+    Expr<std::uint32_t> kind_expression, Expr<luisa::float3> weight_expression,
+    Expr<float> allocation_weight_expression,
+    Expr<luisa::float3> normal_expression) noexcept {
+    const auto kind = UInt{kind_expression};
+    const auto allocation_weight = Float{allocation_weight_expression};
+    const auto allocated =
+        (kind != static_cast<std::uint32_t>(SurfaceClosureKind::none)) &
+        (allocation_weight >= cycles_closure::closure_weight_cutoff);
+    const auto retained =
+        allocated & (_retained_count < static_cast<std::uint32_t>(_capacity));
+    const auto contributes =
+        retained &
+        (kind == static_cast<std::uint32_t>(SurfaceClosureKind::bssrdf));
+    const auto weight = detail::pass_weight(Float3{weight_expression});
+    _weighted_normal += select(make_float3(0.0f),
+                               Float3{normal_expression} * weight, contributes);
+    _retained_count += select(0u, 1u, retained);
+}
+
+Expr<luisa::float3>
+detail::SurfaceBssrdfNormalAccumulator::result() const noexcept {
+    // Cycles uses is_zero(), not an epsilon. The safe operand prevents an
+    // inactive normalize(0) from manufacturing NaNs in branchless lowering.
+    const auto nonzero = any(_weighted_normal != make_float3(0.0f));
+    const auto safe =
+        select(make_float3(0.0f, 0.0f, 1.0f), _weighted_normal, nonzero);
+    return Expr<luisa::float3>{
+        select(_shading_normal, normalize(safe), nonzero).expression()};
+}
 
 void SurfaceBssrdfNormalVisitor::visit(
     Expr<luisa::float3> shading_normal_expression,
     const luisa::vector<SurfaceClosureExpression> &closures) noexcept {
-    const auto shading_normal = Float3{shading_normal_expression};
-    Float3 weighted_normal = make_float3(0.0f);
-    UInt allocated_count = 0u;
+    detail::SurfaceBssrdfNormalAccumulator accumulator{shading_normal_expression,
+                                                       _capacity};
     for (const auto &closure : closures) {
-        const auto keep = retains(closure, allocated_count);
-        const auto is_bssrdf =
-            closure.kind == static_cast<std::uint32_t>(
-                                SurfaceClosureKind::bssrdf);
-        const auto contributes = keep & is_bssrdf;
-        const auto weight = detail::pass_weight(
-            Float3{closure.weight.expression()});
-        weighted_normal += select(
-            make_float3(0.0f),
-            Float3{closure.normal.expression()} * weight,
-            contributes);
-        allocated_count += select(0u, 1u, keep);
+        accumulator.add(
+            closure.kind,
+            closure.weight,
+            closure.allocation_weight,
+            closure.normal);
     }
-
-    // Cycles tests is_zero() rather than applying an epsilon. Select a safe
-    // normalization operand so the inactive zero branch never manufactures
-    // a NaN, while preserving every non-zero weighted sum exactly.
-    const auto nonzero = any(weighted_normal != make_float3(0.0f));
-    const auto safe = select(
-        make_float3(0.0f, 0.0f, 1.0f),
-        weighted_normal,
-        nonzero);
-    _result = select(shading_normal, normalize(safe), nonzero);
+    _result = accumulator.result();
 }
 
 Expr<luisa::float3>
