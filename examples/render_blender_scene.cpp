@@ -175,7 +175,7 @@ int main(int argc, char **argv) {
                  "[staged-direct-light-queue=0] "
                  "[wavefront-counter-readback-batch-size=4] "
                  "[wavefront-counter-readback-pipeline-depth=2] "
-                 "[wavefront-tail-megakernel-threshold=4096] "
+                 "[wavefront-tail-megakernel-threshold=auto] "
                  "[wavefront-graph-worker-count=0] "
                  "[wavefront-graph-selective=0] "
                  "[wavefront-graph-refill-threshold=0] "
@@ -408,14 +408,17 @@ int main(int argc, char **argv) {
     }
     wavefront_counter_readback_pipeline_depth = *value;
   }
-  auto wavefront_tail_megakernel_threshold = std::uint32_t{4096u};
+  auto wavefront_tail_megakernel_threshold =
+      psycles::luisa_backend::luisa_wavefront_auto_tail_threshold;
   if (argc > 26) {
-    auto value = parse_unsigned<std::uint32_t>(argv[26]);
-    if (!value) {
-      std::cerr << "error: invalid wavefront tail megakernel threshold\n";
-      return EXIT_FAILURE;
+    if (std::string_view{argv[26]} != "auto") {
+      auto value = parse_unsigned<std::uint32_t>(argv[26]);
+      if (!value) {
+        std::cerr << "error: invalid wavefront tail megakernel threshold\n";
+        return EXIT_FAILURE;
+      }
+      wavefront_tail_megakernel_threshold = *value;
     }
-    wavefront_tail_megakernel_threshold = *value;
   }
   auto wavefront_graph_worker_count = std::uint32_t{0u};
   if (argc > 27) {

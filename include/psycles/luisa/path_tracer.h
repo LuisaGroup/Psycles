@@ -18,6 +18,9 @@
 
 namespace psycles::luisa_backend {
 
+inline constexpr auto luisa_wavefront_auto_tail_threshold =
+    std::numeric_limits<std::uint32_t>::max();
+
 enum class LuisaPathScheduler : std::uint8_t {
     megakernel,
     megakernel_per_sample,
@@ -181,9 +184,11 @@ struct LuisaPathTracerOptions {
     std::uint32_t wavefront_counter_readback_batch_size{4u};
     std::uint32_t wavefront_counter_readback_pipeline_depth{2u};
     // Once all logical samples have been generated, finish a residual set no
-    // larger than this in one CoroGraph-derived state-machine kernel. Zero
-    // disables and avoids compiling the optional tail kernel.
-    std::uint32_t wavefront_tail_megakernel_threshold{4096u};
+    // larger than this in one CoroGraph-derived state-machine kernel. The
+    // automatic sentinel resolves from active dispatch capacity on the host;
+    // zero disables and avoids compiling the optional tail kernel.
+    std::uint32_t wavefront_tail_megakernel_threshold{
+        luisa_wavefront_auto_tail_threshold};
     // Host/JIT policy for ordering the staged shade_surface queue by the
     // structure-deduplicated SurfaceDispatch tag. False preserves the same
     // continuation cuts without recording a key resolver, frame export, or

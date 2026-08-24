@@ -18,6 +18,10 @@
 namespace psycles::luisa_backend::detail {
 namespace {
 
+static_assert(
+    luisa_wavefront_auto_tail_threshold ==
+    luisa::compute::coro::graph_wavefront_auto_tail_threshold);
+
 template <typename Signature> struct RenderSchedulerTypes;
 
 template <typename... Args> struct RenderSchedulerTypes<void(Args...)> {
