@@ -79,6 +79,36 @@ surface_closure_aov_contribution(
     const SurfacePoint &point,
     const SurfaceClosureRecord &closure) noexcept;
 
+namespace detail {
+
+// Streaming form of Cycles' surface_shader_bssrdf_normal() fold. Both the
+// topology-expanded visitor and the compact SVM interpreter feed this exact
+// state machine, so source order, allocation cutoff/capacity, signed pass
+// weight, exact-zero fallback, and normalization cannot drift between routes.
+class SurfaceBssrdfNormalAccumulator {
+
+  private:
+    std::size_t _capacity;
+    Float3 _shading_normal;
+    UInt _retained_count{0u};
+    Float3 _weighted_normal{make_float3(0.0f)};
+
+  public:
+    SurfaceBssrdfNormalAccumulator(
+        Expr<luisa::float3> shading_normal,
+        std::size_t capacity) noexcept;
+
+    void add(
+        Expr<std::uint32_t> kind,
+        Expr<luisa::float3> weight,
+        Expr<float> allocation_weight,
+        Expr<luisa::float3> normal) noexcept;
+
+    [[nodiscard]] Expr<luisa::float3> result() const noexcept;
+};
+
+} // namespace detail
+
 class SurfaceRuntimeFlagsVisitor final
     : public SurfaceClosureExpressionVisitor {
 
@@ -134,6 +164,7 @@ class SurfaceBssrdfNormalVisitor final
     : public SurfaceClosureExpressionVisitor {
 
   private:
+    std::size_t _capacity;
     Float3 _result{make_float3(0.0f, 0.0f, 1.0f)};
 
   protected:

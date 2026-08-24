@@ -139,6 +139,11 @@ inline constexpr std::uint32_t material_emission_sampling_mask =
 // closure graph cannot transmit a shadow ray; a set bit only requests deferred
 // closure evaluation and does not encode a sampled or precomputed opacity.
 inline constexpr std::uint32_t material_flag_may_be_transparent = 1u << 7u;
+// Exact Cycles Shader::has_bssrdf_bump metadata for this parameter block.
+// Unlike surface_tag, this must remain material-specific: two materials can
+// share graph topology while direct parameters prove the BSSRDF unreachable
+// for only one of them.
+inline constexpr std::uint32_t material_flag_has_bssrdf_bump = 1u << 8u;
 
 [[nodiscard]] constexpr std::uint32_t
 material_emission_sampling_bits(
@@ -163,7 +168,8 @@ static_assert((material_emission_sampling_mask &
                (material_flag_has_volume | material_flag_may_emit |
                 material_flag_constant_emission |
                 material_flag_use_bump_map_correction |
-                material_flag_may_be_transparent)) == 0u);
+                material_flag_may_be_transparent |
+                material_flag_has_bssrdf_bump)) == 0u);
 
 struct MaterialBindingGpu {
     luisa::uint surface_tag{};

@@ -480,6 +480,7 @@ SurfaceSampleTrace SurfaceShadingState::sample_trace(
 Float3 PathKernelInvocation::surface_bssrdf_normal(
     UInt surface_tag,
     const SurfacePoint &point,
+    Bool has_bssrdf_bump,
     Bool reflective_caustics,
     Bool refractive_caustics) const noexcept {
     return config.surfaces.bssrdf_normal(
@@ -490,6 +491,7 @@ Float3 PathKernelInvocation::surface_bssrdf_normal(
         config.scene->heap,
         surface_tag,
         pack_surface_point(point),
+        has_bssrdf_bump,
         reflective_caustics,
         refractive_caustics);
 }
