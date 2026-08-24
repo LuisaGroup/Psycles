@@ -189,7 +189,7 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
                 "0",
                 "4",
                 "2",
-                "4096",
+                "auto",
                 "0",
                 "0",
                 "0",
@@ -203,10 +203,14 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
         ):
             self.runner._wavefront_block_size("48")
         self.assertEqual(self.runner._nonnegative_integer("0"), 0)
+        self.assertEqual(self.runner._wavefront_tail_threshold("auto"), "auto")
+        self.assertEqual(self.runner._wavefront_tail_threshold("49152"), 49152)
         with self.assertRaises(
             self.runner.argparse.ArgumentTypeError
         ):
             self.runner._nonnegative_integer("-1")
+        with self.assertRaises(ValueError):
+            self.runner._wavefront_tail_threshold("dynamic")
 
     def test_psycles_command_tracks_tuned_graph_policy(self) -> None:
         command = self.runner._psycles_command(
@@ -229,7 +233,7 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
             [
                 "1",
                 "1",
-                "4096",
+                "auto",
                 "131072",
                 "1",
                 "0",
