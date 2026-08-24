@@ -1,5 +1,6 @@
 #include <psycles/compiler/surface_execution_plan.h>
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cstddef>
@@ -272,6 +273,298 @@ namespace {
   return active;
 }
 
+[[nodiscard]] std::uint32_t value_stack_words(
+    const ValueInstruction &instruction) noexcept {
+  SurfaceValueBank bank;
+  if (!classify_value(instruction.result_type, bank)) {
+    return 0u;
+  }
+  switch (bank) {
+  case SurfaceValueBank::scalar:
+    return 1u;
+  case SurfaceValueBank::vector:
+    return 3u;
+  case SurfaceValueBank::unsigned_integer:
+    return 2u;
+  }
+  return 0u;
+}
+
+struct SurfaceValueSchedulePressure {
+  bool valid{};
+  std::array<std::uint32_t, 3u> slots{};
+
+  [[nodiscard]] std::uint64_t payload_bytes() const noexcept {
+    return static_cast<std::uint64_t>(slots[0u]) * sizeof(float) +
+           static_cast<std::uint64_t>(slots[1u]) * sizeof(float) * 3u +
+           static_cast<std::uint64_t>(slots[2u]) * sizeof(std::uint64_t);
+  }
+};
+
+[[nodiscard]] SurfaceValueSchedulePressure measure_schedule_pressure(
+    const std::vector<ValueInstruction> &values,
+    const std::vector<bool> &active,
+    const std::vector<bool> &outputs,
+    const std::vector<ValueExpressionId> &schedule) {
+  std::vector<std::uint32_t> remaining_uses(values.size(), 0u);
+  auto computed_count = std::size_t{0u};
+  for (auto index = std::size_t{0u}; index < values.size(); ++index) {
+    if (!active[index]) {
+      continue;
+    }
+    computed_count +=
+        values[index].operation == ValueOperation::parameter ? 0u : 1u;
+    for (const auto operand : values[index].operands) {
+      if (remaining_uses[operand.value] ==
+          std::numeric_limits<std::uint32_t>::max()) {
+        return {};
+      }
+      ++remaining_uses[operand.value];
+    }
+    if (outputs[index]) {
+      if (remaining_uses[index] ==
+          std::numeric_limits<std::uint32_t>::max()) {
+        return {};
+      }
+      ++remaining_uses[index];
+    }
+  }
+  if (schedule.size() != computed_count) {
+    return {};
+  }
+
+  std::vector<bool> emitted(values.size(), false);
+  std::array<std::uint32_t, 3u> live{};
+  SurfaceValueSchedulePressure result;
+  for (const auto id : schedule) {
+    if (!id.valid() || id.value >= values.size() || !active[id.value] ||
+        emitted[id.value] ||
+        values[id.value].operation == ValueOperation::parameter) {
+      return {};
+    }
+    const auto &instruction = values[id.value];
+
+    // All operands are read before any dying location is made reusable.
+    for (const auto operand : instruction.operands) {
+      if (values[operand.value].operation != ValueOperation::parameter &&
+          !emitted[operand.value]) {
+        return {};
+      }
+    }
+    for (const auto operand : instruction.operands) {
+      if (remaining_uses[operand.value] == 0u) {
+        return {};
+      }
+      --remaining_uses[operand.value];
+      if (remaining_uses[operand.value] == 0u &&
+          values[operand.value].operation != ValueOperation::parameter) {
+        SurfaceValueBank operand_bank;
+        if (!classify_value(values[operand.value].result_type, operand_bank)) {
+          return {};
+        }
+        auto &bank_live = live[bank_index(operand_bank)];
+        if (bank_live == 0u) {
+          return {};
+        }
+        --bank_live;
+      }
+    }
+    if (remaining_uses[id.value] == 0u) {
+      return {};
+    }
+    SurfaceValueBank result_bank;
+    if (!classify_value(instruction.result_type, result_bank)) {
+      return {};
+    }
+    const auto result_bank_index = bank_index(result_bank);
+    if (live[result_bank_index] ==
+        std::numeric_limits<std::uint32_t>::max()) {
+      return {};
+    }
+    ++live[result_bank_index];
+    result.slots[result_bank_index] =
+        std::max(result.slots[result_bank_index], live[result_bank_index]);
+    emitted[id.value] = true;
+  }
+  for (auto index = std::size_t{0u}; index < values.size(); ++index) {
+    if (active[index] &&
+        values[index].operation != ValueOperation::parameter &&
+        remaining_uses[index] != (outputs[index] ? 1u : 0u)) {
+      return {};
+    }
+  }
+  result.valid = true;
+  return result;
+}
+
+// Cycles schedules the value DAG from its output roots with a Sethi-Ullman
+// heuristic before assigning SVM stack slots. SurfaceProgram already proves
+// that every operand precedes its consumer, so the same recurrence can be
+// evaluated in one forward pass without mutating the graph.
+//
+// Let w(v) be the result width in 32-bit stack words and c(v) the number of
+// distinct live consumer instructions, including one synthetic consumer when
+// v is a terminal closure input. For producers p_i sorted by descending
+// (current(p_i) - w(p_i)),
+//
+//   current(v) = c(v) > 1 ? w(v) : SU(v)
+//   SU(v) = max_i(sum_{j<i} w(p_j) + current(p_i),
+//                  sum_i w(p_i) + w(v)).
+//
+// The recurrence is exact for trees and a deterministic heuristic for DAGs.
+// A second dependency walk emits each instruction once. Reordering is sound
+// because ValueInstruction operations are pure: all device state is explicit
+// in their operands, immutable metadata, parameters, ShaderServices, and
+// SurfacePoint.
+[[nodiscard]] bool schedule_surface_value_instructions(
+    const std::vector<ValueInstruction> &values,
+    const std::vector<bool> &active,
+    const std::vector<bool> &outputs,
+    std::vector<ValueExpressionId> &schedule,
+    std::string &diagnostic) {
+  const auto count = values.size();
+  std::vector<std::vector<std::uint32_t>> producers(count);
+  std::vector<std::uint32_t> instruction_consumers(count, 0u);
+  std::vector<std::uint32_t> total_consumers(count, 0u);
+  auto computed_count = std::size_t{0u};
+
+  for (auto index = std::size_t{0u}; index < count; ++index) {
+    if (!active[index] ||
+        values[index].operation == ValueOperation::parameter) {
+      continue;
+    }
+    ++computed_count;
+    auto &dependencies = producers[index];
+    dependencies.reserve(values[index].operands.size());
+    for (const auto operand : values[index].operands) {
+      if (values[operand.value].operation == ValueOperation::parameter ||
+          std::find(dependencies.begin(), dependencies.end(), operand.value) !=
+              dependencies.end()) {
+        continue;
+      }
+      dependencies.emplace_back(operand.value);
+      if (instruction_consumers[operand.value] ==
+          std::numeric_limits<std::uint32_t>::max()) {
+        diagnostic = "the value consumer count exceeds the scheduler encoding";
+        return false;
+      }
+      ++instruction_consumers[operand.value];
+    }
+  }
+  total_consumers = instruction_consumers;
+  for (auto index = std::size_t{0u}; index < count; ++index) {
+    if (outputs[index]) {
+      if (total_consumers[index] ==
+          std::numeric_limits<std::uint32_t>::max()) {
+        diagnostic =
+            "the terminal value consumer count exceeds the scheduler encoding";
+        return false;
+      }
+      ++total_consumers[index];
+    }
+  }
+
+  std::vector<std::uint32_t> sethi_ullman(count, 0u);
+  const auto current_number = [&](std::uint32_t index) noexcept {
+    const auto width = value_stack_words(values[index]);
+    return total_consumers[index] > 1u ? width : sethi_ullman[index];
+  };
+  const auto order_key = [&](std::uint32_t index) noexcept {
+    return current_number(index) - value_stack_words(values[index]);
+  };
+  const auto order_before = [&](std::uint32_t lhs,
+                                std::uint32_t rhs) noexcept {
+    const auto lhs_key = order_key(lhs);
+    const auto rhs_key = order_key(rhs);
+    return lhs_key > rhs_key || (lhs_key == rhs_key && lhs < rhs);
+  };
+
+  for (auto index = std::size_t{0u}; index < count; ++index) {
+    if (!active[index] ||
+        values[index].operation == ValueOperation::parameter) {
+      continue;
+    }
+    auto &dependencies = producers[index];
+    std::sort(dependencies.begin(), dependencies.end(), order_before);
+    auto live_words = std::uint64_t{0u};
+    auto peak_words = std::uint64_t{0u};
+    for (const auto dependency : dependencies) {
+      peak_words = std::max(
+          peak_words,
+          live_words + static_cast<std::uint64_t>(
+                           current_number(dependency)));
+      live_words += value_stack_words(values[dependency]);
+    }
+    peak_words = std::max(
+        peak_words,
+        live_words + value_stack_words(values[index]));
+    if (peak_words > std::numeric_limits<std::uint32_t>::max()) {
+      diagnostic = "the Sethi-Ullman stack estimate exceeds its encoding";
+      return false;
+    }
+    sethi_ullman[index] = static_cast<std::uint32_t>(peak_words);
+  }
+
+  std::vector<std::uint32_t> sinks;
+  sinks.reserve(computed_count);
+  for (auto index = std::size_t{0u}; index < count; ++index) {
+    if (active[index] &&
+        values[index].operation != ValueOperation::parameter &&
+        instruction_consumers[index] == 0u) {
+      sinks.emplace_back(static_cast<std::uint32_t>(index));
+    }
+  }
+  std::sort(sinks.begin(), sinks.end(), order_before);
+
+  std::vector<bool> emitted(count, false);
+  schedule.clear();
+  schedule.reserve(computed_count);
+  std::function<void(std::uint32_t)> emit = [&](std::uint32_t index) {
+    if (emitted[index]) {
+      return;
+    }
+    for (const auto dependency : producers[index]) {
+      emit(dependency);
+    }
+    emitted[index] = true;
+    schedule.emplace_back(ValueExpressionId{index});
+  };
+  for (const auto sink : sinks) {
+    emit(sink);
+  }
+  if (schedule.size() != computed_count) {
+    diagnostic = "the value scheduler did not reach every active instruction";
+    return false;
+  }
+
+  // Cycles' scalar-stack recurrence is a heuristic for DAGs, while Psycles
+  // has three separately allocated typed banks. Preserve the original legal
+  // topological order as a formal no-regression candidate and select it only
+  // when its exact read-before-write payload is smaller. Equal pressure keeps
+  // the Cycles schedule and its locality/order characteristics.
+  std::vector<ValueExpressionId> source_schedule;
+  source_schedule.reserve(computed_count);
+  for (auto index = std::size_t{0u}; index < count; ++index) {
+    if (active[index] &&
+        values[index].operation != ValueOperation::parameter) {
+      source_schedule.emplace_back(
+          ValueExpressionId{static_cast<std::uint32_t>(index)});
+    }
+  }
+  const auto cycles_pressure =
+      measure_schedule_pressure(values, active, outputs, schedule);
+  const auto source_pressure =
+      measure_schedule_pressure(values, active, outputs, source_schedule);
+  if (!cycles_pressure.valid || !source_pressure.valid) {
+    diagnostic = "a value schedule violates read-before-write liveness";
+    return false;
+  }
+  if (source_pressure.payload_bytes() < cycles_pressure.payload_bytes()) {
+    schedule = std::move(source_schedule);
+  }
+  return true;
+}
+
 } // namespace
 
 bool SurfaceValueStoragePlan::compatible(
@@ -333,9 +626,6 @@ plan_surface_value_storage(const SurfaceProgram &program,
                                  .bank = bank,
                                  .index = instruction.parameter.value};
       ++result.parameter_values;
-    } else {
-      result.instructions.emplace_back(
-          ValueExpressionId{static_cast<std::uint32_t>(index)});
     }
     for (const auto operand : instruction.operands) {
       if (!operand.valid() || operand.value >= values.size()) {
@@ -360,6 +650,11 @@ plan_surface_value_storage(const SurfaceProgram &program,
       }
       ++remaining_uses[index];
     }
+  }
+
+  if (!schedule_surface_value_instructions(
+          values, active, outputs, result.instructions, result.diagnostic)) {
+    return result;
   }
 
   std::array<std::vector<std::uint32_t>, 3u> free_slots;
