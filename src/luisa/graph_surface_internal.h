@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <span>
 #include <vector>
 
 #include <psycles/compiler/surface_program.h>
@@ -392,10 +393,13 @@ struct ValueEvaluationContext {
     // variant interning. Expanded evaluation leaves this null and reads the
     // original instruction payload.
     const ValueStaticTableView *static_table_override{};
-    // Compact SVM execution owns Noise Normalize as instruction data so raw
-    // and normalized fBm nodes can share one evaluator. Topology-expanded
-    // evaluation leaves this null and keeps its statically specialized path.
-    const Bool *noise_normalize_override{};
+    // Compact SVM execution owns selected immutable node fields as a validated
+    // opcode-local instruction immediate. The exact host domain is supplied
+    // so a dynamic handler records only modes reachable by its equivalence
+    // class. Topology-expanded evaluation leaves both fields empty and keeps
+    // the original statically specialized path.
+    const UInt *svm_immediate_override{};
+    std::span<const std::uint16_t> svm_immediate_domain{};
 };
 
 [[nodiscard]] inline Float value_static_table_entry(

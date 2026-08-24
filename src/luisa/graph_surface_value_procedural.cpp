@@ -1,6 +1,7 @@
 #include "graph_surface_internal.h"
 #include "surface_shader_table_evaluation.h"
 
+#include <psycles/compiler/surface_execution_plan.h>
 #include <psycles/luisa/cycles_noise.h>
 #include <luisa/dsl/sugar.h>
 
@@ -118,9 +119,12 @@ public:
                                 instruction.operand(operand::noise::distortion),
                                 result));
                     };
-                    value = context.noise_normalize_override != nullptr
+                    value = context.svm_immediate_override != nullptr
                                 ? evaluate(
-                                      *context.noise_normalize_override)
+                                      (*context.svm_immediate_override &
+                                       compiler::
+                                           surface_value_noise_normalize_immediate_bit) !=
+                                      0u)
                                 : evaluate(
                                       (instruction.static_u1 & 1u) != 0u);
                     break;

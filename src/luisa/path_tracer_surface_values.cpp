@@ -224,17 +224,19 @@ void write_dynamic_value(
     const SurfacePoint &point,
     TracedValues &operands,
     Var<luisa::uint4> instruction) noexcept {
-    if (compiler::surface_value_operation_uses_noise_normalize(
+    if (compiler::surface_value_operation_uses_svm_immediate(
             variant.instruction.operation)) {
-        const Bool normalize =
+        const UInt immediate =
             (instruction.x &
-             compiler::surface_value_noise_normalize_bit) != 0u;
+             compiler::surface_value_svm_immediate_mask) >>
+            compiler::surface_value_svm_immediate_shift;
         ValueEvaluationContext context{
             .services = services,
             .point = point,
             .result = operands,
             .surface = nullptr,
-            .noise_normalize_override = &normalize};
+            .svm_immediate_override = &immediate,
+            .svm_immediate_domain = variant.svm_immediates};
         return node.evaluate(context);
     }
     const auto table_parameter =

@@ -1295,31 +1295,199 @@ void test_surface_value_storage_plan() {
     require(noise_scene.variants[1u].instruction.static_u0 == 3u &&
                 noise_scene.variants[1u].instruction.static_u1 ==
                     (noise_fbm << 8u) &&
+                noise_scene.variants[1u].svm_immediates ==
+                    std::vector<std::uint16_t>{
+                        0u,
+                        surface_value_noise_normalize_immediate_bit} &&
                 noise_scene.variants[1u].instruction.operation ==
                     ValueOperation::noise_factor,
             "the shared Noise evaluator retained a baked Normalize value");
 
     auto mismatched_noise_image = raw_noise_image;
     mismatched_noise_image.instructions.back().control |=
-        surface_value_noise_normalize_bit;
+        surface_value_noise_normalize_immediate_bit
+        << surface_value_svm_immediate_shift;
     const std::vector mismatched_noise_images{mismatched_noise_image};
     const auto mismatched_noise_scene =
         build_surface_value_scene_image(mismatched_noise_images);
     require(!mismatched_noise_scene.valid &&
                 mismatched_noise_scene.diagnostic.find(
-                    "disagrees with immutable metadata") != std::string::npos,
+                    "immediate disagrees with immutable metadata") !=
+                    std::string::npos,
             "serialized Noise accepted inconsistent Normalize data");
 
     auto foreign_normalize_image = metadata_image;
     foreign_normalize_image.instructions.front().control |=
-        surface_value_noise_normalize_bit;
+        surface_value_noise_normalize_immediate_bit
+        << surface_value_svm_immediate_shift;
     const std::vector foreign_normalize_images{foreign_normalize_image};
     const auto foreign_normalize_scene =
         build_surface_value_scene_image(foreign_normalize_images);
     require(!foreign_normalize_scene.valid &&
                 foreign_normalize_scene.diagnostic.find(
-                    "non-Noise opcode") != std::string::npos,
+                    "without an immediate contract") != std::string::npos,
             "serialized non-Noise opcode accepted a Noise-owned control bit");
+
+    const auto make_mix_program = [](
+                                      std::uint32_t tag,
+                                      BlendOperation operation,
+                                      bool clamp_factor,
+                                      bool clamp_result) {
+        std::vector<ParameterDesc> parameters{
+            ParameterDesc{
+                .id = ParameterId{0u},
+                .node = NodeId{1u},
+                .socket = "A",
+                .type = SocketType::color,
+                .default_value = SocketValue::color({0.0f, 0.0f, 0.0f}),
+                .source = ParameterSource::input},
+            ParameterDesc{
+                .id = ParameterId{1u},
+                .node = NodeId{2u},
+                .socket = "B",
+                .type = SocketType::color,
+                .default_value = SocketValue::color({1.0f, 1.0f, 1.0f}),
+                .source = ParameterSource::input},
+            ParameterDesc{
+                .id = ParameterId{2u},
+                .node = NodeId{3u},
+                .socket = "Factor",
+                .type = SocketType::floating,
+                .default_value = SocketValue::floating(0.5f),
+                .source = ParameterSource::input}};
+        std::vector<ValueInstruction> mix_values{
+            ValueInstruction{
+                .operation = ValueOperation::parameter,
+                .result_type = SocketType::color,
+                .parameter = ParameterId{0u}},
+            ValueInstruction{
+                .operation = ValueOperation::parameter,
+                .result_type = SocketType::color,
+                .parameter = ParameterId{1u}},
+            ValueInstruction{
+                .operation = ValueOperation::parameter,
+                .result_type = SocketType::floating,
+                .parameter = ParameterId{2u}},
+            ValueInstruction{
+                .operation = ValueOperation::mix,
+                .result_type = SocketType::color,
+                .operands = make_value_operands<value_operand::mix>({
+                    {value_operand::mix::a, ValueExpressionId{0u}},
+                    {value_operand::mix::b, ValueExpressionId{1u}},
+                    {value_operand::mix::factor, ValueExpressionId{2u}}}),
+                .static_u0 = static_cast<std::uint64_t>(operation),
+                .static_u1 =
+                    (clamp_factor ? 1u : 0u) |
+                    (clamp_result ? 2u : 0u)}};
+        return SurfaceProgram{
+            tag, std::move(parameters), std::move(mix_values), {}, {}};
+    };
+    const auto make_mix_plan = [](const SurfaceProgram &mix_program) {
+        auto outputs = std::vector<bool>(4u, false);
+        outputs.back() = true;
+        return plan_surface_value_storage(
+            mix_program, std::vector<bool>(4u, true), outputs);
+    };
+    const auto plain_mix = make_mix_program(
+        30u, BlendOperation::mix, false, false);
+    const auto clamped_multiply = make_mix_program(
+        31u, BlendOperation::multiply, true, false);
+    const auto clamped_overlay = make_mix_program(
+        32u, BlendOperation::overlay, false, true);
+    const auto clamped_value = make_mix_program(
+        33u, BlendOperation::value, true, true);
+    const auto plain_mix_plan = make_mix_plan(plain_mix);
+    const auto clamped_multiply_plan = make_mix_plan(clamped_multiply);
+    const auto clamped_overlay_plan = make_mix_plan(clamped_overlay);
+    const auto clamped_value_plan = make_mix_plan(clamped_value);
+    const auto plain_mix_image =
+        lower_surface_value_program(plain_mix, plain_mix_plan);
+    const auto clamped_multiply_image = lower_surface_value_program(
+        clamped_multiply, clamped_multiply_plan);
+    const auto clamped_overlay_image = lower_surface_value_program(
+        clamped_overlay, clamped_overlay_plan);
+    const auto clamped_value_image = lower_surface_value_program(
+        clamped_value, clamped_value_plan);
+    require(
+        plain_mix_image.valid && clamped_multiply_image.valid &&
+            clamped_overlay_image.valid && clamped_value_image.valid &&
+            surface_value_svm_immediate(
+                plain_mix_image.instructions.front()) == 0u &&
+            surface_value_svm_immediate(
+                clamped_multiply_image.instructions.front()) ==
+                (static_cast<std::uint32_t>(BlendOperation::multiply) |
+                 surface_value_mix_factor_clamp_bit) &&
+            surface_value_svm_immediate(
+                clamped_overlay_image.instructions.front()) ==
+                (static_cast<std::uint32_t>(BlendOperation::overlay) |
+                 surface_value_mix_result_clamp_bit) &&
+            surface_value_svm_immediate(
+                clamped_value_image.instructions.front()) ==
+                (static_cast<std::uint32_t>(BlendOperation::value) |
+                 surface_value_mix_factor_clamp_bit |
+                 surface_value_mix_result_clamp_bit),
+        "Mix properties were not preserved by the opcode-owned immediate");
+
+    const std::vector mix_inputs{
+        SurfaceValueExecutionInput{.program = &plain_mix,
+                                   .storage = &plain_mix_plan},
+        SurfaceValueExecutionInput{.program = &clamped_multiply,
+                                   .storage = &clamped_multiply_plan},
+        SurfaceValueExecutionInput{.program = &clamped_overlay,
+                                   .storage = &clamped_overlay_plan},
+        SurfaceValueExecutionInput{.program = &clamped_value,
+                                   .storage = &clamped_value_plan}};
+    const auto mix_scene =
+        build_surface_value_executable_scene(mix_inputs);
+    const std::vector<std::uint16_t> expected_mix_immediates{
+        0u,
+        static_cast<std::uint16_t>(
+            static_cast<std::uint32_t>(BlendOperation::multiply) |
+            surface_value_mix_factor_clamp_bit),
+        static_cast<std::uint16_t>(
+            static_cast<std::uint32_t>(BlendOperation::overlay) |
+            surface_value_mix_result_clamp_bit),
+        static_cast<std::uint16_t>(
+            static_cast<std::uint32_t>(BlendOperation::value) |
+            surface_value_mix_factor_clamp_bit |
+            surface_value_mix_result_clamp_bit)};
+    require(
+        mix_scene.valid && mix_scene.variants.size() == 1u &&
+            mix_scene.instruction_variants ==
+                std::vector<std::uint32_t>{0u, 0u, 0u, 0u} &&
+            mix_scene.variants.front().instruction.static_u0 == 0u &&
+            mix_scene.variants.front().instruction.static_u1 == 0u &&
+            mix_scene.variants.front().svm_immediates ==
+                expected_mix_immediates,
+        "Mix SVM interning did not form the exact immediate quotient");
+
+    auto mismatched_mix_image = plain_mix_image;
+    mismatched_mix_image.instructions.front().control |=
+        surface_value_mix_factor_clamp_bit
+        << surface_value_svm_immediate_shift;
+    const auto mismatched_mix_scene = build_surface_value_scene_image(
+        std::vector{mismatched_mix_image});
+    require(
+        !mismatched_mix_scene.valid &&
+            mismatched_mix_scene.diagnostic.find(
+                "immediate disagrees with immutable metadata") !=
+                std::string::npos,
+        "serialized Mix accepted an immediate/metadata disagreement");
+
+    const auto invalid_mix = make_mix_program(
+        34u,
+        static_cast<BlendOperation>(
+            static_cast<std::uint32_t>(BlendOperation::value) + 1u),
+        false,
+        false);
+    const auto invalid_mix_plan = make_mix_plan(invalid_mix);
+    const auto invalid_mix_image =
+        lower_surface_value_program(invalid_mix, invalid_mix_plan);
+    require(
+        !invalid_mix_image.valid &&
+            invalid_mix_image.diagnostic.find("immediate contract") !=
+                std::string::npos,
+        "Mix lowering truncated an unrepresentable operation");
 
     const auto make_table_program = [&](std::uint32_t table_parameter) {
         std::vector<ValueInstruction> table_values;
@@ -1462,7 +1630,8 @@ void test_surface_value_storage_plan() {
         std::vector{malformed_image, metadata_image});
     require(!malformed_scene.valid && malformed_scene.programs.empty() &&
                 malformed_scene.instructions.empty() &&
-                malformed_scene.diagnostic.find("control word") !=
+                malformed_scene.diagnostic.find(
+                    "without an immediate contract") !=
                     std::string::npos,
             "scene aggregation accepted or partially committed a malformed "
             "instruction stream");
