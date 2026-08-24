@@ -1,0 +1,124 @@
+{
+  "date": "2026-08-25",
+  "device": "AMD Radeon RX 9070 XT",
+  "architecture": "gfx1201",
+  "scene": {
+    "name": "Barbershop Interior",
+    "source_sha256": "95972b56180462cac47ec82f3a755bd9111ec18ca37a6196a319c013db994130",
+    "blender": "5.2.0 LTS",
+    "resolution": [640, 480],
+    "spp": 64,
+    "samples_per_dispatch": 64,
+    "scheduler": "wavefront-staged"
+  },
+  "semantic_model": {
+    "instruction_immediate": "bits 0..4 operation, bit 5 factor clamp, bit 6 result clamp",
+    "callable_domain": "canonical Boolean projection of reachable Mix operations",
+    "complete_ast_hash_deduplication": true,
+    "manual_inline_attribute": false,
+    "manual_noinline_attribute": false,
+    "raw_closures": true,
+    "material_baking": false
+  },
+  "cold_compile": {
+    "pre_mix_svm": {
+      "generated_amdgpu_bytes": 582988,
+      "hip_code_object_bytes": 543928,
+      "private_segment_bytes": 6000
+    },
+    "immediate_quotient": {
+      "generated_amdgpu_bytes": 552928,
+      "hip_code_object_bytes": 521400,
+      "private_segment_bytes": 6032,
+      "llvm_codegen_mean_ms": 1056.640280,
+      "comgr_link_mean_ms": 4375.329830
+    },
+    "typed_callable": {
+      "generated_amdgpu_bytes": 553080,
+      "hip_code_object_bytes": 520416,
+      "private_segment_bytes": 6016,
+      "llvm_ir_before_opt_bytes": 17268471,
+      "llvm_ir_after_opt_bytes": 4455102,
+      "llvm_ir_final_bytes": 4455486,
+      "shared_mix_callable_bytes": 1272,
+      "llvm_codegen_ms": [1006.846164, 1035.477269],
+      "llvm_codegen_mean_ms": 1021.1617165,
+      "comgr_link_ms": [4339.590908, 4308.662889],
+      "comgr_link_mean_ms": 4324.1268985,
+      "all_shader_jit_s": [18.2906, 17.81]
+    },
+    "typed_relative_to_immediate_percent": {
+      "generated_amdgpu_bytes": 0.027490,
+      "hip_code_object_bytes": -0.188723,
+      "private_segment_bytes": -0.265252,
+      "llvm_codegen_mean_ms": -3.357677,
+      "comgr_link_mean_ms": -1.170264
+    },
+    "typed_relative_to_pre_mix_svm_percent": {
+      "generated_amdgpu_bytes": -5.130123,
+      "hip_code_object_bytes": -4.322631,
+      "private_segment_bytes": 0.266667
+    }
+  },
+  "warm_render_seconds": {
+    "immediate_quotient": [3.94147, 3.93737, 3.94118],
+    "typed_callable": [3.93650, 3.93549, 3.93594, 3.93402, 3.93785],
+    "immediate_median": 3.94118,
+    "typed_median": 3.93594,
+    "immediate_mean": 3.940006667,
+    "typed_mean": 3.93596,
+    "median_change_percent": -0.132955,
+    "mean_change_percent": -0.102707
+  },
+  "hip_profile": {
+    "shade_surface_calls": 372,
+    "pre_mix_svm_shade_surface_ns": 2743179681,
+    "immediate_quotient_shade_surface_ns": 2866904647,
+    "typed_callable_shade_surface_ns": 2864147407,
+    "typed_relative_to_immediate_percent": -0.096175,
+    "typed_relative_to_pre_mix_svm_percent": 4.409763,
+    "typed_intersect_closest_ns": 321067027,
+    "typed_volume_ns": 115022492
+  },
+  "rejected_correlated_clamp_experiment": {
+    "formally_sound": true,
+    "hip_code_object_bytes": 522680,
+    "warm_render_seconds": [3.94185, 3.94449, 3.94508],
+    "retained": false
+  },
+  "image_comparison": {
+    "resolution": [64, 64],
+    "spp": 1,
+    "passes": [
+      "Combined",
+      "DiffCol",
+      "DiffDir",
+      "DiffInd",
+      "Emit",
+      "Env",
+      "GlossCol",
+      "GlossDir",
+      "GlossInd",
+      "Normal",
+      "TransCol",
+      "TransDir",
+      "TransInd",
+      "Volume Direct",
+      "Volume Indirect"
+    ],
+    "all_passes_rmse": 0.0,
+    "all_passes_mean_absolute_error": 0.0,
+    "all_passes_maximum_absolute_error": 0.0,
+    "visual_inspection": "pass: identical panels and black differences; no structural material UV geometry normal light volume or orientation difference"
+  },
+  "focused_tests": {
+    "passed": 10,
+    "failed": 0,
+    "surface_mix_modes": 19,
+    "clamp_combinations": 4,
+    "backends": ["fallback", "hip", "vk"],
+    "vulkan_route": "native AST to XIR to SPIR-V; DXC disabled",
+    "vulkan_runtime_spirv_words": 3731,
+    "vulkan_reference_spirv_words": 2598
+  }
+}

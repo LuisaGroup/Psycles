@@ -8,6 +8,34 @@
 #include <luisa/dsl/sugar.h>
 
 namespace psycles::luisa_backend::detail {
+namespace {
+
+using SurfaceMixSvmCallable = luisa::compute::Callable<
+    luisa::float3(luisa::uint, float, luisa::float3, luisa::float3)>;
+
+[[nodiscard]] auto active_mix_operations(
+    std::span<const std::uint16_t> immediate_domain) noexcept {
+    constexpr auto operation_count =
+        static_cast<std::size_t>(compiler::BlendOperation::value) + 1u;
+    constexpr auto valid_bits = compiler::surface_value_mix_operation_mask |
+                                compiler::surface_value_mix_factor_clamp_bit |
+                                compiler::surface_value_mix_result_clamp_bit;
+    std::array<bool, operation_count> result{};
+    for (const auto encoded : immediate_domain) {
+        if ((encoded & ~valid_bits) != 0u) {
+            std::abort();
+        }
+        const auto operation = static_cast<std::size_t>(
+            encoded & compiler::surface_value_mix_operation_mask);
+        if (operation >= operation_count) {
+            std::abort();
+        }
+        result[operation] = true;
+    }
+    return result;
+}
+
+} // namespace
 
 Float3 evaluate_surface_mix_operation(const ShaderServices &services,
                                       compiler::BlendOperation operation,
@@ -122,50 +150,52 @@ Float3 evaluate_surface_mix_svm(const ShaderServices &services,
                                 Float factor,
                                 Float3 a,
                                 Float3 b) noexcept {
-    const Bool clamp_factor =
-        (immediate & compiler::surface_value_mix_factor_clamp_bit) != 0u;
-    factor = select(factor, clamp(factor, 0.0f, 1.0f), clamp_factor);
+    const auto active_operations = active_mix_operations(immediate_domain);
+    SurfaceMixSvmCallable callable =
+        [&services, active_operations](UInt encoded,
+                                       Float input_factor,
+                                       Float3 input_a,
+                                       Float3 input_b) noexcept {
+            const Bool clamp_factor =
+                (encoded & compiler::surface_value_mix_factor_clamp_bit) != 0u;
+            input_factor = select(input_factor,
+                                  clamp(input_factor, 0.0f, 1.0f),
+                                  clamp_factor);
 
-    constexpr auto operation_count =
-        static_cast<std::size_t>(compiler::BlendOperation::value) + 1u;
-    std::array<bool, operation_count> active_operations{};
-    for (const auto encoded : immediate_domain) {
-        const auto operation = static_cast<std::size_t>(
-            encoded & compiler::surface_value_mix_operation_mask);
-        if (operation >= operation_count) {
-            std::abort();
-        }
-        active_operations[operation] = true;
-    }
-
-    auto result = def(a);
-    const UInt operation =
-        immediate & compiler::surface_value_mix_operation_mask;
-    luisa::compute::detail::SwitchStmtBuilder{operation} % [&] {
-        for (auto index = std::size_t{0u}; index < active_operations.size();
-             ++index) {
-            if (!active_operations[index]) {
-                continue;
-            }
-            luisa::compute::detail::SwitchCaseStmtBuilder{
-                static_cast<luisa::uint>(index)} %
-                [&, index] {
-                    result = evaluate_surface_mix_operation(
-                        services,
-                        static_cast<compiler::BlendOperation>(index),
-                        factor,
-                        a,
-                        b);
+            auto result = def(input_a);
+            const UInt operation =
+                encoded & compiler::surface_value_mix_operation_mask;
+            luisa::compute::detail::SwitchStmtBuilder{operation} % [&] {
+                for (auto index = std::size_t{0u};
+                     index < active_operations.size();
+                     ++index) {
+                    if (!active_operations[index]) {
+                        continue;
+                    }
+                    luisa::compute::detail::SwitchCaseStmtBuilder{
+                        static_cast<luisa::uint>(index)} %
+                        [&, index] {
+                            result = evaluate_surface_mix_operation(
+                                services,
+                                static_cast<compiler::BlendOperation>(index),
+                                input_factor,
+                                input_a,
+                                input_b);
+                        };
+                }
+                luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
+                    luisa::compute::dsl::unreachable(
+                        "invalid compact surface Mix operation");
                 };
-        }
-        luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
-            luisa::compute::dsl::unreachable(
-                "invalid compact surface Mix operation");
+            };
+            const Bool clamp_result =
+                (encoded & compiler::surface_value_mix_result_clamp_bit) != 0u;
+            return select(result,
+                          clamp(result, 0.0f, 1.0f),
+                          clamp_result);
         };
-    };
-    const Bool clamp_result =
-        (immediate & compiler::surface_value_mix_result_clamp_bit) != 0u;
-    return select(result, clamp(result, 0.0f, 1.0f), clamp_result);
+    callable.set_name("surface_mix_svm");
+    return callable(immediate, factor, a, b);
 }
 
 } // namespace psycles::luisa_backend::detail
