@@ -60,6 +60,7 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
     luisa::compute::Device &device,
     std::span<const std::shared_ptr<const compiler::SurfaceProgram>> programs,
     std::span<const compiler::SurfaceClosurePlan> closure_plans,
+    std::span<const std::uint32_t> bssrdf_bump_tags,
     std::string &diagnostic) {
     diagnostic.clear();
     if (programs.empty() || programs.size() != closure_plans.size()) {
@@ -72,6 +73,20 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
             SurfaceValueRuntime::programs_per_topology) {
         diagnostic = "surface topology count exceeds compact device program ids";
         return nullptr;
+    }
+
+    std::vector<bool> bssrdf_topologies(programs.size(), false);
+    auto bssrdf_topology_count = std::size_t{0u};
+    for (const auto tag : bssrdf_bump_tags) {
+        if (tag >= programs.size()) {
+            diagnostic =
+                "BSSRDF-bump topology tag exceeds compact surface programs";
+            return nullptr;
+        }
+        if (!bssrdf_topologies[tag]) {
+            bssrdf_topologies[tag] = true;
+            ++bssrdf_topology_count;
+        }
     }
 
     auto runtime = std::make_unique<SurfaceValueRuntime>();
@@ -344,8 +359,10 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
 
   std::vector<std::uint32_t> pending_preparation_height_programs;
   std::vector<std::uint32_t> pending_emission_height_programs;
+  std::vector<std::uint32_t> pending_bssrdf_height_programs;
   pending_preparation_height_programs.reserve(programs.size() * 2u);
   pending_emission_height_programs.reserve(programs.size() * 2u);
+  pending_bssrdf_height_programs.reserve(bssrdf_topology_count * 2u);
   for (auto topology = std::size_t{0u}; topology < programs.size();
        ++topology) {
     const auto base = static_cast<std::uint32_t>(
@@ -378,6 +395,16 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
       diagnostic = "emission automatic-normal program range exceeds its stream";
       return nullptr;
     }
+    if (bssrdf_topologies[topology] &&
+        (!collect_direct_values(normal_program,
+                                runtime->bssrdf_normal_value_static_variants,
+                                pending_bssrdf_height_programs) ||
+         !collect_direct_values(preparation_program,
+                                runtime->bssrdf_value_static_variants,
+                                pending_bssrdf_height_programs))) {
+      diagnostic = "BSSRDF topology program range exceeds its stream";
+      return nullptr;
+    }
     const auto &range = image.programs[emission_program];
     for (auto offset = std::uint32_t{0u}; offset < range.closure_count;
          ++offset) {
@@ -398,11 +425,30 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
       runtime->emission_principled_closure_features |=
           image.closure_principled_features[closure];
     }
+    if (bssrdf_topologies[topology]) {
+      const auto &bssrdf_range = image.programs[preparation_program];
+      for (auto offset = std::uint32_t{0u};
+           offset < bssrdf_range.closure_count; ++offset) {
+        const auto closure = bssrdf_range.closure_begin + offset;
+        const auto &instruction = image.closure_instructions[closure];
+        if (compiler::surface_closure_endpoints(instruction) == 0u) {
+          diagnostic = "BSSRDF topology retained an endpoint-free closure";
+          return nullptr;
+        }
+        append_unique(runtime->bssrdf_closure_static_variants,
+                      instruction.control &
+                          compiler::surface_closure_static_variant_mask);
+        runtime->bssrdf_principled_closure_features |=
+            image.closure_principled_features[closure];
+      }
+    }
   }
   if (!close_height_domain(std::move(pending_preparation_height_programs),
                            runtime->height_value_static_variants) ||
       !close_height_domain(std::move(pending_emission_height_programs),
-                           runtime->emission_height_value_static_variants)) {
+                           runtime->emission_height_value_static_variants) ||
+      !close_height_domain(std::move(pending_bssrdf_height_programs),
+                           runtime->bssrdf_height_value_static_variants)) {
     diagnostic = "compact surface Bump-height call graph is malformed";
     return nullptr;
   }
@@ -415,8 +461,13 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
   sort_variants(runtime->emission_value_static_variants);
   sort_variants(runtime->emission_normal_value_static_variants);
   sort_variants(runtime->emission_height_value_static_variants);
+  sort_variants(runtime->bssrdf_value_static_variants);
+  sort_variants(runtime->bssrdf_normal_value_static_variants);
+  sort_variants(runtime->bssrdf_height_value_static_variants);
   std::sort(runtime->emission_closure_static_variants.begin(),
             runtime->emission_closure_static_variants.end());
+  std::sort(runtime->bssrdf_closure_static_variants.begin(),
+            runtime->bssrdf_closure_static_variants.end());
 
   for (auto index = std::size_t{0u}; index < image.programs.size(); ++index) {
         if (!fits_runtime_capacity(image.programs[index])) {
@@ -526,9 +577,9 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
     LUISA_INFO(
         "Built compact surface runtime: {} root programs, {} total programs, "
         "{} instructions, {} operands, {} metadata records, {} static floats, "
-      "{} semantic variants (root/normal/height domains "
-      "{}/{}/{}, emission {}/{}/{}), {} closure instructions "
-      "({} emission variants), {} Bump evaluator "
+      "{} semantic variants (population {}/{}/{}, emission {}/{}/{}, "
+      "BSSRDF {} tags {}/{}/{}), {} closure instructions "
+      "(population/emission/BSSRDF variants {}/{}/{}), {} Bump evaluator "
         "strata, maximum program "
         "length {}, typed slots {}/{}/{}.",
       runtime->executable.root_program_count, image.programs.size(),
@@ -540,8 +591,14 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
       runtime->emission_value_static_variants.size(),
       runtime->emission_normal_value_static_variants.size(),
       runtime->emission_height_value_static_variants.size(),
+      bssrdf_topology_count,
+      runtime->bssrdf_value_static_variants.size(),
+      runtime->bssrdf_normal_value_static_variants.size(),
+      runtime->bssrdf_height_value_static_variants.size(),
       image.closure_instructions.size(),
+      runtime->closure_static_variants.size(),
       runtime->emission_closure_static_variants.size(),
+      runtime->bssrdf_closure_static_variants.size(),
       runtime->executable.maximum_bump_depth, maximum_instruction_count,
         maximum_scalar_slots, maximum_vector_slots,
         maximum_unsigned_integer_slots);

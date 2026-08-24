@@ -2,6 +2,7 @@
 
 #include "path_tracer_internal.h"
 
+#include <cstdint>
 #include <memory>
 #include <span>
 #include <string>
@@ -16,6 +17,7 @@ build_surface_value_runtime(
     luisa::compute::Device &device,
     std::span<const std::shared_ptr<const compiler::SurfaceProgram>> programs,
     std::span<const compiler::SurfaceClosurePlan> closure_plans,
+    std::span<const std::uint32_t> bssrdf_bump_tags,
     std::string &diagnostic);
 
 void upload_surface_value_runtime(
