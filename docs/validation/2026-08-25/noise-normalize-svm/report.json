@@ -1,0 +1,127 @@
+{
+  "date": "2026-08-25",
+  "device": "AMD Radeon RX 9070 XT",
+  "architecture": "gfx1201",
+  "scene": {
+    "name": "Monster Under the Bed",
+    "source_sha256": "9463082f8d365ad8ae19c1ba86429deb3b532c5a2d0db0b9492c3c759f64d28d",
+    "blender": "5.2.0 LTS",
+    "resolution": [640, 480],
+    "spp": 64,
+    "sample_range": [0, 64],
+    "scheduler": "wavefront-staged"
+  },
+  "semantic_model": {
+    "quotient_key": "all Noise semantic fields except Normalize",
+    "normalize_storage": "surface value bytecode control bit 18",
+    "control_bit_opcode_ownership_validated": true,
+    "control_metadata_agreement_validated": true,
+    "expanded_path_remains_static": true,
+    "raw_closures": true,
+    "material_baking": false
+  },
+  "surface_runtime": {
+    "semantic_variants_before": 48,
+    "semantic_variants_after": 47,
+    "population_variants_before": 41,
+    "population_variants_after": 40,
+    "height_variants_before": 23,
+    "height_variants_after": 22
+  },
+  "cold_compile": {
+    "baseline": {
+      "generated_amdgpu_bytes": 379912,
+      "hip_code_object_bytes": 323776,
+      "largest_callable_bytes": 201552,
+      "private_segment_bytes": 7216,
+      "coroutine_frame_bytes": 496,
+      "coroutine_physical_fields": 120,
+      "llvm_codegen_ms": [670.985594, 693.131039],
+      "comgr_link_ms": [1882.737574, 1894.642410],
+      "all_shader_jit_s": [9.78857, 10.3305]
+    },
+    "noise_normalize_quotient": {
+      "generated_amdgpu_bytes": 367428,
+      "hip_code_object_bytes": 308632,
+      "largest_callable_bytes": 199960,
+      "eliminated_callable_bytes": 11772,
+      "private_segment_bytes": 7216,
+      "coroutine_frame_bytes": 496,
+      "coroutine_physical_fields": 120,
+      "llvm_codegen_ms": [656.363172, 646.003055],
+      "comgr_link_ms": [1830.687476, 1822.842697],
+      "all_shader_jit_s": [9.82264, 9.72345],
+      "shader_hash": "9d2a2d1b74f2be4c",
+      "text_sha256": "b7b9ab4277dd9d27f588363cd92b6f023da8315c83f9e7aa32a58bf4d3695048"
+    },
+    "relative_change_percent": {
+      "generated_amdgpu_bytes": -3.286024,
+      "hip_code_object_bytes": -4.677308,
+      "largest_callable_bytes": -0.789871,
+      "two_run_mean_llvm_codegen_ms": -4.526769,
+      "two_run_mean_comgr_link_ms": -3.278723,
+      "two_run_mean_all_shader_jit_s": -2.847945,
+      "private_segment_bytes": 0.0,
+      "coroutine_frame_bytes": 0.0
+    },
+    "cumulative_from_global_domain_svm": {
+      "baseline_code_object_bytes": 451008,
+      "current_code_object_bytes": 308632,
+      "relative_change_percent": -31.568398
+    }
+  },
+  "shader_shape": {
+    "runtime_normalize_family_xir_instructions": 11020,
+    "callable_definitions": 3,
+    "runtime_loops": 4,
+    "dynamic_normalize_values": 2,
+    "factor_callable_bodies": 1,
+    "color_callable_bodies": 1
+  },
+  "warm_render_seconds": {
+    "baseline": [1.95178, 1.95113, 1.94965, 1.94894, 1.95157],
+    "noise_normalize_quotient": [1.94561, 1.94409, 1.94700, 1.94769, 1.94538],
+    "baseline_median": 1.95113,
+    "noise_normalize_quotient_median": 1.94561,
+    "baseline_mean": 1.950614,
+    "noise_normalize_quotient_mean": 1.945954,
+    "median_change_percent": -0.282913,
+    "mean_change_percent": -0.238899
+  },
+  "image_comparison": {
+    "all_46_channels": {
+      "mean_error": 1.94244e-10,
+      "rms_error": 3.52300e-9,
+      "max_error": 9.53674e-7,
+      "pixels_over_1e_6": 0,
+      "pixels_over_1e_4": 0
+    },
+    "Combined": {
+      "mean_error": 3.16907e-11,
+      "rms_error": 1.07099e-9,
+      "max_error": 2.38419e-7,
+      "pixels_over_1e_6": 0
+    },
+    "Normal": {
+      "mean_error": 8.52572e-10,
+      "rms_error": 7.34268e-9,
+      "max_error": 2.38419e-7,
+      "pixels_over_1e_6": 0
+    },
+    "Glossy Direct": {
+      "mean_error": 5.03109e-10,
+      "rms_error": 7.86832e-9,
+      "max_error": 9.53674e-7,
+      "pixels_over_1e_6": 0
+    },
+    "difference_amplification": 1000000,
+    "visual_inspection": "pass: no coherent material, UV, geometry, normal, lighting, or topology difference"
+  },
+  "focused_tests": {
+    "passed": 26,
+    "failed": 0,
+    "first_strict_run_seconds": 32.47,
+    "final_cached_revalidation_seconds": 4.29,
+    "vulkan_route": "native XIR to SPIR-V; DXC disabled"
+  }
+}

@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <luisa/luisa-compute.h>
@@ -23,6 +24,8 @@ using psycles::test_support::xir_instruction_count;
 
 constexpr auto case_count = std::uint32_t{8u};
 constexpr auto result_stride = std::uint32_t{2u};
+constexpr auto normalize_case_count = std::uint32_t{2u};
+constexpr auto normalize_result_stride = std::uint32_t{4u};
 
 struct ModuleShape {
     std::size_t instructions{};
@@ -138,6 +141,45 @@ make_lone_monk_noise_family_kernel() {
     };
 }
 
+[[nodiscard]] Kernel1D<Buffer<luisa::float4>>
+make_runtime_normalize_shape_kernel() {
+    return [](BufferFloat4 output) noexcept {
+        const Bool normalize = dispatch_x() != 0u;
+        const auto vector = make_float3(0.37f, -1.25f, 2.5f);
+        constexpr auto type = cycles_noise::Type::fbm;
+        output.write(
+            0u,
+            cycles_noise::evaluate_texture_shared(
+                3u,
+                type,
+                normalize,
+                false,
+                vector,
+                0.0f,
+                4.25f,
+                0.55f,
+                2.0f,
+                0.0f,
+                1.0f,
+                0.3f));
+        output.write(
+            1u,
+            cycles_noise::evaluate_texture_shared(
+                3u,
+                type,
+                normalize,
+                true,
+                vector,
+                0.0f,
+                4.25f,
+                0.55f,
+                2.0f,
+                0.0f,
+                1.0f,
+                0.3f));
+    };
+}
+
 }// namespace
 
 int main(int argc, char **argv) {
@@ -231,6 +273,26 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
+    const auto runtime_normalize_shape =
+        module_shape(make_runtime_normalize_shape_kernel());
+    if (std::getenv("PSYCLES_REPORT_SHADER_SHAPES") != nullptr) {
+        std::cout
+            << "Runtime Normalize Noise family XIR: "
+            << runtime_normalize_shape.instructions
+            << ", definitions="
+            << runtime_normalize_shape.callable_definitions
+            << ", runtime loops=" << runtime_normalize_shape.loops << '\n';
+    }
+    if (runtime_normalize_shape.callable_definitions != 3u ||
+        runtime_normalize_shape.loops != 4u) {
+        std::cerr
+            << "Runtime Normalize did not share one callable per output kind: "
+            << "definitions="
+            << runtime_normalize_shape.callable_definitions
+            << ", runtime loops=" << runtime_normalize_shape.loops << '\n';
+        return EXIT_FAILURE;
+    }
+
     Kernel1D compare = [](BufferFloat4 output) noexcept {
         const auto index = dispatch_x();
         const auto p1 = test_coordinate(index);
@@ -285,6 +347,66 @@ int main(int argc, char **argv) {
                 << direct.z << ", " << direct.w << "}, shared={"
                 << shared.x << ", " << shared.y << ", "
                 << shared.z << ", " << shared.w << "}\n";
+            return EXIT_FAILURE;
+        }
+    }
+    Kernel1D compare_normalize = [](BufferFloat4 output) noexcept {
+        const auto index = dispatch_x();
+        const Bool normalize = index != 0u;
+        const auto vector = make_float3(0.37f, -1.25f, 2.5f);
+        constexpr auto type = cycles_noise::Type::fbm;
+        const auto arguments = [&](auto &&selected_normalize,
+                                   bool color_needed) noexcept {
+            return cycles_noise::evaluate_texture_shared(
+                3u,
+                type,
+                std::forward<decltype(selected_normalize)>(
+                    selected_normalize),
+                color_needed,
+                vector,
+                0.0f,
+                4.25f,
+                0.55f,
+                2.0f,
+                0.0f,
+                1.0f,
+                0.3f);
+        };
+        const auto base = index * normalize_result_stride;
+        output.write(base, arguments(normalize, false));
+        output.write(
+            base + 1u,
+            select(arguments(false, false),
+                   arguments(true, false),
+                   normalize));
+        output.write(base + 2u, arguments(normalize, true));
+        output.write(
+            base + 3u,
+            select(arguments(false, true),
+                   arguments(true, true),
+                   normalize));
+    };
+    auto normalize_output = device.create_buffer<luisa::float4>(
+        normalize_case_count * normalize_result_stride);
+    auto normalize_shader = device.compile(compare_normalize);
+    std::vector<luisa::float4> normalize_actual(
+        normalize_case_count * normalize_result_stride);
+    stream << normalize_shader(normalize_output)
+                  .dispatch(normalize_case_count)
+           << normalize_output.copy_to(luisa::span{normalize_actual})
+           << synchronize();
+    for (auto index = std::uint32_t{0u};
+         index < normalize_case_count;
+         ++index) {
+        const auto base = index * normalize_result_stride;
+        if (!approximately_equal(
+                normalize_actual[base], normalize_actual[base + 1u]) ||
+            !approximately_equal(
+                normalize_actual[base + 2u],
+                normalize_actual[base + 3u])) {
+            std::cerr
+                << "Runtime Noise Normalize mismatch on " << backend
+                << ", normalize=" << index << '\n';
             return EXIT_FAILURE;
         }
     }

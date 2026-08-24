@@ -734,13 +734,13 @@ signed_noise_4d_callable() noexcept {
     return signed_noise_4d_callable()(p);
 }
 
-template<typename P>
+template<typename P, typename Normalize>
 [[nodiscard]] inline Float fbm(
     P p,
     Float detail,
     Float roughness,
     Float lacunarity,
-    bool normalize) noexcept {
+    Normalize normalize) noexcept {
     Float frequency = 1.0f;
     Float amplitude = 1.0f;
     Float maximum_amplitude = 0.0f;
@@ -759,19 +759,41 @@ template<typename P>
         amplitude *= roughness;
         frequency *= lacunarity;
     };
-    auto result = normalize
-                      ? 0.5f * sum / maximum_amplitude + 0.5f
-                      : sum;
+    Float result = sum;
+    if constexpr (std::is_same_v<
+                      std::remove_cvref_t<Normalize>,
+                      bool>) {
+        if (normalize) {
+            result = 0.5f * sum / maximum_amplitude + 0.5f;
+        }
+    } else {
+        result = select(
+            sum,
+            0.5f * sum / maximum_amplitude + 0.5f,
+            normalize);
+    }
     auto remainder = detail - floor(detail);
     $if (remainder != 0.0f) {
         auto extended_sum =
             sum + signed_noise(frequency * p) * amplitude;
-        auto extended_result =
-            normalize
-                ? 0.5f * extended_sum /
-                          (maximum_amplitude + amplitude) +
-                      0.5f
-                : extended_sum;
+        Float extended_result = extended_sum;
+        if constexpr (std::is_same_v<
+                          std::remove_cvref_t<Normalize>,
+                          bool>) {
+            if (normalize) {
+                extended_result =
+                    0.5f * extended_sum /
+                        (maximum_amplitude + amplitude) +
+                    0.5f;
+            }
+        } else {
+            extended_result = select(
+                extended_sum,
+                0.5f * extended_sum /
+                        (maximum_amplitude + amplitude) +
+                    0.5f,
+                normalize);
+        }
         result = lerp(result, extended_result, remainder);
     };
     return result;
@@ -891,7 +913,7 @@ template<typename P>
     return value;
 }
 
-template<typename P>
+template<typename P, typename Normalize>
 [[nodiscard]] inline Float select_fractal(
     P p,
     Float detail,
@@ -900,7 +922,7 @@ template<typename P>
     Float offset,
     Float gain,
     Type type,
-    bool normalize) noexcept {
+    Normalize normalize) noexcept {
     switch (type) {
         case Type::multifractal:
             return multifractal(
@@ -939,7 +961,7 @@ template<typename P>
     return 0.0f;
 }
 
-template<typename P, typename Offset>
+template<typename P, typename Normalize, typename Offset>
 [[nodiscard]] inline Result texture(
     P p,
     Float detail,
@@ -949,7 +971,7 @@ template<typename P, typename Offset>
     Float gain,
     Float distortion,
     Type type,
-    bool normalize,
+    Normalize normalize,
     bool color_needed,
     Offset offset_function,
     float first_color_seed) noexcept {
@@ -1022,6 +1044,7 @@ template<typename P, typename Offset>
     return {.value = value, .color = color};
 }
 
+template<typename Normalize>
 [[nodiscard]] inline Result evaluate(
     Float3 vector,
     Float w,
@@ -1033,7 +1056,7 @@ template<typename P, typename Offset>
     Float distortion,
     std::uint32_t dimensions,
     Type type,
-    bool normalize,
+    Normalize normalize,
     bool color_needed) noexcept {
     detail = clamp(detail, 0.0f, 15.0f);
     roughness = max(roughness, 0.0f);
@@ -1150,6 +1173,43 @@ template<std::uint32_t Dimensions,
 template<std::uint32_t Dimensions,
          Type NoiseType,
          bool ColorNeeded>
+[[nodiscard]] inline const auto &
+texture_runtime_normalize_callable() noexcept {
+    static luisa::compute::Callable callable{
+        [](Bool normalize,
+           Float3 vector,
+           Float w,
+           Float detail,
+           Float roughness,
+           Float lacunarity,
+           Float offset,
+           Float gain,
+           Float distortion) noexcept {
+            const auto result = evaluate(
+                vector,
+                w,
+                detail,
+                roughness,
+                lacunarity,
+                offset,
+                gain,
+                distortion,
+                Dimensions,
+                NoiseType,
+                normalize,
+                ColorNeeded);
+            if constexpr (ColorNeeded) {
+                return make_float4(result.color, 1.0f);
+            } else {
+                return make_float4(result.value);
+            }
+        }};
+    return callable;
+}
+
+template<std::uint32_t Dimensions,
+         Type NoiseType,
+         bool ColorNeeded>
 inline void prepare_texture_normalization(
     bool normalize) noexcept {
     if (normalize) {
@@ -1248,35 +1308,52 @@ inline void prepare_texture(
     }
 }
 
+// One host dispatch tree serves both binding times. A host bool preserves the
+// original raw/normalized static callable; a Luisa Bool selects the shared
+// runtime-normalized callable without duplicating dimension or fractal-type
+// dispatch logic.
 template<std::uint32_t Dimensions,
          Type NoiseType,
          bool ColorNeeded,
+         typename Normalize,
          typename... Args>
 [[nodiscard]] inline Float4 evaluate_texture_normalization(
-    bool normalize,
+    const Normalize &normalize,
     Args &&...args) noexcept {
-    if (normalize) {
+    if constexpr (std::is_same_v<
+                      std::remove_cvref_t<Normalize>,
+                      bool>) {
+        if (normalize) {
+            return texture_callable<
+                Dimensions,
+                NoiseType,
+                true,
+                ColorNeeded>()(
+                std::forward<Args>(args)...);
+        }
         return texture_callable<
             Dimensions,
             NoiseType,
-            true,
+            false,
             ColorNeeded>()(
             std::forward<Args>(args)...);
+    } else {
+        return texture_runtime_normalize_callable<
+            Dimensions,
+            NoiseType,
+            ColorNeeded>()(
+            normalize,
+            std::forward<Args>(args)...);
     }
-    return texture_callable<
-        Dimensions,
-        NoiseType,
-        false,
-        ColorNeeded>()(
-        std::forward<Args>(args)...);
 }
 
 template<std::uint32_t Dimensions,
          bool ColorNeeded,
+         typename Normalize,
          typename... Args>
 [[nodiscard]] inline Float4 evaluate_texture_type(
     Type type,
-    bool normalize,
+    const Normalize &normalize,
     Args &&...args) noexcept {
     switch (type) {
         case Type::multifractal:
@@ -1318,11 +1395,11 @@ template<std::uint32_t Dimensions,
     }
 }
 
-template<bool ColorNeeded, typename... Args>
+template<bool ColorNeeded, typename Normalize, typename... Args>
 [[nodiscard]] inline Float4 evaluate_texture_dimensions(
     std::uint32_t dimensions,
     Type type,
-    bool normalize,
+    const Normalize &normalize,
     Args &&...args) noexcept {
     switch (dimensions) {
         case 1u:
@@ -1349,11 +1426,11 @@ template<bool ColorNeeded, typename... Args>
     }
 }
 
-template<typename... Args>
+template<typename Normalize, typename... Args>
 [[nodiscard]] inline Float4 evaluate_texture_shared(
     std::uint32_t dimensions,
     Type type,
-    bool normalize,
+    const Normalize &normalize,
     bool color_needed,
     Args &&...args) noexcept {
     if (color_needed) {

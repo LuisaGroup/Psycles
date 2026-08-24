@@ -345,7 +345,8 @@ struct SurfaceClosureProgramImage {
 // invariant, and uncommon immutable fields live in a side table so ordinary
 // arithmetic does not fetch two uint64 values and a static-table descriptor.
 struct SurfaceValueBytecodeInstruction {
-  // Packed as [reserved:14 | result bank:2 | operand count:8 | opcode:8].
+  // Packed as [reserved:13 | noise normalize:1 | result bank:2 |
+  // operand count:8 | opcode:8].
   // ValueOperation is a closed uint8_t enum and every operation has a fixed
   // arity. Keeping those facts in the stream makes a serialized image
   // independently verifiable without enlarging the hot 16-byte record.
@@ -362,18 +363,29 @@ inline constexpr std::uint32_t surface_value_operand_count_mask =
 inline constexpr std::uint32_t surface_value_result_bank_shift = 16u;
 inline constexpr std::uint32_t surface_value_result_bank_mask =
     0x3u << surface_value_result_bank_shift;
+// Normalize changes only the terminal fBm range mapping. Keeping it as
+// bytecode data lets otherwise identical Noise nodes share one semantic
+// evaluator and one runtime loop body.
+inline constexpr std::uint32_t surface_value_noise_normalize_bit = 1u << 18u;
 inline constexpr std::uint32_t surface_value_control_mask =
     surface_value_opcode_mask | surface_value_operand_count_mask |
-    surface_value_result_bank_mask;
+    surface_value_result_bank_mask | surface_value_noise_normalize_bit;
+
+[[nodiscard]] constexpr bool surface_value_operation_uses_noise_normalize(
+    ValueOperation operation) noexcept {
+  return operation == ValueOperation::noise_factor ||
+         operation == ValueOperation::noise_color;
+}
 
 [[nodiscard]] constexpr std::uint32_t make_surface_value_control(
     ValueOperation operation, std::uint8_t operand_count,
-    SurfaceValueBank result_bank) noexcept {
+    SurfaceValueBank result_bank, bool noise_normalize) noexcept {
   return static_cast<std::uint32_t>(operation) |
          (static_cast<std::uint32_t>(operand_count)
           << surface_value_operand_count_shift) |
          (static_cast<std::uint32_t>(result_bank)
-          << surface_value_result_bank_shift);
+          << surface_value_result_bank_shift) |
+         (noise_normalize ? surface_value_noise_normalize_bit : 0u);
 }
 
 [[nodiscard]] constexpr ValueOperation surface_value_operation(
@@ -393,6 +405,11 @@ inline constexpr std::uint32_t surface_value_control_mask =
   return static_cast<SurfaceValueBank>(
       (instruction.control & surface_value_result_bank_mask) >>
       surface_value_result_bank_shift);
+}
+
+[[nodiscard]] constexpr bool surface_value_noise_normalize(
+    const SurfaceValueBytecodeInstruction &instruction) noexcept {
+  return (instruction.control & surface_value_noise_normalize_bit) != 0u;
 }
 
 // Ordered largest-to-smallest alignment. A metadata record exists only when

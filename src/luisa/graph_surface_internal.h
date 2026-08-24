@@ -392,6 +392,10 @@ struct ValueEvaluationContext {
     // variant interning. Expanded evaluation leaves this null and reads the
     // original instruction payload.
     const ValueStaticTableView *static_table_override{};
+    // Compact SVM execution owns Noise Normalize as instruction data so raw
+    // and normalized fBm nodes can share one evaluator. Topology-expanded
+    // evaluation leaves this null and keeps its statically specialized path.
+    const Bool *noise_normalize_override{};
 };
 
 [[nodiscard]] inline Float value_static_table_entry(
