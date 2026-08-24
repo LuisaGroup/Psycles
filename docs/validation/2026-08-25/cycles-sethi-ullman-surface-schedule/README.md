@@ -109,8 +109,44 @@ ctest --test-dir build --output-on-failure -j 1 \
   -R 'psycles\.(surface_program_metadata|surface_closure_execution_plan|luisa_(surface_closure_collection|surface_population|compact_surface_preparation|principled_setup_callable|principled_thin_wall|subsurface_exit)_(fallback|hip|vk))$'
 ```
 
-The next runtime step is to specialize the Luisa local-bank allocation to the
-scene maxima proved here. At present the interpreter still declares its older
-8 scalar / 12 vector / 1 uint64 upper-bound arrays, so the graph scheduling
-result is a proven working-set bound but has not yet been claimed as a render
-speedup.
+## Rejected scene-sized local arrays
+
+A follow-up experiment wired the proved scene maxima directly into Luisa
+`Local` extents at host/JIT construction time. Barbershop therefore recorded
+6 scalar / 9 vector / 1 uint64 slots instead of the fixed 8 / 12 / 1 ceiling.
+This was semantically valid and passed fallback, HIP, and strict native-XIR
+Vulkan tests, but it is not committed.
+
+The exact HIP A/B used the same scheduler revision, export, RX 9070 XT,
+640x480, 64 spp, and `wavefront-staged` configuration. Two ordinary warm runs
+were 3.60243/3.60155 s with fixed arrays and 3.59830/3.59682 s with scene-sized
+arrays: a 0.12% mean difference inside run-to-run noise. An additional fixed
+run was 3.59641 s and an additional scene-sized run was 3.60823 s, confirming
+that the distributions overlap.
+
+`rocprofv3 --kernel-trace --scratch-memory-trace --stats` reported:
+
+| Main path kernel metric | Fixed 8/12/1 | Scene 6/9/1 |
+| --- | ---: | ---: |
+| Packaged HIP cache artifact | 641,287 B | 624,135 B |
+| Private segment | 6,000 B | 5,856 B |
+| SGPR / VGPR | 128 / 256 | 128 / 256 |
+| Profiled render-only | 3.61619 s | 3.60907 s |
+| Main-kernel mean invocation | 5,341.812 us | 5,420.390 us |
+
+The object and private segment became modestly smaller, but occupancy-limiting
+register allocation did not change and no runtime gain was measurable. Exact
+scene maxima would also create a distinct shader-cache identity for every
+capacity tuple. That cache fragmentation is not justified by a 0.12% noisy
+mean, so the experiment is preserved only as
+`rejected-scene-specialized-svm-banks-no-runtime-gain` in the local stash.
+Production retains the fixed upper-bound arrays; this commit claims the exact
+graph working-set reduction, not a render speedup.
+
+Profiler databases and A/B images are outside the source tree at:
+
+```text
+/var/tmp/rocprof-psycles-svm-banks-fixed/fixed_results.db
+/var/tmp/rocprof-psycles-svm-banks-specialized/specialized_results.db
+/var/tmp/psycles-svm-bank-ab/
+```
