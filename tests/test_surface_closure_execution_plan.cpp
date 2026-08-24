@@ -143,6 +143,42 @@ struct PlannedProgram {
   return graph;
 }
 
+[[nodiscard]] ShaderGraph make_normal_dependent_emission_graph() {
+    ShaderGraph graph;
+    const auto geometry = graph.add_node(
+        node_type::geometry, "Emission Geometry normal");
+    const auto normal_to_vector = graph.add_node(
+        node_type::normal_to_vector,
+        "Emission normal to vector");
+    const auto vector_to_color = graph.add_node(
+        node_type::vector_to_color,
+        "Emission normal to color");
+    const auto emission = graph.add_node(
+        node_type::emission, "Normal-dependent emission");
+    require(
+        graph.connect(
+            {.node = geometry, .socket = "Normal"},
+            normal_to_vector,
+            "Normal") &&
+            graph.connect(
+                {.node = normal_to_vector, .socket = "Vector"},
+                vector_to_color,
+                "Vector") &&
+            graph.connect(
+                {.node = vector_to_color, .socket = "Color"},
+                emission,
+                "Color") &&
+            graph.set_input(
+                emission,
+                "Strength",
+                SocketValue::floating(1.0f)),
+        "failed to configure normal-dependent emission graph");
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = emission, .socket = "Closure"});
+    return graph;
+}
+
 [[nodiscard]] const ClosureInstruction &find_closure(
     const SurfaceProgram &program, ClosureOperation operation) {
   for (const auto &closure : program.closure_instructions()) {
@@ -198,6 +234,102 @@ void test_mixed_endpoint_flattening() {
               image.instructions[1u].operand_begin ==
                   surface_closure_operand::diffuse::count,
           "closure operand stream is not densely semantic");
+}
+
+void test_endpoint_projection() {
+  const auto compiled = compile_graph(make_domain_mix_graph(0.25f));
+  const auto closure_plan =
+      analyze_surface_closure_plan(*compiled.program, compiled.parameters);
+  const auto dependencies =
+      analyze_surface_value_dependencies(*compiled.program, closure_plan);
+  require(!dependencies.emission_values_observe_shading_normal &&
+              !dependencies.emission_closures_observe_shading_normal &&
+              !dependencies.emission_observes_shading_normal(),
+          "plain Emission acquired a false SetNormal dependence");
+  const auto emission_storage = plan_surface_value_storage(
+      *compiled.program, dependencies.emission, dependencies.emission_outputs);
+  require(emission_storage.valid, "emission-only value storage plan failed");
+  const auto emission_values =
+      lower_surface_value_program(*compiled.program, emission_storage);
+  require(emission_values.valid, "emission-only value lowering failed");
+  const auto emission_endpoint =
+      surface_closure_endpoint_bit(SurfaceClosureEndpoint::emission);
+  const auto emission = lower_surface_closure_program(
+      *compiled.program, closure_plan, dependencies,
+      emission_values.value_addresses, emission_endpoint);
+  require(emission.valid,
+          "emission closure projection failed: " + emission.diagnostic);
+  require(emission.instructions.size() == 1u &&
+              surface_closure_operation(emission.instructions.front()) ==
+                  ClosureOperation::emission &&
+              surface_closure_endpoints(emission.instructions.front()) ==
+                  emission_endpoint &&
+              emission.used_operations == (1u << static_cast<std::uint32_t>(
+                                               ClosureOperation::emission)),
+          "emission projection retained a physical closure family");
+  const auto &mix = find_closure(*compiled.program, ClosureOperation::mix);
+  require(emission.instructions.front().mix_term_count == 1u &&
+              emission.mix_terms.size() == 1u &&
+              emission.mix_terms.front().address ==
+                  emission_values.value_addresses[mix.factor.value] &&
+              emission.mix_terms.front().flags == 0u,
+          "emission projection changed the surviving Mix recurrence");
+
+  const auto executable = build_surface_value_executable_scene(std::vector{
+      SurfaceValueExecutionInput{.program = compiled.program.get(),
+                                 .storage = &emission_storage,
+                                 .closure_plan = &closure_plan,
+                                 .closure_endpoints = emission_endpoint}});
+  require(executable.valid && executable.values.programs.size() == 1u &&
+              executable.values.programs.front().closure_count == 1u,
+          "executable scene rejected an exactly paired emission projection");
+
+  const auto invalid = lower_surface_closure_program(
+      *compiled.program, closure_plan, dependencies,
+      emission_values.value_addresses, 0u);
+  require(!invalid.valid && invalid.diagnostic.find("endpoint projection") !=
+                                std::string::npos,
+          "an empty closure endpoint projection was accepted");
+}
+
+void test_emission_shading_normal_observation() {
+  const auto observes = [](ValueOperation operation,
+                           std::uint64_t static_u0 = 0u,
+                           std::uint64_t static_u1 = 0u) noexcept {
+    return value_instruction_observes_shading_normal(
+        ValueInstruction{.operation = operation,
+                         .static_u0 = static_u0,
+                         .static_u1 = static_u1});
+  };
+  require(!observes(ValueOperation::parameter) &&
+              observes(ValueOperation::shading_normal) &&
+              observes(ValueOperation::normal_map),
+          "direct shading-normal observation classification changed");
+  require(observes(ValueOperation::fresnel) &&
+              !observes(ValueOperation::fresnel, 1u) &&
+              observes(ValueOperation::layer_weight_fresnel) &&
+              !observes(ValueOperation::layer_weight_facing, 1u),
+          "linked-normal context-node classification changed");
+  require(!observes(ValueOperation::image_color, 0u, 0u) &&
+              observes(ValueOperation::image_color, 0u, 1u << 12u) &&
+              observes(ValueOperation::image_alpha, 0u, 1u << 12u) &&
+              !observes(ValueOperation::environment_color, 0u, 1u << 12u),
+          "Box texture normal observation classification changed");
+  require(observes(ValueOperation::bump, 0u) &&
+              !observes(ValueOperation::bump, 2u) &&
+              observes(ValueOperation::bump, 4u) &&
+              observes(ValueOperation::bump, 6u),
+          "Bump normal/fallback observation classification changed");
+
+  const auto compiled = compile_graph(make_normal_dependent_emission_graph());
+  const auto closure_plan =
+      analyze_surface_closure_plan(*compiled.program, compiled.parameters);
+  const auto dependencies =
+      analyze_surface_value_dependencies(*compiled.program, closure_plan);
+  require(dependencies.emission_values_observe_shading_normal &&
+              !dependencies.emission_closures_observe_shading_normal &&
+              dependencies.emission_observes_shading_normal(),
+          "emission DAG lost its transitive shading-normal observation");
 }
 
 void test_nested_mix_path_recurrence() {
@@ -347,12 +479,40 @@ void test_principled_static_contract() {
   require(image.principled_features.front() == expected_features &&
               image.used_principled_features == expected_features,
           "Principled feature mask was not preserved as scene data");
+  require(!planned.dependencies.emission_values_observe_shading_normal &&
+              planned.dependencies.emission_closures_observe_shading_normal &&
+              planned.dependencies.emission_observes_shading_normal(),
+          "Principled Sheen/Coat emission lost its SetNormal dependence");
   require(surface_closure_bssrdf_method(instruction) ==
               compiled.program->closure_instructions()[root.value]
                   .subsurface_method,
           "BSSRDF method was omitted from closure control");
   require((instruction.control & ~surface_closure_control_mask) == 0u,
           "closure control contains undefined bits");
+
+  const auto emission_storage = plan_surface_value_storage(
+      *compiled.program, planned.dependencies.emission,
+      planned.dependencies.emission_outputs);
+  require(emission_storage.valid,
+          "Principled emission value projection failed");
+  const auto emission_values =
+      lower_surface_value_program(*compiled.program, emission_storage);
+  require(emission_values.valid, "Principled emission value lowering failed");
+  const auto emission = lower_surface_closure_program(
+      *compiled.program, planned.closure_plan, planned.dependencies,
+      emission_values.value_addresses,
+      surface_closure_endpoint_bit(SurfaceClosureEndpoint::emission));
+  const auto emission_features =
+      principled_closure_feature_bit(PrincipledClosureFeature::alpha) |
+      principled_closure_feature_bit(PrincipledClosureFeature::sheen) |
+      principled_closure_feature_bit(PrincipledClosureFeature::coat) |
+      principled_closure_feature_bit(PrincipledClosureFeature::emission);
+  require(emission.valid && emission.instructions.size() == 1u &&
+              emission.principled_features.front() ==
+                  (expected_features & emission_features) &&
+              emission.used_principled_features ==
+                  (expected_features & emission_features),
+          "Principled emission retained an unobserved physical feature");
 }
 
 void test_missing_live_address_rejected() {
@@ -439,6 +599,8 @@ void test_executable_scene_relocation() {
 int main() {
   try {
     test_mixed_endpoint_flattening();
+    test_endpoint_projection();
+    test_emission_shading_normal_observation();
     test_nested_mix_path_recurrence();
     test_statically_pruned_mix();
     test_principled_static_contract();

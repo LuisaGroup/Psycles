@@ -153,8 +153,8 @@ class SurfacePopulationComponent {
 };
 
 struct SurfaceCallables {
-    // Present only for the explicit populate-once A/B route until its storage
-    // layout and HIP performance have been validated on complete scenes.
+  // Production surface hits populate one device-local closure arena. A null
+  // component denotes only the explicit topology-expanded diagnostic route.
     std::shared_ptr<const SurfacePopulationComponent> population;
     SurfacePreparationCallable preparation;
     SurfaceEvaluateLightCallable evaluate_light;
@@ -179,6 +179,9 @@ make_compact_surface_bssrdf_normal_callable(
 
 [[nodiscard]] std::shared_ptr<const SurfacePopulationProgram>
 make_compact_surface_population_program(
+    const std::shared_ptr<LuisaSceneData> &scene) noexcept;
+
+[[nodiscard]] SurfaceEmissionCallable make_compact_surface_emission_callable(
     const std::shared_ptr<LuisaSceneData> &scene) noexcept;
 
 }// namespace psycles::luisa_backend::detail

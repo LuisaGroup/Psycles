@@ -872,6 +872,16 @@ struct ValueInstruction {
   }
 };
 
+// Exact semantic dependence on the mutable ShaderData normal established by
+// Cycles' SetNormal boundary. This deliberately excludes every other
+// SurfacePoint field: the automatic-normal stage changes only shading_normal,
+// so an endpoint may skip that stage iff neither its active value program nor
+// its closure reduction observes this relation. The implementation is an
+// exhaustive ValueOperation classifier; adding an operation therefore cannot
+// silently inherit an optimistic "does not observe" default.
+[[nodiscard]] bool value_instruction_observes_shading_normal(
+    const ValueInstruction &instruction) noexcept;
+
 enum class ClosureOperation : std::uint8_t {
   null_closure,
   diffuse,
@@ -1158,6 +1168,18 @@ struct SurfaceValueDependencyPlan {
   // visit only its own closure domain.
   std::vector<bool> physical_closures;
   std::vector<bool> emission_closures;
+  // Formal decomposition of the emission endpoint's SetNormal dependence.
+  // Value instructions and the closure reduction are tracked separately so a
+  // backend can project either execution domain without conflating their
+  // causes. The union is the necessary-and-sufficient condition for running
+  // an authored automatic-normal program before emission evaluation.
+  bool emission_values_observe_shading_normal{};
+  bool emission_closures_observe_shading_normal{};
+
+  [[nodiscard]] bool emission_observes_shading_normal() const noexcept {
+    return emission_values_observe_shading_normal ||
+           emission_closures_observe_shading_normal;
+  }
 
   [[nodiscard]] bool compatible(const SurfaceProgram &program) const noexcept;
 };

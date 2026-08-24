@@ -1,0 +1,11 @@
+#pragma once
+
+namespace psycles::luisa_backend::detail {
+
+// Host/JIT surface execution policy. Both switches default to the canonical
+// Cycles-style SVM route; zero is retained solely as an explicit expanded-AST
+// diagnostic oracle and never becomes a device-side branch.
+[[nodiscard]] bool compact_surface_values_requested() noexcept;
+[[nodiscard]] bool populate_surface_once_requested() noexcept;
+
+} // namespace psycles::luisa_backend::detail

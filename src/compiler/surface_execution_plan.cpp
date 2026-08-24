@@ -958,7 +958,7 @@ SurfaceValueExecutableScene build_surface_value_executable_scene(
           *program, *input.closure_plan);
       closure_image = lower_surface_closure_program(
           *program, *input.closure_plan, dependencies,
-          image.value_addresses);
+          image.value_addresses, input.closure_endpoints);
       if (!closure_image.valid) {
         return reject_executable_scene(
             "value program " + std::to_string(input_index) +

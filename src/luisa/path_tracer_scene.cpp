@@ -12,6 +12,7 @@
 #include "path_tracer_scene_upload.h"
 #include "path_tracer_shader_services.h"
 #include "path_tracer_subsurface_scene.h"
+#include "path_tracer_surface_route_policy.h"
 #include "path_tracer_surfaces.h"
 #include "path_tracer_surface_values.h"
 #include "path_tracer_tangent_space.h"
@@ -23,31 +24,10 @@
 #include <psycles/contract/cycles_pointiness.h>
 #include <psycles/luisa/cycles_nishita.h>
 
-#include <cstdlib>
 #include <string_view>
 
 namespace psycles::luisa_backend {
 using namespace detail;
-
-namespace {
-
-[[nodiscard]] bool compact_surface_values_requested() noexcept {
-    const auto *value =
-        std::getenv("PSYCLES_COMPACT_SURFACE_VALUES");
-    return value != nullptr &&
-           std::string_view{value} != "0" &&
-           std::string_view{value} != "false";
-}
-
-[[nodiscard]] bool populate_surface_once_requested() noexcept {
-    const auto *value =
-        std::getenv("PSYCLES_POPULATE_SURFACE_ONCE");
-    return value != nullptr &&
-           std::string_view{value} != "0" &&
-           std::string_view{value} != "false";
-}
-
-} // namespace
 
 contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     const SceneSnapshot &snapshot) {

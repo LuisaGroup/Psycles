@@ -110,6 +110,10 @@ surface_closure_endpoint_bit(SurfaceClosureEndpoint endpoint) noexcept {
   return static_cast<SurfaceClosureEndpointMask>(endpoint);
 }
 
+inline constexpr SurfaceClosureEndpointMask all_surface_closure_endpoints =
+    surface_closure_endpoint_bit(SurfaceClosureEndpoint::physical) |
+    surface_closure_endpoint_bit(SurfaceClosureEndpoint::emission);
+
 // Semantic operand layouts for closure leaves. Inactive Principled features
 // retain invalid addresses; the shared handler supplies their Cycles defaults.
 // Named indices are part of the bytecode contract and avoid magic offsets in
@@ -277,6 +281,13 @@ inline constexpr std::uint32_t surface_closure_static_variant_mask =
     surface_closure_opcode_mask | surface_closure_bssrdf_method_mask |
     surface_closure_coat_normal_linked |
     surface_closure_preserve_ggx_energy | surface_closure_beckmann;
+
+// Emission projection never observes BSSRDF, microfacet-energy, or Beckmann
+// configuration. Coat-normal linkage alone changes its Principled layer
+// algorithm, so the projected interpreter has a strictly smaller semantic
+// key without conflating any observed behavior.
+inline constexpr std::uint32_t surface_closure_emission_static_variant_mask =
+    surface_closure_opcode_mask | surface_closure_coat_normal_linked;
 
 [[nodiscard]] constexpr std::uint32_t make_surface_closure_control(
     const ClosureInstruction &instruction,
@@ -462,10 +473,12 @@ struct SurfaceValueStaticVariant {
 struct SurfaceValueExecutionInput {
   const SurfaceProgram *program{};
   const SurfaceValueStoragePlan *storage{};
-  // Optional only for non-preparation programs. When present, closure
-  // bytecode is lowered from the exact value-address image produced by this
-  // input; callers cannot accidentally pair it with a different slot plan.
+  // Optional for value-only programs. When present, closure bytecode is
+  // lowered from the exact value-address image and endpoint projection
+  // produced by this input; callers cannot accidentally pair a physical or
+  // emission closure stream with a different typed slot plan.
   const SurfaceClosurePlan *closure_plan{};
+  SurfaceClosureEndpointMask closure_endpoints{all_surface_closure_endpoints};
 };
 
 // `instruction_variants` is parallel to `values.instructions`. Semantic
@@ -523,7 +536,8 @@ plan_surface_value_storage(const SurfaceProgram &program,
     const SurfaceProgram &program,
     const SurfaceClosurePlan &closure_plan,
     const SurfaceValueDependencyPlan &dependencies,
-    std::span<const std::uint32_t> value_addresses);
+    std::span<const std::uint32_t> value_addresses,
+    SurfaceClosureEndpointMask endpoints = all_surface_closure_endpoints);
 
 // Concatenates topology programs in runtime-tag order and rebases every
 // operand, metadata, and static-table reference to the scene-wide streams.
