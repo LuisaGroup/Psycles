@@ -224,6 +224,19 @@ void write_dynamic_value(
     const SurfacePoint &point,
     TracedValues &operands,
     Var<luisa::uint4> instruction) noexcept {
+    if (compiler::surface_value_operation_uses_noise_normalize(
+            variant.instruction.operation)) {
+        const Bool normalize =
+            (instruction.x &
+             compiler::surface_value_noise_normalize_bit) != 0u;
+        ValueEvaluationContext context{
+            .services = services,
+            .point = point,
+            .result = operands,
+            .surface = nullptr,
+            .noise_normalize_override = &normalize};
+        return node.evaluate(context);
+    }
     const auto table_parameter =
         variant.instruction.operation ==
             compiler::ValueOperation::color_ramp ||

@@ -1199,6 +1199,128 @@ void test_surface_value_storage_plan() {
                 [](float value) noexcept { return value == 0.0f; }),
         "a semantic evaluator retained an authored static-table payload");
 
+    const auto make_noise_program = [&](std::uint32_t tag,
+                                        std::uint64_t dimensions,
+                                        std::uint64_t type,
+                                        bool normalize,
+                                        bool color) {
+        std::vector<ParameterDesc> parameters;
+        std::vector<ValueInstruction> noise_values;
+        parameters.reserve(8u);
+        noise_values.reserve(10u);
+        noise_values.emplace_back(ValueInstruction{
+            .operation = ValueOperation::surface_position,
+            .result_type = SocketType::point});
+        for (auto index = std::uint32_t{0u}; index < 8u; ++index) {
+            parameters.emplace_back(make_parameter(index));
+            noise_values.emplace_back(make_parameter_value(index));
+        }
+        noise_values.emplace_back(ValueInstruction{
+            .operation = color ? ValueOperation::noise_color
+                               : ValueOperation::noise_factor,
+            .result_type = color ? SocketType::color : SocketType::floating,
+            .operands = make_value_operands<value_operand::noise>({
+                {value_operand::noise::vector, ValueExpressionId{0u}},
+                {value_operand::noise::scale, ValueExpressionId{1u}},
+                {value_operand::noise::detail, ValueExpressionId{2u}},
+                {value_operand::noise::roughness, ValueExpressionId{3u}},
+                {value_operand::noise::lacunarity, ValueExpressionId{4u}},
+                {value_operand::noise::distortion, ValueExpressionId{5u}},
+                {value_operand::noise::w, ValueExpressionId{6u}},
+                {value_operand::noise::offset, ValueExpressionId{7u}},
+                {value_operand::noise::gain, ValueExpressionId{8u}}}),
+            .static_u0 = dimensions,
+            .static_u1 = (type << 8u) | (normalize ? 1u : 0u)});
+        return SurfaceProgram{
+            tag, std::move(parameters), std::move(noise_values), {}, {}};
+    };
+    const auto make_noise_plan = [](const SurfaceProgram &noise_program) {
+        auto outputs = std::vector<bool>(10u, false);
+        outputs.back() = true;
+        return plan_surface_value_storage(
+            noise_program, std::vector<bool>(10u, true), outputs);
+    };
+    constexpr auto noise_fbm = std::uint64_t{1u};
+    constexpr auto noise_multifractal = std::uint64_t{0u};
+    const auto normalized_noise =
+        make_noise_program(20u, 3u, noise_fbm, true, false);
+    const auto raw_noise =
+        make_noise_program(21u, 3u, noise_fbm, false, false);
+    const auto noise_2d =
+        make_noise_program(22u, 2u, noise_fbm, false, false);
+    const auto noise_multifractal_3d =
+        make_noise_program(23u, 3u, noise_multifractal, false, false);
+    const auto noise_color_3d =
+        make_noise_program(24u, 3u, noise_fbm, true, true);
+    const auto normalized_noise_plan = make_noise_plan(normalized_noise);
+    const auto raw_noise_plan = make_noise_plan(raw_noise);
+    const auto noise_2d_plan = make_noise_plan(noise_2d);
+    const auto noise_multifractal_3d_plan =
+        make_noise_plan(noise_multifractal_3d);
+    const auto noise_color_3d_plan = make_noise_plan(noise_color_3d);
+    const auto normalized_noise_image = lower_surface_value_program(
+        normalized_noise, normalized_noise_plan);
+    const auto raw_noise_image =
+        lower_surface_value_program(raw_noise, raw_noise_plan);
+    require(normalized_noise_image.valid && raw_noise_image.valid &&
+                normalized_noise_image.instructions.size() == 2u &&
+                raw_noise_image.instructions.size() == 2u &&
+                surface_value_noise_normalize(
+                    normalized_noise_image.instructions.back()) &&
+                !surface_value_noise_normalize(
+                    raw_noise_image.instructions.back()) &&
+                (normalized_noise_image.metadata.back().static_u1 & 1u) != 0u &&
+                (raw_noise_image.metadata.back().static_u1 & 1u) == 0u,
+            "Noise Normalize was not preserved as validated bytecode data");
+
+    const std::vector noise_inputs{
+        SurfaceValueExecutionInput{.program = &normalized_noise,
+                                   .storage = &normalized_noise_plan},
+        SurfaceValueExecutionInput{.program = &raw_noise,
+                                   .storage = &raw_noise_plan},
+        SurfaceValueExecutionInput{.program = &noise_2d,
+                                   .storage = &noise_2d_plan},
+        SurfaceValueExecutionInput{.program = &noise_multifractal_3d,
+                                   .storage = &noise_multifractal_3d_plan},
+        SurfaceValueExecutionInput{.program = &noise_color_3d,
+                                   .storage = &noise_color_3d_plan}};
+    const auto noise_scene =
+        build_surface_value_executable_scene(noise_inputs);
+    require(noise_scene.valid && noise_scene.variants.size() == 5u &&
+                noise_scene.instruction_variants ==
+                    std::vector<std::uint32_t>{0u, 1u, 0u, 1u, 0u,
+                                               2u, 0u, 3u, 0u, 4u},
+            "Noise semantic interning merged more than the Normalize "
+            "equivalence class");
+    require(noise_scene.variants[1u].instruction.static_u0 == 3u &&
+                noise_scene.variants[1u].instruction.static_u1 ==
+                    (noise_fbm << 8u) &&
+                noise_scene.variants[1u].instruction.operation ==
+                    ValueOperation::noise_factor,
+            "the shared Noise evaluator retained a baked Normalize value");
+
+    auto mismatched_noise_image = raw_noise_image;
+    mismatched_noise_image.instructions.back().control |=
+        surface_value_noise_normalize_bit;
+    const std::vector mismatched_noise_images{mismatched_noise_image};
+    const auto mismatched_noise_scene =
+        build_surface_value_scene_image(mismatched_noise_images);
+    require(!mismatched_noise_scene.valid &&
+                mismatched_noise_scene.diagnostic.find(
+                    "disagrees with immutable metadata") != std::string::npos,
+            "serialized Noise accepted inconsistent Normalize data");
+
+    auto foreign_normalize_image = metadata_image;
+    foreign_normalize_image.instructions.front().control |=
+        surface_value_noise_normalize_bit;
+    const std::vector foreign_normalize_images{foreign_normalize_image};
+    const auto foreign_normalize_scene =
+        build_surface_value_scene_image(foreign_normalize_images);
+    require(!foreign_normalize_scene.valid &&
+                foreign_normalize_scene.diagnostic.find(
+                    "non-Noise opcode") != std::string::npos,
+            "serialized non-Noise opcode accepted a Noise-owned control bit");
+
     const auto make_table_program = [&](std::uint32_t table_parameter) {
         std::vector<ValueInstruction> table_values;
         table_values.emplace_back(make_parameter_value(0u));

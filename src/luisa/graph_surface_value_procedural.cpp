@@ -4,6 +4,8 @@
 #include <psycles/luisa/cycles_noise.h>
 #include <luisa/dsl/sugar.h>
 
+#include <utility>
+
 using namespace luisa::compute;
 
 namespace psycles::luisa_backend::detail {
@@ -77,44 +79,50 @@ public:
                     const auto color_needed =
                         instruction.operation ==
                         compiler::ValueOperation::noise_color;
-                    const auto normalize =
-                        (instruction.static_u1 & 1u) != 0u;
                     const auto noise_type =
                         static_cast<cycles_noise::Type>(
                             (instruction.static_u1 >> 8u) &
                             0xffu);
                     auto scale = scalar(
                         instruction.operand(operand::noise::scale), result);
-                    value = cycles_noise::
-                        evaluate_texture_shared(
-                        static_cast<std::uint32_t>(
-                            instruction.static_u0),
-                        noise_type,
-                        normalize,
-                        color_needed,
-                        vector(
-                            instruction.operand(operand::noise::vector),
-                            result) * scale,
-                        scalar(
-                            instruction.operand(operand::noise::w), result) *
-                            scale,
-                        scalar(
-                            instruction.operand(operand::noise::detail),
-                            result),
-                        scalar(
-                            instruction.operand(operand::noise::roughness),
-                            result),
-                        scalar(
-                            instruction.operand(operand::noise::lacunarity),
-                            result),
-                        scalar(
-                            instruction.operand(operand::noise::offset),
-                            result),
-                        scalar(
-                            instruction.operand(operand::noise::gain), result),
-                        scalar(
-                            instruction.operand(operand::noise::distortion),
-                            result));
+                    const auto evaluate = [&](auto &&normalize) noexcept {
+                        return cycles_noise::
+                            evaluate_texture_shared(
+                            static_cast<std::uint32_t>(
+                                instruction.static_u0),
+                            noise_type,
+                            std::forward<decltype(normalize)>(normalize),
+                            color_needed,
+                            vector(
+                                instruction.operand(operand::noise::vector),
+                                result) * scale,
+                            scalar(
+                                instruction.operand(operand::noise::w),
+                                result) * scale,
+                            scalar(
+                                instruction.operand(operand::noise::detail),
+                                result),
+                            scalar(
+                                instruction.operand(operand::noise::roughness),
+                                result),
+                            scalar(
+                                instruction.operand(operand::noise::lacunarity),
+                                result),
+                            scalar(
+                                instruction.operand(operand::noise::offset),
+                                result),
+                            scalar(
+                                instruction.operand(operand::noise::gain),
+                                result),
+                            scalar(
+                                instruction.operand(operand::noise::distortion),
+                                result));
+                    };
+                    value = context.noise_normalize_override != nullptr
+                                ? evaluate(
+                                      *context.noise_normalize_override)
+                                : evaluate(
+                                      (instruction.static_u1 & 1u) != 0u);
                     break;
                 }
                 case compiler::ValueOperation::white_noise_value:

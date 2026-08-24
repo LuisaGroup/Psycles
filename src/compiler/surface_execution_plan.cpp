@@ -160,6 +160,12 @@ namespace {
             static_cast<std::uint32_t>(ValueOperation::nishita_sky)) {
       return "an instruction has an invalid control word";
     }
+    const auto operation = surface_value_operation(instruction);
+    if (surface_value_noise_normalize(instruction) &&
+        !surface_value_operation_uses_noise_normalize(operation)) {
+      return "an instruction assigns Noise Normalize data to a non-Noise "
+             "opcode";
+    }
     if (surface_value_operand_count(instruction) !=
         value_operation_operand_count(
             surface_value_operation(instruction))) {
@@ -192,6 +198,15 @@ namespace {
             SurfaceValueAddress::invalid_value &&
         instruction.metadata_index >= program.metadata.size()) {
       return "an instruction metadata index exceeds the side table";
+    }
+    if (surface_value_operation_uses_noise_normalize(operation)) {
+      const auto metadata_normalize =
+          instruction.metadata_index != SurfaceValueAddress::invalid_value &&
+          (program.metadata[instruction.metadata_index].static_u1 & 1u) != 0u;
+      if (surface_value_noise_normalize(instruction) != metadata_normalize) {
+        return "a Noise Normalize control bit disagrees with immutable "
+               "metadata";
+      }
     }
     operand_cursor += operand_count;
   }
@@ -226,7 +241,14 @@ namespace {
   key.emplace_back(static_cast<std::uint64_t>(instruction.operation));
   key.emplace_back(static_cast<std::uint64_t>(instruction.result_type));
   key.emplace_back(instruction.static_u0);
-  key.emplace_back(instruction.static_u1);
+  // Noise Normalize selects only a terminal range mapping and is encoded in
+  // each bytecode instruction. Removing exactly that owned bit from the
+  // semantic AST key preserves all remaining static dimensions, fractal type,
+  // output, and operand-type information.
+  key.emplace_back(
+      surface_value_operation_uses_noise_normalize(instruction.operation)
+          ? instruction.static_u1 & ~std::uint64_t{1u}
+          : instruction.static_u1);
   key.emplace_back(std::bit_cast<std::uint32_t>(instruction.static_f0));
   key.emplace_back(std::bit_cast<std::uint32_t>(instruction.static_f1));
   // Shader-table ParameterId is a late-bound address already preserved in
@@ -837,7 +859,10 @@ SurfaceValueProgramImage lower_surface_value_program(
         .control = make_surface_value_control(
             instruction.operation,
             static_cast<std::uint8_t>(instruction.operands.size()),
-            result_address.bank()),
+            result_address.bank(),
+            surface_value_operation_uses_noise_normalize(
+                instruction.operation) &&
+                (instruction.static_u1 & 1u) != 0u),
         .result = result_address.encoded(),
         .operand_begin = operand_begin,
         .metadata_index = metadata_index});
@@ -987,6 +1012,10 @@ SurfaceValueExecutableScene build_surface_value_executable_scene(
         if (normalized.operation == ValueOperation::color_ramp ||
             normalized.operation == ValueOperation::rgb_curve) {
           normalized.parameter = {};
+        }
+        if (surface_value_operation_uses_noise_normalize(
+                normalized.operation)) {
+          normalized.static_u1 &= ~std::uint64_t{1u};
         }
         // Preserve the statically proven shape but erase authored payloads
         // from the host AST representative. Compact execution must obtain
